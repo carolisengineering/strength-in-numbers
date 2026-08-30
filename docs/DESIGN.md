@@ -194,10 +194,11 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
 
 ### 4.1 Identity & body metrics
 
-- **user** — `id`, `auth_sub` (unique, from OIDC), `email`, `display_name`,
-  `unit_preference` (`kg` | `lb` — a *display* default, not how data is stored),
-  `timezone` (IANA name, e.g. `America/Chicago`), `created_at`, `deleted_at`
-  (soft-delete for grace period, then hard purge job).
+- **user** — `id`, `auth_sub` (unique, from OIDC), `email`, `email_verified`
+  (informational; from a namespaced Auth0 access-token claim — see Spec 01),
+  `display_name`, `unit_preference` (`kg` | `lb` — a *display* default, not how
+  data is stored), `timezone` (IANA name, e.g. `America/Chicago`), `created_at`,
+  `deleted_at` (soft-delete for grace period, then hard purge job).
 - **body_metric** — `user_id`, `measured_at timestamptz`, `local_date DATE`,
   `tz_offset_minutes SMALLINT`, `metric_type` (`weight` only in v1;
   `body_fat_pct`, `waist`, … reserved), `value NUMERIC`, `unit`. Same
