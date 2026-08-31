@@ -1,0 +1,25 @@
+{
+  "name": "@sin/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "purity": "node ./scripts/purity-check.mjs",
+    "test": "pnpm purity",
+    "test:unit": "pnpm purity",
+    "test:integration": "true"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

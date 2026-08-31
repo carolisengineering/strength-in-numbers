@@ -1,0 +1,42 @@
+# Spec 01 §1 (local dev) + criterion 14 — the same image runs here and on Render.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sin
+      POSTGRES_PASSWORD: sin
+      POSTGRES_DB: sin
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sin -d sin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: postgresql://sin:sin@db:5432/sin?sslmode=disable
+      AUTH0_ISSUER: https://si-staging.us.auth0.com/
+      AUTH0_AUDIENCE: https://api.strengthinnumbers.app
+      AUTH0_CLAIM_NAMESPACE: https://strengthinnumbers.app/
+      WEB_ORIGIN: http://localhost:5173
+      LOG_LEVEL: debug
+    command: >
+      sh -c "pnpm --filter @sin/api exec prisma migrate deploy && node apps/api/dist/server.js"
+    ports:
+      - "3000:3000"
+
+volumes:
+  db-data:

@@ -1,0 +1,26 @@
+// Spec 01 §4 — this spec owns the `user` table only.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @db.Uuid // app-generated UUIDv7 (Spec 01 Q5)
+  authSub        String    @unique(map: "user_auth_sub_key") @map("auth_sub")
+  email          String // NOT unique on purpose — auth_sub is the only stable key
+  emailVerified  Boolean   @default(false) @map("email_verified")
+  displayName    String?   @map("display_name")
+  unitPreference String    @default("kg") @map("unit_preference") // CHECK ('kg','lb') added in migration
+  timezone       String    @default("UTC") // IANA name
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([email], map: "user_email_idx")
+  @@map("user")
+}

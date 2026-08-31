@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # pnpm store cache key base
+  PNPM_VERSION: 9.15.4
+
+jobs:
+  check:
+    name: lint · typecheck · unit · purity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sin/api exec prisma generate
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run core:purity
+      - run: pnpm --filter @sin/api exec prisma validate
+      - run: pnpm run test:unit
+
+  integration:
+    name: integration (Testcontainers Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sin/api exec prisma generate
+      - run: pnpm --filter @sin/api run test:integration
+        env:
+          RUN_INTEGRATION: "1"
+
+  docker:
+    name: docker build (criterion 14)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t si-api:ci .
+
+  smoke:
+    name: post-deploy smoke (staging)
+    needs: [check, integration, docker]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Waits for Render to finish the staging deploy of this SHA, then runs the
+      # smoke (Spec 01 §10, criterion 12). Secrets configured in repo settings.
+      - run: pnpm --filter @sin/api exec tsx scripts/smoke.ts
+        env:
+          SMOKE_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          AUTH0_TOKEN_URL: ${{ vars.AUTH0_STAGING_TOKEN_URL }}
+          AUTH0_M2M_CLIENT_ID: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_ID }}
+          AUTH0_M2M_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_SECRET }}
+          AUTH0_M2M_AUDIENCE: https://api.strengthinnumbers.app
