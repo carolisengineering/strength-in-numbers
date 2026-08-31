@@ -62,6 +62,8 @@ builds inside it.
 15. A cross-origin `OPTIONS` preflight from a configured `WEB_ORIGIN` returns `204` with the expected `Access-Control-Allow-*` headers; the same preflight from an unlisted origin omits the allow-origin header. A response to a normal request carries `X-Request-Id` in `Access-Control-Expose-Headers`.
 16. When the JWKS endpoint is unreachable (not merely an unknown `kid`), `GET /v1/me` returns `503` problem+json, slug `auth-unavailable` — never `401`.
 17. Every response carries the `@fastify/helmet` default security headers (incl. HSTS in production); a request body over the configured limit is rejected with `413` before the handler runs.
+18. Each behavioral criterion (3–10, 13, 15–17) has ≥ 1 committed automated test (unit or integration per §10) tagged with its criterion number. Infra/pipeline criteria (11, 12, 14) are verified by the CI job and post-deploy smoke instead.
+19. CI runs `pnpm -w test` (plus lint, typecheck, `packages/core` purity check, migration dry-run) on every PR and **blocks merge on any failure**. Coverage is reported; the auth plugin and provisioning module (`apps/api/src/plugins/auth`, `apps/api/src/repositories/user`) are held at ≥ 90% line coverage.
 
 ---
 
@@ -370,35 +372,49 @@ it).
 
 ## 10. Testing
 
+### Method — test-driven
+
+Implement each acceptance criterion test-first: write the test from §2 (it fails
+against the empty implementation), then the minimum code to make it pass, then
+refactor. The inventories below are that test list; each item is tagged with the
+criterion it discharges. Order of attack: config loader → error mapper →
+JWT verifier → app hardening (CORS/helmet/body limit) → provisioning repo →
+routes. `packages/core` is a stub in this spec, so its own TDD starts in Spec 02.
+
+Runner: **Vitest**. Integration tests use **Testcontainers** Postgres against the
+real Prisma migrations. HTTP-level tests use `fastify.inject` (no live port).
+Criteria 11, 12, 14 are not unit-testable — they are verified by the CI job,
+`prisma migrate` dry-run, and the post-deploy smoke respectively.
+
 ### Unit
-- Config: missing/invalid var → refuses to start.
+- Config: any required var missing/invalid → process refuses to start, message names the var, no port bound. Includes `WEB_ORIGIN` unset/blank. *(Criterion 2)*
+- `timezone` Zod refinement accepts `America/Chicago`, rejects `Mars/Phobos` and `US/Foo`. *(Criterion 10)*
 - JWT verifier: tokens minted locally with `jose` + a test keypair — valid;
   expired; future `nbf`; wrong `aud`; wrong `iss`; bad signature; unknown `kid`;
   `alg: none`. Each → expected status/slug. Also: `email` claim present without
-  `email_verified` → provisions with `email_verified = false`.
+  `email_verified` → provisions with `email_verified = false`. *(Criterion 6)*
 - JWKS unavailable: mock JWKS endpoint returns a network error / 503 with a cold
   cache → verifier yields `503 auth-unavailable`, never `401`. Unknown `kid` with
   a *reachable* JWKS → `401 invalid-token`. *(Criterion 16)*
-- Error mapper: each `AppError` subtype → correct problem+json body (incl.
-  `auth-unavailable` → 503, `payload-too-large` → 413).
-- `assertOwned` → throws on mismatch, passes on match.
-- Config: `WEB_ORIGIN` unset/blank → refuses to start; `timezone` Zod refinement
-  accepts `America/Chicago`, rejects `Mars/Phobos` and `US/Foo`.
-- App hardening (via `app.inject`): preflight `OPTIONS` from a listed origin →
-  `204` + `Access-Control-Allow-Origin` echoing it; from an unlisted origin → no
-  allow-origin header. Every response carries helmet headers; a > 64 KB body →
-  `413`. *(Criteria 15, 17)*
+- Error mapper: each `AppError` subtype → correct problem+json body, correct
+  status, no internal `detail` on 401/403/500 (incl. `auth-unavailable` → 503,
+  `payload-too-large` → 413). *(Criteria 6, 17 companion)*
+- `assertOwned` → throws `NotFoundError` on owner mismatch, passes on match. *(repo seam, DESIGN R8)*
+- Routes via `fastify.inject`: `GET /healthz` → `200 {"status":"ok"}` with no DB wired *(Criterion 3)*; `GET /v1/me` with no/malformed `Authorization` → `401 unauthenticated` *(Criterion 5)*.
+- App hardening via `fastify.inject`: preflight `OPTIONS` from a listed origin →
+  `204` + `Access-Control-Allow-Origin` echoing it + `Access-Control-Expose-Headers: X-Request-Id`; from an unlisted origin → no allow-origin header. Every
+  response carries helmet headers; a > 64 KB body → `413`. *(Criteria 15, 17)*
 
-### Integration (testcontainers Postgres, real migrations)
-- First `GET /v1/me` for a new `sub` → exactly one `user`; `isNewUser` true then false.
-- Two concurrent first requests → one row, no 500. *(Criterion 8)*
-- `deleted_at` set → `403 account-deleted`. *(Criterion 9)*
+### Integration (Testcontainers Postgres, real migrations)
+- First `GET /v1/me` for a new `sub` → exactly one `user` row; `isNewUser: true`, then `false` on the second call. *(Criterion 7)*
+- Two concurrent first requests for one new `sub` → one row, no `500`. *(Criterion 8)*
+- Provisioning repo exercises the raw `ON CONFLICT DO NOTHING` path directly: affected-row count `1` on the creating call (`isNewUser: true`), `0` on a replay (`isNewUser: false`). *(Criterion 7/8 unit-level companion)*
+- `deleted_at` set → every `/v1/*` app route returns `403 account-deleted`. *(Criterion 9)*
 - `PATCH /v1/me`: happy update advances `updated_at`; bad `unitPreference` /
-  unknown field → `422` + `errors[]`. *(Criterion 10)*
-- `/readyz` → `503` with DB stopped, `200` with DB up; a burst of calls with the
-  DB up issues at most one `SELECT 1` per 3 s window (probe cache). *(Criteria 4, 15/17 companion)*
-- Provisioning uses the raw `ON CONFLICT DO NOTHING` path: affected-row count `1`
-  on the creating request (`isNewUser: true`), `0` on a replay (`isNewUser: false`).
+  unknown field → `422` + populated `errors[]`. *(Criterion 10)*
+- `/readyz` → `503` problem+json with DB stopped, `200` with DB up; a burst of calls with the
+  DB up issues at most one `SELECT 1` per 3 s window (probe cache). *(Criterion 4)*
+- `SIGTERM` → server stops accepting, drains an in-flight request, closes the Prisma pool, exits 0. *(Criterion 13)*
 
 ### Post-deploy smoke (CI, against staging)
 - Script does an Auth0 client-credentials grant against the `si-staging` M2M app,
@@ -409,8 +425,10 @@ it).
   pipeline. *(Criteria 12, and `/readyz` gate)*
 
 ### Done
-All acceptance criteria (§2) verified by the above; `packages/core` purity check
-passes; `prisma migrate` dry-run passes; `render.yaml` deploys staging cleanly.
+Every criterion in §2 is discharged by a test above or by the pipeline (per
+Criterion 18); `pnpm -w test` is green and CI blocks merge on red (Criterion 19);
+auth-plugin + user-repo coverage ≥ 90%; `packages/core` purity check passes;
+`prisma migrate` dry-run passes; `render.yaml` deploys staging cleanly.
 
 ---
 
