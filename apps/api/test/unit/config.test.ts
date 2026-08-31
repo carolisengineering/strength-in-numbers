@@ -104,10 +104,26 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
     ).toThrow(/AUTH0_ISSUER/);
   });
 
-  it("rejects a non-https AUTH0_ISSUER", () => {
+  it("rejects a non-https AUTH0_ISSUER in production", () => {
     expect(() =>
-      loadConfig({ ...base, AUTH0_ISSUER: "http://si-staging.us.auth0.com/" }),
+      loadConfig({
+        ...base,
+        NODE_ENV: "production",
+        AUTH0_ISSUER: "http://localhost:9999/",
+      }),
     ).toThrow(/AUTH0_ISSUER/);
+  });
+
+  it("allows an http AUTH0_ISSUER outside production (local dev IdP)", () => {
+    const cfg = loadConfig({
+      ...base,
+      NODE_ENV: "development",
+      AUTH0_ISSUER: "http://localhost:9999/",
+    });
+    expect(cfg.auth0.issuer).toBe("http://localhost:9999/");
+    expect(cfg.auth0.jwksUri).toBe(
+      "http://localhost:9999/.well-known/jwks.json",
+    );
   });
 
   it("rejects a non-postgres DATABASE_URL", () => {

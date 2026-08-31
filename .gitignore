@@ -5,4 +5,5 @@ coverage/
 .env
 .env.*
 !.env.example
+.dev-idp-key.json
 .DS_Store

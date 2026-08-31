@@ -64,7 +64,10 @@ const schema = z.object({
   AUTH0_ISSUER: z
     .string()
     .url("must be a URL")
-    .refine((v) => v.startsWith("https://"), "must be https")
+    .refine(
+      (v) => v.startsWith("https://") || v.startsWith("http://"),
+      "must be an http(s) URL",
+    )
     .refine((v) => v.endsWith("/"), "must end with a trailing slash"),
 
   AUTH0_AUDIENCE: z.string().min(1, "is required"),
@@ -94,6 +97,16 @@ const schema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 
   SERVICE_NAME: z.string().min(1).default("si-api"),
+}).superRefine((data, ctx) => {
+  // TLS to the IdP is mandatory in production; a plain-http issuer is only for a
+  // local dev IdP stand-in (Spec 01 §7).
+  if (data.NODE_ENV === "production" && !data.AUTH0_ISSUER.startsWith("https://")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["AUTH0_ISSUER"],
+      message: "must be https in production",
+    });
+  }
 });
 
 export interface Config {

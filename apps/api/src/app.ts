@@ -33,8 +33,15 @@ export interface BuildAppDeps extends AuthPluginDeps {
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const { config } = deps;
 
+  // Fastify v5 takes a pre-built logger under `loggerInstance`, and only a
+  // boolean/config object under `logger`.
+  const loggerOption =
+    typeof deps.logger === "object" && deps.logger !== null
+      ? { loggerInstance: deps.logger }
+      : { logger: deps.logger ?? false };
+
   const app = Fastify({
-    logger: deps.logger ?? false,
+    ...loggerOption,
     requestIdHeader: "x-request-id",
     genReqId: () => randomUUID(),
     bodyLimit: BODY_LIMIT_BYTES,
