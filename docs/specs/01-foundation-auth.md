@@ -1,8 +1,8 @@
 # Spec 01 — Foundation & Auth
 
-**Status:** Draft v0.3 — §12 questions Q1–Q6 resolved
-**Last updated:** 2026-08-30
-**Design refs:** DESIGN.md §3 (architecture), §4.1 (`user`), §5.1 (auth), §6 (API), §7 (infra), §9 (M0)
+**Status:** Draft v0.4 — §12 questions Q1–Q10 resolved; pre-implementation review pass
+**Last updated:** 2026-08-31
+**Design refs:** DESIGN.md §3 (architecture), §4.1 (`user`), §5.1 (auth), §6 (API), §7 (infra), §8.2 (security), §9 (M0)
 
 ---
 
@@ -17,6 +17,7 @@ builds inside it.
 
 - Monorepo layout (pnpm workspaces): `apps/api`, `packages/core` (stub), reserved `apps/web`.
 - Fastify app: bootstrap, plugin structure, graceful shutdown, request-id propagation.
+- App hardening: `@fastify/cors` (per-env origin allowlist), `@fastify/helmet`, explicit JSON body-size limit.
 - Typed config: env → Zod-validated object, fail-fast at boot.
 - PostgreSQL via Prisma: connection, pool, migration harness.
 - First migration: `user` table (DESIGN §4.1).
@@ -34,7 +35,7 @@ builds inside it.
 ### Non-goals
 
 - Any domain feature — workouts, exercises, routines, progress. (Specs 03+.)
-- The SPA and the **browser** Auth0 login / PKCE flow, refresh-token handling in a browser. (Spec 04.)
+- The SPA and the **browser** Auth0 login / PKCE flow, refresh-token handling in a browser. (Spec 04.) *Note: the CORS policy the browser client needs is configured here (§5.5, §8) — Spec 04 only supplies its origin.*
 - R2 / object storage. (Spec 11.)
 - Rate limiting, per-user write quotas. (Spec 05.)
 - Standing up an OTel backend, Sentry, PostHog. (Spec 13 — SDK is wired here, no exporter.)
@@ -58,6 +59,9 @@ builds inside it.
 12. Pushing to `main` deploys the API to Render staging; the CI post-deploy smoke gets `200` from `GET /v1/_authcheck` with a real M2M token **and** confirms `GET /v1/me` with that same token returns `401` (no `email` claim on an M2M token).
 13. `SIGTERM` causes a graceful shutdown: in-flight requests drain, the DB pool closes, the process exits 0.
 14. `docker build` produces a runnable image; the same image serves the API in local `docker-compose` and on Render.
+15. A cross-origin `OPTIONS` preflight from a configured `WEB_ORIGIN` returns `204` with the expected `Access-Control-Allow-*` headers; the same preflight from an unlisted origin omits the allow-origin header. A response to a normal request carries `X-Request-Id` in `Access-Control-Expose-Headers`.
+16. When the JWKS endpoint is unreachable (not merely an unknown `kid`), `GET /v1/me` returns `503` problem+json, slug `auth-unavailable` — never `401`.
+17. Every response carries the `@fastify/helmet` default security headers (incl. HSTS in production); a request body over the configured limit is rejected with `413` before the handler runs.
 
 ---
 
@@ -78,6 +82,7 @@ builds inside it.
 - **Repository conventions** — `apps/api/src/repositories/*`; every user-scoped fn takes `actingUserId` first; `assertOwned(row, actingUserId)` throws `NotFoundError`.
 - **Error contract** — `problemResponse(reply, error)` mapper + the `AppError` hierarchy (`UnauthenticatedError`, `InvalidTokenError`, `NotFoundError`, `ValidationError`, …).
 - **Typed config loader** — `config` object, validated; the pattern later specs extend with their own vars.
+- **App hardening defaults** — CORS (origin allowlist from `WEB_ORIGIN`), helmet headers, JSON body-size limit, all applied app-wide; later specs inherit them and only widen the CORS origin list or body limit if they must.
 - **Request context** — `request.id`, `request.log` (pino child with `request_id`, `user_id`).
 - **`render.yaml`** — the blueprint later specs add services/jobs to.
 - Route conventions: `/v1` prefix for domain routes; health routes unversioned.
@@ -133,8 +138,14 @@ All domain routes under `/v1`. Health routes unversioned. Auth via
 No auth, no DB. `200 {"status":"ok"}` whenever the process is up. Render health-check target.
 
 ### `GET /readyz` — readiness
-No auth. Runs `SELECT 1`. `200 {"status":"ready"}` or `503` problem+json
-(`type: .../not-ready`). Gates deploys.
+No auth. Runs `SELECT 1`, but the probe result is **cached for 3 s** so an
+unauthenticated caller cannot amplify load onto Postgres. `200 {"status":"ready"}`
+or `503` problem+json (`type: .../not-ready`).
+
+Render's platform health check targets `/healthz` (single path, §11), so `/readyz`
+does not gate the platform directly. It gates deploys via the **post-deploy smoke**
+(§10, §11): the pipeline fails the release if `/readyz` is not `200` after the new
+image is live.
 
 ### `GET /v1/_authcheck` — token validation probe
 Auth required. Validates the token (§6.1) and echoes non-sensitive claim data
@@ -159,9 +170,13 @@ Auth required. Provisions on first sight of a `sub` (§6.2). Returns:
 
 ### `PATCH /v1/me` — update profile
 Auth required. Body (all optional): `displayName` (≤ 80), `unitPreference`
-(`kg`|`lb`), `timezone` (valid IANA). Unknown field → `422`. Returns the updated
+(`kg`|`lb`), `timezone`. Unknown field → `422`. Returns the updated
 representation (no `isNewUser`). Present in this spec to exercise validation + the
 write path + the error contract early.
+
+`timezone` is validated against `Intl.supportedValuesOf('timeZone')` (available on
+the Node 22 runtime, §11) — the Zod schema refines on membership in that set, so no
+tz database dependency is added. Empty/absent leaves the stored value unchanged.
 
 ### Error responses (RFC 9457 `application/problem+json`)
 
@@ -170,8 +185,10 @@ write path + the error contract early.
 | No / malformed `Authorization` | 401 | `unauthenticated` |
 | Expired / bad sig / bad `iss` / bad `aud` | 401 | `invalid-token` |
 | Valid token, `email` claim missing (on `/v1/me`) | 401 | `invalid-token` |
+| JWKS / issuer unreachable — cannot validate the token | 503 | `auth-unavailable` |
 | Valid token, user `deleted_at` set | 403 | `account-deleted` |
 | Body validation failure | 422 | `validation-error` (+ `errors[]`) |
+| Request body over the size limit | 413 | `payload-too-large` |
 | Unknown route | 404 | `not-found` |
 | Unhandled | 500 | `internal` |
 
@@ -179,6 +196,24 @@ Body: `{ type, title, status, detail, instance }`; `instance` = request id;
 `errors: [{ path, message }]` on `422`. `type` is a full URL
 (`https://strengthinnumbers.app/problems/<slug>`). No internal detail in
 `detail` for 401/403/500.
+
+### 5.5 CORS & app hardening
+
+Applied app-wide in the Fastify bootstrap, ahead of routing.
+
+- **CORS (`@fastify/cors`).** `origin` is an exact-match allowlist from
+  `WEB_ORIGIN` (comma-separated; §8) — no wildcard, no regex. Allowed methods:
+  `GET, POST, PATCH, DELETE, OPTIONS`. Allowed request headers: `Authorization`,
+  `Content-Type`, `X-Request-Id`. `Access-Control-Expose-Headers: X-Request-Id`.
+  `credentials: false` (tokens travel in the `Authorization` header, not cookies).
+  Preflight `OPTIONS` short-circuits with `204` before auth/routing. An unlisted
+  origin gets a normal response with **no** allow-origin header (the browser then
+  blocks it) — the API does not 403 it.
+- **Helmet (`@fastify/helmet`).** Defaults, plus HSTS enabled in `production`
+  (`NODE_ENV`-gated; Render terminates TLS). No CSP here — the API serves only
+  JSON; the SPA's CSP is Spec 04.
+- **Body size.** Global `bodyLimit` of **64 KB** (all M0 payloads are tiny);
+  over-limit → `413 payload-too-large` via the error mapper before the handler.
 
 ---
 
@@ -189,7 +224,13 @@ Body: `{ type, title, status, detail, instance }`; `instance` = request id;
 1. Extract bearer token; absent/malformed → `401 unauthenticated`.
 2. Resolve signing key from JWKS at `${AUTH0_ISSUER}.well-known/jwks.json`:
    in-memory cache by `kid`, TTL ~10 min; on unknown `kid` refetch once (rotation);
-   still unknown → `401 invalid-token`.
+   still unknown after a successful refetch → `401 invalid-token`.
+   **If the JWKS fetch itself fails** (DNS, TLS, timeout, 5xx from Auth0) and no
+   usable cached key is available → `503 auth-unavailable`, *not* `401`: the token
+   may be perfectly valid and the client should retry rather than discard it.
+   `jose`'s remote-JWKS helper with a bounded timeout and a `cooldownDuration`
+   covers this; the distinction is "key genuinely not in the set" (401) vs. "could
+   not obtain the set" (503).
 3. Verify with `jose`: RS256 signature, `iss === AUTH0_ISSUER`, `aud` includes
    `AUTH0_AUDIENCE`, `exp`/`nbf` within 60 s skew. Any failure → `401 invalid-token`.
 4. Attach `request.auth = { authSub, email?, emailVerified?, claims }` — `email`
@@ -217,6 +258,13 @@ request.user = row
 
 Concurrent first requests for one `sub` → exactly one row (`ON CONFLICT DO NOTHING`
 + re-read). The email re-sync is a no-op on the common path.
+
+**Prisma note.** `ON CONFLICT DO NOTHING` is not expressible through Prisma's typed
+API. The provisioning repo fn issues the insert via `$executeRaw` and reads the
+returned affected-row count: `1` → this request created the row (`isNewUser =
+true`), `0` → a concurrent request won (`isNewUser = false`). This is the single
+place raw SQL is used in M0; it lives behind `userRepository.provision(authSub,
+claims)`, not in the handler.
 
 ### 6.3 Repository layer & ownership
 
@@ -255,6 +303,13 @@ Concurrent first requests for one `sub` → exactly one row (`ON CONFLICT DO NOT
 - **Secrets:** only the smoke test's M2M client secret is sensitive here; it lives
   in CI secrets, never in the repo or Render env groups.
 - **Transport:** Render terminates TLS; the app assumes HTTPS and sets HSTS.
+- **CORS:** an exact-match origin allowlist (`WEB_ORIGIN`), never a wildcard or
+  reflected `Origin`; `credentials` off. See §5.5.
+- **Unauthenticated surface:** only `/healthz`, `/readyz`, and CORS preflight are
+  reachable without a token. `/readyz`'s DB probe is cached (3 s) so it cannot be
+  used to amplify load onto Postgres. `/healthz` touches nothing.
+- **App hardening:** `@fastify/helmet` default headers; a 64 KB JSON body limit so
+  oversized payloads are dropped before parsing/handling.
 
 ---
 
@@ -266,18 +321,30 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
 |---|---|---|---|
 | `NODE_ENV` | yes | `production` | |
 | `PORT` | yes | `3000` | Render sets it |
-| `DATABASE_URL` | yes | `postgres://…` | Render-provided |
+| `DATABASE_URL` | yes | `postgres://…?sslmode=require&connection_limit=8&pool_timeout=10` | Use Render's **internal** connection string; must carry `sslmode=require` and an explicit `connection_limit` (see below). |
 | `AUTH0_ISSUER` | yes | `https://si-staging.us.auth0.com/` | trailing slash required |
 | `AUTH0_AUDIENCE` | yes | `https://api.strengthinnumbers.app` | API identifier |
 | `AUTH0_CLAIM_NAMESPACE` | yes | `https://strengthinnumbers.app/` | prefix for custom claims; API reads `${ns}email`, `${ns}email_verified` (Q3-A) |
+| `WEB_ORIGIN` | yes | `http://localhost:5173` (local) · `https://si-web-staging.onrender.com` (staging) | Comma-separated exact origins for the CORS allowlist (§5.5). No wildcard. Prod gets the real app origin(s). |
 | `LOG_LEVEL` | no | `info` | default `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | unset → tracing is a no-op |
 | `SERVICE_NAME` | no | `si-api` | resource attribute |
+
+**Postgres connection budget (Q9).** Render's managed Postgres plans cap total
+connections low (tens on the smaller plans). Prisma's default pool
+(`num_cpus * 2 + 1` per instance) can exhaust that under the smoke or first real
+load, surfacing as intermittent `P2024` pool-timeout errors. Pin
+`connection_limit` in `DATABASE_URL` explicitly: **`connection_limit=8`** for a
+single web instance in v1 (leaves headroom for `prisma migrate deploy`, a psql
+session, and the readiness probe). Revisit if the API scales past one instance.
+Render also requires TLS — `sslmode=require` (or the internal URL, which implies
+it).
 
 | Value | local | staging | production | Set where |
 |---|---|---|---|---|
 | `DATABASE_URL` | compose Postgres | Render PG (staging) | Render PG (prod) | compose / Render |
 | `AUTH0_*`, `AUTH0_CLAIM_NAMESPACE` | `si-staging` tenant | `si-staging` tenant | `si-prod` tenant | Render env group / `.env` |
+| `WEB_ORIGIN` | `http://localhost:5173` | staging SPA origin | prod SPA origin(s) | Render env group / `.env` |
 | M2M client id/secret (smoke only) | — | CI secret | CI secret | GitHub Actions secrets |
 
 `.env.example` documents every var with placeholders. No secrets in the repo.
@@ -291,7 +358,10 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
   lists resolved non-secret config. JWKS cache refreshes logged (`kid`, age).
 - **Metrics** (log-based counters acceptable until Spec 13):
   `http_requests_total{route,status}`, `http_request_duration_ms{route}`,
-  `auth_failures_total{reason}`, `user_provisioned_total`, `db_pool_in_use`.
+  `auth_failures_total{reason}` (`reason` ∈ `missing_token`, `invalid_token`,
+  `missing_email_claim`, `jwks_unavailable`, `account_deleted`),
+  `user_provisioned_total`, `db_pool_in_use`. `jwks_unavailable` spiking is an
+  Auth0-reachability alert, not a client problem.
 - **Traces (OTel):** HTTP-server + `pg` auto-instrumentation; spans exported only
   if `OTEL_EXPORTER_OTLP_ENDPOINT` is set (no-op otherwise). One span around the
   provisioning transaction.
@@ -306,8 +376,18 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
   expired; future `nbf`; wrong `aud`; wrong `iss`; bad signature; unknown `kid`;
   `alg: none`. Each → expected status/slug. Also: `email` claim present without
   `email_verified` → provisions with `email_verified = false`.
-- Error mapper: each `AppError` subtype → correct problem+json body.
+- JWKS unavailable: mock JWKS endpoint returns a network error / 503 with a cold
+  cache → verifier yields `503 auth-unavailable`, never `401`. Unknown `kid` with
+  a *reachable* JWKS → `401 invalid-token`. *(Criterion 16)*
+- Error mapper: each `AppError` subtype → correct problem+json body (incl.
+  `auth-unavailable` → 503, `payload-too-large` → 413).
 - `assertOwned` → throws on mismatch, passes on match.
+- Config: `WEB_ORIGIN` unset/blank → refuses to start; `timezone` Zod refinement
+  accepts `America/Chicago`, rejects `Mars/Phobos` and `US/Foo`.
+- App hardening (via `app.inject`): preflight `OPTIONS` from a listed origin →
+  `204` + `Access-Control-Allow-Origin` echoing it; from an unlisted origin → no
+  allow-origin header. Every response carries helmet headers; a > 64 KB body →
+  `413`. *(Criteria 15, 17)*
 
 ### Integration (testcontainers Postgres, real migrations)
 - First `GET /v1/me` for a new `sub` → exactly one `user`; `isNewUser` true then false.
@@ -315,13 +395,18 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
 - `deleted_at` set → `403 account-deleted`. *(Criterion 9)*
 - `PATCH /v1/me`: happy update advances `updated_at`; bad `unitPreference` /
   unknown field → `422` + `errors[]`. *(Criterion 10)*
-- `/readyz` → `503` with DB stopped, `200` with DB up. *(Criterion 4)*
+- `/readyz` → `503` with DB stopped, `200` with DB up; a burst of calls with the
+  DB up issues at most one `SELECT 1` per 3 s window (probe cache). *(Criteria 4, 15/17 companion)*
+- Provisioning uses the raw `ON CONFLICT DO NOTHING` path: affected-row count `1`
+  on the creating request (`isNewUser: true`), `0` on a replay (`isNewUser: false`).
 
 ### Post-deploy smoke (CI, against staging)
 - Script does an Auth0 client-credentials grant against the `si-staging` M2M app,
-  then: (a) `GET /v1/_authcheck` → `200`, `aud` matches; (b) `GET /v1/me` with the
-  same token → `401` (`invalid-token`, missing `email` claim). Non-conforming
-  result fails the pipeline. *(Criterion 12)*
+  then: (a) `GET /healthz` → `200`; (b) `GET /readyz` → `200` (fails the release
+  otherwise — this is how `/readyz` gates deploys, §5); (c) `GET /v1/_authcheck` →
+  `200`, `aud` matches; (d) `GET /v1/me` with the same token → `401`
+  (`invalid-token`, missing `email` claim). Non-conforming result fails the
+  pipeline. *(Criteria 12, and `/readyz` gate)*
 
 ### Done
 All acceptance criteria (§2) verified by the above; `packages/core` purity check
@@ -341,8 +426,11 @@ passes; `prisma migrate` dry-run passes; `render.yaml` deploys staging cleanly.
 - `services:` one `web` service `si-api`, `runtime: image` built from the
   `Dockerfile`; health-check path `/healthz`; pre-deploy
   `pnpm prisma migrate deploy`.
-- `databases:` `si-postgres` (managed, per environment).
-- `envVarGroups:` `api-shared` (non-secret); secrets set in the Render dashboard.
+- `databases:` `si-postgres` (managed, per environment). The service's
+  `DATABASE_URL` is the Render **internal** URL with `?sslmode=require&connection_limit=8`
+  appended (§8, Q9), not the raw `fromDatabase` value.
+- `envVarGroups:` `api-shared` (non-secret — incl. `WEB_ORIGIN`, `AUTH0_*`,
+  `AUTH0_CLAIM_NAMESPACE`); secrets set in the Render dashboard.
 - Staging auto-deploys from `main`; production deploys on a git tag / manual
   promote of the same image.
 
@@ -364,7 +452,8 @@ passes; `prisma migrate` dry-run passes; `render.yaml` deploys staging cleanly.
 2. Render: create staging + prod envs; provision `si-postgres`; set `api-shared`
    env group + secrets (`DATABASE_URL` auto, `AUTH0_*`, `AUTH0_CLAIM_NAMESPACE`).
 3. Push `main` → staging builds the image, pre-deploy runs `0001`, `/healthz` green.
-4. CI smoke: `/v1/_authcheck` → `200`, `/v1/me` → `401` with the M2M token.
+4. CI smoke: `/healthz` + `/readyz` → `200`; `/v1/_authcheck` → `200`; `/v1/me` →
+   `401` with the M2M token.
 5. Tag → promote the image to production; repeat the smoke.
 
 ---
@@ -396,6 +485,27 @@ passes; `prisma migrate` dry-run passes; `render.yaml` deploys staging cleanly.
 - **Q6 — `PATCH /v1/me` scope.** ✅ **Keep it.** Only endpoint in this spec
   exercising body validation + a write + `422`/`errors[]`; de-risks the error
   contract early; profile editing is needed by Spec 04 regardless.
+
+### Resolved (2026-08-31, pre-implementation review pass)
+
+- **Q7 — CORS ownership.** ✅ **Configured in this spec, not Spec 04.** The policy
+  lives in the Fastify bootstrap regardless of which spec adds the browser client;
+  making Spec 04 reach back into the API to enable itself is worse. Exact-match
+  `WEB_ORIGIN` allowlist, `credentials: false`, `X-Request-Id` exposed. See §5.5,
+  §7, §8.
+- **Q8 — IdP-unreachable status.** ✅ **`503 auth-unavailable`, distinct from
+  `401 invalid-token`.** A valid token must not be discarded because our JWKS
+  fetch failed; `503` tells the client to retry. `jose` remote-JWKS with a bounded
+  timeout + cooldown implements the split. See §6.1, Criterion 16.
+- **Q9 — Prisma pool vs. Render Postgres cap.** ✅ **Pin `connection_limit=8` in
+  `DATABASE_URL` for a single instance; require `sslmode=require`.** Render's
+  smaller PG plans cap connections in the tens; Prisma's default pool can exhaust
+  that and throw `P2024` under load. Revisit when the API runs more than one
+  instance. See §8, §11.
+- **Q10 — `/readyz` deploy gating.** ✅ **Enforced by the CI post-deploy smoke,
+  not the Render platform check** (Render targets the single path `/healthz`). The
+  DB probe result is cached 3 s so the unauthenticated endpoint can't amplify load
+  onto Postgres. See §5, §7, §10.
 
 ### Open
 
