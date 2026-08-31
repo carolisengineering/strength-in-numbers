@@ -31,7 +31,12 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run core:purity
-      - run: pnpm --filter @sin/api exec prisma validate
+      - name: prisma validate (schema only — never connects)
+        run: pnpm --filter @sin/api exec prisma validate
+        env:
+          # `prisma validate` resolves env("DATABASE_URL") from the datasource
+          # block but makes no connection. A placeholder test value satisfies it.
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
       - run: pnpm run test:unit
 
   integration:
