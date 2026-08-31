@@ -104,26 +104,45 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
     ).toThrow(/AUTH0_ISSUER/);
   });
 
+  const prodBase = {
+    ...base,
+    NODE_ENV: "production",
+    WEB_ORIGIN: "https://app.strengthinnumbers.app",
+  };
+
   it("rejects a non-https AUTH0_ISSUER in production", () => {
     expect(() =>
-      loadConfig({
-        ...base,
-        NODE_ENV: "production",
-        AUTH0_ISSUER: "http://localhost:9999/",
-      }),
+      loadConfig({ ...prodBase, AUTH0_ISSUER: "http://localhost:9999/" }),
     ).toThrow(/AUTH0_ISSUER/);
   });
 
-  it("allows an http AUTH0_ISSUER outside production (local dev IdP)", () => {
+  it("rejects an http WEB_ORIGIN in production", () => {
+    expect(() =>
+      loadConfig({
+        ...prodBase,
+        WEB_ORIGIN: "https://app.example.com,http://staging.example.com",
+      }),
+    ).toThrow(/WEB_ORIGIN/);
+  });
+
+  it("accepts an all-https production config", () => {
+    const cfg = loadConfig(prodBase);
+    expect(cfg.isProduction).toBe(true);
+    expect(cfg.webOrigins).toEqual(["https://app.strengthinnumbers.app"]);
+  });
+
+  it("allows http AUTH0_ISSUER and WEB_ORIGIN outside production (local dev)", () => {
     const cfg = loadConfig({
       ...base,
       NODE_ENV: "development",
       AUTH0_ISSUER: "http://localhost:9999/",
+      WEB_ORIGIN: "http://localhost:5173",
     });
     expect(cfg.auth0.issuer).toBe("http://localhost:9999/");
     expect(cfg.auth0.jwksUri).toBe(
       "http://localhost:9999/.well-known/jwks.json",
     );
+    expect(cfg.webOrigins).toEqual(["http://localhost:5173"]);
   });
 
   it("rejects a non-postgres DATABASE_URL", () => {

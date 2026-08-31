@@ -27,14 +27,35 @@ describe("health endpoints (Criteria 3, 4)", () => {
     expect(res.headers["x-request-id"]).toBeTruthy();
   });
 
-  it("honours an inbound x-request-id header", async () => {
+  it("honours a sane inbound x-request-id header", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
       method: "GET",
       url: "/healthz",
-      headers: { "x-request-id": "trace-42" },
+      headers: { "x-request-id": "trace-42.abc_DEF" },
     });
-    expect(res.headers["x-request-id"]).toBe("trace-42");
+    expect(res.headers["x-request-id"]).toBe("trace-42.abc_DEF");
+  });
+
+  it("ignores a malformed / oversized inbound x-request-id and generates one", async () => {
+    const { app } = await buildTestApp();
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+    for (const bad of [
+      "a".repeat(200), // too long
+      "has spaces", // disallowed chars
+      "inject\nnewline",
+      "<script>",
+    ]) {
+      const res = await app.inject({
+        method: "GET",
+        url: "/healthz",
+        headers: { "x-request-id": bad },
+      });
+      expect(res.headers["x-request-id"]).not.toBe(bad);
+      expect(String(res.headers["x-request-id"])).toMatch(uuidRe);
+    }
   });
 
   it("GET /readyz → 200 when the check passes", async () => {

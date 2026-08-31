@@ -28,6 +28,14 @@ import {
   type KeyLike,
 } from "jose";
 
+if (process.env.NODE_ENV === "production") {
+  process.stderr.write(
+    "dev-idp is a local testing tool and refuses to run with NODE_ENV=production\n",
+  );
+  process.exit(1);
+}
+
+const HOST = "127.0.0.1"; // loopback only — this mints valid tokens with no auth
 const PORT = Number(process.env.DEV_IDP_PORT ?? 9999);
 const ISSUER = `http://localhost:${PORT}/`;
 const AUDIENCE = process.env.DEV_IDP_AUDIENCE ?? "https://api.strengthinnumbers.app";
@@ -133,7 +141,7 @@ const server = createServer((req, res) => {
   );
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   void (async () => {
     const userToken = await mint(privateKey, { sub: "devidp|carol" });
     const m2mToken = await mint(privateKey, { sub: "devidp|m2m", noEmail: true });

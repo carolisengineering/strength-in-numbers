@@ -3,6 +3,7 @@
 **/coverage
 **/.env
 **/.env.*
+**/.dev-idp-key.json
 **/*.tsbuildinfo
 .git
 docs

@@ -98,13 +98,26 @@ const schema = z.object({
 
   SERVICE_NAME: z.string().min(1).default("si-api"),
 }).superRefine((data, ctx) => {
-  // TLS to the IdP is mandatory in production; a plain-http issuer is only for a
-  // local dev IdP stand-in (Spec 01 §7).
-  if (data.NODE_ENV === "production" && !data.AUTH0_ISSUER.startsWith("https://")) {
+  if (data.NODE_ENV !== "production") return;
+
+  // In production every trusted URL must be TLS. Plain http is only ever for a
+  // local dev IdP stand-in / dev SPA (Spec 01 §7).
+  if (!data.AUTH0_ISSUER.startsWith("https://")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["AUTH0_ISSUER"],
       message: "must be https in production",
+    });
+  }
+
+  const insecureOrigins = data.WEB_ORIGIN.filter(
+    (o) => !o.startsWith("https://"),
+  );
+  if (insecureOrigins.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["WEB_ORIGIN"],
+      message: `must be https in production (got: ${insecureOrigins.join(", ")})`,
     });
   }
 });

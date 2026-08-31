@@ -22,6 +22,9 @@ import { registerV1Routes } from "./routes/v1.js";
 
 export const BODY_LIMIT_BYTES = 64 * 1024;
 
+/** An inbound X-Request-Id is honoured only if it matches this shape. */
+const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
 export interface BuildAppDeps extends AuthPluginDeps {
   config: Config;
   logger?: FastifyBaseLogger | boolean;
@@ -42,8 +45,16 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
 
   const app = Fastify({
     ...loggerOption,
-    requestIdHeader: "x-request-id",
-    genReqId: () => randomUUID(),
+    // Don't trust an inbound X-Request-Id verbatim — it lands in every log line
+    // and the problem+json `instance` field. Honour it only when it is sane;
+    // otherwise generate one.
+    requestIdHeader: false,
+    genReqId: (req) => {
+      const inbound = req.headers["x-request-id"];
+      return typeof inbound === "string" && REQUEST_ID_RE.test(inbound)
+        ? inbound
+        : randomUUID();
+    },
     bodyLimit: BODY_LIMIT_BYTES,
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
