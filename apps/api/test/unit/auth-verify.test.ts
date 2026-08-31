@@ -199,6 +199,15 @@ describe("verify — JWKS unavailable → 503 auth-unavailable (Criterion 16)", 
     ).rejects.toBeInstanceOf(AuthUnavailableError);
   });
 
+  it("maps JWKSMultipleMatchingKeys to InvalidTokenError, NOT auth-unavailable", async () => {
+    const resolver: JWTVerifyGetKey = (() => {
+      throw new joseErrors.JWKSMultipleMatchingKeys();
+    }) as unknown as JWTVerifyGetKey;
+    await expect(
+      verifier(resolver).verify(await mint()),
+    ).rejects.toBeInstanceOf(InvalidTokenError);
+  });
+
   it("does not leak the internal reason in publicDetail", async () => {
     const resolver: JWTVerifyGetKey = (() => {
       throw new TypeError("fetch failed: ECONNREFUSED 10.0.0.5:443");

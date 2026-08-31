@@ -91,6 +91,24 @@ describe("health endpoints (Criteria 3, 4)", () => {
     await app.inject({ method: "GET", url: "/readyz" });
     expect(calls).toBe(1);
   });
+
+  it("dedupes a concurrent burst into a single probe (no DB fan-out)", async () => {
+    let calls = 0;
+    const { app } = await buildTestApp({
+      checkReadiness: async () => {
+        calls += 1;
+        await new Promise((r) => setTimeout(r, 25));
+      },
+      readinessTtlMs: 5_000,
+    });
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        app.inject({ method: "GET", url: "/readyz" }),
+      ),
+    );
+    expect(results.every((r) => r.statusCode === 200)).toBe(true);
+    expect(calls).toBe(1);
+  });
 });
 
 describe("routing + error contract", () => {

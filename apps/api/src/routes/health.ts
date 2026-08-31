@@ -25,9 +25,10 @@ export interface HealthDeps {
   readinessTtlMs?: number;
 }
 
-interface ReadinessCache {
+interface ReadinessResult {
   at: number;
   ok: boolean;
+  error?: unknown;
 }
 
 export function registerHealthRoutes(
@@ -35,25 +36,40 @@ export function registerHealthRoutes(
   deps: HealthDeps,
 ): void {
   const ttlMs = deps.readinessTtlMs ?? 3_000;
-  let cache: ReadinessCache | null = null;
+  let cache: ReadinessResult | null = null;
+  let inFlight: Promise<ReadinessResult> | null = null;
+
+  // Serve a cached result within the TTL; otherwise run the probe once and let
+  // every concurrent caller await that single in-flight run (not one SELECT 1
+  // per request).
+  const probeReadiness = (): Promise<ReadinessResult> => {
+    if (cache !== null && Date.now() - cache.at < ttlMs) {
+      return Promise.resolve(cache);
+    }
+    inFlight ??= (async (): Promise<ReadinessResult> => {
+      const at = Date.now();
+      try {
+        await deps.checkReadiness();
+        return { at, ok: true };
+      } catch (error) {
+        return { at, ok: false, error };
+      }
+    })().then((result) => {
+      cache = result;
+      inFlight = null;
+      return result;
+    });
+    return inFlight;
+  };
 
   app.get("/healthz", async () => ({ status: "ok" as const }));
 
-  app.get("/readyz", async (_request, reply) => {
-    const now = Date.now();
-    if (cache === null || now - cache.at >= ttlMs) {
-      try {
-        await deps.checkReadiness();
-        cache = { at: now, ok: true };
-      } catch (err) {
-        _request.log.warn({ err }, "readiness check failed");
-        cache = { at: now, ok: false };
-      }
-    }
-
-    if (cache.ok) {
+  app.get("/readyz", async (request, reply) => {
+    const result = await probeReadiness();
+    if (result.ok) {
       return { status: "ready" as const };
     }
+    request.log.warn({ err: result.error }, "readiness check failed");
     return problemResponse(reply, new NotReadyError("readiness check failed"));
   });
 }

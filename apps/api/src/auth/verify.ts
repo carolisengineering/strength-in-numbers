@@ -127,14 +127,15 @@ function mapJoseError(err: unknown): AppErrorLike {
   // Could not obtain / trust the key set → upstream problem, retryable.
   if (
     err instanceof joseErrors.JWKSTimeout ||
-    err instanceof joseErrors.JWKSInvalid ||
-    err instanceof joseErrors.JWKSMultipleMatchingKeys
+    err instanceof joseErrors.JWKSInvalid
   ) {
     return new AuthUnavailableError(`JWKS unavailable — ${describe(err)}`, {
       cause: err,
     });
   }
-  // Any other JOSE error is a signature / claim / expiry / alg failure → bad token.
+  // Any other JOSE error — signature / claim / expiry / alg failure, or a token
+  // that can't be unambiguously matched to a key (`JWKSMultipleMatchingKeys`,
+  // e.g. no `kid` during rotation) — is a bad token, not an outage.
   if (err instanceof joseErrors.JOSEError) {
     return new InvalidTokenError(`${err.code}: ${err.message}`);
   }

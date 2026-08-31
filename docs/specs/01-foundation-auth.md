@@ -176,9 +176,12 @@ Auth required. Body (all optional): `displayName` (≤ 80), `unitPreference`
 representation (no `isNewUser`). Present in this spec to exercise validation + the
 write path + the error contract early.
 
-`timezone` is validated against `Intl.supportedValuesOf('timeZone')` (available on
-the Node 22 runtime, §11) — the Zod schema refines on membership in that set, so no
-tz database dependency is added. Empty/absent leaves the stored value unchanged.
+`timezone` is validated by attempting `new Intl.DateTimeFormat("en-US", { timeZone })`
+and rejecting the `RangeError` — no tz-database dependency, and it accepts every
+zone the Node 22 runtime resolves, including legacy aliases (`US/Pacific`,
+`Etc/GMT+5`) that `Intl.supportedValuesOf('timeZone')` omits. A present-but-empty
+`timezone` is a `422` (`minLength: 1` in the body schema), not a silent no-op; an
+absent field leaves the stored value unchanged.
 
 ### Error responses (RFC 9457 `application/problem+json`)
 
