@@ -3,6 +3,11 @@
 
 FROM node:22-slim AS base
 ENV PNPM_HOME=/pnpm PATH="/pnpm:$PATH"
+# openssl: Prisma's query engine needs it (node:22-slim omits it → the engine
+# picks the wrong libssl target and fails to load). ca-certificates: TLS to Neon.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
 
@@ -22,10 +27,13 @@ ENV NODE_ENV=production
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/api/package.json ./apps/api/
-# Copy the schema first so @prisma/client's postinstall regenerates the client
-# against it during the prod install.
 COPY apps/api/prisma ./apps/api/prisma
 RUN pnpm install --prod --frozen-lockfile
+# Generate the Prisma client explicitly. pnpm + monorepo layouts don't reliably
+# fire @prisma/client's postinstall generation, and the build stage's client
+# isn't copied here. `prisma` is a prod dep, so the CLI is available. DATABASE_URL
+# is only needed at runtime, not to generate — a placeholder satisfies the parser.
+RUN DATABASE_URL="postgresql://placeholder" pnpm --filter @sin/api exec prisma generate
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 
 RUN useradd --system --uid 1001 --home-dir /app appuser \

@@ -6,7 +6,7 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile # build from ./Dockerfile (runtime: image = pull a prebuilt image)
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
     autoDeploy: true # deploy on push to main
@@ -21,7 +21,7 @@ envVarGroups:
   - name: api-shared
     envVars:
       - key: AUTH0_ISSUER
-        value: https://si-staging.us.auth0.com/
+        value: https://dev-gncuqvfir0wv0t4l.us.auth0.com/
       - key: AUTH0_AUDIENCE
         value: https://api.strengthinnumbers.app
       - key: AUTH0_CLAIM_NAMESPACE
