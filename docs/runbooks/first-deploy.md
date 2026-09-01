@@ -206,13 +206,21 @@ confirm:
 `NODE_ENV=production` is on the service; `DATABASE_URL` is the service secret from
 B2; `PORT` is injected by Render. Don't touch those.
 
-### B4. Run the migration against Neon (by hand)
+### B4. Run the migration against Neon (by hand) — **required, easy to miss**
 
-Free Render has no pre-deploy step, so apply `0001_create_user` yourself. From
-the repo root, with the **direct** Neon URL:
+Free Render has no pre-deploy step, so apply `0001_create_user` yourself. **The
+service deploys fine, `/healthz` and `/readyz` go green, and `/v1/_authcheck`
+passes — all without the `user` table.** The first thing that needs it is
+`/v1/me`, so a skipped migration shows up only as a **`500` on `/v1/me`** (and
+the CI `smoke` failing at that exact step).
+
+Use the **same connection string that is set as `DATABASE_URL` on the Render
+service** — copy it from Render (service → **Environment**), don't hand-assemble
+it. Neon has *branches*; migrating `neondb` on one branch while Render points at
+another is the classic trap. Then, from the repo root:
 
 ```bash
-DATABASE_URL='postgresql://…@ep-xxxx.us-west-2.aws.neon.tech/neondb?sslmode=require' \
+DATABASE_URL='<paste the exact value from Render, the direct -pooler-free host>' \
   pnpm --filter @sin/api exec prisma migrate deploy
 ```
 
@@ -221,8 +229,36 @@ anytime; it's idempotent. **Repeat this one command whenever a later spec adds a
 migration**, before that deploy serves traffic. (This still honors Spec 01 §6.4 —
 migrations never run on app boot.)
 
-Verify from Neon's **SQL Editor**: `SELECT * FROM "user";` returns 0 rows, no
-error.
+**Verify it landed** — any one of these:
+
+- **CLI, no console needed** (same `DATABASE_URL` as above):
+
+  ```bash
+  DATABASE_URL='<same value>' pnpm --filter @sin/api exec prisma migrate status
+  ```
+
+  Expect `Database schema is up to date!` and `0001_create_user` listed as
+  applied. A `Following migration have not yet been applied` message means it
+  didn't take (wrong branch/DB — see the trap above).
+
+- **Neon console → SQL Editor** (this is the source of truth Prisma itself uses):
+
+  ```sql
+  select migration_name, finished_at, rolled_back_at
+  from _prisma_migrations order by finished_at;
+  ```
+
+  One row: `0001_create_user`, `finished_at` set, `rolled_back_at` null.
+
+  ```sql
+  select * from "user";   -- 0 rows, and crucially NOT "relation does not exist"
+  ```
+
+- **Neon console → Tables** (left nav): `user` and `_prisma_migrations` appear in
+  the `public` schema, and `user` has the `unit_preference` / `timezone` columns.
+
+Confirm you're inspecting the **same Neon branch** whose connection string is on
+the Render service — the branch selector is at the top of the Neon console.
 
 ---
 
@@ -390,5 +426,8 @@ Production comes later, via Spec 01.1.
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/server.js`) and `PORT` is being read. |
 | Smoke: `/readyz` → 503 | DB unreachable from the running service. Check `DATABASE_URL` on the service = the Neon string, and that the Neon project isn't disabled. A cold Neon compute can 503 the very first hit then recover. |
 | Smoke: `/v1/_authcheck` → 401 instead of 200 | Wrong `AUTH0_AUDIENCE`/`AUTH0_ISSUER` on the service vs the tenant, or the M2M app isn't authorized for the API. |
+| Smoke: `/v1/me` → **500** (first three checks pass) | The `user` table doesn't exist — **B4 migration not applied**, or applied to a different Neon branch/database than Render's `DATABASE_URL`. Re-run B4 with the exact string from Render's Environment. |
 | Smoke: `/v1/me` → 200 instead of 401 | The Action is putting `email` on **M2M** tokens too (it should only run on the Login flow, not client-credentials), or the namespace differs between the Action and `AUTH0_CLAIM_NAMESPACE`. |
-| Smoke: grant returns 401/403 | Bad `AUTH0_STAGING_M2M_CLIENT_ID/SECRET`, or `AUTH0_M2M_AUDIENCE` doesn't match the API Identifier. |
+| Smoke: grant returns 401 `Unauthorized` | Bad/stale `AUTH0_STAGING_M2M_CLIENT_ID`/`SECRET` (e.g. from an old Test App after recreating the API). |
+| Smoke: grant returns 403 `access_denied: Service not enabled within domain: <aud>` | No API in the tenant has that exact Identifier — typo, trailing slash, or wrong subdomain. The Identifier is immutable; recreate the API to match `AUTH0_AUDIENCE`. |
+| Smoke: grant returns 403 `Client is not authorized to access …` | The M2M app isn't authorized for the API — API → **Application Access** tab, toggle the app on. |

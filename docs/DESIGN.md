@@ -484,6 +484,10 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   not cookies, so credentialed CORS stays off. Configured in the API from M0
   (Spec 01 §5.5).
 - Signed, short-TTL URLs for all bucket access; no public objects.
+- Deferred hardening items from security reviews are tracked in
+  [`security-backlog.md`](security-backlog.md) (e.g. log-redaction depth, DB cert
+  verification, base-image digest pinning) — none exploitable, revisited per the
+  effort notes there.
 
 ### 8.3 Testing
 
