@@ -455,6 +455,15 @@ auth-plugin + user-repo coverage ≥ 90%; `packages/core` purity check passes;
 - Staging auto-deploys from `main`; production deploys on a git tag / manual
   promote of the same image.
 
+> **Cost-driven variant (current staging, 2026-09):** to keep staging at ~$0
+> while the project is pre-beta, `render.yaml` runs the web service on Render's
+> **free** plan and uses an **external Neon** Postgres instead of the managed
+> `databases:` block. Free plan has no pre-deploy step, so criterion 11's
+> `prisma migrate deploy` is run **by hand** against Neon (still never on boot).
+> Reverting to the spec-as-written (`plan: starter`, `preDeployCommand`, managed
+> `si-postgres`) is a `render.yaml` edit — see its header comment and
+> `docs/runbooks/first-deploy.md` Part B.
+
 ### Migration ordering
 - `0001_create_user` is additive → any prior image stays compatible → safe rollback.
 - Standing rule for later specs: never ship a column drop/rename in the same
