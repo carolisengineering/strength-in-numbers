@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+**/.dev-idp-key.json
+**/*.tsbuildinfo
+.git
+docs

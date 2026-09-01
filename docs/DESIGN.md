@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
 **Status:** Draft v0.3 — all open questions Q1–Q9 resolved; consistency pass done
-**Last updated:** 2026-08-30
+**Last updated:** 2026-08-31 (§8.2: CORS policy added, from Spec 01 review)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -479,6 +479,10 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 - Dependency scanning + Dependabot; secret scanning on the repo.
 - Rate limiting at the API (Fastify plugin), with Cloudflare in front once the
   custom domain lands; per-user quotas on write endpoints.
+- CORS is an exact-match origin allowlist (the SPA origin per environment), never
+  a wildcard or reflected `Origin`; tokens travel in the `Authorization` header,
+  not cookies, so credentialed CORS stays off. Configured in the API from M0
+  (Spec 01 §5.5).
 - Signed, short-TTL URLs for all bucket access; no public objects.
 
 ### 8.3 Testing
