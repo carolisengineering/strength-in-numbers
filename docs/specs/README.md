@@ -15,6 +15,7 @@ spec small enough to finish in one work session.
 | # | Spec | Kind | Deploys | Depends on | Status |
 |---|---|---|---|---|---|
 | 01 | [Foundation & Auth](01-foundation-auth.md) | API / platform | API → Render staging + prod | — | Draft |
+| 01.1 | [Production deploy pipeline](01.1-prod-deploy-pipeline.md) | platform / CI-CD | gated `staging → prod` promotion | 01 | Draft |
 | 02 | `packages/core` foundation — types, Zod setup, units conversion, purity check | library | workspace package | 01 | Not started |
 | 03 | Exercise catalog | API | endpoints | 01, 02 | Not started |
 | 04 | SPA shell & browser auth — Vite app, Auth0 PKCE, authed API client, app frame, styling foundation | UI / platform | web → Render | 01 | Not started |
