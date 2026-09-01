@@ -4,30 +4,18 @@ services:
   - type: web
     name: si-api
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile # build from ./Dockerfile (runtime: image = pull a prebuilt image)
     dockerContext: .
     healthCheckPath: /healthz
-    # Migrations run as a pre-deploy step, never on app boot (Spec 01 §6.4).
-    preDeployCommand: pnpm --filter @sin/api exec prisma migrate deploy
-    autoDeploy: true # staging: deploy on push to main; prod promotes the image
+    autoDeploy: true # deploy on push to main
     envVars:
       - fromGroup: api-shared
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: si-postgres
-          property: connectionString
-      # AUTH0_* live in the api-shared group per environment; the prod service
-      # overrides the group with the si-prod tenant values in the dashboard.
-
-databases:
-  - name: si-postgres
-    plan: basic-256mb
-    region: oregon
-    postgresMajorVersion: "16"
+        sync: false # set in the Render dashboard = the Neon connection string
 
 envVarGroups:
   - name: api-shared
