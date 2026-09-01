@@ -3,7 +3,7 @@
 services:
   - type: web
     name: si-api
-    runtime: image
+    runtime: docker
     plan: starter
     region: oregon
     dockerfilePath: ./Dockerfile
