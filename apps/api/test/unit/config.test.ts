@@ -166,6 +166,14 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
     );
   });
 
+  it("reports a missing NODE_ENV as 'is required'", () => {
+    // Zod 4 emits `invalid_value` (not `invalid_type`) for an absent bare enum;
+    // the message mapping keys off env absence, not the issue code.
+    expect(() => loadConfig(without("NODE_ENV"))).toThrow(
+      /NODE_ENV: is required/,
+    );
+  });
+
   it("rejects an invalid LOG_LEVEL", () => {
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(
       /LOG_LEVEL/,

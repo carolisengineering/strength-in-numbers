@@ -62,7 +62,6 @@ const schema = z.object({
     ),
 
   AUTH0_ISSUER: z
-    .string()
     .url("must be a URL")
     .refine(
       (v) => v.startsWith("https://") || v.startsWith("http://"),
@@ -73,7 +72,6 @@ const schema = z.object({
   AUTH0_AUDIENCE: z.string().min(1, "is required"),
 
   AUTH0_CLAIM_NAMESPACE: z
-    .string()
     .url("must be a URL")
     .refine((v) => v.endsWith("/"), "must end with a trailing slash"),
 
@@ -94,7 +92,7 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
 
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
 
   SERVICE_NAME: z.string().min(1).default("si-api"),
 }).superRefine((data, ctx) => {
@@ -104,7 +102,7 @@ const schema = z.object({
   // local dev IdP stand-in / dev SPA (Spec 01 §7).
   if (!data.AUTH0_ISSUER.startsWith("https://")) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["AUTH0_ISSUER"],
       message: "must be https in production",
     });
@@ -115,7 +113,7 @@ const schema = z.object({
   );
   if (insecureOrigins.length > 0) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["WEB_ORIGIN"],
       message: `must be https in production (got: ${insecureOrigins.join(", ")})`,
     });
@@ -143,13 +141,14 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
   const parsed = schema.safeParse(env);
 
   if (!parsed.success) {
+    const env0 = env as Record<string, unknown>;
     const issues = parsed.error.issues.map((issue) => {
-      const varName = issue.path[0] ?? "(config)";
-      const message =
-        issue.code === "invalid_type" && issue.message === "Required"
-          ? "is required"
-          : issue.message;
-      return `${String(varName)}: ${message}`;
+      const varName = String(issue.path[0] ?? "(config)");
+      // A var absent from the environment gets a uniform "is required",
+      // regardless of which Zod issue code the missing key produced
+      // (`invalid_type` for a plain field, `invalid_value` for a bare enum).
+      const absent = varName !== "(config)" && env0[varName] === undefined;
+      return `${varName}: ${absent ? "is required" : issue.message}`;
     });
     throw new ConfigError([...new Set(issues)]);
   }

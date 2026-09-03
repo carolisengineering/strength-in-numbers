@@ -13,6 +13,17 @@ describe("AC5 — branded ids (runtime behaviour)", () => {
     expect(parseUserId(UUID_V4)).toBe(UUID_V4);
   });
 
+  it("parseUserId is lenient about the version/variant nibbles (z.guid, not z.uuid)", () => {
+    // nil UUID, and a well-shaped id with a non-RFC-9562 version nibble (0)
+    // and variant nibble (c) — both must still parse.
+    expect(parseUserId("00000000-0000-0000-0000-000000000000")).toBe(
+      "00000000-0000-0000-0000-000000000000",
+    );
+    expect(parseUserId("9b1deb4d-3b7d-0bad-cbdd-2b0d7b3dcb6d")).toBe(
+      "9b1deb4d-3b7d-0bad-cbdd-2b0d7b3dcb6d",
+    );
+  });
+
   it("parseUserId throws on a malformed id", () => {
     expect(() => parseUserId("not-a-uuid")).toThrow();
     expect(() => parseUserId("")).toThrow();
