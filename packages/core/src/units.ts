@@ -18,9 +18,25 @@ export const KM_TO_M = 1000;
 /** Miles → metres (exact: 1 mi = 1609.344 m). */
 export const MI_TO_M = 1609.344;
 
+/**
+ * Compile-time exhaustiveness guard. Adding a member to `WeightUnit` /
+ * `DistanceUnit` without handling it here becomes a type error rather than a
+ * silent misconversion (Risk R4 — see the file header).
+ */
+function assertUnreachable(unit: never): never {
+  throw new Error(`unhandled unit: ${String(unit)}`);
+}
+
 /** A weight in its entered unit → kilograms (canonical). */
 export function toCanonicalKg(value: number, unit: WeightUnit): number {
-  return unit === "kg" ? value : value * LB_TO_KG;
+  switch (unit) {
+    case "kg":
+      return value;
+    case "lb":
+      return value * LB_TO_KG;
+    default:
+      return assertUnreachable(unit);
+  }
 }
 
 /** A distance in its entered unit → metres (canonical). */
@@ -32,6 +48,8 @@ export function toCanonicalMeters(value: number, unit: DistanceUnit): number {
       return value * KM_TO_M;
     case "mi":
       return value * MI_TO_M;
+    default:
+      return assertUnreachable(unit);
   }
 }
 

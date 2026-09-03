@@ -74,6 +74,17 @@ describe("AC7 — distance → canonical metres", () => {
   });
 });
 
+describe("exhaustiveness guard — an unknown unit throws, never misconverts", () => {
+  it("toCanonicalKg throws on a unit outside WeightUnit", () => {
+    // A JS caller / deserialized payload could pass this despite the types.
+    expect(() => toCanonicalKg(100, "st" as never)).toThrow(/unhandled unit: st/);
+  });
+
+  it("toCanonicalMeters throws on a unit outside DistanceUnit", () => {
+    expect(() => toCanonicalMeters(5, "yd" as never)).toThrow(/unhandled unit: yd/);
+  });
+});
+
 describe("AC8 — conversion never rounds", () => {
   it("returns the raw product, not a pre-rounded result", () => {
     expect(toCanonicalKg(1, "lb")).toBe(0.45359237);

@@ -184,6 +184,9 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   unit — and the database *also* computes a canonical column used only for
   comparison and aggregation. The user's number is never lossily converted; the
   canonical column cannot drift because the DB owns it. See `set_entry` and §4.8.
+- **Allowed units:** `weight_unit ∈ {kg, lb}`, `distance_unit ∈ {m, km, mi}`;
+  canonical units are **kg** and **metres**. Vocabularies and conversion factors
+  live in one place — §4.8 (and `packages/core`, Spec 02).
 - **Timestamps** are `timestamptz` (UTC). Anything that appears on a *calendar*
   (streaks, "this week", month view) additionally stores a `local_date DATE` and
   `tz_offset_minutes` captured at write time, so calendar queries never

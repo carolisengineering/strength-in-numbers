@@ -1,18 +1,41 @@
 #!/usr/bin/env node
 /**
- * Post-build smoke (Spec 02 §2 AC1): the compiled `dist/` actually resolves
- * through the package `exports` map and exposes the stable surface (§3). Runs as
- * the second half of `pnpm --filter @sin/core build`, so a broken barrel or a
- * missing `.js` extension fails the build instead of a downstream consumer.
+ * Post-build smoke (Spec 02 §2 AC1). Reads the package `exports` map and checks,
+ * for the compiled `dist/`, that:
+ *   - the `import` target loads and exposes the whole stable surface (§3);
+ *   - the `types` target exists and is non-empty.
+ * Runs as the second half of `pnpm --filter @sin/core build`, so a broken barrel,
+ * a missing `.js` extension, or a `types` condition pointing at nothing fails the
+ * build instead of a downstream consumer. Full consumer-side resolution (Node
+ * conditions, `bundler` moduleResolution) is exercised for real once `apps/web`
+ * imports `@sin/core` in Spec 04.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const pkg = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
-const entry = new URL("../" + pkg.exports["."].default, import.meta.url);
+const root = pkg.exports["."];
 
+function fail(msg) {
+  console.error(`check-exports FAILED — ${msg}`);
+  process.exit(1);
+}
+
+// --- types condition ---
+if (!root.types) fail('package.json exports["."] has no "types" condition');
+const typesUrl = new URL("../" + root.types, import.meta.url);
+try {
+  if (statSync(typesUrl).size === 0) fail(`${fileURLToPath(typesUrl)} is empty`);
+} catch {
+  fail(`types target ${fileURLToPath(typesUrl)} does not exist`);
+}
+
+// --- import condition ---
+const importTarget = root.import ?? root.default;
+if (!importTarget) fail('package.json exports["."] has no "import"/"default" condition');
+const entry = new URL("../" + importTarget, import.meta.url);
 const mod = await import(entry.href);
 
 const EXPECTED = [
@@ -47,10 +70,10 @@ const EXPECTED = [
 
 const missing = EXPECTED.filter((name) => !(name in mod));
 if (missing.length > 0) {
-  console.error(
-    `check-exports FAILED — ${fileURLToPath(entry)} is missing:\n` +
-      missing.map((m) => "  " + m).join("\n"),
+  fail(
+    `${fileURLToPath(entry)} is missing:\n` + missing.map((m) => "  " + m).join("\n"),
   );
-  process.exit(1);
 }
-console.log(`check-exports passed — ${EXPECTED.length} exports resolve.`);
+console.log(
+  `check-exports passed — types + ${EXPECTED.length} runtime exports resolve.`,
+);

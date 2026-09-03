@@ -82,9 +82,12 @@ Behavioural criteria (AC4–AC9) each get ≥1 Vitest test naming their number
 by CI and review — see §10 for the method against each.
 
 1. **Builds as a library.** `pnpm --filter @sin/core build` emits `dist/` with
-   `.js` + `.d.ts`; `pnpm -r build` stays green; the `exports` map resolves for
-   both a runtime `import` and a `types` resolution from `apps/api` and from a
-   scratch tsconfig using `bundler` module resolution.
+   `.js` + `.d.ts`; `pnpm -r build` stays green; the post-build
+   `scripts/check-exports.mjs` loads the `exports`-map `import` target and asserts
+   the whole §3 surface is exported, and that the `types` target exists and is
+   non-empty. Full consumer-side resolution (Node conditions + `bundler`
+   moduleResolution) is exercised for real when `apps/web` imports `@sin/core`
+   in Spec 04.
 2. **Purity check is a first-class test.** `pnpm --filter @sin/core test:unit`
    runs both Vitest and the purity script; CI runs the same. The script fails on
    a React / `react-native` / DOM-global / Node-builtin import and on a forbidden
@@ -330,7 +333,7 @@ failures, Zod issues) for the caller to handle.
 
 | Criterion | Verified by |
 |---|---|
-| AC1 | CI build job — `pnpm -r build` green; a resolution smoke test importing `@sin/core` from `apps/api` and from a `test/resolution/` scratch tsconfig |
+| AC1 | CI `check` job runs `pnpm --filter @sin/core run build`; `scripts/check-exports.mjs` loads the `exports`-map `import` target, asserts every §3 export is present, and asserts the `types` target exists and is non-empty. Real consumer resolution lands with `apps/web` in Spec 04. |
 | AC2 | Vitest fixture test (writes a temp file with a forbidden import, spawns the purity script, asserts non-zero exit) **and** the CI purity step on real `src/` |
 | AC3 | Vitest test reading `package.json.dependencies` |
 | AC4 | Vitest table test: each `*_VALUES` array deep-equals the DESIGN list |
@@ -402,6 +405,12 @@ migration, no runtime state, no feature flag.
   that's Spec 05 (DESIGN §4.4).
 - ✅ **`CORE_PACKAGE_VERSION` is dropped** — it duplicated `package.json` and had
   no consumer.
+- ✅ **`MeSchema` / `UpdateMeSchema` are response/echo validators, not a re-impl
+  of Spec 01's server rules.** `createdAt` allows an offset (`.datetime({ offset:
+  true })`), `timezone` is `.min(1)` not `Intl`-validated, and `UpdateMe`'s
+  `displayName` is `.nullable()` (the column is nullable → clearing is allowed).
+  The server stays the authority on writes; the Spec 03 generator is not expected
+  to reproduce `Intl`-level timezone validation.
 
 ### Open
 
