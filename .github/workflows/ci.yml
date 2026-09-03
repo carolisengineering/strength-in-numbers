@@ -31,6 +31,9 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run core:purity
+      # Spec 02 §2 AC1 — @sin/core builds as a library and its exports map
+      # resolves. No consumer imports it yet (Spec 03), so build it explicitly.
+      - run: pnpm --filter @sin/core run build
       - name: prisma validate (schema only — never connects)
         run: pnpm --filter @sin/api exec prisma validate
         env:
