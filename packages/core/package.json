@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,15 +12,23 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json && node ./scripts/check-exports.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "purity": "node ./scripts/purity-check.mjs",
-    "test": "pnpm purity",
-    "test:unit": "pnpm purity",
+    "test": "pnpm run test:unit",
+    "test:unit": "node ./scripts/purity-check.mjs && vitest run --typecheck",
+    "test:watch": "vitest --typecheck",
     "test:integration": "true"
   },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^2.1.8",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   }
 }
