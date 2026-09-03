@@ -5,12 +5,19 @@
  * Fails if any source file imports React, a DOM/browser global, or a Node-only
  * builtin. Keeps `@sin/core` importable unchanged by a future React Native
  * bundle. Deliberately dependency-free so it runs anywhere.
+ *
+ * Usage:
+ *   node scripts/purity-check.mjs            # scans ./src, exits non-zero on a violation
+ *   node scripts/purity-check.mjs <dir>      # scans <dir> instead (used by the test suite)
+ *
+ * `findViolations(dir)` is exported so the test suite can point it at a fixture
+ * tree without spawning a subprocess (Spec 02 §2 AC2).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, extname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const SRC = join(fileURLToPath(new URL("../src", import.meta.url)));
+const DEFAULT_SRC = join(fileURLToPath(new URL("../src", import.meta.url)));
 
 const FORBIDDEN_MODULES = [
   /^react(\/|$)/,
@@ -41,28 +48,39 @@ function walk(dir) {
   return out;
 }
 
-const violations = [];
-for (const file of walk(SRC)) {
-  const text = readFileSync(file, "utf8");
+/** @returns {string[]} human-readable violation lines; empty means pure. */
+export function findViolations(srcDir = DEFAULT_SRC) {
+  const violations = [];
+  for (const file of walk(srcDir)) {
+    const text = readFileSync(file, "utf8");
 
-  for (let m; (m = IMPORT_RE.exec(text)); ) {
-    const spec = m[1] ?? m[2] ?? m[3];
-    if (!spec) continue;
-    if (FORBIDDEN_MODULES.some((re) => re.test(spec))) {
-      violations.push(`${file}: forbidden import "${spec}"`);
+    for (let m; (m = IMPORT_RE.exec(text)); ) {
+      const spec = m[1] ?? m[2] ?? m[3];
+      if (!spec) continue;
+      if (FORBIDDEN_MODULES.some((re) => re.test(spec))) {
+        violations.push(`${file}: forbidden import "${spec}"`);
+      }
     }
+
+    text.split("\n").forEach((line, i) => {
+      if (line.trimStart().startsWith("*") || line.trimStart().startsWith("//")) return;
+      for (const re of FORBIDDEN_GLOBALS) {
+        if (re.test(line)) violations.push(`${file}:${i + 1}: forbidden global ${re}`);
+      }
+    });
   }
-
-  text.split("\n").forEach((line, i) => {
-    if (line.trimStart().startsWith("*") || line.trimStart().startsWith("//")) return;
-    for (const re of FORBIDDEN_GLOBALS) {
-      if (re.test(line)) violations.push(`${file}:${i + 1}: forbidden global ${re}`);
-    }
-  });
+  return violations;
 }
 
-if (violations.length > 0) {
-  console.error("packages/core purity check FAILED:\n" + violations.map((v) => "  " + v).join("\n"));
-  process.exit(1);
+// CLI entrypoint — only when run directly, not when imported by a test.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  const target = process.argv[2] ? resolve(process.argv[2]) : DEFAULT_SRC;
+  const violations = findViolations(target);
+  if (violations.length > 0) {
+    console.error(
+      "packages/core purity check FAILED:\n" + violations.map((v) => "  " + v).join("\n"),
+    );
+    process.exit(1);
+  }
+  console.log("packages/core purity check passed.");
 }
-console.log("packages/core purity check passed.");

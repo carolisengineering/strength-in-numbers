@@ -1,11 +1,16 @@
 /**
  * @sin/core — framework-agnostic domain package.
  *
- * Spec 01 ships this as a stub only. Real contents (DTO types, Zod schemas,
- * units / e1RM / volume / PR math) arrive in Spec 02 and the feature specs.
+ * Hard rule (DESIGN.md §3.4, §7): no React, no DOM, no Node-only APIs in this
+ * package. Enforced by scripts/purity-check.mjs, run in CI and the test suite.
  *
- * Hard rule (DESIGN.md §3.4): no React, no DOM, no Node-only APIs in this
- * package. Enforced by scripts/purity-check.mjs, run in CI.
+ * Spec 02 ships the foundation: shared enums, branded ids, unit conversion, and
+ * the `/v1/me` DTO as the pattern later DTOs copy. Domain math (e1RM, volume, PR
+ * rules) arrives with the feature specs that use it (05, 07); the OpenAPI→types
+ * codegen seam arrives with Spec 03.
  */
 
-export const CORE_PACKAGE_VERSION = "0.0.0" as const;
+export * from "./enums.js";
+export * from "./ids.js";
+export * from "./units.js";
+export * from "./dto/me.js";
