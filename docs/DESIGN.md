@@ -315,7 +315,13 @@ dedup without touching the v1 schema.
   verbatim.
 - `set_entry.weight_kg` = `GENERATED ALWAYS AS` (kg if unit is kg, else
   `weight × 0.45359237`) `STORED`. Every PR comparison, chart, and aggregate uses
-  only `weight_kg`. Same pattern for `distance` / `distance_m`.
+  only `weight_kg`. Same pattern for `distance` / `distance_m`: metres if unit is
+  `m`, `distance × 1000` for `km`, `distance × 1609.344` for `mi`.
+- **Allowed units:** `weight_unit ∈ {kg, lb}`, `distance_unit ∈ {m, km, mi}`.
+  Canonical units are **kg** and **metres**. The conversion factors above are
+  defined once in `packages/core` (Spec 02); the `weight_kg` / `distance_m`
+  generated columns (Spec 05) must use the identical constants — drift between
+  them silently corrupts PRs and charts (R4).
 - `user.unit_preference` only chooses the default unit for *new* input and the
   unit for rendering aggregate/derived numbers; it never rewrites stored rows.
 
@@ -412,7 +418,12 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   id returns the existing resource, never a duplicate. Set writes are naturally
   idempotent (`PUT` a set by `(workout_exercise_id, set_number)`).
 - **Contract:** OpenAPI 3.1 spec is the source of truth; client types in
-  `packages/core` are generated from it in CI.
+  `packages/core` are generated from it in CI. The emit + codegen + drift-check
+  pipeline is stood up in Spec 03 (first real resource); Spec 02 hand-authors the
+  `/v1/me` DTO as the pattern the generator must match.
+- **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
+  `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
+  Established by Spec 01's `/v1/me`, pinned here.
 
 ### Representative endpoints
 
