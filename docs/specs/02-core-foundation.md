@@ -65,8 +65,8 @@ this past one work session.
   `core` ships conversion only. (§12.)
 - **OpenAPI 3.1 emit + `openapi-typescript` codegen + a CI drift check.** No
   OpenAPI document exists yet (Spec 01's endpoints are hand-built). Deferred to
-  **Spec 03**, with the first real resource. Spec 02's hand-authored `Me*` pair
-  is the pattern the generator will later have to match. (§12.)
+  **Spec 03.0**, which resolved to *emit, no codegen* (§12 update). Spec 02's
+  `Me*` Zod schemas became the authoring source, not a generator target. (§12.)
 - **The authed API client / fetch wrapper.** Spec 04.
 - **Modality → required-measure validation.** The `Modality` enum lives here; the
   validator itself is Spec 05 (DESIGN §4.4).
@@ -280,7 +280,7 @@ bugs, which are common once several id-typed params sit together.
 
 Spec 02 ships the **mechanism** (`brandId(name)` → `{ schema, parse, is }`) and
 the single brand `UserId`. Every later spec adds its own the same way — e.g.
-Spec 03: `export const { parse: parseExerciseId } = brandId("ExerciseId")` — so
+Spec 03.1: `export const { parse: parseExerciseId } = brandId("ExerciseId")` — so
 the id vocabulary grows without this spec enumerating types it can't yet define.
 
 ### Id shape validation
@@ -370,12 +370,17 @@ migration, no runtime state, no feature flag.
 
 ### Resolved
 
-- ✅ **Defer OpenAPI codegen to Spec 03.** No OpenAPI document exists yet (Spec
-  01 hand-built its endpoints). Standing up `@fastify/swagger` emit +
-  `openapi-typescript` + a CI drift check now would push Spec 02 past one
-  session for no consumer — Spec 03 brings the first real resource and can carry
-  it. Spec 02's hand-authored `Me` / `UpdateMeInput` pair *is* the target shape
-  the generator must reproduce.
+- ✅ **Defer the OpenAPI pipeline to Spec 03.** No OpenAPI document exists yet
+  (Spec 01 hand-built its endpoints). Standing up `@fastify/swagger` emit + a CI
+  drift check now would push Spec 02 past one session for no consumer.
+  **Update (2026-09-03):** the old "Spec 03" split into **Spec 03.0** (the
+  contract pipeline), **Spec 03.1** (exercise catalog — read) and **Spec 03.2**
+  (catalog — writes). The pipeline (03.0) resolved to *no codegen* — Zod DTOs in
+  `@sin/core` are the authoring format and OpenAPI 3.1 is emitted **from** them
+  (`fastify-type-provider-zod`), not the other way round. So `MeSchema` /
+  `UpdateMeSchema` are not a "target the generator must reproduce"; they are the
+  source. References below to "the Spec 03 generator" should be read as "the
+  Spec 03.0 emit".
 - ✅ **JSON DTOs are `camelCase`; DB columns stay `snake_case`; the DTO layer
   maps between them.** Spec 01's `/v1/me` already does this in its examples;
   pinned as a convention in DESIGN §6 so the reference `Me*` pair — and the
@@ -416,6 +421,7 @@ migration, no runtime state, no feature flag.
 
 - ❓ **`test:integration` for `@sin/core`** stays a no-op (`"true"`). Fine for
   v1; revisit only if `core` ever gains I/O (it should not).
-- ❓ **Whether `MeSchema` should live in `dto/me.ts` or a generated file's shape
-  be pre-agreed with Spec 03** so the hand-written version is a drop-in. Low
-  risk — resolve when Spec 03 picks its generator.
+- ✅ **`MeSchema` stays hand-authored in `dto/me.ts`.** Resolved by Spec 03.0
+  (2026-09-03): the pipeline *emits* OpenAPI from the Zod schemas — there is no
+  generated file and no generator to match. `MeSchema` / `UpdateMeSchema` are
+  the authoring source; Spec 03.0 migrates `/v1/me` onto them.

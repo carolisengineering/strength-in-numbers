@@ -17,9 +17,11 @@ spec small enough to finish in one work session.
 | 01 | [Foundation & Auth](01-foundation-auth.md) | API / platform | API → Render staging + prod | — | Draft |
 | 01.1 | [Production deploy pipeline](01.1-prod-deploy-pipeline.md) | platform / CI-CD | gated `staging → prod` promotion | 01 | Draft |
 | 02 | [`packages/core` foundation](02-core-foundation.md) — types, Zod setup, units conversion, purity check | library | workspace package | 01 | Draft |
-| 03 | Exercise catalog | API | endpoints | 01, 02 | Not started |
+| 03.0 | [API contract pipeline](03.0-api-contract-pipeline.md) — Zod DTOs → `fastify-type-provider-zod` → OpenAPI 3.1 emit + CI drift check; `/v1/me` migrated onto it | API / platform | served `/openapi.json` + CI check | 01, 02 | Draft |
+| 03.1 | [Exercise catalog — read](03.1-exercise-catalog-api.md) — 3 tables + seed, `GET /v1/exercises` (`updated_since`/`ETag`), reference endpoints, `ExerciseId` | API | endpoints | 01, 02, 03.0 | Draft |
+| 03.2 | Exercise catalog — writes (custom create + copy-on-write fork of a global row) | API | endpoints | 03.1 | Not started |
 | 04 | SPA shell & browser auth — Vite app, Auth0 PKCE, authed API client, app frame, styling foundation | UI / platform | web → Render | 01 | Not started |
-| 05 | Workout logging | API | endpoints | 01–03 | Not started |
+| 05 | Workout logging | API | endpoints | 01–03.1 | Not started |
 | 06 | Workout logging | UI (incl. exercise picker) | web | 04, 05 | Not started |
 | 07 | History, progress & PR engine | API | endpoints | 05 | Not started |
 | 08 | History & progress | UI | web | 06, 07 | Not started |
@@ -34,16 +36,19 @@ spec small enough to finish in one work session.
 **Ownership of cross-cutting concerns:**
 
 - **Rate limiting + per-user write quotas** — Spec 05 (first write-heavy path).
+  Spec 03.2's `POST /v1/exercises` lands a write path earlier; 03.2 decides
+  whether to pull a minimal per-user create quota forward or record the gap.
 - **`packages/core` domain math** (e1RM, volume, PR rules) — defined in the
   feature spec that uses it (05, 07) and added to `core` there. Spec 02 only lays
   the foundation.
 - **Exercise catalog UI** (picker, "my custom exercises") — folded into Spec 06.
 
-**Parallelism:** 02, 03 can run alongside 04 once 01 lands. The API specs
-(05, 07, 09, 11) can run ahead of their UIs.
+**Parallelism:** 02 and 04 can run alongside each other once 01 lands. 03.0
+needs 02 (it consumes `@sin/core` Zod DTOs); 03.1 needs 03.0; 03.2 needs 03.1. The
+API specs (05, 07, 09, 11) can run ahead of their UIs.
 
-**Milestone mapping:** M0 = 01 + 04 · M1 = 02, 03, 05, 06 · M2 = 07, 08 ·
-M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 · Phase 2 = 15.
+**Milestone mapping:** M0 = 01 + 04 · M1 = 02, 03.0, 03.1, 03.2, 05, 06 ·
+M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 · Phase 2 = 15.
 
 ## Spec template
 

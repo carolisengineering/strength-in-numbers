@@ -211,19 +211,24 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
 
 ### 4.2 Exercise catalog
 
-- **exercise** — `id`, `owner_user_id` (NULL = global/curated), `name`,
+- **exercise** — `id`, `catalog_key` (kebab-case stable identifier for curated
+  rows; `UNIQUE` where `owner_user_id IS NULL`, `NULL` for custom — Spec 03.1),
+  `owner_user_id` (NULL = global/curated; `ON DELETE CASCADE`), `name`,
   `modality` (`weight_reps` | `bodyweight_reps` | `weighted_bodyweight` |
   `duration` | `distance_duration`), `primary_muscle_id`, `secondary_muscle_ids`
   (array), `equipment_id`, `is_active`. No image in v1 (text-only picker);
   `image_key` is a reserved post-v1 addition.
 - **muscle_group**, **equipment** — small reference tables driving filters.
+  `TEXT` natural-code primary keys (`chest`, `barbell`) so they read directly in
+  API payloads (Spec 03.1).
 
 Rules:
 
-- **Global rows are append-only.** Their `name` / `modality` are never mutated in
-  place once users can have history against them. To change the catalog you add a
-  new row and set `is_active = false` on the old one (still resolvable for
-  history, hidden from pickers).
+- **Global rows are append-only.** Their `name` / `modality` / `catalog_key` are
+  never mutated in place once users can have history against them. To change the
+  catalog you add a new row and set `is_active = false` on the old one (still
+  resolvable for history, hidden from pickers). Curated (`owner_user_id IS NULL`)
+  rows are never deleted; custom rows go on account purge via `ON DELETE CASCADE`.
 - **Editing a global exercise is copy-on-write:** a user edit forks a row with
   `owner_user_id = <user>`; that user's *future* `workout_exercise`s point at the
   fork, past ones are untouched.
@@ -336,7 +341,7 @@ dedup without touching the v1 schema.
 | `workout`, `workout_exercise`, `set_entry` | hard delete (cascade) | hard purge |
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
 | `routine` | soft (`archived_at`) | hard purge |
-| custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge |
+| custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; the purge job must delete `workout_exercise` rows that reference it **before / with** the user's custom `exercise` rows — Spec 05 defines that FK with purge ordering in mind) |
 | `personal_record` | never user-deleted; recomputed | hard purge |
 | `body_metric` | hard delete | hard purge |
 
@@ -366,9 +371,21 @@ Action that surfaces `email` in the token. Custom domain deferred to GA.
 
 ### 5.2 Exercise catalog delivery
 
-Global catalog is small (hundreds of rows). Clients pull it on first launch and
-cache locally with an `ETag` / `updated_since` endpoint for incremental refresh.
-Custom exercises come down with the user's data.
+Global catalog is small (hundreds of rows). The client pulls the whole
+caller-visible set — global rows **plus that user's custom rows** — from a single
+`GET /v1/exercises` on first launch and caches it locally, keyed by `id`. Later
+refreshes are incremental (Spec 03.1):
+
+- `If-None-Match` with the stored strong `ETag` (computed over catalog content
+  only) → `304` when nothing changed;
+- `?updated_since=<serverTime>` → only rows changed since, **including** rows
+  retired since (flagged `is_active = false`) so the client drops them;
+- every response carries `serverTime` (the DB clock), which the client stores and
+  sends as the next `updated_since`.
+
+The reference tables (`muscle_group`, `equipment`) are served by their own
+`ETag`d endpoints. Curated catalog data is authored as checked-in JSON and loaded
+by an idempotent, append-only seed run as a release step.
 
 ### 5.3 Logging & connectivity
 
@@ -411,7 +428,10 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Errors:** RFC 9457 `application/problem+json` — `type`, `title`, `status`,
   `detail`, `errors[]` for field-level validation.
 - **Pagination:** opaque cursor (`?limit=&cursor=`), `next` cursor in the body.
-  No offset pagination.
+  No offset pagination. **Exception:** `GET /v1/exercises` returns the whole
+  caller-visible catalog un-paginated — it is bounded (low hundreds of rows) and
+  pulled whole into a local cache; `updated_since` bounds every later transfer
+  (§5.2, Spec 03.1).
 - **Time:** RFC 3339 UTC, always. Client sends its own `started_at`/`completed_at`
   timestamps (device clock) plus the server records receipt time. For calendar
   fields (§4.0), the client also sends its current UTC offset; the server stores
@@ -420,10 +440,20 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Idempotency:** workout creation uses `client_generated_id`; replaying the same
   id returns the existing resource, never a duplicate. Set writes are naturally
   idempotent (`PUT` a set by `(workout_exercise_id, set_number)`).
-- **Contract:** OpenAPI 3.1 spec is the source of truth; client types in
-  `packages/core` are generated from it in CI. The emit + codegen + drift-check
-  pipeline is stood up in Spec 03 (first real resource); Spec 02 hand-authors the
-  `/v1/me` DTO as the pattern the generator must match.
+- **Contract:** DTOs are authored **once** as Zod schemas in `packages/core`;
+  `fastify-type-provider-zod` wires them into Fastify route validation and
+  handler typing, and `@fastify/swagger` **emits** an OpenAPI 3.1 document from
+  them. The document is published (unauthenticated) at `/openapi.json` as the
+  external contract — **public `/v1` surface only** (probe/health routes hidden,
+  no internal host names) — and is **drift-checked in CI** (re-emit + `git
+  diff`). No client codegen — consumer types come from `z.infer` on the shared
+  schemas. The pipeline + the `/v1/me` migration onto it is Spec 03.0; Spec 02's
+  `MeSchema` is the first such DTO and the pattern the rest copy.
+- **Response schemas are field allowlists:** the Zod serializer strips unknown
+  keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
+- **Per-user cacheable reads** (`GET /v1/exercises`) send `Cache-Control:
+  private, no-cache` + `Vary: Authorization` — a strong `ETag` over per-caller content
+  must never be reused across users by a shared cache.
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.
@@ -456,7 +486,7 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 | Area | Approach |
 |---|---|
 | Repo | Monorepo: `apps/api`, `apps/web`, `packages/core`. pnpm workspaces. Added later without restructuring: `apps/marketing` (Next.js, at GA), `apps/mobile` (React Native), `infra/` (CDK or Terraform, phase 2). |
-| CI | Lint + typecheck + unit tests on every PR; `packages/core` purity check (no React / DOM / Node-only imports); OpenAPI → client codegen check; migration dry-run against a throwaway DB. |
+| CI | Lint + typecheck + unit tests on every PR; `packages/core` purity check (no React / DOM / Node-only imports); OpenAPI 3.1 document re-emitted from the `packages/core` Zod DTOs and drift-checked (`git diff --exit-code`, no codegen — Spec 03.0); migration dry-run against a throwaway DB. |
 | CD (v1) | Render blueprint (`render.yaml`). Merge to `main` → auto-deploy `staging`; git tag → promote the same API image + web build to `production`. Web app is a Render static site (CDN-fronted). |
 | CD (phase 2) | GitHub Actions: build image → push to ECR → roll the ECS service. `infra/` applied via CI. |
 | Migrations | Prisma Migrate; expand-contract, never destructive in a single release; run as a release step, not on app boot. |
@@ -532,13 +562,13 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01 + 04 · M1 = 02, 03, 05, 06 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11–13 ·
-  GA = 14 · Phase 2 = 15.
+  M0 = 01 + 04 · M1 = 02, 03.0, 03.1, 03.2, 05, 06 · M2 = 07, 08 · M3 = 09, 10 ·
+  M4 = 11–13 · GA = 14 · Phase 2 = 15.
 
 | Milestone | Contents | Exit criteria |
 |---|---|---|
 | **M0 — Skeleton** (Spec 01) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check, Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks. Backend only — the browser login flow is Spec 04. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. |
-| **M1 — Log a workout (API + web)** | Exercise catalog endpoint + seed data; start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
+| **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
 | **M2 — History & progress** | History list + detail; per-exercise charts (top set, est-1RM, volume); PR detection + finish-screen summary. | Progress numbers reconciled by hand for 10 sessions. |
 | **M3 — Routines + supersets** | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — bracketed display + one rest timer per group. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
