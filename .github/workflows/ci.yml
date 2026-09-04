@@ -32,8 +32,15 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run core:purity
       # Spec 02 §2 AC1 — @sin/core builds as a library and its exports map
-      # resolves. No consumer imports it yet (Spec 03), so build it explicitly.
+      # resolves. @sin/api now consumes it (Spec 03.0), and the emit step below
+      # needs its dist output.
       - run: pnpm --filter @sin/core run build
+      # Spec 03.0 §2 AC5 — re-emit the OpenAPI document from the Zod route
+      # schemas and fail if the committed artifact is stale.
+      - name: openapi drift check
+        run: |
+          pnpm --filter @sin/api run openapi:emit
+          git diff --exit-code openapi.json
       - name: prisma validate (schema only — never connects)
         run: pnpm --filter @sin/api exec prisma validate
         env:

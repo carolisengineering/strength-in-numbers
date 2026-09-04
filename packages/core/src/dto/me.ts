@@ -28,10 +28,29 @@ export const MeSchema = z.object({
 });
 export type Me = z.infer<typeof MeSchema>;
 
+/**
+ * True when `tz` is a zone the host's ICU data recognises. `Intl` is ECMA-402,
+ * not a Node builtin, so this passes the `@sin/core` purity check. Spec 03.0 §6.4
+ * moves this constraint out of the `/v1/me` handler and into the schema — the
+ * schema is the contract, so the rule belongs in it.
+ */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Request body of `PATCH /v1/me`. All fields optional; unknown keys rejected. */
 export const UpdateMeSchema = z.strictObject({
   displayName: z.string().max(80).nullable().optional(),
   unitPreference: z.enum(UNIT_PREFERENCE_VALUES).optional(),
-  timezone: z.string().min(1).optional(),
+  timezone: z
+    .string()
+    .min(1)
+    .refine(isValidTimeZone, { message: "must be a valid IANA time zone" })
+    .optional(),
 });
 export type UpdateMeInput = z.infer<typeof UpdateMeSchema>;

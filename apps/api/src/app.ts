@@ -5,6 +5,12 @@ import Fastify, {
 } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
+import fastifySwagger from "@fastify/swagger";
+import {
+  jsonSchemaTransform,
+  serializerCompiler,
+  validatorCompiler,
+} from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
 import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
@@ -59,6 +65,15 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
+  // The contract pipeline (Spec 03.0): Zod DTOs from `@sin/core` drive route
+  // validation, handler typing, and the emitted OpenAPI document. Set on the
+  // root instance so the `/v1` child scope inherits both compilers. The default
+  // serializer parses every response through its `response` schema, so a plain
+  // `z.object` schema is a positive field allowlist — an unlisted column cannot
+  // reach the wire (AC7, §6.5).
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
   await app.register(requestContextPlugin);
 
   await app.register(helmet, {
@@ -83,6 +98,23 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     credentials: false,
   });
 
+  // Emit-only OpenAPI 3.1 (Spec 03.0 §6.3). Registered before any route so its
+  // onRoute hook sees them all; the health + `_authcheck` routes opt out with
+  // `schema.hide`. No `servers:` block — the document must not name an internal
+  // host (§7). `@fastify/swagger-ui` is deliberately not registered (emit only).
+  await app.register(fastifySwagger, {
+    openapi: {
+      openapi: "3.1.0",
+      info: {
+        title: "Strength in Numbers API",
+        version: "1",
+        description:
+          "The public /v1 surface. Every listed route still requires a bearer token to call.",
+      },
+    },
+    transform: jsonSchemaTransform,
+  });
+
   registerHealthRoutes(app, {
     checkReadiness: deps.checkReadiness,
     readinessTtlMs: deps.readinessTtlMs,
@@ -101,6 +133,23 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       registerV1Routes(v1, { userRepository: deps.userRepository });
     },
     { prefix: "/v1" },
+  );
+
+  // `GET /openapi.json` — the published contract (Spec 03.0 §5, §6.3).
+  // Unauthenticated by design (registered outside the `/v1` scope, so the auth
+  // plugin never runs) — a deliberate carve-out from Spec 01 §7: the document is
+  // route + schema metadata, no user data. Rendered once at boot and served as a
+  // constant string so this anonymous route can never be a per-request
+  // `app.swagger()` CPU amplifier.
+  let openapiJson = "{}";
+  app.addHook("onReady", async () => {
+    openapiJson = JSON.stringify(app.swagger(), null, 2);
+  });
+  app.get("/openapi.json", { schema: { hide: true } }, async (_request, reply) =>
+    reply
+      .type("application/json")
+      .header("cache-control", "public, max-age=300")
+      .send(openapiJson),
   );
 
   return app;

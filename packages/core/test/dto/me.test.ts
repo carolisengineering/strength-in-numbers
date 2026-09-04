@@ -48,4 +48,14 @@ describe("AC9 — /v1/me DTO pattern", () => {
     expect(() => UpdateMeSchema.parse({ unitPreference: "stone" })).toThrow();
     expect(() => UpdateMeSchema.parse({ timezone: "" })).toThrow();
   });
+
+  it("UpdateMeSchema.timezone carries the IANA .refine() moved from the handler (Spec 03.0 P6)", () => {
+    expect(UpdateMeSchema.parse({ timezone: "America/Chicago" })).toEqual({
+      timezone: "America/Chicago",
+    });
+    const bad = UpdateMeSchema.safeParse({ timezone: "Mars/Phobos" });
+    expect(bad.success).toBe(false);
+    expect(bad.error!.issues[0]!.path).toEqual(["timezone"]);
+    expect(bad.error!.issues[0]!.message).toBe("must be a valid IANA time zone");
+  });
 });
