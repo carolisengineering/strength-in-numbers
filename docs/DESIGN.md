@@ -451,6 +451,10 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   `MeSchema` is the first such DTO and the pattern the rest copy.
 - **Response schemas are field allowlists:** the Zod serializer strips unknown
   keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
+  The allowlist is over **keys**, not value formats: a response schema asserts
+  which fields appear and their type, not strict formats (`z.email()`, regexes,
+  `Intl` checks) on values the server persisted from a trusted source. Format
+  enforcement lives at ingress (Spec 03.0 P7).
 - **Per-user cacheable reads** (`GET /v1/exercises`) send `Cache-Control:
   private, no-cache` + `Vary: Authorization` — a strong `ETag` over per-caller content
   must never be reused across users by a shared cache.

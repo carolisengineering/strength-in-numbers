@@ -30,6 +30,12 @@ describe("AC9 — /v1/me DTO pattern", () => {
     expect(() => MeSchema.parse({ ...validMe, createdAt: "yesterday" })).toThrow();
   });
 
+  it("MeSchema.email validates shape only, not format — an atypical stored address passes (Spec 03.0 P7)", () => {
+    expect(() =>
+      MeSchema.parse({ ...validMe, email: "weird+addr@intranet" }),
+    ).not.toThrow();
+  });
+
   it("UpdateMeSchema accepts the writable subset", () => {
     expect(UpdateMeSchema.parse({ displayName: "Carol" })).toEqual({ displayName: "Carol" });
     expect(UpdateMeSchema.parse({ unitPreference: "lb", timezone: "America/Chicago" })).toEqual({

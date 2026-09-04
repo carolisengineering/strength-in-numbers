@@ -37,10 +37,13 @@ const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
  * `schema.response`; without one it falls back to unfiltered `JSON.stringify`
  * and an over-wide handler return (an internal column, `auth_sub`, a soft-delete
  * timestamp) reaches the wire. Registered as an `onRoute` hook so the allowlist
- * is structural — a wire-exposed `/v1` route with no `response` schema fails app
- * assembly in every environment rather than leaking at runtime. Hidden routes
- * (health probes, `/openapi.json`, `/v1/_authcheck`) and body-less methods are
- * exempt.
+ * is structural — any wire-exposed route with no `response` schema fails app
+ * assembly in every environment rather than leaking at runtime.
+ *
+ * Safe-by-default: the check is NOT gated to a path prefix (a `/v2` surface or a
+ * root-scope data route must not slip past it). The opt-out is explicit —
+ * `schema: { hide: true }`, which also keeps the route out of the OpenAPI
+ * document — plus body-less methods (HEAD / OPTIONS).
  */
 export function assertRouteHasResponseSchema(route: {
   method: string | string[];
@@ -48,14 +51,14 @@ export function assertRouteHasResponseSchema(route: {
   schema?: { hide?: boolean; response?: unknown };
 }): void {
   if (route.schema?.hide === true) return;
-  if (!route.url.startsWith("/v1/")) return;
   const methods = Array.isArray(route.method) ? route.method : [route.method];
   if (methods.every((m) => m === "HEAD" || m === "OPTIONS")) return;
   if (route.schema?.response === undefined) {
     throw new Error(
       `Route ${methods.join(",")} ${route.url} declares no \`schema.response\`. ` +
-        "Every /v1 route must declare a Zod response schema so the serializer " +
-        "enforces a positive field allowlist (Spec 03.0 §6.5).",
+        "Every non-hidden route must declare a Zod response schema so the " +
+        "serializer enforces a positive field allowlist (Spec 03.0 §6.5). " +
+        "Use `schema: { hide: true }` to opt a bodyless/infra route out.",
     );
   }
 }
@@ -103,9 +106,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  // Structural egress allowlist: fail assembly if a wire-exposed `/v1` route
-  // ships without a `response` schema (see `assertRouteHasResponseSchema`).
-  // Added on the root instance before the `/v1` scope so it sees those routes.
+  // Structural egress allowlist: fail assembly if any non-hidden route ships
+  // without a `response` schema (see `assertRouteHasResponseSchema`). Added on
+  // the root instance before any route registers so it sees all of them.
   app.addHook("onRoute", (routeOptions) => {
     assertRouteHasResponseSchema({
       method: routeOptions.method,

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import Fastify from "fastify";
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Validator as ValidatorType } from "@seriousme/openapi-schema-validator";
@@ -19,10 +20,16 @@ async function appWithProbes() {
   const { app } = await buildTestApp();
   const r = app.withTypeProvider<ZodTypeProvider>();
 
-  // Root-scope route with a Zod body — AC2 request path.
+  // Root-scope route with a Zod body — AC2 request path. Carries a response
+  // schema too so it satisfies the structural egress-allowlist guard.
   r.post(
     "/__probe/echo",
-    { schema: { body: z.strictObject({ name: z.string().max(5) }) } },
+    {
+      schema: {
+        body: z.strictObject({ name: z.string().max(5) }),
+        response: { 200: z.object({ ok: z.boolean() }) },
+      },
+    },
     async () => ({ ok: true }),
   );
 
@@ -222,14 +229,23 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
   });
 });
 
-describe("SB — /v1 routes must declare a response schema (structural egress allowlist)", () => {
-  it("buildApp assembles: every real /v1 route already declares one", async () => {
+describe("SB — every non-hidden route must declare a response schema (structural egress allowlist)", () => {
+  it("buildApp assembles: every real route already declares one or is hidden", async () => {
     await expect(buildTestApp()).resolves.toBeDefined();
   });
 
-  it("throws for a wire-exposed /v1 route with no response schema", () => {
+  it("throws for a route with a body and no response schema", () => {
     expect(() =>
       assertRouteHasResponseSchema({ method: "GET", url: "/v1/leaky", schema: {} }),
+    ).toThrow(/response schema/i);
+  });
+
+  it("is not prefix-gated — a non-/v1 route is guarded too", () => {
+    expect(() =>
+      assertRouteHasResponseSchema({ method: "GET", url: "/v2/things", schema: {} }),
+    ).toThrow(/response schema/i);
+    expect(() =>
+      assertRouteHasResponseSchema({ method: "POST", url: "/stats", schema: undefined }),
     ).toThrow(/response schema/i);
   });
 
@@ -237,18 +253,18 @@ describe("SB — /v1 routes must declare a response schema (structural egress al
     expect(() =>
       assertRouteHasResponseSchema({
         method: "GET",
-        url: "/v1/_probe",
+        url: "/healthz",
         schema: { hide: true },
       }),
     ).not.toThrow();
   });
 
-  it("exempts non-/v1 routes and body-less methods", () => {
-    expect(() =>
-      assertRouteHasResponseSchema({ method: "GET", url: "/healthz", schema: {} }),
-    ).not.toThrow();
+  it("exempts body-less methods", () => {
     expect(() =>
       assertRouteHasResponseSchema({ method: ["HEAD", "OPTIONS"], url: "/v1/me", schema: {} }),
+    ).not.toThrow();
+    expect(() =>
+      assertRouteHasResponseSchema({ method: "OPTIONS", url: "/anything", schema: undefined }),
     ).not.toThrow();
   });
 
@@ -260,5 +276,85 @@ describe("SB — /v1 routes must declare a response schema (structural egress al
         schema: { response: { 200: z.object({ id: z.string() }) } },
       }),
     ).not.toThrow();
+  });
+
+  // The guard is wired as an `onRoute` hook on the root instance; these prove it
+  // actually reaches routes registered inside a `register(..., { prefix })`
+  // child scope (where the real `/v1` routes live), not just direct calls.
+  it("the onRoute hook fires for a child-scope route with no response schema → assembly fails", async () => {
+    const app = Fastify({ logger: false });
+    app.addHook("onRoute", (ro) =>
+      assertRouteHasResponseSchema({ method: ro.method, url: ro.url, schema: ro.schema }),
+    );
+    app.register(
+      async (child) => {
+        child.get("/thing", async () => ({ ok: true }));
+      },
+      { prefix: "/v1" },
+    );
+    await expect(app.ready()).rejects.toThrow(/response schema/i);
+    await app.close();
+  });
+
+  it("the same child-scope route WITH a response schema assembles cleanly", async () => {
+    const app = Fastify({ logger: false });
+    app.addHook("onRoute", (ro) =>
+      assertRouteHasResponseSchema({ method: ro.method, url: ro.url, schema: ro.schema }),
+    );
+    app.register(
+      async (child) => {
+        child.get(
+          "/thing",
+          { schema: { response: { 200: { type: "object" } } } },
+          async () => ({ ok: true }),
+        );
+      },
+      { prefix: "/v1" },
+    );
+    await expect(app.ready()).resolves.toBeDefined();
+    await app.close();
+  });
+});
+
+describe("AC3 — /v1/me behaviour preserved on the contract pipeline", () => {
+  const withUser = (authSub: string) => ({
+    userRepository: new FakeUserRepository([makeUser({ authSub })]),
+    tokenVerifier: fakeVerifier(() => authContext({ authSub })),
+  });
+
+  it("an unknown PATCH body key → 422 validation-error (UpdateMeSchema is .strict())", async () => {
+    const { app } = await buildTestApp(withUser("auth0|ac3a"));
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/me",
+      headers: JSON_HEADERS,
+      payload: { nickname: "x" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+  });
+
+  it("an invalid IANA timezone → 422 via the UpdateMeSchema .refine() (P6)", async () => {
+    const { app } = await buildTestApp(withUser("auth0|ac3b"));
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/me",
+      headers: JSON_HEADERS,
+      payload: { timezone: "Mars/Phobos" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().errors[0]).toMatchObject({ path: "timezone" });
+  });
+
+  it("a valid PATCH still round-trips: 200 with the change reflected", async () => {
+    const { app } = await buildTestApp(withUser("auth0|ac3c"));
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/me",
+      headers: JSON_HEADERS,
+      payload: { unitPreference: "lb" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().unitPreference).toBe("lb");
   });
 });

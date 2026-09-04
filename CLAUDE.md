@@ -76,7 +76,8 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 - `docs/DESIGN.md` — overall design, resolved decisions (Q1–Q9)
 - `docs/specs/` — component specs + `README.md` (roadmap, 12-section template, ownership)
 - `docs/runbooks/` — operational runbooks (`first-deploy.md`)
-- `docs/security-backlog.md` — deferred security items (SB-1..6)
+- `docs/security-backlog.md` — deferred security items (SB-1..7)
+- `docs/backlog.md` — deferred non-security fixes / known issues (BL-1..)
 
 ## Subagents (`.claude/agents/`)
 
