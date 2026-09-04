@@ -31,6 +31,35 @@ export const BODY_LIMIT_BYTES = 64 * 1024;
 /** An inbound X-Request-Id is honoured only if it matches this shape. */
 const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
+/**
+ * Egress field-allowlist invariant (Spec 03.0 §6.5). `fastify-type-provider-zod`
+ * only strips unlisted keys from a response when the route declares a
+ * `schema.response`; without one it falls back to unfiltered `JSON.stringify`
+ * and an over-wide handler return (an internal column, `auth_sub`, a soft-delete
+ * timestamp) reaches the wire. Registered as an `onRoute` hook so the allowlist
+ * is structural — a wire-exposed `/v1` route with no `response` schema fails app
+ * assembly in every environment rather than leaking at runtime. Hidden routes
+ * (health probes, `/openapi.json`, `/v1/_authcheck`) and body-less methods are
+ * exempt.
+ */
+export function assertRouteHasResponseSchema(route: {
+  method: string | string[];
+  url: string;
+  schema?: { hide?: boolean; response?: unknown };
+}): void {
+  if (route.schema?.hide === true) return;
+  if (!route.url.startsWith("/v1/")) return;
+  const methods = Array.isArray(route.method) ? route.method : [route.method];
+  if (methods.every((m) => m === "HEAD" || m === "OPTIONS")) return;
+  if (route.schema?.response === undefined) {
+    throw new Error(
+      `Route ${methods.join(",")} ${route.url} declares no \`schema.response\`. ` +
+        "Every /v1 route must declare a Zod response schema so the serializer " +
+        "enforces a positive field allowlist (Spec 03.0 §6.5).",
+    );
+  }
+}
+
 export interface BuildAppDeps extends AuthPluginDeps {
   config: Config;
   logger?: FastifyBaseLogger | boolean;
@@ -74,6 +103,17 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  // Structural egress allowlist: fail assembly if a wire-exposed `/v1` route
+  // ships without a `response` schema (see `assertRouteHasResponseSchema`).
+  // Added on the root instance before the `/v1` scope so it sees those routes.
+  app.addHook("onRoute", (routeOptions) => {
+    assertRouteHasResponseSchema({
+      method: routeOptions.method,
+      url: routeOptions.url,
+      schema: routeOptions.schema,
+    });
+  });
+
   await app.register(requestContextPlugin);
 
   await app.register(helmet, {
@@ -111,6 +151,21 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         description:
           "The public /v1 surface. Every listed route still requires a bearer token to call.",
       },
+      // Make the "requires a bearer token" statement machine-readable: declare
+      // the scheme and require it globally. Every documented route is an
+      // authenticated `/v1` route, so a document-wide requirement is exact.
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
+            description:
+              "Auth0-issued access token for the API audience (Spec 01 §5).",
+          },
+        },
+      },
+      security: [{ bearerAuth: [] }],
     },
     transform: jsonSchemaTransform,
   });

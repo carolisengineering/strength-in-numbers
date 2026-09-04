@@ -6,6 +6,14 @@
     "description": "The public /v1 surface. Every listed route still requires a bearer token to call."
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Auth0-issued access token for the API audience (Spec 01 §5)."
+      }
+    },
     "schemas": {}
   },
   "paths": {
@@ -176,5 +184,10 @@
         }
       }
     }
-  }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
 }

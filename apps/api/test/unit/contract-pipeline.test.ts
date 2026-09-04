@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Validator as ValidatorType } from "@seriousme/openapi-schema-validator";
 import { Validator } from "@seriousme/openapi-schema-validator";
+import { assertRouteHasResponseSchema } from "../../src/app.js";
 import { buildTestApp } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier, FakeUserRepository, makeUser } from "../helpers/fakes.js";
 
@@ -208,5 +209,56 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
       await app.inject({ method: "GET", url: "/openapi.json" });
     }
     expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it("declares the bearerAuth security scheme and requires it document-wide", async () => {
+    const { app } = await buildTestApp();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
+    expect(doc.components.securitySchemes.bearerAuth).toMatchObject({
+      type: "http",
+      scheme: "bearer",
+    });
+    expect(doc.security).toEqual([{ bearerAuth: [] }]);
+  });
+});
+
+describe("SB — /v1 routes must declare a response schema (structural egress allowlist)", () => {
+  it("buildApp assembles: every real /v1 route already declares one", async () => {
+    await expect(buildTestApp()).resolves.toBeDefined();
+  });
+
+  it("throws for a wire-exposed /v1 route with no response schema", () => {
+    expect(() =>
+      assertRouteHasResponseSchema({ method: "GET", url: "/v1/leaky", schema: {} }),
+    ).toThrow(/response schema/i);
+  });
+
+  it("exempts hidden routes", () => {
+    expect(() =>
+      assertRouteHasResponseSchema({
+        method: "GET",
+        url: "/v1/_probe",
+        schema: { hide: true },
+      }),
+    ).not.toThrow();
+  });
+
+  it("exempts non-/v1 routes and body-less methods", () => {
+    expect(() =>
+      assertRouteHasResponseSchema({ method: "GET", url: "/healthz", schema: {} }),
+    ).not.toThrow();
+    expect(() =>
+      assertRouteHasResponseSchema({ method: ["HEAD", "OPTIONS"], url: "/v1/me", schema: {} }),
+    ).not.toThrow();
+  });
+
+  it("passes when a response schema is present", () => {
+    expect(() =>
+      assertRouteHasResponseSchema({
+        method: ["GET", "HEAD"],
+        url: "/v1/thing",
+        schema: { response: { 200: z.object({ id: z.string() }) } },
+      }),
+    ).not.toThrow();
   });
 });
