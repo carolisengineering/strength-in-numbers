@@ -85,4 +85,5 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 `test-engineer` (test strategy, criterion-tagged tests, fixtures, coverage gaps, suite health)
 `change-auditor` (read-only changeset audit — spec conformance, config wiring, migration safety)
 `deploy-verify` (run smoke checks + inspect CI)
+`tech-writer` (human-facing prose — PR descriptions, release notes, changelog, README sections)
 Keep their baked-in conventions in sync with this file.

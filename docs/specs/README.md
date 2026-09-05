@@ -20,16 +20,17 @@ spec small enough to finish in one work session.
 | 03.0 | [API contract pipeline](03.0-api-contract-pipeline.md) — Zod DTOs → `fastify-type-provider-zod` → OpenAPI 3.1 emit + CI drift check; `/v1/me` migrated onto it | API / platform | served `/openapi.json` + CI check | 01, 02 | Draft |
 | 03.1 | [Exercise catalog — read](03.1-exercise-catalog-api.md) — 3 tables + seed, `GET /v1/exercises` (`updated_since`/`ETag`), reference endpoints, `ExerciseId` | API | endpoints | 01, 02, 03.0 | Draft |
 | 03.2 | Exercise catalog — writes (custom create + copy-on-write fork of a global row) | API | endpoints | 03.1 | Not started |
-| 04 | SPA shell & browser auth — Vite app, Auth0 PKCE, authed API client, app frame, styling foundation | UI / platform | web → Render | 01 | Not started |
+| 04.0 | [SPA shell, browser auth & API client](04.0-spa-shell-auth.md) — Vite + React SPA (`@sin/web`), Auth0 PKCE (in-memory tokens, self-hosted refresh worker), React-free API client (problem+json → typed errors, `@sin/core` DTOs), router + protected routes + bootstrap gate, Render static site + strict CSP, CI web gate | UI / platform | web → Render static site | 01, 02 | Draft |
+| 04.1 | [Profile slice & UI foundation](04.1-profile-slice.md) — CSS-Modules design tokens + primitives, thumb-zone `AppShell` + bottom nav, `useSession`, error boundary, and the Profile vertical slice (`GET`/`PATCH /v1/me`: 422→field errors, cache write) | UI | web (same `@sin/web` bundle) | 04.0, 01, 02 | Draft |
 | 05 | Workout logging | API | endpoints | 01–03.1 | Not started |
-| 06 | Workout logging | UI (incl. exercise picker) | web | 04, 05 | Not started |
+| 06 | Workout logging | UI (incl. exercise picker) | web | 04.1, 05 | Not started |
 | 07 | History, progress & PR engine | API | endpoints | 05 | Not started |
 | 08 | History & progress | UI | web | 06, 07 | Not started |
 | 09 | Routines & supersets (Tier B) | API | endpoints | 05 | Not started |
 | 10 | Routines & supersets | UI | web | 06, 09 | Not started |
 | 11 | Account lifecycle — export, delete, purge cron, R2 bucket | API + cron | endpoints + job | 05 | Not started |
 | 12 | Account lifecycle | UI | web | 06, 11 | Not started |
-| 13 | Observability & analytics — stand up Sentry + a trace backend + PostHog; dashboards for §1.3 metrics; alerts | ops | config + dashboards | 01, 04 | Not started |
+| 13 | Observability & analytics — stand up Sentry + a trace backend + PostHog; dashboards for §1.3 metrics; alerts | ops | config + dashboards | 01, 04.0 | Not started |
 | 14 | Marketing site (Next.js) | static | separate deploy | — | Not started |
 | 15 | AWS migration (phase 2) — `infra/` in CDK or Terraform | infra | replaces Render | 01–13 stable | Not started |
 
@@ -42,13 +43,19 @@ spec small enough to finish in one work session.
   feature spec that uses it (05, 07) and added to `core` there. Spec 02 only lays
   the foundation.
 - **Exercise catalog UI** (picker, "my custom exercises") — folded into Spec 06.
+- **CSP + web security headers** — Spec 04.0 (Render static-site response
+  headers: `Content-Security-Policy`, `X-Content-Type-Options`,
+  `Referrer-Policy`). The API-side CORS `WEB_ORIGIN` allowlist stays Spec 01;
+  the two are kept in sync per Spec 04.0 §8.
 
-**Parallelism:** 02 and 04 can run alongside each other once 01 lands. 03.0
-needs 02 (it consumes `@sin/core` Zod DTOs); 03.1 needs 03.0; 03.2 needs 03.1. The
-API specs (05, 07, 09, 11) can run ahead of their UIs.
+**Parallelism:** 03.0 needs 02 (it consumes `@sin/core` Zod DTOs); 03.1 needs
+03.0; 03.2 needs 03.1. 04.1 needs 04.0. The API specs (05, 07, 09, 11) can run
+ahead of their UIs.
 
-**Milestone mapping:** M0 = 01 + 04 · M1 = 02, 03.0, 03.1, 03.2, 05, 06 ·
+**Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 05, 06 ·
 M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 · Phase 2 = 15.
+(`packages/core` (02) is a foundation both M0 clients import — an M0
+prerequisite, not M1 work.)
 
 ## Spec template
 
