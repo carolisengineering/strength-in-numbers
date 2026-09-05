@@ -62,9 +62,13 @@ export function registerHealthRoutes(
     return inFlight;
   };
 
-  app.get("/healthz", async () => ({ status: "ok" as const }));
+  // `hide: true` — health probes are infra, not part of the published `/v1`
+  // contract (Spec 03.0 §5, AC4).
+  app.get("/healthz", { schema: { hide: true } }, async () => ({
+    status: "ok" as const,
+  }));
 
-  app.get("/readyz", async (request, reply) => {
+  app.get("/readyz", { schema: { hide: true } }, async (request, reply) => {
     const result = await probeReadiness();
     if (result.ok) {
       return { status: "ready" as const };

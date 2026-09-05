@@ -14,7 +14,15 @@ import { UserIdSchema } from "../ids.js";
 /** Response body of `GET /v1/me` and `PATCH /v1/me`. */
 export const MeSchema = z.object({
   id: UserIdSchema,
-  email: z.email(),
+  // Egress-only. `/v1/me` (GET + PATCH) is the sole consumer; `email` is never
+  // client-supplied — it is persisted from the Auth0 claim in `verify.ts` with
+  // only a string-type check. The response serializer parses every row through
+  // this schema, so a strict `z.email()` here turns an RFC-valid but
+  // regex-displeasing stored address (quoted local part, IDN/punycode edges, a
+  // dot-less enterprise domain) into a 500 that locks the user out of their own
+  // profile. Validate shape, not stored value format (Spec 03.0 P7); matches
+  // `timezone` below, which is likewise `z.string()`-only on the response side.
+  email: z.string(),
   displayName: z.string().max(80).nullable(),
   unitPreference: z.enum(UNIT_PREFERENCE_VALUES),
   timezone: z.string().min(1),
@@ -28,10 +36,29 @@ export const MeSchema = z.object({
 });
 export type Me = z.infer<typeof MeSchema>;
 
+/**
+ * True when `tz` is a zone the host's ICU data recognises. `Intl` is ECMA-402,
+ * not a Node builtin, so this passes the `@sin/core` purity check. Spec 03.0 §6.4
+ * moves this constraint out of the `/v1/me` handler and into the schema — the
+ * schema is the contract, so the rule belongs in it.
+ */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Request body of `PATCH /v1/me`. All fields optional; unknown keys rejected. */
 export const UpdateMeSchema = z.strictObject({
   displayName: z.string().max(80).nullable().optional(),
   unitPreference: z.enum(UNIT_PREFERENCE_VALUES).optional(),
-  timezone: z.string().min(1).optional(),
+  timezone: z
+    .string()
+    .min(1)
+    .refine(isValidTimeZone, { message: "must be a valid IANA time zone" })
+    .optional(),
 });
 export type UpdateMeInput = z.infer<typeof UpdateMeSchema>;

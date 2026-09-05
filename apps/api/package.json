@@ -15,15 +15,19 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy"
+    "migrate:deploy": "prisma migrate deploy",
+    "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^12.0.1",
+    "@fastify/swagger": "9.8.1",
     "@opentelemetry/api": "^1.9.0",
     "@prisma/client": "^6.2.1",
+    "@sin/core": "workspace:*",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
+    "fastify-type-provider-zod": "7.0.0",
     "jose": "^5.9.6",
     "pino": "^9.6.0",
     "prisma": "^6.2.1",
@@ -31,6 +35,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@seriousme/openapi-schema-validator": "2.4.1",
     "@testcontainers/postgresql": "^10.16.0",
     "@types/node": "^22.10.5",
     "@vitest/coverage-v8": "^2.1.8",

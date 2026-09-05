@@ -34,6 +34,10 @@ RUN pnpm install --prod --frozen-lockfile
 # isn't copied here. `prisma` is a prod dep, so the CLI is available. DATABASE_URL
 # is only needed at runtime, not to generate — a placeholder satisfies the parser.
 RUN DATABASE_URL="postgresql://placeholder" pnpm --filter @sin/api exec prisma generate
+# @sin/api now imports @sin/core (Spec 03.0). The workspace symlink resolves to
+# packages/core/dist, so the compiled core output must be present in the runtime
+# image alongside the api dist.
+COPY --from=build /app/packages/core/dist ./packages/core/dist
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 
 RUN useradd --system --uid 1001 --home-dir /app appuser \

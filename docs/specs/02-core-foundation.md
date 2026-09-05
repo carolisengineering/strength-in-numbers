@@ -220,7 +220,7 @@ export function kgToLb(kg: number): number;   // + lbToKg, mToKm, kmToM, mToMi, 
 // dto/me.ts — the pattern later DTOs copy
 export const MeSchema = z.object({
   id: UserIdSchema,
-  email: z.string().email(),
+  email: z.string(),   // egress-only; format not re-validated on the wire (Spec 03.0 P7)
   displayName: z.string().max(80).nullable(),
   unitPreference: z.enum(UNIT_PREFERENCE_VALUES),
   timezone: z.string().min(1),
@@ -412,10 +412,16 @@ migration, no runtime state, no feature flag.
   no consumer.
 - ✅ **`MeSchema` / `UpdateMeSchema` are response/echo validators, not a re-impl
   of Spec 01's server rules.** `createdAt` allows an offset (`.datetime({ offset:
-  true })`), `timezone` is `.min(1)` not `Intl`-validated, and `UpdateMe`'s
-  `displayName` is `.nullable()` (the column is nullable → clearing is allowed).
-  The server stays the authority on writes; the Spec 03 generator is not expected
-  to reproduce `Intl`-level timezone validation.
+  true })`); `MeSchema.timezone` and `MeSchema.email` are `z.string()` — type
+  only, not `Intl`- or regex-checked; `UpdateMe`'s `displayName` is `.nullable()`
+  (the column is nullable → clearing is allowed). The server stays the authority
+  on writes. **Egress rationale sharpened in Spec 03.0 (P6, P7):** the
+  `fastify-type-provider-zod` serializer parses every response through its
+  schema, so response-side fields deliberately omit strict value-format
+  refinements — data the server persisted from a trusted source (an
+  enterprise-SSO `email`, …) must not be able to 500 a read.
+  `UpdateMeSchema.timezone` is the deliberate exception: it carries the `Intl`
+  `.refine()` (P6) because a `PATCH` body is a real client ingress.
 
 ### Open
 

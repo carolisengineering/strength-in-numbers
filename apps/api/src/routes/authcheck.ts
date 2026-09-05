@@ -10,7 +10,9 @@ import type { FastifyInstance } from "fastify";
 export function registerAuthcheckRoute(app: FastifyInstance): void {
   app.get(
     "/_authcheck",
-    { config: { skipProvisioning: true } },
+    // `hide: true` — smoke-only probe, kept out of the published contract
+    // (Spec 03.0 §5, AC4).
+    { config: { skipProvisioning: true }, schema: { hide: true } },
     async (request) => {
       const auth = request.auth!;
       return {
