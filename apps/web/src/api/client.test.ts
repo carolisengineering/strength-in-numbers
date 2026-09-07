@@ -74,6 +74,21 @@ describe("request plumbing", () => {
     expect(body).toEqual({ displayName: "Sam" });
   });
 
+  it("rejects a non-serializable body with an ApiError, not a raw TypeError", async () => {
+    const circular: Record<string, unknown> = {};
+    circular["self"] = circular;
+
+    const error = (await makeClient()
+      .patch("/v1/me", circular)
+      .catch((e: unknown) => e)) as ApiError;
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(0);
+    expect(error.title).toBe("Invalid request body");
+    expect(error.isNetworkError).toBe(false);
+    expect(error.requestId).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
   it("parses a 2xx body through the supplied schema", async () => {
     const Me = z.object({ id: z.string() });
     server.use(

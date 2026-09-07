@@ -95,7 +95,22 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     let payload: string | undefined;
     if (options_.body !== undefined) {
       headers.set("Content-Type", "application/json");
-      payload = JSON.stringify(options_.body);
+      try {
+        payload = JSON.stringify(options_.body);
+      } catch (cause) {
+        // A non-serializable body (BigInt, circular ref). `ApiError` is the one
+        // type every client call rejects with, so surface it as one rather than
+        // a raw TypeError the UI's `instanceof ApiError` branches would miss.
+        throw new ApiError({
+          status: 0,
+          type: "about:blank",
+          title: "Invalid request body",
+          detail: "The request body could not be serialized to JSON.",
+          requestId,
+          isNetworkError: false,
+          cause,
+        });
+      }
     }
 
     try {

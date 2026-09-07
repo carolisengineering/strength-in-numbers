@@ -47,8 +47,8 @@ for (const [, attrs, body] of scriptTags) {
   assert(body.trim() === "", "<script> tag has no inline body");
 }
 assert(
-  !/<script\b[^>]*\/\s*>/i.test(html) || scriptTags.length > 0,
-  "no self-closing <script> shorthand hiding an inline import",
+  !/<script\b[^>]*\/\s*>/i.test(html),
+  "no self-closing <script/> shorthand (HTML parses it as an open tag, so it can swallow following markup as an inline body)",
 );
 
 // ── 1b. no inline <style> ──────────────────────────────────────────────────

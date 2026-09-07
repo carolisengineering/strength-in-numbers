@@ -182,6 +182,24 @@ describe("AC4 — session-resume bridge (routing)", () => {
     expect(auth.state.loginWithRedirect).not.toHaveBeenCalled();
   });
 
+  it("?signin suppresses the auto-resume even with the hint cookie set (stale-cookie escape hatch)", async () => {
+    document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+
+    renderAt(["/?signin"]);
+
+    expect(await screen.findByTestId("landing")).toBeInTheDocument();
+    expect(auth.state.loginWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("ResumingSession offers a Go to sign in link to /?signin", async () => {
+    document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+
+    renderAt(["/"]);
+
+    const link = await screen.findByRole("link", { name: /go to sign in/i });
+    expect(link).toHaveAttribute("href", "/?signin");
+  });
+
   it("sends an already-authenticated visitor of / straight to /app", async () => {
     auth.state.isAuthenticated = true;
 
@@ -205,7 +223,7 @@ describe("AC6 — callback completes or fails cleanly", () => {
     expect(router.state.location.search).toBe("");
   });
 
-  it("shows AuthError on ?error= and Try again returns to /", async () => {
+  it("shows AuthError on ?error= and Try again returns to /?signin", async () => {
     const { router } = renderAt([
       "/callback?error=access_denied&error_description=Access%20denied",
     ]);
@@ -218,6 +236,7 @@ describe("AC6 — callback completes or fails cleanly", () => {
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(router.state.location.search).toBe("?signin");
   });
 
   it("renders AuthError from a useAuth0().error", () => {

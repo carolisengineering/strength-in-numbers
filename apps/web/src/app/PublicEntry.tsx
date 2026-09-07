@@ -1,6 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useRef } from "react";
-import { Navigate, useLocation } from "react-router";
+import { Navigate, useLocation, useSearchParams } from "react-router";
 
 import { hasAuth0Session } from "../auth/authHint";
 import { login } from "../auth/login";
@@ -26,13 +26,24 @@ function returnToOf(state: unknown): string {
  *   an immediate `loginWithRedirect`, carrying `returnTo` (from router state on
  *   a deep unauth entry) so the round-trip lands back where the user started.
  * - no session, no cookie → `<Landing/>`; no redirect, no `/v1` call.
+ *
+ * `?signin` escape hatch: the Auth0 hint cookie (`auth0.{clientId}.is.authenticated`)
+ * outlives the server-side SSO session and is only cleared on explicit logout, so
+ * a stale cookie would otherwise trap the user in an auto-redirect loop when the
+ * SSO session is gone (cancel at Universal Login → `<AuthError/>` → back to `/` →
+ * redirect again). `AuthError` / `ResumingSession` send the user to `/?signin`,
+ * which suppresses the auto-resume for that visit and shows `<Landing/>` with its
+ * explicit "Log in" control.
  */
 export function PublicEntry() {
   const { isAuthenticated, loginWithRedirect } = useAuth0();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const returnTo = returnToOf(location.state);
 
-  const resuming = !isAuthenticated && hasAuth0Session();
+  const resumeSuppressed = searchParams.has("signin");
+  const resuming =
+    !isAuthenticated && !resumeSuppressed && hasAuth0Session();
   const redirected = useRef(false);
 
   useEffect(() => {
