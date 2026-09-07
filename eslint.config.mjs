@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 const nodeGlobals = {
@@ -10,6 +11,38 @@ const nodeGlobals = {
   clearTimeout: "readonly",
   fetch: "readonly",
   __dirname: "readonly",
+};
+
+// apps/web runs in the browser — the first non-Node code in the repo
+// (Spec 04.0 §6.1).
+const browserGlobals = {
+  window: "readonly",
+  document: "readonly",
+  navigator: "readonly",
+  location: "readonly",
+  history: "readonly",
+  fetch: "readonly",
+  Headers: "readonly",
+  Request: "readonly",
+  Response: "readonly",
+  AbortController: "readonly",
+  AbortSignal: "readonly",
+  crypto: "readonly",
+  console: "readonly",
+  localStorage: "readonly",
+  sessionStorage: "readonly",
+  setTimeout: "readonly",
+  clearTimeout: "readonly",
+  setInterval: "readonly",
+  clearInterval: "readonly",
+  queueMicrotask: "readonly",
+  structuredClone: "readonly",
+  URL: "readonly",
+  URLSearchParams: "readonly",
+  Element: "readonly",
+  HTMLElement: "readonly",
+  Node: "readonly",
+  MutationObserver: "readonly",
 };
 
 export default tseslint.config(
@@ -32,5 +65,24 @@ export default tseslint.config(
     files: ["**/*.mjs", "**/*.js"],
     languageOptions: { globals: nodeGlobals },
     rules: { "no-console": "off" },
+  },
+  // apps/web — browser globals, JSX, and the React Hooks rules (Spec 04.0
+  // §6.1 / §7 / §10). Picked up by the root `pnpm run lint` (`eslint .`).
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    languageOptions: {
+      globals: { ...browserGlobals },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
+  // apps/web config files run in Node at build/test time.
+  {
+    files: ["apps/web/*.{ts,mts,cts}"],
+    languageOptions: { globals: { ...nodeGlobals, importMeta: "readonly" } },
   },
 );

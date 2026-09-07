@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.3 — all open questions Q1–Q9 resolved; consistency pass done
-**Last updated:** 2026-08-31 (§8.2: CORS policy added, from Spec 01 review)
+**Status:** Draft v0.4 — decisions Q1–Q12 resolved; consistency pass done
+**Last updated:** 2026-09-05 (§3.2/§5.1/§7/§8.2/§9 + Q10–Q12 added, from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -124,7 +124,7 @@ flow), editing individual sets of a finished workout, plate calculator, standalo
 
 | Concern | Choice | Why | Alternatives considered |
 |---|---|---|---|
-| Web client (v1, sole client) | **React SPA** — Vite + TypeScript, client-only, deployed as static assets. Router: React Router (or TanStack Router). Data layer: TanStack Query. | Whole app is behind auth → SSR/SEO unused. Cleanest architecture (static client + typed API + shared `core`), cheapest hosting, and the knowledge + code transfer almost 1:1 to a future React Native client (§3.4). Smallest concept surface for a developer newer to frontend to learn React fundamentals cleanly. Built mobile-first responsive so a phone browser is a first-class gym client. | **Next.js** — adds a server tier and framework-specific concepts (server vs client components, SSR) that are unused behind auth and do not transfer to React Native; reserved for the marketing site (see §9 GA). **Remix / TanStack Start** — same SSR tradeoff. |
+| Web client (v1, sole client) | **React SPA** — Vite + TypeScript, client-only, deployed as static assets. Router: React Router (library mode). Data layer: TanStack Query. Styling: CSS Modules + CSS custom-property design tokens, no CSS framework (Q11). Browser access/refresh tokens are held in memory only (Q12). | Whole app is behind auth → SSR/SEO unused. Cleanest architecture (static client + typed API + shared `core`), cheapest hosting, and the knowledge + code transfer almost 1:1 to a future React Native client (§3.4). Smallest concept surface for a developer newer to frontend to learn React fundamentals cleanly. Built mobile-first responsive so a phone browser is a first-class gym client. | **Next.js** — adds a server tier and framework-specific concepts (server vs client components, SSR) that are unused behind auth and do not transfer to React Native; reserved for the marketing site (see §9 GA). **Remix / TanStack Start** — same SSR tradeoff. |
 | Future mobile client (post-v1) | **React Native** (Expo) when the time comes | Reuses `packages/core` and the same REST API unchanged; closest skill transfer from React web; single codebase for iOS + Android. | Native Swift + Kotlin (2× cost); Flutter (no code-share with a React web app). Decision deferred, not made. |
 | Shared code | **`packages/core`** — framework-agnostic TypeScript: DTO types, Zod schemas, API client, units + estimated-1RM + volume + PR math. **No React, no DOM, no Node-only APIs.** | One implementation of the domain rules, importable by the web app today and a React Native app later with zero changes. This purity constraint is what makes "mobile later" cheap — see §3.4. | Duplicating logic per platform (drift risk); putting logic in the API only (clients re-implement for instant feedback). |
 | Backend | **Single stateless API service**, Node + TypeScript, **Fastify**, containerised. | Same language as both clients → domain math in `packages/core` is written and tested once. One toolchain for a solo developer. Fastify keeps Node fundamentals visible rather than hiding them behind framework abstractions. Also a deliberate learning/portfolio goal (§1.4). | **Go** (developer's existing language) — rejected because it forces the e1RM/PR math into a second implementation and adds a language context-switch for a solo dev. **NestJS** — more job-description keyword coverage and enforced structure, but adds DI/decorator/module concepts to learn on top of Node/TS itself; revisit only if the project sprawls. **Rails / Elixir** — no prior experience, no code-share. |
@@ -358,8 +358,12 @@ URL.
 
 The web app runs the **Auth0** Authorization Code + PKCE flow
 (`@auth0/auth0-react`), receiving a short-lived access token (JWT) plus refresh
-token; a future React Native app uses `react-native-auth0` against the same
-tenant. The access token carries an `audience` identifying our API. The API
+token — both held **in memory only** in the browser (`cacheLocation: 'memory'`,
+refresh-token rotation on), never in `localStorage` / `sessionStorage` / a
+readable cookie; a cold page load re-establishes the session with a silent
+redirect against the still-valid Auth0 session cookie (Spec 04.0 §7, Q12). A
+future React Native app uses `react-native-auth0` against the same tenant. The
+access token carries an `audience` identifying our API. The API
 validates every request's JWT against Auth0's cached JWKS (issuer + audience +
 expiry checked); no server-side session store. First request for an unknown `sub`
 provisions a `user` row. Authorization in v1 is simply "row belongs to `user_id`"
@@ -490,8 +494,8 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 | Area | Approach |
 |---|---|
 | Repo | Monorepo: `apps/api`, `apps/web`, `packages/core`. pnpm workspaces. Added later without restructuring: `apps/marketing` (Next.js, at GA), `apps/mobile` (React Native), `infra/` (CDK or Terraform, phase 2). |
-| CI | Lint + typecheck + unit tests on every PR; `packages/core` purity check (no React / DOM / Node-only imports); OpenAPI 3.1 document re-emitted from the `packages/core` Zod DTOs and drift-checked (`git diff --exit-code`, no codegen — Spec 03.0); migration dry-run against a throwaway DB. |
-| CD (v1) | Render blueprint (`render.yaml`). Merge to `main` → auto-deploy `staging`; git tag → promote the same API image + web build to `production`. Web app is a Render static site (CDN-fronted). |
+| CI | Lint + typecheck + unit tests on every PR; `packages/core` purity check (no React / DOM / Node-only imports); OpenAPI 3.1 document re-emitted from the `packages/core` Zod DTOs and drift-checked (`git diff --exit-code`, no codegen — Spec 03.0); web app (`@sin/web`) lint + typecheck + Vitest/RTL unit + production `vite build` + a `render.yaml` CSP/header assertion (Spec 04.0); migration dry-run against a throwaway DB. |
+| CD (v1) | Render blueprint (`render.yaml`). Merge to `main` → auto-deploy `staging`; git tag → promote the same API image + web build to `production`. Web app is a Render static site (CDN-fronted, Node 22 build) with a SPA fallback (`/* → /index.html`) and a CSP + security headers set in `render.yaml` (Spec 04.0 §11). |
 | CD (phase 2) | GitHub Actions: build image → push to ECR → roll the ECS service. `infra/` applied via CI. |
 | Migrations | Prisma Migrate; expand-contract, never destructive in a single release; run as a release step, not on app boot. |
 | Secrets / config | Render env groups in v1; SSM Parameter Store in phase 2. Nothing in the repo; per-environment. |
@@ -531,6 +535,18 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   a wildcard or reflected `Origin`; tokens travel in the `Authorization` header,
   not cookies, so credentialed CORS stays off. Configured in the API from M0
   (Spec 01 §5.5).
+- The SPA is served with a strict `Content-Security-Policy` (`default-src 'self'`;
+  `script-src 'self'` with no `unsafe-eval` / `unsafe-inline` / `blob:`;
+  `connect-src` limited to the API and Auth0 origins; `frame-src` the Auth0 origin;
+  `base-uri 'none'`; `object-src 'none'`; `frame-ancestors 'none'`) plus
+  `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` — Spec 04.0
+  §7. Keeping `script-src` at `'self'` needs two build choices: the module-preload
+  polyfill is disabled (`build.modulePreload.polyfill = false`, so Vite emits no
+  inline script), and Auth0's in-memory refresh-token Web Worker is **self-hosted**
+  as a same-origin file (`workerUrl` → a copied `auth0-spa-js.worker.production.js`)
+  instead of its default `blob:` worker.
+  CSP is the primary XSS control; the in-memory-token choice (Q12) is defence in
+  depth behind it. **CSP + web security headers are owned by Spec 04.0.**
 - Signed, short-TTL URLs for all bucket access; no public objects.
 - Deferred hardening items from security reviews are tracked in
   [`security-backlog.md`](security-backlog.md) (e.g. log-redaction depth, DB cert
@@ -566,12 +582,13 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01 + 04 · M1 = 02, 03.0, 03.1, 03.2, 05, 06 · M2 = 07, 08 · M3 = 09, 10 ·
-  M4 = 11–13 · GA = 14 · Phase 2 = 15.
+  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 05, 06 · M2 = 07, 08 ·
+  M3 = 09, 10 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
+  foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
 |---|---|---|
-| **M0 — Skeleton** (Spec 01) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check, Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks. Backend only — the browser login flow is Spec 04. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. |
+| **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
 | **M2 — History & progress** | History list + detail; per-exercise charts (top set, est-1RM, volume); PR detection + finish-screen summary. | Progress numbers reconciled by hand for 10 sessions. |
 | **M3 — Routines + supersets** | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — bracketed display + one rest timer per group. | — |
@@ -599,7 +616,8 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.3. Kept here with rationale so the "why" survives.
+All resolved as of v0.4 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1). Kept here
+with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
   Prisma.** Driven by (a) code-share of domain math with both clients for a solo
@@ -641,6 +659,41 @@ All resolved as of v0.3. Kept here with rationale so the "why" survives.
 - **Q9 — Timeline.** ✅ **Resolved: bursty / unpredictable.** No calendar dates;
   plan by milestone completion; every milestone from M1 on is independently
   shippable and usable so gaps between work sessions are safe. See §9.
+- **Q10 — SPA router & data layer.** ✅ **Resolved: React Router v7 in library
+  mode (`createBrowserRouter`) + TanStack Query.** Firms up §3.2's "React Router
+  (or TanStack Router)" hedge. React Router is the most widely used option
+  (community, docs, job-market signal) and library mode is a small API surface
+  for a developer learning React; TanStack Router's codegen'd typed routes add
+  tooling for little v1 payoff. TanStack Query for server-state caching is
+  unchanged from §3.2. See Spec 04.0 §6, §12 Q10.
+- **Q11 — SPA styling.** ✅ **Resolved: CSS Modules + CSS custom-property design
+  tokens; no CSS framework in v1.** A `tokens.css` on `:root` is the design
+  system; `*.module.css` gives locally-scoped styles with zero runtime and no
+  naming convention to maintain, and the "styles are data" model ports to a
+  future React Native `StyleSheet`. Tailwind (productivity + market signal) was
+  the main alternative but is a second styling language layered on CSS, and the
+  same "smallest concept surface for learning" logic that chose Fastify over Nest
+  and SPA over Next applies. Revisit only if styling velocity is a measured
+  bottleneck. See Spec 04.1 §6, §12 Q11.
+- **Q12 — Browser token storage.** ✅ **Resolved: in memory only**
+  (`@auth0/auth0-spa-js` `cacheLocation: 'memory'` + refresh-token rotation);
+  no tokens in `localStorage` / `sessionStorage` / a readable cookie. Rationale:
+  training + body-weight data is sensitive PII (§8.2) and a persisted refresh
+  token is the highest-value target for an XSS bug — memory-only means there is
+  no long-lived credential to exfiltrate and closing the tab ends the exposure.
+  Cost: a full-page redirect to re-establish a session on a cold load / hard
+  reload — silent when the Auth0 session cookie is still valid (no credential
+  re-entry, ~1s). CSP is the primary XSS control (§8.2); this is defence in depth.
+  How the cold load degrades is settled in Spec 04.0 §12:
+  **`useRefreshTokensFallback: false`** (one deterministic redirect path — the
+  hidden-iframe fallback cannot succeed on the mobile-majority Safari/Firefox
+  anyway); a **session-resume bridge** on public routes (an `is.authenticated`
+  hint cookie → a "Resuming your session…" screen + immediate redirect, instead
+  of a `Landing` bounce); and an **accepted known limitation** — an OS-evicted
+  background tab still costs a cold-load redirect mid-session, with local session
+  persistence (the R1 offline mitigation, M4) as the full fix. Revisit the storage
+  choice itself only if that cost proves frequent in real use, and then only
+  paired with a tightened CSP. See Spec 04.0 §6.8 / §7 / §12.
 
 ---
 

@@ -49,6 +49,34 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
       - run: pnpm run test:unit
 
+  web:
+    name: web (@sin/web — typecheck · test · build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # @sin/web imports @sin/core by package name (MeSchema in useMe.ts); its
+      # built `dist` must exist before typecheck / test / vite build — same as
+      # the `check` job does for @sin/api (Spec 04.0 §7 / AC16).
+      - run: pnpm --filter @sin/core run build
+      - run: pnpm --filter @sin/web run typecheck
+      # Coverage variant so the Spec 04.0 §10 gates (`src/api/**` +
+      # `src/auth/**` >= 90% lines) actually fail the job. Lint for apps/web is
+      # covered by the root `pnpm run lint` in the `check` job.
+      - run: pnpm --filter @sin/web run test:coverage
+      - run: pnpm --filter @sin/web run build
+      # AC1 — the built dist is CSP-clean and @sin/core resolved into the bundle.
+      - run: node apps/web/scripts/assert-build-output.mjs
+      # AC14 — render.yaml ships the strict CSP + security headers.
+      - run: node apps/web/scripts/assert-render-yaml.mjs
+
   integration:
     name: integration (Testcontainers Postgres)
     runs-on: ubuntu-latest
@@ -79,7 +107,7 @@ jobs:
 
   smoke:
     name: post-deploy smoke (staging)
-    needs: [check, integration, docker]
+    needs: [check, web, integration, docker]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -101,3 +129,9 @@ jobs:
           AUTH0_M2M_CLIENT_ID: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_ID }}
           AUTH0_M2M_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_SECRET }}
           AUTH0_M2M_AUDIENCE: https://api.strengthinnumbers.app
+      # TODO(Track B): once the Render `si-web-staging` static site exists, add
+      # the web post-deploy smoke here (Spec 04.0 AC15/AC17):
+      #   - run: node apps/web/scripts/smoke.mjs
+      #     env:
+      #       WEB_SMOKE_BASE_URL: ${{ vars.STAGING_WEB_BASE_URL }}
+      # Left out until then so merges to main don't fail against a nonexistent host.
