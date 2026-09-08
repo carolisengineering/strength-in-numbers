@@ -220,7 +220,10 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   `image_key` is a reserved post-v1 addition.
 - **muscle_group**, **equipment** — small reference tables driving filters.
   `TEXT` natural-code primary keys (`chest`, `barbell`) so they read directly in
-  API payloads (Spec 03.1).
+  API payloads (Spec 03.1). These codes are **immutable once shipped** — never
+  removed or renamed in place (no `is_active` column here, and `exercise` rows
+  reference them by value); retiring one is a deliberate data migration
+  (add the new code, migrate referencing rows, drop the old).
 
 Rules:
 
@@ -380,16 +383,28 @@ caller-visible set — global rows **plus that user's custom rows** — from a s
 `GET /v1/exercises` on first launch and caches it locally, keyed by `id`. Later
 refreshes are incremental (Spec 03.1):
 
-- `If-None-Match` with the stored strong `ETag` (computed over catalog content
-  only) → `304` when nothing changed;
+- `If-None-Match` with the stored strong `ETag` (computed over the serialized
+  catalog content **and the `updated_since` cursor**, so a delta can't collide
+  with an earlier full pull) → `304` when nothing changed;
 - `?updated_since=<serverTime>` → only rows changed since, **including** rows
   retired since (flagged `is_active = false`) so the client drops them;
-- every response carries `serverTime` (the DB clock), which the client stores and
-  sends as the next `updated_since`.
+- every response carries `serverTime`, which the client stores and sends as the
+  next `updated_since`. It is **derived from the catalog's own last-revision
+  timestamp**, not the server wall clock: `MAX(updated_at)` (over all visible
+  rows on a full pull, or `GREATEST(updated_since, MAX over the returned rows)` on
+  a delta), clamped by `LEAST(transaction_timestamp(), …)` and truncated **down**
+  to whole milliseconds. No precision margin — truncating down can only put the
+  cursor at or behind the true value, and the `LEAST` clamp means a client-sent
+  future/skewed cursor is clamped to server-now rather than echoed forward. A
+  read that can't yet see an in-flight seed also can't see its `updated_at`, so
+  the cursor never runs ahead of the data. The client always overwrites its
+  stored cursor with the received value (never `max`).
 
 The reference tables (`muscle_group`, `equipment`) are served by their own
-`ETag`d endpoints. Curated catalog data is authored as checked-in JSON and loaded
-by an idempotent, append-only seed run as a release step.
+`ETag`d endpoints; their natural-code IDs are immutable once shipped. Curated
+catalog data is authored as checked-in JSON and loaded by an idempotent,
+append-only seed run as a release step — a **manual** step for M1/staging (Render
+free has no pre-deploy hook), automated with the paid plan.
 
 ### 5.3 Logging & connectivity
 
