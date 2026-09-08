@@ -6,10 +6,9 @@
  * specific id is expected, until it goes through `parse`. Zero runtime cost;
  * catches "passed the wrong id" bugs once several id params sit together.
  *
- * Spec 02 ships the mechanism plus `UserId` (the only id this package can define
- * yet). Every later spec adds its own the same way, e.g.
- *
- *   const { parse: parseExerciseId } = brandId("ExerciseId");
+ * Spec 02 shipped the mechanism plus `UserId`; Spec 03.1 adds `ExerciseId`.
+ * Every later spec adds its own the same way — one `brandId(name)` call plus the
+ * four re-exports at the bottom of this file.
  *
  * Validation is `z.guid()` — the lenient 8-4-4-4-12 hex shape, matching Zod 3's
  * old `z.string().uuid()`. We deliberately do NOT use Zod 4's `z.uuid()`, which
@@ -44,3 +43,10 @@ export const UserIdSchema = userId.schema;
 export type UserId = z.infer<typeof UserIdSchema>;
 export const parseUserId = userId.parse;
 export const isUserId = userId.is;
+
+const exerciseId = brandId("ExerciseId");
+
+export const ExerciseIdSchema = exerciseId.schema;
+export type ExerciseId = z.infer<typeof ExerciseIdSchema>;
+export const parseExerciseId = exerciseId.parse;
+export const isExerciseId = exerciseId.is;
