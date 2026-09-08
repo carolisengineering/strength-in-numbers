@@ -1,4 +1,7 @@
-// Spec 01 §4 — this spec owns the `user` table only.
+// Spec 01 §4 owns `user`; Spec 03.1 §4 adds `exercise` / `muscle_group` /
+// `equipment`. The migration SQL is hand-authored — the partial unique index on
+// `exercise.catalog_key` (WHERE owner_user_id IS NULL) and the `modality` CHECK
+// are not expressible here, so these models carry the client shape only.
 
 generator client {
   provider = "prisma-client-js"
@@ -21,6 +24,60 @@ model User {
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
 
+  // Spec 03.1: back-reference for `exercise.owner_user_id` (Prisma requires both
+  // sides of a relation). No column on `user`; purge cascades via the FK.
+  customExercises Exercise[]
+
   @@index([email], map: "user_email_idx")
   @@map("user")
+}
+
+// Spec 03.1 §4 — exercise catalog. Curated rows have `ownerUserId = null` and a
+// unique `catalogKey`; custom rows (Spec 03.2) set `ownerUserId` and leave
+// `catalogKey` null. `isActive = false` rows are tombstones returned only in an
+// `updated_since` delta (§6.1).
+model Exercise {
+  id                 String       @id @db.Uuid // app-generated UUIDv7
+  catalogKey         String?      @map("catalog_key") // kebab-case; null for custom rows
+  ownerUserId        String?      @map("owner_user_id") @db.Uuid // null = global/curated
+  owner              User?        @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name               String
+  modality           String // CHECK ('weight_reps', ...) — literal list in the migration
+  primaryMuscleId    String?      @map("primary_muscle_id")
+  primaryMuscle      MuscleGroup? @relation(fields: [primaryMuscleId], references: [id], onDelete: Restrict)
+  secondaryMuscleIds String[]     @default([]) @map("secondary_muscle_ids") // muscle_group ids, authoring order
+  equipmentId        String?      @map("equipment_id")
+  equipment          Equipment?   @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  isActive           Boolean      @default(true) @map("is_active")
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId], map: "exercise_owner_idx")
+  @@index([updatedAt], map: "exercise_updated_at_idx")
+  @@map("exercise")
+}
+
+// Reference table — natural-code PK (`chest`, `lats`). Seed-only; codes are
+// immutable once shipped (Spec 03.1 D3 / §6.3).
+model MuscleGroup {
+  id           String     @id // natural code
+  name         String
+  displayOrder Int        @default(0) @map("display_order") @db.SmallInt
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
+  exercises    Exercise[]
+
+  @@map("muscle_group")
+}
+
+// Reference table — natural-code PK (`barbell`, `dumbbell`). Seed-only; immutable.
+model Equipment {
+  id           String     @id // natural code
+  name         String
+  displayOrder Int        @default(0) @map("display_order") @db.SmallInt
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
+  exercises    Exercise[]
+
+  @@map("equipment")
 }
