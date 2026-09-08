@@ -201,7 +201,9 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
   it("excludes /v1/_authcheck, /healthz, /readyz, /openapi.json and any servers block", async () => {
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
-    expect(Object.keys(doc.paths)).toEqual(["/v1/me"]);
+    expect(new Set(Object.keys(doc.paths))).toEqual(
+      new Set(["/v1/me", "/v1/exercises"]),
+    );
     expect(doc.paths).not.toHaveProperty("/v1/_authcheck");
     expect(doc.paths).not.toHaveProperty("/healthz");
     expect(doc.paths).not.toHaveProperty("/readyz");

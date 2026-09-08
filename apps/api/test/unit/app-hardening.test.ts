@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import { pino } from "pino";
 import { buildApp } from "../../src/app.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
-import { authContext, fakeVerifier, FakeUserRepository } from "../helpers/fakes.js";
+import {
+  authContext,
+  fakeVerifier,
+  FakeExerciseRepository,
+  FakeUserRepository,
+} from "../helpers/fakes.js";
 
 describe("buildApp logger wiring", () => {
   it("accepts a pre-built pino instance (Fastify v5 loggerInstance)", async () => {
@@ -12,6 +17,7 @@ describe("buildApp logger wiring", () => {
       checkReadiness: async () => {},
       tokenVerifier: fakeVerifier(() => authContext()),
       userRepository: new FakeUserRepository(),
+      exerciseRepository: new FakeExerciseRepository(),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);

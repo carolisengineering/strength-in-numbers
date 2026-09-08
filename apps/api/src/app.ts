@@ -17,6 +17,7 @@ import { requestContextPlugin } from "./plugins/request-context.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
+import type { ExerciseRepository } from "./repositories/exercise.js";
 
 /**
  * Fastify application assembly (Spec 01 §5.5, §6).
@@ -69,6 +70,7 @@ export interface BuildAppDeps extends AuthPluginDeps {
   /** Resolves when ready to take traffic; rejects otherwise (Spec 01 §5). */
   checkReadiness: () => Promise<void>;
   readinessTtlMs?: number;
+  exerciseRepository: ExerciseRepository;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -188,7 +190,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         tokenVerifier: deps.tokenVerifier,
         userRepository: deps.userRepository,
       });
-      registerV1Routes(v1, { userRepository: deps.userRepository });
+      registerV1Routes(v1, {
+        userRepository: deps.userRepository,
+        exerciseRepository: deps.exerciseRepository,
+      });
     },
     { prefix: "/v1" },
   );

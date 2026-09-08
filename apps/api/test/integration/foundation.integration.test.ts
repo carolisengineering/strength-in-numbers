@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import {
@@ -47,6 +48,7 @@ describe.skipIf(!shouldRunIntegration())(
           authContext({ authSub: sub, email: `${sub}@ex.com` }),
         ),
         userRepository: createUserRepository(db.prisma),
+        exerciseRepository: createExerciseRepository(db.prisma),
       });
 
     it("first GET /v1/me inserts exactly one row; isNewUser true then false (Criterion 7)", async () => {
@@ -133,6 +135,7 @@ describe.skipIf(!shouldRunIntegration())(
         readinessTtlMs: 0,
         tokenVerifier: fakeVerifier(() => authContext()),
         userRepository: createUserRepository(db.prisma),
+        exerciseRepository: createExerciseRepository(db.prisma),
       });
       const up = await app.inject({ method: "GET", url: "/readyz" });
       expect(up.statusCode).toBe(200);

@@ -15,6 +15,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import type { TokenVerifier } from "../src/auth/verify.js";
 import type { UserRepository } from "../src/repositories/user.js";
+import type { ExerciseRepository } from "../src/repositories/exercise.js";
 
 const OUTPUT_PATH = fileURLToPath(new URL("../../../openapi.json", import.meta.url));
 
@@ -27,6 +28,11 @@ const inertVerifier: TokenVerifier = {
 const inertRepository = new Proxy({} as UserRepository, {
   get() {
     throw new Error("user repository is not used during OpenAPI emit");
+  },
+});
+const inertExerciseRepository = new Proxy({} as ExerciseRepository, {
+  get() {
+    throw new Error("exercise repository is not used during OpenAPI emit");
   },
 });
 
@@ -47,6 +53,7 @@ async function main(): Promise<void> {
     checkReadiness: async () => {},
     tokenVerifier: inertVerifier,
     userRepository: inertRepository,
+    exerciseRepository: inertExerciseRepository,
   });
   await app.ready();
   const doc = app.swagger();
