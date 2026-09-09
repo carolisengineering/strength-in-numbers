@@ -1,3 +1,4 @@
+import { isExerciseId } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import type {
   ProfilePatch,
@@ -160,7 +161,9 @@ export class FakeExerciseRepository implements ExerciseRepository {
     id: string,
   ): Promise<ExerciseRecord> {
     this.lastActingUserId = actingUserId;
-    const row = this.byId.get(id);
+    // Mirrors the Prisma implementation: a non-UUID is "not found", never a throw
+    // from the driver.
+    const row = isExerciseId(id) ? this.byId.get(id) : undefined;
     if (!row) throw new NotFoundError("exercise not found");
     return row;
   }

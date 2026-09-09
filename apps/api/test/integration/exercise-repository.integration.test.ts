@@ -16,7 +16,7 @@ import {
  * orders locale-independently.
  */
 describe.skipIf(!shouldRunIntegration())(
-  "Exercise repository — integration (real Postgres)",
+  "AC5 — exercise repository visibility + ordering (integration, real Postgres)",
   () => {
     let db: IntegrationDb;
     let repo: ExerciseRepository;

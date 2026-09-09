@@ -89,8 +89,24 @@ export type ExercisesResponseBody = z.infer<typeof ExercisesResponse>;
  * `GET /v1/exercises` query string. A malformed `updated_since` surfaces as
  * `422 validation-error` through the Spec 03.0 Zod error mapping.
  */
+/**
+ * `z.iso.datetime` admits year `0000` and offsets up to `±23:59`; Postgres
+ * `timestamptz` rejects both (`time zone displacement out of range` beyond
+ * `±15:59`, and there is no year 0). Refining here keeps such cursors a `422`
+ * rather than a `500` from the `::timestamptz` cast.
+ */
+export const isPostgresTimestamptz = (s: string): boolean => {
+  if (s.startsWith("0000-")) return false;
+  const offset = /([+-])(\d{2}):(\d{2})$/.exec(s);
+  if (!offset) return true; // `Z`
+  return Number(offset[2]) <= 15;
+};
+
 export const UpdatedSinceQuery = z.object({
-  updated_since: z.iso.datetime({ offset: true }).optional(),
+  updated_since: z.iso
+    .datetime({ offset: true })
+    .refine(isPostgresTimestamptz, "timestamp out of range")
+    .optional(),
 });
 export type UpdatedSinceQueryInput = z.infer<typeof UpdatedSinceQuery>;
 

@@ -1,5 +1,6 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import { z } from "zod";
 import {
   ExercisesResponse,
   UpdatedSinceQuery,
@@ -7,7 +8,7 @@ import {
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
-import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/exercises` (+ the Fastify-generated `HEAD`) — the caller-visible
@@ -68,7 +69,7 @@ export function registerExerciseRoutes(
     {
       schema: {
         querystring: UpdatedSinceQuery,
-        response: { 200: ExercisesResponse },
+        response: { 200: ExercisesResponse, 304: z.undefined() },
       },
     },
     async (request, reply) => {
@@ -86,13 +87,13 @@ export function registerExerciseRoutes(
       const etag = catalogEtag(updatedSince ?? "full", exercises);
 
       reply.header("cache-control", "private, no-cache");
-      reply.header("vary", "Authorization");
+      addVary(reply, "Authorization");
       reply.header("etag", etag);
 
       if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
         // 304 carries no body; step outside the type provider's 200-payload
         // narrowing to send an empty response.
-        (reply as FastifyReply).code(304).send();
+        reply.code(304).send();
         return reply;
       }
 

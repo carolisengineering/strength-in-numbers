@@ -91,7 +91,7 @@ describe.each([
     expect(res.statusCode).toBe(200);
     expect(res.headers.etag).toMatch(/^"[0-9a-f]{32}"$/);
     expect(res.headers["cache-control"]).toBe("private, no-cache");
-    expect(res.headers.vary).toBe("Authorization");
+    expectVaryTokens(res.headers.vary);
   });
 
   it("If-None-Match match → 304, empty body, ETag + cache headers", async () => {
@@ -108,7 +108,7 @@ describe.each([
     expect(second.body).toBe("");
     expect(second.headers.etag).toBe(etag);
     expect(second.headers["cache-control"]).toBe("private, no-cache");
-    expect(second.headers.vary).toBe("Authorization");
+    expectVaryTokens(second.headers.vary);
   });
 
   it("a table change produces a different ETag and a 200 (not 304)", async () => {
@@ -130,6 +130,14 @@ describe.each([
     expect(after.headers.etag).not.toBe(before.headers.etag);
   });
 });
+
+
+/** `Vary` must carry the CORS plugin's `Origin` *and* our `Authorization`. */
+function expectVaryTokens(vary: unknown): void {
+  const tokens = String(vary).split(",").map((t) => t.trim().toLowerCase());
+  expect(tokens).toContain("origin");
+  expect(tokens).toContain("authorization");
+}
 
 describe("reference endpoints — cross-endpoint ETag isolation (AC8)", () => {
   it("an identical row list on the two endpoints yields different ETags", async () => {

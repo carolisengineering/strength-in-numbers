@@ -16,7 +16,7 @@ import {
  * future-cursor clamp.
  */
 describe.skipIf(!shouldRunIntegration())(
-  "Exercise delta + serverTime — integration (real Postgres)",
+  "AC6 — exercise delta + serverTime (integration, real Postgres)",
   () => {
     let db: IntegrationDb;
     let repo: ExerciseRepository;

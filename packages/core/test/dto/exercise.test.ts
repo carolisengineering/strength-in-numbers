@@ -138,6 +138,23 @@ describe("catalog DTOs (Spec 03.1 §5)", () => {
     ).toThrow();
   });
 
+  it("UpdatedSinceQuery rejects Zod-valid cursors Postgres cannot cast (year 0000, offset > ±15:59)", () => {
+    for (const bad of [
+      "0000-01-01T00:00:00Z",
+      "2026-01-01T00:00:00+16:00",
+      "2026-01-01T00:00:00-23:59",
+    ]) {
+      expect(UpdatedSinceQuery.safeParse({ updated_since: bad }).success, bad).toBe(false);
+    }
+    for (const ok of [
+      "2026-01-01T00:00:00Z",
+      "2026-01-01T00:00:00.123+15:59",
+      "2026-01-01T00:00:00-05:00",
+    ]) {
+      expect(UpdatedSinceQuery.safeParse({ updated_since: ok }).success, ok).toBe(true);
+    }
+  });
+
   it("UpdatedSinceQuery treats updated_since as optional, rejects a non-datetime", () => {
     expect(UpdatedSinceQuery.parse({})).toEqual({});
     expect(

@@ -77,6 +77,9 @@ const EXPECTED = [
   "EquipmentSchema",
   "ExercisesResponse",
   "UpdatedSinceQuery",
+  "isPostgresTimestamptz",
+  "MuscleGroupsResponse",
+  "EquipmentResponse",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

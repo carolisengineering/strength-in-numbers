@@ -23,6 +23,14 @@ const DTO_KEYS = [
   "updatedAt",
 ].sort();
 
+
+/** `Vary` must carry the CORS plugin's `Origin` *and* our `Authorization`. */
+function expectVaryTokens(vary: unknown): void {
+  const tokens = String(vary).split(",").map((t) => t.trim().toLowerCase());
+  expect(tokens).toContain("origin");
+  expect(tokens).toContain("authorization");
+}
+
 describe("GET /v1/exercises — full pull (AC5)", () => {
   it("returns the caller-visible catalog as camelCase Exercise DTOs", async () => {
     const exerciseRepo = new FakeExerciseRepository();
@@ -132,7 +140,7 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     expect(second.body).toBe("");
     expect(second.headers.etag).toBe(etag);
     expect(second.headers["cache-control"]).toBe("private, no-cache");
-    expect(second.headers.vary).toBe("Authorization");
+    expectVaryTokens(second.headers.vary);
   });
 
   it("200 carries Cache-Control: private, no-cache + Vary: Authorization", async () => {
@@ -144,7 +152,22 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers["cache-control"]).toBe("private, no-cache");
-    expect(res.headers.vary).toBe("Authorization");
+    expectVaryTokens(res.headers.vary);
+  });
+
+  it("Vary keeps the CORS plugin's Origin token alongside Authorization", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/exercises",
+      headers: { ...BEARER, origin: "http://localhost:5173" },
+    });
+    expect(res.statusCode).toBe(200);
+    const tokens = String(res.headers.vary)
+      .split(",")
+      .map((t) => t.trim().toLowerCase());
+    expect(tokens).toContain("origin");
+    expect(tokens).toContain("authorization");
   });
 
   it("a catalog change produces a different ETag and a 200 (not 304)", async () => {
@@ -217,7 +240,7 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     expect(head.statusCode).toBe(200);
     expect(head.headers.etag).toBe(get.headers.etag);
     expect(head.headers["cache-control"]).toBe("private, no-cache");
-    expect(head.headers.vary).toBe("Authorization");
+    expectVaryTokens(head.headers.vary);
     expect(head.body).toBe("");
   });
 });

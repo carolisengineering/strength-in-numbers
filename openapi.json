@@ -312,6 +312,9 @@
                 }
               }
             }
+          },
+          "304": {
+            "description": "Default Response"
           }
         }
       }
@@ -359,6 +362,9 @@
                 }
               }
             }
+          },
+          "304": {
+            "description": "Default Response"
           }
         }
       }
@@ -406,6 +412,9 @@
                 }
               }
             }
+          },
+          "304": {
+            "description": "Default Response"
           }
         }
       }

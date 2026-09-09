@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { isExerciseId } from "@sin/core";
 import { NotFoundError } from "../errors/app-error.js";
 import type {
   CatalogPage,
@@ -138,6 +139,13 @@ export function createExerciseRepository(
       actingUserId: string,
       id: string,
     ): Promise<ExerciseRecord> {
+      // A non-UUID would make the `::uuid` cast raise 22P02 (→ 500); the
+      // contract says "not visible" is a NotFoundError, so treat it as such.
+      if (!isExerciseId(id)) {
+        throw new NotFoundError(
+          "exercise not found or not visible to the acting user",
+        );
+      }
       const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
         SELECT id, catalog_key, owner_user_id, name, modality,
                primary_muscle_id, secondary_muscle_ids, equipment_id,

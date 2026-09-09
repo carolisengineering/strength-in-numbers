@@ -24,7 +24,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { CatalogName, MODALITY_VALUES } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { z } from "zod";
@@ -206,9 +206,11 @@ async function upsertReference(
   ts: Date,
   log: SeedLogger,
 ): Promise<void> {
-  const existing = await tx.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT "id" FROM "${table}"`,
-  );
+  // `table` is a closed literal union; `Prisma.raw` inlines it as an
+  // identifier while every value below stays a bound parameter.
+  const tableId = Prisma.raw(`"${table}"`);
+  const existing = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM ${tableId}`;
   const inFile = new Set(rows.map((r) => r.id));
   for (const { id } of existing) {
     if (!inFile.has(id)) {
@@ -220,18 +222,13 @@ async function upsertReference(
     }
   }
   for (const r of rows) {
-    await tx.$executeRawUnsafe(
-      `INSERT INTO "${table}" ("id", "name", "display_order", "created_at", "updated_at")
-       VALUES ($1, $2, $3, $4, $4)
-       ON CONFLICT ("id") DO UPDATE
-         SET "name" = EXCLUDED."name",
-             "display_order" = EXCLUDED."display_order",
-             "updated_at" = EXCLUDED."updated_at"`,
-      r.id,
-      r.name,
-      r.displayOrder,
-      ts,
-    );
+    await tx.$executeRaw`
+      INSERT INTO ${tableId} ("id", "name", "display_order", "created_at", "updated_at")
+      VALUES (${r.id}, ${r.name}, ${r.displayOrder}, ${ts}, ${ts})
+      ON CONFLICT ("id") DO UPDATE
+        SET "name" = EXCLUDED."name",
+            "display_order" = EXCLUDED."display_order",
+            "updated_at" = EXCLUDED."updated_at"`;
   }
 }
 

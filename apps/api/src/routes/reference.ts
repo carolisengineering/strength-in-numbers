@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import { z } from "zod";
 import {
   EquipmentResponse,
   MuscleGroupsResponse,
@@ -8,7 +9,7 @@ import {
 } from "@sin/core";
 import type { ReferenceRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
-import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/muscle-groups` and `GET /v1/equipment` — the reference tables served
@@ -47,7 +48,7 @@ function serveReference<B extends object>(
   const etag = strongEtag(sentinel, JSON.stringify(rows));
 
   reply.header("cache-control", "private, no-cache");
-  reply.header("vary", "Authorization");
+  addVary(reply, "Authorization");
   reply.header("etag", etag);
 
   if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
@@ -65,7 +66,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/muscle-groups",
-    { schema: { response: { 200: MuscleGroupsResponse } } },
+    { schema: { response: { 200: MuscleGroupsResponse, 304: z.undefined() } } },
     async (request, reply) => {
       const muscleGroups = (
         await deps.exerciseRepository.listMuscleGroups()
@@ -78,7 +79,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/equipment",
-    { schema: { response: { 200: EquipmentResponse } } },
+    { schema: { response: { 200: EquipmentResponse, 304: z.undefined() } } },
     async (request, reply) => {
       const equipment = (await deps.exerciseRepository.listEquipment()).map(
         toDto,
