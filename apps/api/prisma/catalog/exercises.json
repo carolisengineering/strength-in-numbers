@@ -1,0 +1,82 @@
+[
+  {
+    "catalogKey": "barbell-back-squat",
+    "name": "Barbell back squat",
+    "modality": "weight_reps",
+    "primaryMuscleId": "quads",
+    "secondaryMuscleIds": ["glutes", "hamstrings", "core"],
+    "equipmentId": "barbell"
+  },
+  {
+    "catalogKey": "barbell-bench-press",
+    "name": "Barbell bench press",
+    "modality": "weight_reps",
+    "primaryMuscleId": "chest",
+    "secondaryMuscleIds": ["triceps", "shoulders"],
+    "equipmentId": "barbell"
+  },
+  {
+    "catalogKey": "conventional-deadlift",
+    "name": "Conventional deadlift",
+    "modality": "weight_reps",
+    "primaryMuscleId": "hamstrings",
+    "secondaryMuscleIds": ["glutes", "back", "core"],
+    "equipmentId": "barbell"
+  },
+  {
+    "catalogKey": "overhead-press",
+    "name": "Overhead press",
+    "modality": "weight_reps",
+    "primaryMuscleId": "shoulders",
+    "secondaryMuscleIds": ["triceps", "core"],
+    "equipmentId": "barbell"
+  },
+  {
+    "catalogKey": "barbell-row",
+    "name": "Barbell row",
+    "modality": "weight_reps",
+    "primaryMuscleId": "back",
+    "secondaryMuscleIds": ["lats", "biceps"],
+    "equipmentId": "barbell"
+  },
+  {
+    "catalogKey": "dumbbell-lunge",
+    "name": "Dumbbell lunge",
+    "modality": "weight_reps",
+    "primaryMuscleId": "quads",
+    "secondaryMuscleIds": ["glutes"],
+    "equipmentId": "dumbbell"
+  },
+  {
+    "catalogKey": "pull-up",
+    "name": "Pull-up",
+    "modality": "bodyweight_reps",
+    "primaryMuscleId": "lats",
+    "secondaryMuscleIds": ["biceps", "back"],
+    "equipmentId": "bodyweight"
+  },
+  {
+    "catalogKey": "weighted-dip",
+    "name": "Weighted dip",
+    "modality": "weighted_bodyweight",
+    "primaryMuscleId": "chest",
+    "secondaryMuscleIds": ["triceps"],
+    "equipmentId": "bodyweight"
+  },
+  {
+    "catalogKey": "plank",
+    "name": "Plank",
+    "modality": "duration",
+    "primaryMuscleId": "core",
+    "secondaryMuscleIds": [],
+    "equipmentId": "bodyweight"
+  },
+  {
+    "catalogKey": "treadmill-run",
+    "name": "Treadmill run",
+    "modality": "distance_duration",
+    "primaryMuscleId": "quads",
+    "secondaryMuscleIds": ["calves", "hamstrings"],
+    "equipmentId": "machine"
+  }
+]

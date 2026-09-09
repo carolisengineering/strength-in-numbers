@@ -1,0 +1,8 @@
+[
+  { "id": "barbell", "name": "Barbell", "displayOrder": 10 },
+  { "id": "dumbbell", "name": "Dumbbell", "displayOrder": 20 },
+  { "id": "kettlebell", "name": "Kettlebell", "displayOrder": 30 },
+  { "id": "cable", "name": "Cable", "displayOrder": 40 },
+  { "id": "machine", "name": "Machine", "displayOrder": 50 },
+  { "id": "bodyweight", "name": "Bodyweight", "displayOrder": 60 }
+]

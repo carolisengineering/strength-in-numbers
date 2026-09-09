@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {

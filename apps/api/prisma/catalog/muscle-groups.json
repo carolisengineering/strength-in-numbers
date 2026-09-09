@@ -1,0 +1,13 @@
+[
+  { "id": "chest", "name": "Chest", "displayOrder": 10 },
+  { "id": "back", "name": "Upper back", "displayOrder": 20 },
+  { "id": "lats", "name": "Lats", "displayOrder": 30 },
+  { "id": "shoulders", "name": "Shoulders", "displayOrder": 40 },
+  { "id": "biceps", "name": "Biceps", "displayOrder": 50 },
+  { "id": "triceps", "name": "Triceps", "displayOrder": 60 },
+  { "id": "core", "name": "Core", "displayOrder": 70 },
+  { "id": "quads", "name": "Quads", "displayOrder": 80 },
+  { "id": "hamstrings", "name": "Hamstrings", "displayOrder": 90 },
+  { "id": "glutes", "name": "Glutes", "displayOrder": 100 },
+  { "id": "calves", "name": "Calves", "displayOrder": 110 }
+]
