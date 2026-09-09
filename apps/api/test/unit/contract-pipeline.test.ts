@@ -202,7 +202,12 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
     expect(new Set(Object.keys(doc.paths))).toEqual(
-      new Set(["/v1/me", "/v1/exercises"]),
+      new Set([
+        "/v1/me",
+        "/v1/exercises",
+        "/v1/muscle-groups",
+        "/v1/equipment",
+      ]),
     );
     expect(doc.paths).not.toHaveProperty("/v1/_authcheck");
     expect(doc.paths).not.toHaveProperty("/healthz");

@@ -93,3 +93,19 @@ export const UpdatedSinceQuery = z.object({
   updated_since: z.iso.datetime({ offset: true }).optional(),
 });
 export type UpdatedSinceQueryInput = z.infer<typeof UpdatedSinceQuery>;
+
+/**
+ * `GET /v1/muscle-groups` 200 body. The reference tables have no `updated_since`
+ * delta — they are tiny and change only on a deploy, so a client re-fetches
+ * whenever its `If-None-Match` / `304` check misses (§6.2).
+ */
+export const MuscleGroupsResponse = z.object({
+  muscleGroups: z.array(MuscleGroupSchema),
+});
+export type MuscleGroupsResponseBody = z.infer<typeof MuscleGroupsResponse>;
+
+/** `GET /v1/equipment` 200 body (§6.2). */
+export const EquipmentResponse = z.object({
+  equipment: z.array(EquipmentSchema),
+});
+export type EquipmentResponseBody = z.infer<typeof EquipmentResponse>;

@@ -4,6 +4,7 @@ import type { ExerciseRepository } from "../repositories/exercise.js";
 import { registerAuthcheckRoute } from "./authcheck.js";
 import { registerMeRoutes } from "./me.js";
 import { registerExerciseRoutes } from "./exercises.js";
+import { registerReferenceRoutes } from "./reference.js";
 
 export interface V1RouteDeps {
   userRepository: UserRepository;
@@ -17,4 +18,5 @@ export function registerV1Routes(
   registerAuthcheckRoute(app);
   registerMeRoutes(app, { userRepository: deps.userRepository });
   registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
+  registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
 }

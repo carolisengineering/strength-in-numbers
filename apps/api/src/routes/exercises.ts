@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import {
@@ -8,6 +7,7 @@ import {
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
+import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/exercises` (+ the Fastify-generated `HEAD`) — the caller-visible
@@ -51,22 +51,10 @@ function toDto(r: ExerciseRecord): Exercise {
   };
 }
 
+/** `sha256(<cursor-sentinel> ‖ <exercises wire bytes>)`, first 32 hex, strong.
+ * The sentinel is the `updated_since` value on a delta, `"full"` otherwise. */
 function catalogEtag(sentinel: string, exercises: Exercise[]): string {
-  const digest = createHash("sha256")
-    .update(sentinel, "utf8")
-    .update("\n", "utf8")
-    .update(JSON.stringify(exercises), "utf8")
-    .digest("hex");
-  return `"${digest.slice(0, 32)}"`;
-}
-
-function ifNoneMatchHits(
-  header: string | string[] | undefined,
-  etag: string,
-): boolean {
-  if (header === undefined) return false;
-  const raw = Array.isArray(header) ? header.join(",") : header;
-  return raw.split(",").some((token) => token.trim() === etag);
+  return strongEtag(sentinel, JSON.stringify(exercises));
 }
 
 export function registerExerciseRoutes(
