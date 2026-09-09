@@ -25,7 +25,9 @@ function returnToOf(state: unknown): string {
  * - no session but the Auth0 hint cookie is present → `<ResumingSession/>` and
  *   an immediate `loginWithRedirect`, carrying `returnTo` (from router state on
  *   a deep unauth entry) so the round-trip lands back where the user started.
- * - no session, no cookie → `<Landing/>`; no redirect, no `/v1` call.
+ * - no session, no cookie → `<Landing/>` (given the same `returnTo`, so its
+ *   "Log in" control round-trips the deep path too — AC13); no redirect, no
+ *   `/v1` call.
  *
  * `?signin` escape hatch: the Auth0 hint cookie (`auth0.{clientId}.is.authenticated`)
  * outlives the server-side SSO session and is only cleared on explicit logout, so
@@ -55,5 +57,5 @@ export function PublicEntry() {
 
   if (isAuthenticated) return <Navigate to="/app" replace />;
   if (resuming) return <ResumingSession />;
-  return <Landing />;
+  return <Landing returnTo={returnTo} />;
 }

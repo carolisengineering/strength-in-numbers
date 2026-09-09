@@ -290,6 +290,20 @@ describe("AC13 — protected routes capture returnTo in router state", () => {
     });
   });
 
+  it("Landing's Log in control forwards the captured returnTo (fresh window, no hint cookie)", async () => {
+    const { router } = renderAt(["/app/history/123?tab=sets"]);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    fireEvent.click(await screen.findByRole("button", { name: /log in/i }));
+
+    expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+    expect(auth.state.loginWithRedirect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appState: { returnTo: "/app/history/123?tab=sets" },
+      }),
+    );
+  });
+
   it("onRedirectCallback lands the user back on the captured deep path", async () => {
     auth.state.isAuthenticated = true;
     const { router } = renderAt(["/"]);
