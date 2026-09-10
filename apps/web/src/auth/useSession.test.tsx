@@ -34,7 +34,10 @@ const ME = {
   createdAt: "2026-01-01T00:00:00.000Z",
 } as const;
 
+let getCalls = 0;
+
 beforeEach(() => {
+  getCalls = 0;
   resetConfigCache();
   vi.stubEnv("VITE_AUTH0_DOMAIN", "dev-tenant.us.auth0.com");
   vi.stubEnv("VITE_AUTH0_CLIENT_ID", "spaClient123");
@@ -48,9 +51,10 @@ beforeEach(() => {
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
 
   server.use(
-    http.get(`${API_BASE_URL}/v1/me`, () =>
-      HttpResponse.json(ME, { status: 200 }),
-    ),
+    http.get(`${API_BASE_URL}/v1/me`, () => {
+      getCalls += 1;
+      return HttpResponse.json(ME, { status: 200 });
+    }),
   );
 });
 
@@ -107,11 +111,14 @@ describe("AC4 — useSession() surface (Spec 04.1 §2 / §6.3)", () => {
     });
   });
 
-  it("reports isAuthenticated=false and no user on a public route", () => {
+  it("reports isAuthenticated=false and no user on a public route — and never requests /v1/me", async () => {
     auth.state.isAuthenticated = false;
     const { result } = renderSession("/");
 
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.user).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getCalls).toBe(0);
+    expect(auth.state.getAccessTokenSilently).not.toHaveBeenCalled();
   });
 });

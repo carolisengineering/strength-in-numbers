@@ -16,11 +16,22 @@ export const ME_QUERY_KEY = ["me"] as const;
  * button (`RetryScreen`), not TanStack auto-retry, which would also stall the
  * network-error path.
  */
-export function useMe() {
+export interface UseMeOptions {
+  /**
+   * Gate the request. `useSession()` passes `isAuthenticated` so a public-route
+   * consumer never starts an unauthenticated `GET /v1/me` (whose token
+   * acquisition would fail and trip `onAuthLost()` → logout). Default `true`:
+   * every other caller sits under `ProtectedRoute`.
+   */
+  enabled?: boolean;
+}
+
+export function useMe({ enabled = true }: UseMeOptions = {}) {
   const api = useApi();
 
   return useQuery<Me>({
     queryKey: ME_QUERY_KEY,
+    enabled,
     queryFn: () => api.get("/v1/me", MeSchema),
     retry: false,
     // The `me` row only changes via `PATCH /v1/me` (Spec 04.1 §6.5), whose

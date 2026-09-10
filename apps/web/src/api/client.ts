@@ -1,3 +1,4 @@
+import { reportError } from "../observability/reportError";
 import { ApiError, parseProblem } from "./problem";
 import { newRequestId, REQUEST_ID_HEADER } from "./requestId";
 
@@ -14,8 +15,9 @@ import { newRequestId, REQUEST_ID_HEADER } from "./requestId";
  * rejection becomes an `ApiError` with `isNetworkError` / `status: 0`; on a
  * `401`, refresh the token once and retry once. 2xx bodies are `schema.parse`d
  * when a `@sin/core` schema is supplied — a mismatch throws when
- * `appEnv !== "production"` and is downgraded to a `console.warn` in production
- * (Q15).
+ * `appEnv !== "production"` and is downgraded to a `console.warn` plus a
+ * `reportError()` call in production (Q15; Spec 04.0 §9 — the seam shipped in
+ * Spec 04.1).
  */
 
 export type AppEnv = "local" | "staging" | "production";
@@ -57,6 +59,20 @@ export interface ApiClient {
     schema?: ResponseSchema<T>,
   ) => Promise<T>;
   delete: <T = unknown>(path: string, schema?: ResponseSchema<T>) => Promise<T>;
+}
+
+const ID_SEGMENT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+)$/i;
+
+/**
+ * `/v1/workouts/018f…?x=1` → `/v1/workouts/:id`. Keeps observability tags
+ * static: no query string, no UUID / numeric path segments.
+ */
+export function routeTemplate(path: string): string {
+  const [pathname = ""] = path.split(/[?#]/);
+  return pathname
+    .split("/")
+    .map((segment) => (ID_SEGMENT.test(segment) ? ":id" : segment))
+    .join("/");
 }
 
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
@@ -207,6 +223,13 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         console.warn(
           `[api] ${path} response failed schema validation; passing the raw body through (requestId=${requestId})`,
         );
+        // Static tags only (DESIGN §8.1): the query string is dropped and
+        // id-like segments are replaced so no per-user value reaches the seam.
+        reportError(error, {
+          source: "api-schema",
+          path: routeTemplate(path),
+          requestId,
+        });
         return data as T;
       }
     }

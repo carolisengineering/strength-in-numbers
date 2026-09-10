@@ -1,9 +1,14 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const observability = vi.hoisted(() => ({ reportError: vi.fn() }));
+vi.mock("../observability/reportError", () => ({
+  reportError: observability.reportError,
+}));
 import { z } from "zod";
 
 import { server } from "../test/msw/server";
-import { createApiClient, type AppEnv } from "./client";
+import { createApiClient, routeTemplate, type AppEnv } from "./client";
 import { ApiError } from "./problem";
 
 const BASE_URL = "https://api.test";
@@ -12,6 +17,7 @@ let getToken: ReturnType<typeof vi.fn>;
 let onAuthLost: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  observability.reportError.mockReset();
   getToken = vi.fn().mockResolvedValue("tok-abc");
   onAuthLost = vi.fn();
 });
@@ -318,6 +324,18 @@ describe("AC12 — 401 triggers exactly one silent retry", () => {
   });
 });
 
+describe("routeTemplate — static observability tag", () => {
+  it("drops the query string and replaces UUID / numeric segments", () => {
+    expect(routeTemplate("/v1/me")).toBe("/v1/me");
+    expect(routeTemplate("/v1/exercises?updated_since=2026-01-01T00:00:00Z")).toBe(
+      "/v1/exercises",
+    );
+    expect(
+      routeTemplate("/v1/workouts/018f4e8a-1c2d-4f3a-8b6c-9d0e1f2a3b4c/sets/42#x"),
+    ).toBe("/v1/workouts/:id/sets/:id");
+  });
+});
+
 describe("Q15 — response validation is dev-hard, prod-warn", () => {
   const Me = z.object({ id: z.string() });
 
@@ -333,7 +351,7 @@ describe("Q15 — response validation is dev-hard, prod-warn", () => {
     );
   });
 
-  it("console.warns and passes the raw body through when appEnv is production", async () => {
+  it("console.warns, reports via the reportError seam, and passes the raw body through when appEnv is production", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     server.use(
       http.get(`${BASE_URL}/v1/me`, () =>
@@ -345,5 +363,13 @@ describe("Q15 — response validation is dev-hard, prod-warn", () => {
 
     expect(body).toEqual({ wrong: true });
     expect(warn).toHaveBeenCalledTimes(1);
+    // Spec 04.0 §9 (seam shipped in 04.1): the prod-path failure is reported
+    // with static tags only — no body content, no token.
+    expect(observability.reportError).toHaveBeenCalledTimes(1);
+    expect(observability.reportError).toHaveBeenCalledWith(expect.any(Error), {
+      source: "api-schema",
+      path: "/v1/me",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
   });
 });

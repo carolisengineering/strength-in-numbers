@@ -1,4 +1,4 @@
-import { Component, useEffect, type ReactNode } from "react";
+import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useRouteError } from "react-router";
 
 import { reportError } from "../observability/reportError";
@@ -54,8 +54,13 @@ function BrokenScreen() {
  */
 export function RootErrorBoundary() {
   const error = useRouteError();
+  // StrictMode (dev) runs effects twice for the same render; the ref makes the
+  // report idempotent per error object, keeping "exactly once" true there too.
+  const reported = useRef<unknown>(undefined);
 
   useEffect(() => {
+    if (reported.current === error) return;
+    reported.current = error;
     reportError(error, { boundary: "root" });
   }, [error]);
 

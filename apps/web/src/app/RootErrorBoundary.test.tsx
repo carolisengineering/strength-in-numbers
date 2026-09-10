@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import {
   createMemoryRouter,
   RouterProvider,
@@ -99,13 +100,18 @@ describe("AC8 — error boundary (Spec 04.1 §2 / §6.4)", () => {
     });
   });
 
-  it("RootErrorBoundary does not re-report the same error on re-render", () => {
+  it("RootErrorBoundary reports once even under StrictMode and across re-renders", () => {
     const router = createMemoryRouter(
       [{ path: "/", element: <Boom />, errorElement: <RootErrorBoundary /> }],
       { initialEntries: ["/"] },
     );
-    const { rerender } = render(<RouterProvider router={router} />);
-    rerender(<RouterProvider router={router} />);
+    const ui = (
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>
+    );
+    const { rerender } = render(ui);
+    rerender(ui);
 
     expect(observability.reportError).toHaveBeenCalledTimes(1);
   });

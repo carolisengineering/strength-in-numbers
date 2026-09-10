@@ -9,7 +9,9 @@
 .shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  min-height: 100dvh;
+  /* A definite height (not min-height) is what lets the middle row shrink and
+     scroll, so the header and nav stay pinned to the viewport edges. */
+  height: 100dvh;
 }
 
 .header {
@@ -49,13 +51,14 @@
 }
 
 .main {
+  /* Grid items default to min-height: auto, which would let tall content grow
+     the row past the viewport instead of scrolling inside it. */
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: var(--space-4);
 }
 
 .nav {
-  position: sticky;
-  bottom: 0;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;

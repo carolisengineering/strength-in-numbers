@@ -40,8 +40,12 @@ const fromMe = (me: Me): FormValues => ({
  */
 function diff(current: Me, values: FormValues): UpdateMeInput {
   const body: UpdateMeInput = {};
+  // Trim both sides: the API stores displayName verbatim, so a padded or
+  // blank stored value must not make the form dirty before the user edits.
   const name = values.displayName.trim();
-  if (name !== (current.displayName ?? "")) body.displayName = name === "" ? null : name;
+  if (name !== (current.displayName ?? "").trim()) {
+    body.displayName = name === "" ? null : name;
+  }
   if (values.unitPreference !== current.unitPreference)
     body.unitPreference = values.unitPreference;
   if (values.timezone !== current.timezone) body.timezone = values.timezone;
@@ -73,10 +77,12 @@ function ProfileForm({ me }: { me: Me }) {
   const zones = useMemo(listTimeZones, []);
   const zoneOptions = useMemo(() => {
     if (!zones) return undefined;
-    // Keep a stored value the host's ICU does not list (alias, older data)
-    // so the form never silently changes it.
-    return zones.includes(values.timezone) ? zones : [values.timezone, ...zones];
-  }, [zones, values.timezone]);
+    // Keep the *stored* value when the host's ICU does not list it (alias,
+    // older data) so it stays selectable and the form never silently changes
+    // it. Keyed on `me.timezone`, not the draft, so it survives browsing the
+    // list.
+    return zones.includes(me.timezone) ? zones : [me.timezone, ...zones];
+  }, [zones, me.timezone]);
 
   const body = diff(me, values);
   const dirty = Object.keys(body).length > 0;

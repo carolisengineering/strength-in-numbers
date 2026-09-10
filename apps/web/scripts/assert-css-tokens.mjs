@@ -10,7 +10,9 @@
  *      `var(--…)` — no hard-coded colours (`#hex`, `rgb()`, `hsl()`, named
  *      colours are not checked) and no `px` lengths other than `0` and `1px`
  *      (hairline borders / outlines).
- *   3. `package.json` `dependencies` contains no CSS framework.
+ *   3. `package.json` `dependencies` + `devDependencies` contain no CSS
+ *      framework (build-time ones like Tailwind / vanilla-extract / Panda are
+ *      conventionally installed with `-D`).
  *
  * Any failure exits non-zero. The regexes are deliberately simple — this is a
  * tripwire for drift, not a CSS parser.
@@ -47,6 +49,7 @@ const REQUIRED_TOKENS = [
 
 const CSS_FRAMEWORKS = [
   /^tailwindcss$/,
+  /^@tailwindcss\//,
   /^bootstrap$/,
   /^bulma$/,
   /^@mui\//,
@@ -98,9 +101,12 @@ assert(
 );
 
 // ── 2. every other stylesheet reads only var(--…) ───────────────────────────
-const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+// A hex colour is followed by `;`, `)`, `,`, whitespace or end — not by a
+// selector character, so `#abc { … }` (an id selector) is not a hit.
+const HEX = /#[0-9a-fA-F]{3,8}\b(?!\s*[{,.:[>~+])/g;
 const COLOR_FN = /\b(?:rgba?|hsla?|oklch|oklab|color)\(/g;
-const PX = /(?<![\w-])(\d*\.?\d+)px\b/g;
+// Negative lengths count too; `PX` casing as well.
+const PX = /(?<![\w.])(-?\d*\.?\d+)px\b/gi;
 
 const files = walk(SRC).filter((p) => p !== TOKENS);
 for (const file of files) {
@@ -122,11 +128,11 @@ assert(files.length > 0, `scanned ${files.length} stylesheet(s) besides tokens.c
 
 // ── 3. no CSS framework dependency ─────────────────────────────────────────
 const pkg = JSON.parse(readFileSync(join(WEB, "package.json"), "utf8"));
-const deps = Object.keys(pkg.dependencies ?? {});
+const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
 const offenders = deps.filter((d) => CSS_FRAMEWORKS.some((re) => re.test(d)));
 assert(
   offenders.length === 0,
-  "package.json dependencies contain no CSS framework" +
+  "package.json dependencies/devDependencies contain no CSS framework" +
     (offenders.length ? ` (found: ${offenders.join(", ")})` : ""),
 );
 

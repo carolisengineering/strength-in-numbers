@@ -32,7 +32,7 @@ export interface Session {
  */
 export function useSession(): Session {
   const { isAuthenticated, loginWithRedirect, logout: auth0Logout } = useAuth0();
-  const { data: user } = useMe();
+  const { data: user } = useMe({ enabled: isAuthenticated });
   const { pathname, search } = useLocation();
 
   const login = useCallback(() => {

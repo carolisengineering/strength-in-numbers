@@ -18,12 +18,15 @@ export function AppShell() {
   const { data: me } = useMe();
   const { pathname } = useLocation();
   const section = navItemFor(pathname);
-  const userLabel = me?.displayName ?? me?.email ?? "";
+  // `||`, not `??`: a stored "" (the API stores displayName verbatim) should
+  // fall back to the email too.
+  const userLabel = me?.displayName || me?.email || "";
 
   return (
     <div className={styles.shell} data-testid="app-shell">
       <header className={styles.header}>
-        <h2 className={styles.headerTitle}>{section?.label ?? APP_NAME}</h2>
+        {/* Not a heading: each screen owns the single <h1> (Screen.tsx). */}
+        <p className={styles.headerTitle}>{section?.label ?? APP_NAME}</p>
         <Link
           className={styles.headerUser}
           to="/app/profile"
@@ -43,15 +46,14 @@ export function AppShell() {
           <NavLink
             key={to}
             to={to}
-            className={({ isActive }) =>
-              [
-                styles.navTarget,
-                comingSoon ? styles.navTargetComingSoon : "",
-                isActive ? "active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")
-            }
+            // The current section is styled via the `aria-current="page"`
+            // attribute NavLink sets itself (see AppShell.module.css).
+            className={[
+              styles.navTarget,
+              comingSoon ? styles.navTargetComingSoon : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             <Icon />
             <span>{label}</span>
