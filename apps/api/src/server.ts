@@ -4,6 +4,7 @@ import { buildApp } from "./app.js";
 import { createPrisma, checkDatabaseReady } from "./db.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
+import { createExerciseRepository } from "./repositories/exercise.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
 
 /**
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
       jwksUri: config.auth0.jwksUri,
     }),
     userRepository: createUserRepository(prisma),
+    exerciseRepository: createExerciseRepository(prisma),
   });
 
   const shutdown = createGracefulShutdown({ app, prisma, logger });

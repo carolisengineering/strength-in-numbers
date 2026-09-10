@@ -4,7 +4,13 @@ import { describe, expectTypeOf, it } from "vitest";
 // name list to drift out of sync with check-exports.mjs.
 import {
   brandId,
+  CatalogName,
   DISTANCE_UNIT_VALUES,
+  EquipmentSchema,
+  ExerciseIdSchema,
+  ExerciseSchema,
+  ExercisesResponse,
+  isExerciseId,
   isUserId,
   KM_TO_M,
   kgToLb,
@@ -13,21 +19,29 @@ import {
   MeSchema,
   MI_TO_M,
   MODALITY_VALUES,
+  MuscleGroupSchema,
   mToKm,
   mToMi,
   miToM,
   lbToKg,
+  noControlChars,
+  parseExerciseId,
   parseUserId,
   RECORD_TYPE_VALUES,
   SET_TYPE_VALUES,
   toCanonicalKg,
   toCanonicalMeters,
   UNIT_PREFERENCE_VALUES,
+  UpdatedSinceQuery,
   UpdateMeSchema,
   UserIdSchema,
   WEIGHT_UNIT_VALUES,
+  type Equipment,
+  type Exercise,
+  type ExerciseId,
   type Me,
   type Modality,
+  type MuscleGroup,
   type RecordType,
   type SetType,
   type UnitPreference,
@@ -61,6 +75,16 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(MeSchema).not.toBeAny();
     expectTypeOf(UpdateMeSchema).not.toBeAny();
     expectTypeOf(UserIdSchema).not.toBeAny();
+    expectTypeOf(noControlChars).toBeFunction();
+    expectTypeOf(parseExerciseId).toBeFunction();
+    expectTypeOf(isExerciseId).toBeFunction();
+    expectTypeOf(ExerciseIdSchema).not.toBeAny();
+    expectTypeOf(CatalogName).not.toBeAny();
+    expectTypeOf(ExerciseSchema).not.toBeAny();
+    expectTypeOf(MuscleGroupSchema).not.toBeAny();
+    expectTypeOf(EquipmentSchema).not.toBeAny();
+    expectTypeOf(ExercisesResponse).not.toBeAny();
+    expectTypeOf(UpdatedSinceQuery).not.toBeAny();
   });
 
   it("type exports resolve", () => {
@@ -72,5 +96,9 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf<Modality>().toBeString();
     expectTypeOf<SetType>().toBeString();
     expectTypeOf<RecordType>().toBeString();
+    expectTypeOf<Exercise>().not.toBeAny();
+    expectTypeOf<MuscleGroup>().not.toBeAny();
+    expectTypeOf<Equipment>().not.toBeAny();
+    expectTypeOf<ExerciseId>().toMatchTypeOf<string>();
   });
 });

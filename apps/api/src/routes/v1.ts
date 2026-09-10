@@ -1,10 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import type { UserRepository } from "../repositories/user.js";
+import type { ExerciseRepository } from "../repositories/exercise.js";
 import { registerAuthcheckRoute } from "./authcheck.js";
 import { registerMeRoutes } from "./me.js";
+import { registerExerciseRoutes } from "./exercises.js";
+import { registerReferenceRoutes } from "./reference.js";
 
 export interface V1RouteDeps {
   userRepository: UserRepository;
+  exerciseRepository: ExerciseRepository;
 }
 
 export function registerV1Routes(
@@ -13,4 +17,6 @@ export function registerV1Routes(
 ): void {
   registerAuthcheckRoute(app);
   registerMeRoutes(app, { userRepository: deps.userRepository });
+  registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
+  registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
 }

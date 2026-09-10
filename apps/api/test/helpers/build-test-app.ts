@@ -2,7 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { buildApp, type BuildAppDeps } from "../../src/app.js";
 import { loadConfig, type Config } from "../../src/config.js";
 import type { TokenVerifier } from "../../src/auth/verify.js";
-import { FakeUserRepository, authContext, fakeVerifier } from "./fakes.js";
+import {
+  FakeExerciseRepository,
+  FakeUserRepository,
+  authContext,
+  fakeVerifier,
+} from "./fakes.js";
 
 export const TEST_ENV: Record<string, string> = {
   NODE_ENV: "test",
@@ -20,14 +25,18 @@ export interface TestAppOptions {
   config?: Config;
   tokenVerifier?: TokenVerifier;
   userRepository?: FakeUserRepository;
+  exerciseRepository?: FakeExerciseRepository;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
 }
 
-export async function buildTestApp(
-  opts: TestAppOptions = {},
-): Promise<{ app: FastifyInstance; repo: FakeUserRepository }> {
+export async function buildTestApp(opts: TestAppOptions = {}): Promise<{
+  app: FastifyInstance;
+  repo: FakeUserRepository;
+  exerciseRepo: FakeExerciseRepository;
+}> {
   const repo = opts.userRepository ?? new FakeUserRepository();
+  const exerciseRepo = opts.exerciseRepository ?? new FakeExerciseRepository();
   const deps: BuildAppDeps = {
     config: opts.config ?? testConfig(),
     logger: false,
@@ -35,7 +44,8 @@ export async function buildTestApp(
     readinessTtlMs: opts.readinessTtlMs,
     tokenVerifier: opts.tokenVerifier ?? fakeVerifier(() => authContext()),
     userRepository: repo,
+    exerciseRepository: exerciseRepo,
   };
   const app = await buildApp(deps);
-  return { app, repo };
+  return { app, repo, exerciseRepo };
 }

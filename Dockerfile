@@ -27,6 +27,10 @@ ENV NODE_ENV=production
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/api/package.json ./apps/api/
+# prisma/ also carries prisma/catalog/*.json — the seed data. The compiled seed
+# CLI ships in dist (`node apps/api/dist/seed/cli.js [catalog-dir]`) for the
+# future automated pre-deploy step (Spec 03.1 D12 / Spec 01.1). Today the seed
+# is run manually from a dev checkout (runbook B5), not from this image.
 COPY apps/api/prisma ./apps/api/prisma
 RUN pnpm install --prod --frozen-lockfile
 # Generate the Prisma client explicitly. pnpm + monorepo layouts don't reliably

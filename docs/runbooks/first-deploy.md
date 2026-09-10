@@ -260,6 +260,36 @@ migrations never run on app boot.)
 Confirm you're inspecting the **same Neon branch** whose connection string is on
 the Render service — the branch selector is at the top of the Neon console.
 
+### B5. Seed the exercise catalog (by hand, after B4) — Spec 03.1
+
+Same reason as B4: no pre-deploy hook on the free plan, so the catalog seed is a
+**manual release step** (Spec 03.1 §8 / §11, D12). It is idempotent — re-run it
+on every deploy that touches `apps/api/prisma/catalog/*.json` (or just always;
+an unchanged catalog reports everything `unchanged`). Same `DATABASE_URL` rule
+as B4: the exact value from Render, the **direct** (non-`-pooler`) host.
+
+```bash
+DATABASE_URL='<same value as B4>' pnpm --filter @sin/api run seed:catalog
+```
+
+Expect two JSON log lines: `catalog files validated` (counts of muscle groups /
+equipment / exercises) and `catalog seed complete` with a summary like
+`{"inserted":10,"updated":0,"retired":0,"unchanged":0,"skipped":0,…}`. A
+second run shows `"unchanged":10`.
+
+**If it exits 1** nothing was written: validation runs before the transaction,
+and the transaction rolls back. The message names the offending `catalog_key`.
+The two rules the seed enforces (Spec 03.1 §6.3): a live row's `name` /
+`modality` never changes in place (retire the old key, add a new one), and
+nothing is ever deleted (`retired: true` in the file; never drop the entry).
+
+**Verify it landed:** with the service up, `GET /v1/exercises` (any valid
+bearer) returns the 10 fixture rows, or in the Neon SQL editor
+`select catalog_key, is_active from exercise order by 1;`.
+
+A `skipped` count > 0 or a `warn` line means a DB row has no file entry — that
+is allowed (append-only), but check it was intentional.
+
 ---
 
 ## Part C — GitHub Actions secrets & vars
@@ -406,6 +436,7 @@ actually need a prod environment, not now.
 ## Done when
 
 - The Render service is live and B4's `prisma migrate deploy` applied `0001` to Neon.
+- B5's `seed:catalog` reported `inserted` > 0 on first run and `unchanged` on a re-run.
 - The CI `smoke` job passes end to end against your Auth0 tenant.
 - `render.yaml` is the source of truth — no manual service config drift.
 
@@ -421,6 +452,9 @@ Production comes later, via Spec 01.1.
 | Boot fails on `WEB_ORIGIN` | Empty, `http://` in prod, has a path, or a wildcard. Use a bare `https://host[:port]`. |
 | B4 `prisma migrate deploy` hangs or `P1001 can't reach database` | Used the Neon **pooled** host (`-pooler`) — switch to the direct host. Or the Neon compute is resuming from idle; re-run. |
 | B4 fails `P1011`/TLS | `?sslmode=require` missing from the URL you passed. |
+| B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
+| B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
+| `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |
 | Boot crash: `@prisma/client did not initialize yet. Please run "prisma generate"` | The runtime image has no generated client. Fixed in `Dockerfile` — the runtime stage runs `pnpm --filter @sin/api exec prisma generate` explicitly (`@prisma/client`'s postinstall can't find the schema in a pnpm monorepo). Don't remove that line. |
 | Boot/query: `libssl`/`libquery_engine` load error, or `prisma:warn Prisma failed to detect the libssl/openssl version` | `node:22-slim` ships without `openssl`. Fixed in `Dockerfile` base stage (`apt-get install openssl ca-certificates`). |
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/server.js`) and `PORT` is being read. |

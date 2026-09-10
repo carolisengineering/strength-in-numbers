@@ -25,6 +25,7 @@ pnpm --filter @sin/api run test:unit           # apps/api/test/unit
 RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers Postgres
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
+pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
 ```
 
 Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp `9999`.
@@ -45,6 +46,9 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 
 - **Error contract** (RFC 9457 problem+json) must be registered on BOTH the root scope and
   the `/v1` child scope.
+- **Catalog seed** (`apps/api/prisma/seed.ts` → `src/seed/`) is a manual release step after
+  `migrate deploy`, NOT Prisma's `prisma.seed` hook. Append-only: never edit a live row's
+  `name`/`modality` in `prisma/catalog/exercises.json` — retire the key and add a new one.
 - **Prisma migrations** run as a release step, never on app boot. Additive / expand-only —
   never drop or rename a column in the same release as the code that stops using it.
 - **`DATABASE_URL`**: `resolveDatabaseUrl` backfills `sslmode=require` + `connection_limit=8`

@@ -51,6 +51,9 @@ const EXPECTED = [
   "UserIdSchema",
   "parseUserId",
   "isUserId",
+  "ExerciseIdSchema",
+  "parseExerciseId",
+  "isExerciseId",
   // units
   "LB_TO_KG",
   "KM_TO_M",
@@ -63,9 +66,20 @@ const EXPECTED = [
   "mToKm",
   "miToM",
   "mToMi",
-  // dto
+  // dto — me
   "MeSchema",
   "UpdateMeSchema",
+  // dto — exercise catalog (Spec 03.1)
+  "noControlChars",
+  "CatalogName",
+  "ExerciseSchema",
+  "MuscleGroupSchema",
+  "EquipmentSchema",
+  "ExercisesResponse",
+  "UpdatedSinceQuery",
+  "isPostgresTimestamptz",
+  "MuscleGroupsResponse",
+  "EquipmentResponse",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

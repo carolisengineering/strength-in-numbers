@@ -7,5 +7,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["src", "test", "scripts", "vitest.config.ts"]
+  "include": ["src", "test", "scripts", "prisma/seed.ts", "vitest.config.ts"]
 }
