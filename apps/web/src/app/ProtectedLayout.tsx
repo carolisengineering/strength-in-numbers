@@ -1,10 +1,9 @@
-import { Outlet } from "react-router";
-
 import { ApiError } from "../api/problem";
 import { useMe } from "../features/me/useMe";
 import { AccountDeleted } from "../screens/AccountDeleted";
 import { RetryScreen } from "../screens/RetryScreen";
-import { Spinner } from "../screens/Spinner";
+import { Spinner } from "../ui/Spinner";
+import { AppShell } from "./AppShell";
 
 /**
  * Protected layout route + the `me`-query half of the bootstrap gate
@@ -15,9 +14,10 @@ import { Spinner } from "../screens/Spinner";
  *   pending                              -> <Spinner/>
  *   403 account-deleted (ApiError)       -> <AccountDeleted/> (logs out on mount)
  *   503 auth-unavailable / network / any -> <RetryScreen/> ("Try again" refetches)
- *   200 (incl. `isNewUser: true`)        -> <Outlet/>
+ *   200 (incl. `isNewUser: true`)        -> <AppShell/> (which renders the <Outlet/>)
  *
- * Spec 04.1 keeps this gate and renders `<AppShell>` around the `<Outlet/>`.
+ * Spec 04.1 §5: the gate is unchanged; only the `200` branch now renders the
+ * styled shell instead of a bare `<Outlet/>`.
  */
 export function ProtectedLayout() {
   const query = useMe();
@@ -43,5 +43,5 @@ export function ProtectedLayout() {
     );
   }
 
-  return <Outlet />;
+  return <AppShell />;
 }

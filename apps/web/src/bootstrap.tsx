@@ -1,6 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+// Global stylesheets (Spec 04.1 §6.2): tokens first so `reset.css` can read
+// them. Imported here rather than in `AppRoot` so the config-error fallback
+// page below is styled too. Vite emits them as one hashed external `.css`
+// (CSP `style-src 'self'`, Spec 04.0 §6.6).
+import "./ui/tokens.css";
+import "./ui/reset.css";
+
 import { AppRoot } from "./app/AppRoot";
 import { getConfig } from "./config";
 import { Misconfigured } from "./screens/Misconfigured";
