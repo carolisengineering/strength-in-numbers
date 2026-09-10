@@ -217,27 +217,40 @@ the CI `smoke` failing at that exact step).
 Use the **same connection string that is set as `DATABASE_URL` on the Render
 service** — copy it from Render (service → **Environment**), don't hand-assemble
 it. Neon has *branches*; migrating `neondb` on one branch while Render points at
-another is the classic trap. Then, from the repo root:
+another is the classic trap. B4 and B5 (and their verify commands) all need the
+same value, so export it once for the shell session, from the repo root:
 
 ```bash
-DATABASE_URL='<paste the exact value from Render, the direct -pooler-free host>' \
-  pnpm --filter @sin/api exec prisma migrate deploy
+export DATABASE_URL='<paste the exact value from Render, the direct -pooler-free host>'
 ```
 
-Expect `1 migration found … Applying migration 0001_create_user … done`. Re-run
-anytime; it's idempotent. **Repeat this one command whenever a later spec adds a
-migration**, before that deploy serves traffic. (This still honors Spec 01 §6.4 —
-migrations never run on app boot.)
+An exported variable takes precedence over `apps/api/.env` (Prisma and tsx's
+`--env-file` both leave already-set variables alone), so this safely overrides
+the local Docker URL. **`unset DATABASE_URL` when you're done** (end of B5) so a
+later local command doesn't point at Neon by accident.
+
+```bash
+pnpm --filter @sin/api exec prisma migrate deploy
+```
+
+Expect `N migrations found` and one `Applying migration …` line per migration
+not yet on that database — on a fresh Neon branch that is every folder under
+`apps/api/prisma/migrations/` (`0001_create_user`, `0002_create_exercise_catalog`,
+…); on a later deploy only the new ones. Re-run anytime; it's idempotent. If it
+hangs or fails `P1001` the Neon compute is probably resuming from idle — re-run.
+**Repeat this one command whenever a later spec adds a migration**, before that
+deploy serves traffic. (This still honors Spec 01 §6.4 — migrations never run on
+app boot.)
 
 **Verify it landed** — any one of these:
 
-- **CLI, no console needed** (same `DATABASE_URL` as above):
+- **CLI, no console needed** (same exported `DATABASE_URL`):
 
   ```bash
-  DATABASE_URL='<same value>' pnpm --filter @sin/api exec prisma migrate status
+  pnpm --filter @sin/api exec prisma migrate status
   ```
 
-  Expect `Database schema is up to date!` and `0001_create_user` listed as
+  Expect `Database schema is up to date!` and every migration folder listed as
   applied. A `Following migration have not yet been applied` message means it
   didn't take (wrong branch/DB — see the trap above).
 
@@ -248,7 +261,7 @@ migrations never run on app boot.)
   from _prisma_migrations order by finished_at;
   ```
 
-  One row: `0001_create_user`, `finished_at` set, `rolled_back_at` null.
+  One row per migration folder, `finished_at` set, `rolled_back_at` null.
 
   ```sql
   select * from "user";   -- 0 rows, and crucially NOT "relation does not exist"
@@ -266,10 +279,11 @@ Same reason as B4: no pre-deploy hook on the free plan, so the catalog seed is a
 **manual release step** (Spec 03.1 §8 / §11, D12). It is idempotent — re-run it
 on every deploy that touches `apps/api/prisma/catalog/*.json` (or just always;
 an unchanged catalog reports everything `unchanged`). Same `DATABASE_URL` rule
-as B4: the exact value from Render, the **direct** (non-`-pooler`) host.
+as B4: the exact value from Render, the **direct** (non-`-pooler`) host — still
+exported from B4.
 
 ```bash
-DATABASE_URL='<same value as B4>' pnpm --filter @sin/api run seed:catalog
+pnpm --filter @sin/api run seed:catalog
 ```
 
 Expect two JSON log lines: `catalog files validated` (counts of muscle groups /
@@ -283,12 +297,35 @@ The two rules the seed enforces (Spec 03.1 §6.3): a live row's `name` /
 `modality` never changes in place (retire the old key, add a new one), and
 nothing is ever deleted (`retired: true` in the file; never drop the entry).
 
-**Verify it landed:** with the service up, `GET /v1/exercises` (any valid
-bearer) returns the 10 fixture rows, or in the Neon SQL editor
-`select catalog_key, is_active from exercise order by 1;`.
-
 A `skipped` count > 0 or a `warn` line means a DB row has no file entry — that
 is allowed (append-only), but check it was intentional.
+
+**Verify it landed** through the running service (this is the check that proves
+the seed hit the *same* database Render reads). `/v1/exercises` needs a bearer;
+get one with the Auth0 CLI exactly as in
+[`manual-staging-test-contract-pipeline.md` §3](manual-staging-test-contract-pipeline.md#3-get-a-token)
+(`auth0 login`, then `auth0 test token -a https://api.strengthinnumbers.app
+-s "openid profile email"`, log in as the **test user**; the one-time
+"authorize the CLI client" dashboard step is described there). Then:
+
+```bash
+TOKEN='<access_token printed by auth0 test token>'
+BASE=https://si-api-ft2f.onrender.com
+curl -s $BASE/readyz                                          # {"status":"ready"} — may take 30–60s on a cold start
+curl -s -H "Authorization: Bearer $TOKEN" $BASE/v1/exercises | jq '.exercises | length'        # 10
+curl -s -H "Authorization: Bearer $TOKEN" $BASE/v1/exercises | jq '.exercises[].catalogKey'    # the keys from exercises.json
+```
+
+`0` / `[]` means the seed wrote to a different database than the service uses —
+re-check the exported string against Render → Environment (branch included).
+Equivalent DB-side check, Neon SQL editor on the same branch:
+`select catalog_key, is_active from exercise order by 1;` → one row per file entry.
+
+Finally, drop the Neon string from your shell:
+
+```bash
+unset DATABASE_URL
+```
 
 ---
 
@@ -435,7 +472,7 @@ actually need a prod environment, not now.
 
 ## Done when
 
-- The Render service is live and B4's `prisma migrate deploy` applied `0001` to Neon.
+- The Render service is live and B4's `prisma migrate deploy` applied every migration folder to Neon (`prisma migrate status` → up to date).
 - B5's `seed:catalog` reported `inserted` > 0 on first run and `unchanged` on a re-run.
 - The CI `smoke` job passes end to end against your Auth0 tenant.
 - `render.yaml` is the source of truth — no manual service config drift.
