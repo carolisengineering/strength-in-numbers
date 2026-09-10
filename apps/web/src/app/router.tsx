@@ -9,6 +9,7 @@ import { BootstrapGate } from "./BootstrapGate";
 import { ProtectedLayout } from "./ProtectedLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { PublicEntry } from "./PublicEntry";
+import { RootErrorBoundary } from "./RootErrorBoundary";
 
 /**
  * Route config (Spec 04.0 §5). Exported so tests drive it with
@@ -29,6 +30,10 @@ import { PublicEntry } from "./PublicEntry";
 export const routes: RouteObject[] = [
   {
     element: <BootstrapGate />,
+    // Spec 04.1 §6.4 / AC8: the data router catches route render errors
+    // itself, so the fallback must be registered here, on the root route,
+    // rather than as a boundary wrapped around <RouterProvider>.
+    errorElement: <RootErrorBoundary />,
     children: [
       { path: "/", element: <PublicEntry /> },
       { path: "/callback", element: <Callback /> },
