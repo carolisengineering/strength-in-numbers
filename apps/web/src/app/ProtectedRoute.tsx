@@ -1,7 +1,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { Navigate, Outlet, useLocation } from "react-router";
 
-import { Spinner } from "../screens/Spinner";
+import { Spinner } from "../ui/Spinner";
 
 /**
  * Guard for `/app` and everything under it (Spec 04.0 §5 / §6.7, AC13).

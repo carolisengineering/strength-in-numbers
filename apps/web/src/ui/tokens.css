@@ -1,0 +1,74 @@
+/*
+ * Design tokens (Spec 04.1 §6.2, AC1). The whole design vocabulary lives here
+ * as CSS custom properties on `:root`; every `*.module.css` reads values only
+ * through `var(--…)` — `scripts/assert-css-tokens.mjs` fails CI on a hard-coded
+ * colour or px value anywhere else.
+ *
+ * Dark is the default (a phone in a gym, often at arm's length under harsh
+ * light); `prefers-color-scheme: light` overrides the colour set only. Sizes
+ * are `rem` so they scale with the user's font setting; the two exceptions are
+ * radii and the minimum tap target, which are physical-ish sizes.
+ */
+:root {
+  color-scheme: dark light;
+
+  /* colour */
+  --color-bg: #0b0c0f;
+  --color-surface: #16181d;
+  --color-surface-raised: #1f2229;
+  --color-border: #2a2e37;
+  --color-text: #f2f3f5;
+  --color-muted: #9aa0aa;
+  --color-accent: #4f7cff;
+  --color-on-accent: #ffffff;
+  --color-danger: #ff5c5c;
+  --color-success: #3ccf7a;
+  --color-focus: #8fb0ff;
+
+  /* spacing scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* type */
+  --font-family:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.75rem;
+  --line-height: 1.5;
+
+  /* shape */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  /* one-handed use: every interactive target is at least this big (AC2) */
+  --tap-target-min: 44px;
+
+  /* focus ring */
+  --focus-ring-width: 2px;
+
+  /* layout */
+  --measure-max: 40rem;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-bg: #f7f7f9;
+    --color-surface: #ffffff;
+    --color-surface-raised: #ffffff;
+    --color-border: #d9dce3;
+    --color-text: #15171c;
+    --color-muted: #5b616d;
+    --color-accent: #2f5fe6;
+    --color-on-accent: #ffffff;
+    --color-danger: #d13232;
+    --color-success: #1f9d55;
+    --color-focus: #2f5fe6;
+  }
+}

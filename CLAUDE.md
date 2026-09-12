@@ -10,7 +10,8 @@ JS-ecosystem concepts from first principles rather than assuming familiarity.
 - `apps/api` — Fastify + Prisma + TypeScript backend (`@sin/api`)
 - `packages/core` — framework-agnostic domain code (`@sin/core`); CI purity check forbids
   React / DOM / Node-only imports
-- `apps/web` — reserved for the Vite React SPA (Spec 04, not built yet)
+- `apps/web` — Vite + React SPA (`@sin/web`): Auth0 PKCE, React-free API client, CSS-Modules
+  design tokens (`src/ui/tokens.css` is the only place design values are written)
 - `docs/` — see below
 
 ## Commands
@@ -26,6 +27,8 @@ RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
 pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
+pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api / src/auth >=90% gates
+pnpm --filter @sin/web run assert:css-tokens    # AC1 tripwire: only tokens.css may hard-code colours / px
 ```
 
 Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp `9999`.
@@ -77,7 +80,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 
 ## docs/ map
 
-- `docs/DESIGN.md` — overall design, resolved decisions (Q1–Q9)
+- `docs/DESIGN.md` — overall design, resolved decisions (Q1–Q12)
 - `docs/specs/` — component specs + `README.md` (roadmap, 12-section template, ownership)
 - `docs/runbooks/` — operational runbooks (`first-deploy.md`)
 - `docs/security-backlog.md` — deferred security items (SB-1..7)

@@ -9,3 +9,4 @@ export {
 export { authHint, hasAuth0Session } from "./authHint";
 export { login, type LoginWithRedirect } from "./login";
 export { useApi } from "./useApi";
+export { useSession, type Session } from "./useSession";

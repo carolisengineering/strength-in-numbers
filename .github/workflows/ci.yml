@@ -76,6 +76,9 @@ jobs:
       - run: node apps/web/scripts/assert-build-output.mjs
       # AC14 — render.yaml ships the strict CSP + security headers.
       - run: node apps/web/scripts/assert-render-yaml.mjs
+      # Spec 04.1 AC1 — tokens.css is the only place design values are written;
+      # every other stylesheet reads var(--…); no CSS framework dependency.
+      - run: node apps/web/scripts/assert-css-tokens.mjs
 
   integration:
     name: integration (Testcontainers Postgres)

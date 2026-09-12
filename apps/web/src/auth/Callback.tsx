@@ -2,7 +2,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { Navigate, useSearchParams } from "react-router";
 
 import { AuthError } from "../screens/AuthError";
-import { Spinner } from "../screens/Spinner";
+import { Spinner } from "../ui/Spinner";
 
 /**
  * `/callback` (Spec 04.0 §5, AC6). `@auth0/auth0-react` runs the PKCE code
