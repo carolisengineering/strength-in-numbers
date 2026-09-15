@@ -205,7 +205,7 @@ describe("AC4 — session-resume bridge (routing)", () => {
 
     const { router } = renderAt(["/"]);
 
-    expect(await screen.findByTestId("authed-placeholder")).toBeInTheDocument();
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/app");
   });
 });
@@ -218,7 +218,7 @@ describe("AC6 — callback completes or fails cleanly", () => {
     // AppRoot wires exactly this as the provider's onRedirectCallback.
     makeOnRedirectCallback(router)({ returnTo: "/app" });
 
-    expect(await screen.findByTestId("authed-placeholder")).toBeInTheDocument();
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/app");
     expect(router.state.location.search).toBe("");
   });
@@ -269,7 +269,7 @@ describe("makeOnRedirectCallback", () => {
     makeOnRedirectCallback(router)();
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/app"));
-    await screen.findByTestId("authed-placeholder");
+    await screen.findByTestId("app-shell");
   });
 });
 
@@ -308,14 +308,14 @@ describe("AC13 — protected routes capture returnTo in router state", () => {
     auth.state.isAuthenticated = true;
     const { router } = renderAt(["/"]);
 
-    await screen.findByTestId("authed-placeholder");
+    await screen.findByTestId("app-shell");
 
     makeOnRedirectCallback(router)({ returnTo: "/app/history/123" });
 
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/app/history/123"),
     );
-    expect(screen.getByTestId("authed-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell")).toBeInTheDocument();
   });
 });
 
@@ -326,14 +326,14 @@ describe("AC9 — session bootstrap order", () => {
 
     // Frame is gated on the request resolving.
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
-    expect(screen.queryByTestId("authed-placeholder")).toBeNull();
+    expect(screen.queryByTestId("app-shell")).toBeNull();
 
-    expect(await screen.findByTestId("authed-placeholder")).toBeInTheDocument();
-    expect(screen.getByTestId("authed-email")).toHaveTextContent(
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
 
-    expect(meCalls).toBe(1); // ProtectedLayout + AuthedPlaceholder share ["me"]
+    expect(meCalls).toBe(1); // ProtectedLayout + AppShell share ["me"]
     expect(lastMeHeaders?.get("authorization")).toMatch(/^Bearer .+/);
     expect(lastMeHeaders?.get("x-request-id") ?? "").not.toBe("");
   });
@@ -349,8 +349,8 @@ describe("AC9 — session bootstrap order", () => {
 
     renderAt(["/app"]);
 
-    expect(await screen.findByTestId("authed-placeholder")).toBeInTheDocument();
-    expect(screen.getByTestId("authed-email")).toHaveTextContent(
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
     expect(meCalls).toBe(1);
@@ -450,7 +450,7 @@ describe("AC10 — bootstrap failure modes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
 
-    expect(await screen.findByTestId("authed-placeholder")).toBeInTheDocument();
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
     expect(attempt).toBe(2);
   });
 });
@@ -461,7 +461,7 @@ describe("Bootstrap gate — isLoading", () => {
     const { router } = renderAt(["/app/history/123"]);
 
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
-    expect(screen.queryByTestId("authed-placeholder")).toBeNull();
+    expect(screen.queryByTestId("app-shell")).toBeNull();
     expect(screen.queryByTestId("landing")).toBeNull();
     expect(router.state.location.pathname).toBe("/app/history/123");
     expect(auth.state.loginWithRedirect).not.toHaveBeenCalled();

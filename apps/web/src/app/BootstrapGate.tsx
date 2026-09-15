@@ -1,7 +1,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { Outlet } from "react-router";
 
-import { Spinner } from "../screens/Spinner";
+import { Spinner } from "../ui/Spinner";
 
 /**
  * Root layout gate (Spec 04.0 §5). Step 1: hold the whole route tree behind a

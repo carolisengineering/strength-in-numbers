@@ -1,15 +1,15 @@
-import {
-  createBrowserRouter,
-  Navigate,
-  type RouteObject,
-} from "react-router";
+import { createBrowserRouter, type RouteObject } from "react-router";
 
 import { Callback } from "../auth/Callback";
-import { AuthedPlaceholder } from "./AuthedPlaceholder";
+import { ProfileScreen } from "../features/me/ProfileScreen";
+import { AppIndex } from "../screens/AppIndex";
+import { ComingSoon } from "../screens/ComingSoon";
+import { NotFound } from "../screens/NotFound";
 import { BootstrapGate } from "./BootstrapGate";
 import { ProtectedLayout } from "./ProtectedLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { PublicEntry } from "./PublicEntry";
+import { RootErrorBoundary } from "./RootErrorBoundary";
 
 /**
  * Route config (Spec 04.0 §5). Exported so tests drive it with
@@ -17,17 +17,23 @@ import { PublicEntry } from "./PublicEntry";
  *
  *   /            BootstrapGate > PublicEntry                              public — resume decision (§6.8)
  *   /callback    BootstrapGate > Callback                                 public — transient PKCE handler
- *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout > AuthedPlaceholder   protected (index)
- *   /app/*       BootstrapGate > ProtectedRoute > ProtectedLayout > AuthedPlaceholder   protected (deep links)
- *   *            → <Navigate to="/app">                                   catch-all (see below)
+ *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > AppIndex        protected (index)
+ *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
+ *   /app/workouts | history | progress                                > ComingSoon     protected (Specs 06 / 08 / 10)
+ *   /app/*       …                                                    > NotFound       protected catch-all
+ *   *            NotFound                                                              public catch-all
  *
  * `ProtectedRoute` is the auth guard; `ProtectedLayout` is the layout route that
- * runs the `me`-query gate (§6.5) and, in Spec 04.1, wraps the `<Outlet/>` in
- * `<AppShell>`.
+ * runs the `me`-query gate (§6.5) and, once `GET /v1/me` is `200`, renders
+ * `<AppShell>` around the `<Outlet/>` (Spec 04.1 §5).
  */
 export const routes: RouteObject[] = [
   {
     element: <BootstrapGate />,
+    // Spec 04.1 §6.4 / AC8: the data router catches route render errors
+    // itself, so the fallback must be registered here, on the root route,
+    // rather than as a boundary wrapped around <RouterProvider>.
+    errorElement: <RootErrorBoundary />,
     children: [
       { path: "/", element: <PublicEntry /> },
       { path: "/callback", element: <Callback /> },
@@ -38,19 +44,17 @@ export const routes: RouteObject[] = [
           {
             element: <ProtectedLayout />,
             children: [
-              { index: true, element: <AuthedPlaceholder /> },
-              // A real NotFound screen for unknown /app/* paths is deferred to
-              // Spec 04.1 (§5 / §6). Until then any protected deep link renders
-              // the placeholder so returnTo round-trips can be exercised (AC13).
-              { path: "*", element: <AuthedPlaceholder /> },
+              { index: true, element: <AppIndex /> },
+              { path: "profile", element: <ProfileScreen /> },
+              { path: "workouts", element: <ComingSoon /> },
+              { path: "history", element: <ComingSoon /> },
+              { path: "progress", element: <ComingSoon /> },
+              { path: "*", element: <NotFound /> },
             ],
           },
         ],
       },
-      // deferred: a real top-level NotFound screen is Spec 04.1 (§6). Minimal
-      // redirect for now — an unknown path lands an authed user on /app and an
-      // unauth user on / (via ProtectedRoute).
-      { path: "*", element: <Navigate to="/app" replace /> },
+      { path: "*", element: <NotFound /> },
     ],
   },
 ];

@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "assert:build-output": "node scripts/assert-build-output.mjs",
-    "assert:render-yaml": "node scripts/assert-render-yaml.mjs"
+    "assert:render-yaml": "node scripts/assert-render-yaml.mjs",
+    "assert:css-tokens": "node scripts/assert-css-tokens.mjs"
   },
   "dependencies": {
     "@auth0/auth0-react": "2.24.1",

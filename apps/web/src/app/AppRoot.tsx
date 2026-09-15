@@ -4,6 +4,7 @@ import { RouterProvider } from "react-router";
 
 import { Auth0ProviderWithNavigate } from "../auth/Auth0ProviderWithNavigate";
 import { createRouter, makeOnRedirectCallback } from "./router";
+import { AppErrorBoundary } from "./RootErrorBoundary";
 
 /**
  * One `QueryClient` for the app (Spec 04.0 §5 / §3 "Provides"). `retry: false` —
@@ -34,10 +35,12 @@ export function AppRoot() {
   const [onRedirectCallback] = useState(() => makeOnRedirectCallback(router));
 
   return (
-    <Auth0ProviderWithNavigate onRedirectCallback={onRedirectCallback}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </Auth0ProviderWithNavigate>
+    <AppErrorBoundary>
+      <Auth0ProviderWithNavigate onRedirectCallback={onRedirectCallback}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Auth0ProviderWithNavigate>
+    </AppErrorBoundary>
   );
 }
