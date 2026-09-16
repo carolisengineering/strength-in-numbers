@@ -206,6 +206,62 @@ confirm:
 `NODE_ENV=production` is on the service; `DATABASE_URL` is the service secret from
 B2; `PORT` is injected by Render. Don't touch those.
 
+### B3.5. Local machine prerequisites (first time running B4/B5 from a new machine)
+
+B4 and B5 run pnpm commands from **your own terminal**, not CI. On a machine
+that hasn't run this repo before, expect to hit these, roughly in this order:
+
+1. **`zsh: command not found: pnpm`** — pnpm isn't installed. Activate it via
+   corepack (bundled with Node), which reads the exact version pinned in the
+   repo's `package.json` (`packageManager`):
+
+   ```bash
+   corepack enable
+   corepack prepare pnpm@9.15.4 --activate
+   ```
+
+2. **`ERR_PNPM_UNSUPPORTED_ENGINE` — `Expected version: >=22 <23`** — the
+   repo's `.npmrc` sets `engine-strict=true`, so pnpm refuses to run on the
+   wrong Node major version. Install Node 22 via a version manager (nvm)
+   rather than replacing your system/default Node:
+
+   ```bash
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+   # open a new terminal, or: exec zsh
+   nvm install 22
+   nvm alias default 22
+   ```
+
+   If your shell rc exports another Node's `bin` onto `PATH` **after** the nvm
+   block, it wins and silently keeps the old Node active even though
+   `nvm alias default` succeeded. Put the nvm sourcing last, or add
+   `nvm use default --silent` as the final Node-related line in the rc file.
+   A Homebrew `node@22` install doesn't fix this on its own either — it's a
+   keg-only formula Homebrew won't link onto `PATH` by default, so it just
+   sits there unused; nvm is the one actually switching your active Node.
+
+3. **`sh: tsx: command not found`** / **`WARN Local package.json exists, but
+   node_modules missing`** — dependencies were never installed under this
+   Node/pnpm. Run:
+
+   ```bash
+   pnpm install
+   ```
+
+4. **`Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+   '.../apps/api/node_modules/@sin/core/dist/index.js'`** — `packages/core` is
+   a workspace package `apps/api` imports; its `dist/` only exists after it's
+   built, and `pnpm install` does not build workspace packages. Build it once:
+
+   ```bash
+   pnpm --filter @sin/core run build
+   ```
+
+   (`pnpm run build` from the repo root builds every package in dependency
+   order, if you'd rather not build `@sin/core` alone.)
+
+Once these pass, B4/B5 behave as documented below.
+
 ### B4. Run the migration against Neon (by hand) — **required, easy to miss**
 
 Free Render has no pre-deploy step, so apply `0001_create_user` yourself. **The
@@ -492,6 +548,8 @@ Production comes later, via Spec 01.1.
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |
+| B5 seed fails: `relation "X" does not exist` (`code: 42P01`) | B4 was skipped, or `DATABASE_URL` points at a different Neon branch than the one B4 was run against. Run `prisma migrate status` first to confirm, then B4. |
+| `prisma migrate status` / `migrate deploy` prints a `Datasource` host containing `-pooler` | You exported the **pooled** connection string. `migrate status` will still report correctly, but `migrate deploy` needs the **direct** host — pooled connections (PgBouncer transaction mode) don't support the advisory locks Prisma migrate uses. Drop `-pooler` from the host, or toggle pooling off in Neon's Connection Details, and re-export `DATABASE_URL`. |
 | Boot crash: `@prisma/client did not initialize yet. Please run "prisma generate"` | The runtime image has no generated client. Fixed in `Dockerfile` — the runtime stage runs `pnpm --filter @sin/api exec prisma generate` explicitly (`@prisma/client`'s postinstall can't find the schema in a pnpm monorepo). Don't remove that line. |
 | Boot/query: `libssl`/`libquery_engine` load error, or `prisma:warn Prisma failed to detect the libssl/openssl version` | `node:22-slim` ships without `openssl`. Fixed in `Dockerfile` base stage (`apt-get install openssl ca-certificates`). |
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/server.js`) and `PORT` is being read. |
