@@ -176,4 +176,19 @@ export function registerExerciseRoutes(
       return toDto(forked);
     },
   );
+
+  r.delete(
+    "/exercises/:id",
+    { schema: { params: exerciseIdParams, response: { 204: z.undefined() } } },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      await deps.exerciseRepository.deleteExercise(actingUserId, request.params.id);
+      request.log.info(
+        { exercise_id: request.params.id, owner_user_id: actingUserId },
+        "custom_exercise_deleted",
+      );
+      reply.code(204).send();
+      return reply;
+    },
+  );
 }

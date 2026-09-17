@@ -142,6 +142,14 @@ export interface ExerciseRepository {
     overlay: ExerciseWritePatch,
   ): Promise<ExerciseRecord>;
 
+  /**
+   * Soft-deletes the caller's own custom row (`is_active = false`), idempotent
+   * — a repeat call is a no-op success (Spec 03.2 §6, AC9). Throws
+   * `NotFoundError` (not visible) or `ExerciseImmutableError` (target is a
+   * global row — a visible row, so 403 not 404, D19).
+   */
+  deleteExercise(actingUserId: string, id: string): Promise<void>;
+
   /** All muscle groups, ordered by `display_order` then `id COLLATE "C"`. */
   listMuscleGroups(): Promise<ReferenceRecord[]>;
 

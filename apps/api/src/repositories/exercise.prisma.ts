@@ -4,6 +4,7 @@ import { uuidv7 } from "uuidv7";
 import {
   CustomExerciseLimitError,
   ExerciseAlreadyOwnedError,
+  ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
@@ -337,6 +338,15 @@ export function createExerciseRepository(
       const row = await insertWithCap(actingUserId, merged, origin.id);
       if (!row) throw new CustomExerciseLimitError();
       return toRecord(row);
+    },
+
+    async deleteExercise(actingUserId: string, id: string): Promise<void> {
+      const target = toRecord(await loadVisibleRow(actingUserId, id));
+      if (target.ownerUserId === null) throw new ExerciseImmutableError();
+      await prisma.$executeRaw`
+        UPDATE "exercise" SET is_active = false, updated_at = now()
+        WHERE id = ${id}::uuid AND owner_user_id = ${actingUserId}::uuid AND is_active = true
+      `;
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {

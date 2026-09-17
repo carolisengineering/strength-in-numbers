@@ -359,6 +359,88 @@ describe("POST /v1/exercises/{id}/fork (Spec 03.2 AC6, AC7, AC8, AC10)", () => {
   });
 });
 
+describe("DELETE /v1/exercises/{id} (Spec 03.2 AC8, AC9)", () => {
+  it("204s on an owned row, idempotent on repeat", async () => {
+    // Same provisioning-order gotcha as the PATCH/fork tests above: auth
+    // provisioning only creates the `user` row on the first authenticated
+    // request, so the caller's id must be seeded directly rather than read
+    // back via `findByAuthSub` before any request has been made.
+    const exerciseRepo = new FakeExerciseRepository();
+    const userRepo = new FakeUserRepository();
+    const user = makeUser({ authSub: "auth0|user-123" });
+    userRepo.seed(user);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      userRepository: userRepo,
+    });
+    const id = "018f9c8e-0000-7000-8000-000000000007";
+    exerciseRepo.byId.set(id, {
+      id,
+      catalogKey: null,
+      ownerUserId: user.id,
+      name: "Mine",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const first = await app.inject({ method: "DELETE", url: `/v1/exercises/${id}`, headers: BEARER });
+    expect(first.statusCode).toBe(204);
+    expect(first.body).toBe("");
+
+    const second = await app.inject({ method: "DELETE", url: `/v1/exercises/${id}`, headers: BEARER });
+    expect(second.statusCode).toBe(204);
+  });
+
+  it("403 exercise-immutable on a global row", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const globalId = "018f9c8e-0000-7000-8000-000000000008";
+    exerciseRepo.byId.set(globalId, {
+      id: globalId,
+      catalogKey: "back-squat",
+      ownerUserId: null,
+      name: "Back Squat",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({ method: "DELETE", url: `/v1/exercises/${globalId}`, headers: BEARER });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().type).toContain("exercise-immutable");
+  });
+
+  it("404 for an absent id", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/exercises/018f9c8e-0000-7000-8000-0000000000ff",
+      headers: BEARER,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("401 without a token", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/exercises/018f9c8e-0000-7000-8000-0000000000ff",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 function makeExerciseRecordForGet() {
   return {
     id: "018f9c8e-0000-7000-8000-000000000006",

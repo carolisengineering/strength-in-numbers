@@ -3,6 +3,7 @@ import { uuidv7 } from "uuidv7";
 import {
   CustomExerciseLimitError,
   ExerciseAlreadyOwnedError,
+  ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
@@ -571,6 +572,46 @@ describe.skipIf(!shouldRunIntegration())(
           userId,
         );
         expect(Number(finalCount[0]?.n)).toBe(500);
+      });
+    });
+
+    describe("Spec 03.2 AC8/AC9 — deleteExercise", () => {
+      it("soft-deletes an owned row: is_active false, idempotent on repeat", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Mine", ownerUserId: userId });
+
+        await repo.deleteExercise(userId, id);
+        const afterFirst = await repo.findVisibleById(userId, id);
+        expect(afterFirst.isActive).toBe(false);
+
+        await expect(repo.deleteExercise(userId, id)).resolves.toBeUndefined();
+        const afterSecond = await repo.findVisibleById(userId, id);
+        expect(afterSecond.isActive).toBe(false);
+      });
+
+      it("403 exercise-immutable on a global row", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Global" });
+
+        await expect(repo.deleteExercise(userId, id)).rejects.toBeInstanceOf(
+          ExerciseImmutableError,
+        );
+      });
+
+      it("404 for an absent id and for another user's custom row", async () => {
+        const userA = uuidv7();
+        const userB = uuidv7();
+        await insertUser(userA);
+        await insertUser(userB);
+        const bRow = uuidv7();
+        await insertExercise({ id: bRow, name: "B only", ownerUserId: userB });
+
+        await expect(repo.deleteExercise(userA, bRow)).rejects.toBeInstanceOf(NotFoundError);
+        await expect(repo.deleteExercise(userA, uuidv7())).rejects.toBeInstanceOf(NotFoundError);
       });
     });
   },

@@ -18,6 +18,7 @@ import type {
 import {
   CustomExerciseLimitError,
   ExerciseAlreadyOwnedError,
+  ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
@@ -271,6 +272,14 @@ export class FakeExerciseRepository implements ExerciseRepository {
     assertMergedFieldsValid(merged);
     this.validateReferences(merged);
     return this.insertOwned(actingUserId, merged, origin.id);
+  }
+
+  async deleteExercise(actingUserId: string, id: string): Promise<void> {
+    const target = await this.findVisibleById(actingUserId, id);
+    if (target.ownerUserId === null) throw new ExerciseImmutableError();
+    if (target.isActive) {
+      this.byId.set(id, { ...target, isActive: false, updatedAt: new Date() });
+    }
   }
 
   async listMuscleGroups(): Promise<ReferenceRecord[]> {
