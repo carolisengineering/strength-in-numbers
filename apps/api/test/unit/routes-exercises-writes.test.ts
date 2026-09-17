@@ -323,6 +323,70 @@ describe("POST /v1/exercises/{id}/fork (Spec 03.2 AC6, AC7, AC8, AC10)", () => {
     expect(res.headers.location).toBe(`/v1/exercises/${body.id}`);
   });
 
+  it("201s with NO request body at all (Finding 1 — overlay body is optional per Spec 03.2 §1, §5)", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: BEARER,
+      // No `payload` key and no content-type — a genuinely bodiless request,
+      // the primary "fork this global exercise unchanged" use case.
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.id).not.toBe(globalId);
+    expect(body.forkedFromExerciseId).toBe(globalId);
+    expect(body.name).toBe("Back Squat");
+  });
+
+  it("still applies a real overlay body when one is sent", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: JSON_HEADERS,
+      payload: { name: "My Squat Variant" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().name).toBe("My Squat Variant");
+  });
+
+  it("422s on an invalid overlay body (unrecognized key)", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: JSON_HEADERS,
+      payload: { notAField: true },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+  });
+
+  it("422s on an invalid overlay body (empty name)", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: JSON_HEADERS,
+      payload: { name: "" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+  });
+
   it("409 exercise-already-owned when forking the caller's own row", async () => {
     // Same provisioning-order gotcha as the PATCH "200s in place" test above:
     // auth provisioning only creates the `user` row on the first authenticated

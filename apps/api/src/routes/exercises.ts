@@ -148,12 +148,21 @@ export function registerExerciseRoutes(
     },
   );
 
+  // The overlay body is optional (Spec 03.2 §1, §5): "fork this global
+  // exercise unchanged" is the primary use case, so a bodiless request must
+  // 201 rather than 422. Fastify hands a truly bodiless request to the
+  // validator as `null` (not `undefined`) when no content type parser ran,
+  // so this needs `.nullish()` (accepts both `undefined` and `null`), not
+  // just `.optional()` — `.default({})` then coerces either into `{}` while
+  // still 422ing an invalid overlay (e.g. an unrecognized key, or `name: ""`).
+  const forkBodySchema = UpdateExerciseSchema.nullish().default({});
+
   r.post(
     "/exercises/:id/fork",
     {
       schema: {
         params: exerciseIdParams,
-        body: UpdateExerciseSchema,
+        body: forkBodySchema,
         response: { 201: ExerciseSchema },
       },
     },
@@ -162,7 +171,7 @@ export function registerExerciseRoutes(
       const forked = await deps.exerciseRepository.forkExercise(
         actingUserId,
         request.params.id,
-        request.body,
+        request.body ?? {},
       );
       request.log.info(
         {

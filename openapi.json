@@ -703,44 +703,52 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 120
+                "default": {},
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "modality": {
+                        "type": "string",
+                        "enum": [
+                          "weight_reps",
+                          "bodyweight_reps",
+                          "weighted_bodyweight",
+                          "duration",
+                          "distance_duration"
+                        ]
+                      },
+                      "primaryMuscleId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "secondaryMuscleIds": {
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "equipmentId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
                   },
-                  "modality": {
-                    "type": "string",
-                    "enum": [
-                      "weight_reps",
-                      "bodyweight_reps",
-                      "weighted_bodyweight",
-                      "duration",
-                      "distance_duration"
-                    ]
-                  },
-                  "primaryMuscleId": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "secondaryMuscleIds": {
-                    "maxItems": 4,
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "equipmentId": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                  {
+                    "type": "null"
                   }
-                },
-                "additionalProperties": false
+                ]
               }
             }
           }
