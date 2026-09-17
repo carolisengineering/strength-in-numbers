@@ -63,6 +63,79 @@ export const ExerciseSchema = z.object({
 });
 export type Exercise = z.infer<typeof ExerciseSchema>;
 
+/**
+ * The muscle-id cross-field rule shared by `CreateExerciseSchema.superRefine`
+ * (full body) and the server-side merge-then-validate step for `PATCH` and the
+ * `/fork` overlay (Spec 03.2 §6) — a partial `UpdateExerciseSchema` body can't
+ * see the base row's current values, so this same pure check re-runs against the
+ * *merged* result there instead of at parse time.
+ */
+export interface MuscleFieldIssue {
+  path: ["secondaryMuscleIds"];
+  message: string;
+}
+
+export function muscleIdCrossFieldIssues(val: {
+  primaryMuscleId: string | null;
+  secondaryMuscleIds: string[];
+}): MuscleFieldIssue[] {
+  const issues: MuscleFieldIssue[] = [];
+  const seen = new Set<string>();
+  for (const id of val.secondaryMuscleIds) {
+    if (seen.has(id)) {
+      issues.push({ path: ["secondaryMuscleIds"], message: "duplicate muscle id" });
+    }
+    seen.add(id);
+  }
+  if (val.primaryMuscleId !== null && val.secondaryMuscleIds.includes(val.primaryMuscleId)) {
+    issues.push({ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" });
+  }
+  return issues;
+}
+
+/** `POST /v1/exercises` body — a full custom-exercise definition (Spec 03.2 §5). */
+export const CreateExerciseSchema = z
+  .object({
+    name: CatalogName,
+    modality: z.enum(MODALITY_VALUES),
+    primaryMuscleId: z.string().nullable().default(null),
+    secondaryMuscleIds: z.array(z.string()).max(4).default([]),
+    equipmentId: z.string().nullable().default(null),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    for (const issue of muscleIdCrossFieldIssues(val)) {
+      ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+    }
+  });
+export type CreateExercise = z.infer<typeof CreateExerciseSchema>;
+
+/**
+ * `PATCH /v1/exercises/{id}` body and the `/fork` overlay body — same fields as
+ * `CreateExerciseSchema`, all optional, **no** `.superRefine`: a partial body
+ * can't see the base row's current values, so the cross-field check re-runs
+ * server-side against the merged result instead (Spec 03.2 §6).
+ */
+export const UpdateExerciseSchema = z
+  .object({
+    name: CatalogName,
+    modality: z.enum(MODALITY_VALUES),
+    primaryMuscleId: z.string().nullable(),
+    secondaryMuscleIds: z.array(z.string()).max(4),
+    equipmentId: z.string().nullable(),
+  })
+  .partial()
+  .strict();
+export type UpdateExercise = z.infer<typeof UpdateExerciseSchema>;
+
+/**
+ * Hard per-user active-custom-exercise cap (Spec 03.2 D15) — a single budget
+ * shared by `POST /v1/exercises` and `POST /v1/exercises/{id}/fork`. A code
+ * constant, not env-configurable: raising it is a reviewed decision tied to the
+ * unpaginated `GET /v1/exercises` read (Spec 03.1 §6.1), not an ops knob.
+ */
+export const MAX_CUSTOM_EXERCISES_PER_USER = 500;
+
 /** A muscle-group reference row (`GET /v1/muscle-groups`). */
 export const MuscleGroupSchema = z.object({
   id: z.string(),
