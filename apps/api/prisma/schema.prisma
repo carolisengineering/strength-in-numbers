@@ -49,6 +49,12 @@ model Exercise {
   equipmentId        String?      @map("equipment_id")
   equipment          Equipment?   @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
   isActive           Boolean      @default(true) @map("is_active")
+  // Spec 03.2 §4 — copy-on-write fork provenance. Always points at a global row
+  // (owner_user_id IS NULL) in practice; enforced at the application layer, not
+  // the DB, since forking never chains (§6).
+  forkedFromExerciseId String?    @map("forked_from_exercise_id") @db.Uuid
+  forkedFrom         Exercise?    @relation("ExerciseFork", fields: [forkedFromExerciseId], references: [id], onDelete: Restrict)
+  forks              Exercise[]   @relation("ExerciseFork")
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
 
