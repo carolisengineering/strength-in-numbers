@@ -178,6 +178,24 @@ export function createExerciseRepository(
    * interpolation is a driver-bound tagged-template parameter, never
    * `$queryRawUnsafe` — `name` is up to 120 chars of verbatim user text on this
    * table's first-ever user-write path (Spec 03.2 §6).
+   *
+   * Lock acquisition and the count+insert are two *separate* statements inside
+   * one `prisma.$transaction`, not one CTE'd statement. In PostgreSQL READ
+   * COMMITTED, a statement's MVCC snapshot is fixed at that statement's start,
+   * before the executor runs — blocking mid-statement on
+   * `pg_advisory_xact_lock` does NOT refresh the snapshot the rest of that same
+   * statement sees. A single-statement `WITH _lock AS (SELECT
+   * pg_advisory_xact_lock(...)), _cap AS (SELECT count(*) ...)` fixes the
+   * count's snapshot at the moment the whole statement started, before the lock
+   * was even requested: two concurrent callers can both open with a snapshot
+   * showing 499 active rows, one wins the lock and commits (500), and the
+   * second — still blocked, then unblocked, but reading the *same pre-commit
+   * snapshot it started with* — sees 499, passes the cap check, and inserts a
+   * 501st row. Splitting the lock into its own statement means the count
+   * statement only *starts* (and only then fixes its snapshot) after
+   * `tx.$executeRaw` has returned, i.e. after the lock is confirmed held and
+   * any prior holder's transaction has committed or rolled back — so the count
+   * this statement sees is always current as of that commit.
    */
   async function insertWithCap(
     actingUserId: string,
@@ -185,28 +203,28 @@ export function createExerciseRepository(
     forkedFromExerciseId: string | null,
   ): Promise<ExerciseDbRow | undefined> {
     const id = uuidv7();
-    const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
-      WITH _lock AS (
-        SELECT pg_advisory_xact_lock(hashtext(${actingUserId}))
-      ),
-      _cap AS (
-        SELECT count(*) AS active_count
-        FROM "exercise", _lock
-        WHERE owner_user_id = ${actingUserId}::uuid AND is_active = true
-      )
-      INSERT INTO "exercise" (id, owner_user_id, catalog_key, name, modality,
-                              primary_muscle_id, secondary_muscle_ids, equipment_id,
-                              is_active, forked_from_exercise_id, created_at, updated_at)
-      SELECT ${id}::uuid, ${actingUserId}::uuid, NULL, ${fields.name}, ${fields.modality},
-             ${fields.primaryMuscleId}, ${fields.secondaryMuscleIds}::text[], ${fields.equipmentId},
-             true, ${forkedFromExerciseId}::uuid, now(), now()
-      FROM _cap
-      WHERE _cap.active_count < ${MAX_CUSTOM_EXERCISES_PER_USER}
-      RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
-                secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
-                created_at, updated_at
-    `;
-    return rows[0];
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${actingUserId}))`;
+      const rows = await tx.$queryRaw<ExerciseDbRow[]>`
+        WITH _cap AS (
+          SELECT count(*) AS active_count
+          FROM "exercise"
+          WHERE owner_user_id = ${actingUserId}::uuid AND is_active = true
+        )
+        INSERT INTO "exercise" (id, owner_user_id, catalog_key, name, modality,
+                                primary_muscle_id, secondary_muscle_ids, equipment_id,
+                                is_active, forked_from_exercise_id, created_at, updated_at)
+        SELECT ${id}::uuid, ${actingUserId}::uuid, NULL, ${fields.name}, ${fields.modality},
+               ${fields.primaryMuscleId}, ${fields.secondaryMuscleIds}::text[], ${fields.equipmentId},
+               true, ${forkedFromExerciseId}::uuid, now(), now()
+        FROM _cap
+        WHERE _cap.active_count < ${MAX_CUSTOM_EXERCISES_PER_USER}
+        RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
+                  secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
+                  created_at, updated_at
+      `;
+      return rows[0];
+    });
   }
 
   return {
@@ -299,6 +317,7 @@ export function createExerciseRepository(
 
       const merged = mergeWritableFields(before, patch);
       assertMergedFieldsValid(merged);
+      await validateReferences(merged);
 
       const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
         UPDATE "exercise"

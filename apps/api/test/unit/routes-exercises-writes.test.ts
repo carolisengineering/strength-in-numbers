@@ -229,6 +229,50 @@ describe("PATCH /v1/exercises/{id} (Spec 03.2 AC4, AC5, AC8)", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("I1 — 422 (not 500) when a PATCH names an unknown primaryMuscleId/secondaryMuscleIds/equipmentId", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const userRepo = new FakeUserRepository();
+    const user = makeUser({ authSub: "auth0|user-123" });
+    userRepo.seed(user);
+    exerciseRepo.muscleGroups = [{ id: "chest", name: "Chest", displayOrder: 0 }];
+    exerciseRepo.equipment = [{ id: "barbell", name: "Barbell", displayOrder: 0 }];
+    const { app, exerciseRepo: er } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      userRepository: userRepo,
+    });
+    const id = "018f9c8e-0000-7000-8000-000000000004";
+    er.byId.set(id, {
+      id,
+      catalogKey: null,
+      ownerUserId: user.id,
+      name: "Owned",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/exercises/${id}`,
+      headers: JSON_HEADERS,
+      payload: {
+        primaryMuscleId: "no-such-muscle",
+        secondaryMuscleIds: ["also-missing"],
+        equipmentId: "no-such-equipment",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    const paths = res.json().errors.map((e: { path: string }) => e.path);
+    expect(paths).toEqual(
+      expect.arrayContaining(["primaryMuscleId", "secondaryMuscleIds", "equipmentId"]),
+    );
+  });
+
   it("401 without a token", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({

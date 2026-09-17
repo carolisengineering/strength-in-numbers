@@ -251,6 +251,7 @@ export class FakeExerciseRepository implements ExerciseRepository {
     if (!before.isActive) throw new ExerciseRetiredError();
     const merged = mergeWritableFields(before, patch);
     assertMergedFieldsValid(merged);
+    this.validateReferences(merged);
     const updated: ExerciseRecord = {
       ...before,
       ...merged,

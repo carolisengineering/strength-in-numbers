@@ -316,6 +316,51 @@ describe.skipIf(!shouldRunIntegration())(
         ).rejects.toBeInstanceOf(CustomExerciseLimitError);
       });
 
+      it("C1 — never exceeds the cap under genuine concurrency: 10 concurrent createExercise calls at the 495/500 boundary", async () => {
+        // Regression test for the whole-branch-review C1 finding: a single CTE'd
+        // statement (`WITH _lock AS (SELECT pg_advisory_xact_lock(...)), _cap AS
+        // (SELECT count(*) ...)`) fixes its MVCC snapshot at statement *start*,
+        // before the executor blocks on the lock — so under READ COMMITTED,
+        // blocking mid-statement on the lock does not refresh the count
+        // sub-query's snapshot. Two callers can both open with a snapshot
+        // showing (cap - 1) active rows; the second, unblocked after the first
+        // commits, still reads its own stale pre-commit snapshot, passes the
+        // cap check, and the cap is breached. A 2-caller race (the previous
+        // version of this test, and the mixed create+fork test below) can pass
+        // on a broken implementation purely from scheduling luck — it needs
+        // enough genuinely concurrent callers, all doing the *same* minimal
+        // pre-INSERT work (zero reference-check round trips, since every field
+        // here is null/empty), to reliably contend on the same snapshot window.
+        const userId = uuidv7();
+        await insertUser(userId);
+        await Promise.all(
+          Array.from({ length: 495 }, () =>
+            insertExercise({ name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
+          ),
+        );
+
+        const results = await Promise.allSettled(
+          Array.from({ length: 10 }, (_, i) =>
+            repo.createExercise(userId, { ...fields, name: `Race ${i}` }),
+          ),
+        );
+
+        const fulfilled = results.filter((r) => r.status === "fulfilled");
+        const rejected = results.filter((r) => r.status === "rejected");
+        expect(fulfilled.length + rejected.length).toBe(10);
+        expect(fulfilled).toHaveLength(5); // exactly enough to reach the cap from 495
+        expect(rejected).toHaveLength(5);
+        for (const r of rejected) {
+          expect((r as PromiseRejectedResult).reason).toBeInstanceOf(CustomExerciseLimitError);
+        }
+
+        const finalCount = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+          `SELECT count(*) AS n FROM "exercise" WHERE owner_user_id = $1::uuid AND is_active = true`,
+          userId,
+        );
+        expect(Number(finalCount[0]?.n)).toBe(500);
+      });
+
       it("does not count another user's or the caller's own retired rows toward the cap", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
@@ -360,6 +405,49 @@ describe.skipIf(!shouldRunIntegration())(
 
         await expect(
           repo.updateExercise(userId, id, { secondaryMuscleIds: ["quads"] }),
+        ).rejects.toMatchObject({ fieldErrors: [{ path: "secondaryMuscleIds" }] });
+      });
+
+      it("I1 — 422 ValidationError on a PATCH naming an unknown primaryMuscleId/secondaryMuscleIds/equipmentId, not a 500", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Owned Row", ownerUserId: userId });
+
+        try {
+          await repo.updateExercise(userId, id, {
+            primaryMuscleId: "no-such-muscle",
+            secondaryMuscleIds: ["also-missing"],
+            equipmentId: "no-such-equipment",
+          });
+          expect.unreachable("expected ValidationError");
+        } catch (err) {
+          expect(err).toBeInstanceOf(ValidationError);
+          const paths = (err as ValidationError).fieldErrors!.map((f) => f.path);
+          expect(paths).toEqual(
+            expect.arrayContaining(["primaryMuscleId", "secondaryMuscleIds", "equipmentId"]),
+          );
+        }
+      });
+
+      it("I2 — 422 ValidationError naming secondaryMuscleIds when a PATCH merge pushes the array over the 4-entry cap", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertMuscleGroup("m1", "M1", 1);
+        await insertMuscleGroup("m2", "M2", 1);
+        await insertMuscleGroup("m3", "M3", 1);
+        await insertMuscleGroup("m4", "M4", 1);
+        await insertMuscleGroup("m5", "M5", 1);
+        await insertExercise({ id, name: "Owned Row", ownerUserId: userId });
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
+          ["m1", "m2", "m3"],
+          id,
+        );
+
+        await expect(
+          repo.updateExercise(userId, id, { secondaryMuscleIds: ["m1", "m2", "m3", "m4", "m5"] }),
         ).rejects.toMatchObject({ fieldErrors: [{ path: "secondaryMuscleIds" }] });
       });
 
@@ -538,6 +626,15 @@ describe.skipIf(!shouldRunIntegration())(
       });
 
       it("shares the create cap: a mixed create+fork burst at the 499/500 boundary never exceeds it", async () => {
+        // A 2-caller race (1 create + 1 fork) is too weak on its own: create
+        // does zero reference-check round trips when every field is null, while
+        // fork does a `loadVisibleRow` round trip first for the origin, so the
+        // two calls' pre-INSERT timing differs and they don't reliably land
+        // inside the same snapshot window — this test could pass on a broken
+        // `insertWithCap` purely from scheduling luck (this is exactly what let
+        // C1 through the per-task review). Firing ~8-10 concurrent calls split
+        // between create and fork, all racing the same single free slot,
+        // contends much more reliably.
         const userId = uuidv7();
         await insertUser(userId);
         await Promise.all(
@@ -548,24 +645,30 @@ describe.skipIf(!shouldRunIntegration())(
         const globalId = uuidv7();
         await insertExercise({ id: globalId, name: "Global Row" });
 
-        const results = await Promise.allSettled([
-          repo.createExercise(userId, {
-            name: "Race Create",
-            modality: "weight_reps",
-            primaryMuscleId: null,
-            secondaryMuscleIds: [],
-            equipmentId: null,
-          }),
-          repo.forkExercise(userId, globalId, {}),
-        ]);
+        const calls: Promise<unknown>[] = [];
+        for (let i = 0; i < 10; i += 1) {
+          calls.push(
+            i % 2 === 0
+              ? repo.createExercise(userId, {
+                  name: `Race Create ${i}`,
+                  modality: "weight_reps",
+                  primaryMuscleId: null,
+                  secondaryMuscleIds: [],
+                  equipmentId: null,
+                })
+              : repo.forkExercise(userId, globalId, {}),
+          );
+        }
+        const results = await Promise.allSettled(calls);
 
         const fulfilled = results.filter((r) => r.status === "fulfilled");
         const rejected = results.filter((r) => r.status === "rejected");
-        expect(fulfilled).toHaveLength(1);
-        expect(rejected).toHaveLength(1);
-        expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
-          CustomExerciseLimitError,
-        );
+        expect(fulfilled.length + rejected.length).toBe(10);
+        expect(fulfilled).toHaveLength(1); // exactly the one free slot at 499/500
+        expect(rejected).toHaveLength(9);
+        for (const r of rejected) {
+          expect((r as PromiseRejectedResult).reason).toBeInstanceOf(CustomExerciseLimitError);
+        }
 
         const finalCount = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
           `SELECT count(*) AS n FROM "exercise" WHERE owner_user_id = $1::uuid AND is_active = true`,

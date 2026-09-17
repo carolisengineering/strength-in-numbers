@@ -283,6 +283,23 @@ describe("write DTOs (Spec 03.2 §5)", () => {
     ).toEqual([{ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" }]);
   });
 
+  it("I2 — muscleIdCrossFieldIssues rejects a secondaryMuscleIds array over the 4-entry cap", () => {
+    expect(
+      muscleIdCrossFieldIssues({
+        primaryMuscleId: null,
+        secondaryMuscleIds: ["a", "b", "c", "d", "e"],
+      }),
+    ).toEqual([
+      { path: ["secondaryMuscleIds"], message: "at most 4 secondary muscle ids" },
+    ]);
+    expect(
+      muscleIdCrossFieldIssues({
+        primaryMuscleId: null,
+        secondaryMuscleIds: ["a", "b", "c", "d"],
+      }),
+    ).toEqual([]);
+  });
+
   it("MAX_CUSTOM_EXERCISES_PER_USER is 500", () => {
     expect(MAX_CUSTOM_EXERCISES_PER_USER).toBe(500);
   });

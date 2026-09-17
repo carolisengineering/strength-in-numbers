@@ -75,6 +75,14 @@ export interface MuscleFieldIssue {
   message: string;
 }
 
+/** Same cap as `CreateExerciseSchema`/`UpdateExerciseSchema`'s `.max(4)`, restated
+ * here so the merge-then-validate path (PATCH, fork overlay) enforces it too —
+ * those paths never re-run the Zod schema against the merged result, only this
+ * function. Additive to the schema-level `.max(4)`, not a replacement: the
+ * schema still gives the client early feedback on a body that is over-cap by
+ * itself. */
+const MAX_SECONDARY_MUSCLE_IDS = 4;
+
 export function muscleIdCrossFieldIssues(val: {
   primaryMuscleId: string | null;
   secondaryMuscleIds: string[];
@@ -89,6 +97,12 @@ export function muscleIdCrossFieldIssues(val: {
   }
   if (val.primaryMuscleId !== null && val.secondaryMuscleIds.includes(val.primaryMuscleId)) {
     issues.push({ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" });
+  }
+  if (val.secondaryMuscleIds.length > MAX_SECONDARY_MUSCLE_IDS) {
+    issues.push({
+      path: ["secondaryMuscleIds"],
+      message: `at most ${MAX_SECONDARY_MUSCLE_IDS} secondary muscle ids`,
+    });
   }
   return issues;
 }
