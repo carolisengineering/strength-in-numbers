@@ -3,6 +3,7 @@ import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   CustomExerciseLimitError,
+  ExerciseAlreadyOwnedError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
@@ -318,6 +319,24 @@ export function createExerciseRepository(
         throw new ExerciseImmutableUseForkError();
       }
       return toRecord(updated);
+    },
+
+    async forkExercise(
+      actingUserId: string,
+      originId: string,
+      overlay: ExerciseWritePatch,
+    ): Promise<ExerciseRecord> {
+      const origin = toRecord(await loadVisibleRow(actingUserId, originId));
+      if (origin.ownerUserId === actingUserId) throw new ExerciseAlreadyOwnedError();
+      if (!origin.isActive) throw new ExerciseRetiredError();
+
+      const merged = mergeWritableFields(origin, overlay);
+      assertMergedFieldsValid(merged);
+      await validateReferences(merged);
+
+      const row = await insertWithCap(actingUserId, merged, origin.id);
+      if (!row) throw new CustomExerciseLimitError();
+      return toRecord(row);
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {

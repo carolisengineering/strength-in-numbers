@@ -17,6 +17,7 @@ import type {
 } from "../../src/repositories/exercise.js";
 import {
   CustomExerciseLimitError,
+  ExerciseAlreadyOwnedError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
@@ -256,6 +257,20 @@ export class FakeExerciseRepository implements ExerciseRepository {
     };
     this.byId.set(updated.id, updated);
     return updated;
+  }
+
+  async forkExercise(
+    actingUserId: string,
+    originId: string,
+    overlay: ExerciseWritePatch,
+  ): Promise<ExerciseRecord> {
+    const origin = await this.findVisibleById(actingUserId, originId);
+    if (origin.ownerUserId === actingUserId) throw new ExerciseAlreadyOwnedError();
+    if (!origin.isActive) throw new ExerciseRetiredError();
+    const merged = mergeWritableFields(origin, overlay);
+    assertMergedFieldsValid(merged);
+    this.validateReferences(merged);
+    return this.insertOwned(actingUserId, merged, origin.id);
   }
 
   async listMuscleGroups(): Promise<ReferenceRecord[]> {

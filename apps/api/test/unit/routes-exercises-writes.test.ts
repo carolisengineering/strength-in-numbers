@@ -240,3 +240,138 @@ describe("PATCH /v1/exercises/{id} (Spec 03.2 AC4, AC5, AC8)", () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe("POST /v1/exercises/{id}/fork (Spec 03.2 AC6, AC7, AC8, AC10)", () => {
+  const globalId = "018f9c8e-0000-7000-8000-000000000003";
+  function seedGlobal(exerciseRepo: FakeExerciseRepository): void {
+    exerciseRepo.byId.set(globalId, {
+      id: globalId,
+      catalogKey: "back-squat",
+      ownerUserId: null,
+      name: "Back Squat",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  it("201s with a new id, Location header, forkedFromExerciseId = origin id", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: JSON_HEADERS,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.id).not.toBe(globalId);
+    expect(body.forkedFromExerciseId).toBe(globalId);
+    expect(body.catalogKey).toBeNull();
+    expect(res.headers.location).toBe(`/v1/exercises/${body.id}`);
+  });
+
+  it("409 exercise-already-owned when forking the caller's own row", async () => {
+    // Same provisioning-order gotcha as the PATCH "200s in place" test above:
+    // auth provisioning only creates the `user` row on the first authenticated
+    // request, so the caller's id must be seeded directly rather than read
+    // back via `findByAuthSub` before any request has been made.
+    const exerciseRepo = new FakeExerciseRepository();
+    const userRepo = new FakeUserRepository();
+    const user = makeUser({ authSub: "auth0|user-123" });
+    userRepo.seed(user);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      userRepository: userRepo,
+    });
+    const ownId = "018f9c8e-0000-7000-8000-000000000004";
+    exerciseRepo.byId.set(ownId, {
+      id: ownId,
+      catalogKey: null,
+      ownerUserId: user.id,
+      name: "Mine",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${ownId}/fork`,
+      headers: JSON_HEADERS,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-already-owned");
+  });
+
+  it("404 for an absent id", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises/018f9c8e-0000-7000-8000-0000000000ff/fork",
+      headers: JSON_HEADERS,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("401 without a token", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: { "content-type": "application/json" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("forkedFromExerciseId shows up in GET /v1/exercises and changes the ETag", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.catalog = [makeExerciseRecordForGet()];
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const before = await app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
+    exerciseRepo.catalog = [
+      ...exerciseRepo.catalog,
+      { ...makeExerciseRecordForGet(), id: "018f9c8e-0000-7000-8000-000000000005", forkedFromExerciseId: exerciseRepo.catalog[0]!.id },
+    ];
+    const after = await app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
+
+    expect(after.headers.etag).not.toBe(before.headers.etag);
+    expect(
+      after.json().exercises.find((e: { forkedFromExerciseId: string | null }) => e.forkedFromExerciseId !== null),
+    ).toBeDefined();
+  });
+});
+
+function makeExerciseRecordForGet() {
+  return {
+    id: "018f9c8e-0000-7000-8000-000000000006",
+    catalogKey: "back-squat",
+    ownerUserId: null,
+    name: "Back Squat",
+    modality: "weight_reps",
+    primaryMuscleId: null,
+    secondaryMuscleIds: [],
+    equipmentId: null,
+    isActive: true,
+    forkedFromExerciseId: null,
+    createdAt: new Date("2026-09-01T10:00:00.000Z"),
+    updatedAt: new Date("2026-09-01T10:00:00.000Z"),
+  };
+}

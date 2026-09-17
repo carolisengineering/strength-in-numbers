@@ -126,6 +126,22 @@ export interface ExerciseRepository {
     patch: ExerciseWritePatch,
   ): Promise<ExerciseRecord>;
 
+  /**
+   * Copy-on-write forks a global, active row (Spec 03.2 §6): copies its
+   * writable fields, applies `overlay` on top, re-runs the cross-field check on
+   * the merged result, then inserts under the same shared cap as
+   * `createExercise` with `forkedFromExerciseId` = the origin's id. Throws
+   * `NotFoundError` (not visible), `ExerciseAlreadyOwnedError` (target is
+   * already the caller's own row), `ExerciseRetiredError` (target
+   * `isActive=false`), `ValidationError` (merged overlay conflicts), or
+   * `CustomExerciseLimitError` (shared cap hit).
+   */
+  forkExercise(
+    actingUserId: string,
+    originId: string,
+    overlay: ExerciseWritePatch,
+  ): Promise<ExerciseRecord>;
+
   /** All muscle groups, ordered by `display_order` then `id COLLATE "C"`. */
   listMuscleGroups(): Promise<ReferenceRecord[]>;
 

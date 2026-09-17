@@ -147,4 +147,33 @@ export function registerExerciseRoutes(
       return toDto(updated);
     },
   );
+
+  r.post(
+    "/exercises/:id/fork",
+    {
+      schema: {
+        params: exerciseIdParams,
+        body: UpdateExerciseSchema,
+        response: { 201: ExerciseSchema },
+      },
+    },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      const forked = await deps.exerciseRepository.forkExercise(
+        actingUserId,
+        request.params.id,
+        request.body,
+      );
+      request.log.info(
+        {
+          exercise_id: forked.id,
+          owner_user_id: actingUserId,
+          forked_from_exercise_id: forked.forkedFromExerciseId,
+        },
+        "custom_exercise_forked",
+      );
+      reply.code(201).header("location", `/v1/exercises/${forked.id}`);
+      return toDto(forked);
+    },
+  );
 }
