@@ -9,6 +9,11 @@ import {
   PayloadTooLargeError,
   NotFoundError,
   InternalError,
+  CustomExerciseLimitError,
+  ExerciseRetiredError,
+  ExerciseImmutableError,
+  ExerciseImmutableUseForkError,
+  ExerciseAlreadyOwnedError,
 } from "../../src/errors/app-error.js";
 import { toProblem, PROBLEM_BASE_URL } from "../../src/errors/problem.js";
 
@@ -29,6 +34,11 @@ describe("AppError hierarchy", () => {
       [new PayloadTooLargeError(), 413, "payload-too-large"],
       [new NotFoundError(), 404, "not-found"],
       [new InternalError("boom"), 500, "internal"],
+      [new CustomExerciseLimitError(), 409, "exercise-limit-reached"],
+      [new ExerciseRetiredError(), 409, "exercise-retired"],
+      [new ExerciseImmutableError(), 403, "exercise-immutable"],
+      [new ExerciseImmutableUseForkError(), 409, "exercise-immutable-use-fork"],
+      [new ExerciseAlreadyOwnedError(), 409, "exercise-already-owned"],
     ];
     for (const [err, status, slug] of cases) {
       expect(err, slug).toBeInstanceOf(AppError);
