@@ -27,6 +27,7 @@ interface ExerciseDbRow {
   secondary_muscle_ids: string[];
   equipment_id: string | null;
   is_active: boolean;
+  forked_from_exercise_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,6 +46,7 @@ function toRecord(r: ExerciseDbRow): ExerciseRecord {
     secondaryMuscleIds: r.secondary_muscle_ids,
     equipmentId: r.equipment_id,
     isActive: r.is_active,
+    forkedFromExerciseId: r.forked_from_exercise_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -73,6 +75,34 @@ export function createExerciseRepository(
     return row!.server_time;
   }
 
+  /** Visibility-filtered row lookup, shared by every write method that needs the
+   * existing-row/404 check before branching on ownership/state (spec §6, §7). */
+  async function loadVisibleRow(
+    actingUserId: string,
+    id: string,
+  ): Promise<ExerciseDbRow> {
+    if (!isExerciseId(id)) {
+      throw new NotFoundError(
+        "exercise not found or not visible to the acting user",
+      );
+    }
+    const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
+      SELECT id, catalog_key, owner_user_id, name, modality,
+             primary_muscle_id, secondary_muscle_ids, equipment_id,
+             is_active, forked_from_exercise_id, created_at, updated_at
+      FROM "exercise"
+      WHERE id = ${id}::uuid
+        AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
+    `;
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundError(
+        "exercise not found or not visible to the acting user",
+      );
+    }
+    return row;
+  }
+
   return {
     async findVisibleCatalog(actingUserId: string): Promise<CatalogPage> {
       // `MAX(updated_at) OVER ()` = the newest visible row's timestamp, carried
@@ -81,7 +111,7 @@ export function createExerciseRepository(
       const rows = await prisma.$queryRaw<ExerciseDbRowWithCursor[]>`
         SELECT id, catalog_key, owner_user_id, name, modality,
                primary_muscle_id, secondary_muscle_ids, equipment_id,
-               is_active, created_at, updated_at,
+               is_active, forked_from_exercise_id, created_at, updated_at,
                date_trunc(
                  'milliseconds',
                  LEAST(transaction_timestamp(), MAX(updated_at) OVER ())
@@ -108,7 +138,7 @@ export function createExerciseRepository(
       const rows = await prisma.$queryRaw<ExerciseDbRowWithCursor[]>`
         SELECT id, catalog_key, owner_user_id, name, modality,
                primary_muscle_id, secondary_muscle_ids, equipment_id,
-               is_active, created_at, updated_at,
+               is_active, forked_from_exercise_id, created_at, updated_at,
                date_trunc(
                  'milliseconds',
                  LEAST(
@@ -139,28 +169,7 @@ export function createExerciseRepository(
       actingUserId: string,
       id: string,
     ): Promise<ExerciseRecord> {
-      // A non-UUID would make the `::uuid` cast raise 22P02 (→ 500); the
-      // contract says "not visible" is a NotFoundError, so treat it as such.
-      if (!isExerciseId(id)) {
-        throw new NotFoundError(
-          "exercise not found or not visible to the acting user",
-        );
-      }
-      const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
-        SELECT id, catalog_key, owner_user_id, name, modality,
-               primary_muscle_id, secondary_muscle_ids, equipment_id,
-               is_active, created_at, updated_at
-        FROM "exercise"
-        WHERE id = ${id}::uuid
-          AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
-      `;
-      const row = rows[0];
-      if (!row) {
-        throw new NotFoundError(
-          "exercise not found or not visible to the acting user",
-        );
-      }
-      return toRecord(row);
+      return toRecord(await loadVisibleRow(actingUserId, id));
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {

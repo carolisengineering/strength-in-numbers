@@ -47,6 +47,7 @@ function toDto(r: ExerciseRecord): Exercise {
     secondaryMuscleIds: r.secondaryMuscleIds,
     equipmentId: r.equipmentId,
     isActive: r.isActive,
+    forkedFromExerciseId: r.forkedFromExerciseId as Exercise["forkedFromExerciseId"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };

@@ -24,6 +24,8 @@ export interface ExerciseRecord {
   secondaryMuscleIds: string[];
   equipmentId: string | null;
   isActive: boolean;
+  /** Spec 03.2 — null unless this row is a copy-on-write fork of a global row. */
+  forkedFromExerciseId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

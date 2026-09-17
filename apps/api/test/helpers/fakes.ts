@@ -119,6 +119,7 @@ export function makeExerciseRecord(
     secondaryMuscleIds: [],
     equipmentId: "barbell",
     isActive: true,
+    forkedFromExerciseId: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

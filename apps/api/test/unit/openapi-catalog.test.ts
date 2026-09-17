@@ -73,6 +73,7 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
         "secondaryMuscleIds",
         "equipmentId",
         "isActive",
+        "forkedFromExerciseId",
         "createdAt",
         "updatedAt",
       ]),

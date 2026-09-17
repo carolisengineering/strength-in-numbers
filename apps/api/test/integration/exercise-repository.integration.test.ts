@@ -153,6 +153,12 @@ describe.skipIf(!shouldRunIntegration())(
         });
         expect(row?.createdAt).toBeInstanceOf(Date);
       });
+
+      it("maps forked_from_exercise_id (null for every existing row)", async () => {
+        await insertExercise({ name: "Plain Row" });
+        const { rows: [row] } = await repo.findVisibleCatalog(uuidv7());
+        expect(row?.forkedFromExerciseId).toBeNull();
+      });
     });
 
     describe("findVisibleById", () => {

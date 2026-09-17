@@ -54,6 +54,10 @@ export const ExerciseSchema = z.object({
   secondaryMuscleIds: z.array(z.string()), // muscle_group ids, authoring order (§6.1)
   equipmentId: z.string().nullable(),
   isActive: z.boolean(),
+  // Spec 03.2 §5/§6 D9 — null unless this row is a copy-on-write fork of a global
+  // row. Never server-side-filtered from GET /v1/exercises; suppressing a forked
+  // origin from a picker is a client-side rule (Spec 06).
+  forkedFromExerciseId: ExerciseIdSchema.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
 });

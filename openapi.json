@@ -271,6 +271,18 @@
                           "isActive": {
                             "type": "boolean"
                           },
+                          "forkedFromExerciseId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time",
@@ -292,6 +304,7 @@
                           "secondaryMuscleIds",
                           "equipmentId",
                           "isActive",
+                          "forkedFromExerciseId",
                           "createdAt",
                           "updatedAt"
                         ],

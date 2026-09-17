@@ -19,6 +19,7 @@ const DTO_KEYS = [
   "secondaryMuscleIds",
   "equipmentId",
   "isActive",
+  "forkedFromExerciseId",
   "createdAt",
   "updatedAt",
 ].sort();

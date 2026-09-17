@@ -19,6 +19,7 @@ const curatedRow = {
   secondaryMuscleIds: ["glutes", "hamstrings"],
   equipmentId: "barbell",
   isActive: true,
+  forkedFromExerciseId: null,
   createdAt: "2026-09-08T12:00:00Z",
   updatedAt: "2026-09-08T12:00:00Z",
 };
@@ -28,6 +29,18 @@ const UNIT_SEP = String.fromCharCode(0x1f);
 const DEL = String.fromCharCode(0x7f);
 
 describe("catalog DTOs (Spec 03.1 §5)", () => {
+  it("ExerciseSchema requires forkedFromExerciseId and accepts a fork's origin id", () => {
+    expect(() =>
+      ExerciseSchema.parse({ ...curatedRow, forkedFromExerciseId: undefined }),
+    ).toThrow();
+    expect(
+      ExerciseSchema.parse({
+        ...curatedRow,
+        forkedFromExerciseId: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      }).forkedFromExerciseId,
+    ).toBe("9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d");
+  });
+
   it("ExerciseSchema accepts a well-formed curated row", () => {
     expect(ExerciseSchema.parse(curatedRow)).toMatchObject({
       catalogKey: "barbell-back-squat",
