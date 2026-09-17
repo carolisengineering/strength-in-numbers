@@ -104,6 +104,17 @@ export class PayloadTooLargeError extends AppError {
   }
 }
 
+export class UnsupportedMediaTypeError extends AppError {
+  readonly status = 415;
+  readonly slug = "unsupported-media-type";
+  readonly title = "Unsupported media type";
+  readonly publicDetail = "The request's Content-Type is not supported.";
+
+  constructor(internal = "unsupported or missing Content-Type") {
+    super(internal);
+  }
+}
+
 export class NotFoundError extends AppError {
   readonly status = 404;
   readonly slug = "not-found";
