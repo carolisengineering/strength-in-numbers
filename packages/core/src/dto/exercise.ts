@@ -80,13 +80,31 @@ export interface MuscleFieldIssue {
  * those paths never re-run the Zod schema against the merged result, only this
  * function. Additive to the schema-level `.max(4)`, not a replacement: the
  * schema still gives the client early feedback on a body that is over-cap by
- * itself. */
+ * itself.
+ *
+ * Per D22 (Spec 03.2 §12, amends D18): this is a human-authoring UX bound, not
+ * a data-integrity or resource invariant, so it applies only to an array the
+ * current caller actually submitted — see `checkLength` on
+ * `muscleIdCrossFieldIssues` below. Don't "simplify" that back to unconditional. */
 const MAX_SECONDARY_MUSCLE_IDS = 4;
 
-export function muscleIdCrossFieldIssues(val: {
-  primaryMuscleId: string | null;
-  secondaryMuscleIds: string[];
-}): MuscleFieldIssue[] {
+/**
+ * `opts.checkLength` (default `true`) gates only the length cap, per D22 — it
+ * must stay off for a merged/overlaid result whose `secondaryMuscleIds` the
+ * current caller didn't touch (an array inherited unedited from a base row or
+ * a fork origin), since the cap exists to bound what a human types into the
+ * field, not data that was never retyped. The duplicate-id and
+ * restated-`primaryMuscleId` checks are genuine data-integrity rules and
+ * always run, regardless of `checkLength`.
+ */
+export function muscleIdCrossFieldIssues(
+  val: {
+    primaryMuscleId: string | null;
+    secondaryMuscleIds: string[];
+  },
+  opts: { checkLength?: boolean } = {},
+): MuscleFieldIssue[] {
+  const { checkLength = true } = opts;
   const issues: MuscleFieldIssue[] = [];
   const seen = new Set<string>();
   for (const id of val.secondaryMuscleIds) {
@@ -98,7 +116,7 @@ export function muscleIdCrossFieldIssues(val: {
   if (val.primaryMuscleId !== null && val.secondaryMuscleIds.includes(val.primaryMuscleId)) {
     issues.push({ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" });
   }
-  if (val.secondaryMuscleIds.length > MAX_SECONDARY_MUSCLE_IDS) {
+  if (checkLength && val.secondaryMuscleIds.length > MAX_SECONDARY_MUSCLE_IDS) {
     issues.push({
       path: ["secondaryMuscleIds"],
       message: `at most ${MAX_SECONDARY_MUSCLE_IDS} secondary muscle ids`,

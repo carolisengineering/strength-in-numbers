@@ -300,6 +300,22 @@ describe("write DTOs (Spec 03.2 §5)", () => {
     ).toEqual([]);
   });
 
+  it("D22 — muscleIdCrossFieldIssues skips the length check when checkLength is false", () => {
+    expect(
+      muscleIdCrossFieldIssues(
+        { primaryMuscleId: null, secondaryMuscleIds: ["a", "b", "c", "d", "e"] },
+        { checkLength: false },
+      ),
+    ).toEqual([]);
+    // checkLength: false is length-only — duplicate-id detection still fires.
+    expect(
+      muscleIdCrossFieldIssues(
+        { primaryMuscleId: null, secondaryMuscleIds: ["a", "a", "b", "c", "d"] },
+        { checkLength: false },
+      ),
+    ).toEqual([{ path: ["secondaryMuscleIds"], message: "duplicate muscle id" }]);
+  });
+
   it("MAX_CUSTOM_EXERCISES_PER_USER is 500", () => {
     expect(MAX_CUSTOM_EXERCISES_PER_USER).toBe(500);
   });

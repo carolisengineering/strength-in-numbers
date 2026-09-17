@@ -31,9 +31,21 @@ export function mergeWritableFields(
  * 03.2 §6) — a partial body that is valid standalone can still produce an
  * invalid merge (e.g. restating the base row's untouched `primaryMuscleId`).
  * Shared by `PATCH` and the `/fork` overlay.
+ *
+ * Per D22, the length cap only ever applies to a `secondaryMuscleIds` the
+ * caller's own `patch`/overlay actually supplied — never to a value inherited
+ * unedited from the base row or fork origin — so `checkLength` is gated on
+ * `"secondaryMuscleIds" in patch`, the same presence idiom `mergeWritableFields`
+ * uses above. The duplicate-id and restated-`primaryMuscleId` checks are
+ * unaffected and always run against the full merged result.
  */
-export function assertMergedFieldsValid(merged: ExerciseWriteFields): void {
-  const issues = muscleIdCrossFieldIssues(merged);
+export function assertMergedFieldsValid(
+  merged: ExerciseWriteFields,
+  patch: ExerciseWritePatch,
+): void {
+  const issues = muscleIdCrossFieldIssues(merged, {
+    checkLength: "secondaryMuscleIds" in patch,
+  });
   if (issues.length === 0) return;
   const fieldErrors: FieldError[] = issues.map((issue) => ({
     path: issue.path.join("."),

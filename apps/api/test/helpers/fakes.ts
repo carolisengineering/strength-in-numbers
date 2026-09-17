@@ -250,7 +250,7 @@ export class FakeExerciseRepository implements ExerciseRepository {
     if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
     if (!before.isActive) throw new ExerciseRetiredError();
     const merged = mergeWritableFields(before, patch);
-    assertMergedFieldsValid(merged);
+    assertMergedFieldsValid(merged, patch);
     this.validateReferences(merged);
     const updated: ExerciseRecord = {
       ...before,
@@ -270,7 +270,7 @@ export class FakeExerciseRepository implements ExerciseRepository {
     if (origin.ownerUserId === actingUserId) throw new ExerciseAlreadyOwnedError();
     if (!origin.isActive) throw new ExerciseRetiredError();
     const merged = mergeWritableFields(origin, overlay);
-    assertMergedFieldsValid(merged);
+    assertMergedFieldsValid(merged, overlay);
     this.validateReferences(merged);
     return this.insertOwned(actingUserId, merged, origin.id);
   }

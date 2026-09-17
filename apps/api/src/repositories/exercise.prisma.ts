@@ -316,7 +316,7 @@ export function createExerciseRepository(
       if (!before.isActive) throw new ExerciseRetiredError();
 
       const merged = mergeWritableFields(before, patch);
-      assertMergedFieldsValid(merged);
+      assertMergedFieldsValid(merged, patch);
       await validateReferences(merged);
 
       const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
@@ -351,7 +351,7 @@ export function createExerciseRepository(
       if (!origin.isActive) throw new ExerciseRetiredError();
 
       const merged = mergeWritableFields(origin, overlay);
-      assertMergedFieldsValid(merged);
+      assertMergedFieldsValid(merged, overlay);
       await validateReferences(merged);
 
       const row = await insertWithCap(actingUserId, merged, origin.id);

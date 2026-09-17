@@ -678,6 +678,77 @@ describe.skipIf(!shouldRunIntegration())(
       });
     });
 
+    describe("D22 — fork copies an over-4 curated secondaryMuscleIds array unchanged", () => {
+      it("forkExercise with an empty overlay succeeds and preserves a 5-entry origin array", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        await insertMuscleGroup("m1", "M1", 1);
+        await insertMuscleGroup("m2", "M2", 1);
+        await insertMuscleGroup("m3", "M3", 1);
+        await insertMuscleGroup("m4", "M4", 1);
+        await insertMuscleGroup("m5", "M5", 1);
+        const originId = uuidv7();
+        // Bypasses the app layer, standing in for a curated row the seed
+        // would have inserted uncapped (D18/D22).
+        await insertExercise({ id: originId, name: "Curated Row", catalogKey: "curated-row" });
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
+          ["m1", "m2", "m3", "m4", "m5"],
+          originId,
+        );
+
+        const forked = await repo.forkExercise(userId, originId, {});
+        expect(forked.secondaryMuscleIds).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+      });
+
+      it("a later PATCH that doesn't touch secondaryMuscleIds does not retroactively cap it", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        await insertMuscleGroup("m1", "M1", 1);
+        await insertMuscleGroup("m2", "M2", 1);
+        await insertMuscleGroup("m3", "M3", 1);
+        await insertMuscleGroup("m4", "M4", 1);
+        await insertMuscleGroup("m5", "M5", 1);
+        const originId = uuidv7();
+        await insertExercise({ id: originId, name: "Curated Row 2", catalogKey: "curated-row-2" });
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
+          ["m1", "m2", "m3", "m4", "m5"],
+          originId,
+        );
+        const forked = await repo.forkExercise(userId, originId, {});
+
+        const updated = await repo.updateExercise(userId, forked.id, { name: "Renamed" });
+
+        expect(updated.name).toBe("Renamed");
+        expect(updated.secondaryMuscleIds).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+      });
+
+      it("explicitly resubmitting the same over-cap array is still rejected", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        await insertMuscleGroup("m1", "M1", 1);
+        await insertMuscleGroup("m2", "M2", 1);
+        await insertMuscleGroup("m3", "M3", 1);
+        await insertMuscleGroup("m4", "M4", 1);
+        await insertMuscleGroup("m5", "M5", 1);
+        const originId = uuidv7();
+        await insertExercise({ id: originId, name: "Curated Row 3", catalogKey: "curated-row-3" });
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
+          ["m1", "m2", "m3", "m4", "m5"],
+          originId,
+        );
+        const forked = await repo.forkExercise(userId, originId, {});
+
+        await expect(
+          repo.updateExercise(userId, forked.id, {
+            secondaryMuscleIds: ["m1", "m2", "m3", "m4", "m5"],
+          }),
+        ).rejects.toMatchObject({ fieldErrors: [{ path: "secondaryMuscleIds" }] });
+      });
+    });
+
     describe("Spec 03.2 AC8/AC9 — deleteExercise", () => {
       it("soft-deletes an owned row: is_active false, idempotent on repeat", async () => {
         const userId = uuidv7();

@@ -323,6 +323,40 @@ describe("POST /v1/exercises/{id}/fork (Spec 03.2 AC6, AC7, AC8, AC10)", () => {
     expect(res.headers.location).toBe(`/v1/exercises/${body.id}`);
   });
 
+  it("D22 — 201s (not 422) forking a curated row whose secondaryMuscleIds is already over the 4-entry cap", async () => {
+    const overCapId = "018f9c8e-0000-7000-8000-000000000009";
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.muscleGroups = ["m1", "m2", "m3", "m4", "m5"].map((id) => ({
+      id,
+      name: id,
+      displayOrder: 1,
+    }));
+    exerciseRepo.byId.set(overCapId, {
+      id: overCapId,
+      catalogKey: "over-cap-curated-row",
+      ownerUserId: null,
+      name: "Over Cap Curated Row",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: ["m1", "m2", "m3", "m4", "m5"],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${overCapId}/fork`,
+      headers: JSON_HEADERS,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().secondaryMuscleIds).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+  });
+
   it("201s with NO request body at all (Finding 1 — overlay body is optional per Spec 03.2 §1, §5)", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     seedGlobal(exerciseRepo);
