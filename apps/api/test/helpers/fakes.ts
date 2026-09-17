@@ -1,4 +1,4 @@
-import { isExerciseId } from "@sin/core";
+import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import type {
   ProfilePatch,
@@ -11,9 +11,10 @@ import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
+  ExerciseWriteFields,
   ReferenceRecord,
 } from "../../src/repositories/exercise.js";
-import { NotFoundError } from "../../src/errors/app-error.js";
+import { CustomExerciseLimitError, NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -140,6 +141,9 @@ export class FakeExerciseRepository implements ExerciseRepository {
   equipment: ReferenceRecord[] = [];
   byId = new Map<string, ExerciseRecord>();
 
+  /** Overridable in tests to exercise the cap boundary without 500 inserts. */
+  cap = MAX_CUSTOM_EXERCISES_PER_USER;
+
   lastActingUserId: string | null = null;
   lastDeltaSince: string | null = null;
 
@@ -167,6 +171,64 @@ export class FakeExerciseRepository implements ExerciseRepository {
     const row = isExerciseId(id) ? this.byId.get(id) : undefined;
     if (!row) throw new NotFoundError("exercise not found");
     return row;
+  }
+
+  private validateReferences(fields: ExerciseWriteFields): void {
+    const muscleIds = new Set(this.muscleGroups.map((m) => m.id));
+    const equipmentIds = new Set(this.equipment.map((e) => e.id));
+    const fieldErrors: { path: string; message: string }[] = [];
+    if (fields.primaryMuscleId !== null && !muscleIds.has(fields.primaryMuscleId)) {
+      fieldErrors.push({ path: "primaryMuscleId", message: "must reference an existing muscle group" });
+    }
+    if (fields.secondaryMuscleIds.some((id) => !muscleIds.has(id))) {
+      fieldErrors.push({ path: "secondaryMuscleIds", message: "must reference existing muscle groups" });
+    }
+    if (fields.equipmentId !== null && !equipmentIds.has(fields.equipmentId)) {
+      fieldErrors.push({ path: "equipmentId", message: "must reference an existing equipment id" });
+    }
+    if (fieldErrors.length > 0) {
+      throw new ValidationError(
+        fieldErrors,
+        "create/fork references unknown muscle group or equipment ids",
+      );
+    }
+  }
+
+  private activeCount(actingUserId: string): number {
+    return [...this.byId.values()].filter(
+      (r) => r.ownerUserId === actingUserId && r.isActive,
+    ).length;
+  }
+
+  private insertOwned(
+    actingUserId: string,
+    fields: ExerciseWriteFields,
+    forkedFromExerciseId: string | null,
+  ): ExerciseRecord {
+    if (this.activeCount(actingUserId) >= this.cap) {
+      throw new CustomExerciseLimitError();
+    }
+    const now = new Date();
+    const row: ExerciseRecord = {
+      id: uuidv7(),
+      catalogKey: null,
+      ownerUserId: actingUserId,
+      forkedFromExerciseId,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+      ...fields,
+    };
+    this.byId.set(row.id, row);
+    return row;
+  }
+
+  async createExercise(
+    actingUserId: string,
+    fields: ExerciseWriteFields,
+  ): Promise<ExerciseRecord> {
+    this.validateReferences(fields);
+    return this.insertOwned(actingUserId, fields, null);
   }
 
   async listMuscleGroups(): Promise<ReferenceRecord[]> {

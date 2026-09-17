@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
+  CreateExerciseSchema,
   ExercisesResponse,
+  ExerciseSchema,
   UpdatedSinceQuery,
   type Exercise,
 } from "@sin/core";
@@ -99,6 +101,24 @@ export function registerExerciseRoutes(
       }
 
       return { exercises, serverTime: page.serverTime.toISOString() };
+    },
+  );
+
+  r.post(
+    "/exercises",
+    { schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } } },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      const created = await deps.exerciseRepository.createExercise(
+        actingUserId,
+        request.body,
+      );
+      request.log.info(
+        { exercise_id: created.id, owner_user_id: actingUserId },
+        "custom_exercise_created",
+      );
+      reply.code(201).header("location", `/v1/exercises/${created.id}`);
+      return toDto(created);
     },
   );
 }

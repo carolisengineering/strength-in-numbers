@@ -1,10 +1,17 @@
 import type { PrismaClient } from "@prisma/client";
-import { isExerciseId } from "@sin/core";
-import { NotFoundError } from "../errors/app-error.js";
+import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
+import { uuidv7 } from "uuidv7";
+import {
+  CustomExerciseLimitError,
+  NotFoundError,
+  ValidationError,
+  type FieldError,
+} from "../errors/app-error.js";
 import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
+  ExerciseWriteFields,
   ReferenceRecord,
 } from "./exercise.js";
 
@@ -103,6 +110,99 @@ export function createExerciseRepository(
     return row;
   }
 
+  /**
+   * Batch-checks every reference id in one query per table, collecting *all* bad
+   * ones into a single ValidationError rather than stopping at the first (Spec
+   * 03.2 §6, AC2). Real FKs on primary_muscle_id/equipment_id stay as
+   * defense-in-depth; secondary_muscle_ids has no DB FK at all, so this is its
+   * only integrity guard.
+   */
+  async function validateReferences(fields: ExerciseWriteFields): Promise<void> {
+    const muscleIds = [
+      ...(fields.primaryMuscleId !== null ? [fields.primaryMuscleId] : []),
+      ...fields.secondaryMuscleIds,
+    ];
+    const uniqueMuscleIds = [...new Set(muscleIds)];
+    const equipmentIds = fields.equipmentId !== null ? [fields.equipmentId] : [];
+
+    const [foundMuscle, foundEquipment] = await Promise.all([
+      uniqueMuscleIds.length > 0
+        ? prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM "muscle_group" WHERE id = ANY(${uniqueMuscleIds}::text[])`
+        : Promise.resolve([]),
+      equipmentIds.length > 0
+        ? prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM "equipment" WHERE id = ANY(${equipmentIds}::text[])`
+        : Promise.resolve([]),
+    ]);
+    const foundMuscleSet = new Set(foundMuscle.map((r) => r.id));
+    const foundEquipmentSet = new Set(foundEquipment.map((r) => r.id));
+
+    const fieldErrors: FieldError[] = [];
+    if (fields.primaryMuscleId !== null && !foundMuscleSet.has(fields.primaryMuscleId)) {
+      fieldErrors.push({
+        path: "primaryMuscleId",
+        message: "must reference an existing muscle group",
+      });
+    }
+    if (fields.secondaryMuscleIds.some((id) => !foundMuscleSet.has(id))) {
+      fieldErrors.push({
+        path: "secondaryMuscleIds",
+        message: "must reference existing muscle groups",
+      });
+    }
+    if (fields.equipmentId !== null && !foundEquipmentSet.has(fields.equipmentId)) {
+      fieldErrors.push({
+        path: "equipmentId",
+        message: "must reference an existing equipment id",
+      });
+    }
+    if (fieldErrors.length > 0) {
+      throw new ValidationError(
+        fieldErrors,
+        "create/fork references unknown muscle group or equipment ids",
+      );
+    }
+  }
+
+  /**
+   * The atomic, advisory-lock-guarded cap insert (Spec 03.2 §6, D15). Shared
+   * verbatim by `createExercise` (forkedFromExerciseId = null) and
+   * `forkExercise` (Task 7) — a single budget across both endpoints. Every
+   * interpolation is a driver-bound tagged-template parameter, never
+   * `$queryRawUnsafe` — `name` is up to 120 chars of verbatim user text on this
+   * table's first-ever user-write path (Spec 03.2 §6).
+   */
+  async function insertWithCap(
+    actingUserId: string,
+    fields: ExerciseWriteFields,
+    forkedFromExerciseId: string | null,
+  ): Promise<ExerciseDbRow | undefined> {
+    const id = uuidv7();
+    const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
+      WITH _lock AS (
+        SELECT pg_advisory_xact_lock(hashtext(${actingUserId}))
+      ),
+      _cap AS (
+        SELECT count(*) AS active_count
+        FROM "exercise", _lock
+        WHERE owner_user_id = ${actingUserId}::uuid AND is_active = true
+      )
+      INSERT INTO "exercise" (id, owner_user_id, catalog_key, name, modality,
+                              primary_muscle_id, secondary_muscle_ids, equipment_id,
+                              is_active, forked_from_exercise_id, created_at, updated_at)
+      SELECT ${id}::uuid, ${actingUserId}::uuid, NULL, ${fields.name}, ${fields.modality},
+             ${fields.primaryMuscleId}, ${fields.secondaryMuscleIds}::text[], ${fields.equipmentId},
+             true, ${forkedFromExerciseId}::uuid, now(), now()
+      FROM _cap
+      WHERE _cap.active_count < ${MAX_CUSTOM_EXERCISES_PER_USER}
+      RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
+                secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
+                created_at, updated_at
+    `;
+    return rows[0];
+  }
+
   return {
     async findVisibleCatalog(actingUserId: string): Promise<CatalogPage> {
       // `MAX(updated_at) OVER ()` = the newest visible row's timestamp, carried
@@ -170,6 +270,16 @@ export function createExerciseRepository(
       id: string,
     ): Promise<ExerciseRecord> {
       return toRecord(await loadVisibleRow(actingUserId, id));
+    },
+
+    async createExercise(
+      actingUserId: string,
+      fields: ExerciseWriteFields,
+    ): Promise<ExerciseRecord> {
+      await validateReferences(fields);
+      const row = await insertWithCap(actingUserId, fields, null);
+      if (!row) throw new CustomExerciseLimitError();
+      return toRecord(row);
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {

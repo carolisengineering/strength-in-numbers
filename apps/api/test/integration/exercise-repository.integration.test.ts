@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError } from "../../src/errors/app-error.js";
+import { CustomExerciseLimitError, NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import {
@@ -230,6 +230,91 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("returns an empty array when a reference table is empty", async () => {
         expect(await repo.listEquipment()).toEqual([]);
+      });
+    });
+
+    describe("Spec 03.2 AC2/AC3 — createExercise", () => {
+      const fields = {
+        name: "Cable Fly",
+        modality: "weight_reps",
+        primaryMuscleId: null as string | null,
+        secondaryMuscleIds: [] as string[],
+        equipmentId: null as string | null,
+      };
+
+      it("inserts an owned row with catalogKey null and forkedFromExerciseId null", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const created = await repo.createExercise(userId, fields);
+        expect(created).toMatchObject({
+          catalogKey: null,
+          ownerUserId: userId,
+          forkedFromExerciseId: null,
+          isActive: true,
+          name: "Cable Fly",
+        });
+      });
+
+      it("rejects unknown primaryMuscleId, secondaryMuscleIds, and equipmentId together in one error", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        try {
+          await repo.createExercise(userId, {
+            ...fields,
+            primaryMuscleId: "no-such-muscle",
+            secondaryMuscleIds: ["also-missing"],
+            equipmentId: "no-such-equipment",
+          });
+          expect.unreachable("expected ValidationError");
+        } catch (err) {
+          expect(err).toBeInstanceOf(ValidationError);
+          const paths = (err as ValidationError).fieldErrors!.map((f) => f.path);
+          expect(paths).toEqual(
+            expect.arrayContaining(["primaryMuscleId", "secondaryMuscleIds", "equipmentId"]),
+          );
+        }
+      });
+
+      it("accepts real muscle/equipment reference ids", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        await insertMuscleGroup("chest", "Chest", 1);
+        await insertEquipment("barbell", "Barbell", 1);
+        const created = await repo.createExercise(userId, {
+          ...fields,
+          primaryMuscleId: "chest",
+          equipmentId: "barbell",
+        });
+        expect(created.primaryMuscleId).toBe("chest");
+      });
+
+      it("admits the 500th active row, rejects the 501st with CustomExerciseLimitError", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        await Promise.all(
+          Array.from({ length: 499 }, () =>
+            insertExercise({ name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
+          ),
+        );
+
+        const ok = await repo.createExercise(userId, { ...fields, name: "Row 500" });
+        expect(ok.ownerUserId).toBe(userId);
+
+        await expect(
+          repo.createExercise(userId, { ...fields, name: "Row 501" }),
+        ).rejects.toBeInstanceOf(CustomExerciseLimitError);
+      });
+
+      it("does not count another user's or the caller's own retired rows toward the cap", async () => {
+        const userA = uuidv7();
+        const userB = uuidv7();
+        await insertUser(userA);
+        await insertUser(userB);
+        await insertExercise({ name: "B's row", ownerUserId: userB, isActive: true });
+        await insertExercise({ name: "A's retired row", ownerUserId: userA, isActive: false });
+
+        const created = await repo.createExercise(userA, fields);
+        expect(created.ownerUserId).toBe(userA);
       });
     });
   },

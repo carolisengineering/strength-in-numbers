@@ -49,6 +49,18 @@ export interface CatalogPage {
   serverTime: Date;
 }
 
+/** The fields a caller can set on a custom exercise (Spec 03.2 §5). */
+export interface ExerciseWriteFields {
+  name: string;
+  modality: string;
+  primaryMuscleId: string | null;
+  secondaryMuscleIds: string[];
+  equipmentId: string | null;
+}
+
+/** A partial edit — `PATCH` body or `/fork` overlay body (Spec 03.2 §5, §6). */
+export type ExerciseWritePatch = Partial<ExerciseWriteFields>;
+
 export interface ExerciseRepository {
   /**
    * The full caller-visible catalog: visible rows with `is_active = true`,
@@ -86,6 +98,17 @@ export interface ExerciseRepository {
    * `is_active` gate.
    */
   findVisibleById(actingUserId: string, id: string): Promise<ExerciseRecord>;
+
+  /**
+   * Creates an owned custom exercise: validates every reference id
+   * (`primaryMuscleId`/`secondaryMuscleIds`/`equipmentId`) exists, then inserts
+   * atomically under the shared 500-active-row cap (Spec 03.2 §6). Throws
+   * `ValidationError` (bad reference ids) or `CustomExerciseLimitError` (cap hit).
+   */
+  createExercise(
+    actingUserId: string,
+    fields: ExerciseWriteFields,
+  ): Promise<ExerciseRecord>;
 
   /** All muscle groups, ordered by `display_order` then `id COLLATE "C"`. */
   listMuscleGroups(): Promise<ReferenceRecord[]>;
