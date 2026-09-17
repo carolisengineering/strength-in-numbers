@@ -7,3 +7,4 @@ coverage/
 !.env.example
 .dev-idp-key.json
 .DS_Store
+.superpowers/
