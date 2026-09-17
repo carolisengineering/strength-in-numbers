@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildTestApp } from "../helpers/build-test-app.js";
-import { FakeExerciseRepository, fakeVerifier } from "../helpers/fakes.js";
+import { FakeExerciseRepository, FakeUserRepository, fakeVerifier, makeUser } from "../helpers/fakes.js";
 import { InvalidTokenError } from "../../src/errors/app-error.js";
 
 const BEARER = { authorization: "Bearer test-token" };
@@ -139,6 +139,103 @@ describe("POST /v1/exercises (Spec 03.2 AC2, AC3)", () => {
       url: "/v1/exercises",
       headers: JSON_HEADERS,
       payload: validCreateBody,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("PATCH /v1/exercises/{id} (Spec 03.2 AC4, AC5, AC8)", () => {
+  it("200s in place: same id, updatedAt bumped", async () => {
+    // Auth provisioning only creates the `user` row on the first authenticated
+    // request (Spec 01) — this test needs the caller's id *before* the PATCH
+    // request to seed an owned row, so it seeds the FakeUserRepository
+    // directly with a user matching authContext()'s default authSub, rather
+    // than deriving the id from a `findByAuthSub` that would still be null at
+    // this point in the test (the brief's own literal test relies on
+    // provisioning having already happened, which it hasn't here).
+    const exerciseRepo = new FakeExerciseRepository();
+    const userRepo = new FakeUserRepository();
+    const user = makeUser({ authSub: "auth0|user-123" });
+    userRepo.seed(user);
+    const { app, exerciseRepo: er } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      userRepository: userRepo,
+    });
+    const row = er.byId
+      .set("018f9c8e-0000-7000-8000-000000000001", {
+        id: "018f9c8e-0000-7000-8000-000000000001",
+        catalogKey: null,
+        ownerUserId: user.id,
+        name: "Old",
+        modality: "weight_reps",
+        primaryMuscleId: null,
+        secondaryMuscleIds: [],
+        equipmentId: null,
+        isActive: true,
+        forkedFromExerciseId: null,
+        createdAt: new Date("2026-09-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+      })
+      .get("018f9c8e-0000-7000-8000-000000000001")!;
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/exercises/${row.id}`,
+      headers: JSON_HEADERS,
+      payload: { name: "New" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: row.id, name: "New" });
+    expect(new Date(res.json().updatedAt).getTime()).toBeGreaterThan(row.updatedAt.getTime());
+  });
+
+  it("409 exercise-immutable-use-fork on a global row", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const globalId = "018f9c8e-0000-7000-8000-000000000002";
+    exerciseRepo.byId.set(globalId, {
+      id: globalId,
+      catalogKey: "back-squat",
+      ownerUserId: null,
+      name: "Back Squat",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/exercises/${globalId}`,
+      headers: JSON_HEADERS,
+      payload: { name: "Hijacked" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-immutable-use-fork");
+  });
+
+  it("404 on an absent id", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/exercises/018f9c8e-0000-7000-8000-0000000000ff",
+      headers: JSON_HEADERS,
+      payload: { name: "x" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("401 without a token", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/exercises/018f9c8e-0000-7000-8000-0000000000ff",
+      headers: { "content-type": "application/json" },
+      payload: { name: "x" },
     });
     expect(res.statusCode).toBe(401);
   });

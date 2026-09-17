@@ -6,6 +6,7 @@ import {
   ExercisesResponse,
   ExerciseSchema,
   UpdatedSinceQuery,
+  UpdateExerciseSchema,
   type Exercise,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
@@ -66,6 +67,7 @@ export function registerExerciseRoutes(
   deps: ExerciseRouteDeps,
 ): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
+  const exerciseIdParams = z.object({ id: z.string() });
 
   r.get(
     "/exercises",
@@ -119,6 +121,30 @@ export function registerExerciseRoutes(
       );
       reply.code(201).header("location", `/v1/exercises/${created.id}`);
       return toDto(created);
+    },
+  );
+
+  r.patch(
+    "/exercises/:id",
+    {
+      schema: {
+        params: exerciseIdParams,
+        body: UpdateExerciseSchema,
+        response: { 200: ExerciseSchema },
+      },
+    },
+    async (request) => {
+      const actingUserId = request.user!.id;
+      const updated = await deps.exerciseRepository.updateExercise(
+        actingUserId,
+        request.params.id,
+        request.body,
+      );
+      request.log.info(
+        { exercise_id: updated.id, owner_user_id: actingUserId },
+        "custom_exercise_updated",
+      );
+      return toDto(updated);
     },
   );
 }

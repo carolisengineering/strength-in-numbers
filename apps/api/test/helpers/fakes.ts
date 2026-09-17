@@ -12,9 +12,17 @@ import type {
   ExerciseRecord,
   ExerciseRepository,
   ExerciseWriteFields,
+  ExerciseWritePatch,
   ReferenceRecord,
 } from "../../src/repositories/exercise.js";
-import { CustomExerciseLimitError, NotFoundError, ValidationError } from "../../src/errors/app-error.js";
+import {
+  CustomExerciseLimitError,
+  ExerciseImmutableUseForkError,
+  ExerciseRetiredError,
+  NotFoundError,
+  ValidationError,
+} from "../../src/errors/app-error.js";
+import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -229,6 +237,25 @@ export class FakeExerciseRepository implements ExerciseRepository {
   ): Promise<ExerciseRecord> {
     this.validateReferences(fields);
     return this.insertOwned(actingUserId, fields, null);
+  }
+
+  async updateExercise(
+    actingUserId: string,
+    id: string,
+    patch: ExerciseWritePatch,
+  ): Promise<ExerciseRecord> {
+    const before = await this.findVisibleById(actingUserId, id);
+    if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
+    if (!before.isActive) throw new ExerciseRetiredError();
+    const merged = mergeWritableFields(before, patch);
+    assertMergedFieldsValid(merged);
+    const updated: ExerciseRecord = {
+      ...before,
+      ...merged,
+      updatedAt: new Date(before.updatedAt.getTime() + 1000),
+    };
+    this.byId.set(updated.id, updated);
+    return updated;
   }
 
   async listMuscleGroups(): Promise<ReferenceRecord[]> {

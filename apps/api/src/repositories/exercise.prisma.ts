@@ -3,15 +3,19 @@ import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   CustomExerciseLimitError,
+  ExerciseImmutableUseForkError,
+  ExerciseRetiredError,
   NotFoundError,
   ValidationError,
   type FieldError,
 } from "../errors/app-error.js";
+import { assertMergedFieldsValid, mergeWritableFields } from "./exercise-writes.js";
 import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
   ExerciseWriteFields,
+  ExerciseWritePatch,
   ReferenceRecord,
 } from "./exercise.js";
 
@@ -280,6 +284,40 @@ export function createExerciseRepository(
       const row = await insertWithCap(actingUserId, fields, null);
       if (!row) throw new CustomExerciseLimitError();
       return toRecord(row);
+    },
+
+    async updateExercise(
+      actingUserId: string,
+      id: string,
+      patch: ExerciseWritePatch,
+    ): Promise<ExerciseRecord> {
+      const before = toRecord(await loadVisibleRow(actingUserId, id));
+      if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
+      if (!before.isActive) throw new ExerciseRetiredError();
+
+      const merged = mergeWritableFields(before, patch);
+      assertMergedFieldsValid(merged);
+
+      const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
+        UPDATE "exercise"
+        SET name = ${merged.name}, modality = ${merged.modality},
+            primary_muscle_id = ${merged.primaryMuscleId},
+            secondary_muscle_ids = ${merged.secondaryMuscleIds}::text[],
+            equipment_id = ${merged.equipmentId}, updated_at = now()
+        WHERE id = ${id}::uuid AND owner_user_id = ${actingUserId}::uuid AND is_active = true
+        RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
+                  secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
+                  created_at, updated_at
+      `;
+      const updated = rows[0];
+      if (!updated) {
+        // Lost a race against a concurrent DELETE on the same row (§6 atomicity
+        // note) — re-derive the correct 404/409 rather than assume one.
+        const recheck = toRecord(await loadVisibleRow(actingUserId, id));
+        if (!recheck.isActive) throw new ExerciseRetiredError();
+        throw new ExerciseImmutableUseForkError();
+      }
+      return toRecord(updated);
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {

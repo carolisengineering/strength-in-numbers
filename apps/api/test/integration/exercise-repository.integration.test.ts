@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { CustomExerciseLimitError, NotFoundError, ValidationError } from "../../src/errors/app-error.js";
+import {
+  CustomExerciseLimitError,
+  ExerciseImmutableUseForkError,
+  ExerciseRetiredError,
+  NotFoundError,
+  ValidationError,
+} from "../../src/errors/app-error.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import {
@@ -315,6 +321,118 @@ describe.skipIf(!shouldRunIntegration())(
 
         const created = await repo.createExercise(userA, fields);
         expect(created.ownerUserId).toBe(userA);
+      });
+    });
+
+    describe("Spec 03.2 AC4/AC5 — updateExercise", () => {
+      it("updates an owned row in place: same id, updatedAt bumped", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Old Name", ownerUserId: userId });
+        const before = await repo.findVisibleById(userId, id);
+
+        const updated = await repo.updateExercise(userId, id, { name: "New Name" });
+        expect(updated.id).toBe(id);
+        expect(updated.name).toBe("New Name");
+        expect(updated.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
+      });
+
+      it("422s naming the field when a partial body, merged with the base row, restates primaryMuscleId", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertMuscleGroup("quads", "Quads", 1);
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET primary_muscle_id = NULL WHERE id = $1::uuid`,
+          id,
+        );
+        await insertExercise({ id, name: "Squat", ownerUserId: userId });
+        await db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET primary_muscle_id = 'quads' WHERE id = $1::uuid`,
+          id,
+        );
+
+        await expect(
+          repo.updateExercise(userId, id, { secondaryMuscleIds: ["quads"] }),
+        ).rejects.toMatchObject({ fieldErrors: [{ path: "secondaryMuscleIds" }] });
+      });
+
+      it("409 exercise-immutable-use-fork on a global row", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Global Row" });
+
+        await expect(
+          repo.updateExercise(userId, id, { name: "Hijacked" }),
+        ).rejects.toBeInstanceOf(ExerciseImmutableUseForkError);
+      });
+
+      it("409 exercise-retired on the caller's own already-soft-deleted row", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Gone", ownerUserId: userId, isActive: false });
+
+        await expect(
+          repo.updateExercise(userId, id, { name: "Revived?" }),
+        ).rejects.toBeInstanceOf(ExerciseRetiredError);
+      });
+
+      it("404 for an absent id and for another user's custom row, indistinguishable", async () => {
+        const userA = uuidv7();
+        const userB = uuidv7();
+        await insertUser(userA);
+        await insertUser(userB);
+        const bRow = uuidv7();
+        await insertExercise({ id: bRow, name: "B only", ownerUserId: userB });
+
+        await expect(
+          repo.updateExercise(userA, bRow, { name: "x" }),
+        ).rejects.toBeInstanceOf(NotFoundError);
+        await expect(
+          repo.updateExercise(userA, uuidv7(), { name: "x" }),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      });
+
+      it("a PATCH racing a concurrent DELETE on the same owned row never silently applies to a retired row", async () => {
+        const userId = uuidv7();
+        await insertUser(userId);
+        const id = uuidv7();
+        await insertExercise({ id, name: "Racer", ownerUserId: userId, isActive: true });
+
+        // `ExerciseRepository.deleteExercise` does not exist yet (it lands in a
+        // later task in this same plan) — the concurrent DELETE side of this race
+        // is driven directly against Postgres with the same
+        // owner_user_id+is_active-gated soft-delete shape `deleteExercise` will
+        // use, so this still exercises a genuine concurrent race against real
+        // Postgres on `updateExercise`'s own WHERE-clause guard.
+        const deleteRacer = db.prisma.$executeRawUnsafe(
+          `UPDATE "exercise" SET is_active = false, updated_at = now()
+           WHERE id = $1::uuid AND owner_user_id = $2::uuid AND is_active = true`,
+          id,
+          userId,
+        );
+
+        const [patchResult, deleteResult] = await Promise.allSettled([
+          repo.updateExercise(userId, id, { name: "Renamed" }),
+          deleteRacer,
+        ]);
+
+        expect(deleteResult.status).toBe("fulfilled"); // soft-delete is idempotent — always succeeds
+
+        const final = await db.prisma.$queryRawUnsafe<{ name: string; is_active: boolean }[]>(
+          `SELECT name, is_active FROM "exercise" WHERE id = $1::uuid`,
+          id,
+        );
+        expect(final[0]?.is_active).toBe(false);
+        if (patchResult.status === "fulfilled") {
+          expect(final[0]?.name).toBe("Renamed");
+        } else {
+          expect((patchResult as PromiseRejectedResult).reason).toBeInstanceOf(ExerciseRetiredError);
+          expect(final[0]?.name).toBe("Racer");
+        }
       });
     });
   },
