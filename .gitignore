@@ -8,3 +8,4 @@ coverage/
 .dev-idp-key.json
 .DS_Store
 .superpowers/
+docs/superpowers/
