@@ -376,6 +376,21 @@ describe("POST /v1/exercises/{id}/fork (Spec 03.2 AC6, AC7, AC8, AC10)", () => {
     expect(body.name).toBe("Back Squat");
   });
 
+  it("201s with a JSON content-type but an empty body (clients that always send JSON headers)", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    seedGlobal(exerciseRepo);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/exercises/${globalId}/fork`,
+      headers: JSON_HEADERS,
+      payload: "",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().forkedFromExerciseId).toBe(globalId);
+  });
+
   it("still applies a real overlay body when one is sent", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     seedGlobal(exerciseRepo);
@@ -537,6 +552,40 @@ describe("DELETE /v1/exercises/{id} (Spec 03.2 AC8, AC9)", () => {
 
     const second = await app.inject({ method: "DELETE", url: `/v1/exercises/${id}`, headers: BEARER });
     expect(second.statusCode).toBe(204);
+  });
+
+  it("204s with a JSON content-type but an empty body (clients that always send JSON headers)", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const userRepo = new FakeUserRepository();
+    const user = makeUser({ authSub: "auth0|user-123" });
+    userRepo.seed(user);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      userRepository: userRepo,
+    });
+    const id = "018f9c8e-0000-7000-8000-0000000000e1";
+    exerciseRepo.byId.set(id, {
+      id,
+      catalogKey: null,
+      ownerUserId: user.id,
+      name: "Empty-body delete",
+      modality: "weight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: true,
+      forkedFromExerciseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/exercises/${id}`,
+      headers: JSON_HEADERS,
+      payload: "",
+    });
+    expect(res.statusCode).toBe(204);
   });
 
   it("403 exercise-immutable on a global row", async () => {

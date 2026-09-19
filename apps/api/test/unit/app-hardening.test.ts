@@ -224,6 +224,22 @@ describe("app hardening (Criterion 17)", () => {
     expect(res.json().type).toContain("validation-error");
   });
 
+  it("still rejects a __proto__ JSON body after the empty-body parser override", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: '{"name":"x","modality":"weight_reps","__proto__":{"polluted":true}}',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it("rejects an unsupported content-type with 415, not 500", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
