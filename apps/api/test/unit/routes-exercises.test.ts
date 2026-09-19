@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
+import pino from "pino";
 import { buildTestApp } from "../helpers/build-test-app.js";
 import {
   FakeExerciseRepository,
   fakeVerifier,
   makeExerciseRecord,
 } from "../helpers/fakes.js";
-import { InvalidTokenError } from "../../src/errors/app-error.js";
+import {
+  InvalidTokenError,
+  SyncTokenExpiredError,
+} from "../../src/errors/app-error.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 
@@ -339,5 +343,52 @@ describe("GET /v1/exercises — since delta (AC4/AC8)", () => {
     ).app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
 
     expect(ra.headers.etag).not.toBe(rb.headers.etag);
+  });
+});
+
+describe("GET /v1/exercises — 410 sync-token-expired (AC8)", () => {
+  const url = "/v1/exercises?since=1.999";
+
+  it.each(["GET", "HEAD"] as const)(
+    "%s → 410 problem+json with Cache-Control: no-store",
+    async (method) => {
+      const exerciseRepo = new FakeExerciseRepository();
+      exerciseRepo.nextFindError = new SyncTokenExpiredError();
+      const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+      const res = await app.inject({ method, url, headers: BEARER });
+
+      expect(res.statusCode).toBe(410);
+      expect(String(res.headers["content-type"])).toContain(
+        "application/problem+json",
+      );
+      // A 410 is heuristically cacheable; a cached one would keep a healed client failing.
+      expect(res.headers["cache-control"]).toBe("no-store");
+      if (method === "GET") {
+        expect(res.json().type).toContain("sync-token-expired");
+      }
+    },
+  );
+
+  it("is logged at warn with slug sync-token-expired, not at error", async () => {
+    const lines: Record<string, unknown>[] = [];
+    const logger = pino(
+      { level: "debug" },
+      {
+        write: (s: string) => {
+          lines.push(JSON.parse(s) as Record<string, unknown>);
+        },
+      },
+    );
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.nextFindError = new SyncTokenExpiredError();
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo, logger });
+
+    await app.inject({ method: "GET", url, headers: BEARER });
+
+    const hit = lines.find((l) => l.slug === "sync-token-expired");
+    expect(hit).toBeDefined();
+    expect(hit!.level).toBe(40); // pino "warn"
+    expect(lines.some((l) => l.level === 50 && l.msg === "request error")).toBe(false);
   });
 });

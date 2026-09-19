@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { NotFoundError } from "./app-error.js";
+import { NotFoundError, SyncTokenExpiredError } from "./app-error.js";
 import { problemResponse } from "./problem.js";
 
 /**
@@ -17,8 +17,17 @@ export function registerErrorContract(app: FastifyInstance): void {
   });
 
   app.setErrorHandler((err, request, reply) => {
-    // Internal reason to the logs; the client only ever sees the generic body.
-    request.log.error({ err }, "request error");
+    if (err instanceof SyncTokenExpiredError) {
+      // Spec 03.3 AC8: a 410 is heuristically cacheable; a cached one would keep
+      // a healed client failing.
+      reply.header("cache-control", "no-store");
+      // warn + slug, so a real restore / client bug stands out from routine 4xx
+      // (scoped to this class; the wider severity fix is BL-5).
+      request.log.warn({ err, slug: err.slug }, "sync token expired");
+    } else {
+      // Internal reason to the logs; the client only ever sees the generic body.
+      request.log.error({ err }, "request error");
+    }
     problemResponse(reply, err);
   });
 }
