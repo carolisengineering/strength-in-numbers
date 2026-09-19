@@ -211,6 +211,22 @@ export const isPostgresTimestamptz = (s: string): boolean => {
   return Number(offset[2]) <= 15;
 };
 
+// Version "1", then a canonical decimal xid: no leading zeros, at most 19 digits
+// (9_999_999_999_999_999_999 < 2^64 - 1, so every accepted value is a valid xid8
+// and can never fail the ::xid8 cast). The token is OPAQUE to clients (Spec 03.3 §3).
+const SYNC_TOKEN = /^1\.(0|[1-9]\d{0,18})$/;
+export const isSyncToken = (s: string): boolean => SYNC_TOKEN.test(s);
+
+/**
+ * `GET /v1/exercises` query string (Spec 03.3). `.regex()` (not `.refine()`) so
+ * the OpenAPI emit carries the `pattern`. A malformed `since` surfaces as
+ * `422 validation-error` through the Spec 03.0 Zod error mapping.
+ */
+export const CatalogSinceQuery = z.object({
+  since: z.string().regex(SYNC_TOKEN, "not a valid sync token").optional(),
+});
+export type CatalogSinceQueryInput = z.infer<typeof CatalogSinceQuery>;
+
 export const UpdatedSinceQuery = z.object({
   updated_since: z.iso
     .datetime({ offset: true })

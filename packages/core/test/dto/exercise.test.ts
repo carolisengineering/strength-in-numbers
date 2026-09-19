@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   CatalogName,
+  CatalogSinceQuery,
   CreateExerciseSchema,
   EquipmentSchema,
   ExerciseSchema,
   ExercisesResponse,
+  isSyncToken,
   MAX_CUSTOM_EXERCISES_PER_USER,
   MuscleGroupSchema,
   muscleIdCrossFieldIssues,
@@ -318,5 +320,34 @@ describe("write DTOs (Spec 03.2 §5)", () => {
 
   it("MAX_CUSTOM_EXERCISES_PER_USER is 500", () => {
     expect(MAX_CUSTOM_EXERCISES_PER_USER).toBe(500);
+  });
+});
+
+describe("AC10 — isSyncToken / CatalogSinceQuery", () => {
+  it("accepts 1.0, 1.736 and the 19-digit maximum", () => {
+    for (const ok of ["1.0", "1.736", "1.9999999999999999999"]) {
+      expect(isSyncToken(ok), ok).toBe(true);
+    }
+  });
+
+  it("rejects bare numbers, negatives, non-digits, leading zeros, 20 digits, a wrong version, and empty", () => {
+    for (const bad of [
+      "736",
+      "1.-1",
+      "1.abc",
+      "1.01",
+      "1.99999999999999999999",
+      "2.736",
+      "",
+    ]) {
+      expect(isSyncToken(bad), bad).toBe(false);
+    }
+  });
+
+  it("CatalogSinceQuery treats since as optional and validates it with the regex", () => {
+    expect(CatalogSinceQuery.parse({})).toEqual({});
+    expect(CatalogSinceQuery.parse({ since: "1.736" })).toEqual({ since: "1.736" });
+    expect(CatalogSinceQuery.safeParse({ since: "2026-01-01T00:00:00Z" }).success).toBe(false);
+    expect(CatalogSinceQuery.safeParse({ since: "1.01" }).success).toBe(false);
   });
 });

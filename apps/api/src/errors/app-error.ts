@@ -206,3 +206,21 @@ export class ExerciseAlreadyOwnedError extends AppError {
     super(internal);
   }
 }
+
+/**
+ * Spec 03.3 §5 — `GET /v1/exercises?since=` carried a token ahead of the server's
+ * current snapshot (crafted, or held across a database restore / cluster move).
+ * The client must discard its cached catalog and do a full pull. Never clamped:
+ * clamping would silently skip every write made after a restore.
+ */
+export class SyncTokenExpiredError extends AppError {
+  readonly status = 410;
+  readonly slug = "sync-token-expired";
+  readonly title = "Sync token expired";
+  readonly publicDetail =
+    "This sync token is no longer valid. Discard your cached catalog and pull it fresh.";
+
+  constructor(internal = "since token is ahead of the server's current snapshot") {
+    super(internal);
+  }
+}
