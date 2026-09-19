@@ -35,7 +35,7 @@ model User {
 // Spec 03.1 §4 — exercise catalog. Curated rows have `ownerUserId = null` and a
 // unique `catalogKey`; custom rows (Spec 03.2) set `ownerUserId` and leave
 // `catalogKey` null. `isActive = false` rows are tombstones returned only in an
-// `updated_since` delta (§6.1).
+// sync delta (Spec 03.3; `?since=`).
 model Exercise {
   id                 String       @id @db.Uuid // app-generated UUIDv7
   catalogKey         String?      @map("catalog_key") // kebab-case; null for custom rows
@@ -57,9 +57,13 @@ model Exercise {
   forks              Exercise[]   @relation("ExerciseFork")
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+  // Spec 03.3 §4 — commit-ordered sync stamp, set by the exercise_change_xid trigger.
+  // Prisma omits Unsupported fields from its typed client; every write here is raw SQL.
+  changeXid          Unsupported("xid8") @default(dbgenerated("pg_current_xact_id()")) @map("change_xid")
 
   @@index([ownerUserId], map: "exercise_owner_idx")
   @@index([updatedAt], map: "exercise_updated_at_idx")
+  @@index([changeXid], map: "exercise_change_xid_idx")
   @@map("exercise")
 }
 
