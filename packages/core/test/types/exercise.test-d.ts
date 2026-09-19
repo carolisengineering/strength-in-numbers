@@ -1,10 +1,10 @@
 import { describe, expectTypeOf, it } from "vitest";
 import {
+  type CatalogSinceQueryInput,
   type Equipment,
   type Exercise,
   type ExercisesResponseBody,
   type MuscleGroup,
-  type UpdatedSinceQueryInput,
 } from "../../src/dto/exercise.js";
 import { type ExerciseId, type UserId } from "../../src/ids.js";
 
@@ -55,13 +55,13 @@ describe("catalog DTO types (Spec 03.1 §5)", () => {
   it("ExercisesResponseBody wraps the array plus the cursor", () => {
     expectTypeOf<ExercisesResponseBody>().toMatchTypeOf<{
       exercises: Exercise[];
-      serverTime: string;
+      syncToken: string;
     }>();
   });
 
-  it("UpdatedSinceQueryInput has an optional updated_since", () => {
-    expectTypeOf<UpdatedSinceQueryInput>().toEqualTypeOf<{
-      updated_since?: string | undefined;
+  it("CatalogSinceQueryInput has an optional since", () => {
+    expectTypeOf<CatalogSinceQueryInput>().toEqualTypeOf<{
+      since?: string | undefined;
     }>();
   });
 });

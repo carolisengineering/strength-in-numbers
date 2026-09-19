@@ -38,15 +38,14 @@ export interface ReferenceRecord {
 }
 
 /**
- * A catalog read plus its `serverTime` cursor (§6.1). `serverTime` is derived
- * from the catalog data — `MAX(updated_at)` over the caller's rows, clamped by
- * `transaction_timestamp()` and truncated **down** to whole milliseconds — never
- * the wall clock alone, so it can never be emitted ahead of the data. The client
- * persists it and sends it back as the next `updated_since`.
+ * A catalog read plus its opaque `syncToken` (Spec 03.3 §6.2): `"1.<xid>"`, where
+ * the xid is `pg_snapshot_xmin(pg_current_snapshot())` taken **in the same
+ * statement** that scanned `rows`. The client stores it and sends it back as the
+ * next `?since=`.
  */
 export interface CatalogPage {
   rows: ExerciseRecord[];
-  serverTime: Date;
+  syncToken: string;
 }
 
 /** The fields a caller can set on a custom exercise (Spec 03.2 §5). */
@@ -63,32 +62,18 @@ export type ExerciseWritePatch = Partial<ExerciseWriteFields>;
 
 export interface ExerciseRepository {
   /**
-   * The full caller-visible catalog: visible rows with `is_active = true`,
-   * ordered by `name COLLATE "C"` then `id`. Tombstones (`is_active = false`)
-   * are excluded here — they surface only in an `updated_since` delta.
-   * `serverTime` = `LEAST(transaction_timestamp(), MAX(updated_at))` over the
-   * returned rows (or `transaction_timestamp()` when the visible set is empty),
-   * truncated down to whole ms.
-   */
-  findVisibleCatalog(actingUserId: string): Promise<CatalogPage>;
-
-  /**
-   * The incremental delta: visible rows with `updated_at > sinceIso` — **no
-   * `is_active` filter**, so a row retired since the client's last sync arrives
-   * as a tombstone (`isActive: false`) for the client to drop. `sinceIso` is the
-   * raw RFC 3339 string; it is cast in-query as `::timestamptz` (never through a
-   * millisecond-precision `Date`) so a µs boundary is not moved.
+   * The caller-visible catalog. No `since` → the full pull: visible rows with
+   * `is_active = true`, ordered by `name COLLATE "C"` then `id`. With `since` (a
+   * bare xid decimal, already validated and stripped of its `1.` prefix by the
+   * route) → the delta: visible rows with `change_xid >= since`, **no `is_active`
+   * filter**, so a row retired since the client's last sync arrives as a
+   * tombstone (`isActive: false`) for the client to drop.
    *
-   * `serverTime` = `LEAST(transaction_timestamp(), GREATEST(sinceIso,
-   * MAX(updated_at) over the returned rows))`, truncated down to whole ms:
-   * non-empty → the newest returned row's timestamp; empty → `sinceIso` echoed
-   * back, but clamped to server-now so a client-sent future cursor heals instead
-   * of sticking.
+   * One SQL statement per call (§6.3): the token is computed in the same
+   * statement as the row scan, including when the result is empty. Throws
+   * `SyncTokenExpiredError` when `since` is ahead of the snapshot's `xmax`.
    */
-  findCatalogDelta(
-    actingUserId: string,
-    sinceIso: string,
-  ): Promise<CatalogPage>;
+  findCatalog(actingUserId: string, since?: string): Promise<CatalogPage>;
 
   /**
    * A single visible row by id, or throws Spec 01's `NotFoundError` (404, not

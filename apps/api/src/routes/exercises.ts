@@ -2,31 +2,34 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
+  CatalogSinceQuery,
   CreateExerciseSchema,
   ExercisesResponse,
   ExerciseSchema,
-  UpdatedSinceQuery,
   UpdateExerciseSchema,
   type Exercise,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
+import { parseSyncToken } from "../repositories/sync-token.js";
 import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/exercises` (+ the Fastify-generated `HEAD`) — the caller-visible
- * catalog as a full pull or an `updated_since` delta (Spec 03.1 §5, §6.1).
+ * catalog as a full pull or a `since` delta (Spec 03.1 §5, Spec 03.3 §5, §6).
  *
- * - No `updated_since` → `findVisibleCatalog` (active rows only).
- * - `updated_since=<rfc3339>` → `findCatalogDelta` (includes tombstones); a
+ * - No `since` → `findCatalog(user)` (active rows only).
+ * - `since=<syncToken>` → `findCatalog(user, xid)` (includes tombstones); a
  *   malformed value is rejected as `422 validation-error` by the Zod
- *   querystring schema via the Spec 03.0 error mapping.
+ *   querystring schema (Spec 03.0 error mapping), and a token ahead of the
+ *   server's snapshot is a `410 sync-token-expired` thrown by the repository.
+ *   A stale `?updated_since=` is an unknown key: ignored, i.e. a full pull.
  * - **`ETag`** is `sha256(<cursor-sentinel> ‖ <exercises wire bytes>)`, first 32
- *   hex, strong. `serverTime` is deliberately *not* in the hash, so a later
- *   `serverTime` over an unchanged catalog yields the same `ETag` and
- *   `If-None-Match` produces a `304`. The sentinel — the `updated_since` value
- *   on a delta, `"full"` otherwise — stops a delta that serializes to the same
- *   bytes as an earlier full pull from returning a spurious `304`.
+ *   hex, strong. `syncToken` is deliberately *not* in the hash, so a later
+ *   `syncToken` over an unchanged catalog yields the same `ETag` and
+ *   `If-None-Match` produces a `304`. The sentinel — the `since` token on a
+ *   delta, `"full"` otherwise — stops a delta that serializes to the same bytes
+ *   as an earlier full pull from returning a spurious `304`.
  * - Every `200` and `304` carries `Cache-Control: private, no-cache` +
  *   `Vary: Authorization`: the payload is per-caller (custom rows join it in
  *   03.2), so no shared cache may reuse it across users (§7).
@@ -57,7 +60,7 @@ function toDto(r: ExerciseRecord): Exercise {
 }
 
 /** `sha256(<cursor-sentinel> ‖ <exercises wire bytes>)`, first 32 hex, strong.
- * The sentinel is the `updated_since` value on a delta, `"full"` otherwise. */
+ * The sentinel is the `since` token on a delta, `"full"` otherwise. */
 function catalogEtag(sentinel: string, exercises: Exercise[]): string {
   return strongEtag(sentinel, JSON.stringify(exercises));
 }
@@ -73,23 +76,21 @@ export function registerExerciseRoutes(
     "/exercises",
     {
       schema: {
-        querystring: UpdatedSinceQuery,
+        querystring: CatalogSinceQuery,
         response: { 200: ExercisesResponse, 304: z.undefined() },
       },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      const updatedSince = request.query.updated_since;
+      const since = request.query.since;
 
-      const page = updatedSince
-        ? await deps.exerciseRepository.findCatalogDelta(
-            actingUserId,
-            updatedSince,
-          )
-        : await deps.exerciseRepository.findVisibleCatalog(actingUserId);
+      const page = await deps.exerciseRepository.findCatalog(
+        actingUserId,
+        since === undefined ? undefined : parseSyncToken(since),
+      );
 
       const exercises = page.rows.map(toDto);
-      const etag = catalogEtag(updatedSince ?? "full", exercises);
+      const etag = catalogEtag(since ?? "full", exercises);
 
       reply.header("cache-control", "private, no-cache");
       addVary(reply, "Authorization");
@@ -102,7 +103,7 @@ export function registerExerciseRoutes(
         return reply;
       }
 
-      return { exercises, serverTime: page.serverTime.toISOString() };
+      return { exercises, syncToken: page.syncToken };
     },
   );
 

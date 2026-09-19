@@ -76,10 +76,8 @@ const EXPECTED = [
   "MuscleGroupSchema",
   "EquipmentSchema",
   "ExercisesResponse",
-  "UpdatedSinceQuery",
   "CatalogSinceQuery",
   "isSyncToken",
-  "isPostgresTimestamptz",
   "MuscleGroupsResponse",
   "EquipmentResponse",
 ];

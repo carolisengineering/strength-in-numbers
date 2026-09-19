@@ -65,7 +65,7 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as Doc;
 
     const exercises = okSchema(doc, "/v1/exercises");
-    expect(Object.keys(exercises.properties).sort()).toEqual(["exercises", "serverTime"]);
+    expect(Object.keys(exercises.properties).sort()).toEqual(["exercises", "syncToken"]);
     const exerciseFields = Object.keys(exercises.properties.exercises!.items!.properties);
     expect(exerciseFields).toEqual(
       expect.arrayContaining([
@@ -97,15 +97,23 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
     }
   });
 
-  it("documents the optional updated_since query parameter on /v1/exercises", async () => {
+  it("documents the optional `since` query parameter (with its pattern) on /v1/exercises", async () => {
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as Doc;
 
     const params = doc.paths["/v1/exercises"]!.get!.parameters ?? [];
     expect(params).toEqual([
-      expect.objectContaining({ name: "updated_since", in: "query" }),
+      expect.objectContaining({ name: "since", in: "query" }),
     ]);
     expect(params[0]!.required ?? false).toBe(false);
+    const pattern = (params[0] as unknown as { schema: { pattern?: string } })
+      .schema.pattern;
+    expect(pattern).toBeDefined();
+    const re = new RegExp(pattern!);
+    expect(re.test("1.736")).toBe(true);
+    expect(re.test("1.01")).toBe(false);
+    expect(JSON.stringify(doc)).not.toContain("updated_since");
+    expect(JSON.stringify(doc)).not.toContain("serverTime");
     expect(doc.paths["/v1/muscle-groups"]!.get!.parameters ?? []).toEqual([]);
     expect(doc.paths["/v1/equipment"]!.get!.parameters ?? []).toEqual([]);
   });

@@ -40,9 +40,9 @@ export const CatalogName = z
   .refine(noControlChars, "control characters not allowed");
 
 /**
- * One catalog exercise. `isActive: false` rows are returned only in an
- * `updated_since` delta (as tombstones the client drops) — never in a full pull
- * (§6.1).
+ * One catalog exercise. `isActive: false` rows are returned only in a
+ * `since` delta (as tombstones the client drops) — never in a full pull
+ * (Spec 03.1 §6.1, Spec 03.3).
  */
 export const ExerciseSchema = z.object({
   id: ExerciseIdSchema,
@@ -185,31 +185,17 @@ export const EquipmentSchema = z.object({
 export type Equipment = z.infer<typeof EquipmentSchema>;
 
 /**
- * `GET /v1/exercises` 200 body. `serverTime` is the value the client persists and
- * sends back as the next `updated_since` cursor (§6.1).
+ * `GET /v1/exercises` 200 body (Spec 03.3). `syncToken` is an **opaque** string
+ * the client stores verbatim from the latest good `200` and replays as the next
+ * `?since=` — never parsed, compared or derived from (the server may change its
+ * encoding). A `304` carries no body, so the client keeps its stored token. A
+ * `410` means "discard the stored token and full-pull, bypassing the HTTP cache".
  */
 export const ExercisesResponse = z.object({
   exercises: z.array(ExerciseSchema),
-  serverTime: z.iso.datetime({ offset: true }),
+  syncToken: z.string(),
 });
 export type ExercisesResponseBody = z.infer<typeof ExercisesResponse>;
-
-/**
- * `GET /v1/exercises` query string. A malformed `updated_since` surfaces as
- * `422 validation-error` through the Spec 03.0 Zod error mapping.
- */
-/**
- * `z.iso.datetime` admits year `0000` and offsets up to `±23:59`; Postgres
- * `timestamptz` rejects both (`time zone displacement out of range` beyond
- * `±15:59`, and there is no year 0). Refining here keeps such cursors a `422`
- * rather than a `500` from the `::timestamptz` cast.
- */
-export const isPostgresTimestamptz = (s: string): boolean => {
-  if (s.startsWith("0000-")) return false;
-  const offset = /([+-])(\d{2}):(\d{2})$/.exec(s);
-  if (!offset) return true; // `Z`
-  return Number(offset[2]) <= 15;
-};
 
 // Version "1", then a canonical decimal xid: no leading zeros, at most 19 digits
 // (9_999_999_999_999_999_999 < 2^64 - 1, so every accepted value is a valid xid8
@@ -227,16 +213,8 @@ export const CatalogSinceQuery = z.object({
 });
 export type CatalogSinceQueryInput = z.infer<typeof CatalogSinceQuery>;
 
-export const UpdatedSinceQuery = z.object({
-  updated_since: z.iso
-    .datetime({ offset: true })
-    .refine(isPostgresTimestamptz, "timestamp out of range")
-    .optional(),
-});
-export type UpdatedSinceQueryInput = z.infer<typeof UpdatedSinceQuery>;
-
 /**
- * `GET /v1/muscle-groups` 200 body. The reference tables have no `updated_since`
+ * `GET /v1/muscle-groups` 200 body. The reference tables have no `since`
  * delta — they are tiny and change only on a deploy, so a client re-fetches
  * whenever its `If-None-Match` / `304` check misses (§6.2).
  */

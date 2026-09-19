@@ -48,7 +48,7 @@ describe("GET /v1/exercises — full pull (AC5)", () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(typeof body.serverTime).toBe("string");
+    expect(typeof body.syncToken).toBe("string");
     expect(body.exercises).toHaveLength(1);
     expect(Object.keys(body.exercises[0]).sort()).toEqual(DTO_KEYS);
     expect(body.exercises[0]).toMatchObject({
@@ -96,10 +96,10 @@ describe("GET /v1/exercises — full pull (AC5)", () => {
 });
 
 describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
-  it("emits a strong ETag that is stable while only serverTime advances", async () => {
+  it("emits a strong ETag that is stable while only syncToken advances", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     exerciseRepo.catalog = [makeExerciseRecord()];
-    exerciseRepo.serverTime = new Date("2026-09-08T00:00:00.000Z");
+    exerciseRepo.syncToken = "1.100";
     const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
 
     const a = await app.inject({
@@ -110,14 +110,14 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     const etag = a.headers.etag as string;
     expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
 
-    exerciseRepo.serverTime = new Date("2026-09-09T12:00:00.000Z");
+    exerciseRepo.syncToken = "1.200";
     const b = await app.inject({
       method: "GET",
       url: "/v1/exercises",
       headers: BEARER,
     });
     expect(b.headers.etag).toBe(etag);
-    expect(b.json().serverTime).toBe("2026-09-09T12:00:00.000Z");
+    expect(b.json().syncToken).toBe("1.200");
   });
 
   it("If-None-Match match → 304, empty body, ETag + cache headers", async () => {
@@ -209,7 +209,7 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     });
     const delta = await app.inject({
       method: "GET",
-      url: "/v1/exercises?updated_since=2026-01-01T00:00:00.000Z",
+      url: "/v1/exercises?since=1.100",
       headers: BEARER,
     });
     expect(full.headers.etag).not.toBe(delta.headers.etag);
@@ -217,7 +217,7 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
     // a full-pull ETag replayed against the delta must NOT 304
     const replay = await app.inject({
       method: "GET",
-      url: "/v1/exercises?updated_since=2026-01-01T00:00:00.000Z",
+      url: "/v1/exercises?since=1.100",
       headers: { ...BEARER, "if-none-match": full.headers.etag as string },
     });
     expect(replay.statusCode).toBe(200);
@@ -246,8 +246,8 @@ describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
   });
 });
 
-describe("GET /v1/exercises — updated_since delta (AC6)", () => {
-  it("routes ?updated_since=<rfc3339> to the delta path with that exact value", async () => {
+describe("GET /v1/exercises — since delta (AC4/AC8)", () => {
+  it("routes ?since=1.736 to the delta path with the bare xid", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     exerciseRepo.delta = [
       makeExerciseRecord({ name: "Changed", isActive: false }),
@@ -256,48 +256,88 @@ describe("GET /v1/exercises — updated_since delta (AC6)", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/v1/exercises?updated_since=2026-09-01T00:00:00.000Z",
+      url: "/v1/exercises?since=1.736",
       headers: BEARER,
     });
 
     expect(res.statusCode).toBe(200);
-    expect(exerciseRepo.lastDeltaSince).toBe("2026-09-01T00:00:00.000Z");
+    expect(exerciseRepo.lastSince).toBe("736");
     expect(res.json().exercises[0]).toMatchObject({
       name: "Changed",
       isActive: false,
     });
+    expect(res.json().syncToken).toBe("1.100");
   });
 
-  it("a malformed updated_since → 422 validation-error naming the param", async () => {
-    const { app } = await buildTestApp();
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/exercises?updated_since=not-a-date",
-      headers: BEARER,
-    });
-    expect(res.statusCode).toBe(422);
-    const body = res.json();
-    expect(body.type).toContain("validation-error");
-    expect(
-      body.errors.some((e: { path: string }) => e.path.includes("updated_since")),
-    ).toBe(true);
-  });
-
-  it("a future updated_since relays an empty delta plus a serverTime", async () => {
+  it("a stray ?updated_since= is ignored like any unknown key → full pull", async () => {
     const exerciseRepo = new FakeExerciseRepository();
-    exerciseRepo.delta = [];
-    exerciseRepo.serverTime = new Date("2026-09-08T00:00:00.000Z");
+    exerciseRepo.catalog = [makeExerciseRecord({ name: "Full" })];
     const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
 
     const res = await app.inject({
       method: "GET",
-      url: "/v1/exercises?updated_since=2099-01-01T00:00:00.000Z",
+      url: "/v1/exercises?updated_since=2026-01-01T00:00:00Z",
       headers: BEARER,
     });
+
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
-      exercises: [],
-      serverTime: "2026-09-08T00:00:00.000Z",
+    expect(exerciseRepo.lastSince).toBeNull();
+    expect(res.json().exercises[0].name).toBe("Full");
+  });
+
+  it.each([
+    "2026-01-01T00:00:00Z",
+    "1.-1",
+    "abc",
+    "1.01",
+    "1.99999999999999999999",
+    "2.736",
+  ])("malformed since %s → 422 validation-error naming `since`, on GET and HEAD", async (bad) => {
+    const { app } = await buildTestApp();
+    const url = `/v1/exercises?since=${encodeURIComponent(bad)}`;
+
+    const get = await app.inject({ method: "GET", url, headers: BEARER });
+    expect(get.statusCode).toBe(422);
+    expect(get.json().type).toContain("validation-error");
+    expect(
+      get.json().errors.some((e: { path: string }) => e.path === "since"),
+    ).toBe(true);
+
+    const head = await app.inject({ method: "HEAD", url, headers: BEARER });
+    expect(head.statusCode).toBe(422);
+    expect(String(head.headers["content-type"])).toContain(
+      "application/problem+json",
+    );
+  });
+
+  it("HEAD with a valid since mirrors GET's status and headers", async () => {
+    const { app } = await buildTestApp();
+    const url = "/v1/exercises?since=1.5";
+
+    const get = await app.inject({ method: "GET", url, headers: BEARER });
+    const head = await app.inject({ method: "HEAD", url, headers: BEARER });
+
+    expect(head.statusCode).toBe(get.statusCode);
+    expect(head.headers.etag).toBe(get.headers.etag);
+    expect(head.body).toBe("");
+  });
+
+  it("AC11: updated_at stays in the ETag hash (rows differing only in updatedAt → different ETag)", async () => {
+    const base = makeExerciseRecord({
+      updatedAt: new Date("2026-09-01T10:00:00.000Z"),
     });
+    const a = new FakeExerciseRepository();
+    a.catalog = [base];
+    const b = new FakeExerciseRepository();
+    b.catalog = [{ ...base, updatedAt: new Date("2026-09-02T10:00:00.000Z") }];
+
+    const ra = await (
+      await buildTestApp({ exerciseRepository: a })
+    ).app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
+    const rb = await (
+      await buildTestApp({ exerciseRepository: b })
+    ).app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
+
+    expect(ra.headers.etag).not.toBe(rb.headers.etag);
   });
 });

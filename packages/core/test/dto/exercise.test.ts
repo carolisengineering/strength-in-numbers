@@ -11,7 +11,6 @@ import {
   MuscleGroupSchema,
   muscleIdCrossFieldIssues,
   noControlChars,
-  UpdatedSinceQuery,
   UpdateExerciseSchema,
 } from "../../src/dto/exercise.js";
 
@@ -142,44 +141,20 @@ describe("catalog DTOs (Spec 03.1 §5)", () => {
     ).toThrow();
   });
 
-  it("ExercisesResponse wraps the array plus the serverTime cursor", () => {
+  it("ExercisesResponse wraps the array plus the opaque syncToken", () => {
     expect(
       ExercisesResponse.parse({
         exercises: [curatedRow],
-        serverTime: "2026-09-08T12:00:00.123Z",
+        syncToken: "1.736",
       }),
-    ).toMatchObject({ exercises: [{ id: curatedRow.id }] });
+    ).toMatchObject({ exercises: [{ id: curatedRow.id }], syncToken: "1.736" });
   });
 
-  it("ExercisesResponse rejects a non-datetime serverTime", () => {
-    expect(() =>
-      ExercisesResponse.parse({ exercises: [], serverTime: "soon" }),
-    ).toThrow();
-  });
-
-  it("UpdatedSinceQuery rejects Zod-valid cursors Postgres cannot cast (year 0000, offset > ±15:59)", () => {
-    for (const bad of [
-      "0000-01-01T00:00:00Z",
-      "2026-01-01T00:00:00+16:00",
-      "2026-01-01T00:00:00-23:59",
-    ]) {
-      expect(UpdatedSinceQuery.safeParse({ updated_since: bad }).success, bad).toBe(false);
-    }
-    for (const ok of [
-      "2026-01-01T00:00:00Z",
-      "2026-01-01T00:00:00.123+15:59",
-      "2026-01-01T00:00:00-05:00",
-    ]) {
-      expect(UpdatedSinceQuery.safeParse({ updated_since: ok }).success, ok).toBe(true);
-    }
-  });
-
-  it("UpdatedSinceQuery treats updated_since as optional, rejects a non-datetime", () => {
-    expect(UpdatedSinceQuery.parse({})).toEqual({});
+  it("ExercisesResponse requires syncToken (the old serverTime is gone)", () => {
+    expect(() => ExercisesResponse.parse({ exercises: [] })).toThrow();
     expect(
-      UpdatedSinceQuery.parse({ updated_since: "2026-09-08T12:00:00Z" }),
-    ).toEqual({ updated_since: "2026-09-08T12:00:00Z" });
-    expect(() => UpdatedSinceQuery.parse({ updated_since: "nope" })).toThrow();
+      ExercisesResponse.parse({ exercises: [], syncToken: "1.0", serverTime: "x" }),
+    ).not.toHaveProperty("serverTime");
   });
 });
 

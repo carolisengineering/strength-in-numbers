@@ -34,7 +34,6 @@ import {
   toCanonicalKg,
   toCanonicalMeters,
   UNIT_PREFERENCE_VALUES,
-  UpdatedSinceQuery,
   UpdateMeSchema,
   UserIdSchema,
   WEIGHT_UNIT_VALUES,
@@ -86,7 +85,6 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(MuscleGroupSchema).not.toBeAny();
     expectTypeOf(EquipmentSchema).not.toBeAny();
     expectTypeOf(ExercisesResponse).not.toBeAny();
-    expectTypeOf(UpdatedSinceQuery).not.toBeAny();
     expectTypeOf(CatalogSinceQuery).not.toBeAny();
     expectTypeOf(isSyncToken).toBeFunction();
   });
