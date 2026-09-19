@@ -109,7 +109,7 @@ describe.skipIf(!shouldRunIntegration())(
       );
     }
 
-    describe("findVisibleCatalog", () => {
+    describe("findCatalog — full pull", () => {
       it("returns active curated rows only, ordered by name COLLATE \"C\" then id", async () => {
         await insertExercise({ name: "banana" });
         await insertExercise({ name: "Apple" });

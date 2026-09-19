@@ -220,9 +220,12 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   REFERENCES exercise(id) ON DELETE RESTRICT` — Spec 03.2, resolves D9: kept
   for provenance, but suppressing a forked row's global origin from a catalog
   view is a **client-side** rule in Spec 06, not a server-side visibility
-  filter, since the origin's shared `updated_at` can't move per-fork without
-  corrupting every other caller's sync cursor). No image in v1 (text-only
-  picker); `image_key` is a reserved post-v1 addition.
+  filter: the origin is one row shared by every caller, so a per-caller "hidden"
+  state has no row change for a delta to carry, and touching the origin per-fork
+  would re-stamp it (its `change_xid`, below) and re-send it to every other
+  caller), `change_xid` (`xid8 NOT NULL DEFAULT pg_current_xact_id()` — the
+  sync-token stamp, Spec 03.3; see below). No image in v1 (text-only picker);
+  `image_key` is a reserved post-v1 addition.
 - **muscle_group**, **equipment** — small reference tables driving filters.
   `TEXT` natural-code primary keys (`chest`, `barbell`) so they read directly in
   API payloads (Spec 03.1). These codes are **immutable once shipped** — never
@@ -237,6 +240,25 @@ Rules:
   catalog you add a new row and set `is_active = false` on the old one (still
   resolvable for history, hidden from pickers). Curated (`owner_user_id IS NULL`)
   rows are never deleted; custom rows go on account purge via `ON DELETE CASCADE`.
+- **`change_xid` is the catalog's sync stamp, set by a trigger** (Spec 03.3,
+  migration `0004_exercise_change_xid`). A `BEFORE INSERT OR UPDATE` row trigger
+  sets `change_xid := pg_current_xact_id()` on every write, so no write path
+  (API create/fork/patch/soft-delete, the seed's raw SQL, a future path, an ad
+  hoc fixture) can forget to stamp it; a supporting index serves the delta's
+  `change_xid >= since` predicate (§5.2). One transaction is one xid, so all
+  writes of one seed revision share a single `change_xid` — that, not a shared
+  `updated_at`, is what keeps a revision from being split across deltas.
+  `updated_at` stays application-stamped and display-only; the trigger is a
+  deliberate, narrow exception to "the app stamps its own timestamps, no DB
+  triggers" because sync correctness needs *every* write stamped. The trigger
+  does not fire on `DELETE`/`TRUNCATE` or under `session_replication_role =
+  replica`, which is why the next rule exists.
+- **Application code never hard-deletes an `exercise` row.** Global rows are
+  retired (`is_active = false`), custom rows are soft-deleted, and the only hard
+  delete is the account-purge `ON DELETE CASCADE`, which removes rows visible
+  only to the purged user. A hard delete sends no tombstone, so a delta could
+  never tell other callers the row is gone — any future code that hard-deletes a
+  row other users can see must first give it a tombstone (Spec 03.3 §4).
 - **Editing a global exercise is copy-on-write:** a user edit forks a row with
   `owner_user_id = <user>`; that user's *future* `workout_exercise`s point at the
   fork, past ones are untouched.
@@ -386,24 +408,56 @@ Action that surfaces `email` in the token. Custom domain deferred to GA.
 Global catalog is small (hundreds of rows). The client pulls the whole
 caller-visible set — global rows **plus that user's custom rows** — from a single
 `GET /v1/exercises` on first launch and caches it locally, keyed by `id`. Later
-refreshes are incremental (Spec 03.1):
+refreshes are incremental (Specs 03.1 / 03.3):
 
 - `If-None-Match` with the stored strong `ETag` (computed over the serialized
-  catalog content **and the `updated_since` cursor**, so a delta can't collide
-  with an earlier full pull) → `304` when nothing changed;
-- `?updated_since=<serverTime>` → only rows changed since, **including** rows
-  retired since (flagged `is_active = false`) so the client drops them;
-- every response carries `serverTime`, which the client stores and sends as the
-  next `updated_since`. It is **derived from the catalog's own last-revision
-  timestamp**, not the server wall clock: `MAX(updated_at)` (over all visible
-  rows on a full pull, or `GREATEST(updated_since, MAX over the returned rows)` on
-  a delta), clamped by `LEAST(transaction_timestamp(), …)` and truncated **down**
-  to whole milliseconds. No precision margin — truncating down can only put the
-  cursor at or behind the true value, and the `LEAST` clamp means a client-sent
-  future/skewed cursor is clamped to server-now rather than echoed forward. A
-  read that can't yet see an in-flight seed also can't see its `updated_at`, so
-  the cursor never runs ahead of the data. The client always overwrites its
-  stored cursor with the received value (never `max`).
+  catalog content **and the `since` cursor** — the token value, or a fixed
+  `"full"` sentinel on a full pull — so a delta can't collide with an earlier
+  full pull; the response's own `syncToken` is *not* in the hash, so an
+  unchanged catalog still gets a `304`) → `304` when nothing changed;
+- `?since=<syncToken>` → only rows changed since, **including** rows retired
+  since (flagged `is_active = false`) so the client drops them;
+- every `200` carries a `syncToken`, which the client stores and sends as the
+  next `since`. It is a **commit-ordered sync token**, not a timestamp: the
+  Postgres snapshot horizon `pg_snapshot_xmin(pg_current_snapshot())` (the
+  oldest transaction id still in flight; every transaction below it has
+  already committed or aborted), formatted as the opaque string `"1.<xid>"`.
+  Every `exercise` row carries a trigger-stamped `change_xid` (§4.2), and a
+  delta returns the visible rows with `change_xid >= since`. Because a
+  transaction is assigned its xid only when it first writes, a writer that is
+  still uncommitted — or blocked before its first write — can only ever land
+  at or above the token, so no row is permanently skipped; rows may be
+  re-sent while a long-running writer holds the horizon back (extra payload,
+  never a gap), and clients de-duplicate by `id`. The token **must** be
+  computed in the same SQL statement that scans the rows (a second, later
+  query would take a later snapshot and reopen the gap), and sync reads must
+  run on the primary, not a lagging replica. The design and its correctness
+  argument are Spec 03.3 (D24–D33), which replaced a `MAX(updated_at)`
+  timestamp cursor that could skip a row under concurrent writers (BL-1,
+  issue #23);
+- **`410 sync-token-expired`:** a `since` whose xid is ahead of the server's
+  current snapshot can never be a legitimate token — it is crafted, or it
+  predates a database restore/cluster move (xids reset backwards while the
+  client's stored token does not). The server answers `410` (problem+json,
+  `Cache-Control: no-store`, logged at `warn`) instead of clamping, because a
+  clamp would silently skip every write made after the restore. A `since` that
+  fails the wire format (`^1\.(0|[1-9]\d{0,18})$`) is a `422 validation-error`.
+  Restore-epoch hardening (a restore that has caught the xid counter back up
+  to a stale token) is deliberately deferred, with a hard deadline before the
+  Spec 15 cutover (Spec 03.3 D27);
+- **Consumer rules.** The token is opaque — store it and replay it verbatim;
+  never parse or compare it. Always overwrite the stored token with the one
+  from the latest good `200` (never `max`); a `304` has no body, so the client
+  keeps its stored token (safe: the next delta re-sends rows, never skips
+  them). On a `410`, discard the cached catalog and do a full pull that
+  **bypasses the HTTP cache** (e.g. `fetch(url, { cache: "reload" })`) —
+  otherwise the browser revalidates, gets a `304` (the `ETag` excludes
+  `syncToken`, and after a restore the bytes are often identical) and hands
+  back its cached `200` body carrying the same stale token that caused the
+  `410`, looping forever;
+- `updated_at` is **no longer a sync input**. It stays application-stamped and
+  in the `Exercise` DTO and the `ETag` hash, but only for display ("last
+  edited"), history, and cache validation; nothing derives a cursor from it.
 
 The reference tables (`muscle_group`, `equipment`) are served by their own
 `ETag`d endpoints; their natural-code IDs are immutable once shipped. Curated
@@ -454,8 +508,8 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Pagination:** opaque cursor (`?limit=&cursor=`), `next` cursor in the body.
   No offset pagination. **Exception:** `GET /v1/exercises` returns the whole
   caller-visible catalog un-paginated — it is bounded (low hundreds of rows) and
-  pulled whole into a local cache; `updated_since` bounds every later transfer
-  (§5.2, Spec 03.1).
+  pulled whole into a local cache; `since` (a sync token) bounds every later
+  transfer (§5.2, Specs 03.1 / 03.3).
 - **Time:** RFC 3339 UTC, always. Client sends its own `started_at`/`completed_at`
   timestamps (device clock) plus the server records receipt time. For calendar
   fields (§4.0), the client also sends its current UTC offset; the server stores
@@ -499,7 +553,7 @@ DELETE /workouts/{id}            # whole session only; triggers PR recompute for
 POST   /workouts/{id}/exercises   { exercise_id, position }
 PUT    /workout-exercises/{id}/sets/{setNumber}   { set_type, reps?, weight?, ... }
 DELETE /workout-exercises/{id}/sets/{setNumber}
-GET    /exercises?updated_since=  → catalog (global + custom), ETag
+GET    /exercises?since=          → catalog (global + custom), ETag
 POST   /exercises                 → custom exercise
 GET    /progress/exercises/{id}?metric=est_1rm&from=&to=
 GET    /personal-records
