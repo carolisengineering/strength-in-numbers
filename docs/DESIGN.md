@@ -216,8 +216,13 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   `owner_user_id` (NULL = global/curated; `ON DELETE CASCADE`), `name`,
   `modality` (`weight_reps` | `bodyweight_reps` | `weighted_bodyweight` |
   `duration` | `distance_duration`), `primary_muscle_id`, `secondary_muscle_ids`
-  (array), `equipment_id`, `is_active`. No image in v1 (text-only picker);
-  `image_key` is a reserved post-v1 addition.
+  (array), `equipment_id`, `is_active`, `forked_from_exercise_id` (`uuid NULL
+  REFERENCES exercise(id) ON DELETE RESTRICT` — Spec 03.2, resolves D9: kept
+  for provenance, but suppressing a forked row's global origin from a catalog
+  view is a **client-side** rule in Spec 06, not a server-side visibility
+  filter, since the origin's shared `updated_at` can't move per-fork without
+  corrupting every other caller's sync cursor). No image in v1 (text-only
+  picker); `image_key` is a reserved post-v1 addition.
 - **muscle_group**, **equipment** — small reference tables driving filters.
   `TEXT` natural-code primary keys (`chest`, `barbell`) so they read directly in
   API payloads (Spec 03.1). These codes are **immutable once shipped** — never

@@ -48,9 +48,14 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as Doc;
 
+    const expectedMethods: Record<string, string[]> = {
+      "/v1/exercises": ["get", "post"],
+      "/v1/muscle-groups": ["get"],
+      "/v1/equipment": ["get"],
+    };
     for (const path of CATALOG_PATHS) {
       expect(doc.paths, path).toHaveProperty(path);
-      expect(Object.keys(doc.paths[path]!)).toEqual(["get"]);
+      expect(Object.keys(doc.paths[path]!).sort()).toEqual(expectedMethods[path]!.sort());
     }
     expect(doc.paths).toHaveProperty("/v1/me");
   });
@@ -73,6 +78,7 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
         "secondaryMuscleIds",
         "equipmentId",
         "isActive",
+        "forkedFromExerciseId",
         "createdAt",
         "updatedAt",
       ]),

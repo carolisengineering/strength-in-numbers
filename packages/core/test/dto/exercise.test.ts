@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   CatalogName,
+  CreateExerciseSchema,
   EquipmentSchema,
   ExerciseSchema,
   ExercisesResponse,
+  MAX_CUSTOM_EXERCISES_PER_USER,
   MuscleGroupSchema,
+  muscleIdCrossFieldIssues,
   noControlChars,
   UpdatedSinceQuery,
+  UpdateExerciseSchema,
 } from "../../src/dto/exercise.js";
 
 const curatedRow = {
@@ -19,6 +23,7 @@ const curatedRow = {
   secondaryMuscleIds: ["glutes", "hamstrings"],
   equipmentId: "barbell",
   isActive: true,
+  forkedFromExerciseId: null,
   createdAt: "2026-09-08T12:00:00Z",
   updatedAt: "2026-09-08T12:00:00Z",
 };
@@ -28,6 +33,18 @@ const UNIT_SEP = String.fromCharCode(0x1f);
 const DEL = String.fromCharCode(0x7f);
 
 describe("catalog DTOs (Spec 03.1 §5)", () => {
+  it("ExerciseSchema requires forkedFromExerciseId and accepts a fork's origin id", () => {
+    expect(() =>
+      ExerciseSchema.parse({ ...curatedRow, forkedFromExerciseId: undefined }),
+    ).toThrow();
+    expect(
+      ExerciseSchema.parse({
+        ...curatedRow,
+        forkedFromExerciseId: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      }).forkedFromExerciseId,
+    ).toBe("9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d");
+  });
+
   it("ExerciseSchema accepts a well-formed curated row", () => {
     expect(ExerciseSchema.parse(curatedRow)).toMatchObject({
       catalogKey: "barbell-back-squat",
@@ -161,5 +178,145 @@ describe("catalog DTOs (Spec 03.1 §5)", () => {
       UpdatedSinceQuery.parse({ updated_since: "2026-09-08T12:00:00Z" }),
     ).toEqual({ updated_since: "2026-09-08T12:00:00Z" });
     expect(() => UpdatedSinceQuery.parse({ updated_since: "nope" })).toThrow();
+  });
+});
+
+describe("write DTOs (Spec 03.2 §5)", () => {
+  const validCreate = {
+    name: "Incline Dumbbell Press",
+    modality: "weight_reps",
+    primaryMuscleId: "chest",
+    secondaryMuscleIds: ["triceps", "shoulders"],
+    equipmentId: "dumbbell",
+  };
+
+  it("CreateExerciseSchema accepts a full valid body and applies field defaults", () => {
+    expect(
+      CreateExerciseSchema.parse({ name: "Push-up", modality: "bodyweight_reps" }),
+    ).toEqual({
+      name: "Push-up",
+      modality: "bodyweight_reps",
+      primaryMuscleId: null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+    });
+  });
+
+  it("CreateExerciseSchema rejects an unknown key (.strict())", () => {
+    expect(() =>
+      CreateExerciseSchema.parse({ ...validCreate, extra: "nope" }),
+    ).toThrow();
+  });
+
+  it("CreateExerciseSchema rejects a duplicate secondaryMuscleIds entry", () => {
+    const r = CreateExerciseSchema.safeParse({
+      ...validCreate,
+      secondaryMuscleIds: ["triceps", "triceps"],
+    });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues[0]).toMatchObject({
+      path: ["secondaryMuscleIds"],
+      message: "duplicate muscle id",
+    });
+  });
+
+  it("CreateExerciseSchema rejects secondaryMuscleIds restating primaryMuscleId", () => {
+    const r = CreateExerciseSchema.safeParse({
+      ...validCreate,
+      primaryMuscleId: "chest",
+      secondaryMuscleIds: ["chest"],
+    });
+    expect(r.success).toBe(false);
+    expect(
+      r.error!.issues.some((issue) => issue.message === "must not restate primaryMuscleId"),
+    ).toBe(true);
+  });
+
+  it("CreateExerciseSchema caps secondaryMuscleIds at 4 entries", () => {
+    expect(
+      CreateExerciseSchema.safeParse({ ...validCreate, secondaryMuscleIds: ["a", "b", "c", "d"] })
+        .success,
+    ).toBe(true);
+    expect(
+      CreateExerciseSchema.safeParse({
+        ...validCreate,
+        secondaryMuscleIds: ["a", "b", "c", "d", "e"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("CreateExerciseSchema rejects a bad name and a bad modality", () => {
+    expect(CreateExerciseSchema.safeParse({ ...validCreate, name: "" }).success).toBe(false);
+    expect(
+      CreateExerciseSchema.safeParse({ ...validCreate, modality: "isometric_hold" }).success,
+    ).toBe(false);
+  });
+
+  it("UpdateExerciseSchema accepts an empty object and any single field", () => {
+    expect(UpdateExerciseSchema.parse({})).toEqual({});
+    expect(UpdateExerciseSchema.parse({ name: "New Name" })).toEqual({ name: "New Name" });
+    expect(UpdateExerciseSchema.parse({ primaryMuscleId: null })).toEqual({
+      primaryMuscleId: null,
+    });
+  });
+
+  it("UpdateExerciseSchema rejects an unknown key and does not itself cross-check fields", () => {
+    expect(() => UpdateExerciseSchema.parse({ nope: 1 })).toThrow();
+    // A partial body restating nothing yet is not, by itself, a conflict — the
+    // merge-then-validate rule (Spec 03.2 §6) lives server-side, not here.
+    expect(
+      UpdateExerciseSchema.safeParse({ secondaryMuscleIds: ["chest", "chest"] }).success,
+    ).toBe(true); // UpdateExerciseSchema defers all cross-field checking (incl. intra-array
+    // duplicates) to the server-side merge-then-validate step (Spec 03.2 §6) — a
+    // partial body alone can't know if this is a real conflict or a no-op restate.
+  });
+
+  it("muscleIdCrossFieldIssues is the pure rule both schemas/merge-validation share", () => {
+    expect(
+      muscleIdCrossFieldIssues({ primaryMuscleId: null, secondaryMuscleIds: ["a", "b"] }),
+    ).toEqual([]);
+    expect(
+      muscleIdCrossFieldIssues({ primaryMuscleId: null, secondaryMuscleIds: ["a", "a"] }),
+    ).toEqual([{ path: ["secondaryMuscleIds"], message: "duplicate muscle id" }]);
+    expect(
+      muscleIdCrossFieldIssues({ primaryMuscleId: "chest", secondaryMuscleIds: ["chest"] }),
+    ).toEqual([{ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" }]);
+  });
+
+  it("I2 — muscleIdCrossFieldIssues rejects a secondaryMuscleIds array over the 4-entry cap", () => {
+    expect(
+      muscleIdCrossFieldIssues({
+        primaryMuscleId: null,
+        secondaryMuscleIds: ["a", "b", "c", "d", "e"],
+      }),
+    ).toEqual([
+      { path: ["secondaryMuscleIds"], message: "at most 4 secondary muscle ids" },
+    ]);
+    expect(
+      muscleIdCrossFieldIssues({
+        primaryMuscleId: null,
+        secondaryMuscleIds: ["a", "b", "c", "d"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("D22 — muscleIdCrossFieldIssues skips the length check when checkLength is false", () => {
+    expect(
+      muscleIdCrossFieldIssues(
+        { primaryMuscleId: null, secondaryMuscleIds: ["a", "b", "c", "d", "e"] },
+        { checkLength: false },
+      ),
+    ).toEqual([]);
+    // checkLength: false is length-only — duplicate-id detection still fires.
+    expect(
+      muscleIdCrossFieldIssues(
+        { primaryMuscleId: null, secondaryMuscleIds: ["a", "a", "b", "c", "d"] },
+        { checkLength: false },
+      ),
+    ).toEqual([{ path: ["secondaryMuscleIds"], message: "duplicate muscle id" }]);
+  });
+
+  it("MAX_CUSTOM_EXERCISES_PER_USER is 500", () => {
+    expect(MAX_CUSTOM_EXERCISES_PER_USER).toBe(500);
   });
 });

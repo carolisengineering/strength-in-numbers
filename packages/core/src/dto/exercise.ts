@@ -54,10 +54,119 @@ export const ExerciseSchema = z.object({
   secondaryMuscleIds: z.array(z.string()), // muscle_group ids, authoring order (§6.1)
   equipmentId: z.string().nullable(),
   isActive: z.boolean(),
+  // Spec 03.2 §5/§6 D9 — null unless this row is a copy-on-write fork of a global
+  // row. Never server-side-filtered from GET /v1/exercises; suppressing a forked
+  // origin from a picker is a client-side rule (Spec 06).
+  forkedFromExerciseId: ExerciseIdSchema.nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
 });
 export type Exercise = z.infer<typeof ExerciseSchema>;
+
+/**
+ * The muscle-id cross-field rule shared by `CreateExerciseSchema.superRefine`
+ * (full body) and the server-side merge-then-validate step for `PATCH` and the
+ * `/fork` overlay (Spec 03.2 §6) — a partial `UpdateExerciseSchema` body can't
+ * see the base row's current values, so this same pure check re-runs against the
+ * *merged* result there instead of at parse time.
+ */
+export interface MuscleFieldIssue {
+  path: ["secondaryMuscleIds"];
+  message: string;
+}
+
+/** Same cap as `CreateExerciseSchema`/`UpdateExerciseSchema`'s `.max(4)`, restated
+ * here so the merge-then-validate path (PATCH, fork overlay) enforces it too —
+ * those paths never re-run the Zod schema against the merged result, only this
+ * function. Additive to the schema-level `.max(4)`, not a replacement: the
+ * schema still gives the client early feedback on a body that is over-cap by
+ * itself.
+ *
+ * Per D22 (Spec 03.2 §12, amends D18): this is a human-authoring UX bound, not
+ * a data-integrity or resource invariant, so it applies only to an array the
+ * current caller actually submitted — see `checkLength` on
+ * `muscleIdCrossFieldIssues` below. Don't "simplify" that back to unconditional. */
+const MAX_SECONDARY_MUSCLE_IDS = 4;
+
+/**
+ * `opts.checkLength` (default `true`) gates only the length cap, per D22 — it
+ * must stay off for a merged/overlaid result whose `secondaryMuscleIds` the
+ * current caller didn't touch (an array inherited unedited from a base row or
+ * a fork origin), since the cap exists to bound what a human types into the
+ * field, not data that was never retyped. The duplicate-id and
+ * restated-`primaryMuscleId` checks are genuine data-integrity rules and
+ * always run, regardless of `checkLength`.
+ */
+export function muscleIdCrossFieldIssues(
+  val: {
+    primaryMuscleId: string | null;
+    secondaryMuscleIds: string[];
+  },
+  opts: { checkLength?: boolean } = {},
+): MuscleFieldIssue[] {
+  const { checkLength = true } = opts;
+  const issues: MuscleFieldIssue[] = [];
+  const seen = new Set<string>();
+  for (const id of val.secondaryMuscleIds) {
+    if (seen.has(id)) {
+      issues.push({ path: ["secondaryMuscleIds"], message: "duplicate muscle id" });
+    }
+    seen.add(id);
+  }
+  if (val.primaryMuscleId !== null && val.secondaryMuscleIds.includes(val.primaryMuscleId)) {
+    issues.push({ path: ["secondaryMuscleIds"], message: "must not restate primaryMuscleId" });
+  }
+  if (checkLength && val.secondaryMuscleIds.length > MAX_SECONDARY_MUSCLE_IDS) {
+    issues.push({
+      path: ["secondaryMuscleIds"],
+      message: `at most ${MAX_SECONDARY_MUSCLE_IDS} secondary muscle ids`,
+    });
+  }
+  return issues;
+}
+
+/** `POST /v1/exercises` body — a full custom-exercise definition (Spec 03.2 §5). */
+export const CreateExerciseSchema = z
+  .object({
+    name: CatalogName,
+    modality: z.enum(MODALITY_VALUES),
+    primaryMuscleId: z.string().nullable().default(null),
+    secondaryMuscleIds: z.array(z.string()).max(4).default([]),
+    equipmentId: z.string().nullable().default(null),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    for (const issue of muscleIdCrossFieldIssues(val)) {
+      ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+    }
+  });
+export type CreateExercise = z.infer<typeof CreateExerciseSchema>;
+
+/**
+ * `PATCH /v1/exercises/{id}` body and the `/fork` overlay body — same fields as
+ * `CreateExerciseSchema`, all optional, **no** `.superRefine`: a partial body
+ * can't see the base row's current values, so the cross-field check re-runs
+ * server-side against the merged result instead (Spec 03.2 §6).
+ */
+export const UpdateExerciseSchema = z
+  .object({
+    name: CatalogName,
+    modality: z.enum(MODALITY_VALUES),
+    primaryMuscleId: z.string().nullable(),
+    secondaryMuscleIds: z.array(z.string()).max(4),
+    equipmentId: z.string().nullable(),
+  })
+  .partial()
+  .strict();
+export type UpdateExercise = z.infer<typeof UpdateExerciseSchema>;
+
+/**
+ * Hard per-user active-custom-exercise cap (Spec 03.2 D15) — a single budget
+ * shared by `POST /v1/exercises` and `POST /v1/exercises/{id}/fork`. A code
+ * constant, not env-configurable: raising it is a reviewed decision tied to the
+ * unpaginated `GET /v1/exercises` read (Spec 03.1 §6.1), not an ops knob.
+ */
+export const MAX_CUSTOM_EXERCISES_PER_USER = 500;
 
 /** A muscle-group reference row (`GET /v1/muscle-groups`). */
 export const MuscleGroupSchema = z.object({

@@ -99,6 +99,28 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
+  // Treat an empty `application/json` body as "no body" rather than letting
+  // Fastify's default parser throw `FST_ERR_CTP_EMPTY_JSON_BODY`. Clients that
+  // send JSON headers on every request would otherwise get a 422 on
+  // body-optional routes (`POST /v1/exercises/{id}/fork`, `DELETE`). Routes
+  // that require a body still 422: their Zod schema rejects the `null`.
+  // Non-empty bodies go through Fastify's default parser unchanged, keeping its
+  // prototype-poisoning protection.
+  const defaultJsonParser = app.getDefaultJsonParser("error", "error");
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (request, body, done) => {
+      if (body === "") {
+        done(null, null);
+        return;
+      }
+      // `parseAs: "string"` guarantees a string; Fastify's types don't narrow it.
+      defaultJsonParser(request, body as string, done);
+    },
+  );
+
   // The contract pipeline (Spec 03.0): Zod DTOs from `@sin/core` drive route
   // validation, handler typing, and the emitted OpenAPI document. Set on the
   // root instance so the `/v1` child scope inherits both compilers. The default

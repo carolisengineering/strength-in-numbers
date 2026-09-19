@@ -2,8 +2,11 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
+  CreateExerciseSchema,
   ExercisesResponse,
+  ExerciseSchema,
   UpdatedSinceQuery,
+  UpdateExerciseSchema,
   type Exercise,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
@@ -47,6 +50,7 @@ function toDto(r: ExerciseRecord): Exercise {
     secondaryMuscleIds: r.secondaryMuscleIds,
     equipmentId: r.equipmentId,
     isActive: r.isActive,
+    forkedFromExerciseId: r.forkedFromExerciseId as Exercise["forkedFromExerciseId"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -63,6 +67,7 @@ export function registerExerciseRoutes(
   deps: ExerciseRouteDeps,
 ): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
+  const exerciseIdParams = z.object({ id: z.string() });
 
   r.get(
     "/exercises",
@@ -98,6 +103,101 @@ export function registerExerciseRoutes(
       }
 
       return { exercises, serverTime: page.serverTime.toISOString() };
+    },
+  );
+
+  r.post(
+    "/exercises",
+    { schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } } },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      const created = await deps.exerciseRepository.createExercise(
+        actingUserId,
+        request.body,
+      );
+      request.log.info(
+        { exercise_id: created.id, owner_user_id: actingUserId },
+        "custom_exercise_created",
+      );
+      reply.code(201).header("location", `/v1/exercises/${created.id}`);
+      return toDto(created);
+    },
+  );
+
+  r.patch(
+    "/exercises/:id",
+    {
+      schema: {
+        params: exerciseIdParams,
+        body: UpdateExerciseSchema,
+        response: { 200: ExerciseSchema },
+      },
+    },
+    async (request) => {
+      const actingUserId = request.user!.id;
+      const updated = await deps.exerciseRepository.updateExercise(
+        actingUserId,
+        request.params.id,
+        request.body,
+      );
+      request.log.info(
+        { exercise_id: updated.id, owner_user_id: actingUserId },
+        "custom_exercise_updated",
+      );
+      return toDto(updated);
+    },
+  );
+
+  // The overlay body is optional (Spec 03.2 §1, §5): "fork this global
+  // exercise unchanged" is the primary use case, so a bodiless request must
+  // 201 rather than 422. Fastify hands a truly bodiless request to the
+  // validator as `null` (not `undefined`) when no content type parser ran,
+  // so this needs `.nullish()` (accepts both `undefined` and `null`), not
+  // just `.optional()` — `.default({})` then coerces either into `{}` while
+  // still 422ing an invalid overlay (e.g. an unrecognized key, or `name: ""`).
+  const forkBodySchema = UpdateExerciseSchema.nullish().default({});
+
+  r.post(
+    "/exercises/:id/fork",
+    {
+      schema: {
+        params: exerciseIdParams,
+        body: forkBodySchema,
+        response: { 201: ExerciseSchema },
+      },
+    },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      const forked = await deps.exerciseRepository.forkExercise(
+        actingUserId,
+        request.params.id,
+        request.body ?? {},
+      );
+      request.log.info(
+        {
+          exercise_id: forked.id,
+          owner_user_id: actingUserId,
+          forked_from_exercise_id: forked.forkedFromExerciseId,
+        },
+        "custom_exercise_forked",
+      );
+      reply.code(201).header("location", `/v1/exercises/${forked.id}`);
+      return toDto(forked);
+    },
+  );
+
+  r.delete(
+    "/exercises/:id",
+    { schema: { params: exerciseIdParams, response: { 204: z.undefined() } } },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      await deps.exerciseRepository.deleteExercise(actingUserId, request.params.id);
+      request.log.info(
+        { exercise_id: request.params.id, owner_user_id: actingUserId },
+        "custom_exercise_deleted",
+      );
+      reply.code(204).send();
+      return reply;
     },
   );
 }

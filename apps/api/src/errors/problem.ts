@@ -5,9 +5,11 @@ import {
 } from "fastify-type-provider-zod";
 import {
   AppError,
+  BadRequestError,
   InternalError,
   NotFoundError,
   PayloadTooLargeError,
+  UnsupportedMediaTypeError,
   ValidationError,
   type FieldError,
 } from "./app-error.js";
@@ -188,6 +190,34 @@ export function normalizeError(error: unknown): AppError {
   if (statusCode === 404) return new NotFoundError("route not found");
   if (statusCode === 413 || code === "FST_ERR_CTP_BODY_TOO_LARGE") {
     return new PayloadTooLargeError();
+  }
+
+  // Fastify's built-in body parser rejects malformed/empty JSON and other
+  // content-type/parse problems before our route handlers or Zod ever see
+  // it, throwing a plain Error with `statusCode`/`code` set rather than a
+  // `.validation` array — so neither branch above catches it, and it used to
+  // fall through to a 500. `FST_ERR_CTP_BODY_TOO_LARGE` is also one of these
+  // `FST_ERR_CTP_*` codes, so that branch must stay above this one.
+  //
+  // `FST_ERR_CTP_INVALID_MEDIA_TYPE` (an unsupported/missing `Content-Type`)
+  // is kept out of the generic 422 bucket and mapped to its own 415 instead:
+  // "wrong media type" and "body doesn't parse/validate against the schema"
+  // are different problems for a client to act on, and Fastify's own
+  // `statusCode` for this one is already a sane 415 — folding it into 422
+  // would lose that distinction for no benefit.
+  if (code === "FST_ERR_CTP_INVALID_MEDIA_TYPE") {
+    return new UnsupportedMediaTypeError();
+  }
+  if (typeof code === "string" && code.startsWith("FST_ERR_CTP_")) {
+    return new ValidationError([], "malformed or unparseable request body");
+  }
+  // Any other 400 (e.g. `FST_ERR_BAD_URL` for a malformed percent-encoded
+  // path, or an `http-errors` 400 from a plugin) is not about the body, so it
+  // must not be reported as a body `validation-error`.
+  if (statusCode === 400) {
+    return new BadRequestError(
+      error instanceof Error ? error.message : "bad request",
+    );
   }
 
   return new InternalError(

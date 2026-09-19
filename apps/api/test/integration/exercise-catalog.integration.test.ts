@@ -221,6 +221,62 @@ describe.skipIf(!shouldRunIntegration())(
       });
     });
 
+    describe("Spec 03.2 AC1 — 0003 migration adds forked_from_exercise_id", () => {
+      it("adds a nullable uuid column", async () => {
+        const cols = await db.prisma.$queryRawUnsafe<
+          { column_name: string; data_type: string; is_nullable: string }[]
+        >(
+          `SELECT column_name, data_type, is_nullable FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'exercise'
+             AND column_name = 'forked_from_exercise_id'`,
+        );
+        expect(cols).toHaveLength(1);
+        expect(cols[0]?.data_type).toBe("uuid");
+        expect(cols[0]?.is_nullable).toBe("YES");
+      });
+
+      it("adds a self-referential RESTRICT FK on forked_from_exercise_id", async () => {
+        const fks = await db.prisma.$queryRawUnsafe<
+          { constraint_name: string; delete_rule: string }[]
+        >(
+          `SELECT rc.constraint_name, rc.delete_rule
+           FROM information_schema.referential_constraints rc
+           JOIN information_schema.table_constraints tc
+             ON tc.constraint_name = rc.constraint_name
+            AND tc.constraint_schema = rc.constraint_schema
+           WHERE tc.table_name = 'exercise'
+             AND rc.constraint_name = 'exercise_forked_from_exercise_id_fkey'`,
+        );
+        expect(fks).toHaveLength(1);
+        expect(fks[0]?.delete_rule).toBe("RESTRICT");
+      });
+
+      it("defaults to NULL on an existing row and accepts a self-reference", async () => {
+        const originId = uuidv7();
+        await insertExercise({ id: originId, name: "Origin", catalogKey: "origin-key" });
+        const forkRow = await db.prisma.$queryRawUnsafe<{ forked_from_exercise_id: string | null }[]>(
+          `SELECT forked_from_exercise_id FROM "exercise" WHERE id = $1::uuid`,
+          originId,
+        );
+        expect(forkRow[0]?.forked_from_exercise_id).toBeNull();
+
+        const forkId = uuidv7();
+        await db.prisma.$executeRawUnsafe(
+          `INSERT INTO "exercise" ("id", "catalog_key", "owner_user_id", "name", "modality", "forked_from_exercise_id")
+           VALUES ($1::uuid, NULL, NULL, $2, $3, $4::uuid)`,
+          forkId,
+          "Forked",
+          "weight_reps",
+          originId,
+        );
+        const forked = await db.prisma.$queryRawUnsafe<{ forked_from_exercise_id: string | null }[]>(
+          `SELECT forked_from_exercise_id FROM "exercise" WHERE id = $1::uuid`,
+          forkId,
+        );
+        expect(forked[0]?.forked_from_exercise_id).toBe(originId);
+      });
+    });
+
     // Runs last: the "down" drops all three tables. Nothing after it needs them.
     describe("AC1 — down migration", () => {
       it("drops exercise, equipment, and muscle_group", async () => {

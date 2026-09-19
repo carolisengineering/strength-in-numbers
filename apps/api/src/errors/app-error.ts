@@ -104,6 +104,28 @@ export class PayloadTooLargeError extends AppError {
   }
 }
 
+export class UnsupportedMediaTypeError extends AppError {
+  readonly status = 415;
+  readonly slug = "unsupported-media-type";
+  readonly title = "Unsupported media type";
+  readonly publicDetail = "The request's Content-Type is not supported.";
+
+  constructor(internal = "unsupported or missing Content-Type") {
+    super(internal);
+  }
+}
+
+export class BadRequestError extends AppError {
+  readonly status = 400;
+  readonly slug = "bad-request";
+  readonly title = "Bad request";
+  readonly publicDetail = "The request could not be understood.";
+
+  constructor(internal = "malformed request") {
+    super(internal);
+  }
+}
+
 export class NotFoundError extends AppError {
   readonly status = 404;
   readonly slug = "not-found";
@@ -123,5 +145,64 @@ export class InternalError extends AppError {
 
   constructor(internal = "unhandled error", options?: { cause?: unknown }) {
     super(internal, options);
+  }
+}
+
+export class CustomExerciseLimitError extends AppError {
+  readonly status = 409;
+  readonly slug = "exercise-limit-reached";
+  readonly title = "Custom exercise limit reached";
+  readonly publicDetail =
+    "You have reached the maximum number of custom exercises.";
+
+  constructor(internal = "per-user active custom exercise cap exceeded") {
+    super(internal);
+  }
+}
+
+export class ExerciseRetiredError extends AppError {
+  readonly status = 409;
+  readonly slug = "exercise-retired";
+  readonly title = "Exercise retired";
+  readonly publicDetail =
+    "This exercise has been retired and can no longer be modified.";
+
+  constructor(internal = "target exercise is_active=false") {
+    super(internal);
+  }
+}
+
+export class ExerciseImmutableError extends AppError {
+  readonly status = 403;
+  readonly slug = "exercise-immutable";
+  readonly title = "Exercise immutable";
+  readonly publicDetail = "This is a global exercise and cannot be deleted.";
+
+  constructor(internal = "target exercise is a global row") {
+    super(internal);
+  }
+}
+
+export class ExerciseImmutableUseForkError extends AppError {
+  readonly status = 409;
+  readonly slug = "exercise-immutable-use-fork";
+  readonly title = "Exercise immutable — use fork";
+  readonly publicDetail =
+    "This is a global exercise and cannot be edited directly. Fork it first.";
+
+  constructor(internal = "target exercise is a global row; PATCH refused") {
+    super(internal);
+  }
+}
+
+export class ExerciseAlreadyOwnedError extends AppError {
+  readonly status = 409;
+  readonly slug = "exercise-already-owned";
+  readonly title = "Exercise already owned";
+  readonly publicDetail =
+    "You already own this exercise. Edit it directly instead of forking.";
+
+  constructor(internal = "fork target is already owned by the caller") {
+    super(internal);
   }
 }

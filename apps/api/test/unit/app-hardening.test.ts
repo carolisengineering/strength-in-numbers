@@ -191,4 +191,72 @@ describe("app hardening (Criterion 17)", () => {
     expect(res.statusCode).toBe(413);
     expect(res.json().type).toContain("payload-too-large");
   });
+
+  it("rejects malformed JSON with 422 validation-error, not 500 (Finding 4)", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: "{oops",
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toContain("validation-error");
+  });
+
+  it("rejects an empty JSON body with 422 validation-error, not 500 (Finding 4)", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: "",
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toContain("validation-error");
+  });
+
+  it("still rejects a __proto__ JSON body after the empty-body parser override", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: '{"name":"x","modality":"weight_reps","__proto__":{"polluted":true}}',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it("rejects an unsupported content-type with 415, not 500", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/exercises",
+      headers: {
+        authorization: "Bearer test-token",
+        // Fastify has built-in parsers for application/json and text/plain
+        // (which would just parse as a raw string and fail Zod validation
+        // instead) — application/xml has no registered parser at all, so
+        // this is what actually triggers FST_ERR_CTP_INVALID_MEDIA_TYPE.
+        "content-type": "application/xml",
+      },
+      payload: "<not-json/>",
+    });
+    expect(res.statusCode).toBe(415);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toContain("unsupported-media-type");
+  });
 });

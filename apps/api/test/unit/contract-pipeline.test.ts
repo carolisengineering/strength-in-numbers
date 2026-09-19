@@ -205,6 +205,8 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
       new Set([
         "/v1/me",
         "/v1/exercises",
+        "/v1/exercises/{id}",
+        "/v1/exercises/{id}/fork",
         "/v1/muscle-groups",
         "/v1/equipment",
       ]),
