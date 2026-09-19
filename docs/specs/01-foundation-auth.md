@@ -194,6 +194,9 @@ absent field leaves the stored value unchanged.
 | Valid token, user `deleted_at` set | 403 | `account-deleted` |
 | Body validation failure | 422 | `validation-error` (+ `errors[]`) |
 | Request body over the size limit | 413 | `payload-too-large` |
+| Unparseable body (malformed JSON) | 422 | `validation-error` |
+| Unsupported `Content-Type` | 415 | `unsupported-media-type` |
+| Other malformed request (e.g. bad URL encoding) | 400 | `bad-request` |
 | Unknown route | 404 | `not-found` |
 | Unhandled | 500 | `internal` |
 

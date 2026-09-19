@@ -140,6 +140,27 @@ describe("toProblem", () => {
     expect(body.type).toBe(`${PROBLEM_BASE_URL}payload-too-large`);
   });
 
+  it("maps a body-parser 400 (FST_ERR_CTP_*) to validation-error 422", () => {
+    const err = Object.assign(new Error("Unexpected token o in JSON"), {
+      statusCode: 400,
+      code: "FST_ERR_CTP_INVALID_JSON_BODY",
+    });
+    const { status, body } = toProblem(err, INSTANCE);
+    expect(status).toBe(422);
+    expect(body.type).toBe(`${PROBLEM_BASE_URL}validation-error`);
+  });
+
+  it("maps a non-body Fastify 400 to bad-request 400, not a body validation-error", () => {
+    const err = Object.assign(new Error("'/v1/exercises/%E0%A4%A' is not a valid url component"), {
+      statusCode: 400,
+      code: "FST_ERR_BAD_URL",
+    });
+    const { status, body } = toProblem(err, INSTANCE);
+    expect(status).toBe(400);
+    expect(body.type).toBe(`${PROBLEM_BASE_URL}bad-request`);
+    expect(JSON.stringify(body)).not.toMatch(/valid url component/);
+  });
+
   it("maps an unknown throwable to internal 500 without leaking the message", () => {
     const { status, body } = toProblem(
       new Error("connect ECONNREFUSED db:5432"),

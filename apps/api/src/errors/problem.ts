@@ -5,6 +5,7 @@ import {
 } from "fastify-type-provider-zod";
 import {
   AppError,
+  BadRequestError,
   InternalError,
   NotFoundError,
   PayloadTooLargeError,
@@ -207,8 +208,16 @@ export function normalizeError(error: unknown): AppError {
   if (code === "FST_ERR_CTP_INVALID_MEDIA_TYPE") {
     return new UnsupportedMediaTypeError();
   }
-  if (statusCode === 400 || (typeof code === "string" && code.startsWith("FST_ERR_CTP_"))) {
+  if (typeof code === "string" && code.startsWith("FST_ERR_CTP_")) {
     return new ValidationError([], "malformed or unparseable request body");
+  }
+  // Any other 400 (e.g. `FST_ERR_BAD_URL` for a malformed percent-encoded
+  // path, or an `http-errors` 400 from a plugin) is not about the body, so it
+  // must not be reported as a body `validation-error`.
+  if (statusCode === 400) {
+    return new BadRequestError(
+      error instanceof Error ? error.message : "bad request",
+    );
   }
 
   return new InternalError(

@@ -115,6 +115,17 @@ export class UnsupportedMediaTypeError extends AppError {
   }
 }
 
+export class BadRequestError extends AppError {
+  readonly status = 400;
+  readonly slug = "bad-request";
+  readonly title = "Bad request";
+  readonly publicDetail = "The request could not be understood.";
+
+  constructor(internal = "malformed request") {
+    super(internal);
+  }
+}
+
 export class NotFoundError extends AppError {
   readonly status = 404;
   readonly slug = "not-found";
