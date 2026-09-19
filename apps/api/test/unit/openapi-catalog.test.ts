@@ -97,7 +97,7 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
     }
   });
 
-  it("documents the optional `since` query parameter (with its pattern) on /v1/exercises", async () => {
+  it("AC10 (03.3) — documents the optional `since` query parameter (with its pattern) on /v1/exercises", async () => {
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as Doc;
 

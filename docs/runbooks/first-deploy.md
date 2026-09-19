@@ -295,8 +295,11 @@ not yet on that database — on a fresh Neon branch that is every folder under
 …); on a later deploy only the new ones. Re-run anytime; it's idempotent. If it
 hangs or fails `P1001` the Neon compute is probably resuming from idle — re-run.
 **Repeat this one command whenever a later spec adds a migration**, before that
-deploy serves traffic. (This still honors Spec 01 §6.4 — migrations never run on
-app boot.)
+deploy serves traffic — i.e. before merging the PR that ships the code. **Do not
+run it while `seed:catalog` (B5) is running**: a migration that touches
+`exercise` (e.g. `0004`) would queue behind the seed's 60 s transaction, and the
+seed's writes behind the migration. (This still honors Spec 01 §6.4 — migrations
+never run on app boot.)
 
 **Verify it landed** — any one of these:
 
@@ -420,8 +423,11 @@ service). On a push to `main`:
 1. CI `check` / `integration` / `docker` jobs run.
 2. Render builds the image, starts the service, gates the rollout on
    `GET /healthz` → 200. **Migrations are not run here** — you applied `0001` by
-   hand in B4. (On a later spec that adds a migration, run B4's command before or
-   right after the deploy, before real traffic hits the new schema.)
+   hand in B4. (On a later spec that adds a migration, run B4's command **before
+   you merge**: a merge to `main` auto-deploys the code, and if that code reads a
+   column the migration adds — as Spec 03.3's `change_xid` catalog read does —
+   it will `500` until the migration lands. Additive migrations are safe for the
+   still-running old image, so migrating first costs nothing.)
 3. CI `smoke` job (`if: github.ref == 'refs/heads/main'`, `needs: [check,
    integration, docker]`) runs `scripts/smoke.ts` against `STAGING_BASE_URL`.
    First run may sit in the `/healthz` poll for ~1 min while the free web

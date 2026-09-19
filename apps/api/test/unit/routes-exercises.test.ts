@@ -36,7 +36,7 @@ function expectVaryTokens(vary: unknown): void {
   expect(tokens).toContain("authorization");
 }
 
-describe("GET /v1/exercises — full pull (AC5)", () => {
+describe("GET /v1/exercises — full pull (03.1 AC5)", () => {
   it("returns the caller-visible catalog as camelCase Exercise DTOs", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     exerciseRepo.catalog = [
@@ -99,7 +99,7 @@ describe("GET /v1/exercises — full pull (AC5)", () => {
   });
 });
 
-describe("GET /v1/exercises — ETag / 304 / caching (AC7)", () => {
+describe("AC9 (03.1 AC7) — GET /v1/exercises ETag / 304 / caching under since/syncToken", () => {
   it("emits a strong ETag that is stable while only syncToken advances", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     exerciseRepo.catalog = [makeExerciseRecord()];

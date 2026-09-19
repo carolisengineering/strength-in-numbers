@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import {
@@ -125,22 +126,22 @@ describe.skipIf(!shouldRunIntegration())(
     });
 
     it("D30: prisma migrate diff (migrated DB → schema.prisma) reports no drift", () => {
-      let out = "";
-      try {
-        execFileSync(
-          "pnpm",
-          [
-            "exec", "prisma", "migrate", "diff",
-            "--from-url", db.url,
-            "--to-schema-datamodel", "prisma/schema.prisma",
-            "--exit-code",
-          ],
-          { encoding: "utf8", stdio: "pipe" },
-        );
-      } catch (e) {
-        out = String((e as { stdout?: string }).stdout ?? e);
-      }
-      expect(out).toBe("");
+      // spawnSync (not execFileSync + try/catch): a CLI that fails to run at all
+      // (bad path, changed flag) must FAIL this test, not look like "no diff".
+      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
+      const r = spawnSync(
+        "pnpm",
+        [
+          "exec", "prisma", "migrate", "diff",
+          "--from-url", db.url,
+          "--to-schema-datamodel", "prisma/schema.prisma",
+          "--exit-code",
+        ],
+        { cwd: apiDir, encoding: "utf8" },
+      );
+      // --exit-code: 0 = no difference, 2 = differences, 1 = error.
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(r.stdout).toContain("No difference detected");
     });
   },
 );

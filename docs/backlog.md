@@ -17,6 +17,7 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-5](#bl-5) | Observability | Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | `openapi.json` documents only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
 | [BL-7](#bl-7) | API contract | `@fastify/swagger` forces `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
+| [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
 | [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
 
 ---
@@ -199,3 +200,20 @@ only the leaked-session variant.
 applying, confirm the catalog seed — a multi-statement, Node-driven transaction
 run under `DATABASE_URL` — never sits idle between statements for longer than the
 bound, or run it under a role that is exempt.
+
+## BL-9
+
+**Restore-epoch hardening for sync tokens has a hard deadline: before the Spec 15 (Neon → AWS) data cutover.**
+
+Spec 03.3 D27 deferred the restore-epoch (a `sync_epoch` table and a `1.<epoch>.<xid>`
+token, plus a runbook step to bump the epoch after any point-in-time or branch
+restore). The `410` future-token check catches a client holding a token from
+before a restore *unless* the new cluster's xid counter has already caught back
+up to that stale token. A Neon → AWS move is a cluster change that resets the xid
+space under every stored client token, so "restores are rare" does not cover it.
+
+**Done looks like:** before the Spec 15 data cutover, either land the epoch, or
+make the server answer `410` to every `1.` token (bumping the version prefix does
+this with no schema change) so clients resync once. Spec 15 must list this as an
+explicit cutover step. Earlier, if a database or branch restore is ever performed
+against an environment with real clients holding tokens (currently none).

@@ -5,11 +5,12 @@
 --               DROP INDEX "exercise_change_xid_idx";
 --               ALTER TABLE "exercise" DROP COLUMN "change_xid";
 
--- One statement: existing rows are stamped with this migration's xid by the
--- column default (a volatile default rewrites the table; fine at this size —
--- see the lock note in Spec 03.3 §4). The column is never nullable, so there is
--- no backfill UPDATE and no separate SET NOT NULL scan. The trigger is created
--- after, so the default — not the trigger — stamps the pre-existing rows.
+-- One statement: existing rows read this migration's xid from the column
+-- default. pg_current_xact_id() is STABLE, so on Postgres >= 11 this takes the
+-- fast-default path (no table rewrite; the value is stored once in the catalog).
+-- The column is never nullable, so there is no backfill UPDATE and no separate
+-- SET NOT NULL scan. The trigger is created after, so the default — not the
+-- trigger — stamps the pre-existing rows.
 ALTER TABLE "exercise"
   ADD COLUMN "change_xid" xid8 NOT NULL DEFAULT pg_current_xact_id();
 

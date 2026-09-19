@@ -34,7 +34,7 @@ model User {
 
 // Spec 03.1 §4 — exercise catalog. Curated rows have `ownerUserId = null` and a
 // unique `catalogKey`; custom rows (Spec 03.2) set `ownerUserId` and leave
-// `catalogKey` null. `isActive = false` rows are tombstones returned only in an
+// `catalogKey` null. `isActive = false` rows are tombstones returned only in a
 // sync delta (Spec 03.3; `?since=`).
 model Exercise {
   id                 String       @id @db.Uuid // app-generated UUIDv7
