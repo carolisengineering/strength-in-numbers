@@ -12,7 +12,10 @@
  *
  * 2. `seedCatalog(prisma, catalog, log)` — one transaction, every write stamped
  *    with a single `transaction_timestamp()` so all rows of a revision share one
- *    exact `updated_at` (the split-revision guarantee §6.1 depends on). Reference
+ *    exact `updated_at`. That `updated_at` is display-only now; sync correctness
+ *    comes from the transaction's single `change_xid` (one xid per seed
+ *    transaction, set by the `exercise` trigger — Spec 03.3 §4), which is what
+ *    keeps a revision from being split across deltas. Reference
  *    rows upsert their display fields in place. `exercise` rows are keyed by
  *    `catalog_key` and handled by explicit read-then-branch — **not** an
  *    `ON CONFLICT (catalog_key)` upsert: the branch logic (abort on an
@@ -239,7 +242,8 @@ export async function seedCatalog(
 ): Promise<SeedSummary> {
   return prisma.$transaction(
     async (tx) => {
-      // One clock value for the whole revision (§6.1 split-revision guarantee).
+      // One clock value for the whole revision's display-only `updated_at`. Sync
+      // correctness comes from the transaction's single `change_xid` (Spec 03.3).
       const [{ ts }] = await tx.$queryRaw<[{ ts: Date }]>`
         SELECT transaction_timestamp() AS ts`;
 

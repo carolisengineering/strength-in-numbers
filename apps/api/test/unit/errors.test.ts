@@ -14,6 +14,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseAlreadyOwnedError,
+  SyncTokenExpiredError,
 } from "../../src/errors/app-error.js";
 import { toProblem, PROBLEM_BASE_URL } from "../../src/errors/problem.js";
 
@@ -39,6 +40,7 @@ describe("AppError hierarchy", () => {
       [new ExerciseImmutableError(), 403, "exercise-immutable"],
       [new ExerciseImmutableUseForkError(), 409, "exercise-immutable-use-fork"],
       [new ExerciseAlreadyOwnedError(), 409, "exercise-already-owned"],
+      [new SyncTokenExpiredError(), 410, "sync-token-expired"],
     ];
     for (const [err, status, slug] of cases) {
       expect(err, slug).toBeInstanceOf(AppError);
@@ -169,5 +171,15 @@ describe("toProblem", () => {
     expect(status).toBe(500);
     expect(body.type).toBe(`${PROBLEM_BASE_URL}internal`);
     expect(JSON.stringify(body)).not.toMatch(/ECONNREFUSED/);
+  });
+});
+
+describe("SyncTokenExpiredError (Spec 03.3 §5)", () => {
+  it("maps to a 410 problem body with the fixed, client-safe detail", () => {
+    const { status, body } = toProblem(new SyncTokenExpiredError(), INSTANCE);
+    expect(status).toBe(410);
+    expect(body.type).toBe(`${PROBLEM_BASE_URL}sync-token-expired`);
+    expect(body.title).toBe("Sync token expired");
+    expect(body.detail).toContain("Discard your cached catalog");
   });
 });

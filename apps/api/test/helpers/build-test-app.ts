@@ -1,7 +1,8 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { buildApp, type BuildAppDeps } from "../../src/app.js";
 import { loadConfig, type Config } from "../../src/config.js";
 import type { TokenVerifier } from "../../src/auth/verify.js";
+import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import {
   FakeExerciseRepository,
   FakeUserRepository,
@@ -21,25 +22,34 @@ export const TEST_ENV: Record<string, string> = {
 
 export const testConfig = (): Config => loadConfig({ ...TEST_ENV });
 
-export interface TestAppOptions {
+export interface TestAppOptions<
+  R extends ExerciseRepository = FakeExerciseRepository,
+> {
   config?: Config;
   tokenVerifier?: TokenVerifier;
   userRepository?: FakeUserRepository;
-  exerciseRepository?: FakeExerciseRepository;
+  /** Defaults to a fake; integration tests pass the real repository. */
+  exerciseRepository?: R;
+  logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
 }
 
-export async function buildTestApp(opts: TestAppOptions = {}): Promise<{
+export async function buildTestApp<
+  R extends ExerciseRepository = FakeExerciseRepository,
+>(
+  opts: TestAppOptions<R> = {},
+): Promise<{
   app: FastifyInstance;
   repo: FakeUserRepository;
-  exerciseRepo: FakeExerciseRepository;
+  exerciseRepo: R;
 }> {
   const repo = opts.userRepository ?? new FakeUserRepository();
-  const exerciseRepo = opts.exerciseRepository ?? new FakeExerciseRepository();
+  const exerciseRepo = (opts.exerciseRepository ??
+    new FakeExerciseRepository()) as R;
   const deps: BuildAppDeps = {
     config: opts.config ?? testConfig(),
-    logger: false,
+    logger: opts.logger ?? false,
     checkReadiness: opts.checkReadiness ?? (async () => {}),
     readinessTtlMs: opts.readinessTtlMs,
     tokenVerifier: opts.tokenVerifier ?? fakeVerifier(() => authContext()),

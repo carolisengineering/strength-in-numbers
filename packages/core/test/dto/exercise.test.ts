@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   CatalogName,
+  CatalogSinceQuery,
   CreateExerciseSchema,
   EquipmentSchema,
   ExerciseSchema,
   ExercisesResponse,
+  isSyncToken,
   MAX_CUSTOM_EXERCISES_PER_USER,
   MuscleGroupSchema,
   muscleIdCrossFieldIssues,
   noControlChars,
-  UpdatedSinceQuery,
   UpdateExerciseSchema,
 } from "../../src/dto/exercise.js";
 
@@ -140,44 +141,20 @@ describe("catalog DTOs (Spec 03.1 §5)", () => {
     ).toThrow();
   });
 
-  it("ExercisesResponse wraps the array plus the serverTime cursor", () => {
+  it("ExercisesResponse wraps the array plus the opaque syncToken", () => {
     expect(
       ExercisesResponse.parse({
         exercises: [curatedRow],
-        serverTime: "2026-09-08T12:00:00.123Z",
+        syncToken: "1.736",
       }),
-    ).toMatchObject({ exercises: [{ id: curatedRow.id }] });
+    ).toMatchObject({ exercises: [{ id: curatedRow.id }], syncToken: "1.736" });
   });
 
-  it("ExercisesResponse rejects a non-datetime serverTime", () => {
-    expect(() =>
-      ExercisesResponse.parse({ exercises: [], serverTime: "soon" }),
-    ).toThrow();
-  });
-
-  it("UpdatedSinceQuery rejects Zod-valid cursors Postgres cannot cast (year 0000, offset > ±15:59)", () => {
-    for (const bad of [
-      "0000-01-01T00:00:00Z",
-      "2026-01-01T00:00:00+16:00",
-      "2026-01-01T00:00:00-23:59",
-    ]) {
-      expect(UpdatedSinceQuery.safeParse({ updated_since: bad }).success, bad).toBe(false);
-    }
-    for (const ok of [
-      "2026-01-01T00:00:00Z",
-      "2026-01-01T00:00:00.123+15:59",
-      "2026-01-01T00:00:00-05:00",
-    ]) {
-      expect(UpdatedSinceQuery.safeParse({ updated_since: ok }).success, ok).toBe(true);
-    }
-  });
-
-  it("UpdatedSinceQuery treats updated_since as optional, rejects a non-datetime", () => {
-    expect(UpdatedSinceQuery.parse({})).toEqual({});
+  it("ExercisesResponse requires syncToken (the old serverTime is gone)", () => {
+    expect(() => ExercisesResponse.parse({ exercises: [] })).toThrow();
     expect(
-      UpdatedSinceQuery.parse({ updated_since: "2026-09-08T12:00:00Z" }),
-    ).toEqual({ updated_since: "2026-09-08T12:00:00Z" });
-    expect(() => UpdatedSinceQuery.parse({ updated_since: "nope" })).toThrow();
+      ExercisesResponse.parse({ exercises: [], syncToken: "1.0", serverTime: "x" }),
+    ).not.toHaveProperty("serverTime");
   });
 });
 
@@ -318,5 +295,34 @@ describe("write DTOs (Spec 03.2 §5)", () => {
 
   it("MAX_CUSTOM_EXERCISES_PER_USER is 500", () => {
     expect(MAX_CUSTOM_EXERCISES_PER_USER).toBe(500);
+  });
+});
+
+describe("AC10 — isSyncToken / CatalogSinceQuery", () => {
+  it("accepts 1.0, 1.736 and the 19-digit maximum", () => {
+    for (const ok of ["1.0", "1.736", "1.9999999999999999999"]) {
+      expect(isSyncToken(ok), ok).toBe(true);
+    }
+  });
+
+  it("rejects bare numbers, negatives, non-digits, leading zeros, 20 digits, a wrong version, and empty", () => {
+    for (const bad of [
+      "736",
+      "1.-1",
+      "1.abc",
+      "1.01",
+      "1.99999999999999999999",
+      "2.736",
+      "",
+    ]) {
+      expect(isSyncToken(bad), bad).toBe(false);
+    }
+  });
+
+  it("CatalogSinceQuery treats since as optional and validates it with the regex", () => {
+    expect(CatalogSinceQuery.parse({})).toEqual({});
+    expect(CatalogSinceQuery.parse({ since: "1.736" })).toEqual({ since: "1.736" });
+    expect(CatalogSinceQuery.safeParse({ since: "2026-01-01T00:00:00Z" }).success).toBe(false);
+    expect(CatalogSinceQuery.safeParse({ since: "1.01" }).success).toBe(false);
   });
 });

@@ -109,13 +109,13 @@ describe.skipIf(!shouldRunIntegration())(
       );
     }
 
-    describe("findVisibleCatalog", () => {
+    describe("findCatalog — full pull", () => {
       it("returns active curated rows only, ordered by name COLLATE \"C\" then id", async () => {
         await insertExercise({ name: "banana" });
         await insertExercise({ name: "Apple" });
         await insertExercise({ name: "cherry", isActive: false });
 
-        const { rows } = await repo.findVisibleCatalog(uuidv7());
+        const { rows } = await repo.findCatalog(uuidv7());
 
         // COLLATE "C" is byte order: 'A' (0x41) sorts before 'b' (0x62).
         expect(rows.map((r) => r.name)).toEqual(["Apple", "banana"]);
@@ -132,7 +132,7 @@ describe.skipIf(!shouldRunIntegration())(
         await insertExercise({ name: "A custom row", ownerUserId: userA });
         await insertExercise({ name: "B custom row", ownerUserId: userB });
 
-        const { rows } = await repo.findVisibleCatalog(userA);
+        const { rows } = await repo.findCatalog(userA);
 
         expect(rows.map((r) => r.name)).toEqual([
           "A custom row",
@@ -147,13 +147,13 @@ describe.skipIf(!shouldRunIntegration())(
         await insertExercise({ id: second, name: "Row" });
         await insertExercise({ id: first, name: "Row" });
 
-        const { rows } = await repo.findVisibleCatalog(uuidv7());
+        const { rows } = await repo.findCatalog(uuidv7());
         expect(rows.map((r) => r.id)).toEqual([first, second]);
       });
 
       it("maps every column, array intact", async () => {
         await insertExercise({ name: "Bench Press" });
-        const { rows: [row] } = await repo.findVisibleCatalog(uuidv7());
+        const { rows: [row] } = await repo.findCatalog(uuidv7());
         expect(row).toMatchObject({
           name: "Bench Press",
           modality: "weight_reps",
@@ -167,7 +167,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("maps forked_from_exercise_id (null for every existing row)", async () => {
         await insertExercise({ name: "Plain Row" });
-        const { rows: [row] } = await repo.findVisibleCatalog(uuidv7());
+        const { rows: [row] } = await repo.findCatalog(uuidv7());
         expect(row?.forkedFromExerciseId).toBeNull();
       });
     });
@@ -618,7 +618,7 @@ describe.skipIf(!shouldRunIntegration())(
         await insertExercise({ id: originId, name: "Bench", catalogKey: "bench" });
 
         const forked = await repo.forkExercise(userId, originId, {});
-        const { rows } = await repo.findVisibleCatalog(userId);
+        const { rows } = await repo.findCatalog(userId);
         const originRow = rows.find((r) => r.id === originId);
         const forkRow = rows.find((r) => r.id === forked.id);
         expect(originRow).toBeDefined();

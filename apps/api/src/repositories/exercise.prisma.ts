@@ -8,10 +8,12 @@ import {
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
   NotFoundError,
+  SyncTokenExpiredError,
   ValidationError,
   type FieldError,
 } from "../errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "./exercise-writes.js";
+import { formatSyncToken } from "./sync-token.js";
 import type {
   CatalogPage,
   ExerciseRecord,
@@ -45,8 +47,16 @@ interface ExerciseDbRow {
   updated_at: Date;
 }
 
-/** A catalog row query also carries the derived `serverTime` on every row. */
-type ExerciseDbRowWithCursor = ExerciseDbRow & { server_time: Date };
+/**
+ * A catalog query row: the token (and, on a delta, `since_is_future`) ride on
+ * every row; the LEFT JOIN yields a single all-NULL placeholder row when nothing
+ * matches, so the token is still returned for an empty result (Spec 03.3 §6.3).
+ */
+type CatalogDbRow = { token: string; since_is_future?: boolean } & {
+  [K in keyof ExerciseDbRow]: ExerciseDbRow[K] | null;
+};
+const isDataRow = (r: CatalogDbRow): r is CatalogDbRow & ExerciseDbRow =>
+  r.id !== null;
 
 function toRecord(r: ExerciseDbRow): ExerciseRecord {
   return {
@@ -77,17 +87,21 @@ const toReference = (r: ReferenceDbRow): ReferenceRecord => ({
   displayOrder: r.display_order,
 });
 
+function toCatalogPage(rows: CatalogDbRow[]): CatalogPage {
+  const first = rows[0]!; // the `snap` CTE guarantees at least one row
+  // Checked before any row is mapped: "no rows changed" and "your token is
+  // bogus" are different conditions, and the latter must surface even when the
+  // visible row set is empty.
+  if (first.since_is_future === true) throw new SyncTokenExpiredError();
+  return {
+    rows: rows.filter(isDataRow).map(toRecord),
+    syncToken: formatSyncToken(first.token),
+  };
+}
+
 export function createExerciseRepository(
   prisma: PrismaClient,
 ): ExerciseRepository {
-  /** ms-truncated `transaction_timestamp()` — the empty-visible-set fallback. */
-  async function serverNow(): Promise<Date> {
-    const [row] = await prisma.$queryRaw<{ server_time: Date }[]>`
-      SELECT date_trunc('milliseconds', transaction_timestamp()) AS server_time
-    `;
-    return row!.server_time;
-  }
-
   /** Visibility-filtered row lookup, shared by every write method that needs the
    * existing-row/404 check before branching on ownership/state (spec §6, §7). */
   async function loadVisibleRow(
@@ -228,65 +242,45 @@ export function createExerciseRepository(
   }
 
   return {
-    async findVisibleCatalog(actingUserId: string): Promise<CatalogPage> {
-      // `MAX(updated_at) OVER ()` = the newest visible row's timestamp, carried
-      // on every row; `LEAST(transaction_timestamp(), …)` clamps it so the
-      // cursor can never be emitted ahead of the data. Truncated down to ms.
-      const rows = await prisma.$queryRaw<ExerciseDbRowWithCursor[]>`
-        SELECT id, catalog_key, owner_user_id, name, modality,
-               primary_muscle_id, secondary_muscle_ids, equipment_id,
-               is_active, forked_from_exercise_id, created_at, updated_at,
-               date_trunc(
-                 'milliseconds',
-                 LEAST(transaction_timestamp(), MAX(updated_at) OVER ())
-               ) AS server_time
-        FROM "exercise"
-        WHERE is_active = true
-          AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
-        ORDER BY name COLLATE "C", id
-      `;
-      const first = rows[0];
-      return {
-        rows: rows.map(toRecord),
-        serverTime: first ? first.server_time : await serverNow(),
-      };
-    },
-
-    async findCatalogDelta(
+    async findCatalog(
       actingUserId: string,
-      sinceIso: string,
+      since?: string,
     ): Promise<CatalogPage> {
-      // No `is_active` filter — retired rows must arrive as tombstones. The
-      // cursor comes from what this query already scanned: GREATEST(:since,
-      // MAX over the returned rows), clamped to server-now, truncated to ms.
-      const rows = await prisma.$queryRaw<ExerciseDbRowWithCursor[]>`
-        SELECT id, catalog_key, owner_user_id, name, modality,
-               primary_muscle_id, secondary_muscle_ids, equipment_id,
-               is_active, forked_from_exercise_id, created_at, updated_at,
-               date_trunc(
-                 'milliseconds',
-                 LEAST(
-                   transaction_timestamp(),
-                   GREATEST(${sinceIso}::timestamptz, MAX(updated_at) OVER ())
-                 )
-               ) AS server_time
-        FROM "exercise"
-        WHERE updated_at > ${sinceIso}::timestamptz
-          AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
-        ORDER BY name COLLATE "C", id
-      `;
-      const first = rows[0];
-      if (first) {
-        return { rows: rows.map(toRecord), serverTime: first.server_time };
-      }
-      // Empty delta: echo the cursor, clamped so a future/crafted value heals.
-      const [clamp] = await prisma.$queryRaw<{ server_time: Date }[]>`
-        SELECT date_trunc(
-                 'milliseconds',
-                 LEAST(transaction_timestamp(), ${sinceIso}::timestamptz)
-               ) AS server_time
-      `;
-      return { rows: [], serverTime: clamp!.server_time };
+      // One statement per read (Spec 03.3 §6.2/§6.3): `pg_current_snapshot()` is
+      // evaluated against this statement's own snapshot, so the token and the
+      // rows describe the same instant — including when the row set is empty.
+      // Never add a second query here; a later snapshot would reopen #23.
+      const rows =
+        since === undefined
+          ? await prisma.$queryRaw<CatalogDbRow[]>`
+              WITH snap AS (SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS token)
+              SELECT snap.token, e.id, e.catalog_key, e.owner_user_id, e.name, e.modality,
+                     e.primary_muscle_id, e.secondary_muscle_ids, e.equipment_id,
+                     e.is_active, e.forked_from_exercise_id, e.created_at, e.updated_at
+              FROM snap
+              LEFT JOIN "exercise" e
+                ON e.is_active = true
+               AND (e.owner_user_id IS NULL OR e.owner_user_id = ${actingUserId}::uuid)
+              ORDER BY e.name COLLATE "C", e.id
+            `
+          : // No `is_active` filter — retired rows must arrive as tombstones.
+            await prisma.$queryRaw<CatalogDbRow[]>`
+              WITH snap AS (
+                SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS token,
+                       pg_snapshot_xmax(pg_current_snapshot())      AS xmax
+              )
+              SELECT snap.token, (${since}::xid8 > snap.xmax) AS since_is_future,
+                     e.id, e.catalog_key, e.owner_user_id, e.name, e.modality,
+                     e.primary_muscle_id, e.secondary_muscle_ids, e.equipment_id,
+                     e.is_active, e.forked_from_exercise_id, e.created_at, e.updated_at
+              FROM snap
+              LEFT JOIN "exercise" e
+                -- ">=": the horizon xid may itself commit after this read
+                ON e.change_xid >= ${since}::xid8
+               AND (e.owner_user_id IS NULL OR e.owner_user_id = ${actingUserId}::uuid)
+              ORDER BY e.name COLLATE "C", e.id
+            `;
+      return toCatalogPage(rows);
     },
 
     async findVisibleById(

@@ -139,14 +139,15 @@ export function makeExerciseRecord(
 
 /**
  * Programmable in-memory ExerciseRepository for route/unit tests. It does not
- * reproduce the SQL visibility filter or `serverTime` derivation (those are
- * covered by the repository integration tests) — set `catalog` / `delta` /
- * `serverTime` and inspect `lastActingUserId` / `lastDeltaSince`.
+ * reproduce the SQL visibility filter or the snapshot-token derivation (those
+ * are covered by the repository integration tests) — set `catalog` / `delta` /
+ * `syncToken` and inspect `lastActingUserId` / `lastSince` (the bare xid the
+ * route passed). `nextFindError` makes the next `findCatalog` throw once.
  */
 export class FakeExerciseRepository implements ExerciseRepository {
   catalog: ExerciseRecord[] = [];
   delta: ExerciseRecord[] = [];
-  serverTime = new Date("2026-09-08T00:00:00.000Z");
+  syncToken = "1.100";
   muscleGroups: ReferenceRecord[] = [];
   equipment: ReferenceRecord[] = [];
   byId = new Map<string, ExerciseRecord>();
@@ -155,20 +156,25 @@ export class FakeExerciseRepository implements ExerciseRepository {
   cap = MAX_CUSTOM_EXERCISES_PER_USER;
 
   lastActingUserId: string | null = null;
-  lastDeltaSince: string | null = null;
+  lastSince: string | null = null;
+  /** One-shot: thrown by the next `findCatalog` (e.g. a SyncTokenExpiredError). */
+  nextFindError: Error | null = null;
 
-  async findVisibleCatalog(actingUserId: string): Promise<CatalogPage> {
-    this.lastActingUserId = actingUserId;
-    return { rows: this.catalog, serverTime: this.serverTime };
-  }
-
-  async findCatalogDelta(
+  async findCatalog(
     actingUserId: string,
-    sinceIso: string,
+    since?: string,
   ): Promise<CatalogPage> {
     this.lastActingUserId = actingUserId;
-    this.lastDeltaSince = sinceIso;
-    return { rows: this.delta, serverTime: this.serverTime };
+    this.lastSince = since ?? null;
+    if (this.nextFindError) {
+      const e = this.nextFindError;
+      this.nextFindError = null;
+      throw e;
+    }
+    return {
+      rows: since === undefined ? this.catalog : this.delta,
+      syncToken: this.syncToken,
+    };
   }
 
   async findVisibleById(

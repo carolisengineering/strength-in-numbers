@@ -18,7 +18,7 @@ import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
  * repository, with its own strong content `ETag` / `304` and the same
  * `Cache-Control: private, no-cache` + `Vary: Authorization` headers as
  * `/v1/exercises` (the data is user-independent, but the response is auth-gated,
- * so shared caching stays off for consistency). No `updated_since` — the tables
+ * so shared caching stays off for consistency). No `since` token — the tables
  * are tiny and change only on a deploy, so a client re-fetches whenever its
  * `If-None-Match` check misses.
  */

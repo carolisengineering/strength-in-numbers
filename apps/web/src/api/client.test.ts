@@ -327,7 +327,7 @@ describe("AC12 — 401 triggers exactly one silent retry", () => {
 describe("routeTemplate — static observability tag", () => {
   it("drops the query string and replaces UUID / numeric segments", () => {
     expect(routeTemplate("/v1/me")).toBe("/v1/me");
-    expect(routeTemplate("/v1/exercises?updated_since=2026-01-01T00:00:00Z")).toBe(
+    expect(routeTemplate("/v1/exercises?since=1.736")).toBe(
       "/v1/exercises",
     );
     expect(

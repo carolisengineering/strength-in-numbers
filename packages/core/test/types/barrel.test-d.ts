@@ -5,12 +5,14 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   brandId,
   CatalogName,
+  CatalogSinceQuery,
   DISTANCE_UNIT_VALUES,
   EquipmentSchema,
   ExerciseIdSchema,
   ExerciseSchema,
   ExercisesResponse,
   isExerciseId,
+  isSyncToken,
   isUserId,
   KM_TO_M,
   kgToLb,
@@ -32,7 +34,6 @@ import {
   toCanonicalKg,
   toCanonicalMeters,
   UNIT_PREFERENCE_VALUES,
-  UpdatedSinceQuery,
   UpdateMeSchema,
   UserIdSchema,
   WEIGHT_UNIT_VALUES,
@@ -84,7 +85,8 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(MuscleGroupSchema).not.toBeAny();
     expectTypeOf(EquipmentSchema).not.toBeAny();
     expectTypeOf(ExercisesResponse).not.toBeAny();
-    expectTypeOf(UpdatedSinceQuery).not.toBeAny();
+    expectTypeOf(CatalogSinceQuery).not.toBeAny();
+    expectTypeOf(isSyncToken).toBeFunction();
   });
 
   it("type exports resolve", () => {

@@ -10,19 +10,30 @@ Numbering is append-only — never renumber an existing BL.
 
 | ID | Area | Summary | Severity | Found |
 |----|------|---------|----------|-------|
-| [BL-1](#bl-1) | Catalog sync | A newly created/forked row can be permanently skipped by an `updated_since` delta | Medium | 2026-09-17 |
+| [BL-1](#bl-1) | Catalog sync | **Resolved (Spec 03.3)** — a newly created/forked row could be permanently skipped by an `updated_since` delta | Medium | 2026-09-17 |
 | [BL-2](#bl-2) | Catalog writes | `updateExercise`'s zero-row fallback reports a misleading 409 on an invariant break | Minor | 2026-09-17 |
 | [BL-3](#bl-3) | Catalog writes | `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
 | [BL-4](#bl-4) | Testing | Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
 | [BL-5](#bl-5) | Observability | Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | `openapi.json` documents only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
 | [BL-7](#bl-7) | API contract | `@fastify/swagger` forces `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
+| [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
+| [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
 
 ---
 
 ## BL-1
 
 **A newly created or forked exercise can be permanently skipped by a delta pull.**
+
+**Status: Resolved (2026-09-19)** by [Spec 03.3](specs/03.3-catalog-sync-token.md):
+the timestamp cursor was replaced by a commit-ordered sync token (a
+trigger-stamped `exercise.change_xid` plus a `syncToken` taken from
+`pg_snapshot_xmin(pg_current_snapshot())` in the same statement as the rows),
+which cannot skip a row by construction; the #23 interleaving below is now a
+permanent regression test (Spec 03.3 AC5). Implementation PR: link pending. The
+analysis below is kept as history — it describes the pre-03.3
+`updated_since` / `serverTime` design, which no longer exists.
 
 `insertWithCap` (`apps/api/src/repositories/exercise.prisma.ts`) stamps
 `created_at`/`updated_at` with `now()`, which in Postgres is
@@ -164,3 +175,45 @@ Runtime behavior is correct — this is a documentation-fidelity bug only.
 operations whose body schema is nullable, or an upstream fix / version bump that
 respects schema nullability. Whichever path, the CI drift check must still pass
 deterministically.
+
+## BL-8
+
+**No `idle_in_transaction_session_timeout` on the app DB role, so a leaked session can pin the sync horizon.**
+
+The catalog sync token (Spec 03.3) is `pg_snapshot_xmin(pg_current_snapshot())`,
+which is held back by any transaction that has performed a write and not yet
+ended. A session that wrote and then leaked "idle in transaction" (a bug, a
+crashed handler that never released its connection) would keep the horizon
+pinned indefinitely, so every delta would re-send all rows stamped at or above
+it. This is extra payload, **never a correctness gap** (Spec 03.3 §6.6) — which
+is why it was not shipped with the fix.
+
+**Why deferred:** independent infrastructure hardening with no schema or code
+dependency on migration `0004`; Spec 03.3 §6.6 / §8 recommended it as a small
+separate change. Legitimate long transactions (the catalog seed's 60 s
+transaction) widen the re-send window regardless of this setting, so it bounds
+only the leaked-session variant.
+
+**Done looks like:** `ALTER ROLE <app role> SET idle_in_transaction_session_timeout
+= '30s'` (or a similar bound) applied to the Neon connection role and recorded in
+`docs/runbooks/first-deploy.md` (and in the Spec 15 AWS/RDS provisioning). Before
+applying, confirm the catalog seed — a multi-statement, Node-driven transaction
+run under `DATABASE_URL` — never sits idle between statements for longer than the
+bound, or run it under a role that is exempt.
+
+## BL-9
+
+**Restore-epoch hardening for sync tokens has a hard deadline: before the Spec 15 (Neon → AWS) data cutover.**
+
+Spec 03.3 D27 deferred the restore-epoch (a `sync_epoch` table and a `1.<epoch>.<xid>`
+token, plus a runbook step to bump the epoch after any point-in-time or branch
+restore). The `410` future-token check catches a client holding a token from
+before a restore *unless* the new cluster's xid counter has already caught back
+up to that stale token. A Neon → AWS move is a cluster change that resets the xid
+space under every stored client token, so "restores are rare" does not cover it.
+
+**Done looks like:** before the Spec 15 data cutover, either land the epoch, or
+make the server answer `410` to every `1.` token (bumping the version prefix does
+this with no schema change) so clients resync once. Spec 15 must list this as an
+explicit cutover step. Earlier, if a database or branch restore is ever performed
+against an environment with real clients holding tokens (currently none).
