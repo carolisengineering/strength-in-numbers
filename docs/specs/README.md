@@ -23,15 +23,15 @@ spec small enough to finish in one work session.
 | 03.3 | [Catalog sync token](03.3-catalog-sync-token.md) — fixes #23/BL-1: trigger-stamped `change_xid xid8` + snapshot-horizon token replaces the timestamp cursor (`?since=`/`syncToken`, `410 sync-token-expired`) | API | endpoints (breaking rename of an unconsumed contract) | 03.2 | Implemented |
 | 04.0 | [SPA shell, browser auth & API client](04.0-spa-shell-auth.md) — Vite + React SPA (`@sin/web`), Auth0 PKCE (in-memory tokens, self-hosted refresh worker), React-free API client (problem+json → typed errors, `@sin/core` DTOs), router + protected routes + bootstrap gate, Render static site + strict CSP, CI web gate | UI / platform | web → Render static site | 01, 02 | Draft |
 | 04.1 | [Profile slice & UI foundation](04.1-profile-slice.md) — CSS-Modules design tokens + primitives, thumb-zone `AppShell` + bottom nav, `useSession`, error boundary, and the Profile vertical slice (`GET`/`PATCH /v1/me`: 422→field errors, cache write) | UI | web (same `@sin/web` bundle) | 04.0, 01, 02 | Draft |
-| 05.0 | [Workout session lifecycle](05.0-workout-session-lifecycle.md) — `workout` + `workout_exercise` tables; start / resume / edit / finish / delete a session; add, reorder, remove exercises; idempotent create; `local_date` derived once at write time | API | endpoints | 01, 02, 03.0, 03.1 | Draft |
+| 05.0 | [Workout session lifecycle](05.0-workout-session-lifecycle.md) — `workout` + `workout_exercise` tables; start / resume / edit / finish / delete a session; add, reorder, remove exercises; idempotent create; `local_date` derived once at write time | API | endpoints | 01, 02, 03.0, 03.1, 03.2 | Draft |
 | 05.1 | Set logging — `set_entry`, per-modality validation, finish integrity rule | API | endpoints | 05.0 | Not started |
-| 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0, 05.1 | Not started |
+| 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0 (05.1 soft) | Not started |
 | 06 | Workout logging | UI (incl. exercise picker) | web | 04.1, 05.0, 05.1, 03.3 | Not started |
 | 07 | History, progress & PR engine | API | endpoints | 05.1 | Not started |
 | 08 | History & progress | UI | web | 06, 07 | Not started |
 | 09 | Routines & supersets (Tier B) — adds `routine_id` / `superset_group` | API | endpoints | 05.0 | Not started |
 | 10 | Routines & supersets | UI | web | 06, 09 | Not started |
-| 11 | Account lifecycle — export, delete, purge cron, R2 bucket | API + cron | endpoints + job | 05.0 | Not started |
+| 11 | Account lifecycle — export, delete, purge cron, R2 bucket | API + cron | endpoints + job | 05.0, 05.1 | Not started |
 | 12 | Account lifecycle | UI | web | 06, 11 | Not started |
 | 13 | Observability & analytics — stand up Sentry + a trace backend + PostHog; dashboards for §1.3 metrics; alerts | ops | config + dashboards | 01, 04.0 | Not started |
 | 14 | Marketing site (Next.js) | static | separate deploy | — | Not started |
@@ -57,9 +57,11 @@ spec small enough to finish in one work session.
 03.0; 03.2 needs 03.1; 03.3 needs 03.2 (it fixes the cursor 03.2's writes
 exposed the bug in, per #23/BL-1) and must land before Spec 06 starts
 consuming `GET /v1/exercises` (the exercise picker is the first real consumer;
-Specs 05.0 / 05.1 resolve ids via `findVisibleById` and don't sync). 04.1 needs
-04.0. 05.0 needs 03.1 (`findVisibleById`); 05.1 needs 05.0; 05.2 can land any
-time after 05.0 but must precede a public beta. The API specs (05.0, 05.1, 05.2,
+Spec 05.0 resolves ids via `findVisibleById` and doesn't sync). 04.1 needs
+04.0. 05.0 needs 03.1 (`findVisibleById`) and 03.2 (`ExerciseRetiredError`,
+`is_active`); 05.1 needs 05.0; 05.2 can land any time after 05.0 — 05.1 is a
+soft dependency, since 05.2 should cover the set-write path if it already
+exists — but must precede a public beta. The API specs (05.0, 05.1, 05.2,
 07, 09, 11) can run ahead of their UIs.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
