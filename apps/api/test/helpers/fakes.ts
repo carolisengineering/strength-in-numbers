@@ -39,6 +39,7 @@ import {
   assertEndedAtInBounds,
   assertEndedAtNotBeforeStartedAt,
   assertReorderPositionInRange,
+  computeAppendPosition,
 } from "../../src/repositories/workout-writes.js";
 import type {
   AddWorkoutExerciseFields,
@@ -474,7 +475,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     if (!exercise.isActive) throw new ExerciseRetiredError();
 
     const n = [...this.exercises.values()].filter((e) => e.workoutId === workoutId).length;
-    const position = fields.position ?? n;
+    const position = fields.position ?? computeAppendPosition(n);
     if (fields.position !== undefined) {
       assertAddPositionInRange(fields.position, n);
       for (const e of this.exercises.values()) {
