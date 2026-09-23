@@ -323,9 +323,23 @@ export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository
         return toRecord(updatedRows[0]!);
       });
     },
-    // Tasks 13-16 implement these; each replaces its own placeholder in order.
-    deleteWorkout: () => {
-      throw new Error("not implemented until Task 13");
+    async deleteWorkout(actingUserId: string, id: string): Promise<void> {
+      if (!isWorkoutId(id)) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      const owned = await prisma.$queryRaw<{ id: string; user_id: string }[]>`
+        SELECT id, user_id FROM "workout"
+        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+      `;
+      if (!owned[0]) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE exemption
+      // — allowed on an in-progress or finished workout, no state check here).
+      const affectedRows = await prisma.$executeRaw`DELETE FROM "workout" WHERE id = ${id}::uuid`;
+      if (affectedRows === 0) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
     },
     addWorkoutExercise: () => {
       throw new Error("not implemented until Task 14");
