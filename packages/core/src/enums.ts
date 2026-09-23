@@ -34,6 +34,12 @@ export const MODALITY_VALUES = Object.freeze([
 ] as const);
 export type Modality = (typeof MODALITY_VALUES)[number];
 
+/** `workout.source` (DESIGN §6). Only `manual` in v1; a future importer
+ * (`healthkit`, `google_fit`, …) adds its own value with the migration that
+ * ships it (widening a CHECK literal list is additive, 03.1's precedent). */
+export const WORKOUT_SOURCE_VALUES = Object.freeze(["manual"] as const);
+export type WorkoutSource = (typeof WORKOUT_SOURCE_VALUES)[number];
+
 /** `set_entry.set_type` (DESIGN §4.4). Only `working` sets count toward PRs. */
 export const SET_TYPE_VALUES = Object.freeze([
   "warmup",
