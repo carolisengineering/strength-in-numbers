@@ -15,3 +15,5 @@ export * from "./ids.js";
 export * from "./units.js";
 export * from "./dto/me.js";
 export * from "./dto/exercise.js";
+export * from "./dto/workout.js";
+export * from "./time.js";
