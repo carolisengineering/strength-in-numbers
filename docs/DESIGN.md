@@ -284,16 +284,24 @@ is `ON DELETE SET NULL`).
 
 ### 4.4 Workouts (performed sessions) — the hot path
 
-- **workout** — `user_id`, `routine_id` (nullable, `ON DELETE SET NULL` — what it
-  was started from), `title`, `notes`, `started_at timestamptz`,
+- **workout** — `user_id`, `title`, `notes`, `started_at timestamptz`,
   `ended_at timestamptz` (NULL while in progress), `local_date DATE`,
   `tz_offset_minutes SMALLINT`, `client_generated_id UUID` (client-supplied,
-  unique per user — **idempotency key**, §6), `source` (`manual` in v1;
-  `healthkit` / `google_fit` / … reserved for §5.4).
+  unique per user — **idempotency key**, §6), `source` (the shipped `CHECK`
+  admits only `'manual'` in v1 — `healthkit` / `google_fit` / … reserved
+  values are added by the migration that adds their importer, since widening
+  a `CHECK` literal list is additive while shipping values nothing can write
+  is not). `routine_id` is omitted until Spec 09 adds `routine` (one additive
+  column then, per Spec 05.0 D36).
+- **At most one in-progress workout per user** is a database invariant: a
+  partial unique index on `user_id WHERE ended_at IS NULL` (Spec 05.0 D38).
 - **workout_exercise** — `workout_id`, `position`, `exercise_id`,
-  `exercise_name_snapshot`, `modality_snapshot`, `notes`, `superset_group`
-  (nullable). The snapshots make a past session render correctly forever,
-  independent of later catalog changes or a deleted custom exercise.
+  `exercise_name_snapshot`, `modality_snapshot`, `notes`. The snapshots make a
+  past session render correctly forever, independent of later catalog changes
+  or a deleted custom exercise. `superset_group` is omitted until Spec 09
+  (Spec 05.0 D36).
+- **A workout's exercise `position`s are the dense zero-based sequence
+  `0 … n-1`**, unique per workout (Spec 05.0 D41).
 - **set_entry** — `workout_exercise_id`, `set_number`, `set_type`
   (`warmup` | `working` | `drop` | `failure`). Nullable measure columns:
   `reps`, `weight`, `weight_unit`, `weight_kg` (**stored generated column** =
@@ -303,10 +311,10 @@ is `ON DELETE SET NULL`).
   by DB `CHECK`s, so an in-progress row can be half-filled. One integrity rule is
   enforced at finish: a `working` set must have at least one measure populated.
 
-Concurrency: a set is addressed by `(workout_exercise_id, set_number)` and written
-with `PUT` (§6). Two tabs editing the same in-progress workout are last-write-wins
-per set; `updated_at` is returned so a client can detect it lost a race. Full
-conflict resolution is out of scope while there is one (web) client.
+Concurrency: two tabs editing the same in-progress workout are last-write-wins
+per row (per set once `set_entry` exists); `updated_at` is returned so a client
+can detect it lost a race. Full conflict resolution is out of scope while there
+is one (web) client.
 
 ### 4.5 Personal records (derived cache)
 
@@ -326,7 +334,9 @@ Bodyweight-only exercises: `heaviest_weight` and volume use bodyweight if
 recorded, else the record is `reps`-based (`value` = reps, `unit` = `'reps'`).
 Deferred: `rep_pr_at_weight` (a set of rows, not one) — revisit post-v1.
 
-PRs are written transactionally when a workout is finished. Invalidation is simple
+The M1 finish (Spec 05.0) sets only `ended_at`; Spec 07 (M2) adds the PR write
+to the same transaction, once `personal_record` exists. PRs are written
+transactionally when a workout is finished. Invalidation is simple
 because **finished workouts are immutable in v1** — the only mutations that affect
 PRs are finishing a workout (recompute for that workout's exercises) and deleting
 a whole workout (recompute for its exercises). Editing individual sets of a past
@@ -358,7 +368,7 @@ dedup without touching the v1 schema.
 - **Allowed units:** `weight_unit ∈ {kg, lb}`, `distance_unit ∈ {m, km, mi}`.
   Canonical units are **kg** and **metres**. The conversion factors above are
   defined once in `packages/core` (Spec 02); the `weight_kg` / `distance_m`
-  generated columns (Spec 05) must use the identical constants — drift between
+  generated columns (Spec 05.1) must use the identical constants — drift between
   them silently corrupts PRs and charts (R4).
 - `user.unit_preference` only chooses the default unit for *new* input and the
   unit for rendering aggregate/derived numbers; it never rewrites stored rows.
@@ -371,7 +381,7 @@ dedup without touching the v1 schema.
 | `workout`, `workout_exercise`, `set_entry` | hard delete (cascade) | hard purge |
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
 | `routine` | soft (`archived_at`) | hard purge |
-| custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; the purge job must delete `workout_exercise` rows that reference it **before / with** the user's custom `exercise` rows — Spec 05 defines that FK with purge ordering in mind) |
+| custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; `workout_exercise.exercise_id` is also `ON DELETE CASCADE` — Spec 05.0 D37 — so no purge-ordering step is needed) |
 | `personal_record` | never user-deleted; recomputed | hard purge |
 | `body_metric` | hard delete | hard purge |
 
@@ -514,7 +524,10 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   timestamps (device clock) plus the server records receipt time. For calendar
   fields (§4.0), the client also sends its current UTC offset; the server stores
   `tz_offset_minutes` and derives `local_date` from it, falling back to
-  `user.timezone` when the offset is absent.
+  `user.timezone` when the offset is absent. A client-supplied `started_at`
+  more than 5 minutes ahead of, or more than 7 days behind, the server clock
+  is rejected (`422`); `ended_at` on finish is bound by the same 5-minute
+  future window (Spec 05.0 §6.4, D47).
 - **Idempotency:** workout creation uses `client_generated_id`; replaying the same
   id returns the existing resource, never a duplicate. Set writes are naturally
   idempotent (`PUT` a set by `(workout_exercise_id, set_number)`).
@@ -545,12 +558,16 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 All paths are under `/v1`.
 
 ```
-POST   /workouts                  { client_generated_id, routine_id?, started_at }
-GET    /workouts?cursor=          → history list
+POST   /workouts                  { client_generated_id, started_at, tz_offset_minutes?, title?, notes? }
+                                   → 201 + Location, or 200 on an idempotent replay
+GET    /workouts/active           → the caller's one in-progress workout, or 404
+GET    /workouts?cursor=          → history list (Spec 07)
 GET    /workouts/{id}
-PATCH  /workouts/{id}             { title?, notes?, ended_at? }   # finish = set ended_at
-DELETE /workouts/{id}            # whole session only; triggers PR recompute for its exercises
-POST   /workouts/{id}/exercises   { exercise_id, position }
+PATCH  /workouts/{id}             { title?, notes?, ended_at? }   # finish = set ended_at; PR recompute is Spec 07's
+DELETE /workouts/{id}            # whole session only, allowed finished or not
+POST   /workouts/{id}/exercises   { exercise_id, position? }
+PATCH  /workout-exercises/{id}    { position?, notes? }
+DELETE /workout-exercises/{id}
 PUT    /workout-exercises/{id}/sets/{setNumber}   { set_type, reps?, weight?, ... }
 DELETE /workout-exercises/{id}/sets/{setNumber}
 GET    /exercises?since=          → catalog (global + custom), ETag
@@ -656,7 +673,7 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 05, 06 · M2 = 07, 08 ·
+  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06 · M2 = 07, 08 ·
   M3 = 09, 10 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 

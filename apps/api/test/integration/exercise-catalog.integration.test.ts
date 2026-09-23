@@ -280,8 +280,12 @@ describe.skipIf(!shouldRunIntegration())(
     // Runs last: the "down" drops all three tables. Nothing after it needs them.
     describe("AC1 — down migration", () => {
       it("drops exercise, equipment, and muscle_group", async () => {
+        // CASCADE: Spec 05.0's 0005_create_workout_session added
+        // workout_exercise.exercise_id, an FK onto "exercise" — this is test
+        // teardown only (never production, per Spec 01 §11 / Spec 03.1 §11),
+        // so dropping its one dependent alongside is fine here.
         await db.prisma.$executeRawUnsafe(
-          'DROP TABLE "exercise", "equipment", "muscle_group"',
+          'DROP TABLE "exercise", "equipment", "muscle_group" CASCADE',
         );
         const rows = await db.prisma.$queryRawUnsafe<{ table_name: string }[]>(
           `SELECT table_name FROM information_schema.tables

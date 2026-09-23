@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import {
@@ -125,23 +123,12 @@ describe.skipIf(!shouldRunIntegration())(
       expect(BigInt(upd!.x)).toBeGreaterThan(BigInt(ins!.x)); // re-stamped by the UPDATE
     });
 
-    it("D30: prisma migrate diff (migrated DB → schema.prisma) reports no drift", () => {
-      // spawnSync (not execFileSync + try/catch): a CLI that fails to run at all
-      // (bad path, changed flag) must FAIL this test, not look like "no diff".
-      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-      const r = spawnSync(
-        "pnpm",
-        [
-          "exec", "prisma", "migrate", "diff",
-          "--from-url", db.url,
-          "--to-schema-datamodel", "prisma/schema.prisma",
-          "--exit-code",
-        ],
-        { cwd: apiDir, encoding: "utf8" },
-      );
-      // --exit-code: 0 = no difference, 2 = differences, 1 = error.
-      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
-      expect(r.stdout).toContain("No difference detected");
-    });
+    // D30's "no drift" assertion (a DB stopped at 0004 vs. the full
+    // schema.prisma) was retired by Spec 05.0's 0005_create_workout_session:
+    // this suite's `db` only ever migrates through 0004, so once
+    // schema.prisma grew Workout/WorkoutExercise it always diffs, regardless
+    // of 0004's own correctness. The equivalent no-drift check now lives on
+    // the newest migration, where it belongs: see D49 in
+    // workout-migration.integration.test.ts.
   },
 );

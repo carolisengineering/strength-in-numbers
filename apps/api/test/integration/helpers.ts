@@ -28,7 +28,10 @@ export async function startBareDb(): Promise<IntegrationDb> {
     .withDatabase("sin_test")
     .start();
   const url = container.getConnectionUri();
-  const prisma = new PrismaClient({ datasourceUrl: url });
+  const prisma = new PrismaClient({
+    datasourceUrl: url,
+    log: [{ emit: "event", level: "query" }],
+  });
   return {
     container,
     prisma,

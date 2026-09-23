@@ -80,6 +80,31 @@ const EXPECTED = [
   "isSyncToken",
   "MuscleGroupsResponse",
   "EquipmentResponse",
+  // ids — workout (Spec 05.0 §5)
+  "WorkoutIdSchema",
+  "parseWorkoutId",
+  "isWorkoutId",
+  "WorkoutExerciseIdSchema",
+  "parseWorkoutExerciseId",
+  "isWorkoutExerciseId",
+  // enums — workout (Spec 05.0 §5)
+  "WORKOUT_SOURCE_VALUES",
+  // dto — workout (Spec 05.0 §5)
+  "noControlCharsExceptWhitespace",
+  "WORKOUT_TITLE_MAX",
+  "WORKOUT_NOTES_MAX",
+  "WORKOUT_FUTURE_SKEW_MAX_MS",
+  "WORKOUT_STARTED_AT_PAST_MAX_MS",
+  "WorkoutSchema",
+  "WorkoutExerciseSchema",
+  "WorkoutDetailSchema",
+  "CreateWorkoutSchema",
+  "UpdateWorkoutSchema",
+  "AddWorkoutExerciseSchema",
+  "UpdateWorkoutExerciseSchema",
+  // time.ts (Spec 05.0 §5)
+  "localDateFor",
+  "offsetMinutesForZone",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

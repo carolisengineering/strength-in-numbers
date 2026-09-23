@@ -224,3 +224,33 @@ export class SyncTokenExpiredError extends AppError {
     super(internal);
   }
 }
+
+/** Spec 05.0 §5/§6.5 — the single "the parent is immutable" signal: raised by
+ * PATCH /v1/workouts/{id} against a finished workout and by all three
+ * exercise-within-workout writes when the (parent) workout has ended_at set. */
+export class WorkoutFinishedError extends AppError {
+  readonly status = 409;
+  readonly slug = "workout-finished";
+  readonly title = "Workout finished";
+  readonly publicDetail =
+    "This workout has already been finished and can no longer be modified.";
+
+  constructor(internal = "target workout has ended_at set") {
+    super(internal);
+  }
+}
+
+/** Spec 05.0 §5/§6.2 — the caller already has a row with ended_at IS NULL.
+ * The body carries no workout id (no problem+json extension member); the
+ * client recovers via GET /v1/workouts/active. */
+export class WorkoutInProgressExistsError extends AppError {
+  readonly status = 409;
+  readonly slug = "workout-in-progress-exists";
+  readonly title = "Workout already in progress";
+  readonly publicDetail =
+    "You already have a workout in progress. Resume or discard it first.";
+
+  constructor(internal = "workout_user_active_key: caller already has ended_at IS NULL") {
+    super(internal);
+  }
+}
