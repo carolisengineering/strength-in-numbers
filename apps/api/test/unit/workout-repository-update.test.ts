@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError, ValidationError, WorkoutFinishedError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { FakeExerciseRepository } from "../helpers/fakes.js";
 
 class ScriptedPrisma {
   calls: { sql: string }[] = [];
@@ -39,7 +40,7 @@ const baseRow = (overrides: Record<string, unknown> = {}) => ({
 describe("AC15 — updateWorkout ownership", () => {
   it("a malformed id is NotFoundError with no lock statement issued", async () => {
     const stub = new ScriptedPrisma();
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     await expect(
       repo.updateWorkout(uuidv7(), "bad-id", {}),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -49,7 +50,7 @@ describe("AC15 — updateWorkout ownership", () => {
   it("an absent or another user's row is NotFoundError", async () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([]); // FOR UPDATE lock read: no match
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     await expect(
       repo.updateWorkout(uuidv7(), uuidv7(), {}),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -63,7 +64,7 @@ describe("AC8 — finish transition and immutability", () => {
     const finished = { ...inProgress, ended_at: new Date("2026-09-15T11:00:00.000Z") };
     stub.queueRows([inProgress]); // FOR UPDATE lock read
     stub.queueRows([finished]); // UPDATE ... RETURNING
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
       endedAt: "2026-09-15T11:00:00.000Z",
@@ -78,7 +79,7 @@ describe("AC8 — finish transition and immutability", () => {
     const updated = { ...inProgress, title: "Push day", notes: "felt strong" };
     stub.queueRows([inProgress]); // FOR UPDATE lock read
     stub.queueRows([updated]); // UPDATE ... RETURNING
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
       title: "Push day",
@@ -94,7 +95,7 @@ describe("AC8 — finish transition and immutability", () => {
     const stub = new ScriptedPrisma();
     const inProgress = baseRow();
     stub.queueRows([inProgress]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(
       repo.updateWorkout(inProgress.user_id, inProgress.id, {
@@ -109,7 +110,7 @@ describe("AC8 — finish transition and immutability", () => {
     const finished = { ...inProgress, ended_at: inProgress.started_at };
     stub.queueRows([inProgress]);
     stub.queueRows([finished]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
       endedAt: inProgress.started_at.toISOString(),
@@ -121,7 +122,7 @@ describe("AC8 — finish transition and immutability", () => {
     const stub = new ScriptedPrisma();
     const inProgress = baseRow({ started_at: new Date() });
     stub.queueRows([inProgress]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const farFuture = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // +1h
     await expect(
@@ -135,7 +136,7 @@ describe("AC8 — finish transition and immutability", () => {
     for (const patch of [{}, { endedAt: null }, { title: "new title" }]) {
       const stub = new ScriptedPrisma();
       stub.queueRows([finishedRow]); // FOR UPDATE lock read
-      const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+      const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
       await expect(
         repo.updateWorkout(finishedRow.user_id, finishedRow.id, patch),
       ).rejects.toBeInstanceOf(WorkoutFinishedError);
@@ -148,7 +149,7 @@ describe("AC8 — finish transition and immutability", () => {
       const inProgress = baseRow();
       stub.queueRows([inProgress]); // FOR UPDATE lock read
       stub.queueRows([inProgress]); // UPDATE ... RETURNING (no-op update)
-      const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+      const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
       const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, patch);
       expect(result.endedAt).toBeNull();
@@ -162,7 +163,7 @@ describe("AC8 — finish transition and immutability", () => {
     const updated = { ...inProgress, title: "x" };
     stub.queueRows([inProgress]);
     stub.queueRows([updated]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await repo.updateWorkout(inProgress.user_id, inProgress.id, { title: "x" });
 

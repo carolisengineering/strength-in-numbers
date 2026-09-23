@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import { WorkoutInProgressExistsError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { FakeExerciseRepository } from "../helpers/fakes.js";
 import type { CreateWorkoutFields } from "../../src/repositories/workout.js";
 
 /** Minimal shape of a `workout` row as the raw SQL returns it. */
@@ -99,7 +100,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     const stub = new ScriptedPrisma();
     const inserted = row();
     stub.queueRows([inserted]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.createWorkout(inserted.user_id, fields(), "UTC");
 
@@ -112,7 +113,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     const stored = row();
     stub.queueRows([]); // insert: zero rows (idempotency key already existed)
     stub.queueRows([stored]); // re-read: found
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.createWorkout(stored.user_id, fields(), "UTC");
 
@@ -125,7 +126,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     const stored = row();
     stub.queueError(uniqueViolation("workout_user_active_key")); // insert throws
     stub.queueRows([stored]); // re-read: found -> this was a racing replay
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.createWorkout(stored.user_id, fields(), "UTC");
 
@@ -137,7 +138,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     const stub = new ScriptedPrisma();
     stub.queueError(uniqueViolation("workout_user_active_key"));
     stub.queueRows([]); // re-read: empty -> real in-progress conflict
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.createWorkout(uuidv7(), fields(), "UTC")).rejects.toBeInstanceOf(
       WorkoutInProgressExistsError,
@@ -147,7 +148,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
   it("(d) 23505 on any other constraint surfaces as an internal error, never the 409, with no re-read attempted", async () => {
     const stub = new ScriptedPrisma();
     stub.queueError(uniqueViolation("workout_pkey"));
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.createWorkout(uuidv7(), fields(), "UTC")).rejects.not.toBeInstanceOf(
       WorkoutInProgressExistsError,
@@ -161,7 +162,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     stub.queueRows([]); // insert attempt 1: zero rows
     stub.queueRows([]); // re-read 1: empty (stored row concurrently deleted)
     stub.queueRows([retryRow]); // insert attempt 2 (retry): succeeds
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.createWorkout(retryRow.user_id, fields(), "UTC");
 
@@ -175,7 +176,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     stub.queueRows([]); // re-read 1: empty
     stub.queueError(uniqueViolation("workout_user_active_key")); // insert attempt 2 (retry) throws
     stub.queueRows([]); // re-read 2: empty -> genuine conflict
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.createWorkout(uuidv7(), fields(), "UTC")).rejects.toBeInstanceOf(
       WorkoutInProgressExistsError,
@@ -188,7 +189,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     stub.queueRows([]); // re-read 1: empty
     stub.queueRows([]); // insert attempt 2 (retry): zero rows again
     stub.queueRows([]); // re-read 2: empty again
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.createWorkout(uuidv7(), fields(), "UTC")).rejects.not.toBeInstanceOf(
       WorkoutInProgressExistsError,
@@ -201,7 +202,7 @@ describe("AC14 — the create path takes no advisory lock", () => {
   it("issues no pg_advisory_xact_lock statement on the happy path", async () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([row()]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await repo.createWorkout(uuidv7(), fields(), "UTC");
 
@@ -214,7 +215,7 @@ describe("AC6 — calendar derivation at write time", () => {
     const stub = new ScriptedPrisma();
     const inserted = row({ tz_offset_minutes: -300 });
     stub.queueRows([inserted]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await repo.createWorkout(inserted.user_id, fields({ tzOffsetMinutes: -300 }), "America/New_York");
 
@@ -226,7 +227,7 @@ describe("AC6 — calendar derivation at write time", () => {
     const stub = new ScriptedPrisma();
     const inserted = row();
     stub.queueRows([inserted]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     // Should not throw despite tzOffsetMinutes being undefined; offset is
     // derived via offsetMinutesForZone(startedAt, userTimezone).

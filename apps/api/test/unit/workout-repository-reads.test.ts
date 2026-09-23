@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { FakeExerciseRepository } from "../helpers/fakes.js";
 
 class ScriptedPrisma {
   calls: { sql: string }[] = [];
@@ -50,7 +51,7 @@ const weRow = (workoutId: string, position: number) => ({
 describe("AC15 — getWorkoutById", () => {
   it("a malformed id is NotFoundError with no query issued", async () => {
     const stub = new ScriptedPrisma();
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.getWorkoutById(uuidv7(), "not-a-uuid")).rejects.toBeInstanceOf(
       NotFoundError,
@@ -61,7 +62,7 @@ describe("AC15 — getWorkoutById", () => {
   it("an absent or another user's row is NotFoundError", async () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([]); // workout lookup: no match for this (id, user_id) pair
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.getWorkoutById(uuidv7(), uuidv7())).rejects.toBeInstanceOf(
       NotFoundError,
@@ -73,7 +74,7 @@ describe("AC15 — getWorkoutById", () => {
     const workout = wRow();
     stub.queueRows([workout]);
     stub.queueRows([weRow(workout.id, 0), weRow(workout.id, 1)]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getWorkoutById(workout.user_id, workout.id);
 
@@ -86,7 +87,7 @@ describe("AC4 — getActiveWorkout", () => {
   it("no in-progress workout is NotFoundError", async () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.getActiveWorkout(uuidv7())).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -96,7 +97,7 @@ describe("AC4 — getActiveWorkout", () => {
     const workout = wRow();
     stub.queueRows([workout]);
     stub.queueRows([]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getActiveWorkout(workout.user_id);
 

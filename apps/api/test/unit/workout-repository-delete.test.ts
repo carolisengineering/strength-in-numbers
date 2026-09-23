@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { FakeExerciseRepository } from "../helpers/fakes.js";
 
 class ScriptedPrisma {
   calls: { sql: string }[] = [];
@@ -25,7 +26,7 @@ class ScriptedPrisma {
 describe("AC9/AC15 — deleteWorkout", () => {
   it("a malformed id is NotFoundError with no query issued", async () => {
     const stub = new ScriptedPrisma();
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     await expect(repo.deleteWorkout(uuidv7(), "bad-id")).rejects.toBeInstanceOf(
       NotFoundError,
     );
@@ -35,7 +36,7 @@ describe("AC9/AC15 — deleteWorkout", () => {
   it("an absent or another user's row is NotFoundError, allowed on both an in-progress and a finished workout otherwise", async () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([]); // ownership check: no match
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     await expect(repo.deleteWorkout(uuidv7(), uuidv7())).rejects.toBeInstanceOf(
       NotFoundError,
     );
@@ -48,7 +49,7 @@ describe("AC9/AC15 — deleteWorkout", () => {
     // Queue ownership check row with ended_at set (finished workout)
     const finishedAt = new Date("2024-01-15T14:30:00Z");
     stub.queueRows([{ id, user_id: userId, ended_at: finishedAt }]); // ownership check: found, finished
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await repo.deleteWorkout(userId, id);
 
