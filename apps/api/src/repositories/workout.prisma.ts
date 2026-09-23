@@ -110,12 +110,22 @@ function isRawUniqueViolation(err: unknown): err is RawPrismaError {
   );
 }
 
-/** The constraint name is parsed out of the driver's message
- * (`duplicate key value violates unique constraint "…"`) — Postgres does not
- * hand back a structured constraint name on this error path. */
-function violatedConstraintName(err: RawPrismaError): string | null {
-  const match = /unique constraint "([^"]+)"/.exec(err.meta?.message ?? "");
-  return match?.[1] ?? null;
+/**
+ * Against a real driver, `meta.message` on this error path is only the
+ * DETAIL line (`Key (col[, col...])=(val[, val...]) already exists.`) — the
+ * primary message that names the constraint (`duplicate key value violates
+ * unique constraint "…"`) is not surfaced through `$queryRaw`'s error
+ * mapping, so the constraint can't be identified by name here. It's
+ * identified by column list instead: the INSERT's `ON CONFLICT (user_id,
+ * client_generated_id) DO NOTHING` already suppresses `workout_user_client_id_key`
+ * violations without raising, so the only unique index left that can throw
+ * from this statement is the single-column partial index
+ * `workout_user_active_key` (on `user_id`, `WHERE ended_at IS NULL`) — its
+ * violation's DETAIL always lists exactly `user_id`.
+ */
+function violatedConstraintColumns(err: RawPrismaError): string | null {
+  const match = /^Key \(([^)]+)\)=/.exec(err.meta?.message ?? "");
+  return match?.[1]?.trim() ?? null;
 }
 
 type InsertOutcome =
@@ -150,7 +160,7 @@ export function createWorkoutRepository(
       const insertedRow = rows[0];
       return insertedRow ? { kind: "inserted", row: insertedRow } : { kind: "no-row" };
     } catch (err) {
-      if (isRawUniqueViolation(err) && violatedConstraintName(err) === "workout_user_active_key") {
+      if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
         return { kind: "active-conflict" };
       }
       throw err; // a 23505 on any other constraint is a bug -> surfaces as 500 (D40)
