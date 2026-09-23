@@ -131,11 +131,20 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     async (request) => {
       const actingUserId = request.user!.id;
       const isFinishAttempt = request.body.endedAt !== undefined && request.body.endedAt !== null;
-      const updated = await deps.workoutRepository.updateWorkout(actingUserId, request.params.id, request.body);
+      const { workout: updated, exerciseCount } = await deps.workoutRepository.updateWorkout(
+        actingUserId,
+        request.params.id,
+        request.body,
+      );
       if (isFinishAttempt && updated.endedAt !== null) {
         const durationSeconds = Math.round((updated.endedAt.getTime() - updated.startedAt.getTime()) / 1000);
         request.log.info(
-          { workout_id: updated.id, user_id: actingUserId, duration_seconds: durationSeconds },
+          {
+            workout_id: updated.id,
+            user_id: actingUserId,
+            duration_seconds: durationSeconds,
+            exercise_count: exerciseCount,
+          },
           "workout_finished",
         );
       }
@@ -148,8 +157,19 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     { schema: { params: workoutIdParams, response: { 204: z.undefined() } } },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      await deps.workoutRepository.deleteWorkout(actingUserId, request.params.id);
-      request.log.info({ workout_id: request.params.id, user_id: actingUserId }, "workout_deleted");
+      const { wasFinished, exerciseCount } = await deps.workoutRepository.deleteWorkout(
+        actingUserId,
+        request.params.id,
+      );
+      request.log.info(
+        {
+          workout_id: request.params.id,
+          user_id: actingUserId,
+          was_finished: wasFinished,
+          exercise_count: exerciseCount,
+        },
+        "workout_deleted",
+      );
       reply.code(204).send();
       return reply;
     },

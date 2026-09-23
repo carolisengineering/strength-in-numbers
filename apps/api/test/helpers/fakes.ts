@@ -45,8 +45,10 @@ import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
   CreateWorkoutResult,
+  DeleteWorkoutResult,
   UpdateWorkoutExerciseFields,
   UpdateWorkoutFields,
+  UpdateWorkoutResult,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
@@ -428,7 +430,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutFields,
-  ): Promise<WorkoutRecord> {
+  ): Promise<UpdateWorkoutResult> {
     const w = this.ownedWorkoutOrThrow(actingUserId, id);
     if (w.endedAt !== null) throw new WorkoutFinishedError();
     let endedAt: Date | null = w.endedAt;
@@ -450,15 +452,19 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       updatedAt: new Date(w.updatedAt.getTime() + 1000),
     };
     this.workouts.set(id, updated);
-    return updated;
+    const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
+    return { workout: updated, exerciseCount };
   }
 
-  async deleteWorkout(actingUserId: string, id: string): Promise<void> {
-    this.ownedWorkoutOrThrow(actingUserId, id);
+  async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
+    const w = this.ownedWorkoutOrThrow(actingUserId, id);
+    const wasFinished = w.endedAt !== null;
+    const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
     this.workouts.delete(id);
     for (const [exId, ex] of this.exercises) {
       if (ex.workoutId === id) this.exercises.delete(exId);
     }
+    return { wasFinished, exerciseCount };
   }
 
   async addWorkoutExercise(

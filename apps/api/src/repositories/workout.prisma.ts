@@ -14,8 +14,10 @@ import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
   CreateWorkoutResult,
+  DeleteWorkoutResult,
   UpdateWorkoutExerciseFields,
   UpdateWorkoutFields,
+  UpdateWorkoutResult,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
@@ -126,6 +128,15 @@ function isRawUniqueViolation(err: unknown): err is RawPrismaError {
 function violatedConstraintColumns(err: RawPrismaError): string | null {
   const match = /^Key \(([^)]+)\)=/.exec(err.meta?.message ?? "");
   return match?.[1]?.trim() ?? null;
+}
+
+/** §6.5: validates a caller-supplied `endedAt` string against the finish
+ * transition's rules (D43/D47) and returns the parsed `Date`. */
+function parseEndedAt(startedAt: Date, endedAtIso: string, now: Date): Date {
+  const endedAt = new Date(endedAtIso);
+  assertEndedAtNotBeforeStartedAt(startedAt, endedAt);
+  assertEndedAtInBounds(endedAt, now);
+  return endedAt;
 }
 
 type InsertOutcome =
@@ -291,7 +302,7 @@ export function createWorkoutRepository(
       actingUserId: string,
       id: string,
       patch: UpdateWorkoutFields,
-    ): Promise<WorkoutRecord> {
+    ): Promise<UpdateWorkoutResult> {
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
@@ -319,19 +330,15 @@ export function createWorkoutRepository(
           throw new WorkoutFinishedError();
         }
 
+        // `current.ended_at` is always `null` here (a finished workout threw
+        // above), so an absent key, an explicit `endedAt: null`, and an
+        // explicit `endedAt: undefined` all fall through to the same
+        // no-op value — the three fields share one guard shape (Minor #3).
         const now = new Date();
-        let nextEndedAt: Date | null = current.ended_at;
-        if ("endedAt" in patch && patch.endedAt !== undefined) {
-          if (patch.endedAt === null) {
-            // In-progress workout, ended_at already NULL: a no-op (§6.5).
-            nextEndedAt = null;
-          } else {
-            const endedAt = new Date(patch.endedAt);
-            assertEndedAtNotBeforeStartedAt(current.started_at, endedAt);
-            assertEndedAtInBounds(endedAt, now);
-            nextEndedAt = endedAt;
-          }
-        }
+        const nextEndedAt =
+          "endedAt" in patch && patch.endedAt != null
+            ? parseEndedAt(current.started_at, patch.endedAt, now)
+            : current.ended_at;
         const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
 
@@ -343,26 +350,45 @@ export function createWorkoutRepository(
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at
         `;
-        return toRecord(updatedRows[0]!);
+        // §9: `exercise_count` for the `workout_finished` log line comes from
+        // this transaction (the lock above already holds the row), not a
+        // second round trip after commit.
+        const countRows = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${id}::uuid
+        `;
+        return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n };
       });
     },
-    async deleteWorkout(actingUserId: string, id: string): Promise<void> {
+    async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      const owned = await prisma.$queryRaw<{ id: string; user_id: string }[]>`
-        SELECT id, user_id FROM "workout"
-        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
-      `;
-      if (!owned[0]) {
-        throw new NotFoundError("workout not found or not owned by the acting user");
-      }
-      // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE exemption
-      // — allowed on an in-progress or finished workout, no state check here).
-      const affectedRows = await prisma.$executeRaw`DELETE FROM "workout" WHERE id = ${id}::uuid`;
-      if (affectedRows === 0) {
-        throw new NotFoundError("workout not found or not owned by the acting user");
-      }
+      return prisma.$transaction(async (tx) => {
+        const owned = await tx.$queryRaw<{ id: string; user_id: string; ended_at: Date | null }[]>`
+          SELECT id, user_id, ended_at FROM "workout"
+          WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+        `;
+        if (!owned[0]) {
+          throw new NotFoundError("workout not found or not owned by the acting user");
+        }
+        // §9: both fields are read inside this transaction, before the
+        // DELETE runs, so the route's `workout_deleted` log line reflects
+        // exactly what was destroyed.
+        const wasFinished = owned[0].ended_at !== null;
+        const countRows = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${id}::uuid
+        `;
+        const exerciseCount = countRows[0]!.n;
+
+        // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE
+        // exemption — allowed on an in-progress or finished workout, no
+        // state check here).
+        const affectedRows = await tx.$executeRaw`DELETE FROM "workout" WHERE id = ${id}::uuid`;
+        if (affectedRows === 0) {
+          throw new NotFoundError("workout not found or not owned by the acting user");
+        }
+        return { wasFinished, exerciseCount };
+      });
     },
     async addWorkoutExercise(
       actingUserId: string,

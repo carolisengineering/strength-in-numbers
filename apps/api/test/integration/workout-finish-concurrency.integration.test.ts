@@ -99,7 +99,7 @@ describe.skipIf(!shouldRunIntegration())(
         // violation (an exercise added long after the workout finished), so
         // a small tolerance absorbs the clock-capture skew without masking
         // a real bug, which would show a gap of seconds, not milliseconds.
-        const finishedAt = finishResult.value.endedAt!;
+        const finishedAt = finishResult.value.workout.endedAt!;
         const addedAtRows = await db.prisma.$queryRawUnsafe<{ created_at: Date }[]>(
           `SELECT created_at FROM "workout_exercise" WHERE id = $1::uuid`,
           addResult.value.id,

@@ -58,19 +58,21 @@ describe("AC15 — updateWorkout ownership", () => {
 });
 
 describe("AC8 — finish transition and immutability", () => {
-  it("setting endedAt on an in-progress workout stores it and returns 200-shaped", async () => {
+  it("setting endedAt on an in-progress workout stores it and returns 200-shaped with the exercise count", async () => {
     const stub = new ScriptedPrisma();
     const inProgress = baseRow();
     const finished = { ...inProgress, ended_at: new Date("2026-09-15T11:00:00.000Z") };
     stub.queueRows([inProgress]); // FOR UPDATE lock read
     stub.queueRows([finished]); // UPDATE ... RETURNING
+    stub.queueRows([{ n: 3 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
       endedAt: "2026-09-15T11:00:00.000Z",
     });
 
-    expect(result.endedAt).toEqual(finished.ended_at);
+    expect(result.workout.endedAt).toEqual(finished.ended_at);
+    expect(result.exerciseCount).toBe(3);
   });
 
   it("title/notes-only edit on an in-progress workout succeeds and leaves localDate unchanged", async () => {
@@ -79,6 +81,7 @@ describe("AC8 — finish transition and immutability", () => {
     const updated = { ...inProgress, title: "Push day", notes: "felt strong" };
     stub.queueRows([inProgress]); // FOR UPDATE lock read
     stub.queueRows([updated]); // UPDATE ... RETURNING
+    stub.queueRows([{ n: 0 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
@@ -86,9 +89,9 @@ describe("AC8 — finish transition and immutability", () => {
       notes: "felt strong",
     });
 
-    expect(result.title).toBe("Push day");
-    expect(result.notes).toBe("felt strong");
-    expect(result.localDate).toBe(inProgress.local_date.toISOString().slice(0, 10));
+    expect(result.workout.title).toBe("Push day");
+    expect(result.workout.notes).toBe("felt strong");
+    expect(result.workout.localDate).toBe(inProgress.local_date.toISOString().slice(0, 10));
   });
 
   it("endedAt < startedAt is a ValidationError", async () => {
@@ -110,12 +113,13 @@ describe("AC8 — finish transition and immutability", () => {
     const finished = { ...inProgress, ended_at: inProgress.started_at };
     stub.queueRows([inProgress]);
     stub.queueRows([finished]);
+    stub.queueRows([{ n: 0 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
       endedAt: inProgress.started_at.toISOString(),
     });
-    expect(result.endedAt).toEqual(inProgress.started_at);
+    expect(result.workout.endedAt).toEqual(inProgress.started_at);
   });
 
   it("endedAt beyond the future-skew bound is a ValidationError", async () => {
@@ -149,11 +153,12 @@ describe("AC8 — finish transition and immutability", () => {
       const inProgress = baseRow();
       stub.queueRows([inProgress]); // FOR UPDATE lock read
       stub.queueRows([inProgress]); // UPDATE ... RETURNING (no-op update)
+      stub.queueRows([{ n: 0 }]); // exercise count (§9)
       const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
       const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, patch);
-      expect(result.endedAt).toBeNull();
-      expect(result.title).toBe(inProgress.title);
+      expect(result.workout.endedAt).toBeNull();
+      expect(result.workout.title).toBe(inProgress.title);
     }
   });
 
@@ -163,6 +168,7 @@ describe("AC8 — finish transition and immutability", () => {
     const updated = { ...inProgress, title: "x" };
     stub.queueRows([inProgress]);
     stub.queueRows([updated]);
+    stub.queueRows([{ n: 0 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await repo.updateWorkout(inProgress.user_id, inProgress.id, { title: "x" });

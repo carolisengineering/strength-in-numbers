@@ -121,10 +121,13 @@ describe.skipIf(!shouldRunIntegration())("AC6 — calendar fields (real Postgres
       },
       "UTC",
     );
-    const afterEdit = await repo.updateWorkout(userId, workout.id, { title: "renamed", notes: "some notes" });
+    const { workout: afterEdit } = await repo.updateWorkout(userId, workout.id, {
+      title: "renamed",
+      notes: "some notes",
+    });
     expect(afterEdit.localDate).toBe(workout.localDate);
 
-    const afterFinish = await repo.updateWorkout(userId, workout.id, {
+    const { workout: afterFinish } = await repo.updateWorkout(userId, workout.id, {
       endedAt: "2026-09-15T11:00:00.000Z",
     });
     expect(afterFinish.localDate).toBe(workout.localDate);

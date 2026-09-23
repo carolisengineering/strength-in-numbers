@@ -79,6 +79,27 @@ export interface CreateWorkoutResult {
   created: boolean;
 }
 
+/**
+ * `updateWorkout`'s result (§9): `exerciseCount` is a `count` of the
+ * workout's `workout_exercise` rows taken from inside the same transaction
+ * as the write, so the route can log `workout_finished`'s `exercise_count`
+ * without a second round trip.
+ */
+export interface UpdateWorkoutResult {
+  workout: WorkoutRecord;
+  exerciseCount: number;
+}
+
+/**
+ * `deleteWorkout`'s result (§9): both fields are read inside the delete
+ * transaction *before* the `DELETE` statement runs, so the route can log
+ * `workout_deleted`'s `was_finished` and `exercise_count`.
+ */
+export interface DeleteWorkoutResult {
+  wasFinished: boolean;
+  exerciseCount: number;
+}
+
 export interface WorkoutRepository {
   /**
    * Idempotent create (§6.1, §6.2, D40/D50). `created: true` -> `201` +
@@ -113,13 +134,13 @@ export interface WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutFields,
-  ): Promise<WorkoutRecord>;
+  ): Promise<UpdateWorkoutResult>;
 
-  /** Hard delete, cascades to `workout_exercise` (§6.5, §6.9's DELETE
-   * exemption). Allowed on an in-progress or finished workout. Throws
-   * `NotFoundError` on a miss or another user's row; idempotent-looking
-   * repeat calls throw `NotFoundError` too (204 vs. 404 is the route's job). */
-  deleteWorkout(actingUserId: string, id: string): Promise<void>;
+  /** Hard delete, cascades to `workout_exercise` (§6.5's DELETE exemption).
+   * Allowed on an in-progress or finished workout. Throws `NotFoundError` on
+   * a miss or another user's row; idempotent-looking repeat calls throw
+   * `NotFoundError` too (204 vs. 404 is the route's job). */
+  deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult>;
 
   /**
    * Three-phase add (§6.6): resolve the workout and the exercise on the root
