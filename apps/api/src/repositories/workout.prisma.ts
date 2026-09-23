@@ -3,12 +3,15 @@ import type { PrismaClient } from "@prisma/client";
 import { isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
+  ExerciseRetiredError,
   InternalError,
   NotFoundError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
+import type { ExerciseRepository } from "./exercise.js";
 import type {
+  AddWorkoutExerciseFields,
   CreateWorkoutFields,
   CreateWorkoutResult,
   UpdateWorkoutFields,
@@ -17,7 +20,12 @@ import type {
   WorkoutRecord,
   WorkoutRepository,
 } from "./workout.js";
-import { assertEndedAtInBounds, assertEndedAtNotBeforeStartedAt } from "./workout-writes.js";
+import {
+  assertAddPositionInRange,
+  assertEndedAtInBounds,
+  assertEndedAtNotBeforeStartedAt,
+  computeAppendPosition,
+} from "./workout-writes.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -113,7 +121,10 @@ type InsertOutcome =
   | { kind: "no-row" }
   | { kind: "active-conflict" };
 
-export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository {
+export function createWorkoutRepository(
+  prisma: PrismaClient,
+  exerciseRepository: ExerciseRepository,
+): WorkoutRepository {
   async function tryInsert(
     id: string,
     actingUserId: string,
@@ -341,8 +352,86 @@ export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
     },
-    addWorkoutExercise: () => {
-      throw new Error("not implemented until Task 14");
+    async addWorkoutExercise(
+      actingUserId: string,
+      workoutId: string,
+      fields: AddWorkoutExerciseFields,
+    ): Promise<WorkoutExerciseRecord> {
+      if (!isWorkoutId(workoutId)) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      // Phase 1 (§6.6): cheap early exit on the root client. The
+      // authoritative check is the in-transaction FOR SHARE re-check below.
+      const wRows = await prisma.$queryRaw<{ id: string; user_id: string; ended_at: Date | null }[]>`
+        SELECT id, user_id, ended_at FROM "workout"
+        WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid
+      `;
+      const workout = wRows[0];
+      if (!workout) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      if (workout.ended_at !== null) {
+        throw new WorkoutFinishedError();
+      }
+
+      // Phase 2 (§6.6): resolve the exercise on the root client, before the
+      // position transaction opens. findVisibleById throws NotFoundError
+      // (absent / another user's custom row) or the caller must check
+      // isActive itself (03.1's contract returns the row regardless of
+      // is_active).
+      const exercise = await exerciseRepository.findVisibleById(
+        actingUserId,
+        fields.exerciseId,
+      );
+      if (!exercise.isActive) {
+        throw new ExerciseRetiredError();
+      }
+
+      // Phases 3-4 (§6.7/§6.8): the position transaction.
+      return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
+        // The lock is its own statement, ahead of every read it protects
+        // (§6.8, following insertWithCap/D23).
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutId}))`;
+        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+          SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+        `;
+        const locked = lockRows[0];
+        if (!locked) {
+          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
+          throw new NotFoundError("workout not found or not owned by the acting user");
+        }
+        if (locked.ended_at !== null) {
+          throw new WorkoutFinishedError();
+        }
+
+        const countRows = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
+        `;
+        const n = countRows[0]!.n;
+
+        const position = fields.position ?? computeAppendPosition(n);
+        if (fields.position !== undefined) {
+          assertAddPositionInRange(fields.position, n);
+          await tx.$executeRaw`
+            UPDATE "workout_exercise" SET position = position + 1
+            WHERE workout_id = ${workoutId}::uuid AND position >= ${position}
+          `;
+        }
+
+        const id = uuidv7();
+        const insertedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
+          INSERT INTO "workout_exercise"
+            (id, workout_id, position, exercise_id, exercise_name_snapshot,
+             modality_snapshot, notes, created_at, updated_at)
+          VALUES
+            (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
+             ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
+          RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
+                    modality_snapshot, notes, created_at, updated_at
+        `;
+        return toExerciseRecord(insertedRows[0]!);
+      });
     },
     updateWorkoutExercise: () => {
       throw new Error("not implemented until Task 15");
