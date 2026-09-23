@@ -1,4 +1,11 @@
-import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
+import {
+  isExerciseId,
+  isWorkoutExerciseId,
+  isWorkoutId,
+  localDateFor,
+  MAX_CUSTOM_EXERCISES_PER_USER,
+  offsetMinutesForZone,
+} from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import type {
   ProfilePatch,
@@ -23,8 +30,27 @@ import {
   ExerciseRetiredError,
   NotFoundError,
   ValidationError,
+  WorkoutFinishedError,
+  WorkoutInProgressExistsError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
+import {
+  assertAddPositionInRange,
+  assertEndedAtInBounds,
+  assertEndedAtNotBeforeStartedAt,
+  assertReorderPositionInRange,
+} from "../../src/repositories/workout-writes.js";
+import type {
+  AddWorkoutExerciseFields,
+  CreateWorkoutFields,
+  CreateWorkoutResult,
+  UpdateWorkoutExerciseFields,
+  UpdateWorkoutFields,
+  WorkoutDetailRecord,
+  WorkoutExerciseRecord,
+  WorkoutRecord,
+  WorkoutRepository,
+} from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -295,6 +321,238 @@ export class FakeExerciseRepository implements ExerciseRepository {
 
   async listEquipment(): Promise<ReferenceRecord[]> {
     return this.equipment;
+  }
+}
+
+export function makeWorkoutRecord(overrides: Partial<WorkoutRecord> = {}): WorkoutRecord {
+  const now = new Date("2026-09-15T10:00:00.000Z");
+  return {
+    id: uuidv7(),
+    userId: uuidv7(),
+    title: null,
+    notes: null,
+    startedAt: now,
+    endedAt: null,
+    localDate: "2026-09-15",
+    tzOffsetMinutes: 0,
+    clientGeneratedId: uuidv7(),
+    source: "manual",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+/**
+ * In-memory WorkoutRepository for route/unit tests (Spec 05.0 §6, Wiring
+ * points). Does not reproduce the SQL-level concurrency guarantees (the
+ * advisory lock, the deferred constraint, the D40/D50 outcome switch) — those
+ * are covered by `workout.prisma.ts`'s own tests against a scripted Prisma
+ * client and by the Testcontainers integration suite. This fake exists so
+ * route-level tests can assert status codes, headers and DTO shapes without a
+ * database.
+ */
+export class FakeWorkoutRepository implements WorkoutRepository {
+  workouts = new Map<string, WorkoutRecord>();
+  exercises = new Map<string, WorkoutExerciseRecord>();
+  private byClientKey = new Map<string, string>();
+
+  constructor(private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository()) {}
+
+  private ownedWorkoutOrThrow(actingUserId: string, id: string): WorkoutRecord {
+    const w = isWorkoutId(id) ? this.workouts.get(id) : undefined;
+    if (!w || w.userId !== actingUserId) throw new NotFoundError("workout not found");
+    return w;
+  }
+
+  private detail(w: WorkoutRecord): WorkoutDetailRecord {
+    const exercises = [...this.exercises.values()]
+      .filter((e) => e.workoutId === w.id)
+      .sort((a, b) => a.position - b.position);
+    return { ...w, exercises };
+  }
+
+  async createWorkout(
+    actingUserId: string,
+    fields: CreateWorkoutFields,
+    userTimezone: string,
+  ): Promise<CreateWorkoutResult> {
+    const key = `${actingUserId}:${fields.clientGeneratedId}`;
+    const existingId = this.byClientKey.get(key);
+    if (existingId) {
+      return { workout: this.workouts.get(existingId)!, created: false };
+    }
+    const hasActive = [...this.workouts.values()].some(
+      (w) => w.userId === actingUserId && w.endedAt === null,
+    );
+    if (hasActive) throw new WorkoutInProgressExistsError();
+
+    const startedAtIso = fields.startedAt.toISOString();
+    const tzOffsetMinutes =
+      fields.tzOffsetMinutes ?? offsetMinutesForZone(startedAtIso, userTimezone);
+    const localDate = localDateFor(startedAtIso, tzOffsetMinutes);
+    const now = new Date();
+    const workout: WorkoutRecord = {
+      id: uuidv7(),
+      userId: actingUserId,
+      title: fields.title ?? null,
+      notes: fields.notes ?? null,
+      startedAt: fields.startedAt,
+      endedAt: null,
+      localDate,
+      tzOffsetMinutes,
+      clientGeneratedId: fields.clientGeneratedId,
+      source: "manual",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.workouts.set(workout.id, workout);
+    this.byClientKey.set(key, workout.id);
+    return { workout, created: true };
+  }
+
+  async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
+    const w = [...this.workouts.values()].find(
+      (w) => w.userId === actingUserId && w.endedAt === null,
+    );
+    if (!w) throw new NotFoundError("no active workout for the acting user");
+    return this.detail(w);
+  }
+
+  async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {
+    return this.detail(this.ownedWorkoutOrThrow(actingUserId, id));
+  }
+
+  async updateWorkout(
+    actingUserId: string,
+    id: string,
+    patch: UpdateWorkoutFields,
+  ): Promise<WorkoutRecord> {
+    const w = this.ownedWorkoutOrThrow(actingUserId, id);
+    if (w.endedAt !== null) throw new WorkoutFinishedError();
+    let endedAt: Date | null = w.endedAt;
+    if ("endedAt" in patch && patch.endedAt !== undefined) {
+      if (patch.endedAt === null) {
+        endedAt = null;
+      } else {
+        const d = new Date(patch.endedAt);
+        assertEndedAtNotBeforeStartedAt(w.startedAt, d);
+        assertEndedAtInBounds(d, new Date());
+        endedAt = d;
+      }
+    }
+    const updated: WorkoutRecord = {
+      ...w,
+      title: "title" in patch ? patch.title ?? null : w.title,
+      notes: "notes" in patch ? patch.notes ?? null : w.notes,
+      endedAt,
+      updatedAt: new Date(w.updatedAt.getTime() + 1000),
+    };
+    this.workouts.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkout(actingUserId: string, id: string): Promise<void> {
+    this.ownedWorkoutOrThrow(actingUserId, id);
+    this.workouts.delete(id);
+    for (const [exId, ex] of this.exercises) {
+      if (ex.workoutId === id) this.exercises.delete(exId);
+    }
+  }
+
+  async addWorkoutExercise(
+    actingUserId: string,
+    workoutId: string,
+    fields: AddWorkoutExerciseFields,
+  ): Promise<WorkoutExerciseRecord> {
+    const w = this.ownedWorkoutOrThrow(actingUserId, workoutId);
+    if (w.endedAt !== null) throw new WorkoutFinishedError();
+    const exercise = await this.exerciseRepository.findVisibleById(
+      actingUserId,
+      fields.exerciseId,
+    );
+    if (!exercise.isActive) throw new ExerciseRetiredError();
+
+    const n = [...this.exercises.values()].filter((e) => e.workoutId === workoutId).length;
+    const position = fields.position ?? n;
+    if (fields.position !== undefined) {
+      assertAddPositionInRange(fields.position, n);
+      for (const e of this.exercises.values()) {
+        if (e.workoutId === workoutId && e.position >= position) {
+          this.exercises.set(e.id, { ...e, position: e.position + 1 });
+        }
+      }
+    }
+    const now = new Date();
+    const record: WorkoutExerciseRecord = {
+      id: uuidv7(),
+      workoutId,
+      position,
+      exerciseId: exercise.id,
+      exerciseNameSnapshot: exercise.name,
+      modalitySnapshot: exercise.modality,
+      notes: fields.notes ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.exercises.set(record.id, record);
+    return record;
+  }
+
+  private ownedExerciseOrThrow(
+    actingUserId: string,
+    id: string,
+  ): { we: WorkoutExerciseRecord; workout: WorkoutRecord } {
+    const we = isWorkoutExerciseId(id) ? this.exercises.get(id) : undefined;
+    if (!we) throw new NotFoundError("workout exercise not found");
+    const workout = this.workouts.get(we.workoutId);
+    if (!workout || workout.userId !== actingUserId) {
+      throw new NotFoundError("workout exercise not found");
+    }
+    return { we, workout };
+  }
+
+  async updateWorkoutExercise(
+    actingUserId: string,
+    id: string,
+    patch: UpdateWorkoutExerciseFields,
+  ): Promise<WorkoutExerciseRecord> {
+    const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
+    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    const n = [...this.exercises.values()].filter((e) => e.workoutId === we.workoutId).length;
+    let nextPosition = we.position;
+    if (patch.position !== undefined && patch.position !== we.position) {
+      assertReorderPositionInRange(patch.position, n);
+      const old = we.position;
+      nextPosition = patch.position;
+      for (const e of this.exercises.values()) {
+        if (e.workoutId !== we.workoutId || e.id === id) continue;
+        if (nextPosition > old && e.position > old && e.position <= nextPosition) {
+          this.exercises.set(e.id, { ...e, position: e.position - 1 });
+        } else if (nextPosition < old && e.position >= nextPosition && e.position < old) {
+          this.exercises.set(e.id, { ...e, position: e.position + 1 });
+        }
+      }
+    }
+    const updated: WorkoutExerciseRecord = {
+      ...we,
+      position: nextPosition,
+      notes: "notes" in patch ? patch.notes ?? null : we.notes,
+      updatedAt: new Date(we.updatedAt.getTime() + 1000),
+    };
+    this.exercises.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkoutExercise(actingUserId: string, id: string): Promise<void> {
+    const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
+    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    this.exercises.delete(id);
+    for (const e of this.exercises.values()) {
+      if (e.workoutId === we.workoutId && e.position > we.position) {
+        this.exercises.set(e.id, { ...e, position: e.position - 1 });
+      }
+    }
   }
 }
 
