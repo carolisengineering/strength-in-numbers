@@ -87,7 +87,7 @@ describe("AC9 — updateWorkoutExercise: 409 on a finished parent, both checks",
     await expect(
       repo.updateWorkoutExercise(row.user_id, row.id, { notes: "hi" }),
     ).rejects.toBeInstanceOf(WorkoutFinishedError);
-    // A single ownership+finished query; no transaction/lock is even attempted.
+    // A single ownership+finished query; the transaction never opens.
     expect(stub.calls).toHaveLength(1);
   });
 
@@ -101,33 +101,62 @@ describe("AC9 — updateWorkoutExercise: 409 on a finished parent, both checks",
       repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 }),
     ).rejects.toBeInstanceOf(WorkoutFinishedError);
   });
+
+  it("FOR SHARE re-check: parent finished after phase 1 (notes-only patch) — the race the old lightweight path was vulnerable to", async () => {
+    // Phase-1 read shows in-progress, but the in-transaction FOR SHARE
+    // re-check shows the workout was finished concurrently (e.g. a
+    // finishWorkout that committed between phase 1 and the lock). A
+    // notes-only patch must still raise WorkoutFinishedError -- proving the
+    // notes-only path is no longer a separate, unlocked code path that could
+    // sail past a concurrent finish.
+    const stub = new ScriptedPrisma();
+    const row = ownedRow();
+    stub.queueRows([row]); // phase 1: in progress
+    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // FOR SHARE: now finished
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    await expect(
+      repo.updateWorkoutExercise(row.user_id, row.id, { notes: "updated" }),
+    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+    // The lock/FOR SHARE statements were actually issued (not skipped).
+    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(true);
+    expect(stub.calls.some((c) => c.sql.includes("FOR SHARE"))).toBe(true);
+  });
 });
 
-describe("AC7/AC11 — notes-only edit needs no lock/reorder machinery", () => {
-  it("succeeds on an in-progress workout without firing any lock/reorder statements", async () => {
+describe("AC7/AC11 — notes-only edit goes through the same lock/FOR-SHARE transaction", () => {
+  it("succeeds on an in-progress workout, with the lock/FOR SHARE/deferred-constraint statements present", async () => {
     const stub = new ScriptedPrisma();
     const row = ownedRow({ position: 2 });
     stub.queueRows([row]); // phase 1
+    stub.queueRows([{ ended_at: null }]); // FOR SHARE
+    stub.queueRows([{ id: row.id, position: 2, notes: null }]); // FOR UPDATE target
+    stub.queueRows([{ n: 3 }]); // count
     stub.queueRows([
       exerciseRow({ id: row.id, workout_id: row.workout_id, position: 2, notes: "updated" }),
-    ]); // plain UPDATE ... RETURNING
+    ]); // final UPDATE ... RETURNING
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkoutExercise(row.user_id, row.id, { notes: "updated" });
 
     expect(result.notes).toBe("updated");
     expect(result.position).toBe(2);
-    expect(stub.calls).toHaveLength(2);
-    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
-    expect(stub.calls.some((c) => c.sql.includes("SET CONSTRAINTS"))).toBe(false);
-    expect(stub.calls.some((c) => c.sql.includes("FOR SHARE"))).toBe(false);
+    // A notes-only patch still runs the full transaction: phase-1 read,
+    // SET CONSTRAINTS, lock, FOR SHARE, FOR UPDATE target, count, final
+    // UPDATE -- no shift statement fires since position is unchanged.
+    expect(stub.calls).toHaveLength(7);
+    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(true);
+    expect(stub.calls.some((c) => c.sql.includes("SET CONSTRAINTS"))).toBe(true);
+    expect(stub.calls.some((c) => c.sql.includes("FOR SHARE"))).toBe(true);
+    expect(stub.calls.some((c) => c.sql.includes("position = position - 1"))).toBe(false);
+    expect(stub.calls.some((c) => c.sql.includes("position = position + 1"))).toBe(false);
   });
 
-  it("a row vanished between the ownership check and the UPDATE is NotFoundError, not a crash", async () => {
+  it("a row vanished between phase 1 and the FOR UPDATE target re-fetch is NotFoundError, not a crash", async () => {
     const stub = new ScriptedPrisma();
     const row = ownedRow();
-    stub.queueRows([row]);
-    stub.queueRows([]); // UPDATE ... RETURNING: no row (deleted meanwhile)
+    stub.queueRows([row]); // phase 1
+    stub.queueRows([{ ended_at: null }]); // FOR SHARE
+    stub.queueRows([]); // FOR UPDATE target: no row (deleted meanwhile)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     await expect(
       repo.updateWorkoutExercise(row.user_id, row.id, { notes: "updated" }),

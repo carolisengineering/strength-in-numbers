@@ -470,29 +470,10 @@ export function createWorkoutRepository(
         throw new WorkoutFinishedError();
       }
 
-      if (patch.position === undefined) {
-        // A notes-only (or empty) patch is not one of §6.7's four
-        // position-renumbering mutations (append, add-at-position, reorder,
-        // delete) -- it needs no advisory lock or deferred-constraint
-        // transaction, just a plain ownership-checked UPDATE.
-        const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
-        const updatedRows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
-          UPDATE "workout_exercise"
-          SET notes = ${nextNotes}, updated_at = now()
-          WHERE id = ${id}::uuid
-          RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at
-        `;
-        const updated = updatedRows[0];
-        if (!updated) {
-          // Vanished between the ownership check and this UPDATE.
-          throw new NotFoundError("workout exercise not found or not owned by the acting user");
-        }
-        return toExerciseRecord(updated);
-      }
-
-      // A position change is a reorder (§6.7): the same lock/deferred-
-      // constraint transaction Task 14 established for add.
+      // Every patch shape (position change, notes-only, or {}) goes through
+      // the same lock/deferred-constraint transaction (§6.7): a notes-only
+      // edit that skipped this path could commit after a concurrent
+      // finishWorkout, without ever raising WorkoutFinishedError.
       const workoutId = current.workout_id;
       const requestedPosition = patch.position;
       return prisma.$transaction(async (tx) => {
@@ -527,13 +508,13 @@ export function createWorkoutRepository(
         `;
         const n = countRows[0]!.n;
 
-        // Reorder requires 0 <= position <= n-1 (narrower than add's
-        // 0 <= position <= n, since a reorder targets an existing slot).
-        // Range-checked even for a same-position no-op.
-        assertReorderPositionInRange(requestedPosition, n);
-
         let nextPosition = target.position;
-        if (requestedPosition !== target.position) {
+        if (requestedPosition !== undefined && requestedPosition !== target.position) {
+          // Reorder requires 0 <= position <= n-1 (narrower than add's
+          // 0 <= position <= n, since a reorder targets an existing slot).
+          // Only checked when actually moving -- a same-position "no-op"
+          // request is always in range since it came from a real row.
+          assertReorderPositionInRange(requestedPosition, n);
           nextPosition = requestedPosition;
           if (nextPosition > target.position) {
             // Moving forward: the rows strictly between the old and new
