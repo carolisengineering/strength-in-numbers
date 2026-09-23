@@ -2,15 +2,22 @@
 import type { PrismaClient } from "@prisma/client";
 import { isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { InternalError, NotFoundError, WorkoutInProgressExistsError } from "../errors/app-error.js";
+import {
+  InternalError,
+  NotFoundError,
+  WorkoutFinishedError,
+  WorkoutInProgressExistsError,
+} from "../errors/app-error.js";
 import type {
   CreateWorkoutFields,
   CreateWorkoutResult,
+  UpdateWorkoutFields,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
 } from "./workout.js";
+import { assertEndedAtInBounds, assertEndedAtNotBeforeStartedAt } from "./workout-writes.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -257,10 +264,66 @@ export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository
       return toDetail(foundRow);
     },
 
-    // Tasks 12-16 implement these; each replaces its own placeholder in order.
-    updateWorkout: () => {
-      throw new Error("not implemented until Task 12");
+    async updateWorkout(
+      actingUserId: string,
+      id: string,
+      patch: UpdateWorkoutFields,
+    ): Promise<WorkoutRecord> {
+      if (!isWorkoutId(id)) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      return prisma.$transaction(async (tx) => {
+        // The lock is this transaction's first data-touching statement,
+        // ahead of every check (Global Constraints; §6.5's ordering rule) —
+        // an explicit row lock, chosen over "issue the UPDATE first" so a
+        // later spec's own check (05.1's set-integrity rule) can sit between
+        // this lock and the write with no restructuring.
+        const rows = await tx.$queryRaw<WorkoutDbRow[]>`
+          SELECT id, user_id, title, notes, started_at, ended_at, local_date,
+                 tz_offset_minutes, client_generated_id, source, created_at, updated_at
+          FROM "workout"
+          WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+          FOR UPDATE
+        `;
+        const current = rows[0];
+        if (!current) {
+          throw new NotFoundError("workout not found or not owned by the acting user");
+        }
+        // The target's state is checked before any handler body rule — a
+        // finished workout rejects every schema-valid PATCH, {} included
+        // (§6.5, AC8).
+        if (current.ended_at !== null) {
+          throw new WorkoutFinishedError();
+        }
+
+        const now = new Date();
+        let nextEndedAt: Date | null = current.ended_at;
+        if ("endedAt" in patch && patch.endedAt !== undefined) {
+          if (patch.endedAt === null) {
+            // In-progress workout, ended_at already NULL: a no-op (§6.5).
+            nextEndedAt = null;
+          } else {
+            const endedAt = new Date(patch.endedAt);
+            assertEndedAtNotBeforeStartedAt(current.started_at, endedAt);
+            assertEndedAtInBounds(endedAt, now);
+            nextEndedAt = endedAt;
+          }
+        }
+        const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
+        const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
+
+        const updatedRows = await tx.$queryRaw<WorkoutDbRow[]>`
+          UPDATE "workout"
+          SET title = ${nextTitle}, notes = ${nextNotes}, ended_at = ${nextEndedAt},
+              updated_at = now()
+          WHERE id = ${id}::uuid
+          RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at
+        `;
+        return toRecord(updatedRows[0]!);
+      });
     },
+    // Tasks 13-16 implement these; each replaces its own placeholder in order.
     deleteWorkout: () => {
       throw new Error("not implemented until Task 13");
     },
