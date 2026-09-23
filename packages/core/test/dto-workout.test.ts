@@ -52,7 +52,8 @@ describe("AC19/AC16 — WorkoutSchema", () => {
     expect(() => WorkoutSchema.parse(validWorkout)).not.toThrow();
   });
   it("rejects a missing required field", () => {
-    const { startedAt: _drop, ...rest } = validWorkout;
+    const rest: Record<string, unknown> = { ...validWorkout };
+    delete rest.startedAt;
     expect(() => WorkoutSchema.parse(rest)).toThrow();
   });
 });
