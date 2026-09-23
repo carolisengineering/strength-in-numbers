@@ -1,11 +1,13 @@
 // apps/api/src/repositories/workout.prisma.ts
 import type { PrismaClient } from "@prisma/client";
-import { localDateFor, offsetMinutesForZone } from "@sin/core";
+import { isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { InternalError, WorkoutInProgressExistsError } from "../errors/app-error.js";
+import { InternalError, NotFoundError, WorkoutInProgressExistsError } from "../errors/app-error.js";
 import type {
   CreateWorkoutFields,
   CreateWorkoutResult,
+  WorkoutDetailRecord,
+  WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
 } from "./workout.js";
@@ -44,6 +46,32 @@ function toRecord(r: WorkoutDbRow): WorkoutRecord {
     tzOffsetMinutes: r.tz_offset_minutes,
     clientGeneratedId: r.client_generated_id,
     source: r.source,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+interface WorkoutExerciseDbRow {
+  id: string;
+  workout_id: string;
+  position: number;
+  exercise_id: string;
+  exercise_name_snapshot: string;
+  modality_snapshot: string;
+  notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
+  return {
+    id: r.id,
+    workoutId: r.workout_id,
+    position: r.position,
+    exerciseId: r.exercise_id,
+    exerciseNameSnapshot: r.exercise_name_snapshot,
+    modalitySnapshot: r.modality_snapshot,
+    notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -107,6 +135,21 @@ export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository
       }
       throw err; // a 23505 on any other constraint is a bug -> surfaces as 500 (D40)
     }
+  }
+
+  async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
+    const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
+      SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
+             modality_snapshot, notes, created_at, updated_at
+      FROM "workout_exercise"
+      WHERE workout_id = ${workoutId}::uuid
+      ORDER BY position ASC
+    `;
+    return rows.map(toExerciseRecord);
+  }
+
+  async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
+    return { ...toRecord(w), exercises: await loadExercises(w.id) };
   }
 
   async function findByClientGeneratedId(
@@ -185,13 +228,36 @@ export function createWorkoutRepository(prisma: PrismaClient): WorkoutRepository
       );
     },
 
-    // Tasks 11-16 implement these; each replaces its own placeholder in order.
-    getActiveWorkout: () => {
-      throw new Error("not implemented until Task 11");
+    async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
+      const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
+        SELECT id, user_id, title, notes, started_at, ended_at, local_date,
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+        FROM "workout"
+        WHERE user_id = ${actingUserId}::uuid AND ended_at IS NULL
+      `;
+      const activeRow = rows[0];
+      if (!activeRow) throw new NotFoundError("caller has no in-progress workout");
+      return toDetail(activeRow);
     },
-    getWorkoutById: () => {
-      throw new Error("not implemented until Task 11");
+
+    async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {
+      if (!isWorkoutId(id)) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
+        SELECT id, user_id, title, notes, started_at, ended_at, local_date,
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+        FROM "workout"
+        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+      `;
+      const foundRow = rows[0];
+      if (!foundRow) {
+        throw new NotFoundError("workout not found or not owned by the acting user");
+      }
+      return toDetail(foundRow);
     },
+
+    // Tasks 12-16 implement these; each replaces its own placeholder in order.
     updateWorkout: () => {
       throw new Error("not implemented until Task 12");
     },
