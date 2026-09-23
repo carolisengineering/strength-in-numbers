@@ -40,7 +40,7 @@ Spec §4's open item: `workout_exercise_position_key` must be `DEFERRABLE INITIA
 - Create (temporary, deleted at the end of this task): `apps/api/scratch-d49-spike/schema.prisma`, `apps/api/scratch-d49-spike/migration.sql`
 - No permanent files change in this task.
 
-- [ ] **Step 1: Start a scratch Postgres and apply a hand-written deferrable-constraint table**
+- [x] **Step 1: Start a scratch Postgres and apply a hand-written deferrable-constraint table**
 
 ```bash
 docker run -d --rm --name sin-d49-spike -e POSTGRES_PASSWORD=p -p 55432:5432 postgres:16-alpine
@@ -51,7 +51,7 @@ ALTER TABLE t ADD CONSTRAINT t_position_key UNIQUE (workout_id, position) DEFERR
 "
 ```
 
-- [ ] **Step 2: Write a minimal `schema.prisma` declaring the same `@@unique` with no deferrability annotation, and run `migrate diff`**
+- [x] **Step 2: Write a minimal `schema.prisma` declaring the same `@@unique` with no deferrability annotation, and run `migrate diff`**
 
 ```prisma
 // apps/api/scratch-d49-spike/schema.prisma
@@ -75,12 +75,13 @@ DATABASE_URL="postgresql://postgres:p@localhost:55432/postgres" pnpm exec prisma
 echo "exit code: $?"
 ```
 
-- [ ] **Step 3: Record the outcome inline in this plan file (edit this task's Step 3 checkbox note) and choose Task 1's drift-test scope accordingly**
+- [x] **Step 3: Record the outcome inline in this plan file (edit this task's Step 3 checkbox note) and choose Task 1's drift-test scope accordingly**
   - **If exit code is `0`** ("No difference detected"): deferrability is ignored by `migrate diff`, exactly as 03.1's `exercise_catalog_key_key` precedent suggested. Task 1's AC1 drift assertion (`prisma migrate diff --exit-code` expecting "No difference detected") runs **unscoped**, covering `workout_exercise_position_key` like every other index.
   - **If exit code is `2`** (drift reported): the fallback is declare-and-tolerate, exactly as spec §4 anticipates — keep the `@@unique` in `schema.prisma` (Task 1) and scope the Task 1 drift assertion to run `prisma migrate diff` and assert the diff output's **only** reported difference is the deferrability clause on `t_position_key` / `workout_exercise_position_key` (a string-containment check on the diff's stdout, analogous to AC2's containment style), recording why inline in that test's comment.
   - This plan's Task 1 is written for the **exit-code-0** outcome (the expected, and precedented, result). If the spike returns exit code `2`, adapt Task 1's Step 3/6 per the note above before proceeding — do not skip the spike and assume.
+  - **Recorded outcome (2026-09-22):** ran the spike exactly as Steps 1–2 specify — scratch `postgres:16-alpine` container on port 55432, hand-created table `t` with `t_position_key UNIQUE (workout_id, position) DEFERRABLE INITIALLY IMMEDIATE`, then `prisma migrate diff --from-url <scratch db> --to-schema-datamodel scratch-d49-spike/schema.prisma --exit-code` (schema declaring the same `@@unique` with no deferrability annotation) using Prisma 6.19.3. Output: `No difference detected.` — **exit code `0`**. This is the **exit-0 branch**: deferrability is ignored by `migrate diff`, confirming the 03.1 `exercise_catalog_key_key` precedent. **Decision for Task 1: run AC1's drift assertion unscoped** — no special-casing of `workout_exercise_position_key` is needed; Task 1 proceeds exactly as already written for the exit-code-0 outcome, no adaptation required.
 
-- [ ] **Step 4: Tear down**
+- [x] **Step 4: Tear down**
 
 ```bash
 docker stop sin-d49-spike
