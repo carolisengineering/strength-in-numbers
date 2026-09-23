@@ -41,15 +41,20 @@ describe("AC9/AC15 — deleteWorkout", () => {
     );
   });
 
-  it("deletes an owned row (finished or not) with a single hard-delete statement", async () => {
+  it("deletes an owned row (finished or not) using two queries: ownership-check SELECT then DELETE", async () => {
     const userId = uuidv7();
     const id = uuidv7();
     const stub = new ScriptedPrisma();
-    stub.queueRows([{ id, user_id: userId }]); // ownership check: found
+    // Queue ownership check row with ended_at set (finished workout)
+    const finishedAt = new Date("2024-01-15T14:30:00Z");
+    stub.queueRows([{ id, user_id: userId, ended_at: finishedAt }]); // ownership check: found, finished
     const repo = createWorkoutRepository(stub as unknown as PrismaClient);
 
     await repo.deleteWorkout(userId, id);
 
-    expect(stub.calls.some((c) => c.sql.includes("DELETE FROM"))).toBe(true);
+    // Verify both queries were issued: SELECT for ownership check, then DELETE
+    expect(stub.calls).toHaveLength(2);
+    expect(stub.calls[0]!.sql).toContain("SELECT");
+    expect(stub.calls[1]!.sql).toContain("DELETE FROM");
   });
 });
