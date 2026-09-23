@@ -18,6 +18,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
+import type { WorkoutRepository } from "./repositories/workout.js";
 
 /**
  * Fastify application assembly (Spec 01 §5.5, §6).
@@ -71,6 +72,7 @@ export interface BuildAppDeps extends AuthPluginDeps {
   checkReadiness: () => Promise<void>;
   readinessTtlMs?: number;
   exerciseRepository: ExerciseRepository;
+  workoutRepository: WorkoutRepository;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -215,6 +217,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       registerV1Routes(v1, {
         userRepository: deps.userRepository,
         exerciseRepository: deps.exerciseRepository,
+        workoutRepository: deps.workoutRepository,
       });
     },
     { prefix: "/v1" },

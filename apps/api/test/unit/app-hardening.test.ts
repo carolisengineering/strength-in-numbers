@@ -7,6 +7,7 @@ import {
   fakeVerifier,
   FakeExerciseRepository,
   FakeUserRepository,
+  FakeWorkoutRepository,
 } from "../helpers/fakes.js";
 
 describe("buildApp logger wiring", () => {
@@ -18,6 +19,7 @@ describe("buildApp logger wiring", () => {
       tokenVerifier: fakeVerifier(() => authContext()),
       userRepository: new FakeUserRepository(),
       exerciseRepository: new FakeExerciseRepository(),
+      workoutRepository: new FakeWorkoutRepository(),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);

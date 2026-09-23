@@ -5,6 +5,7 @@ import { createPrisma, checkDatabaseReady } from "./db.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
 import { createExerciseRepository } from "./repositories/exercise.prisma.js";
+import { createWorkoutRepository } from "./repositories/workout.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
 
 /**
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   });
 
   const prisma = createPrisma(config);
+  const exerciseRepository = createExerciseRepository(prisma);
 
   const app = await buildApp({
     config,
@@ -42,7 +44,8 @@ async function main(): Promise<void> {
       jwksUri: config.auth0.jwksUri,
     }),
     userRepository: createUserRepository(prisma),
-    exerciseRepository: createExerciseRepository(prisma),
+    exerciseRepository,
+    workoutRepository: createWorkoutRepository(prisma, exerciseRepository),
   });
 
   const shutdown = createGracefulShutdown({ app, prisma, logger });

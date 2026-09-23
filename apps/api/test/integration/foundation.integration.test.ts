@@ -11,6 +11,7 @@ import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
+import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import {
@@ -49,6 +50,7 @@ describe.skipIf(!shouldRunIntegration())(
         ),
         userRepository: createUserRepository(db.prisma),
         exerciseRepository: createExerciseRepository(db.prisma),
+        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
       });
 
     it("first GET /v1/me inserts exactly one row; isNewUser true then false (Criterion 7)", async () => {
@@ -136,6 +138,7 @@ describe.skipIf(!shouldRunIntegration())(
         tokenVerifier: fakeVerifier(() => authContext()),
         userRepository: createUserRepository(db.prisma),
         exerciseRepository: createExerciseRepository(db.prisma),
+        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
       });
       const up = await app.inject({ method: "GET", url: "/readyz" });
       expect(up.statusCode).toBe(200);
