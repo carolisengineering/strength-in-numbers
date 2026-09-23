@@ -33,9 +33,13 @@ describe("AC18 — the four business log lines, no free text", () => {
     expect(lines.filter((l) => l.msg === "workout_started")).toHaveLength(1); // still 1 — no second line on replay
   });
 
-  it("workout_finished fires on the finish transition only, not on a title/notes edit or a {} no-op", async () => {
+  it("workout_finished fires on the finish transition only, not on a title/notes edit or a {} no-op, with its §9 fields", async () => {
     const { logger, lines } = capturingLogger();
-    const { app } = await buildTestApp({ logger });
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ name: "Bench Press", modality: "weight_reps", isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    const workoutRepo = new FakeWorkoutRepository(exerciseRepo);
+    const { app } = await buildTestApp({ logger, workoutRepository: workoutRepo });
     const created = await app.inject({
       method: "POST",
       url: "/v1/workouts",
@@ -43,6 +47,20 @@ describe("AC18 — the four business log lines, no free text", () => {
       payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
     });
     const id = created.json().id;
+
+    // Two exercises added, so the finish log's exercise_count should be 2.
+    await app.inject({
+      method: "POST",
+      url: `/v1/workouts/${id}/exercises`,
+      headers: BEARER,
+      payload: { exerciseId: exercise.id },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/v1/workouts/${id}/exercises`,
+      headers: BEARER,
+      payload: { exerciseId: exercise.id },
+    });
 
     await app.inject({ method: "PATCH", url: `/v1/workouts/${id}`, headers: BEARER, payload: { title: "renamed" } });
     await app.inject({ method: "PATCH", url: `/v1/workouts/${id}`, headers: BEARER, payload: {} });
@@ -54,12 +72,23 @@ describe("AC18 — the four business log lines, no free text", () => {
       headers: BEARER,
       payload: { endedAt: ENDED_AT },
     });
-    expect(lines.filter((l) => l.msg === "workout_finished")).toHaveLength(1);
+    const finishedLines = lines.filter((l) => l.msg === "workout_finished");
+    expect(finishedLines).toHaveLength(1);
+    expect(finishedLines[0]).toMatchObject({
+      workout_id: id,
+      exercise_count: 2,
+    });
+    expect(typeof finishedLines[0]!.user_id).toBe("string");
+    expect(typeof finishedLines[0]!.duration_seconds).toBe("number");
   });
 
   it("workout_deleted fires on success with its §9 fields", async () => {
     const { logger, lines } = capturingLogger();
-    const { app, workoutRepo } = await buildTestApp({ logger });
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ name: "Bench Press", modality: "weight_reps", isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    const workoutRepo = new FakeWorkoutRepository(exerciseRepo);
+    const { app } = await buildTestApp({ logger, workoutRepository: workoutRepo });
     const created = await app.inject({
       method: "POST",
       url: "/v1/workouts",
@@ -68,10 +97,29 @@ describe("AC18 — the four business log lines, no free text", () => {
     });
     const id = created.json().id;
 
+    // One exercise added, then finished before deletion, so the delete log
+    // should report was_finished: true, exercise_count: 1.
+    await app.inject({
+      method: "POST",
+      url: `/v1/workouts/${id}/exercises`,
+      headers: BEARER,
+      payload: { exerciseId: exercise.id },
+    });
+    await app.inject({
+      method: "PATCH",
+      url: `/v1/workouts/${id}`,
+      headers: BEARER,
+      payload: { endedAt: ENDED_AT },
+    });
+
     await app.inject({ method: "DELETE", url: `/v1/workouts/${id}`, headers: BEARER });
     const deletedLine = lines.find((l) => l.msg === "workout_deleted");
-    expect(deletedLine).toMatchObject({ workout_id: id });
-    void workoutRepo; // available if a future assertion needs direct repo state
+    expect(deletedLine).toMatchObject({
+      workout_id: id,
+      was_finished: true,
+      exercise_count: 1,
+    });
+    expect(typeof deletedLine!.user_id).toBe("string");
   });
 
   it("workout_exercise_added fires on success with its §9 fields", async () => {

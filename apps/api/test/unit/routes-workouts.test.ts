@@ -169,6 +169,66 @@ describe("AC8 — PATCH /v1/workouts/{id}: finish", () => {
     });
     expect(res.statusCode).toBe(422);
   });
+
+  it("endedAt more than 5 minutes in the future is 422 (AC7 — the finish transition's own skew bound)", async () => {
+    const { app } = await buildTestApp();
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
+    });
+    const id = created.json().id;
+
+    const farFuture = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/workouts/${id}`,
+      headers: BEARER,
+      payload: { endedAt: farFuture },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("endedAt < startedAt is 422 (AC8)", async () => {
+    const { app } = await buildTestApp();
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
+    });
+    const id = created.json().id;
+
+    const beforeStart = new Date(Date.parse(STARTED_AT) - 60 * 1000).toISOString();
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/workouts/${id}`,
+      headers: BEARER,
+      payload: { endedAt: beforeStart },
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("endedAt === startedAt is 200 (AC8 — equal is accepted)", async () => {
+    const { app } = await buildTestApp();
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
+    });
+    const id = created.json().id;
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/workouts/${id}`,
+      headers: BEARER,
+      payload: { endedAt: STARTED_AT },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().endedAt).toBe(STARTED_AT);
+  });
 });
 
 describe("AC9 — DELETE /v1/workouts/{id}", () => {
