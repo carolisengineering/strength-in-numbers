@@ -50,3 +50,17 @@ export const ExerciseIdSchema = exerciseId.schema;
 export type ExerciseId = z.infer<typeof ExerciseIdSchema>;
 export const parseExerciseId = exerciseId.parse;
 export const isExerciseId = exerciseId.is;
+
+const workoutId = brandId("WorkoutId");
+
+export const WorkoutIdSchema = workoutId.schema;
+export type WorkoutId = z.infer<typeof WorkoutIdSchema>;
+export const parseWorkoutId = workoutId.parse;
+export const isWorkoutId = workoutId.is;
+
+const workoutExerciseId = brandId("WorkoutExerciseId");
+
+export const WorkoutExerciseIdSchema = workoutExerciseId.schema;
+export type WorkoutExerciseId = z.infer<typeof WorkoutExerciseIdSchema>;
+export const parseWorkoutExerciseId = workoutExerciseId.parse;
+export const isWorkoutExerciseId = workoutExerciseId.is;
