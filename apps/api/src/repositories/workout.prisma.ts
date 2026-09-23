@@ -550,8 +550,60 @@ export function createWorkoutRepository(
         return toExerciseRecord(updatedRows[0]!);
       });
     },
-    deleteWorkoutExercise: () => {
-      throw new Error("not implemented until Task 16");
+    async deleteWorkoutExercise(actingUserId: string, id: string): Promise<void> {
+      if (!isWorkoutExerciseId(id)) {
+        throw new NotFoundError("workout exercise not found or not owned by the acting user");
+      }
+      // Ownership is resolved through the workout_exercise -> workout join --
+      // a workout_exercise row carries no user_id of its own (§6.7, §5's
+      // 404-not-403 rule). This also doubles as §6.6-style phase 1: a cheap
+      // early exit on the root client, ahead of any lock.
+      const rows = await prisma.$queryRaw<
+        { id: string; workout_id: string; user_id: string; ended_at: Date | null }[]
+      >`
+        SELECT we.id, we.workout_id, w.user_id, w.ended_at
+        FROM "workout_exercise" we JOIN "workout" w ON w.id = we.workout_id
+        WHERE we.id = ${id}::uuid AND w.user_id = ${actingUserId}::uuid
+      `;
+      const current = rows[0];
+      if (!current) {
+        throw new NotFoundError("workout exercise not found or not owned by the acting user");
+      }
+      if (current.ended_at !== null) {
+        throw new WorkoutFinishedError();
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
+        // The lock is its own statement, ahead of every read it protects
+        // (§6.8, following insertWithCap/D23).
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.workout_id}))`;
+        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+          SELECT ended_at FROM "workout" WHERE id = ${current.workout_id}::uuid FOR SHARE
+        `;
+        const locked = lockRows[0];
+        if (!locked) {
+          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
+          throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+        if (locked.ended_at !== null) {
+          throw new WorkoutFinishedError();
+        }
+
+        const targetRows = await tx.$queryRaw<{ position: number }[]>`
+          SELECT position FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+        `;
+        const target = targetRows[0];
+        if (!target) {
+          throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+
+        await tx.$executeRaw`DELETE FROM "workout_exercise" WHERE id = ${id}::uuid`;
+        await tx.$executeRaw`
+          UPDATE "workout_exercise" SET position = position - 1
+          WHERE workout_id = ${current.workout_id}::uuid AND position > ${target.position}
+        `;
+      });
     },
   };
 }
