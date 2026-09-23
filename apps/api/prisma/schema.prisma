@@ -27,6 +27,8 @@ model User {
   // Spec 03.1: back-reference for `exercise.owner_user_id` (Prisma requires both
   // sides of a relation). No column on `user`; purge cascades via the FK.
   customExercises Exercise[]
+  // Spec 05.0: back-reference for `workout.user_id`.
+  workouts Workout[]
 
   @@index([email], map: "user_email_idx")
   @@map("user")
@@ -55,6 +57,8 @@ model Exercise {
   forkedFromExerciseId String?    @map("forked_from_exercise_id") @db.Uuid
   forkedFrom         Exercise?    @relation("ExerciseFork", fields: [forkedFromExerciseId], references: [id], onDelete: Restrict)
   forks              Exercise[]   @relation("ExerciseFork")
+  // Spec 05.0: back-reference for `workout_exercise.exercise_id`.
+  workoutExercises   WorkoutExercise[]
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
   // Spec 03.3 §4 — commit-ordered sync stamp, set by the exercise_change_xid trigger.
@@ -90,4 +94,46 @@ model Equipment {
   exercises    Exercise[]
 
   @@map("equipment")
+}
+
+// Spec 05.0 §4 — workout session lifecycle. Hand-authored SQL owns the
+// partial unique index, the two CHECKs and the deferrable constraint; these
+// models carry the client shape only.
+model Workout {
+  id                 String    @id @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String?
+  notes              String?
+  startedAt          DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt            DateTime? @map("ended_at") @db.Timestamptz(6)
+  localDate          DateTime  @map("local_date") @db.Date
+  tzOffsetMinutes    Int       @map("tz_offset_minutes") @db.SmallInt
+  clientGeneratedId  String    @map("client_generated_id") @db.Uuid
+  source             String    @default("manual")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  exercises          WorkoutExercise[]
+
+  @@unique([userId, clientGeneratedId], map: "workout_user_client_id_key")
+  @@index([userId, startedAt(sort: Desc)], map: "workout_user_started_idx")
+  @@map("workout")
+}
+
+model WorkoutExercise {
+  id                   String   @id @db.Uuid
+  workoutId            String   @map("workout_id") @db.Uuid
+  workout              Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  position             Int      @db.SmallInt
+  exerciseId           String   @map("exercise_id") @db.Uuid
+  exercise             Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  exerciseNameSnapshot String   @map("exercise_name_snapshot")
+  modalitySnapshot     String   @map("modality_snapshot")
+  notes                String?
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workoutId, position], map: "workout_exercise_position_key")
+  @@index([exerciseId], map: "workout_exercise_exercise_idx")
+  @@map("workout_exercise")
 }
