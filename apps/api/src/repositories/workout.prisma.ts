@@ -1,6 +1,6 @@
 // apps/api/src/repositories/workout.prisma.ts
 import type { PrismaClient } from "@prisma/client";
-import { isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
+import { isWorkoutExerciseId, isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   ExerciseRetiredError,
@@ -14,6 +14,7 @@ import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
   CreateWorkoutResult,
+  UpdateWorkoutExerciseFields,
   UpdateWorkoutFields,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
@@ -24,6 +25,7 @@ import {
   assertAddPositionInRange,
   assertEndedAtInBounds,
   assertEndedAtNotBeforeStartedAt,
+  assertReorderPositionInRange,
   computeAppendPosition,
 } from "./workout-writes.js";
 
@@ -433,8 +435,139 @@ export function createWorkoutRepository(
         return toExerciseRecord(insertedRows[0]!);
       });
     },
-    updateWorkoutExercise: () => {
-      throw new Error("not implemented until Task 15");
+    async updateWorkoutExercise(
+      actingUserId: string,
+      id: string,
+      patch: UpdateWorkoutExerciseFields,
+    ): Promise<WorkoutExerciseRecord> {
+      if (!isWorkoutExerciseId(id)) {
+        throw new NotFoundError("workout exercise not found or not owned by the acting user");
+      }
+      // Ownership is resolved through the workout_exercise -> workout join --
+      // a workout_exercise row carries no user_id of its own (§6.7, §5's
+      // 404-not-403 rule). This also doubles as §6.6-style phase 1: a cheap
+      // early exit on the root client, ahead of any lock.
+      const rows = await prisma.$queryRaw<
+        {
+          id: string;
+          workout_id: string;
+          position: number;
+          notes: string | null;
+          user_id: string;
+          ended_at: Date | null;
+        }[]
+      >`
+        SELECT we.id, we.workout_id, we.position, we.notes, w.user_id, w.ended_at
+        FROM "workout_exercise" we
+        JOIN "workout" w ON w.id = we.workout_id
+        WHERE we.id = ${id}::uuid AND w.user_id = ${actingUserId}::uuid
+      `;
+      const current = rows[0];
+      if (!current) {
+        throw new NotFoundError("workout exercise not found or not owned by the acting user");
+      }
+      if (current.ended_at !== null) {
+        throw new WorkoutFinishedError();
+      }
+
+      if (patch.position === undefined) {
+        // A notes-only (or empty) patch is not one of §6.7's four
+        // position-renumbering mutations (append, add-at-position, reorder,
+        // delete) -- it needs no advisory lock or deferred-constraint
+        // transaction, just a plain ownership-checked UPDATE.
+        const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
+        const updatedRows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
+          UPDATE "workout_exercise"
+          SET notes = ${nextNotes}, updated_at = now()
+          WHERE id = ${id}::uuid
+          RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
+                    modality_snapshot, notes, created_at, updated_at
+        `;
+        const updated = updatedRows[0];
+        if (!updated) {
+          // Vanished between the ownership check and this UPDATE.
+          throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+        return toExerciseRecord(updated);
+      }
+
+      // A position change is a reorder (§6.7): the same lock/deferred-
+      // constraint transaction Task 14 established for add.
+      const workoutId = current.workout_id;
+      const requestedPosition = patch.position;
+      return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
+        // The lock is its own statement, ahead of every read it protects
+        // (§6.8, following insertWithCap/D23).
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutId}))`;
+        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+          SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+        `;
+        const locked = lockRows[0];
+        if (!locked) {
+          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
+          throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+        if (locked.ended_at !== null) {
+          throw new WorkoutFinishedError();
+        }
+
+        const targetRows = await tx.$queryRaw<
+          { id: string; position: number; notes: string | null }[]
+        >`
+          SELECT id, position, notes FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+        `;
+        const target = targetRows[0];
+        if (!target) {
+          throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+
+        const countRows = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
+        `;
+        const n = countRows[0]!.n;
+
+        // Reorder requires 0 <= position <= n-1 (narrower than add's
+        // 0 <= position <= n, since a reorder targets an existing slot).
+        // Range-checked even for a same-position no-op.
+        assertReorderPositionInRange(requestedPosition, n);
+
+        let nextPosition = target.position;
+        if (requestedPosition !== target.position) {
+          nextPosition = requestedPosition;
+          if (nextPosition > target.position) {
+            // Moving forward: the rows strictly between the old and new
+            // position shift back by one to close the gap the move opens.
+            await tx.$executeRaw`
+              UPDATE "workout_exercise" SET position = position - 1
+              WHERE workout_id = ${workoutId}::uuid
+                AND position > ${target.position} AND position <= ${nextPosition}
+                AND id != ${id}::uuid
+            `;
+          } else {
+            // Moving backward: the rows strictly between the new and old
+            // position shift forward by one to make room.
+            await tx.$executeRaw`
+              UPDATE "workout_exercise" SET position = position + 1
+              WHERE workout_id = ${workoutId}::uuid
+                AND position >= ${nextPosition} AND position < ${target.position}
+                AND id != ${id}::uuid
+            `;
+          }
+        }
+        // requestedPosition === target.position: a 200 no-op (§6.7) -- no
+        // other row is touched.
+
+        const nextNotes = "notes" in patch ? (patch.notes ?? null) : target.notes;
+        const updatedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
+          UPDATE "workout_exercise"
+          SET position = ${nextPosition}, notes = ${nextNotes}, updated_at = now()
+          WHERE id = ${id}::uuid
+          RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
+                    modality_snapshot, notes, created_at, updated_at
+        `;
+        return toExerciseRecord(updatedRows[0]!);
+      });
     },
     deleteWorkoutExercise: () => {
       throw new Error("not implemented until Task 16");
