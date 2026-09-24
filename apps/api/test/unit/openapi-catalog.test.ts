@@ -118,6 +118,24 @@ describe("AC10 — catalog routes are in the published OpenAPI contract", () => 
     expect(doc.paths["/v1/equipment"]!.get!.parameters ?? []).toEqual([]);
   });
 
+  it("BL-7 — the fork overlay's requestBody is documented as optional, PATCH's stays required", async () => {
+    const { app } = await buildTestApp();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as {
+      paths: Record<
+        string,
+        Record<string, { requestBody?: { required?: boolean } } | undefined>
+      >;
+    };
+
+    const forkOp = doc.paths["/v1/exercises/{id}/fork"]?.post;
+    expect(forkOp?.requestBody?.required).toBe(false);
+
+    // Guards against the transform being too broad: a body-required route
+    // right next to it must be untouched.
+    const patchOp = doc.paths["/v1/exercises/{id}"]?.patch;
+    expect(patchOp?.requestBody?.required).toBe(true);
+  });
+
   it("the committed <repo>/openapi.json matches app.swagger() (CI drift check, run locally)", async () => {
     // Same call the emit script makes (`JSON.stringify(doc, null, 2) + "\n"`),
     // done in-process so the test never writes into the working tree.

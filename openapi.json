@@ -696,7 +696,7 @@
     "/v1/exercises/{id}/fork": {
       "post": {
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
