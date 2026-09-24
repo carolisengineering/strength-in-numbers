@@ -19,6 +19,7 @@ import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
+import { markNullableBodiesOptional } from "./openapi/optional-body.js";
 
 /**
  * Fastify application assembly (Spec 01 §5.5, §6).
@@ -197,6 +198,16 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       security: [{ bearerAuth: [] }],
     },
     transform: jsonSchemaTransform,
+    // BL-7: correct `requestBody.required` for routes whose body schema
+    // admits `null` (e.g. the fork overlay) — see `openapi/optional-body.ts`.
+    // Runs inside every `app.swagger()` call, so the served route, the emit
+    // script, and the drift test all agree. `documentObject` is a
+    // Swagger-2.0-or-OpenAPI-3.x union; this app only ever configures
+    // OpenAPI 3.1 above, so the `swaggerObject` arm is unreachable here.
+    transformObject: (documentObject) =>
+      "openapiObject" in documentObject
+        ? markNullableBodiesOptional(documentObject.openapiObject)
+        : documentObject.swaggerObject,
   });
 
   registerHealthRoutes(app, {
