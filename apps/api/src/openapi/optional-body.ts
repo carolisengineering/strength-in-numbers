@@ -11,6 +11,17 @@ import type fastifySwagger from "@fastify/swagger";
  * transitive dependency here (pulled in by `@fastify/swagger` and
  * `fastify-type-provider-zod`), so it does not resolve from `apps/api`'s own
  * `node_modules`.
+ *
+ * This "admits null ⇒ optional" mapping relies on Fastify handing a
+ * body-less request to the validator as `null` (see the comment at
+ * `apps/api/src/routes/exercises.ts` ~lines 152-159) — schemas for optional
+ * bodies should therefore be declared `.nullish()` rather than `.nullable()`,
+ * since `.nullable()` rejects `undefined`.
+ *
+ * The check below is deliberately conservative: it does not follow `$ref`,
+ * nor inspect `allOf`, `const: null`, an `enum` containing `null`, or empty
+ * schemas (`{}`). Any of those misses just leaves the library's default
+ * `required: true` in place, which is the safe direction to fail in.
  */
 type SwaggerDocumentObjectArg = Parameters<
   fastifySwagger.SwaggerTransformObject
