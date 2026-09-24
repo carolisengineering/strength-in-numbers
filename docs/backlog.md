@@ -16,7 +16,7 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-4](#bl-4) | Testing | Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
 | [BL-5](#bl-5) | Observability | Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | `openapi.json` documents only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
-| [BL-7](#bl-7) | API contract | **Resolved** — `@fastify/swagger` forced `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
+| [BL-7](#bl-7) | API contract | **Resolved (2026-09-24)** — `@fastify/swagger` forced `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
 | [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
 | [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
 
@@ -165,8 +165,9 @@ the hook runs inside `app.swagger()` itself, both the served `GET
 /openapi.json` and `apps/api/scripts/emit-openapi.ts`'s output pick it up
 identically, so the CI drift check (`openapi-catalog.test.ts`) still passes
 deterministically. `openapi.json`'s fork operation now reads `required:
-false`. `@fastify/swagger` 9.9.0 still hardcodes `required: true`; no
-upstream fix has landed. The analysis below is kept as history.
+false`. The repo pins 9.8.1; the latest upstream release, 9.9.0
+(2026-09-22), still hardcodes `required: true`, so a version bump is not a
+fix path. The analysis below is kept as history.
 
 **The published contract says the `/fork` overlay body is required, when it isn't.**
 
