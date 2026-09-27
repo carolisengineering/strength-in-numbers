@@ -54,7 +54,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 cross-user 404s and account 
     });
   }
 
-  const strip = ({ instance: _instance, ...rest }: Record<string, unknown>) => rest;
+  // `instance` is the only field allowed to differ; toEqual ignores undefined props.
+  const strip = (body: Record<string, unknown>) => ({ ...body, instance: undefined });
 
   it("AC4 — B's set, B's workout_exercise and a malformed id give field-identical 404s on all three routes; never 403", async () => {
     const app = await appFor();
