@@ -105,6 +105,22 @@ const EXPECTED = [
   // time.ts (Spec 05.0 §5)
   "localDateFor",
   "offsetMinutesForZone",
+  // ids — set entry (Spec 05.1 §5)
+  "SetEntryIdSchema",
+  "parseSetEntryId",
+  "isSetEntryId",
+  // dto — set entry (Spec 05.1 §5, D11, D12)
+  "MEASURE_NAMES",
+  "requiredMeasuresFor",
+  "forbiddenMeasuresFor",
+  "SET_REPS_MAX",
+  "SET_WEIGHT_MAX",
+  "SET_DISTANCE_MAX",
+  "SET_DURATION_S_MAX",
+  "SetEntrySchema",
+  "CreateSetSchema",
+  "UpdateSetSchema",
+  "WorkoutExerciseDetailSchema",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

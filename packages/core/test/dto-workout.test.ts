@@ -142,7 +142,7 @@ describe("AC19 — WorkoutExerciseSchema / WorkoutDetailSchema", () => {
   });
   it("WorkoutDetailSchema extends WorkoutSchema with an exercises array", () => {
     expect(() =>
-      WorkoutDetailSchema.parse({ ...validWorkout, exercises: [validWe] }),
+      WorkoutDetailSchema.parse({ ...validWorkout, exercises: [{ ...validWe, sets: [] }] }),
     ).not.toThrow();
   });
 });

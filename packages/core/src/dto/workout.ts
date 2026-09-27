@@ -8,6 +8,7 @@ import { z } from "zod";
 import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "../enums.js";
 import { ExerciseIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
+import { SetEntrySchema } from "./set-entry.js";
 
 export const WORKOUT_TITLE_MAX = 120;
 export const WORKOUT_NOTES_MAX = 4000;
@@ -72,9 +73,17 @@ export const WorkoutExerciseSchema = z.object({
 });
 export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
 
+/** One exercise within a workout, with its sets ordered by `setNumber`
+ * (Spec 05.1 §4, AC12). Defined here, not in `dto/set-entry.ts`, to keep the
+ * two modules acyclic (Spec 05.1 D12). */
+export const WorkoutExerciseDetailSchema = WorkoutExerciseSchema.extend({
+  sets: z.array(SetEntrySchema),
+});
+export type WorkoutExerciseDetail = z.infer<typeof WorkoutExerciseDetailSchema>;
+
 /** GET /v1/workouts/active and GET /v1/workouts/{id}. */
 export const WorkoutDetailSchema = WorkoutSchema.extend({
-  exercises: z.array(WorkoutExerciseSchema),
+  exercises: z.array(WorkoutExerciseDetailSchema),
 });
 export type WorkoutDetail = z.infer<typeof WorkoutDetailSchema>;
 

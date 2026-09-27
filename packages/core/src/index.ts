@@ -16,4 +16,5 @@ export * from "./units.js";
 export * from "./dto/me.js";
 export * from "./dto/exercise.js";
 export * from "./dto/workout.js";
+export * from "./dto/set-entry.js";
 export * from "./time.js";

@@ -64,3 +64,10 @@ export const WorkoutExerciseIdSchema = workoutExerciseId.schema;
 export type WorkoutExerciseId = z.infer<typeof WorkoutExerciseIdSchema>;
 export const parseWorkoutExerciseId = workoutExerciseId.parse;
 export const isWorkoutExerciseId = workoutExerciseId.is;
+
+const setEntryId = brandId("SetEntryId");
+
+export const SetEntryIdSchema = setEntryId.schema;
+export type SetEntryId = z.infer<typeof SetEntryIdSchema>;
+export const parseSetEntryId = setEntryId.parse;
+export const isSetEntryId = setEntryId.is;
