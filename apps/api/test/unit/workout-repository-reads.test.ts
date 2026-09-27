@@ -74,6 +74,7 @@ describe("AC15 — getWorkoutById", () => {
     const workout = wRow();
     stub.queueRows([workout]);
     stub.queueRows([weRow(workout.id, 0), weRow(workout.id, 1)]);
+    stub.queueRows([]); // Spec 05.1 sets read
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getWorkoutById(workout.user_id, workout.id);
@@ -97,6 +98,7 @@ describe("AC4 — getActiveWorkout", () => {
     const workout = wRow();
     stub.queueRows([workout]);
     stub.queueRows([]);
+    stub.queueRows([]); // Spec 05.1 sets read
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getActiveWorkout(workout.user_id);

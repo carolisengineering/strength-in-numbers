@@ -2,8 +2,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { isSetEntryId, isWorkoutExerciseId, type Modality } from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
-import { assertSetMeasuresValid, fieldsToMeasures, mergeSetPatch } from "./set-writes.js";
+import { IncompleteWorkingSetsError, NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
+import { assertSetMeasuresValid, fieldsToMeasures, isWorkingSetComplete, mergeSetPatch } from "./set-writes.js";
 import type {
   CreateSetFields,
   CreateSetResult,
@@ -74,7 +74,7 @@ export function toSetRecord(r: SetEntryDbRow): SetEntryRecord {
 
 const SET_NOT_FOUND = "set not found or not owned by the acting user";
 
-type RawClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
+export type RawClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
 
 /** Ownership through set_entry → workout_exercise → workout (a set carries
  * no user_id). No lock: workout_id and modality_snapshot never change. */
@@ -104,6 +104,48 @@ async function assertWorkoutInProgress(tx: RawClient, workoutId: string): Promis
   `;
   if (!rows[0]) throw new NotFoundError(SET_NOT_FOUND);
   if (rows[0].ended_at !== null) throw new WorkoutFinishedError();
+}
+
+/** AC12: every set of one workout, grouped by the caller. One query per detail
+ * read, not one per exercise. */
+export async function loadSetsForWorkout(client: RawClient, workoutId: string): Promise<SetEntryRecord[]> {
+  const rows = await client.$queryRaw<SetEntryDbRow[]>`
+    SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry"
+    WHERE workout_exercise_id IN (SELECT id FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid)
+    ORDER BY workout_exercise_id, set_number
+  `;
+  return rows.map(toSetRecord);
+}
+
+/**
+ * Spec 05.1 §6.5 — 05.0's Extension seam 1. Must run inside the finish
+ * transaction, AFTER its FOR UPDATE lock on the workout row (D9): only then
+ * has every concurrent set write on this workout either committed or backed
+ * off, so this read can't miss one (AC21). warmup / drop / failure sets are
+ * excluded by the WHERE and never inspected (AC14).
+ */
+export async function assertWorkingSetsComplete(client: RawClient, workoutId: string): Promise<void> {
+  const rows = await client.$queryRaw<
+    {
+      modality_snapshot: string;
+      reps: number | null;
+      weight: number | null;
+      distance: number | null;
+      duration_s: number | null;
+    }[]
+  >`
+    SELECT we.modality_snapshot, se.reps, se.weight::float8 AS weight,
+           se.distance::float8 AS distance, se.duration_s
+    FROM "workout_exercise" we
+    JOIN "set_entry" se ON se.workout_exercise_id = we.id
+    WHERE we.workout_id = ${workoutId}::uuid AND se.set_type = 'working'
+  `;
+  for (const r of rows) {
+    const measures = { reps: r.reps, weight: r.weight, distance: r.distance, durationS: r.duration_s };
+    if (!isWorkingSetComplete(r.modality_snapshot as Modality, measures)) {
+      throw new IncompleteWorkingSetsError();
+    }
+  }
 }
 
 export function createSetEntryMethods(

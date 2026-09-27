@@ -180,7 +180,9 @@ export interface WorkoutRepository {
    * every check (Global Constraints, this plan). Throws `NotFoundError`,
    * `WorkoutFinishedError` (409, target already has `ended_at` set), or
    * `ValidationError` (422, `endedAt < startedAt` or the skew window —
-   * evaluated inside the lock, after the finished-check).
+   * evaluated inside the lock, after the finished-check), or
+   * `IncompleteWorkingSetsError` (409, Spec 05.1 §6.5 — a finish with a
+   * `working` set missing a required measure; checked after the endedAt rules).
    */
   updateWorkout(
     actingUserId: string,

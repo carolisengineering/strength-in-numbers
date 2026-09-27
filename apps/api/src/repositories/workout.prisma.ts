@@ -18,7 +18,9 @@ import type {
   UpdateWorkoutExerciseFields,
   UpdateWorkoutFields,
   UpdateWorkoutResult,
+  SetEntryRecord,
   WorkoutDetailRecord,
+  WorkoutExerciseDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
@@ -30,7 +32,7 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
 } from "./workout-writes.js";
-import { createSetEntryMethods } from "./set-entry.prisma.js";
+import { assertWorkingSetsComplete, createSetEntryMethods, loadSetsForWorkout } from "./set-entry.prisma.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -191,7 +193,19 @@ export function createWorkoutRepository(
   }
 
   async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
-    return { ...toRecord(w), exercises: await loadExercises(w.id) };
+    const exercises = await loadExercises(w.id);
+    const sets = await loadSetsForWorkout(prisma, w.id);
+    const byExercise = new Map<string, SetEntryRecord[]>();
+    for (const s of sets) {
+      const list = byExercise.get(s.workoutExerciseId) ?? [];
+      list.push(s);
+      byExercise.set(s.workoutExerciseId, list);
+    }
+    const withSets: WorkoutExerciseDetailRecord[] = exercises.map((e) => ({
+      ...e,
+      sets: byExercise.get(e.id) ?? [],
+    }));
+    return { ...toRecord(w), exercises: withSets };
   }
 
   async function findByClientGeneratedId(
@@ -343,6 +357,14 @@ export function createWorkoutRepository(
             : current.ended_at;
         const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
+
+        // Spec 05.1 §6.5 (05.0's Extension seam 1): a finish must find every
+        // working set complete. Runs after the FOR UPDATE lock above and after
+        // parseEndedAt's own checks, before the UPDATE (05.1 D9). Spec 07's
+        // PR recompute goes after this one, still before the UPDATE.
+        if (nextEndedAt !== null) {
+          await assertWorkingSetsComplete(tx, id);
+        }
 
         const updatedRows = await tx.$queryRaw<WorkoutDbRow[]>`
           UPDATE "workout"
