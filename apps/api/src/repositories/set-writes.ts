@@ -66,10 +66,14 @@ export function assertSetMeasuresValid(modality: Modality, m: SetMeasures): void
       if (m[name] === null) errors.push({ path: name, message: `required to complete a ${modality} set` });
     }
   }
+  // Convert the value Postgres will actually store: `distance` is rounded to
+  // numeric(9,3) first, and `distance_m` is generated from that rounded value
+  // (999.9999 km is stored as 1000.000 km → 1 000 000 m, an overflow).
+  const storedDistance = m.distance === null ? null : Math.round(m.distance * 1000) / 1000;
   if (
-    m.distance !== null &&
+    storedDistance !== null &&
     m.distanceUnit !== null &&
-    toCanonicalMeters(m.distance, m.distanceUnit) > SET_DISTANCE_MAX
+    toCanonicalMeters(storedDistance, m.distanceUnit) > SET_DISTANCE_MAX
   ) {
     errors.push({ path: "distance", message: `must not exceed ${SET_DISTANCE_MAX} metres` });
   }

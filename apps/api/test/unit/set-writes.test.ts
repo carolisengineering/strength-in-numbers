@@ -139,6 +139,14 @@ describe("Review Focus 1 / D11 — distance is bounded after conversion to metre
       fieldPaths(() => assertSetMeasuresValid("distance_duration", { ...base, distance: 700, distanceUnit: "mi" })),
     ).toEqual(["distance"]);
   });
+  it("checks the value Postgres will store: 999.9999 km rounds to 1000.000 km (numeric(9,3)), so it is rejected", () => {
+    const base = { ...EMPTY, durationS: 60 };
+    expect(
+      fieldPaths(() =>
+        assertSetMeasuresValid("distance_duration", { ...base, distance: 999.9999, distanceUnit: "km" }),
+      ),
+    ).toEqual(["distance"]);
+  });
 });
 
 describe("§6.5 — isWorkingSetComplete", () => {

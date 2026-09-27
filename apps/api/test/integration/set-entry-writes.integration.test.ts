@@ -92,6 +92,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     );
   });
 
+  it("D11 — a distance that only overflows distance_m after Postgres rounds it (999.9999 km) is a 422, not a 500", async () => {
+    const { userId, weIds } = await workoutWith("distance_duration");
+    await expect(
+      repo.createSet(userId, weIds[0]!, { distance: 999.9999, distanceUnit: "km", durationS: 60 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    // The largest value that survives rounding is still accepted.
+    await expect(
+      repo.createSet(userId, weIds[0]!, { distance: 999.9994, distanceUnit: "km", durationS: 60 }),
+    ).resolves.toBeDefined();
+  });
+
   it("AC8 — create with reps only, then PATCH { weight, weightUnit, isComplete } ⇒ ok; without weight ⇒ 422", async () => {
     const { userId, weIds } = await workoutWith("weight_reps");
     const a = (await repo.createSet(userId, weIds[0]!, { reps: 5 })).set;
