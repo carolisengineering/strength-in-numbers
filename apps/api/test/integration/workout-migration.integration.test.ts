@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import {
@@ -149,23 +147,10 @@ describe.skipIf(!shouldRunIntegration())(
       expect(deferrable[0]).toEqual({ condeferrable: true, condeferred: false });
     });
 
-    it("D49: prisma migrate diff (migrated DB → schema.prisma) reports no difference", () => {
-      // spawnSync (not execFileSync + try/catch): a CLI that fails to run at all
-      // (bad path, changed flag) must FAIL this test, not look like "no diff".
-      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-      const r = spawnSync(
-        "pnpm",
-        [
-          "exec", "prisma", "migrate", "diff",
-          "--from-url", db.url,
-          "--to-schema-datamodel", "prisma/schema.prisma",
-          "--exit-code",
-        ],
-        { cwd: apiDir, encoding: "utf8" },
-      );
-      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
-      expect(r.stdout).toContain("No difference detected");
-    });
+    // The whole-schema `prisma migrate diff` no-drift check (D49) moved to the
+    // newest migration's test (set-entry-migration.integration.test.ts) —
+    // it diffs against the full schema.prisma, so it can only pass once
+    // every migration is applied.
   },
 );
 

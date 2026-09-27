@@ -132,8 +132,35 @@ model WorkoutExercise {
   notes                String?
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  sets                 SetEntry[]
 
   @@unique([workoutId, position], map: "workout_exercise_position_key")
   @@index([exerciseId], map: "workout_exercise_exercise_idx")
   @@map("workout_exercise")
+}
+
+model SetEntry {
+  id                String          @id @db.Uuid
+  workoutExerciseId String          @map("workout_exercise_id") @db.Uuid
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  setNumber         Int             @map("set_number") @db.SmallInt
+  setType           String          @default("working") @map("set_type")
+  reps              Int?            @db.SmallInt
+  weight            Decimal?        @db.Decimal(7, 3)
+  weightUnit        String?         @map("weight_unit")
+  /// GENERATED ALWAYS AS ... STORED (0006). Read-only by convention; never written by the app.
+  weightKg          Decimal?        @map("weight_kg") @db.Decimal(7, 3)
+  distance          Decimal?        @db.Decimal(9, 3)
+  distanceUnit      String?         @map("distance_unit")
+  /// GENERATED ALWAYS AS ... STORED (0006). Read-only by convention; never written by the app.
+  distanceM         Decimal?        @map("distance_m") @db.Decimal(9, 3)
+  durationS         Int?            @map("duration_s")
+  rpe               Decimal?        @db.Decimal(3, 1)
+  isComplete        Boolean         @default(false) @map("is_complete")
+  completedAt       DateTime?       @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workoutExerciseId, setNumber], map: "set_entry_workout_exercise_number_key")
+  @@map("set_entry")
 }
