@@ -1,10 +1,16 @@
 // apps/api/src/repositories/set-entry.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isWorkoutExerciseId, type Modality } from "@sin/core";
+import { isSetEntryId, isWorkoutExerciseId, type Modality } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
-import { assertSetMeasuresValid, fieldsToMeasures } from "./set-writes.js";
-import type { CreateSetFields, CreateSetResult, SetEntryRecord, WorkoutRepository } from "./workout.js";
+import { assertSetMeasuresValid, fieldsToMeasures, mergeSetPatch } from "./set-writes.js";
+import type {
+  CreateSetFields,
+  CreateSetResult,
+  SetEntryRecord,
+  UpdateSetFields,
+  WorkoutRepository,
+} from "./workout.js";
 
 /**
  * Prisma-backed set methods for WorkoutRepository (Spec 05.1 §6), spread into
@@ -64,6 +70,40 @@ export function toSetRecord(r: SetEntryDbRow): SetEntryRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+const SET_NOT_FOUND = "set not found or not owned by the acting user";
+
+type RawClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
+
+/** Ownership through set_entry → workout_exercise → workout (a set carries
+ * no user_id). No lock: workout_id and modality_snapshot never change. */
+async function resolveOwnedSet(
+  tx: RawClient,
+  actingUserId: string,
+  id: string,
+): Promise<{ workout_id: string; modality_snapshot: string }> {
+  const rows = await tx.$queryRaw<{ workout_id: string; modality_snapshot: string }[]>`
+    SELECT we.workout_id, we.modality_snapshot
+    FROM "set_entry" se
+    JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
+    JOIN "workout" w ON w.id = we.workout_id
+    WHERE se.id = ${id}::uuid AND w.user_id = ${actingUserId}::uuid
+  `;
+  if (!rows[0]) throw new NotFoundError(SET_NOT_FOUND);
+  return rows[0];
+}
+
+/** D10: the authoritative finished check for PATCH/DELETE, under FOR SHARE —
+ * a concurrent finish (FOR UPDATE) either commits first and we see it, or
+ * waits for us. Without it a set edit could land after the finish's
+ * integrity check passed. */
+async function assertWorkoutInProgress(tx: RawClient, workoutId: string): Promise<void> {
+  const rows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+  `;
+  if (!rows[0]) throw new NotFoundError(SET_NOT_FOUND);
+  if (rows[0].ended_at !== null) throw new WorkoutFinishedError();
 }
 
 export function createSetEntryMethods(
@@ -138,11 +178,47 @@ export function createSetEntryMethods(
       return { set, modalitySnapshot: modality };
     },
 
-    async updateSet(): Promise<SetEntryRecord> {
-      throw new Error("updateSet: Task 5");
+    async updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord> {
+      if (!isSetEntryId(id)) throw new NotFoundError(SET_NOT_FOUND);
+      return prisma.$transaction(async (tx) => {
+        const owner = await resolveOwnedSet(tx, actingUserId, id);
+        await assertWorkoutInProgress(tx, owner.workout_id);
+        // FOR UPDATE: two concurrent patches of one set serialize, so each
+        // merges onto what it actually overwrites.
+        const storedRows = await tx.$queryRaw<SetEntryDbRow[]>`
+          SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry" WHERE id = ${id}::uuid FOR UPDATE
+        `;
+        if (!storedRows[0]) throw new NotFoundError(SET_NOT_FOUND);
+        const next = mergeSetPatch(toSetRecord(storedRows[0]), patch);
+        assertSetMeasuresValid(owner.modality_snapshot as Modality, next);
+
+        // completed_at: stamped on the false→true transition, kept on a
+        // repeated true, cleared on false (§5).
+        const updated = await tx.$queryRaw<SetEntryDbRow[]>`
+          UPDATE "set_entry"
+          SET set_type = ${next.setType}, reps = ${next.reps}::smallint,
+              weight = ${next.weight}::numeric, weight_unit = ${next.weightUnit},
+              distance = ${next.distance}::numeric, distance_unit = ${next.distanceUnit},
+              duration_s = ${next.durationS}::integer, rpe = ${next.rpe}::numeric,
+              is_complete = ${next.isComplete}::boolean,
+              completed_at = CASE WHEN ${next.isComplete}::boolean THEN COALESCE(completed_at, now()) ELSE NULL END,
+              updated_at = now()
+          WHERE id = ${id}::uuid
+          RETURNING ${SET_ENTRY_COLUMNS}
+        `;
+        return toSetRecord(updated[0]!);
+      });
     },
-    async deleteSet(): Promise<void> {
-      throw new Error("deleteSet: Task 5");
+
+    async deleteSet(actingUserId: string, id: string): Promise<void> {
+      if (!isSetEntryId(id)) throw new NotFoundError(SET_NOT_FOUND);
+      await prisma.$transaction(async (tx) => {
+        const owner = await resolveOwnedSet(tx, actingUserId, id);
+        await assertWorkoutInProgress(tx, owner.workout_id);
+        // No renumbering: set_number is a permanent ordinal (D2, AC9).
+        const affected = await tx.$executeRaw`DELETE FROM "set_entry" WHERE id = ${id}::uuid`;
+        if (affected === 0) throw new NotFoundError(SET_NOT_FOUND);
+      });
     },
   };
 }
