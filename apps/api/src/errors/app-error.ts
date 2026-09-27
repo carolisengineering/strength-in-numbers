@@ -254,3 +254,19 @@ export class WorkoutInProgressExistsError extends AppError {
     super(internal);
   }
 }
+
+/** Spec 05.1 §5/§6.5 — a finish (PATCH /v1/workouts/{id} with endedAt) found a
+ * `working` set missing a measure its modality requires. No extension member:
+ * the body carries no set or exercise id (the same no-id-leak convention as
+ * WorkoutInProgressExistsError). */
+export class IncompleteWorkingSetsError extends AppError {
+  readonly status = 409;
+  readonly slug = "incomplete-working-sets";
+  readonly title = "Working sets incomplete";
+  readonly publicDetail =
+    "One or more working sets are missing required data and must be completed or removed before finishing this workout.";
+
+  constructor(internal = "a working set is missing a required measure") {
+    super(internal);
+  }
+}

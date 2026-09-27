@@ -6,6 +6,7 @@
  * (`isWorkoutId` / `isWorkoutExerciseId`), exactly as `exercise.prisma.ts`
  * does with `isExerciseId`.
  */
+import type { DistanceUnit, SetType, WeightUnit } from "@sin/core";
 
 export interface WorkoutRecord {
   id: string;
@@ -69,6 +70,45 @@ export interface UpdateWorkoutExerciseFields {
   position?: number;
   notes?: string | null;
 }
+
+/** One `set_entry` row (Spec 05.1 §4). `weightKg` / `distanceM` are the
+ * generated canonical-unit columns — read, never written. */
+export interface SetEntryRecord {
+  id: string;
+  workoutExerciseId: string;
+  setNumber: number;
+  setType: string;
+  reps: number | null;
+  weight: number | null;
+  weightUnit: string | null;
+  weightKg: number | null;
+  distance: number | null;
+  distanceUnit: string | null;
+  distanceM: number | null;
+  durationS: number | null;
+  rpe: number | null;
+  isComplete: boolean;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** `POST /v1/workout-exercises/{id}/sets` body, already schema-validated
+ * (Spec 05.1 §5). Omitted = not sent; `null` = explicitly empty. */
+export interface CreateSetFields {
+  setType?: SetType;
+  reps?: number | null;
+  weight?: number | null;
+  weightUnit?: WeightUnit | null;
+  distance?: number | null;
+  distanceUnit?: DistanceUnit | null;
+  durationS?: number | null;
+  rpe?: number | null;
+  isComplete?: boolean;
+}
+
+/** `PATCH /v1/sets/{id}` body — same shape as create (Spec 05.1 §5). */
+export type UpdateSetFields = CreateSetFields;
 
 /**
  * A fresh create (`201`) vs. an idempotent replay (`200`) — the route uses
