@@ -309,7 +309,11 @@ is `ON DELETE SET NULL`).
   `duration_s`, `rpe`, `is_complete BOOL`, `completed_at`.
   Which measures are required is validated per `modality` in `packages/core`, not
   by DB `CHECK`s, so an in-progress row can be half-filled. One integrity rule is
-  enforced at finish: a `working` set must have at least one measure populated.
+  enforced at finish: every `working` set must have each measure its modality
+  requires (the per-modality table is Spec 05.1 §6.1); `warmup`/`drop`/`failure`
+  sets are exempt. A set is addressed by its own `SetEntryId` (`POST` to create,
+  `PATCH`/`DELETE` by id — Spec 05.1 D1); `(workout_exercise_id, set_number)` is an
+  internal, append-only ordinal, not a client-facing address.
 
 Concurrency: two tabs editing the same in-progress workout are last-write-wins
 per row (per set once `set_entry` exists); `updated_at` is returned so a client
@@ -478,9 +482,11 @@ free has no pre-deploy hook), automated with the paid plan.
 ### 5.3 Logging & connectivity
 
 Decision: **online required** for v1 (per project constraint). The web app keeps
-the in-progress workout in a client store and `PUT`s each set to the server as it
-changes (debounced) — an idempotent upsert keyed by
-`(workout_exercise_id, set_number)`, per §6. If a write fails, the set is marked
+the in-progress workout in a client store and writes each set to the server as it
+changes (debounced) — `POST` once to create it, then `PATCH /sets/{id}` for every
+later edit, which is idempotent (Spec 05.1 §5). A retried *create* is not
+idempotent (no client key — see §6 "Idempotency"), so the client must not replay a
+create it can't confirm failed. If a write fails, the set is marked
 "unsynced" in the UI and retried with backoff; **Finish** is blocked only if
 unsynced changes remain, with a clear retry affordance.
 
@@ -529,8 +535,10 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   is rejected (`422`); `ended_at` on finish is bound by the same 5-minute
   future window (Spec 05.0 §6.4, D47).
 - **Idempotency:** workout creation uses `client_generated_id`; replaying the same
-  id returns the existing resource, never a duplicate. Set writes are naturally
-  idempotent (`PUT` a set by `(workout_exercise_id, set_number)`).
+  id returns the existing resource, never a duplicate. Set creation is not
+  idempotent under retry — there is no client-supplied key, so a double-submitted
+  `POST …/sets` creates two rows, the same accepted behavior as 05.0's
+  add-exercise; `PATCH /sets/{id}` is idempotent (Spec 05.1 D1).
 - **Contract:** DTOs are authored **once** as Zod schemas in `packages/core`;
   `fastify-type-provider-zod` wires them into Fastify route validation and
   handler typing, and `@fastify/swagger` **emits** an OpenAPI 3.1 document from
@@ -568,8 +576,9 @@ DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exercise_id, position? }
 PATCH  /workout-exercises/{id}    { position?, notes? }
 DELETE /workout-exercises/{id}
-PUT    /workout-exercises/{id}/sets/{setNumber}   { set_type, reps?, weight?, ... }
-DELETE /workout-exercises/{id}/sets/{setNumber}
+POST   /workout-exercises/{id}/sets   { setType?, reps?, weight?, weightUnit?, ... }
+PATCH  /sets/{id}                     { same fields, all optional }
+DELETE /sets/{id}
 GET    /exercises?since=          → catalog (global + custom), ETag
 POST   /exercises                 → custom exercise
 GET    /progress/exercises/{id}?metric=est_1rm&from=&to=
