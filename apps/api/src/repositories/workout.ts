@@ -38,7 +38,7 @@ export interface WorkoutExerciseRecord {
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
   /** Ordered by `position` ascending (§6.7). */
-  exercises: WorkoutExerciseRecord[];
+  exercises: WorkoutExerciseDetailRecord[];
 }
 
 /** The fields a caller supplies on create (Spec 05.0 §5, §6.1, §6.3). */
@@ -109,6 +109,18 @@ export interface CreateSetFields {
 
 /** `PATCH /v1/sets/{id}` body — same shape as create (Spec 05.1 §5). */
 export type UpdateSetFields = CreateSetFields;
+
+export interface WorkoutExerciseDetailRecord extends WorkoutExerciseRecord {
+  /** Ordered by `setNumber` ascending (Spec 05.1 AC12). */
+  sets: SetEntryRecord[];
+}
+
+/** `createSet`'s result: the route logs `set_created` with the parent's
+ * `modality_snapshot` (Spec 05.1 §6.6) without a second read. */
+export interface CreateSetResult {
+  set: SetEntryRecord;
+  modalitySnapshot: string;
+}
 
 /**
  * A fresh create (`201`) vs. an idempotent replay (`200`) — the route uses
@@ -206,4 +218,21 @@ export interface WorkoutRepository {
   /** Delete + close the position gap (§6.7). Throws `NotFoundError` or
    * `WorkoutFinishedError`. */
   deleteWorkoutExercise(actingUserId: string, id: string): Promise<void>;
+
+  /**
+   * Spec 05.1 §6.2/§6.3. Resolves the workout_exercise through its workout
+   * (404 not 403), validates the body against its modality (§6.1), then
+   * appends at `max(set_number) + 1` under a per-workout_exercise advisory
+   * lock. Throws `NotFoundError`, `WorkoutFinishedError`, `ValidationError`.
+   */
+  createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult>;
+
+  /** Spec 05.1 §6.4 + D10. Merge-then-validate against the stored row, under a
+   * `FOR SHARE` re-check of the parent workout. Throws `NotFoundError`,
+   * `WorkoutFinishedError`, `ValidationError`. */
+  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord>;
+
+  /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; no finished-workout
+   * exemption. Throws `NotFoundError`, `WorkoutFinishedError`. */
+  deleteSet(actingUserId: string, id: string): Promise<void>;
 }

@@ -30,6 +30,7 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
 } from "./workout-writes.js";
+import { createSetEntryMethods } from "./set-entry.prisma.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -207,6 +208,7 @@ export function createWorkoutRepository(
   }
 
   return {
+    ...createSetEntryMethods(prisma),
     async createWorkout(
       actingUserId: string,
       fields: CreateWorkoutFields,

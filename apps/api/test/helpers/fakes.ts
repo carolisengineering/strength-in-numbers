@@ -53,6 +53,8 @@ import type {
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
+  CreateSetResult,
+  SetEntryRecord,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 
@@ -372,7 +374,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const exercises = [...this.exercises.values()]
       .filter((e) => e.workoutId === w.id)
       .sort((a, b) => a.position - b.position);
-    return { ...w, exercises };
+    return { ...w, exercises: exercises.map((e) => ({ ...e, sets: [] })) };
   }
 
   async createWorkout(
@@ -560,6 +562,16 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         this.exercises.set(e.id, { ...e, position: e.position - 1 });
       }
     }
+  }
+
+  async createSet(): Promise<CreateSetResult> {
+    throw new Error("FakeWorkoutRepository.createSet: implemented in Task 7");
+  }
+  async updateSet(): Promise<SetEntryRecord> {
+    throw new Error("FakeWorkoutRepository.updateSet: implemented in Task 7");
+  }
+  async deleteSet(): Promise<void> {
+    throw new Error("FakeWorkoutRepository.deleteSet: implemented in Task 7");
   }
 }
 
