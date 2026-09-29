@@ -548,6 +548,14 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   diff`). No client codegen — consumer types come from `z.infer` on the shared
   schemas. The pipeline + the `/v1/me` migration onto it is Spec 03.0; Spec 02's
   `MeSchema` is the first such DTO and the pattern the rest copy.
+  Error responses are documented too (issue #28): every `/v1` operation lists
+  each problem+json status it can return, `$ref`ing a shared
+  `components.schemas.Problem`, with `type` narrowed to the exact problem URLs
+  that status carries on that operation. Routes declare their domain errors in
+  `config.problems` (documentation-only; `[]` when none); auth (401 / 403
+  `account-deleted` / 503), 500, and the schema-shape errors (422, plus 413 /
+  415 for a body) are added centrally by `src/openapi/problem-responses.ts`. A
+  documented `/v1` route with no `config.problems` fails boot.
 - **Response schemas are field allowlists:** the Zod serializer strips unknown
   keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
   The allowlist is over **keys**, not value formats: a response schema asserts

@@ -48,7 +48,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
 
   r.get(
     "/me",
-    { schema: { response: { 200: MeSchema } } },
+    { schema: { response: { 200: MeSchema } }, config: { problems: [] } },
     async (request) => ({
       ...view(request.user!),
       isNewUser: request.isNewUser === true,
@@ -57,7 +57,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
 
   r.patch(
     "/me",
-    { schema: { body: UpdateMeSchema, response: { 200: MeSchema } } },
+    { schema: { body: UpdateMeSchema, response: { 200: MeSchema } }, config: { problems: [] } },
     async (request) => {
       const body = request.body;
       const patch: ProfilePatch = {};

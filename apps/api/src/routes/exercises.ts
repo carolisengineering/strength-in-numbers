@@ -9,6 +9,15 @@ import {
   UpdateExerciseSchema,
   type Exercise,
 } from "@sin/core";
+import {
+  CustomExerciseLimitError,
+  ExerciseAlreadyOwnedError,
+  ExerciseImmutableError,
+  ExerciseImmutableUseForkError,
+  ExerciseRetiredError,
+  NotFoundError,
+  SyncTokenExpiredError,
+} from "../errors/app-error.js";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import { parseSyncToken } from "../repositories/sync-token.js";
@@ -79,6 +88,7 @@ export function registerExerciseRoutes(
         querystring: CatalogSinceQuery,
         response: { 200: ExercisesResponse, 304: z.undefined() },
       },
+      config: { problems: [SyncTokenExpiredError] },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -109,7 +119,10 @@ export function registerExerciseRoutes(
 
   r.post(
     "/exercises",
-    { schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } } },
+    {
+      schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } },
+      config: { problems: [CustomExerciseLimitError] },
+    },
     async (request, reply) => {
       const actingUserId = request.user!.id;
       const created = await deps.exerciseRepository.createExercise(
@@ -133,6 +146,7 @@ export function registerExerciseRoutes(
         body: UpdateExerciseSchema,
         response: { 200: ExerciseSchema },
       },
+      config: { problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError] },
     },
     async (request) => {
       const actingUserId = request.user!.id;
@@ -166,6 +180,9 @@ export function registerExerciseRoutes(
         body: forkBodySchema,
         response: { 201: ExerciseSchema },
       },
+      config: {
+        problems: [NotFoundError, ExerciseAlreadyOwnedError, ExerciseRetiredError, CustomExerciseLimitError],
+      },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -189,7 +206,10 @@ export function registerExerciseRoutes(
 
   r.delete(
     "/exercises/:id",
-    { schema: { params: exerciseIdParams, response: { 204: z.undefined() } } },
+    {
+      schema: { params: exerciseIdParams, response: { 204: z.undefined() } },
+      config: { problems: [ExerciseImmutableError, NotFoundError] },
+    },
     async (request, reply) => {
       const actingUserId = request.user!.id;
       await deps.exerciseRepository.deleteExercise(actingUserId, request.params.id);

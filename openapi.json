@@ -14,7 +14,55 @@
         "description": "Auth0-issued access token for the API audience (Spec 01 §5)."
       }
     },
-    "schemas": {}
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "description": "RFC 9457 problem details (Spec 01 §5).",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "message"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   },
   "paths": {
     "/v1/me": {
@@ -75,6 +123,99 @@
                     "createdAt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -173,6 +314,168 @@
                     "createdAt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -325,6 +628,145 @@
           },
           "304": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Sync token expired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/sync-token-expired"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -493,6 +935,191 @@
                     "updatedAt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Custom exercise limit reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/exercise-limit-reached"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -672,6 +1299,215 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Exercise immutable — use fork / Exercise retired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/exercise-immutable-use-fork",
+                            "https://strengthinnumbers.app/problems/exercise-retired"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -689,6 +1525,146 @@
         "responses": {
           "204": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted / Exercise immutable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted",
+                            "https://strengthinnumbers.app/problems/exercise-immutable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -873,6 +1849,216 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Exercise already owned / Exercise retired / Custom exercise limit reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/exercise-already-owned",
+                            "https://strengthinnumbers.app/problems/exercise-retired",
+                            "https://strengthinnumbers.app/problems/exercise-limit-reached"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -923,6 +2109,99 @@
           },
           "304": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -973,6 +2252,99 @@
           },
           "304": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -1214,6 +2586,191 @@
                     "updatedAt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout already in progress",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-in-progress-exists"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1562,6 +3119,122 @@
                     "exercises"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -1923,6 +3596,145 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -2077,6 +3889,215 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished / Working sets incomplete",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished",
+                            "https://strengthinnumbers.app/problems/incomplete-working-sets"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -2094,6 +4115,145 @@
         "responses": {
           "204": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -2221,6 +4381,215 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished / Exercise retired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished",
+                            "https://strengthinnumbers.app/problems/exercise-retired"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -2340,6 +4709,214 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -2357,6 +4934,168 @@
         "responses": {
           "204": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -2669,6 +5408,214 @@
                     "updatedAt"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -2987,6 +5934,214 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/payload-too-large"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unsupported-media-type"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -3004,6 +6159,168 @@
         "responses": {
           "204": {
             "description": "Default Response"
+          },
+          "401": {
+            "description": "Unauthenticated / Invalid token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/unauthenticated",
+                            "https://strengthinnumbers.app/problems/invalid-token"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account deleted",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/account-deleted"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout finished",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-finished"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/validation-error"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/internal"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication temporarily unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/auth-unavailable"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
