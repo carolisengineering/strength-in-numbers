@@ -12,7 +12,9 @@ import {
   type Workout,
   type WorkoutDetail,
   type WorkoutExercise,
+  type WorkoutExerciseDetail,
 } from "@sin/core";
+import { toSetEntryDto } from "./sets.js";
 import { assertStartedAtInBounds } from "../repositories/workout-writes.js";
 import type {
   WorkoutDetailRecord,
@@ -66,7 +68,12 @@ function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise {
 }
 
 function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
-  return { ...toWorkoutDto(r), exercises: r.exercises.map(toWorkoutExerciseDto) };
+  return {
+    ...toWorkoutDto(r),
+    exercises: r.exercises.map(
+      (e): WorkoutExerciseDetail => ({ ...toWorkoutExerciseDto(e), sets: e.sets.map(toSetEntryDto) }),
+    ),
+  };
 }
 
 export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDeps): void {

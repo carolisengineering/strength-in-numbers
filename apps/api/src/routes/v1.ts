@@ -6,6 +6,7 @@ import { registerAuthcheckRoute } from "./authcheck.js";
 import { registerMeRoutes } from "./me.js";
 import { registerExerciseRoutes } from "./exercises.js";
 import { registerReferenceRoutes } from "./reference.js";
+import { registerSetRoutes } from "./sets.js";
 import { registerWorkoutRoutes } from "./workouts.js";
 
 export interface V1RouteDeps {
@@ -23,4 +24,5 @@ export function registerV1Routes(
   registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerWorkoutRoutes(app, { workoutRepository: deps.workoutRepository });
+  registerSetRoutes(app, { workoutRepository: deps.workoutRepository });
 }

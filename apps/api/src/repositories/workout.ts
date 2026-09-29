@@ -6,6 +6,7 @@
  * (`isWorkoutId` / `isWorkoutExerciseId`), exactly as `exercise.prisma.ts`
  * does with `isExerciseId`.
  */
+import type { DistanceUnit, SetType, WeightUnit } from "@sin/core";
 
 export interface WorkoutRecord {
   id: string;
@@ -37,7 +38,7 @@ export interface WorkoutExerciseRecord {
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
   /** Ordered by `position` ascending (§6.7). */
-  exercises: WorkoutExerciseRecord[];
+  exercises: WorkoutExerciseDetailRecord[];
 }
 
 /** The fields a caller supplies on create (Spec 05.0 §5, §6.1, §6.3). */
@@ -68,6 +69,57 @@ export interface AddWorkoutExerciseFields {
 export interface UpdateWorkoutExerciseFields {
   position?: number;
   notes?: string | null;
+}
+
+/** One `set_entry` row (Spec 05.1 §4). `weightKg` / `distanceM` are the
+ * generated canonical-unit columns — read, never written. */
+export interface SetEntryRecord {
+  id: string;
+  workoutExerciseId: string;
+  setNumber: number;
+  setType: string;
+  reps: number | null;
+  weight: number | null;
+  weightUnit: string | null;
+  weightKg: number | null;
+  distance: number | null;
+  distanceUnit: string | null;
+  distanceM: number | null;
+  durationS: number | null;
+  rpe: number | null;
+  isComplete: boolean;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** `POST /v1/workout-exercises/{id}/sets` body, already schema-validated
+ * (Spec 05.1 §5). Omitted = not sent; `null` = explicitly empty. */
+export interface CreateSetFields {
+  setType?: SetType;
+  reps?: number | null;
+  weight?: number | null;
+  weightUnit?: WeightUnit | null;
+  distance?: number | null;
+  distanceUnit?: DistanceUnit | null;
+  durationS?: number | null;
+  rpe?: number | null;
+  isComplete?: boolean;
+}
+
+/** `PATCH /v1/sets/{id}` body — same shape as create (Spec 05.1 §5). */
+export type UpdateSetFields = CreateSetFields;
+
+export interface WorkoutExerciseDetailRecord extends WorkoutExerciseRecord {
+  /** Ordered by `setNumber` ascending (Spec 05.1 AC12). */
+  sets: SetEntryRecord[];
+}
+
+/** `createSet`'s result: the route logs `set_created` with the parent's
+ * `modality_snapshot` (Spec 05.1 §6.6) without a second read. */
+export interface CreateSetResult {
+  set: SetEntryRecord;
+  modalitySnapshot: string;
 }
 
 /**
@@ -128,7 +180,9 @@ export interface WorkoutRepository {
    * every check (Global Constraints, this plan). Throws `NotFoundError`,
    * `WorkoutFinishedError` (409, target already has `ended_at` set), or
    * `ValidationError` (422, `endedAt < startedAt` or the skew window —
-   * evaluated inside the lock, after the finished-check).
+   * evaluated inside the lock, after the finished-check), or
+   * `IncompleteWorkingSetsError` (409, Spec 05.1 §6.5 — a finish with a
+   * `working` set missing a required measure; checked after the endedAt rules).
    */
   updateWorkout(
     actingUserId: string,
@@ -166,4 +220,21 @@ export interface WorkoutRepository {
   /** Delete + close the position gap (§6.7). Throws `NotFoundError` or
    * `WorkoutFinishedError`. */
   deleteWorkoutExercise(actingUserId: string, id: string): Promise<void>;
+
+  /**
+   * Spec 05.1 §6.2/§6.3. Resolves the workout_exercise through its workout
+   * (404 not 403), validates the body against its modality (§6.1), then
+   * appends at `max(set_number) + 1` under a per-workout_exercise advisory
+   * lock. Throws `NotFoundError`, `WorkoutFinishedError`, `ValidationError`.
+   */
+  createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult>;
+
+  /** Spec 05.1 §6.4 + D10. Merge-then-validate against the stored row, under a
+   * `FOR SHARE` re-check of the parent workout. Throws `NotFoundError`,
+   * `WorkoutFinishedError`, `ValidationError`. */
+  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord>;
+
+  /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; no finished-workout
+   * exemption. Throws `NotFoundError`, `WorkoutFinishedError`. */
+  deleteSet(actingUserId: string, id: string): Promise<void>;
 }

@@ -63,6 +63,7 @@ describe("AC8 — finish transition and immutability", () => {
     const inProgress = baseRow();
     const finished = { ...inProgress, ended_at: new Date("2026-09-15T11:00:00.000Z") };
     stub.queueRows([inProgress]); // FOR UPDATE lock read
+    stub.queueRows([]); // Spec 05.1 finish-integrity query: no working sets
     stub.queueRows([finished]); // UPDATE ... RETURNING
     stub.queueRows([{ n: 3 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
@@ -112,6 +113,7 @@ describe("AC8 — finish transition and immutability", () => {
     const inProgress = baseRow();
     const finished = { ...inProgress, ended_at: inProgress.started_at };
     stub.queueRows([inProgress]);
+    stub.queueRows([]); // Spec 05.1 finish-integrity query: no working sets
     stub.queueRows([finished]);
     stub.queueRows([{ n: 0 }]); // exercise count (§9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());

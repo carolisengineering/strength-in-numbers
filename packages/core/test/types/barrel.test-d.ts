@@ -4,6 +4,20 @@ import { describe, expectTypeOf, it } from "vitest";
 // name list to drift out of sync with check-exports.mjs.
 import {
   brandId,
+  SetEntryIdSchema,
+  parseSetEntryId,
+  isSetEntryId,
+  MEASURE_NAMES,
+  requiredMeasuresFor,
+  forbiddenMeasuresFor,
+  SET_REPS_MAX,
+  SET_WEIGHT_MAX,
+  SET_DISTANCE_MAX,
+  SET_DURATION_S_MAX,
+  SetEntrySchema,
+  CreateSetSchema,
+  UpdateSetSchema,
+  WorkoutExerciseDetailSchema,
   CatalogName,
   CatalogSinceQuery,
   DISTANCE_UNIT_VALUES,
@@ -53,6 +67,20 @@ import {
 
 describe("barrel — src/index.ts re-exports the whole stable surface", () => {
   it("value exports resolve", () => {
+    expectTypeOf(SetEntryIdSchema).not.toBeAny();
+    expectTypeOf(parseSetEntryId).not.toBeAny();
+    expectTypeOf(isSetEntryId).not.toBeAny();
+    expectTypeOf(MEASURE_NAMES).not.toBeAny();
+    expectTypeOf(requiredMeasuresFor).not.toBeAny();
+    expectTypeOf(forbiddenMeasuresFor).not.toBeAny();
+    expectTypeOf(SET_REPS_MAX).not.toBeAny();
+    expectTypeOf(SET_WEIGHT_MAX).not.toBeAny();
+    expectTypeOf(SET_DISTANCE_MAX).not.toBeAny();
+    expectTypeOf(SET_DURATION_S_MAX).not.toBeAny();
+    expectTypeOf(SetEntrySchema).not.toBeAny();
+    expectTypeOf(CreateSetSchema).not.toBeAny();
+    expectTypeOf(UpdateSetSchema).not.toBeAny();
+    expectTypeOf(WorkoutExerciseDetailSchema).not.toBeAny();
     expectTypeOf(toCanonicalKg).toBeFunction();
     expectTypeOf(toCanonicalMeters).toBeFunction();
     expectTypeOf(brandId).toBeFunction();

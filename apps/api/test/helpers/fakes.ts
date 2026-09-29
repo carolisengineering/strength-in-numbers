@@ -1,10 +1,14 @@
 import {
   isExerciseId,
   isWorkoutExerciseId,
+  isSetEntryId,
   isWorkoutId,
   localDateFor,
   MAX_CUSTOM_EXERCISES_PER_USER,
   offsetMinutesForZone,
+  toCanonicalKg,
+  toCanonicalMeters,
+  type Modality,
 } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import type {
@@ -28,6 +32,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
+  IncompleteWorkingSetsError,
   NotFoundError,
   ValidationError,
   WorkoutFinishedError,
@@ -41,6 +46,13 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
 } from "../../src/repositories/workout-writes.js";
+import {
+  assertSetMeasuresValid,
+  fieldsToMeasures,
+  isWorkingSetComplete,
+  mergeSetPatch,
+  type MergedSet,
+} from "../../src/repositories/set-writes.js";
 import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
@@ -53,6 +65,10 @@ import type {
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
+  CreateSetFields,
+  CreateSetResult,
+  SetEntryRecord,
+  UpdateSetFields,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 
@@ -358,6 +374,7 @@ export function makeWorkoutRecord(overrides: Partial<WorkoutRecord> = {}): Worko
 export class FakeWorkoutRepository implements WorkoutRepository {
   workouts = new Map<string, WorkoutRecord>();
   exercises = new Map<string, WorkoutExerciseRecord>();
+  sets = new Map<string, SetEntryRecord>();
   private byClientKey = new Map<string, string>();
 
   constructor(private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository()) {}
@@ -371,8 +388,31 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   private detail(w: WorkoutRecord): WorkoutDetailRecord {
     const exercises = [...this.exercises.values()]
       .filter((e) => e.workoutId === w.id)
-      .sort((a, b) => a.position - b.position);
+      .sort((a, b) => a.position - b.position)
+      .map((e) => ({
+        ...e,
+        sets: [...this.sets.values()]
+          .filter((s) => s.workoutExerciseId === e.id)
+          .sort((a, b) => a.setNumber - b.setNumber),
+      }));
     return { ...w, exercises };
+  }
+
+  /** Canonical columns the way Postgres generates them (numeric(…,3) rounding). */
+  private static withCanonical(m: MergedSet): Pick<SetEntryRecord, "weightKg" | "distanceM"> {
+    const round3 = (x: number) => Math.round(x * 1000) / 1000;
+    return {
+      weightKg: m.weight !== null && m.weightUnit !== null ? round3(toCanonicalKg(m.weight, m.weightUnit)) : null,
+      distanceM:
+        m.distance !== null && m.distanceUnit !== null ? round3(toCanonicalMeters(m.distance, m.distanceUnit)) : null,
+    };
+  }
+
+  /** Drops every set under the given workout_exercise ids (the FK cascade). */
+  private cascadeSets(workoutExerciseIds: Set<string>): void {
+    for (const [id, s] of this.sets) {
+      if (workoutExerciseIds.has(s.workoutExerciseId)) this.sets.delete(id);
+    }
   }
 
   async createWorkout(
@@ -444,6 +484,16 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         endedAt = d;
       }
     }
+    // Spec 05.1 §6.5: a finish must find every working set complete.
+    if (endedAt !== null && w.endedAt === null) {
+      for (const we of this.exercises.values()) {
+        if (we.workoutId !== id) continue;
+        for (const s of this.sets.values()) {
+          if (s.workoutExerciseId !== we.id || s.setType !== "working") continue;
+          if (!isWorkingSetComplete(we.modalitySnapshot as Modality, s)) throw new IncompleteWorkingSetsError();
+        }
+      }
+    }
     const updated: WorkoutRecord = {
       ...w,
       title: "title" in patch ? patch.title ?? null : w.title,
@@ -461,9 +511,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const wasFinished = w.endedAt !== null;
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
     this.workouts.delete(id);
+    const removed = new Set<string>();
     for (const [exId, ex] of this.exercises) {
-      if (ex.workoutId === id) this.exercises.delete(exId);
+      if (ex.workoutId === id) {
+        this.exercises.delete(exId);
+        removed.add(exId);
+      }
     }
+    this.cascadeSets(removed);
     return { wasFinished, exerciseCount };
   }
 
@@ -555,11 +610,65 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
     if (workout.endedAt !== null) throw new WorkoutFinishedError();
     this.exercises.delete(id);
+    this.cascadeSets(new Set([id]));
     for (const e of this.exercises.values()) {
       if (e.workoutId === we.workoutId && e.position > we.position) {
         this.exercises.set(e.id, { ...e, position: e.position - 1 });
       }
     }
+  }
+
+  async createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult> {
+    const { we, workout } = this.ownedExerciseOrThrow(actingUserId, workoutExerciseId);
+    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    const next = fieldsToMeasures(fields);
+    assertSetMeasuresValid(we.modalitySnapshot as Modality, next);
+    const siblings = [...this.sets.values()].filter((s) => s.workoutExerciseId === we.id);
+    const now = new Date();
+    const set: SetEntryRecord = {
+      id: uuidv7(),
+      workoutExerciseId: we.id,
+      setNumber: Math.max(0, ...siblings.map((s) => s.setNumber)) + 1,
+      ...next,
+      ...FakeWorkoutRepository.withCanonical(next),
+      completedAt: next.isComplete ? now : null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sets.set(set.id, set);
+    return { set, modalitySnapshot: we.modalitySnapshot };
+  }
+
+  private ownedSetOrThrow(
+    actingUserId: string,
+    id: string,
+  ): { set: SetEntryRecord; we: WorkoutExerciseRecord; workout: WorkoutRecord } {
+    const set = isSetEntryId(id) ? this.sets.get(id) : undefined;
+    if (!set) throw new NotFoundError("set not found");
+    const { we, workout } = this.ownedExerciseOrThrow(actingUserId, set.workoutExerciseId);
+    return { set, we, workout };
+  }
+
+  async updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord> {
+    const { set, we, workout } = this.ownedSetOrThrow(actingUserId, id);
+    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    const next = mergeSetPatch(set, patch);
+    assertSetMeasuresValid(we.modalitySnapshot as Modality, next);
+    const updated: SetEntryRecord = {
+      ...set,
+      ...next,
+      ...FakeWorkoutRepository.withCanonical(next),
+      completedAt: next.isComplete ? (set.completedAt ?? new Date()) : null,
+      updatedAt: new Date(set.updatedAt.getTime() + 1000),
+    };
+    this.sets.set(id, updated);
+    return updated;
+  }
+
+  async deleteSet(actingUserId: string, id: string): Promise<void> {
+    const { workout } = this.ownedSetOrThrow(actingUserId, id);
+    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    this.sets.delete(id);
   }
 }
 
