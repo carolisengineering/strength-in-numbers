@@ -553,9 +553,11 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   `components.schemas.Problem`, with `type` narrowed to the exact problem URLs
   that status carries on that operation. Routes declare their domain errors in
   `config.problems` (documentation-only; `[]` when none); auth (401 / 403
-  `account-deleted` / 503), 500, and the schema-shape errors (422, plus 413 /
-  415 for a body) are added centrally by `src/openapi/problem-responses.ts`. A
-  documented `/v1` route with no `config.problems` fails boot.
+  `account-deleted` / 503), 500, and the request-shape errors (422 for
+  params / querystring; 413 / 415 / 422 for any method Fastify parses a body
+  on — POST, PUT, PATCH, DELETE — whether or not the route declares one) are
+  added centrally by `src/openapi/problem-responses.ts`. A documented `/v1`
+  route with no `config.problems` fails boot.
 - **Response schemas are field allowlists:** the Zod serializer strips unknown
   keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
   The allowlist is over **keys**, not value formats: a response schema asserts

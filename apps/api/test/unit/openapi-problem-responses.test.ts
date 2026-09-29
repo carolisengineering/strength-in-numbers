@@ -42,9 +42,18 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
     });
   });
 
+  it("adds 413 / 415 / 422 to a body-less DELETE — Fastify parses bodies by method, not schema", () => {
+    const del = byStatus(
+      problemGroupsFor({ method: "DELETE", url: "/v1/x/:id", schema: { params: {} }, config: { problems: [] } }),
+    );
+    expect(del[422]).toEqual([P("validation-error")]);
+    expect(del[413]).toEqual([P("payload-too-large")]);
+    expect(del[415]).toEqual([P("unsupported-media-type")]);
+  });
+
   it("adds 422 for params or querystring, and 413 / 415 only when there is a body", () => {
     const params = byStatus(
-      problemGroupsFor({ method: "DELETE", url: "/v1/x/:id", schema: { params: {} }, config: { problems: [] } }),
+      problemGroupsFor({ method: "GET", url: "/v1/x/:id", schema: { params: {} }, config: { problems: [] } }),
     );
     expect(params[422]).toEqual([P("validation-error")]);
     expect(params[413]).toBeUndefined();

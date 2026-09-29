@@ -99,6 +99,9 @@ export interface ProblemRouteLike {
   config?: { problems?: ReadonlyArray<ProblemClass> };
 }
 
+/** Methods whose request body Fastify's content-type parser reads. */
+const BODY_PARSING_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 const methodsOf = (route: ProblemRouteLike): readonly string[] =>
   typeof route.method === "string" ? [route.method] : route.method;
 
@@ -144,7 +147,10 @@ export function problemGroupsFor(route: ProblemRouteLike): ProblemGroup[] | unde
   }
 
   const schema = route.schema ?? {};
-  const hasBody = schema.body !== undefined;
+  // Fastify parses a body by method, not by whether the route declares one: a
+  // body-less DELETE still answers 413 / 415 / 422 for a bad or oversized body.
+  const hasBody =
+    schema.body !== undefined || methodsOf(route).some((m) => BODY_PARSING_METHODS.has(m));
   const hasInput = hasBody || schema.params !== undefined || schema.querystring !== undefined;
 
   return groupByStatus([

@@ -9,7 +9,9 @@ import { buildTestApp } from "../helpers/build-test-app.js";
  * can raise means updating MATRIX on purpose. The declared (domain) errors are
  * the ones each route lists in `config.problems`; the auth / 500 /
  * shape-implied groups are added by `withCentral` exactly as
- * `problemGroupsFor` does.
+ * `problemGroupsFor` does. "body" means Fastify parses a request body for the
+ * method (POST / PUT / PATCH / DELETE) — so a body-less DELETE still documents
+ * 413 / 415 / 422, which it really returns for a bad or oversized body.
  */
 
 type Slugs = Record<number, string[]>;
@@ -50,7 +52,7 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached"],
   }),
-  "DELETE /v1/exercises/{id}": withCentral("input", {
+  "DELETE /v1/exercises/{id}": withCentral("body", {
     403: ["exercise-immutable"],
     404: ["not-found"],
   }),
@@ -61,7 +63,7 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["workout-finished", "incomplete-working-sets"],
   }),
-  "DELETE /v1/workouts/{id}": withCentral("input", { 404: ["not-found"] }),
+  "DELETE /v1/workouts/{id}": withCentral("body", { 404: ["not-found"] }),
   "POST /v1/workouts/{id}/exercises": withCentral("body", {
     404: ["not-found"],
     409: ["workout-finished", "exercise-retired"],
@@ -70,7 +72,7 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
-  "DELETE /v1/workout-exercises/{id}": withCentral("input", {
+  "DELETE /v1/workout-exercises/{id}": withCentral("body", {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
@@ -82,7 +84,7 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
-  "DELETE /v1/sets/{id}": withCentral("input", {
+  "DELETE /v1/sets/{id}": withCentral("body", {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
