@@ -63,7 +63,7 @@ interface OperationLike {
 
 /** The HTTP-method keys a `PathItemObject` may carry (the rest — `parameters`,
  * `summary`, `$ref`, etc. — are not operations and are left alone). */
-const HTTP_METHODS = [
+export const HTTP_METHODS = [
   "get",
   "put",
   "post",

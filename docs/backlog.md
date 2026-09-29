@@ -15,10 +15,11 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-3](#bl-3) | Catalog writes | `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
 | [BL-4](#bl-4) | Testing | Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
 | [BL-5](#bl-5) | Observability | Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
-| [BL-6](#bl-6) | API contract | `openapi.json` documents only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
+| [BL-6](#bl-6) | API contract | **Resolved (2026-09-28, #28)** — `openapi.json` documented only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
 | [BL-7](#bl-7) | API contract | **Resolved (2026-09-24)** — `@fastify/swagger` forced `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
 | [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
 | [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
+| [BL-10](#bl-10) | Error contract | A malformed percent-encoded URL gets Fastify's plain-JSON 400, not problem+json | Minor | 2026-09-28 |
 
 ---
 
@@ -141,6 +142,18 @@ rejection counters can hang off the same change.
 
 ## BL-6
 
+**Status: Resolved (2026-09-28, GitHub #28)** by
+`apps/api/src/openapi/problem-responses.ts`, wired into the `fastifySwagger`
+registration in `apps/api/src/app.ts` beside BL-7's transform. Every documented
+`/v1` operation (not just the catalog writes) now lists each problem+json status
+it can return, `$ref`ing a shared `components.schemas.Problem`, with `type`
+narrowed to the exact problem URLs that status carries on that operation. Routes
+declare their domain errors in `config.problems`; auth, 500 and request-shape
+errors are added centrally; a documented `/v1` route with no declaration fails
+boot. `openapi-problem-matrix.test.ts` pins the full operation × status matrix.
+The one status still not documented is the malformed-URL 400 — see BL-10. The
+analysis below is kept as history.
+
 **`openapi.json` documents only success responses for the catalog write operations.**
 
 The four new operations declare `201`/`200`/`204` only. The 403/409/422 matrix
@@ -237,3 +250,46 @@ make the server answer `410` to every `1.` token (bumping the version prefix doe
 this with no schema change) so clients resync once. Spec 15 must list this as an
 explicit cutover step. Earlier, if a database or branch restore is ever performed
 against an environment with real clients holding tokens (currently none).
+
+## BL-10
+
+**A malformed percent-encoded URL gets Fastify's plain-JSON 400, not problem+json.**
+
+Reproduced 2026-09-28 with `app.inject` against `buildTestApp`:
+`GET /v1/workouts/%E0%A4%A` (or `/v1/me%`) answers
+
+```
+400 application/json
+{"error":"Bad Request","code":"FST_ERR_BAD_URL","message":"'/v1/workouts/%E0%A4%A' is not a valid url component","statusCode":400}
+```
+
+Fastify rejects the URL in its router (`onBadUrl`) before any hook or the error
+handler runs, so `registerErrorContract` never sees it. The `FST_ERR_BAD_URL`
+branch in `normalizeError` (`src/errors/problem.ts`, the "any other 400"
+`BadRequestError` case) is therefore unreachable for this input. Consequences:
+- The body breaks the RFC 9457 contract (Spec 01 §5): wrong media type, and no
+  `type` / `title` / `instance` for a client to act on.
+- It echoes the raw request path back in `message`. The Spec 01 convention is a
+  fixed, generic `publicDetail`, and the `validation-error` mapper deliberately
+  never reflects submitted values.
+- Found during #28: the 400 can't honestly be documented in `openapi.json` until
+  it is actually problem+json. #28 left it out rather than document a response
+  the server doesn't send.
+
+Low practical impact: real clients build URLs from ids they were given, so only
+a hand-crafted or buggy request hits this.
+
+**Why deferred:** #28 was documentation-only; fixing this changes runtime
+behaviour on the error path.
+
+**Done looks like:**
+- A `frameworkErrors` handler in the `Fastify({...})` options in `app.ts` maps
+  `FST_ERR_BAD_URL` (and any other framework error that bypasses the handler) to
+  `problemResponse(reply, new BadRequestError(...))`, so the response is
+  `application/problem+json` with the generic `bad-request` detail.
+- A test asserts the status, the media type, and that the raw path is not echoed.
+- 400 `bad-request` is added to the central `/v1` groups in
+  `src/openapi/problem-responses.ts`, at least for every route with `params`
+  (and possibly all `/v1` routes, since any path can be malformed). Then the
+  `openapi-problem-matrix.test.ts` matrix is updated and `openapi.json` is
+  re-emitted.

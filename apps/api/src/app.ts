@@ -6,11 +6,7 @@ import Fastify, {
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
-import {
-  jsonSchemaTransform,
-  serializerCompiler,
-  validatorCompiler,
-} from "fastify-type-provider-zod";
+import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
 import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
@@ -20,6 +16,7 @@ import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
 import { markNullableBodiesOptional } from "./openapi/optional-body.js";
+import { addProblemResponses, problemAwareTransform } from "./openapi/problem-responses.js";
 
 /**
  * Fastify application assembly (Spec 01 §5.5, §6).
@@ -197,7 +194,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       },
       security: [{ bearerAuth: [] }],
     },
-    transform: jsonSchemaTransform,
+    // #28: `problemAwareTransform` wraps `jsonSchemaTransform` and tags each /v1
+    // route with its problem groups; `addProblemResponses` turns those into
+    // documented problem+json responses — see `openapi/problem-responses.ts`.
+    transform: problemAwareTransform,
     // BL-7: correct `requestBody.required` for routes whose body schema
     // admits `null` (e.g. the fork overlay) — see `openapi/optional-body.ts`.
     // Runs inside every `app.swagger()` call, so the served route, the emit
@@ -206,7 +206,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // OpenAPI 3.1 above, so the `swaggerObject` arm is unreachable here.
     transformObject: (documentObject) =>
       "openapiObject" in documentObject
-        ? markNullableBodiesOptional(documentObject.openapiObject)
+        ? addProblemResponses(markNullableBodiesOptional(documentObject.openapiObject))
         : documentObject.swaggerObject,
   });
 

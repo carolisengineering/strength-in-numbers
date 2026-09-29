@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { CreateSetSchema, SetEntrySchema, UpdateSetSchema, type SetEntry } from "@sin/core";
+import { NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
 import type { SetEntryRecord, WorkoutRepository } from "../repositories/workout.js";
 
 /**
@@ -47,7 +48,10 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
 
   r.post(
     "/workout-exercises/:id/sets",
-    { schema: { params: idParams, body: CreateSetSchema, response: { 201: SetEntrySchema } } },
+    {
+      schema: { params: idParams, body: CreateSetSchema, response: { 201: SetEntrySchema } },
+      config: { problems: [NotFoundError, WorkoutFinishedError] },
+    },
     async (request, reply) => {
       const actingUserId = request.user!.id;
       const { set, modalitySnapshot } = await deps.workoutRepository.createSet(
@@ -73,7 +77,10 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
 
   r.patch(
     "/sets/:id",
-    { schema: { params: idParams, body: UpdateSetSchema, response: { 200: SetEntrySchema } } },
+    {
+      schema: { params: idParams, body: UpdateSetSchema, response: { 200: SetEntrySchema } },
+      config: { problems: [NotFoundError, WorkoutFinishedError] },
+    },
     async (request) => {
       const updated = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
       return toSetEntryDto(updated);
@@ -82,7 +89,10 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
 
   r.delete(
     "/sets/:id",
-    { schema: { params: idParams, response: { 204: z.undefined() } } },
+    {
+      schema: { params: idParams, response: { 204: z.undefined() } },
+      config: { problems: [NotFoundError, WorkoutFinishedError] },
+    },
     async (request, reply) => {
       await deps.workoutRepository.deleteSet(request.user!.id, request.params.id);
       reply.code(204).send();
