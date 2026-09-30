@@ -329,7 +329,7 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
 |---|---|---|---|
 | `NODE_ENV` | yes | `production` | |
 | `PORT` | yes | `3000` | Render sets it |
-| `DATABASE_URL` | yes | `postgres://…?sslmode=require&sslaccept=strict&connection_limit=8&pool_timeout=10` | Use Render's **internal** connection string; must carry `sslmode=require`, `sslaccept=strict` (server-certificate + hostname verification, #8) and an explicit `connection_limit` (see below). Not libpq's `verify-full` — Prisma's engine downgrades unknown modes to `prefer`, and `resolveDatabaseUrl` rejects them at boot. |
+| `DATABASE_URL` | yes | `postgres://…?sslmode=require&sslaccept=strict&connection_limit=8&pool_timeout=10` | Staging is Neon (runbook B1), not Render Postgres: use the **direct** host (no `-pooler`). `sslaccept=strict` verifies the hostname against the server certificate, so the URL must use the public hostname the cert is issued for — a private/internal DB hostname would be rejected at boot. Must carry `sslmode=require`, `sslaccept=strict` (server-certificate + hostname verification, #8) and an explicit `connection_limit` (see below). Not libpq's `verify-full` — Prisma's engine downgrades unknown modes to `prefer`, so `loadConfig` rejects it. |
 | `AUTH0_ISSUER` | yes | `https://si-staging.us.auth0.com/` | trailing slash required |
 | `AUTH0_AUDIENCE` | yes | `https://api.strengthinnumbers.app` | API identifier |
 | `AUTH0_CLAIM_NAMESPACE` | yes | `https://strengthinnumbers.app/` | prefix for custom claims; API reads `${ns}email`, `${ns}email_verified` (Q3-A) |
@@ -452,10 +452,12 @@ auth-plugin + user-repo coverage ≥ 90%; `packages/core` purity check passes;
 - `services:` one `web` service `si-api`, `runtime: image` built from the
   `Dockerfile`; health-check path `/healthz`; pre-deploy
   `pnpm prisma migrate deploy`.
-- `databases:` `si-postgres` (managed, per environment). The service's
-  `DATABASE_URL` is the Render **internal** URL with
-  `?sslmode=require&sslaccept=strict&connection_limit=8` appended (§8, Q9), not
-  the raw `fromDatabase` value.
+- `databases:` — none in the blueprint today; staging Postgres is **Neon**
+  (runbook B1) and `DATABASE_URL` is a `sync: false` dashboard secret: the Neon
+  direct-host string with `?sslmode=require&sslaccept=strict&connection_limit=8`
+  (§8, Q9). If a Render-managed `si-postgres` is ever added, its *internal*
+  hostname is not what the certificate is issued for — `sslaccept=strict` would
+  reject it — so use the external hostname or a CA via `sslcert`.
 - `envVarGroups:` `api-shared` (non-secret — incl. `WEB_ORIGIN`, `AUTH0_*`,
   `AUTH0_CLAIM_NAMESPACE`); secrets set in the Render dashboard.
 - Staging auto-deploys from `main`; production deploys on a git tag / manual

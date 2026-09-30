@@ -33,6 +33,9 @@ export function resolveDatabaseUrl(rawUrl: string): string {
     url.searchParams.set("sslmode", "require");
   }
   const sslmode = url.searchParams.get("sslmode") ?? "require";
+  // The server never reaches this branch — `loadConfig` rejects these modes
+  // first as a ConfigError. It stays because the seed CLI builds its client
+  // from the raw env without going through `loadConfig`.
   if (!PRISMA_SSL_MODES.has(sslmode)) {
     throw new Error(
       `DATABASE_URL: sslmode=${sslmode} is not supported by Prisma's engine (it would ` +
