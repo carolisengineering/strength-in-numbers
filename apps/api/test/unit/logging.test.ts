@@ -79,6 +79,39 @@ describe("createLogger — PII redaction (#7)", () => {
     expect(out).toContain("profile update failed");
   });
 
+  it("redacts a Prisma error inside an AggregateError's `errors`", () => {
+    const { lines, logger } = capture();
+    const inner = new PrismaClientValidationError(`Argument email: "${EMAIL}"`);
+    const err = new AggregateError([inner, new Error("other")], "all failed");
+    logger.error({ err }, "request error");
+    const out = lines.join("");
+    expect(out).not.toContain(EMAIL);
+    expect(out).toContain("all failed");
+    expect(out).toContain("other");
+  });
+
+  it("fails closed on an over-deep cause chain rather than logging it unscrubbed", () => {
+    const { lines, logger } = capture();
+    let err: Error = new PrismaClientValidationError(`Argument email: "${EMAIL}"`);
+    for (let i = 0; i < 12; i++) err = new Error(`wrap ${i}`, { cause: err });
+    logger.error({ err }, "request error");
+    expect(lines.join("")).not.toContain(EMAIL);
+  });
+
+  it("redacts top-level email / displayName / claims keys (e.g. `log.info(request.auth)`)", () => {
+    const { lines, logger } = capture();
+    const ns = testConfig().auth0.claimNamespace;
+    logger.info(
+      authContext({ email: EMAIL, claims: { sub: "auth0|1", [`${ns}email`]: EMAIL } }),
+      "auth spread at top level",
+    );
+    logger.info({ displayName: NAME, display_name: NAME, id: "u1" }, "profile");
+    const out = lines.join("");
+    expect(out).not.toContain(EMAIL);
+    expect(out).not.toContain(NAME);
+    expect(out).toContain('"id":"u1"');
+  });
+
   it("still logs message and stack for an ordinary error (control)", () => {
     const { lines, logger } = capture();
     logger.error({ err: new Error("connect ECONNREFUSED db:5432") }, "request error");

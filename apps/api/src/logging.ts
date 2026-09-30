@@ -27,16 +27,27 @@ function isPrismaError(err: unknown): err is Error & { code?: unknown; clientVer
   return err instanceof Error && PRISMA_ERROR_NAME.test(err.name);
 }
 
+const MAX_CAUSE_DEPTH = 8;
+
 /**
- * Returns `err` with every Prisma error in its `cause` chain replaced by a stub
+ * Returns `err` with every Prisma error in its `cause` chain (and in an
+ * `AggregateError`'s `errors`, which pino serializes too) replaced by a stub
  * that keeps `name` / `code` / `clientVersion` but no message, `meta`, or stack
  * frames beyond the header line. Non-Prisma errors are shallow-copied only when
  * something beneath them changed, so the common path allocates nothing.
+ *
+ * Fails closed: past `MAX_CAUSE_DEPTH` the rest of the chain is replaced by a
+ * marker rather than logged unscrubbed.
  */
 function scrubPrismaErrors(err: unknown, depth = 0): unknown {
-  if (!(err instanceof Error) || depth > 8) return err;
+  if (!(err instanceof Error)) return err;
+  if (depth > MAX_CAUSE_DEPTH) return new Error("[redacted: cause chain too deep]");
 
   const cause = scrubPrismaErrors(err.cause, depth + 1);
+  const errors =
+    err instanceof AggregateError
+      ? err.errors.map((e: unknown) => scrubPrismaErrors(e, depth + 1))
+      : undefined;
 
   if (isPrismaError(err)) {
     const stub = new Error(`[redacted ${err.name}]`);
@@ -50,7 +61,9 @@ function scrubPrismaErrors(err: unknown, depth = 0): unknown {
     return stub;
   }
 
-  if (cause === err.cause) return err;
+  const errorsChanged =
+    errors !== undefined && errors.some((e, i) => e !== (err as AggregateError).errors[i]);
+  if (cause === err.cause && !errorsChanged) return err;
 
   // Keep the prototype so `type` still reports the original class; `message`
   // and `stack` are non-enumerable own props, so copy them explicitly.
@@ -58,6 +71,7 @@ function scrubPrismaErrors(err: unknown, depth = 0): unknown {
   copy.message = err.message;
   copy.stack = err.stack;
   copy.cause = cause;
+  if (errors !== undefined) (copy as AggregateError).errors = errors;
   return copy;
 }
 
@@ -74,12 +88,18 @@ export function loggerOptions(config: Config): LoggerOptions {
     redact: {
       paths: [
         "req.headers",
+        // Bare keys too: fast-redact's `*` needs an enclosing key, so without
+        // these a `log.info(request.auth)` would emit the top-level fields.
+        "email",
         "*.email",
         "*.*.email",
+        "displayName",
         "*.displayName",
         "*.*.displayName",
+        "display_name",
         "*.display_name",
         "*.*.display_name",
+        "claims",
         "*.claims",
         "*.*.claims",
         nsEmail,
