@@ -43,7 +43,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 - **Error contract** (RFC 9457 problem+json) must be registered on BOTH the root scope and the `/v1` child scope.
 - **Catalog seed** (`apps/api/prisma/seed.ts` → `src/seed/`) is a manual release step after `migrate deploy`, NOT Prisma's `prisma.seed` hook. Append-only: never edit a live row's `name`/`modality` in `prisma/catalog/exercises.json` — retire the key and add a new one.
 - **Prisma migrations** run as a release step, never on app boot. Additive / expand-only — never drop or rename a column in the same release as the code that stops using it.
-- **`DATABASE_URL`**: `resolveDatabaseUrl` backfills `sslmode=require` + `connection_limit=8` at runtime. For Neon, use the **direct** host (not `-pooler`) for `prisma migrate deploy`.
+- **`DATABASE_URL`**: `resolveDatabaseUrl` backfills `sslmode=require` + `sslaccept=strict` (server-cert + hostname verification) + `connection_limit=8` at runtime, and boot rejects libpq's `sslmode=verify-full` (Prisma silently downgrades it to `prefer`). The stored secret must carry `sslaccept=strict` itself because `prisma migrate deploy` reads the raw URL. For Neon, use the **direct** host (not `-pooler`) for `prisma migrate deploy`.
 - **Docker**: the runtime stage generates the Prisma client explicitly (`@prisma/client` postinstall can't find the schema in a pnpm monorepo); base stage installs `openssl` + `ca-certificates` (`node:22-slim` omits them). Don't remove those lines.
 - **Fastify v5** wants `loggerInstance` (not `logger`) for a prebuilt pino; `buildApp` branches on the arg type.
 - `describe.skipIf(cond)` still runs `beforeAll` when `cond` is wrong — guard setup too.

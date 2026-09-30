@@ -59,6 +59,20 @@ const schema = z.object({
     .refine(
       (v) => v.startsWith("postgres://") || v.startsWith("postgresql://"),
       "must be a postgres:// connection string",
+    )
+    // Prisma's engine only knows disable / prefer / require and silently
+    // downgrades anything else (libpq's verify-ca / verify-full) to `prefer`
+    // — TLS optional. Fail here so it surfaces as a ConfigError at boot (#8).
+    .refine(
+      (v) => {
+        try {
+          const mode = new URL(v).searchParams.get("sslmode");
+          return mode === null || ["disable", "prefer", "require"].includes(mode);
+        } catch {
+          return true; // an unparseable URL is Prisma's problem to report
+        }
+      },
+      "sslmode must be disable, prefer or require (Prisma ignores verify-full); use sslmode=require&sslaccept=strict for certificate verification",
     ),
 
   AUTH0_ISSUER: z

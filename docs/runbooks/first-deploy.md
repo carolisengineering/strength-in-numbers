@@ -403,6 +403,12 @@ every mainstream root store, so no CA bundle is needed — but prove it before
 relying on it, and re-run this whenever the DB host or the image's base changes
 (e.g. the Spec 15 RDS move, where `sslcert=<AWS bundle>` becomes necessary).
 
+**Run a–c before merging any change that touches the DB URL, the Prisma
+version, or the image base** — merging to `main` auto-deploys staging, and the
+app backfills `sslaccept=strict` on boot, so a validation failure shows up as a
+`503` from `/readyz` and a red post-deploy smoke *after* the deploy. Building
+the image from the branch (step c) is what proves it ahead of time.
+
 Same exported `DATABASE_URL` as B4/B5 (with `&sslaccept=strict` already on it,
 per B1). `HOST` is the Neon direct host:
 
@@ -411,7 +417,9 @@ HOST=$(node -e 'console.log(new URL(process.env.DATABASE_URL).hostname)')
 ```
 
 **a. Neon's chain is publicly trusted** — independent of Prisma, OpenSSL doing a
-Postgres STARTTLS and verifying chain *and* hostname:
+Postgres STARTTLS and verifying chain *and* hostname. Needs OpenSSL ≥ 1.1.1 for
+`-starttls postgres` / `-verify_hostname` (macOS ships LibreSSL — use Homebrew's
+`openssl`):
 
 ```bash
 openssl s_client -starttls postgres -connect "$HOST:5432" -servername "$HOST" \
@@ -448,14 +456,22 @@ Connect to the same endpoint by IP: Neon's certificate has no IP SAN, so hostnam
 verification must reject it.
 
 ```bash
-IP=$(dig +short "$HOST" | head -1)
+export IP=$(dig +short A "$HOST" | grep -E '^[0-9.]+$' | head -1)
 echo 'SELECT 1' | pnpm --filter @sin/api exec prisma db execute --stdin \
   --url "$(node -e 'const u=new URL(process.env.DATABASE_URL);u.hostname=process.env.IP;u.searchParams.set("sslaccept","strict");console.log(u.href)')"
 ```
 
-Expect a failure. Neon routes by SNI, so it may fail earlier with an
-"endpoint ID not specified" error rather than a certificate error — either way
-it must **not** succeed. If it succeeds, strict mode isn't validating: stop.
+(`export` matters: the inline `node -e` reads `IP` from the environment.)
+
+Expect a failure, and read *which* failure:
+- a TLS / certificate / hostname error (`P1011`, "certificate", "hostname") is
+  the conclusive result — strict mode rejected the mismatched name;
+- an "endpoint ID not specified" error means Neon's SNI-based router refused the
+  connection before the TLS handshake finished. That is inconclusive on its own
+  (nothing was validated); rely on B6a for the hostname check in that case;
+- a DNS / `undefined` host error means `IP` was empty — check the `export` line.
+
+If it **succeeds**, strict mode isn't validating: stop.
 
 Finally, drop the Neon string from your shell:
 
@@ -633,7 +649,7 @@ Production comes later, via Spec 01.1.
 | B4 fails `P1011`/TLS | `?sslmode=require` missing from the URL you passed. If it *is* there and you also have `sslaccept=strict`, the server certificate or hostname failed verification — run B6a to see the chain OpenSSL sees. |
 | Boot fails: `DATABASE_URL: sslmode=verify-full is not supported by Prisma's engine` | You used libpq's mode. Prisma would silently downgrade it to `prefer`, so the app refuses it. Use `sslmode=require&sslaccept=strict` (B1). |
 | B6 `openssl s_client` prints `Verify return code` ≠ 0 | Neon's chain isn't trusted by your local root store — usually a stale OS or a corporate TLS proxy. Try B6c (the image's own `ca-certificates`) before assuming Neon changed CAs. |
-| B6d (negative control) *succeeds* | Strict mode is not validating. Check the URL actually carries `sslaccept=strict` (not `sslmode=strict`) and that the Prisma version is still the pinned 6.x. Do not deploy. |
+| B6d (negative control) *succeeds* | Strict mode is not validating. Check the URL actually carries `sslaccept=strict` (not `sslmode=strict`), and whether Prisma was upgraded since this was verified (6.19.x) — a major bump could change the `sslaccept` semantics. Do not deploy. |
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |

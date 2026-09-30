@@ -42,7 +42,7 @@ TypeScript). TDD is the working method here. You own test quality, not just test
   the arg type.
 - The error contract must be registered on BOTH the root scope and the `/v1` child scope — a
   partial test app that skips one will misbehave.
-- `resolveDatabaseUrl` backfills `sslmode`/`connection_limit` — assert on the resolved value.
+- `resolveDatabaseUrl` backfills `sslmode`/`sslaccept=strict`/`connection_limit` and rejects `verify-full` — assert on the resolved value.
 
 ## Process
 1. Read the spec's §2 / §5 / §6 / §10 and the code under test.
