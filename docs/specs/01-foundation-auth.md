@@ -302,7 +302,10 @@ claims)`, not in the handler.
   issuer only.
 - **PII in telemetry:** `user_id` (our UUID) is fine in logs/metrics; `email` and
   `display_name` are not — they must not appear in log lines, metric labels, or
-  span attributes.
+  span attributes. For logs this is enforced by `src/logging.ts`, not by
+  convention (issue #7): key-based redaction two wildcard levels deep plus the
+  Auth0 namespaced claim keys, and a Prisma-aware `err` serializer that stubs
+  out any Prisma error in the cause chain (their messages dump query arguments).
 - **Authorization boundary:** every `/v1` app route requires a valid token and a
   live (`deleted_at IS NULL`) user. `assertOwned` is the single place cross-user
   access is prevented; later specs must route through it (DESIGN R8).
