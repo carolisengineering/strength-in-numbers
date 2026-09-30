@@ -5,6 +5,7 @@ import {
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { PrismaClient } from "@prisma/client";
+import { POSTGRES_IMAGE } from "./postgres-image.js";
 
 /**
  * These need a Docker daemon (Testcontainers). They self-skip unless
@@ -24,7 +25,7 @@ export interface IntegrationDb {
 
 /** A fresh Postgres container with **no** migrations applied. */
 export async function startBareDb(): Promise<IntegrationDb> {
-  const container = await new PostgreSqlContainer("postgres:16-alpine")
+  const container = await new PostgreSqlContainer(POSTGRES_IMAGE)
     .withDatabase("sin_test")
     .start();
   const url = container.getConnectionUri();

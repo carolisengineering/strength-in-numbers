@@ -1,0 +1,28 @@
+# Issue #9 — keep digest-pinned container images and CI actions current.
+#
+# Images are pinned as `name:patch-tag@sha256:<digest>` (Dockerfile,
+# docker-compose.yml); Dependabot bumps tag and digest together. It cannot see
+# the Testcontainers image in apps/api/test/integration/postgres-image.ts — the
+# image-pins unit test fails a compose bump until that file is updated to match.
+#
+# npm is deliberately not listed: the PR volume isn't worth it for a solo
+# project; `pnpm audit` / dependency review cover the security signal.
+
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+
+  # ci.yml pins each action as `uses: owner/repo@<sha> # vN`. Dependabot keeps
+  # the sha current and rewrites the trailing version comment alongside it.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
