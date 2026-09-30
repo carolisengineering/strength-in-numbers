@@ -1,6 +1,6 @@
-import { pino } from "pino";
 import { loadConfig, ConfigError } from "./config.js";
 import { buildApp } from "./app.js";
+import { createLogger } from "./logging.js";
 import { createPrisma, checkDatabaseReady } from "./db.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
@@ -15,20 +15,7 @@ import { createGracefulShutdown } from "./shutdown.js";
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
 
-  const logger = pino({
-    level: config.logLevel,
-    base: { service: config.serviceName },
-    // `email` / `display_name` must never reach a log line (Spec 01 §7).
-    redact: {
-      paths: [
-        "req.headers.authorization",
-        "*.email",
-        "*.displayName",
-        "*.display_name",
-      ],
-      remove: true,
-    },
-  });
+  const logger = createLogger(config);
 
   const prisma = createPrisma(config);
   const exerciseRepository = createExerciseRepository(prisma);
