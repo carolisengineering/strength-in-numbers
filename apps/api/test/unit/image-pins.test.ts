@@ -24,10 +24,18 @@ function composeDbImage(): string {
 
 describe("#9 — container images are digest-pinned", () => {
   it("Dockerfile base image is pinned to a patch tag + digest", () => {
-    const froms = read("Dockerfile").match(/^FROM\s+(\S+)/gm) ?? [];
-    const external = froms
-      .map((l) => l.replace(/^FROM\s+/, ""))
-      .filter((ref) => !["base", "build"].includes(ref));
+    // Each `FROM [--flag…] <ref> [AS <alias>]`; refs naming an earlier stage's
+    // alias are internal, everything else is an external image.
+    const froms = read("Dockerfile").match(/^FROM\s+.*$/gm) ?? [];
+    const aliases = new Set<string>();
+    const external: string[] = [];
+    for (const line of froms) {
+      const tokens = line.split(/\s+/).slice(1).filter((t) => !t.startsWith("--"));
+      const ref = tokens[0]!;
+      if (!aliases.has(ref)) external.push(ref);
+      const alias = tokens[1]?.toUpperCase() === "AS" ? tokens[2] : undefined;
+      if (alias) aliases.add(alias);
+    }
     expect(external).toHaveLength(1);
     expect(external[0]).toMatch(/^node:/);
     expect(external[0]).toMatch(PINNED);
