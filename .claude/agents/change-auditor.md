@@ -23,7 +23,7 @@ covers the vuln pass. You focus on what those two miss:
    drop/rename in the same release as the code that stops using it. If a migration was added,
    `docs/runbooks/first-deploy.md` B4 is still accurate.
 4. **Project pitfalls.** `pnpm run lint` (not bare). Error contract on root + `/v1` scope.
-   `resolveDatabaseUrl` sslmode/connection_limit. Bounded graceful-shutdown drain. `X-Request-Id`
+   `resolveDatabaseUrl` sslmode/sslaccept=strict/connection_limit. Bounded graceful-shutdown drain. `X-Request-Id`
    validation regex. Neon direct-vs-`-pooler` host. `@prisma/client` generated in the Docker
    runtime stage.
 5. **Docs drift.** DESIGN.md / the spec / the runbook updated to match the code where the

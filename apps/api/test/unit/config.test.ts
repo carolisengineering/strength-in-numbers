@@ -145,6 +145,18 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
     expect(cfg.webOrigins).toEqual(["http://localhost:5173"]);
   });
 
+  it.each(["verify-full", "verify-ca"])(
+    "rejects DATABASE_URL sslmode=%s as a ConfigError naming sslaccept=strict (#8)",
+    (mode) => {
+      expect(() =>
+        loadConfig({ ...base, DATABASE_URL: `postgresql://u:p@localhost:5432/sin?sslmode=${mode}` }),
+      ).toThrow(ConfigError);
+      expect(() =>
+        loadConfig({ ...base, DATABASE_URL: `postgresql://u:p@localhost:5432/sin?sslmode=${mode}` }),
+      ).toThrow(/DATABASE_URL.*sslaccept=strict/s);
+    },
+  );
+
   it("rejects a non-postgres DATABASE_URL", () => {
     expect(() =>
       loadConfig({ ...base, DATABASE_URL: "mysql://u:p@localhost/sin" }),

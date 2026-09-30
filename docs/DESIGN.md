@@ -658,10 +658,6 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   CSP is the primary XSS control; the in-memory-token choice (Q12) is defence in
   depth behind it. **CSP + web security headers are owned by Spec 04.0.**
 - Signed, short-TTL URLs for all bucket access; no public objects.
-- Deferred hardening items from security reviews are tracked in
-  [`security-backlog.md`](security-backlog.md) (e.g. DB cert verification,
-  base-image digest pinning) — none exploitable, revisited per the effort notes
-  there. Log-redaction depth was closed by issue #7 (`apps/api/src/logging.ts`).
 
 ### 8.3 Testing
 

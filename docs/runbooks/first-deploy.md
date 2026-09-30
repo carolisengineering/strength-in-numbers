@@ -162,7 +162,18 @@ connection exists by default) and **Authentication → Social** for Google/Apple
    postgresql://<user>:<pass>@ep-xxxx.us-west-2.aws.neon.tech/neondb?sslmode=require
    ```
 
-   Keep `?sslmode=require` on it — Neon requires TLS.
+   Keep `?sslmode=require` on it — Neon requires TLS — and **append
+   `&sslaccept=strict`** so the server certificate and hostname are verified
+   (issue #8). The app backfills `sslaccept=strict` itself, but `prisma migrate
+   deploy` (B4) reads the raw URL, so it has to be on the stored value too:
+
+   ```
+   postgresql://<user>:<pass>@ep-xxxx.us-west-2.aws.neon.tech/neondb?sslmode=require&sslaccept=strict
+   ```
+
+   Do **not** use libpq's `sslmode=verify-full`: Prisma's engine doesn't know it
+   and silently downgrades to `prefer` (TLS optional); the app refuses to boot on
+   it. B6 checks that strict validation actually works against Neon.
 
 **Record:** `DATABASE_URL` = that full string (it's a secret — GitHub/Render
 only, never commit it).
@@ -380,10 +391,99 @@ re-check the exported string against Render → Environment (branch included).
 Equivalent DB-side check, Neon SQL editor on the same branch:
 `select catalog_key, is_active from exercise order by 1;` → one row per file entry.
 
+Keep `DATABASE_URL` exported for B6.
+
+### B6. Verify DB TLS validation (by hand, after B4) — issue #8
+
+`sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
+check the server's certificate (its `sslaccept` default is `accept_invalid_certs`).
+`sslaccept=strict` turns on chain + hostname verification against the OS trust
+store. Neon's certificates chain to ISRG Root X1 (Let's Encrypt), which is in
+every mainstream root store, so no CA bundle is needed — but prove it before
+relying on it, and re-run this whenever the DB host or the image's base changes
+(e.g. the Spec 15 RDS move, where `sslcert=<AWS bundle>` becomes necessary).
+
+**Run a–c before merging any change that touches the DB URL, the Prisma
+version, or the image base** — merging to `main` auto-deploys staging, and the
+app backfills `sslaccept=strict` on boot, so a validation failure shows up as a
+`503` from `/readyz` and a red post-deploy smoke *after* the deploy. Building
+the image from the branch (step c) is what proves it ahead of time.
+
+Same exported `DATABASE_URL` as B4/B5 (with `&sslaccept=strict` already on it,
+per B1). `HOST` is the Neon direct host:
+
+```bash
+HOST=$(node -e 'console.log(new URL(process.env.DATABASE_URL).hostname)')
+```
+
+**a. Neon's chain is publicly trusted** — independent of Prisma, OpenSSL doing a
+Postgres STARTTLS and verifying chain *and* hostname. Needs OpenSSL ≥ 1.1.1 for
+`-starttls postgres` / `-verify_hostname` (macOS ships LibreSSL — use Homebrew's
+`openssl`):
+
+```bash
+openssl s_client -starttls postgres -connect "$HOST:5432" -servername "$HOST" \
+  -verify_return_error -verify_hostname "$HOST" </dev/null 2>&1 | grep -E "Verify return code|issuer="
+```
+
+Expect `Verify return code: 0 (ok)` and an issuer chaining to `ISRG Root X1`.
+Anything else means strict mode will fail — stop and investigate.
+
+**b. Strict validation through Prisma, from your machine:**
+
+```bash
+echo 'SELECT 1' | pnpm --filter @sin/api exec prisma db execute --stdin --schema prisma/schema.prisma
+```
+
+The CLI reads `DATABASE_URL` from the environment via the schema's
+`env("DATABASE_URL")` — deliberately not `--url`, which would put the password
+on the process argv (visible to other local users via `ps`). Expect
+`Script executed successfully.` (If your stored URL doesn't yet carry
+`sslaccept=strict`, re-export it with `&sslaccept=strict` appended first.)
+
+**c. Strict validation from inside the production image** — the check that
+matters: Render runs the Debian image with its own `ca-certificates`, not your
+laptop's trust store.
+
+```bash
+docker build -t si-api-tls-check .
+echo 'SELECT 1' | docker run --rm -i -w /app/apps/api -e DATABASE_URL si-api-tls-check \
+  node_modules/.bin/prisma db execute --stdin --schema prisma/schema.prisma
+docker rmi si-api-tls-check
+```
+
+(`-e DATABASE_URL` with no value forwards your exported variable into the
+container's environment; again nothing on argv.) Expect
+`Script executed successfully.` again.
+
+**d. Negative control** — proves strict is *validating*, not silently ignored.
+Connect to the same endpoint by IP: Neon's certificate has no IP SAN, so hostname
+verification must reject it.
+
+```bash
+export IP=$(dig +short A "$HOST" | grep -E '^[0-9.]+$' | head -1)
+echo 'SELECT 1' | DATABASE_URL="$(node -e 'const u=new URL(process.env.DATABASE_URL);u.hostname=process.env.IP;u.searchParams.set("sslaccept","strict");console.log(u.href)')" \
+  pnpm --filter @sin/api exec prisma db execute --stdin --schema prisma/schema.prisma
+```
+
+(`export` matters: the inline `node -e` reads `IP` from the environment. The
+rewritten URL is passed as an env var, not `--url`, so it never lands on argv.)
+
+Expect **a TLS / certificate / hostname verification error** (`P1011`,
+"certificate", "hostname") — that is the only conclusive pass. Read anything
+else as a failure of the check:
+- **"Endpoint ID is not specified"** means Neon answered at the Postgres
+  protocol level — which it can only do *after* a completed TLS handshake. With
+  strict validation the handshake against a bare IP (no IP SAN on Neon's cert)
+  must fail first, so this error means TLS succeeded without validation.
+  **Strict is not working: stop, do not deploy.**
+- **success** — same conclusion, stop.
+- a DNS / `undefined` host error means `IP` was empty — check the `export` line.
+
 Finally, drop the Neon string from your shell:
 
 ```bash
-unset DATABASE_URL
+unset DATABASE_URL HOST IP
 ```
 
 ---
@@ -476,8 +576,10 @@ curl -si $BASE/v1/me | head -1  # HTTP/2 401          — unauthenticated reques
 
 The first call can take 30–60 s while a cold free instance spins up. A `503` from
 `/readyz` means the DB isn't reachable from the service — check `DATABASE_URL` on
-the Render service (the Neon **direct** string, `?sslmode=require`) and that the
-Neon project isn't paused.
+the Render service (the Neon **direct** string, `?sslmode=require&sslaccept=strict`)
+and that the Neon project isn't paused. A `503` that appeared right after adding
+`sslaccept=strict` is a certificate/hostname rejection — re-run B6 and check the
+service log for `P1011`.
 
 **c. Real Auth0 token — the auth path.** Mirrors the smoke's token steps. Uses
 the Test Application creds (A2) and your tenant (A1):
@@ -536,6 +638,7 @@ actually need a prod environment, not now.
 
 - The Render service is live and B4's `prisma migrate deploy` applied every migration folder to Neon (`prisma migrate status` → up to date).
 - B5's `seed:catalog` reported `inserted` > 0 on first run and `unchanged` on a re-run.
+- B6 a–c succeeded and d failed: the DB connection verifies Neon's certificate and hostname.
 - The CI `smoke` job passes end to end against your Auth0 tenant.
 - `render.yaml` is the source of truth — no manual service config drift.
 
@@ -550,7 +653,10 @@ Production comes later, via Spec 01.1.
 | Service won't boot, log says `Invalid configuration: AUTH0_ISSUER: must be https in production` | `NODE_ENV=production` + an `http://` issuer, or a missing trailing slash. |
 | Boot fails on `WEB_ORIGIN` | Empty, `http://` in prod, has a path, or a wildcard. Use a bare `https://host[:port]`. |
 | B4 `prisma migrate deploy` hangs or `P1001 can't reach database` | Used the Neon **pooled** host (`-pooler`) — switch to the direct host. Or the Neon compute is resuming from idle; re-run. |
-| B4 fails `P1011`/TLS | `?sslmode=require` missing from the URL you passed. |
+| B4 fails `P1011`/TLS | `?sslmode=require` missing from the URL you passed. If it *is* there and you also have `sslaccept=strict`, the server certificate or hostname failed verification — run B6a to see the chain OpenSSL sees. |
+| Boot fails: `DATABASE_URL: sslmode=verify-full is not supported by Prisma's engine` | You used libpq's mode. Prisma would silently downgrade it to `prefer`, so the app refuses it. Use `sslmode=require&sslaccept=strict` (B1). |
+| B6 `openssl s_client` prints `Verify return code` ≠ 0 | Neon's chain isn't trusted by your local root store — usually a stale OS or a corporate TLS proxy. Try B6c (the image's own `ca-certificates`) before assuming Neon changed CAs. |
+| B6d (negative control) *succeeds*, or fails with `Endpoint ID is not specified` | Strict mode is not validating (the endpoint-ID error is Neon replying at the Postgres protocol level, which only happens after a TLS handshake that should have been rejected). Check the URL actually carries `sslaccept=strict` (not `sslmode=strict`), and whether Prisma was upgraded since this was verified (6.19.x) — a major bump could change the `sslaccept` semantics. Do not deploy. |
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |
