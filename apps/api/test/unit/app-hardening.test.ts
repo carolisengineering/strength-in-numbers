@@ -226,6 +226,42 @@ describe("app hardening (Criterion 17)", () => {
     expect(res.json().type).toContain("validation-error");
   });
 
+  // Issue #6's original repro. PATCH /v1/me reaches its 422 by a different
+  // path from the POST cases above: the empty-body parser override turns "" into
+  // `null`, and it is `UpdateMeSchema` (a strict object) that rejects it — so a
+  // loosened schema, not just a normalizeError regression, would break this.
+  it("PATCH /v1/me with an empty JSON body → 422 validation-error, not 500 (#6)", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/me",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: "",
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toContain("validation-error");
+  });
+
+  it("PATCH /v1/me with malformed JSON → 422 validation-error, not 500 (#6)", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/me",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      payload: "{oops",
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toContain("validation-error");
+  });
+
   it("still rejects a __proto__ JSON body after the empty-body parser override", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
