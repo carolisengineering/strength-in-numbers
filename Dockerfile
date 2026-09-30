@@ -1,7 +1,10 @@
 # Spec 01 §11 (Q4) — multi-stage. The same image runs in docker-compose, on
 # Render, and (Spec 15) on ECS Fargate.
 
-FROM node:22-slim AS base
+# Issue #9 — patch tag + multi-arch index digest (arm64 dev Macs and amd64
+# Render/CI both resolve through it). Dependabot bumps tag and digest together;
+# to do it by hand: `docker buildx imagetools inspect node:<tag>-slim`.
+FROM node:22.23.3-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS base
 ENV PNPM_HOME=/pnpm PATH="/pnpm:$PATH"
 # openssl: Prisma's query engine needs it (node:22-slim omits it → the engine
 # picks the wrong libssl target and fails to load). ca-certificates: TLS to Neon.
