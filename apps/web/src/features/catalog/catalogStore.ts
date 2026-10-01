@@ -225,7 +225,9 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
   }
 
   function isFresh(): boolean {
-    if (state.lastRefreshAt === null) return false;
+    // AC14 — a failed refresh is never fresh, even inside the window an
+    // earlier success opened.
+    if (state.lastRefreshAt === null || state.status === "error") return false;
     const elapsed = now() - state.lastRefreshAt;
     // A negative elapsed time means the clock moved backwards: not fresh.
     return elapsed >= 0 && elapsed < CATALOG_REFRESH_STALE_MS;

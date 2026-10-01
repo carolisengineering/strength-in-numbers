@@ -8,10 +8,11 @@ vi.mock("../../observability/reportError", () => ({
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 
 import type { ApiClient } from "../../api/client";
+import { ApiError } from "../../api/problem";
 import { memoryStorageAdapter, type StorageAdapter } from "../../storage/storage";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { createCatalogStore } from "./catalogStore";
-import { catalogKey, recentsKey } from "./constants";
+import { CATALOG_REFRESH_STALE_MS, catalogKey, recentsKey } from "./constants";
 
 const USER = "018f4e8a-1c2d-4f3a-8b6c-9d0e1f2a3b4c";
 const OTHER_USER = "018f4e8a-1c2d-4f3a-8b6c-9d0e1f2a3b4d";
@@ -22,6 +23,27 @@ const bench = makeExercise({ id: exerciseId(2), name: "Bench Press" });
 const catalogEnvelope = (rows: Exercise[], syncToken: string | null = "1.100") =>
   JSON.stringify({ version: 1, rows, syncToken });
 const recentsEnvelope = (ids: string[]) => JSON.stringify({ version: 1, ids });
+
+const apiError = (status: number) =>
+  new ApiError({ status, type: "about:blank", title: `HTTP ${status}`, requestId: "req-test" });
+
+const okBody = (exercises: Exercise[], syncToken: string) => ({ exercises, syncToken });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const seeded = (rows: Exercise[], syncToken: string | null = "1.100", recents: string[] = []) =>
+  memoryStorageAdapter({
+    [catalogKey(USER)]: catalogEnvelope(rows, syncToken),
+    [recentsKey(USER)]: recentsEnvelope(recents),
+  });
 
 function setup(options: { storage?: StorageAdapter; userId?: string } = {}) {
   const request = vi.fn<(path: string, options?: { cache?: RequestCache }) => Promise<unknown>>();
@@ -251,5 +273,257 @@ describe("AC22 — getState() is a stable snapshot", () => {
     store.recordPick(exerciseId(1));
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("AC14 — refresh() is a no-op when the store was refreshed recently", () => {
+  it("issues one request for two calls inside the window, and another after it", async () => {
+    const { store, request, advance } = setup();
+    request.mockResolvedValue(okBody([squat], "1.101"));
+
+    await store.refresh();
+    await store.refresh();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    advance(CATALOG_REFRESH_STALE_MS);
+    await store.refresh();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("issues a request immediately after a failed refresh", async () => {
+    const { store, request } = setup();
+    request.mockRejectedValueOnce(apiError(500)).mockResolvedValueOnce(okBody([squat], "1.101"));
+
+    await store.refresh();
+    await store.refresh();
+
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("issues a request after a failed refresh even inside an earlier success's window", async () => {
+    const { store, request } = setup();
+    request
+      .mockResolvedValueOnce(okBody([squat], "1.101"))
+      .mockRejectedValueOnce(apiError(500))
+      .mockResolvedValueOnce(okBody([], "1.102"));
+
+    await store.refresh();
+    await store.refresh(true);
+    expect(store.getState().status).toBe("error");
+
+    await store.refresh();
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(store.getState().status).toBe("idle");
+  });
+
+  it("treats a clock that moved backwards as stale", async () => {
+    const { store, request, advance } = setup();
+    request.mockResolvedValue(okBody([squat], "1.101"));
+
+    await store.refresh();
+    advance(-60_000);
+    await store.refresh();
+
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("AC15 — a sync request carries the token and bypasses the HTTP cache", () => {
+  it("sends since=<token>, URL-encoded, with cache: no-store", async () => {
+    const { store, request } = setup({ storage: seeded([squat], "a b/1") });
+    request.mockResolvedValue(okBody([], "1.101"));
+
+    await store.refresh();
+
+    expect(request).toHaveBeenCalledWith("/v1/exercises?since=a%20b%2F1", { cache: "no-store" });
+  });
+
+  it("omits the query when there is no stored token", async () => {
+    const { store, request } = setup();
+    request.mockResolvedValue(okBody([squat], "1.101"));
+
+    await store.refresh();
+
+    expect(request).toHaveBeenCalledWith("/v1/exercises", { cache: "no-store" });
+  });
+});
+
+describe("AC16 — concurrent refreshes share one request; a forced one queues one follow-up", () => {
+  it("two concurrent calls produce one request and settle together", async () => {
+    const { store, request } = setup();
+    const pending = deferred<unknown>();
+    request.mockReturnValueOnce(pending.promise);
+
+    const a = store.refresh();
+    const b = store.refresh();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    pending.resolve(okBody([squat], "1.101"));
+    await Promise.all([a, b]);
+
+    expect(store.getState().rows).toEqual([squat]);
+  });
+
+  it("forced calls during an in-flight request coalesce into exactly one follow-up", async () => {
+    const { store, request } = setup();
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const initial = store.refresh();
+    const forced = [store.refresh(true), store.refresh(true), store.refresh(true)];
+    expect(request).toHaveBeenCalledTimes(1);
+
+    first.resolve(okBody([squat], "1.101"));
+    await initial;
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request).toHaveBeenNthCalledWith(2, "/v1/exercises?since=1.101", {
+      cache: "no-store",
+    });
+
+    second.resolve(okBody([bench], "1.102"));
+    await Promise.all(forced);
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(store.getState().rows.map((r) => r.name).sort()).toEqual([
+      "Back Squat",
+      "Bench Press",
+    ]);
+    expect(store.getState().syncToken).toBe("1.102");
+  });
+
+  it("refresh(true) skips the staleness window", async () => {
+    const { store, request } = setup();
+    request.mockResolvedValue(okBody([squat], "1.101"));
+
+    await store.refresh();
+    await store.refresh(true);
+
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("never rejects, even when the request throws a non-ApiError", async () => {
+    const { store, request } = setup();
+    request.mockRejectedValue(new Error("boom"));
+
+    await expect(store.refresh()).resolves.toBeUndefined();
+  });
+});
+
+describe("AC17 — a delta merges; a full pull replaces", () => {
+  it("a response to a since request is merged into the stored rows", async () => {
+    const { store, request, storage, clock } = setup({ storage: seeded([squat, bench]) });
+    const renamed = makeExercise({ id: exerciseId(2), name: "Paused Bench Press" });
+    request.mockResolvedValue(okBody([renamed], "1.101"));
+
+    await store.refresh();
+
+    const state = store.getState();
+    expect(state.rows.map((r) => r.name).sort()).toEqual(["Back Squat", "Paused Bench Press"]);
+    expect(state.syncToken).toBe("1.101");
+    expect(state.status).toBe("idle");
+    expect(state.lastRefreshAt).toBe(clock());
+    expect(JSON.parse(storage.get(catalogKey(USER)) ?? "null")).toEqual({
+      version: 1,
+      rows: state.rows,
+      syncToken: "1.101",
+    });
+  });
+
+  it("a response to a request with no since replaces the stored rows", async () => {
+    const { store, request } = setup({ storage: seeded([squat, bench], null) });
+    request.mockResolvedValue(okBody([bench], "1.200"));
+
+    await store.refresh();
+
+    expect(store.getState().rows).toEqual([bench]);
+    expect(store.getState().syncToken).toBe("1.200");
+  });
+});
+
+describe("AC18 — a 410/422 reset does one full pull and keeps the old rows until it lands", () => {
+  it.each([
+    [410, "410"],
+    [422, "422"],
+  ] as const)("%i → one catalog_reset, one full pull, rows replaced", async (status, reason) => {
+    const { store, request } = setup({
+      storage: seeded([squat], "1.100", [exerciseId(1)]),
+    });
+    const fullPull = deferred<unknown>();
+    request.mockRejectedValueOnce(apiError(status)).mockReturnValueOnce(fullPull.promise);
+
+    const done = store.refresh();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+
+    // The old rows are still served while the full pull is in flight.
+    expect(store.getState().rows).toEqual([squat]);
+    expect(request).toHaveBeenNthCalledWith(2, "/v1/exercises", { cache: "no-store" });
+    expect(observability.track).toHaveBeenCalledTimes(1);
+    expect(observability.track).toHaveBeenCalledWith("catalog_reset", { reason });
+
+    fullPull.resolve(okBody([bench], "1.300"));
+    await done;
+
+    expect(store.getState().rows).toEqual([bench]);
+    expect(store.getState().syncToken).toBe("1.300");
+    expect(store.getState().recentIds).toEqual([exerciseId(1)]);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed full pull keeps the rows, drops the token, and does not loop", async () => {
+    const { store, request, storage } = setup({
+      storage: seeded([squat], "1.100", [exerciseId(1)]),
+    });
+    request.mockRejectedValueOnce(apiError(410)).mockRejectedValueOnce(apiError(500));
+
+    await store.refresh();
+
+    const state = store.getState();
+    expect(state.rows).toEqual([squat]);
+    expect(state.syncToken).toBeNull();
+    expect(state.status).toBe("error");
+    expect(state.recentIds).toEqual([exerciseId(1)]);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(storage.get(catalogKey(USER)) ?? "null")).toMatchObject({
+      syncToken: null,
+    });
+  });
+});
+
+describe("AC19 — a transient failure keeps the cached state", () => {
+  it.each([
+    ["a network failure", () => ApiError.network("req-test", new TypeError("offline"))],
+    ["a 500", () => apiError(500)],
+    ["a 401 that survived the client's retry", () => apiError(401)],
+  ])("%s leaves rows, recents and token unchanged, with no reportError", async (_label, make) => {
+    const { store, request } = setup({ storage: seeded([squat], "1.100", [exerciseId(1)]) });
+    request.mockRejectedValue(make());
+
+    await store.refresh();
+
+    const state = store.getState();
+    expect(state.rows).toEqual([squat]);
+    expect(state.recentIds).toEqual([exerciseId(1)]);
+    expect(state.syncToken).toBe("1.100");
+    expect(state.status).toBe("error");
+    expect(state.lastRefreshAt).toBeNull();
+    expect(observability.reportError).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 200 with an invalid body is transient and is reported", async () => {
+    const { store, request } = setup({ storage: seeded([squat], "1.100") });
+    request.mockResolvedValue({ exercises: "nope" });
+
+    await store.refresh();
+
+    expect(store.getState().rows).toEqual([squat]);
+    expect(store.getState().syncToken).toBe("1.100");
+    expect(store.getState().status).toBe("error");
+    expect(observability.reportError).toHaveBeenCalledTimes(1);
+    expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), {
+      source: "catalog-sync-schema",
+    });
   });
 });
