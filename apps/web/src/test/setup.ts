@@ -24,3 +24,16 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
+
+// jsdom has the <dialog> element but not its showModal()/close() methods
+// (Spec 06.0 §5). The shim only toggles the `open` attribute — enough for
+// component tests; real focus trapping and Escape handling are exercised by
+// Spec 06.1's Playwright smoke.
+if (typeof HTMLDialogElement.prototype.showModal !== "function") {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
+}
