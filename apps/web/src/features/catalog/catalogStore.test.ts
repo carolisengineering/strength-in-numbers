@@ -1,4 +1,4 @@
-import type { Exercise } from "@sin/core";
+import { ExerciseSchema, type Exercise } from "@sin/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const observability = vi.hoisted(() => ({ reportError: vi.fn(), track: vi.fn() }));
@@ -525,5 +525,64 @@ describe("AC19 — a transient failure keeps the cached state", () => {
     expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), {
       source: "catalog-sync-schema",
     });
+  });
+});
+
+describe("AC23 — creating a custom exercise inserts locally and re-syncs", () => {
+  const input = {
+    name: "Zercher Squat",
+    modality: "weight_reps" as const,
+    primaryMuscleId: null,
+    secondaryMuscleIds: [],
+    equipmentId: null,
+  };
+  const created = makeExercise({ id: exerciseId(9), name: "Zercher Squat", ownerUserId: USER });
+
+  it("inserts the row, records the pick, tracks, persists, and forces a refresh it does not await", async () => {
+    const { store, request, post, storage } = setup({ storage: seeded([squat]) });
+    post.mockResolvedValue(created);
+    const background = deferred<unknown>();
+    request.mockReturnValue(background.promise);
+
+    const result = await store.createCustom(input);
+
+    // The background refresh has not resolved, yet the row is already there.
+    expect(result).toEqual(created);
+    expect(post).toHaveBeenCalledWith("/v1/exercises", input, ExerciseSchema);
+    expect(store.getState().rows.map((r) => r.name).sort()).toEqual([
+      "Back Squat",
+      "Zercher Squat",
+    ]);
+    expect(store.getState().recentIds[0]).toBe(exerciseId(9));
+    expect(observability.track).toHaveBeenCalledWith("custom_exercise_created");
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(storage.get(catalogKey(USER)) ?? "null").rows).toHaveLength(2);
+
+    background.resolve(okBody([created], "1.101"));
+    await vi.waitFor(() => expect(store.getState().syncToken).toBe("1.101"));
+  });
+
+  it("forces the refresh even inside the staleness window", async () => {
+    const { store, request, post } = setup();
+    request.mockResolvedValue(okBody([squat], "1.101"));
+    await store.refresh();
+    post.mockResolvedValue(created);
+
+    await store.createCustom(input);
+
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed POST rejects with the ApiError and changes no state", async () => {
+    const { store, request, post } = setup({ storage: seeded([squat]) });
+    const failure = apiError(409);
+    post.mockRejectedValue(failure);
+    const before = store.getState();
+
+    await expect(store.createCustom(input)).rejects.toBe(failure);
+
+    expect(store.getState()).toBe(before);
+    expect(request).not.toHaveBeenCalled();
+    expect(observability.track).not.toHaveBeenCalled();
   });
 });
