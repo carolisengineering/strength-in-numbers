@@ -90,3 +90,21 @@ describe("useApi", () => {
     });
   });
 });
+
+describe("AC20 — a lost session clears user data (Spec 06.0)", () => {
+  it("onAuthLost removes user-scoped keys before the Auth0 logout", async () => {
+    window.localStorage.setItem("sin:catalog:v1:user-a", "{}");
+    window.localStorage.setItem("theme", "dark");
+    server.use(
+      http.get(`${BASE_URL}/v1/me`, () => new HttpResponse(null, { status: 401 })),
+    );
+
+    const { result } = renderHook(() => useApi());
+    await expect(result.current.get("/v1/me")).rejects.toBeInstanceOf(Error);
+
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem("sin:catalog:v1:user-a")).toBeNull();
+    expect(window.localStorage.getItem("theme")).toBe("dark");
+    window.localStorage.clear();
+  });
+});

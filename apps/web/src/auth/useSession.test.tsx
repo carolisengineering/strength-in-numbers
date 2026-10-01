@@ -122,3 +122,20 @@ describe("AC4 — useSession() surface (Spec 04.1 §2 / §6.3)", () => {
     expect(auth.state.getAccessTokenSilently).not.toHaveBeenCalled();
   });
 });
+
+describe("AC20 — useSession().logout clears user data (Spec 06.0)", () => {
+  it("removes user-scoped keys before the Auth0 logout", () => {
+    window.localStorage.setItem("sin:catalog:v1:user-a", "{}");
+    window.localStorage.setItem("sin:recents:v1:user-a", "{}");
+    window.localStorage.setItem("theme", "dark");
+    const { result } = renderSession();
+
+    result.current.logout();
+
+    expect(auth.state.logout).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem("sin:catalog:v1:user-a")).toBeNull();
+    expect(window.localStorage.getItem("sin:recents:v1:user-a")).toBeNull();
+    expect(window.localStorage.getItem("theme")).toBe("dark");
+    window.localStorage.clear();
+  });
+});

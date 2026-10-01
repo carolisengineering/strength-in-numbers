@@ -26,7 +26,9 @@ spec small enough to finish in one work session.
 | 05.0 | [Workout session lifecycle](05.0-workout-session-lifecycle.md) — `workout` + `workout_exercise` tables; start / resume / edit / finish / delete a session; add, reorder, remove exercises; idempotent create; `local_date` derived once at write time | API | endpoints | 01, 02, 03.0, 03.1, 03.2 | Implemented |
 | 05.1 | [Set logging](05.1-set-logging.md) — `set_entry`, per-modality validation, finish integrity rule | API | endpoints | 05.0 | Implemented |
 | 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0 (05.1 soft) | Not started |
-| 06 | Workout logging | UI (incl. exercise picker) | web | 04.1, 05.0, 05.1, 03.3 | Not started |
+| 06.0 | [Exercise picker & catalog client](06.0-exercise-picker.md) — React-free catalog store (`localStorage` sync-token cache behind a `StorageAdapter`), picker UI (recents + A–Z + filters), create-custom form; forked-origin hiding | UI | web | 03.3, 04.1 | Implemented |
+| 06.1 | Workout session screen — start/resume, add/reorder/remove exercises, per-modality set rows, finish (incl. `409 incomplete-working-sets`), delete workout, M1 Playwright smoke | UI | web | 06.0, 05.0, 05.1 | Not started |
+| 06.2 | Connectivity resilience — write queue, unsynced-state UI, retry/backoff (keyed on 05.1's `clientGeneratedId`), `localStorage` mirror of the in-progress workout, Finish blocked on pending writes | UI | web | 06.1 | Not started |
 | 07 | History, progress & PR engine | API | endpoints | 05.1 | Not started |
 | 08 | History & progress | UI | web | 06, 07 | Not started |
 | 09 | Routines & supersets (Tier B) — adds `routine_id` / `superset_group` | API | endpoints | 05.0 | Not started |
@@ -36,6 +38,7 @@ spec small enough to finish in one work session.
 | 13 | Observability & analytics — stand up Sentry + a trace backend + PostHog; dashboards for §1.3 metrics; alerts | ops | config + dashboards | 01, 04.0 | Not started |
 | 14 | Marketing site (Next.js) | static | separate deploy | — | Not started |
 | 15 | AWS migration (phase 2) — `infra/` in CDK or Terraform | infra | replaces Render | 01–13 stable | Not started |
+| 16 | [Dev scenario tooling](16-dev-scenario-tooling.md) — scenario runner replaying typed fixtures against a running API (seed + assert), `.http` request collection, React-free HTTP client moved to `@sin/core/http` | dev tooling | none (local scripts) | 01, 03.1, 04.0, 05.0 | Draft |
 
 **Ownership of cross-cutting concerns:**
 
@@ -47,7 +50,8 @@ spec small enough to finish in one work session.
 - **`packages/core` domain math** (e1RM, volume, PR rules) — defined in the
   feature spec that uses it (05.1, 07) and added to `core` there. Spec 02 only
   lays the foundation.
-- **Exercise catalog UI** (picker, "my custom exercises") — folded into Spec 06.
+- **Exercise catalog UI** (picker, create-custom) — Spec 06.0. A future
+  "my exercises" management screen (edit/fork/delete) is not yet scheduled.
 - **CSP + web security headers** — Spec 04.0 (Render static-site response
   headers: `Content-Security-Policy`, `X-Content-Type-Options`,
   `Referrer-Policy`). The API-side CORS `WEB_ORIGIN` allowlist stays Spec 01;
@@ -55,17 +59,21 @@ spec small enough to finish in one work session.
 
 **Parallelism:** 03.0 needs 02 (it consumes `@sin/core` Zod DTOs); 03.1 needs
 03.0; 03.2 needs 03.1; 03.3 needs 03.2 (it fixes the cursor 03.2's writes
-exposed the bug in, per #23/BL-1) and must land before Spec 06 starts
+exposed the bug in, per #23/BL-1) and must land before Spec 06.0 starts
 consuming `GET /v1/exercises` (the exercise picker is the first real consumer;
 Spec 05.0 resolves ids via `findVisibleById` and doesn't sync). 04.1 needs
 04.0. 05.0 needs 03.1 (`findVisibleById`) and 03.2 (`ExerciseRetiredError`,
 `is_active`); 05.1 needs 05.0; 05.2 can land any time after 05.0 — 05.1 is a
 soft dependency, since 05.2 should cover the set-write path if it already
-exists — but must precede a public beta. The API specs (05.0, 05.1, 05.2,
-07, 09, 11) can run ahead of their UIs.
+exists — but must precede a public beta. 06.0 needs only 03.3 and 04.1, so it
+does not wait on 05.0/05.1 and can land in parallel with them; 06.1 needs
+06.0, 05.0, and 05.1; 06.2 needs 06.1 (and, transitively, 05.1's
+`clientGeneratedId`). The API specs (05.0, 05.1, 05.2, 07, 09, 11) can run
+ahead of their UIs. 16 has no downstream dependents and can land any time
+after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
-05.0, 05.1, 05.2, 06 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
+05.0, 05.1, 05.2, 06.0, 06.1, 06.2 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
 Phase 2 = 15. (`packages/core` (02) is a foundation both M0 clients import — an
 M0 prerequisite, not M1 work.)
 
