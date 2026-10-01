@@ -21,9 +21,14 @@ export default defineConfig({
       ],
       // Spec 04.0 §10 — the security-load-bearing modules are held at >= 90%
       // line coverage (the browser analogue of Spec 01's auth-plugin gate).
+      // Spec 06.0 AC31 adds the catalog client and the storage seam: a silent
+      // bug there (a reset loop, a leaked forked origin, a storage failure
+      // that crashes the app) is user-visible and hard to diagnose.
       thresholds: {
         "src/api/**": { lines: 90 },
         "src/auth/**": { lines: 90 },
+        "src/features/catalog/**": { lines: 90 },
+        "src/storage/**": { lines: 90 },
       },
     },
   },
