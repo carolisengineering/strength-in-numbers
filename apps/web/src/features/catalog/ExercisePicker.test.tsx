@@ -235,6 +235,15 @@ describe("AC25 — picker layout", () => {
     );
   });
 
+  it("treats a search that folds to nothing as empty: recents stay, plain create row", async () => {
+    const { user } = renderPicker();
+
+    await user.type(search(), "́");
+
+    expect(recentRegion()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Create a custom exercise" })).toBeInTheDocument();
+  });
+
   it("keeps a create row last, worded from the search text", async () => {
     const { user } = renderPicker();
     expect(screen.getByRole("button", { name: "Create a custom exercise" })).toBeInTheDocument();
@@ -408,6 +417,43 @@ describe("AC29 — a created exercise is picked", () => {
         .getAllByRole("button")
         .map((b) => b.textContent)[0],
     ).toContain("Zercher");
+  });
+});
+
+describe("AC29 — a create that lands after the sheet was closed is not picked", () => {
+  it("does not call onPick when the sheet closes while the POST is in flight", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(EXERCISES_URL, async () => {
+        await gate;
+        return HttpResponse.json(created, { status: 201 });
+      }),
+    );
+    const storage = seededStorage([squat, bench]);
+    const onPick = vi.fn<(exercise: Exercise) => void>();
+    const user = userEvent.setup();
+    const tree = (open: boolean) => (
+      <CatalogTestProviders storage={storage}>
+        <ExercisePicker open={open} onPick={onPick} onClose={() => undefined} />
+      </CatalogTestProviders>
+    );
+    const { rerender } = render(tree(true));
+    await user.type(search(), "Zercher");
+    await user.click(screen.getByRole("button", { name: 'Can\'t find it? Create "Zercher"' }));
+    await user.click(screen.getByRole("radio", { name: "Weight × reps" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    rerender(tree(false));
+    release();
+    await waitFor(() =>
+      expect(observability.track).toHaveBeenCalledWith("custom_exercise_created"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onPick).not.toHaveBeenCalled();
   });
 });
 

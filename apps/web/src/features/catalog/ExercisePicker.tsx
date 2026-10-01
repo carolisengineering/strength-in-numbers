@@ -10,7 +10,7 @@ import styles from "./ExercisePicker.module.css";
 import { MODALITY_LABELS } from "./labels";
 import { useEquipment, useMuscleGroups } from "./referenceData";
 import { useCatalog } from "./useCatalog";
-import { filterByAttributes, searchByName } from "./visibility";
+import { filterByAttributes, fold, searchByName } from "./visibility";
 
 type PickSource = "recent" | "list" | "search";
 
@@ -55,7 +55,9 @@ export function ExercisePicker({ open, onPick, onClose }: ExercisePickerProps) {
     setEquipmentId(null);
   }, [open, refresh]);
 
-  const query = search.trim();
+  // A query that folds to nothing (only combining marks) is an empty query,
+  // exactly as `searchByName` treats it.
+  const query = fold(search.trim()) === "" ? "" : search.trim();
   const narrowing = query !== "" || muscleId !== null || equipmentId !== null;
 
   const listed = useMemo(

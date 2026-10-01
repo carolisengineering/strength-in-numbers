@@ -199,6 +199,28 @@ describe("AC29 — create outcomes", () => {
     expect(postBodies).toHaveLength(1);
   });
 
+  it("disables Cancel while a save is in flight", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post(EXERCISES_URL, async () => {
+        await gate;
+        return HttpResponse.json(created, { status: 201 });
+      }),
+    );
+    const { user, onCreated } = renderForm();
+    await user.click(screen.getByRole("radio", { name: "Duration" }));
+
+    await user.click(saveButton());
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    release();
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+  });
+
   it("409 exercise-limit-reached → a plain message, no field marked, input intact", async () => {
     server.use(
       http.post(EXERCISES_URL, () =>
@@ -253,6 +275,8 @@ describe("AC29 — create outcomes", () => {
     expect(await screen.findByText("control characters not allowed")).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText("unknown muscle id")).toBeInTheDocument();
+    // An error under "More details" must be visible, not hidden in a closed section.
+    expect(screen.getByText("More details").closest("details")).toHaveAttribute("open");
     expect(screen.getByText("unexpected property")).toBeInTheDocument();
     expect(saveButton()).toBeEnabled();
   });

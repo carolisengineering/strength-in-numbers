@@ -5,7 +5,7 @@ import {
   type Modality,
   type MuscleGroup,
 } from "@sin/core";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
@@ -24,6 +24,9 @@ const FIELD_NAMES = [
 type FieldName = (typeof FIELD_NAMES)[number];
 const isFieldName = (value: string): value is FieldName =>
   (FIELD_NAMES as readonly string[]).includes(value);
+
+/** The fields rendered inside "More details". */
+const DETAIL_FIELDS: readonly FieldName[] = ["primaryMuscleId", "secondaryMuscleIds", "equipmentId"];
 
 const MAX_SECONDARY_MUSCLES = 4;
 
@@ -60,6 +63,18 @@ export function CreateExerciseForm({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  // The sheet can close while a save is in flight. The POST still completes
+  // (the row lands in the store), but a form that is gone must not report a
+  // pick to a caller the user has already backed out of.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const canSave = name.trim() !== "" && modality !== null;
 
@@ -90,8 +105,9 @@ export function CreateExerciseForm({
         secondaryMuscleIds,
         equipmentId: equipmentId === "" ? null : equipmentId,
       });
-      onCreated(created);
+      if (mounted.current) onCreated(created);
     } catch (error) {
+      if (!mounted.current) return;
       setSaving(false);
       if (
         error instanceof ApiError &&
@@ -111,6 +127,8 @@ export function CreateExerciseForm({
           else unplaced.push(message);
         }
         setFieldErrors(next);
+        // A message under a collapsed section would be invisible.
+        if (DETAIL_FIELDS.some((field) => next[field] !== undefined)) setDetailsOpen(true);
         if (unplaced.length > 0 || error.errors.length === 0) {
           setFormError(unplaced.join(" ") || "Some of these values were not accepted.");
         }
@@ -159,7 +177,11 @@ export function CreateExerciseForm({
       </fieldset>
 
       {muscleGroups !== undefined && equipment !== undefined ? (
-        <details className={styles.details}>
+        <details
+          className={styles.details}
+          open={detailsOpen}
+          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+        >
           <summary className={styles.summary}>More details</summary>
           <div className={styles.detailsBody}>
             <Field
@@ -239,7 +261,7 @@ export function CreateExerciseForm({
       ) : null}
 
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
         <Button type="submit" busy={saving} disabled={!canSave}>

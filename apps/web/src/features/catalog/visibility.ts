@@ -28,7 +28,7 @@ export function sortByName(rows: readonly Exercise[]): Exercise[] {
 }
 
 /** Strip diacritics and case so "Café" and "cafe" compare equal (AC7). */
-const fold = (text: string): string =>
+export const fold = (text: string): string =>
   text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 export function searchByName(rows: readonly Exercise[], query: string): Exercise[] {
