@@ -9,10 +9,10 @@ import { z } from "zod";
 import type { ApiClient } from "../../api/client";
 import { reportError } from "../../observability/reportError";
 import { track } from "../../observability/track";
-import { isUserDataKey } from "../../storage/clearUserData";
 import type { StorageAdapter } from "../../storage/storage";
 import { classifySyncFailure, mergeCatalogRows, type SyncFailure } from "./catalogSync";
 import {
+  CATALOG_KEY_PREFIXES,
   CATALOG_REFRESH_STALE_MS,
   MAX_RECENTS,
   catalogKey,
@@ -91,7 +91,8 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
   // orphaned older-version key.
   guarded(() => {
     for (const key of storage.keys()) {
-      if (isUserDataKey(key) && key !== CATALOG_KEY && key !== RECENTS_KEY) {
+      const owned = CATALOG_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+      if (owned && key !== CATALOG_KEY && key !== RECENTS_KEY) {
         storage.remove(key);
       }
     }
