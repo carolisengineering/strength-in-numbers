@@ -43,6 +43,11 @@ export interface ApiRequestOptions {
   readonly body?: unknown;
   readonly schema?: ResponseSchema<unknown>;
   readonly signal?: AbortSignal;
+  /**
+   * Passed to `fetch` as-is. `"no-store"` keeps the browser HTTP cache out of
+   * the request entirely (Spec 06.0 AC1 — catalog sync).
+   */
+  readonly cache?: RequestCache;
 }
 
 export interface ApiClient {
@@ -135,6 +140,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         headers,
         body: payload,
         signal: options_.signal,
+        ...(options_.cache !== undefined ? { cache: options_.cache } : {}),
       });
     } catch (cause) {
       throw ApiError.network(requestId, cause);

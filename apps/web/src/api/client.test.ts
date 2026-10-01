@@ -373,3 +373,37 @@ describe("Q15 — response validation is dev-hard, prod-warn", () => {
     });
   });
 });
+
+describe("AC1 — the cache option reaches fetch (Spec 06.0)", () => {
+  it("passes cache on the first attempt and on the 401 retry", async () => {
+    let n = 0;
+    server.use(
+      http.get(`${BASE_URL}/v1/exercises`, () => {
+        n += 1;
+        return n === 1
+          ? new HttpResponse(null, { status: 401 })
+          : HttpResponse.json({ ok: true }, { status: 200 });
+      }),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await makeClient().request("/v1/exercises", { cache: "no-store" });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({ cache: "no-store" });
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({ cache: "no-store" });
+  });
+
+  it("leaves the fetch init without a cache key when the option is omitted", async () => {
+    server.use(
+      http.get(`${BASE_URL}/v1/exercises`, () =>
+        HttpResponse.json({ ok: true }, { status: 200 }),
+      ),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await makeClient().request("/v1/exercises");
+
+    expect(fetchSpy.mock.calls[0]?.[1]).not.toHaveProperty("cache");
+  });
+});
