@@ -49,6 +49,8 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 - **Fastify v5** wants `loggerInstance` (not `logger`) for a prebuilt pino; `buildApp` branches on the arg type.
 - `describe.skipIf(cond)` still runs `beforeAll` when `cond` is wrong — guard setup too.
 - Never use the word "dummy" (code, comments, config, docs) — use placeholder / test / fake / stub.
+- **Web logout + user data** (Spec 06.0): `logoutAndClear()` (`apps/web/src/auth/logout.ts`) is the only place that calls Auth0 `logout` — a unit test fails if another source file builds `logoutParams`. Anything that persists per-user data in `localStorage` uses a `sin:<name>:` key prefix listed in `USER_DATA_KEY_PREFIXES` (`apps/web/src/storage/clearUserData.ts`) so logout clears it, and goes through the `StorageAdapter` in `apps/web/src/storage/storage.ts` — the Spec 04.0 AC7 source scan fails if any other non-test module names `localStorage` / `sessionStorage` (comments included).
+- **jsdom has no `<dialog>` `showModal()`/`close()`** — `apps/web/src/test/setup.ts` shims them (attribute toggle only). Real focus/Escape behavior needs a browser test.
 
 ## Infrastructure
 

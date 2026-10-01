@@ -219,7 +219,7 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   (array), `equipment_id`, `is_active`, `forked_from_exercise_id` (`uuid NULL
   REFERENCES exercise(id) ON DELETE RESTRICT` — Spec 03.2, resolves D9: kept
   for provenance, but suppressing a forked row's global origin from a catalog
-  view is a **client-side** rule in Spec 06, not a server-side visibility
+  view is a **client-side** rule in Spec 06.0, not a server-side visibility
   filter: the origin is one row shared by every caller, so a per-caller "hidden"
   state has no row change for a delta to carry, and touching the origin per-fork
   would re-stamp it (its `change_xid`, below) and re-send it to every other
@@ -469,6 +469,12 @@ refreshes are incremental (Specs 03.1 / 03.3):
   `syncToken`, and after a restore the bytes are often identical) and hands
   back its cached `200` body carrying the same stale token that caused the
   `410`, looping forever;
+- the first real consumer, the exercise picker (Spec 06.0), goes further and
+  sends `cache: "no-store"` on **every** catalog sync, and does not use the
+  exercise endpoint's `ETag` at all: its store owns the sync state and
+  persists it, the sync token is the only change detector it needs, and the
+  API's CORS policy does not expose `ETag` to a cross-origin client. The
+  `410` rule above is therefore satisfied by construction;
 - `updated_at` is **no longer a sync input**. It stays application-stamped and
   in the `Exercise` DTO and the `ETag` hash, but only for display ("last
   edited"), history, and cache validation; nothing derives a cursor from it.
