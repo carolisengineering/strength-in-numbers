@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import { getConfig } from "../config";
+import { logoutAndClear } from "./logout";
 
 /**
  * Binds the React-free `createApiClient` (Spec 04.0 §6.4) to Auth0 (§6; feeds
@@ -13,7 +14,8 @@ import { getConfig } from "../config";
  *   `@auth0/auth0-react` v2's `getAccessTokenSilently({ cacheMode: "off" })`.
  *   A `missing_refresh_token` rejection propagates and the client routes it to
  *   `onAuthLost`.
- * - `onAuthLost` triggers a full Auth0 logout back to this origin.
+ * - `onAuthLost` clears user-scoped storage and triggers a full Auth0 logout
+ *   back to this origin (Spec 06.0 AC20).
  *
  * The client is memoised on `getAccessTokenSilently` / `logout`.
  * `Auth0Provider` wraps both in `useCallback(fn, [client])`, and `client` is a
@@ -35,7 +37,7 @@ export function useApi(): ApiClient {
           ? getAccessTokenSilently({ cacheMode: "off" })
           : getAccessTokenSilently(),
       onAuthLost: () => {
-        void logout({ logoutParams: { returnTo: window.location.origin } });
+        logoutAndClear(logout);
       },
     });
   }, [getAccessTokenSilently, logout]);

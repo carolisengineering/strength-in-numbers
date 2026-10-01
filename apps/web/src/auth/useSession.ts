@@ -5,6 +5,7 @@ import { useLocation } from "react-router";
 
 import { useMe } from "../features/me/useMe";
 import { login as sharedLogin } from "./login";
+import { logoutAndClear } from "./logout";
 
 export interface Session {
   /**
@@ -16,7 +17,7 @@ export interface Session {
   readonly isAuthenticated: boolean;
   /** Start login, returning to the current path + search afterwards. */
   readonly login: () => void;
-  /** Log out of Auth0 and land on the site origin. */
+  /** Clear user-scoped storage, then log out of Auth0 and land on the site origin. */
   readonly logout: () => void;
 }
 
@@ -40,7 +41,7 @@ export function useSession(): Session {
   }, [loginWithRedirect, pathname, search]);
 
   const logout = useCallback(() => {
-    void auth0Logout({ logoutParams: { returnTo: window.location.origin } });
+    logoutAndClear(auth0Logout);
   }, [auth0Logout]);
 
   return { user, isAuthenticated, login, logout };
