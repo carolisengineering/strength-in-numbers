@@ -35,7 +35,7 @@ describe("AC7 — tokens live in memory only", () => {
     expect(JSON.stringify(buildAuth0Config(CONFIG))).not.toMatch(/localstorage/i);
   });
 
-  it("source scan: no module under src/ reads or writes localStorage / sessionStorage", () => {
+  it("source scan: only the StorageAdapter seam reads or writes localStorage / sessionStorage", () => {
     const modules = import.meta.glob("../**/*.{ts,tsx}", {
       query: "?raw",
       import: "default",
@@ -47,7 +47,10 @@ describe("AC7 — tokens live in memory only", () => {
       .filter(([, source]) => /\b(?:localStorage|sessionStorage)\b/.test(source))
       .map(([path]) => path);
 
-    expect(offenders).toEqual([]);
+    // Spec 06.0 §4 — `storage/storage.ts` is the one sanctioned seam. It holds
+    // exercise rows, ids and the sync token, never a credential; any other
+    // module touching browser storage still fails here.
+    expect(offenders).toEqual(["../storage/storage.ts"]);
   });
 });
 
