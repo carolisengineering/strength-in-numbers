@@ -44,11 +44,20 @@
   padding: 0;
 }
 
+/* A logged set is a full-width button: tap it to edit or delete (Spec 06.1 §5.4). */
 .set {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  width: 100%;
   min-height: var(--tap-target-min);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  text-align: left;
 }
 
 .setNumber {

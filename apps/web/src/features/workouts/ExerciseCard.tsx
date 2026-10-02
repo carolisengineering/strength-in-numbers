@@ -1,10 +1,11 @@
 import { useId, useState } from "react";
-import type { WorkoutExerciseDetail } from "@sin/core";
+import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow } from "./EntryRow";
 import { formatSet } from "./format";
+import { SetEditSheet } from "./SetEditSheet";
 import styles from "./ExerciseCard.module.css";
 
 export interface ExerciseCardProps {
@@ -37,6 +38,7 @@ export function ExerciseCard({
 }: ExerciseCardProps) {
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [editing, setEditing] = useState<SetEntry | null>(null);
 
   return (
     <article className={styles.card} aria-labelledby={headingId}>
@@ -69,15 +71,26 @@ export function ExerciseCard({
       {exercise.sets.length > 0 ? (
         <ol className={styles.sets}>
           {exercise.sets.map((set) => (
-            <li key={set.id} className={styles.set}>
-              <span className={styles.setNumber}>{set.setNumber}</span>
-              <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+            <li key={set.id}>
+              <button type="button" className={styles.set} onClick={() => setEditing(set)}>
+                <span className={styles.setNumber}>{set.setNumber}</span>
+                <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+              </button>
             </li>
           ))}
         </ol>
       ) : null}
 
       <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} />
+
+      <SetEditSheet
+        set={editing}
+        modality={exercise.modalitySnapshot}
+        exerciseName={exercise.exerciseNameSnapshot}
+        unitPreference={unitPreference}
+        onClose={() => setEditing(null)}
+        onGone={onGone}
+      />
     </article>
   );
 }

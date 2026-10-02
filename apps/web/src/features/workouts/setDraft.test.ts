@@ -3,6 +3,7 @@ import { MODALITY_VALUES, SET_REPS_MAX, SetEntrySchema, type SetEntry } from "@s
 import {
   createDraftReducer,
   diffForPatch,
+  draftFieldForPath,
   draftFromSet,
   parseDraft,
   unitDefaultsFor,
@@ -210,6 +211,27 @@ describe("AC10 — attempt key lifecycle", () => {
     const reduce = createDraftReducer(() => "fresh");
     const next = reduce(base({ weight: "99" }), { type: "reset", from: null, defaults: unitDefaultsFor("lb") });
     expect(next).toMatchObject({ weight: "", weightUnit: "lb", distanceUnit: "mi", attemptKey: "fresh" });
+  });
+});
+
+describe("draftFieldForPath — a server field path names an input", () => {
+  it.each([
+    ["weight", "weight"],
+    ["weightUnit", "weight"],
+    ["reps", "reps"],
+    ["distance", "distance"],
+    ["distanceUnit", "distance"],
+    ["durationS", "minutes"],
+    ["rpe", "rpe"],
+    ["body.weight", "weight"],
+    ["/reps", "reps"],
+    ["sets.0.durationS", "minutes"],
+  ])("%s → %s", (path, field) => {
+    expect(draftFieldForPath(path)).toBe(field);
+  });
+
+  it.each(["isComplete", "setType", "", "body", "weights"])("%j matches no input", (path) => {
+    expect(draftFieldForPath(path)).toBeNull();
   });
 });
 

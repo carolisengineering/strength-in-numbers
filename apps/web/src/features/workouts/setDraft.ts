@@ -133,6 +133,26 @@ export function parseDraft(modality: Modality, d: SetDraft): ParseResult {
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, body };
 }
 
+/** The API names measures; the form has inputs. A server unit error belongs under its value's input. */
+const INPUT_FOR_MEASURE: Record<string, DraftField> = {
+  weight: "weight",
+  weightUnit: "weight",
+  reps: "reps",
+  distance: "distance",
+  distanceUnit: "distance",
+  durationS: "minutes",
+  rpe: "rpe",
+};
+
+/**
+ * Which input a server field path (`weight`, `body.reps`, `/rpe`) belongs to, or `null` for a path
+ * that matches none (shown as a form-level message instead).
+ */
+export function draftFieldForPath(path: string): DraftField | null {
+  const last = path.split(/[./]/).at(-1) ?? "";
+  return Object.hasOwn(INPUT_FOR_MEASURE, last) ? (INPUT_FOR_MEASURE[last] ?? null) : null;
+}
+
 /**
  * Only what changed, for `PATCH /v1/sets/{id}`; `null` when nothing did (the caller sends no request).
  * RPE is the one optional field: a body without it means "cleared".

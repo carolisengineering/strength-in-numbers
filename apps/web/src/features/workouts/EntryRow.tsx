@@ -6,6 +6,7 @@ import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
 import {
   createDraftReducer,
+  draftFieldForPath,
   draftFromSet,
   parseDraft,
   unitDefaultsFor,
@@ -15,17 +16,6 @@ import { useCreateSet } from "./useWorkoutMutations";
 import styles from "./EntryRow.module.css";
 
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
-
-/** Server field paths → the entry-row field they belong to (the API names measures, not inputs). */
-const FIELD_FOR_PATH: Record<string, DraftField> = {
-  weight: "weight",
-  weightUnit: "weight",
-  reps: "reps",
-  distance: "distance",
-  distanceUnit: "distance",
-  durationS: "minutes",
-  rpe: "rpe",
-};
 
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "rpe"]);
@@ -106,7 +96,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         const matched: Partial<Record<DraftField, string>> = {};
         let unmatched: string | null = null;
         for (const { path, message } of action.fieldErrors) {
-          const field = FIELD_FOR_PATH[path.split(/[./]/).at(-1) ?? ""];
+          const field = draftFieldForPath(path);
           if (field) matched[field] ??= message;
           else unmatched ??= message;
         }
