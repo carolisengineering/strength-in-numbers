@@ -1,4 +1,4 @@
-import { useId, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
+import { useId, useMemo, useReducer, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
@@ -73,6 +73,15 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
     dispatch({ type: "edit", field, value });
   }
 
+  // A form whose submit button is disabled never fires `submit` on Enter, so `log()` cannot be the
+  // place that explains an invalid row. Catch the key instead and show every message (Spec 06.4 D2).
+  function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== "Enter" || parsed.ok || !(event.target instanceof HTMLInputElement)) return;
+    event.preventDefault();
+    const invalid = Object.keys(parsed.errors) as DraftField[];
+    setTouched((previous) => new Set([...previous, ...invalid]));
+  }
+
   async function log(event?: FormEvent) {
     event?.preventDefault();
     if (inFlight.current || !parsed.ok) return;
@@ -125,7 +134,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   }
 
   return (
-    <form className={styles.row} onSubmit={(event) => void log(event)} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
+    <form className={styles.row} onSubmit={(event) => void log(event)} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
       <p className={styles.setNumber}>Set {exercise.sets.length + 1}</p>
       <SetFields
         modality={exercise.modalitySnapshot}

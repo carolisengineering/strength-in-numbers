@@ -32,8 +32,11 @@ export interface ActiveSessionProps {
   workout: WorkoutDetail;
   /** A one-line message carried over from another screen (e.g. "…resumed it."). */
   notice?: string | null;
-  /** The workout is gone or finished elsewhere: hand back to the Workouts screen (§5.8 gone path). */
-  onGone: () => void;
+  /**
+   * The workout is gone or finished elsewhere: hand back to the Workouts screen (§5.8 gone path).
+   * `refetched` says `/active` was already re-read, so the caller need not read it again.
+   */
+  onGone: (options?: { refetched?: boolean }) => void;
 }
 
 interface Banner {
@@ -120,9 +123,9 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
-  const gone = (reason: "gone" | "finished") => {
+  const gone = (reason: "gone" | "finished", options?: { refetched?: boolean }) => {
     track("workout_conflict", { kind: reason });
-    onGone();
+    onGone(options);
   };
 
   /** Resolve a failed exercise-structure write per §5.8. */
@@ -133,8 +136,6 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
       case "gone":
         gone(action.reason);
         return;
-      case "ok":
-        return;
       case "refetch":
         track("workout_conflict", { kind: "stale-position" });
         await refetchActive();
@@ -144,7 +145,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
         await refetchActive();
         const current = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
         if (!current || current.id !== workout.id) {
-          gone("gone");
+          gone("gone", { refetched: true });
         } else {
           track("workout_conflict", { kind: "unavailable" });
           setBanner({ tone: "warning", text: "That exercise isn't available" });

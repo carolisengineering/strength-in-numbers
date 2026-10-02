@@ -30,9 +30,9 @@ export function WorkoutsScreen() {
   const [goneId, setGoneId] = useState<string | null>(null);
 
   const markGone = useCallback(
-    (workoutId: string) => {
+    (workoutId: string, refetched = false) => {
       setGoneId(workoutId);
-      void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      if (!refetched) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
     },
     [queryClient],
   );
@@ -78,7 +78,7 @@ export function WorkoutsScreen() {
     <ActiveSession
       workout={active.data}
       notice={active.isError ? REFRESH_FAILED_NOTICE : shownNotice}
-      onGone={() => markGone(workoutId)}
+      onGone={(options) => markGone(workoutId, options?.refetched)}
     />
   );
 }

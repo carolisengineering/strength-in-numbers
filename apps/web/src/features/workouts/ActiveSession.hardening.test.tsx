@@ -35,7 +35,9 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
+import type { Exercise } from "@sin/core";
 import { routes } from "../../app/router";
+import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -171,7 +173,84 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
   });
 });
 
-describe("06.4 AC3 —scroll-into-view uses a ref, on the first flagged row only", () => {
+// ---- AC7 ----------------------------------------------------------------------------------------
+
+describe("06.4 AC7 — an add-exercise 404 costs one GET /v1/workouts/active", () => {
+  const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
+
+  async function setupPicker(apiCatalog: Exercise[]) {
+    const fake = createWorkoutFake({ active: makeWorkoutDetail(), catalog: apiCatalog });
+    prepareApp({ auth, fake, catalog: [bench] });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    return { fake, ...app };
+  }
+
+  async function pickBench(user: ReturnType<typeof renderApp>["user"]) {
+    await user.click(screen.getByRole("button", { name: "Add exercise" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add exercise" });
+    await user.click(within(within(dialog).getByRole("region", { name: "All exercises" })).getByRole("button", { name: /Bench Press/ }));
+  }
+
+  it("workout gone → Start screen with the gone notice, after exactly one read", async () => {
+    const { fake, user } = await setupPicker([bench]);
+    fake.state.active = null;
+    const before = activeReads(fake);
+
+    await pickBench(user);
+
+    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("That workout was already finished or removed.");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(activeReads(fake) - before).toBe(1);
+  });
+
+  it("exercise unavailable → the warning, after exactly one read", async () => {
+    const { fake, user } = await setupPicker([]); // the API cannot see the picked exercise
+    const before = activeReads(fake);
+
+    await pickBench(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That exercise isn't available");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(activeReads(fake) - before).toBe(1);
+  });
+});
+
+// ---- AC4 ----------------------------------------------------------------------------------------
+
+describe("06.4 AC4 — Enter in an invalid, untouched entry row shows what is wrong", () => {
+  const setPosts = (fake: ReturnType<typeof createWorkoutFake>) =>
+    fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"));
+
+  it("sends nothing, reveals the field messages, and keeps Log set disabled", async () => {
+    const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    const row = within(screen.getByRole("article", { name: "X" }));
+    expect(row.queryAllByRole("alert")).toHaveLength(0);
+
+    await user.type(row.getByLabelText("Weight"), "{Enter}");
+
+    expect(row.getAllByRole("alert").length).toBeGreaterThanOrEqual(2); // Weight and Reps
+    expect(row.getByLabelText("Weight")).toHaveAccessibleDescription(/.+/);
+    expect(row.getByLabelText("Reps")).toHaveAccessibleDescription(/.+/);
+    expect(row.getByRole("button", { name: "Log set" })).toBeDisabled();
+    expect(setPosts(fake)).toHaveLength(0);
+  });
+
+  it("Enter in a valid row still logs exactly one set", async () => {
+    const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    const row = within(screen.getByRole("article", { name: "X" }));
+    await user.type(row.getByLabelText("Weight"), "60");
+    await user.type(row.getByLabelText("Reps"), "8");
+
+    await user.type(row.getByLabelText("Reps"), "{Enter}");
+
+    expect(await row.findByRole("button", { name: /60 kg × 8/ })).toBeInTheDocument();
+    expect(setPosts(fake)).toHaveLength(1);
+  });
+});
+
+describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row only", () => {
   it("scrolls once, to the first flagged row in display order, when two cards each hold one", async () => {
     const { user } = await setup([
       { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 }), incompleteSet(2)] },
