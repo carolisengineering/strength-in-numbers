@@ -3,12 +3,15 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
+import { resetUserDataWritesForTests } from "../storage/storage";
 import { server } from "./msw/server";
 
 // `vitest` runs with `globals: false`, so React Testing Library's automatic
 // per-test unmount is not registered — do it here for every render test.
 afterEach(() => {
   cleanup();
+  // `logoutAndClear` trips a process-wide write block (Spec 06.1 AC13); don't let it leak across tests.
+  resetUserDataWritesForTests();
 });
 
 // Shared MSW lifecycle (Spec 04.0 §10). `error` on an unhandled request keeps a
