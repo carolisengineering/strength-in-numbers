@@ -1,5 +1,7 @@
 import { ApiError } from "../api/problem";
+import { CatalogProvider } from "../features/catalog/CatalogProvider";
 import { useMe } from "../features/me/useMe";
+import { WorkoutClientProvider } from "../features/workouts/WorkoutClientProvider";
 import { AccountDeleted } from "../screens/AccountDeleted";
 import { RetryScreen } from "../screens/RetryScreen";
 import { Spinner } from "../ui/Spinner";
@@ -15,9 +17,11 @@ import { AppShell } from "./AppShell";
  *   403 account-deleted (ApiError)       -> <AccountDeleted/> (logs out on mount)
  *   503 auth-unavailable / network / any -> <RetryScreen/> ("Try again" refetches)
  *   200 (incl. `isNewUser: true`)        -> <AppShell/> (which renders the <Outlet/>)
+ *                                           inside <CatalogProvider> and <WorkoutClientProvider>
  *
  * Spec 04.1 §5: the gate is unchanged; only the `200` branch now renders the
- * styled shell instead of a bare `<Outlet/>`.
+ * styled shell instead of a bare `<Outlet/>`. Spec 06.1 mounts the catalog and
+ * workout-client providers around it.
  */
 export function ProtectedLayout() {
   const query = useMe();
@@ -43,5 +47,13 @@ export function ProtectedLayout() {
     );
   }
 
-  return <AppShell />;
+  // Spec 06.1: both providers mount only once `GET /v1/me` is 200 — the catalog is per user, and the
+  // workout client needs an authenticated API client.
+  return (
+    <CatalogProvider userId={query.data.id}>
+      <WorkoutClientProvider>
+        <AppShell />
+      </WorkoutClientProvider>
+    </CatalogProvider>
+  );
 }

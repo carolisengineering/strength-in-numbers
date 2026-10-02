@@ -25,6 +25,7 @@ vi.mock("@auth0/auth0-react", () => ({
 
 import { resetConfigCache } from "../config";
 import { server } from "../test/msw/server";
+import { catalogHandlers, createWorkoutFake } from "../test/workoutFake";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { makeOnRedirectCallback, routes } from "./router";
 
@@ -68,6 +69,8 @@ beforeEach(() => {
 
   meCalls = 0;
   lastMeHeaders = undefined;
+  // `/app` lands on Workouts (Spec 06.1): give it a "no active workout" API and an empty catalog.
+  server.use(...createWorkoutFake().handlers, ...catalogHandlers([]));
   server.use(
     http.get(ME_URL, ({ request }) => {
       meCalls += 1;
@@ -206,7 +209,8 @@ describe("AC4 — session-resume bridge (routing)", () => {
     const { router } = renderAt(["/"]);
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/app");
+    // `/app` redirects into Workouts (Spec 06.1 D20).
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });
 });
 
@@ -219,7 +223,8 @@ describe("AC6 — callback completes or fails cleanly", () => {
     makeOnRedirectCallback(router)({ returnTo: "/app" });
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/app");
+    // The clean path is `/app`, which redirects into Workouts (Spec 06.1 D20).
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
     expect(router.state.location.search).toBe("");
   });
 

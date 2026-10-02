@@ -29,6 +29,7 @@ vi.mock("@auth0/auth0-react", () => ({
 
 import { resetConfigCache } from "../config";
 import { server } from "../test/msw/server";
+import { catalogHandlers, createWorkoutFake } from "../test/workoutFake";
 import { NAV_ITEMS } from "./navItems";
 import { routes } from "./router";
 
@@ -60,6 +61,8 @@ beforeEach(() => {
   auth.state.isAuthenticated = false;
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
 
+  // `/app` lands on Workouts (Spec 06.1): give it a "no active workout" API and an empty catalog.
+  server.use(...createWorkoutFake().handlers, ...catalogHandlers([]));
   server.use(http.get(ME_URL, () => HttpResponse.json(ME, { status: 200 })));
 });
 
