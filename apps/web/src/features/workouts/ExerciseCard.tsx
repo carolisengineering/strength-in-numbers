@@ -16,6 +16,8 @@ export interface ExerciseCardProps {
   structureBusy: boolean;
   onMove: (direction: "up" | "down") => void;
   onRemove: () => void;
+  /** Working sets the server refused to finish over (§5.6): marked with visible "Needs data" text. */
+  flaggedIds: ReadonlySet<string>;
   /** Weight and distance units default from the profile (D26). */
   unitPreference: "kg" | "lb";
   /** The workout is gone or finished elsewhere (§5.8 gone path). */
@@ -33,6 +35,7 @@ export function ExerciseCard({
   structureBusy,
   onMove,
   onRemove,
+  flaggedIds,
   unitPreference,
   onGone,
 }: ExerciseCardProps) {
@@ -70,14 +73,24 @@ export function ExerciseCard({
 
       {exercise.sets.length > 0 ? (
         <ol className={styles.sets}>
-          {exercise.sets.map((set) => (
-            <li key={set.id}>
-              <button type="button" className={styles.set} onClick={() => setEditing(set)}>
-                <span className={styles.setNumber}>{set.setNumber}</span>
-                <span>{formatSet(set, exercise.modalitySnapshot)}</span>
-              </button>
-            </li>
-          ))}
+          {exercise.sets.map((set) => {
+            const needsData = flaggedIds.has(set.id);
+            return (
+              <li key={set.id}>
+                <button
+                  type="button"
+                  className={needsData ? `${styles.set} ${styles.needsData}` : styles.set}
+                  data-needs-data={needsData ? "true" : undefined}
+                  onClick={() => setEditing(set)}
+                >
+                  <span className={styles.setNumber}>{set.setNumber}</span>
+                  <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+                  {/* Text, not colour alone, marks the row (AC33). */}
+                  {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
+                </button>
+              </li>
+            );
+          })}
         </ol>
       ) : null}
 

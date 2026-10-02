@@ -60,6 +60,17 @@
   text-align: left;
 }
 
+.needsData {
+  border: 1px solid var(--color-warning);
+}
+
+.needsDataTag {
+  margin-left: auto;
+  color: var(--color-warning);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
 .setNumber {
   min-width: var(--space-6);
   color: var(--color-muted);
