@@ -20,6 +20,7 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
 | [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
 | [BL-10](#bl-10) | Error contract | A malformed percent-encoded URL gets Fastify's plain-JSON 400, not problem+json | Minor | 2026-09-28 |
+| [BL-12](#bl-12) | Testing / catalog | The catalog store has no test where a refresh overlaps `createCustom` or `recordPick` (due before Spec 06.2 wraps `createCustom` in a queue) | Minor | 2026-10-02 |
 
 ---
 
@@ -314,3 +315,35 @@ so nothing is affected until a native client exists.
 - `FakeWorkoutRepository` keys its replay map on the parsed value, and a route
   test posts an upper-case key and asserts the lower-case echo and a `200`
   replay.
+
+## BL-12
+
+**The catalog store has no test where a refresh overlaps another store write.**
+
+Spec 06.0 handed Spec 06.1 a list of deferred items that included "store
+interleaving test gaps" without enumerating them; Spec 06.1 D7 sent them on to
+Spec 06.2. Reading `catalogStore.test.ts` on 2026-10-02: concurrent refreshes
+are covered (AC16: two callers share one request; forced calls coalesce into one
+follow-up) and `createCustom` is covered when nothing else is running (AC23:
+insert locally, then re-sync). Not covered:
+
+- a `createCustom` that resolves while a `refresh` is in flight (does the
+  in-flight response, built before the new row existed, overwrite or drop the
+  locally inserted row?);
+- a `refresh` response that lands after a `recordPick` (do recents survive a
+  merge or a full-pull replace?);
+- a storage failure (AC11's flip to in-memory) that happens in the middle of
+  either of the above.
+
+This is a reading of the existing tests, not the original 06.0 reviewer's list;
+confirm it against the 06.0 spec's AC list before relying on it.
+
+**Why deferred:** Spec 06.1 does not change the store. Spec 06.2 wraps
+`createCustom` in a write queue, which is where an interleaving bug would start
+to matter.
+
+**Done looks like:**
+- Each case above has a store-level test using the existing deferred-promise
+  pattern from AC16, written before 06.2 changes `createCustom`.
+- Anything one of them turns up is fixed in the store, or recorded here as its
+  own BL.
