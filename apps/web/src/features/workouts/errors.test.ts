@@ -34,8 +34,12 @@ describe("AC2 — classifyWorkoutError", () => {
     expect(classifyWorkoutError(problem(422, "validation-error")).fieldErrors).toEqual([]);
   });
 
-  it("carries the request id for support correlation", () => {
-    expect(classifyWorkoutError(problem(500, "about:blank")).requestId).toBe("req-1");
+  it("carries the request id for support correlation and echoes the operation name", () => {
+    expect(classifyWorkoutError(problem(500, "about:blank"), { op: "create-set" })).toMatchObject({
+      requestId: "req-1",
+      op: "create-set",
+    });
+    expect(classifyWorkoutError(problem(500, "about:blank")).op).toBeNull();
   });
 
   it("a network failure is `network`", () => {
