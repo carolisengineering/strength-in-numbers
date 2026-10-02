@@ -14,15 +14,15 @@ spec small enough to finish in one work session.
 
 | # | Spec | Kind | Deploys | Depends on | Status |
 |---|---|---|---|---|---|
-| 01 | [Foundation & Auth](01-foundation-auth.md) | API / platform | API → Render staging + prod | — | Draft |
+| 01 | [Foundation & Auth](01-foundation-auth.md) | API / platform | API → Render staging + prod | — | Implemented |
 | 01.1 | [Production deploy pipeline](01.1-prod-deploy-pipeline.md) | platform / CI-CD | gated `staging → prod` promotion | 01 | Draft |
-| 02 | [`packages/core` foundation](02-core-foundation.md) — types, Zod setup, units conversion, purity check | library | workspace package | 01 | Draft |
-| 03.0 | [API contract pipeline](03.0-api-contract-pipeline.md) — Zod DTOs → `fastify-type-provider-zod` → OpenAPI 3.1 emit + CI drift check; `/v1/me` migrated onto it | API / platform | served `/openapi.json` + CI check | 01, 02 | Draft |
-| 03.1 | [Exercise catalog — read](03.1-exercise-catalog-api.md) — 3 tables + seed, `GET /v1/exercises` (`since`/`syncToken`/`ETag`), reference endpoints, `ExerciseId` | API | endpoints | 01, 02, 03.0 | Draft |
+| 02 | [`packages/core` foundation](02-core-foundation.md) — types, Zod setup, units conversion, purity check | library | workspace package | 01 | Implemented |
+| 03.0 | [API contract pipeline](03.0-api-contract-pipeline.md) — Zod DTOs → `fastify-type-provider-zod` → OpenAPI 3.1 emit + CI drift check; `/v1/me` migrated onto it | API / platform | served `/openapi.json` + CI check | 01, 02 | Implemented |
+| 03.1 | [Exercise catalog — read](03.1-exercise-catalog-api.md) — 3 tables + seed, `GET /v1/exercises` (`since`/`syncToken`/`ETag`), reference endpoints, `ExerciseId` | API | endpoints | 01, 02, 03.0 | Implemented |
 | 03.2 | [Exercise catalog — writes](03.2-exercise-catalog-writes.md) (custom create + copy-on-write fork of a global row) | API | endpoints | 03.1 | Implemented |
 | 03.3 | [Catalog sync token](03.3-catalog-sync-token.md) — fixes #23/BL-1: trigger-stamped `change_xid xid8` + snapshot-horizon token replaces the timestamp cursor (`?since=`/`syncToken`, `410 sync-token-expired`) | API | endpoints (breaking rename of an unconsumed contract) | 03.2 | Implemented |
-| 04.0 | [SPA shell, browser auth & API client](04.0-spa-shell-auth.md) — Vite + React SPA (`@sin/web`), Auth0 PKCE (in-memory tokens, self-hosted refresh worker), React-free API client (problem+json → typed errors, `@sin/core` DTOs), router + protected routes + bootstrap gate, Render static site + strict CSP, CI web gate | UI / platform | web → Render static site | 01, 02 | Draft |
-| 04.1 | [Profile slice & UI foundation](04.1-profile-slice.md) — CSS-Modules design tokens + primitives, thumb-zone `AppShell` + bottom nav, `useSession`, error boundary, and the Profile vertical slice (`GET`/`PATCH /v1/me`: 422→field errors, cache write) | UI | web (same `@sin/web` bundle) | 04.0, 01, 02 | Draft |
+| 04.0 | [SPA shell, browser auth & API client](04.0-spa-shell-auth.md) — Vite + React SPA (`@sin/web`), Auth0 PKCE (in-memory tokens, self-hosted refresh worker), React-free API client (problem+json → typed errors, `@sin/core` DTOs), router + protected routes + bootstrap gate, Render static site + strict CSP, CI web gate | UI / platform | web → Render static site | 01, 02 | Implemented |
+| 04.1 | [Profile slice & UI foundation](04.1-profile-slice.md) — CSS-Modules design tokens + primitives, thumb-zone `AppShell` + bottom nav, `useSession`, error boundary, and the Profile vertical slice (`GET`/`PATCH /v1/me`: 422→field errors, cache write) | UI | web (same `@sin/web` bundle) | 04.0, 01, 02 | Implemented |
 | 05.0 | [Workout session lifecycle](05.0-workout-session-lifecycle.md) — `workout` + `workout_exercise` tables; start / resume / edit / finish / delete a session; add, reorder, remove exercises; idempotent create; `local_date` derived once at write time | API | endpoints | 01, 02, 03.0, 03.1, 03.2 | Implemented |
 | 05.1 | [Set logging](05.1-set-logging.md) — `set_entry`, per-modality validation, finish integrity rule | API | endpoints | 05.0 | Implemented |
 | 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0 (05.1 soft) | Not started |

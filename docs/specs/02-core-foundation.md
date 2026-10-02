@@ -1,6 +1,6 @@
 # Spec 02 — `packages/core` Foundation
 
-**Status:** Draft v0.2 — architect review applied (2026-09-02)
+**Status:** Implemented — v0.2 — architect review applied (2026-09-02)
 **Last updated:** 2026-09-02
 **Design refs:** DESIGN.md §3.4 (`packages/core` purity rules), §4.0–4.5 (conventions, enums, entities), §4.8 (unit handling / generated columns), §6 (API contract / JSON casing), §8.2–8.3 (security, testing)
 

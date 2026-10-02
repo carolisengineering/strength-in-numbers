@@ -1,6 +1,6 @@
 # Spec 01 — Foundation & Auth
 
-**Status:** Draft v0.4 — §12 questions Q1–Q10 resolved; pre-implementation review pass
+**Status:** Implemented — v0.4 — §12 questions Q1–Q10 resolved; pre-implementation review pass
 **Last updated:** 2026-08-31
 **Design refs:** DESIGN.md §3 (architecture), §4.1 (`user`), §5.1 (auth), §6 (API), §7 (infra), §8.2 (security), §9 (M0)
 
