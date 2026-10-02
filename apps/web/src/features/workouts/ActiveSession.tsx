@@ -242,7 +242,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
         gone("gone");
         return;
       }
-      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
+      // As in `useFinishWorkout`: seed only; the summary screen clears the active entry.
       queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workout.id), fresh);
       track("workout_finished", {
         exerciseCount: fresh.exercises.length,

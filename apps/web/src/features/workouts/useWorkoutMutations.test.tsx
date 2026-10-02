@@ -175,7 +175,7 @@ describe("exercise-structure writes", () => {
 });
 
 describe("finish", () => {
-  it("removes the active query, seeds the detail cache with the finished workout, and returns it", async () => {
+  it("seeds the detail cache with the finished workout and returns it; leaves the active entry to the summary screen (06.4 AC1)", async () => {
     const { qc, detail } = seeded();
     const finished = {
       id: detail.id,
@@ -194,7 +194,7 @@ describe("finish", () => {
       wrapper: wrapperWith(qc, fakeClient({ finish: async () => finished })),
     });
     await act(() => result.current.mutateAsync({ id: detail.id, endedAt: finished.endedAt }));
-    expect(qc.getQueryData(WORKOUT_KEYS.active)).toBeUndefined();
+    expect(qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)?.id).toBe(detail.id);
     const seededDetail = qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(detail.id))!;
     expect(seededDetail.endedAt).toBe(finished.endedAt);
     expect(seededDetail.exercises).toHaveLength(1);
