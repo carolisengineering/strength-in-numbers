@@ -492,14 +492,19 @@ free has no pre-deploy hook), automated with the paid plan.
 ### 5.3 Logging & connectivity
 
 Decision: **online required** for v1 (per project constraint). The web app keeps
-the in-progress workout in a client store and writes each set to the server as it
-changes (debounced) — `POST` once to create it, then `PATCH /sets/{id}` for every
-later edit, which is idempotent (Spec 05.1 §5). The client mints a
-`clientGeneratedId` for each set and sends it on the create, so a create whose
-outcome is unknown can be replayed safely: the server returns the stored set
-instead of adding a second one (§6 "Idempotency"). If a write fails, the set is marked
-"unsynced" in the UI and retried with backoff; **Finish** is blocked only if
-unsynced changes remain, with a clear retry affordance.
+the in-progress workout in a client cache (the server's copy, refetched on mount
+and window focus). A set row is created **when the lifter taps "Log set"**: the
+entry row is a local draft, and the `POST` carries a complete set
+(`isComplete: true`, every measure its modality requires) and a client-minted
+`clientGeneratedId`. Later edits are an explicit save and `PATCH /sets/{id}`,
+which is idempotent (Spec 05.1 §5). There is no debounced autosave of half-filled
+rows: planned targets are UI placeholders, never server rows. Because the create
+carries a key, a create whose outcome is unknown can be replayed safely: the
+server returns the stored set instead of adding a second one (§6 "Idempotency").
+Spec 06.1 ships this loop with pessimistic writes (the screen waits for the
+server and offers a manual retry); Spec 06.2 adds the queue: if a write fails,
+the set is marked "unsynced" in the UI and retried with backoff, and **Finish**
+is blocked only if unsynced changes remain, with a clear retry affordance.
 
 Recommended cheap mitigation for the gym case (Risk R1): mirror the in-progress
 workout to `localStorage`/IndexedDB and drain a bounded retry queue on reconnect,
@@ -589,14 +594,14 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 All paths are under `/v1`.
 
 ```
-POST   /workouts                  { client_generated_id, started_at, tz_offset_minutes?, title?, notes? }
+POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinutes?, title?, notes? }
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
 GET    /workouts?cursor=          → history list (Spec 07)
 GET    /workouts/{id}
-PATCH  /workouts/{id}             { title?, notes?, ended_at? }   # finish = set ended_at; PR recompute is Spec 07's
+PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; PR recompute is Spec 07's
 DELETE /workouts/{id}            # whole session only, allowed finished or not
-POST   /workouts/{id}/exercises   { exercise_id, position? }
+POST   /workouts/{id}/exercises   { exerciseId, position? }
 PATCH  /workout-exercises/{id}    { position?, notes? }
 DELETE /workout-exercises/{id}
 POST   /workout-exercises/{id}/sets   { clientGeneratedId?, setType?, reps?, weight?, weightUnit?, ... }
@@ -678,8 +683,10 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   detection — these are where silent wrongness hurts most.
 - API: integration tests against a real Postgres (testcontainers), covering the
   idempotency and finish-workout paths.
-- E2E: one happy-path web smoke (sign in → start → log → finish → see PR) in CI,
-  Playwright.
+- E2E: one happy-path web smoke in CI, Playwright (Spec 06.3): sign in → start →
+  pick → log → reload (resume) → finish → summary → delete. The "see PR" step
+  joins when Specs 07/08 exist; until then the smoke ends at finish / summary /
+  delete.
 
 ---
 
@@ -701,7 +708,7 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2 · M2 = 07, 08 ·
+  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3 · M2 = 07, 08 ·
   M3 = 09, 10 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
