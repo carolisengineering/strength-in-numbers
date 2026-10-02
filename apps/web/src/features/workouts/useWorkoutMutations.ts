@@ -27,7 +27,7 @@ import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
  * Navigation stays at the call site for the opposite reason.
  */
 
-/** Every set write carries this key so Finish can wait for them (Review Focus #4). */
+/** Every set write carries this key: Finish stays disabled while any set write is in flight. */
 export const SET_MUTATION_KEY = ["workouts", "set"] as const;
 
 export function useIsSetWritePending(): boolean {

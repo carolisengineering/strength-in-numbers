@@ -33,6 +33,9 @@ export interface WorkoutClient {
   deleteSet(id: string): Promise<void>;
 }
 
+/** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
+const seg = encodeURIComponent;
+
 export function createWorkoutClient(
   api: Pick<ApiClient, "get" | "post" | "patch" | "delete">,
 ): WorkoutClient {
@@ -45,22 +48,22 @@ export function createWorkoutClient(
         throw error;
       }
     },
-    getById: (id) => api.get(`/v1/workouts/${id}`, WorkoutDetailSchema),
+    getById: (id) => api.get(`/v1/workouts/${seg(id)}`, WorkoutDetailSchema),
     start: (body) => api.post("/v1/workouts", body, WorkoutSchema),
-    finish: (id, body) => api.patch(`/v1/workouts/${id}`, body, WorkoutSchema),
+    finish: (id, body) => api.patch(`/v1/workouts/${seg(id)}`, body, WorkoutSchema),
     deleteWorkout: async (id) => {
-      await api.delete(`/v1/workouts/${id}`);
+      await api.delete(`/v1/workouts/${seg(id)}`);
     },
-    addExercise: (workoutId, body) => api.post(`/v1/workouts/${workoutId}/exercises`, body, WorkoutExerciseSchema),
-    moveExercise: (id, position) => api.patch(`/v1/workout-exercises/${id}`, { position }, WorkoutExerciseSchema),
+    addExercise: (workoutId, body) => api.post(`/v1/workouts/${seg(workoutId)}/exercises`, body, WorkoutExerciseSchema),
+    moveExercise: (id, position) => api.patch(`/v1/workout-exercises/${seg(id)}`, { position }, WorkoutExerciseSchema),
     removeExercise: async (id) => {
-      await api.delete(`/v1/workout-exercises/${id}`);
+      await api.delete(`/v1/workout-exercises/${seg(id)}`);
     },
     createSet: (workoutExerciseId, body) =>
-      api.post(`/v1/workout-exercises/${workoutExerciseId}/sets`, body, SetEntrySchema),
-    updateSet: (id, body) => api.patch(`/v1/sets/${id}`, body, SetEntrySchema),
+      api.post(`/v1/workout-exercises/${seg(workoutExerciseId)}/sets`, body, SetEntrySchema),
+    updateSet: (id, body) => api.patch(`/v1/sets/${seg(id)}`, body, SetEntrySchema),
     deleteSet: async (id) => {
-      await api.delete(`/v1/sets/${id}`);
+      await api.delete(`/v1/sets/${seg(id)}`);
     },
   };
 }

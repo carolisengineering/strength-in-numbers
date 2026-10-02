@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { Exercise, WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
@@ -12,6 +12,7 @@ import { Screen } from "../../ui/Screen";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { useCatalog } from "../catalog/useCatalog";
 import { ExerciseCard } from "./ExerciseCard";
+import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
@@ -46,9 +47,6 @@ const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-const startedTime = (iso: string): string =>
-  new Date(iso).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: false });
 
 /**
  * The in-progress workout (Spec 06.1 §5.3): exercise cards, a sticky action bar, the exercise picker,
@@ -101,10 +99,23 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
     return new Set(findIncompleteWorkingSets(workout).filter((id) => flaggedIds.has(id)));
   }, [flaggedIds, workout]);
 
+  // The first flagged row in display order (exercise position, then set order) gets the ref.
+  const firstFlaggedId = useMemo(() => {
+    for (const exercise of exercises) {
+      const set = exercise.sets.find((s) => flagged.has(s.id));
+      if (set) return set.id;
+    }
+    return null;
+  }, [exercises, flagged]);
+  const firstFlaggedRef = useRef<HTMLButtonElement | null>(null);
+  const setFirstFlaggedRef = useCallback((node: HTMLButtonElement | null) => {
+    firstFlaggedRef.current = node;
+  }, []);
+
   // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
   useEffect(() => {
     if (flaggedIds.size === 0) return;
-    document.querySelector("[data-needs-data='true']")?.scrollIntoView?.({ block: "center" });
+    firstFlaggedRef.current?.scrollIntoView?.({ block: "center" });
   }, [flaggedIds]);
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
@@ -316,7 +327,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
   return (
     <Screen title="Workout">
       <div className={styles.topRow}>
-        <p className={styles.started}>Started {startedTime(workout.startedAt)}</p>
+        <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
         {/* Away from the thumb on purpose, and it confirms: discarding deletes every logged set. */}
         <Button variant="secondary" onClick={() => setDiscardOpen(true)}>
           Discard workout
@@ -354,6 +365,8 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
             isLast={index === exercises.length - 1}
             structureBusy={structureBusy}
             flaggedIds={flagged}
+            firstFlaggedId={firstFlaggedId}
+            firstFlaggedRef={setFirstFlaggedRef}
             onMove={(direction) => void moveExercise(exercise, direction)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             unitPreference={user?.unitPreference ?? "kg"}
