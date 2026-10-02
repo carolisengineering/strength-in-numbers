@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -7,6 +7,7 @@ import { Spinner } from "../../ui/Spinner";
 import { ActiveSession } from "./ActiveSession";
 import { classifyWorkoutError } from "./errors";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
+import { reportUnexpected } from "./reportUnexpected";
 import { StartWorkout } from "./StartWorkout";
 
 export const GONE_NOTICE = "That workout was already finished or removed.";
@@ -28,6 +29,10 @@ export function WorkoutsScreen() {
     setNotice(GONE_NOTICE);
     void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
   }, [queryClient]);
+
+  useEffect(() => {
+    if (active.error) reportUnexpected("load-active", active.error);
+  }, [active.error]);
 
   if (active.isPending) return <Spinner label="Loading your workout…" />;
 

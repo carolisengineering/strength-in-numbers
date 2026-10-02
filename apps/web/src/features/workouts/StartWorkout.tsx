@@ -7,6 +7,7 @@ import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
 import { classifyWorkoutError } from "./errors";
 import { WORKOUT_KEYS } from "./queries";
+import { reportUnexpected } from "./reportUnexpected";
 import { startWorkoutFields } from "./timestamps";
 import { useStartWorkout } from "./useWorkoutMutations";
 import styles from "./WorkoutsScreen.module.css";
@@ -46,6 +47,7 @@ export function StartWorkout({ notice, onStarted }: StartWorkoutProps) {
       track("workout_started", { resumed: false });
       onStarted(false);
     } catch (caught) {
+      reportUnexpected("start-workout", caught);
       const failure = classifyWorkoutError(caught, { op: "start-workout" });
       if (failure.kind === "workout-in-progress-exists") {
         keyRef.current = null;

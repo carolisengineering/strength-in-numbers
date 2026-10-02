@@ -20,8 +20,8 @@ export interface ExerciseCardProps {
   flaggedIds: ReadonlySet<string>;
   /** Weight and distance units default from the profile (D26). */
   unitPreference: "kg" | "lb";
-  /** The workout is gone or finished elsewhere (§5.8 gone path). */
-  onGone: () => void;
+  /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
+  onGone: (reason: "gone" | "finished") => void;
 }
 
 /**

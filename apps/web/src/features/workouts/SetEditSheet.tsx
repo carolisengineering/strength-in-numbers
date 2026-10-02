@@ -3,6 +3,7 @@ import type { Modality, SetEntry } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
+import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
 import {
@@ -26,8 +27,8 @@ export interface SetEditSheetProps {
   exerciseName: string;
   unitPreference: "kg" | "lb";
   onClose: () => void;
-  /** The workout is gone or finished elsewhere (§5.8 gone path). */
-  onGone: () => void;
+  /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
+  onGone: (reason: "gone" | "finished") => void;
 }
 
 /**
@@ -77,10 +78,11 @@ function EditForm({
   }
 
   function failed(op: "update-set" | "delete-set", error: unknown) {
+    reportUnexpected(op, error);
     const action = resolveFailure(op, error);
     if (action.type === "gone") {
       onClose();
-      onGone();
+      onGone(action.reason);
     } else if (action.type === "fields") {
       const matched: Partial<Record<DraftField, string>> = {};
       let unmatched: string | null = null;

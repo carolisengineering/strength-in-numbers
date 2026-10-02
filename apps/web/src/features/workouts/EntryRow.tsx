@@ -2,6 +2,7 @@ import { useId, useMemo, useReducer, useRef, useState, type FormEvent } from "re
 import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
+import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
 import {
@@ -23,8 +24,8 @@ const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
   unitPreference: "kg" | "lb";
-  /** The workout is gone or finished elsewhere (§5.8 gone path). */
-  onGone: () => void;
+  /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
+  onGone: (reason: "gone" | "finished") => void;
 }
 
 /**
@@ -89,9 +90,10 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
       firstTouchAt.current = null;
       edited.current = false;
     } catch (error) {
+      reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);
       if (action.type === "gone") {
-        onGone();
+        onGone(action.reason);
       } else if (action.type === "fields") {
         const matched: Partial<Record<DraftField, string>> = {};
         let unmatched: string | null = null;

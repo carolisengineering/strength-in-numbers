@@ -17,9 +17,13 @@ import { API_BASE_URL, USER_ID, stubWebEnv } from "./catalogHarness";
 import { server } from "./msw/server";
 import { catalogHandlers, type WorkoutFake } from "./workoutFake";
 
+/** The app's real query defaults (AppRoot.tsx), so cache seeding behaves as it does in production. */
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000 },
+      mutations: { retry: false },
+    },
   });
 }
 

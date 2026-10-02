@@ -14,6 +14,7 @@ import { useCatalog } from "../catalog/useCatalog";
 import { ExerciseCard } from "./ExerciseCard";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
+import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
 import { finishTimestamp } from "./timestamps";
 import {
@@ -115,6 +116,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
 
   /** Resolve a failed exercise-structure write per §5.8. */
   async function handleFailure(op: Operation, error: unknown, retry?: () => void) {
+    reportUnexpected(op, error);
     const action = resolveFailure(op, error);
     switch (action.type) {
       case "gone":
@@ -255,6 +257,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
       if (mounted.current) void navigate(`/app/workouts/${workout.id}`);
     } catch (error) {
       setFinishOpen(false);
+      reportUnexpected("finish", error);
       const action = resolveFailure("finish", error);
       switch (action.type) {
         case "gone":
@@ -294,6 +297,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
       setDiscardOpen(false);
     } catch (error) {
       setDiscardOpen(false);
+      reportUnexpected("discard", error);
       const action = resolveFailure("discard", error);
       setBanner({
         tone: "error",
@@ -353,7 +357,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
             onMove={(direction) => void moveExercise(exercise, direction)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             unitPreference={user?.unitPreference ?? "kg"}
-            onGone={() => gone("gone")}
+            onGone={gone}
           />
         ))}
         {pending ? (

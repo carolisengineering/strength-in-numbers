@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
 
@@ -11,6 +11,7 @@ import { NotFound } from "../../screens/NotFound";
 import { classifyWorkoutError } from "./errors";
 import { formatSet } from "./format";
 import { useWorkoutDetail } from "./queries";
+import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
@@ -28,6 +29,10 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function FinishedWorkoutScreen() {
   const { id = "" } = useParams();
   const detail = useWorkoutDetail(id);
+
+  useEffect(() => {
+    if (detail.error) reportUnexpected("load-workout", detail.error);
+  }, [detail.error]);
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
@@ -122,6 +127,7 @@ function DeleteWorkoutControl({ workoutId, setCount }: { workoutId: string; setC
       void navigate("/app/workouts");
     } catch (caught) {
       setOpen(false);
+      reportUnexpected("discard", caught);
       const action = resolveFailure("discard", caught);
       setError({
         text: "Couldn't delete the workout — try again",
