@@ -199,6 +199,16 @@ describe("AC10 — attempt key lifecycle", () => {
     expect(logged.setType).toBe("working"); // type reset to Working
   });
 
+  it("rekey re-mints the key and keeps what the lifter typed meanwhile (final review I3)", () => {
+    let n = 0;
+    const reduce = createDraftReducer(() => `key-${++n}`);
+    const typed = base({ attemptKey: "key-0", weight: "65", reps: "5", rpe: "8" });
+
+    const next = reduce(typed, { type: "rekey" });
+
+    expect(next).toEqual({ ...typed, attemptKey: "key-1" });
+  });
+
   it("does not copy RPE forward and keeps the entered units", () => {
     const reduce = createDraftReducer(() => "k");
     const d = base({ weightUnit: "lb" });

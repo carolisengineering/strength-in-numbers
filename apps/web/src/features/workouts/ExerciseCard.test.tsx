@@ -232,6 +232,39 @@ describe("AC23 — Log set", () => {
     expect(posts).toBe(1);
   });
 
+  it("values typed while the POST is in flight survive the response, and the next tap logs them (final review I3)", async () => {
+    const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    const exerciseRowId = fake.state.active!.exercises[0]!.id;
+    const row = within(card("X"));
+    await user.type(row.getByLabelText("Weight"), "60");
+    await user.type(row.getByLabelText("Reps"), "8");
+    const gate = deferred<void>();
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.post(`${API_BASE_URL}/v1/workout-exercises/:id/sets`, async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        if (bodies.length === 1) await gate.promise;
+        return HttpResponse.json(
+          makeSet({ workoutExerciseId: exerciseRowId, setNumber: bodies.length, weight: bodies.length === 1 ? 60 : 65, reps: 8 }),
+          { status: 201 },
+        );
+      }),
+    );
+
+    await user.click(logButton());
+    const weight = row.getByLabelText("Weight");
+    await user.clear(weight);
+    await user.type(weight, "65"); // the next set's weight, typed on a slow link before the response
+    gate.resolve();
+    await row.findByText("60 kg × 8");
+
+    expect(weight).toHaveValue("65"); // not snapped back to the logged set's 60
+    await user.click(logButton());
+    await row.findByText("65 kg × 8");
+    expect(bodies[1]).toMatchObject({ weight: 65 });
+    expect(bodies[1]!["clientGeneratedId"]).not.toBe(bodies[0]!["clientGeneratedId"]);
+  });
+
   it("tapping again after a set is logged logs the same values again (the one-tap same-again set)", async () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
@@ -334,6 +367,19 @@ describe("AC24 — Log set failures", () => {
     await user.click(logButton());
 
     expect(await row.findByRole("alert")).toHaveTextContent("Couldn't log set — try again");
+  });
+
+  it("a 404 while the workout still exists does not claim the workout is gone (final review I4)", async () => {
+    const { fake, user, row } = await filled();
+    // The exercise was removed on another device; the workout itself is fine.
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(404, "not-found"));
+
+    await user.click(logButton());
+
+    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
+    expect(screen.queryByText(/already finished or removed/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Workout" })).toBeInTheDocument();
+    expect(row.getByLabelText("Weight")).toBeInTheDocument();
   });
 
   it("404 and 409 workout-finished take the gone path", async () => {

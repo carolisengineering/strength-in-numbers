@@ -205,7 +205,9 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
 export type DraftAction =
   | { type: "edit"; field: keyof Omit<SetDraft, "attemptKey">; value: string }
   | { type: "reset"; from: SetEntry | null; defaults: UnitDefaults }
-  | { type: "logged"; set: SetEntry };
+  | { type: "logged"; set: SetEntry }
+  /** A set was logged but the lifter has typed since the tap: keep their values, only re-mint the key. */
+  | { type: "rekey" };
 
 /** `newKey` is injected so tests (and 06.2) control key minting. */
 export function createDraftReducer(newKey: () => string) {
@@ -215,6 +217,8 @@ export function createDraftReducer(newKey: () => string) {
         return { ...state, [action.field]: action.value } as SetDraft;
       case "reset":
         return draftFromSet(action.from, action.defaults, newKey());
+      case "rekey":
+        return { ...state, attemptKey: newKey() };
       case "logged": {
         const next = draftFromSet(
           action.set,

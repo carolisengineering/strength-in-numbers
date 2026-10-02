@@ -63,6 +63,29 @@ describe("AC31 — <ConfirmDialog>", () => {
     expect(screen.getByRole("dialog")).toHaveAttribute("open");
   });
 
+  it("a native close while the parent still thinks it is open calls onCancel once (final review I2)", () => {
+    // A second Escape / Android back without user activation closes the dialog natively and fires a
+    // non-cancelable `cancel`; without this the parent's `open` stays true and the next tap does nothing.
+    const { onCancel } = renderDialog();
+
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("a close caused by the parent flipping open to false is not reported back", () => {
+    const { container, rerender, onConfirm, onCancel } = renderDialog();
+
+    rerender(
+      <ConfirmDialog open={false} title="Finish workout?" confirmLabel="Finish" onConfirm={onConfirm} onCancel={onCancel}>
+        <p>body</p>
+      </ConfirmDialog>,
+    );
+    fireEvent(container.querySelector("dialog")!, new Event("close")); // a browser fires this after dialog.close()
+
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it("busy disables both buttons and sets aria-busy on the dialog", () => {
     renderDialog({ busy: true });
     expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();

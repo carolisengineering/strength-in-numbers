@@ -40,6 +40,12 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // The latest `open`, so the native `close` handler can tell "the dialog closed itself" from "the
+  // parent closed it" (same reasoning as `Sheet`, Spec 06.1 §6.7).
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -59,6 +65,12 @@ export function ConfirmDialog({
         // Controlled: tell the parent, and let it flip `open`.
         event.preventDefault();
         onCancel();
+      }}
+      onClose={() => {
+        // A second Escape / Android back without intervening user activation closes the dialog
+        // natively. Left alone, the parent's `open` stays true and the next tap on Finish / Discard /
+        // Remove would do nothing for the rest of the session.
+        if (openRef.current) onCancel();
       }}
     >
       {open ? (

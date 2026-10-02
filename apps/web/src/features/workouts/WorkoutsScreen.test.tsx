@@ -88,6 +88,26 @@ describe("AC15 — /app/workouts states", () => {
     expect(activeReads(fake)).toBe(2);
   });
 
+  it("a failed background refetch keeps the session on screen with its unlogged draft (final review C1)", async () => {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X" }] }),
+    });
+    prepareApp({ auth, fake });
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    await user.type(screen.getByLabelText("Weight"), "61");
+    fake.failNext({ method: "GET", path: /\/v1\/workouts\/active$/ }, () => problemResponse(500, "about:blank"));
+
+    // The lifter switches to the music app and back on a flaky connection.
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    expect(await screen.findByText(/Couldn't refresh your workout/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Workout" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Weight")).toHaveValue("61"); // the unlogged draft survived
+    expect(screen.queryByText("Couldn't load your workout.")).not.toBeInTheDocument();
+  });
+
   it("refetches on window focus (a phone returning from another app)", async () => {
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });

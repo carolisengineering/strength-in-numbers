@@ -49,6 +49,9 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const inFlight = useRef(false); // synchronous guard against a double tap
   const firstTouchAt = useRef<number | null>(null);
   const edited = useRef(false);
+  // True once the lifter types after tapping Log: on a slow link they may already be entering the next
+  // set, and the response must not snap their field back to the set that was just logged.
+  const editedSinceTap = useRef(false);
 
   const parsed = useMemo(() => parseDraft(exercise.modalitySnapshot, draft), [exercise.modalitySnapshot, draft]);
 
@@ -63,6 +66,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   function onChange(field: DraftEditField, value: string) {
     firstTouchAt.current ??= Date.now();
     edited.current = true;
+    editedSinceTap.current = true;
     setServerErrors({});
     setFormError(null);
     if (TEXT_FIELDS.has(field)) setTouched((previous) => new Set(previous).add(field as DraftField));
@@ -76,6 +80,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
     setServerErrors({});
     setFormError(null);
     const msToLog = firstTouchAt.current === null ? 0 : Date.now() - firstTouchAt.current;
+    editedSinceTap.current = false;
     try {
       const set = await create.mutateAsync({
         workoutExerciseId: exercise.id,
@@ -84,11 +89,16 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         msToLog,
         edited: edited.current,
       });
-      dispatch({ type: "logged", set });
-      setTouched(new Set());
       setAnnouncement(`Set ${set.setNumber} logged`);
-      firstTouchAt.current = null;
-      edited.current = false;
+      if (editedSinceTap.current) {
+        // The next set is already being entered: keep it, and give it a fresh attempt key.
+        dispatch({ type: "rekey" });
+      } else {
+        dispatch({ type: "logged", set });
+        setTouched(new Set());
+        firstTouchAt.current = null;
+        edited.current = false;
+      }
     } catch (error) {
       reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);

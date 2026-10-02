@@ -163,6 +163,33 @@ describe("AC17 — session layout and Add exercise", () => {
     expect(posts(fake, "/exercises")).toHaveLength(1);
   });
 
+  it("a set logged while an add's follow-up refetch is in flight does not lose the added card (final review I1)", async () => {
+    const { fake, user } = await setup({
+      exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }],
+    });
+    // The refetch that follows the add is held open; the lifter logs a set meanwhile. The set's
+    // write cancels in-flight reads of the workout so a stale one cannot erase it — but that must
+    // not silently swallow the add's own refetch.
+    const gate = deferred<void>();
+    let reads = 0;
+    server.use(
+      http.get(`${API_BASE_URL}/v1/workouts/active`, async () => {
+        reads += 1;
+        if (reads === 1) await gate.promise;
+        return HttpResponse.json(fake.state.active);
+      }),
+    );
+    await openPickerAndPick(user, /Pull-up/);
+    await waitFor(() => expect(reads).toBe(1));
+
+    await user.click(within(card("X")).getByRole("button", { name: "Log set" }));
+    await within(card("X")).findAllByText("60 kg × 8").then((rows) => expect(rows).toHaveLength(2));
+    gate.resolve();
+
+    expect(await screen.findByRole("article", { name: "Pull-up" })).toBeInTheDocument();
+    expect(screen.queryByText("Adding Pull-up…")).not.toBeInTheDocument();
+  });
+
   it("the same exercise may be added twice", async () => {
     const { user } = await setup();
 

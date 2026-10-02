@@ -2,6 +2,7 @@ import {
   useIsMutating,
   useMutation,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
 import type {
@@ -31,6 +32,23 @@ export const SET_MUTATION_KEY = ["workouts", "set"] as const;
 
 export function useIsSetWritePending(): boolean {
   return useIsMutating({ mutationKey: SET_MUTATION_KEY }) > 0;
+}
+
+/**
+ * Before a set write, cancel any in-flight read of the active workout so a stale response cannot land
+ * on top of the write and erase it (§6.2, AC11). Remember whether one was actually interrupted: it
+ * may have been the follow-up refetch of an add / move / remove, which `refetchQueries` swallows the
+ * cancellation of — the new card would then never appear until the next focus.
+ */
+async function cancelActiveReads(queryClient: QueryClient): Promise<{ interrupted: boolean }> {
+  const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;
+  await queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active });
+  return { interrupted };
+}
+
+/** Re-read once the set write has landed, if it interrupted a read. Not awaited: logging must not wait. */
+function refetchIfInterrupted(queryClient: QueryClient, context: { interrupted: boolean } | undefined): void {
+  if (context?.interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 }
 
 const isNotFound = (error: unknown): boolean => error instanceof ApiError && error.status === 404;
@@ -161,9 +179,8 @@ export function useCreateSet(): UseMutationResult<SetEntry, Error, CreateSetVars
     mutationKey: SET_MUTATION_KEY,
     mutationFn: ({ workoutExerciseId, body }) => client.createSet(workoutExerciseId, body),
     // Stop an in-flight refetch landing on top of the write and erasing it (§6.2, AC11).
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active });
-    },
+    onMutate: () => cancelActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
     onSuccess: (set, { modality, msToLog, edited }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetUpserted(d, set) : d));
       track("set_logged", { modality, setType: set.setType, edited, msToLog });
@@ -181,9 +198,8 @@ export function useUpdateSet(): UseMutationResult<
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
     mutationFn: ({ id, body }) => client.updateSet(id, body),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active });
-    },
+    onMutate: () => cancelActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
     onSuccess: (set, { modality }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetUpserted(d, set) : d));
       track("set_edited", { modality });
@@ -197,9 +213,8 @@ export function useDeleteSet(): UseMutationResult<void, Error, { id: string; mod
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteSet(id)),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active });
-    },
+    onMutate: () => cancelActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
     onSuccess: (_void, { id, modality }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetRemoved(d, id) : d));
       track("set_deleted", { modality });
