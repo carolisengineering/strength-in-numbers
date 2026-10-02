@@ -21,6 +21,7 @@ export function toSetEntryDto(r: SetEntryRecord): SetEntry {
   return {
     id: r.id as SetEntry["id"],
     workoutExerciseId: r.workoutExerciseId as SetEntry["workoutExerciseId"],
+    clientGeneratedId: r.clientGeneratedId,
     setNumber: r.setNumber,
     setType: r.setType as SetEntry["setType"],
     reps: r.reps,
@@ -46,19 +47,29 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
   // malformed one into 404, never 422 (§5 "Path ids").
   const idParams = z.object({ id: z.string() });
 
+  // `created: false` is an idempotent replay of a `clientGeneratedId` (§6.2,
+  // D15): 200, no Location, no `set_created` — same as POST /v1/workouts.
   r.post(
     "/workout-exercises/:id/sets",
     {
-      schema: { params: idParams, body: CreateSetSchema, response: { 201: SetEntrySchema } },
+      schema: {
+        params: idParams,
+        body: CreateSetSchema,
+        response: { 201: SetEntrySchema, 200: SetEntrySchema },
+      },
       config: { problems: [NotFoundError, WorkoutFinishedError] },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      const { set, modalitySnapshot } = await deps.workoutRepository.createSet(
+      const { set, modalitySnapshot, created } = await deps.workoutRepository.createSet(
         actingUserId,
         request.params.id,
         request.body,
       );
+      if (!created) {
+        reply.code(200);
+        return toSetEntryDto(set);
+      }
       // §6.6: ids and enums only, never a measure value.
       request.log.info(
         {

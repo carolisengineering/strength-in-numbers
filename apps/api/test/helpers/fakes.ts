@@ -620,6 +620,13 @@ export class FakeWorkoutRepository implements WorkoutRepository {
 
   async createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult> {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, workoutExerciseId);
+    const clientGeneratedId = fields.clientGeneratedId ?? null;
+    if (clientGeneratedId !== null) {
+      const stored = [...this.sets.values()].find(
+        (s) => s.workoutExerciseId === we.id && s.clientGeneratedId === clientGeneratedId,
+      );
+      if (stored) return { set: stored, modalitySnapshot: we.modalitySnapshot, created: false };
+    }
     if (workout.endedAt !== null) throw new WorkoutFinishedError();
     const next = fieldsToMeasures(fields);
     assertSetMeasuresValid(we.modalitySnapshot as Modality, next);
@@ -628,6 +635,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const set: SetEntryRecord = {
       id: uuidv7(),
       workoutExerciseId: we.id,
+      clientGeneratedId,
       setNumber: Math.max(0, ...siblings.map((s) => s.setNumber)) + 1,
       ...next,
       ...FakeWorkoutRepository.withCanonical(next),
@@ -636,7 +644,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       updatedAt: now,
     };
     this.sets.set(set.id, set);
-    return { set, modalitySnapshot: we.modalitySnapshot };
+    return { set, modalitySnapshot: we.modalitySnapshot, created: true };
   }
 
   private ownedSetOrThrow(

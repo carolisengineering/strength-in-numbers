@@ -213,6 +213,83 @@ describe("AC16 — set_created is the only set log line, and carries no measure 
   });
 });
 
+describe("AC22 — a create carrying clientGeneratedId is idempotent (route level)", () => {
+  it("201 + Location and the key echoed; a replay is 200, no Location, the stored row, and no second set", async () => {
+    const { app, workoutId, weId } = await setup("weight_reps");
+    const clientGeneratedId = uuidv7();
+    const first = await postSet(app, weId, { clientGeneratedId, reps: 5, weight: 100, weightUnit: "kg" });
+    expect(first.statusCode).toBe(201);
+    expect(first.headers.location).toBe(`/v1/sets/${first.json().id}`);
+    expect(first.json().clientGeneratedId).toBe(clientGeneratedId);
+
+    // The replayed body differs: the stored row wins (05.0 D39's rule).
+    const replay = await postSet(app, weId, { clientGeneratedId, reps: 99 });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.headers.location).toBeUndefined();
+    expect(replay.json()).toEqual(first.json());
+
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${workoutId}`, headers: BEARER });
+    expect(detail.json().exercises[0].sets).toHaveLength(1);
+  });
+  it("without a key every POST creates a row, and clientGeneratedId is null", async () => {
+    const { app, weId } = await setup();
+    const a = await postSet(app, weId, { reps: 5 });
+    const b = await postSet(app, weId, { reps: 5 });
+    expect([a.statusCode, b.statusCode]).toEqual([201, 201]);
+    expect(b.json().id).not.toBe(a.json().id);
+    expect(a.json().clientGeneratedId).toBeNull();
+  });
+  it("the key is scoped to its workout-exercise: the same key under another one creates a new set", async () => {
+    const { app, workoutId, weId } = await setup();
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${workoutId}`, headers: BEARER });
+    const we2 = await app.inject({
+      method: "POST",
+      url: `/v1/workouts/${workoutId}/exercises`,
+      headers: BEARER,
+      payload: { exerciseId: detail.json().exercises[0].exerciseId },
+    });
+    const clientGeneratedId = uuidv7();
+    const a = await postSet(app, weId, { clientGeneratedId });
+    const b = await postSet(app, we2.json().id, { clientGeneratedId });
+    expect(b.statusCode).toBe(201);
+    expect(b.json().id).not.toBe(a.json().id);
+  });
+  it("a replay after the workout finished is still 200 with the stored row; a new key is 409", async () => {
+    const { app, workoutId, weId } = await setup("bodyweight_reps");
+    const clientGeneratedId = uuidv7();
+    const first = await postSet(app, weId, { clientGeneratedId, reps: 10, isComplete: true });
+    expect((await finishWorkout(app, workoutId)).statusCode).toBe(200);
+    const replay = await postSet(app, weId, { clientGeneratedId, reps: 10, isComplete: true });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe(first.json().id);
+    expect((await postSet(app, weId, { clientGeneratedId: uuidv7(), reps: 10 })).statusCode).toBe(409);
+  });
+  it("an upper-case key is echoed lower-case, and replays match whatever their case", async () => {
+    const { app, weId } = await setup();
+    const clientGeneratedId = uuidv7();
+    const first = await postSet(app, weId, { clientGeneratedId: clientGeneratedId.toUpperCase() });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().clientGeneratedId).toBe(clientGeneratedId);
+    const replay = await postSet(app, weId, { clientGeneratedId });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe(first.json().id);
+  });
+  it("a malformed key is 422; the key is not a PATCH field", async () => {
+    const { app, weId } = await setup();
+    expect((await postSet(app, weId, { clientGeneratedId: "not-a-uuid" })).statusCode).toBe(422);
+    const id = (await postSet(app, weId, {})).json().id;
+    expect((await patchSet(app, id, { clientGeneratedId: uuidv7() })).statusCode).toBe(422);
+  });
+  it("AC16 — set_created fires for the create only, not for its replay", async () => {
+    const { logger, lines } = capturingLogger();
+    const { app, weId } = await setup("weight_reps", logger);
+    const clientGeneratedId = uuidv7();
+    await postSet(app, weId, { clientGeneratedId, reps: 5 });
+    await postSet(app, weId, { clientGeneratedId, reps: 5 });
+    expect(lines.filter((l) => l.msg === "set_created")).toHaveLength(1);
+  });
+});
+
 describe("AC18 — all three routes are authenticated", () => {
   it("401 with no token and with an invalid token", async () => {
     const { app } = await buildTestApp({

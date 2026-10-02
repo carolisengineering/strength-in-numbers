@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildTestApp } from "../helpers/build-test-app.js";
 
 type Schema = { type?: unknown; properties?: Record<string, Schema>; items?: Schema; required?: string[] };
-type Op = { responses: Record<string, { content?: Record<string, { schema: Schema }> }> };
+type Op = {
+  requestBody?: { content: Record<string, { schema: Schema }> };
+  responses: Record<string, { content?: Record<string, { schema: Schema }> }>;
+};
 type Doc = { paths: Record<string, Record<string, Op>> };
 
 const isCamelCase = (k: string) => /^[a-z][A-Za-z0-9]*$/.test(k);
@@ -29,6 +32,22 @@ describe("AC18 — the three set routes are in the published contract", () => {
       expect.arrayContaining(["setNumber", "weightKg", "distanceM", "durationS", "isComplete", "completedAt"]),
     );
     for (const k of keys) expect(isCamelCase(k), k).toBe(true);
+  });
+
+  it("AC22 — POST declares 201 and the idempotent-replay 200; clientGeneratedId is a create field only", async () => {
+    const d = await doc();
+    const post = d.paths["/v1/workout-exercises/{id}/sets"]!.post!;
+    for (const status of ["200", "201"]) {
+      const schema = post.responses[status]!.content!["application/json"]!.schema;
+      expect(Object.keys(schema.properties!), status).toContain("clientGeneratedId");
+    }
+    expect(Object.keys(post.requestBody!.content["application/json"]!.schema.properties!)).toContain(
+      "clientGeneratedId",
+    );
+    const patch = d.paths["/v1/sets/{id}"]!.patch!;
+    const patchKeys = Object.keys(patch.requestBody!.content["application/json"]!.schema.properties!);
+    expect(patchKeys).toContain("reps");
+    expect(patchKeys).not.toContain("clientGeneratedId");
   });
 
   it("both workout GET routes emit exercises[].sets (WorkoutExerciseDetailSchema)", async () => {

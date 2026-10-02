@@ -48,11 +48,13 @@ const Rpe = z.number().min(1).max(10).multipleOf(0.1);
  * One logged set. `weightKg` / `distanceM` are generated columns, read-only.
  * `rpe` is a plain nullable number here, not `Rpe`: a response schema is an
  * allowlist, and a `multipleOf` on a value read back through `::float8` could
- * spuriously fail serialization.
+ * spuriously fail serialization. `clientGeneratedId` echoes the create's
+ * idempotency key; `null` for a set created without one (D15).
  */
 export const SetEntrySchema = z.object({
   id: SetEntryIdSchema,
   workoutExerciseId: WorkoutExerciseIdSchema,
+  clientGeneratedId: z.guid().nullable(),
   setNumber: z.number().int().min(1),
   setType: z.enum(SET_TYPE_VALUES),
   reps: z.number().int().min(0).nullable(),
@@ -76,8 +78,15 @@ export type SetEntry = z.infer<typeof SetEntrySchema>;
  * never client-set (§5). Unit-accompanies-value and the modality rules are
  * handler-level, not a `superRefine` here: on PATCH they must see the merged
  * row, which this schema can't (§6.1, D7).
+ *
+ * `clientGeneratedId` is an optional idempotency key, unique per
+ * workout-exercise: replaying a create that carries one returns the stored
+ * set with `200` instead of adding a second row (§6.2, D15). It is lower-cased
+ * on the way in: Postgres echoes a `uuid` lower-case, so the key a client reads
+ * back equals the parsed one whatever case it sent.
  */
 export const CreateSetSchema = z.strictObject({
+  clientGeneratedId: z.guid().toLowerCase().optional(),
   setType: z.enum(SET_TYPE_VALUES).optional(),
   reps: Reps.nullable().optional(),
   weight: Weight.nullable().optional(),
@@ -90,6 +99,7 @@ export const CreateSetSchema = z.strictObject({
 });
 export type CreateSet = z.infer<typeof CreateSetSchema>;
 
-/** PATCH /v1/sets/{id} body — the same field set as create, all optional (§5). */
-export const UpdateSetSchema = CreateSetSchema;
+/** PATCH /v1/sets/{id} body — create's fields minus the idempotency key, all
+ * optional (§5). */
+export const UpdateSetSchema = CreateSetSchema.omit({ clientGeneratedId: true });
 export type UpdateSet = z.infer<typeof UpdateSetSchema>;

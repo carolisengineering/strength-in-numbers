@@ -112,6 +112,7 @@ describe("AC12 — detail reads attach each exercise's sets, ordered", () => {
     const set = (weId: string, n: number) => ({
       id: uuidv7(),
       workout_exercise_id: weId,
+      client_generated_id: null,
       set_number: n,
       set_type: "working",
       reps: 5,

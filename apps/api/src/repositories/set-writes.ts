@@ -41,9 +41,9 @@ export interface MergedSet extends SetMeasures {
 /**
  * §6.1: throws `ValidationError` listing every violated field. Unit pairing
  * runs first and alone: a value with no unit is malformed whatever the
- * modality (AC20). Then forbidden measures (always), required measures (only
- * for a `working` set marked `isComplete` — D13: a `failure` set with zero
- * reps is a real record, D5), and the post-conversion distance bound (D11).
+ * modality (AC20). Then forbidden measures (always), required measures (for
+ * any set marked `isComplete`, whatever its type — D14: a failed attempt is
+ * `reps: 0` plus the weight), and the post-conversion distance bound (D11).
  */
 export function assertSetMeasuresValid(modality: Modality, m: SetMeasures): void {
   const pairing: FieldError[] = [];
@@ -61,7 +61,7 @@ export function assertSetMeasuresValid(modality: Modality, m: SetMeasures): void
   for (const name of forbiddenMeasuresFor(modality)) {
     if (m[name] !== null) errors.push({ path: name, message: `not allowed for a ${modality} exercise` });
   }
-  if (m.isComplete && m.setType === "working") {
+  if (m.isComplete) {
     for (const name of requiredMeasuresFor(modality)) {
       if (m[name] === null) errors.push({ path: name, message: `required to complete a ${modality} set` });
     }

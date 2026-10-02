@@ -27,6 +27,7 @@ const repoOver = (stub: ScriptedPrisma) =>
 const setRow = (o: Record<string, unknown> = {}) => ({
   id: uuidv7(),
   workout_exercise_id: uuidv7(),
+  client_generated_id: null,
   set_number: 1,
   set_type: "working",
   reps: 5,

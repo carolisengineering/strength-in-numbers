@@ -84,6 +84,37 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     expect((await repo.createSet(userId, weIds[1]!, {})).set.setNumber).toBe(1);
   });
 
+  it("AC22 — a replayed clientGeneratedId returns the stored set and adds no row, even once the workout is finished", async () => {
+    const { userId, workoutId, weIds } = await workoutWith("bodyweight_reps", "bodyweight_reps");
+    const clientGeneratedId = uuidv7();
+    const first = await repo.createSet(userId, weIds[0]!, { clientGeneratedId, reps: 10, isComplete: true });
+    expect(first.created).toBe(true);
+    expect(first.set.clientGeneratedId).toBe(clientGeneratedId);
+
+    const replay = await repo.createSet(userId, weIds[0]!, { clientGeneratedId, reps: 99 });
+    expect(replay.created).toBe(false);
+    expect(replay.set).toEqual(first.set);
+
+    // The key is scoped to its workout_exercise; keyless creates never collide.
+    const other = await repo.createSet(userId, weIds[1]!, { clientGeneratedId, reps: 10, isComplete: true });
+    expect(other.created).toBe(true);
+    expect(other.set.id).not.toBe(first.set.id);
+    expect((await repo.createSet(userId, weIds[1]!, { reps: 10, isComplete: true })).set.clientGeneratedId).toBeNull();
+    expect((await repo.createSet(userId, weIds[1]!, { reps: 10, isComplete: true })).created).toBe(true);
+
+    await finish(userId, workoutId);
+    const afterFinish = await repo.createSet(userId, weIds[0]!, { clientGeneratedId, reps: 10 });
+    expect(afterFinish.created).toBe(false);
+    expect(afterFinish.set.id).toBe(first.set.id);
+    await expect(
+      repo.createSet(userId, weIds[0]!, { clientGeneratedId: uuidv7(), reps: 10 }),
+    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+
+    const detail = await repo.getWorkoutById(userId, workoutId);
+    expect(detail.exercises.map((e) => e.sets.length)).toEqual([1, 3]);
+    expect(detail.exercises[0]!.sets[0]!.clientGeneratedId).toBe(clientGeneratedId);
+  });
+
   it("§4 — the generated columns come back converted on the wire record", async () => {
     const { userId, weIds } = await workoutWith("weight_reps", "distance_duration");
     expect((await repo.createSet(userId, weIds[0]!, { weight: 225, weightUnit: "lb" })).set.weightKg).toBe(102.058);
@@ -161,12 +192,29 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     await expect(finish(userId, workoutId)).resolves.toBeDefined();
   });
 
-  it("AC14 / D13 — warmup / drop / failure sets with no measures and isComplete: true are writable and don't block the finish", async () => {
+  it("AC14 — warmup / drop / failure sets with no measures don't block the finish", async () => {
     const { userId, workoutId, weIds } = await workoutWith("weight_reps");
     for (const setType of ["warmup", "drop", "failure"] as const) {
-      await repo.createSet(userId, weIds[0]!, { setType, isComplete: true });
+      await repo.createSet(userId, weIds[0]!, { setType });
     }
     await expect(finish(userId, workoutId)).resolves.toBeDefined();
+  });
+
+  it("AC6 / D14 — a non-working set can't be marked complete without its required measures; reps: 0 plus the weight is a failed attempt", async () => {
+    const { userId, weIds } = await workoutWith("weight_reps");
+    for (const setType of ["warmup", "drop", "failure"] as const) {
+      await expect(repo.createSet(userId, weIds[0]!, { setType, isComplete: true })).rejects.toBeInstanceOf(
+        ValidationError,
+      );
+    }
+    const failed = await repo.createSet(userId, weIds[0]!, {
+      setType: "failure",
+      reps: 0,
+      weight: 140,
+      weightUnit: "kg",
+      isComplete: true,
+    });
+    expect(failed.set).toMatchObject({ setType: "failure", reps: 0, weight: 140, isComplete: true });
   });
 
   it("AC14 — the exempt types still get per-write validation: a drop set with weight + reps validates like a working one", async () => {

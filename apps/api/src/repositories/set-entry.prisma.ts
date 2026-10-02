@@ -25,7 +25,7 @@ const WE_NOT_FOUND = "workout exercise not found or not owned by the acting user
 /** Every full-row read. `numeric` columns cast to float8 so they arrive as JS
  * numbers, not Prisma `Decimal`s. */
 export const SET_ENTRY_COLUMNS = Prisma.sql`
-  id, workout_exercise_id, set_number, set_type, reps,
+  id, workout_exercise_id, client_generated_id, set_number, set_type, reps,
   weight::float8 AS weight, weight_unit, weight_kg::float8 AS weight_kg,
   distance::float8 AS distance, distance_unit, distance_m::float8 AS distance_m,
   duration_s, rpe::float8 AS rpe, is_complete, completed_at, created_at, updated_at`;
@@ -33,6 +33,7 @@ export const SET_ENTRY_COLUMNS = Prisma.sql`
 export interface SetEntryDbRow {
   id: string;
   workout_exercise_id: string;
+  client_generated_id: string | null;
   set_number: number;
   set_type: string;
   reps: number | null;
@@ -54,6 +55,7 @@ export function toSetRecord(r: SetEntryDbRow): SetEntryRecord {
   return {
     id: r.id,
     workoutExerciseId: r.workout_exercise_id,
+    clientGeneratedId: r.client_generated_id,
     setNumber: r.set_number,
     setType: r.set_type,
     reps: r.reps,
@@ -92,6 +94,20 @@ async function resolveOwnedSet(
   `;
   if (!rows[0]) throw new NotFoundError(SET_NOT_FOUND);
   return rows[0];
+}
+
+/** D15: the set a create carrying this key already stored, if any. Scoped to
+ * the workout_exercise, whose ownership the caller has already resolved. */
+async function findSetByClientGeneratedId(
+  client: RawClient,
+  workoutExerciseId: string,
+  clientGeneratedId: string,
+): Promise<SetEntryRecord | undefined> {
+  const rows = await client.$queryRaw<SetEntryDbRow[]>`
+    SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry"
+    WHERE workout_exercise_id = ${workoutExerciseId}::uuid AND client_generated_id = ${clientGeneratedId}::uuid
+  `;
+  return rows[0] ? toSetRecord(rows[0]) : undefined;
 }
 
 /** D10: the authoritative finished check for PATCH/DELETE, under FOR SHARE —
@@ -171,17 +187,33 @@ export function createSetEntryMethods(
       `;
       const parent = parents[0];
       if (!parent) throw new NotFoundError(WE_NOT_FOUND);
+      const modality = parent.modality_snapshot as Modality;
+
+      // D15: a replayed key answers with the stored row whatever the body
+      // says and whether or not the workout has since finished — the write
+      // it retries already happened.
+      const key = fields.clientGeneratedId;
+      if (key !== undefined) {
+        const stored = await findSetByClientGeneratedId(prisma, workoutExerciseId, key);
+        if (stored) return { set: stored, modalitySnapshot: modality, created: false };
+      }
       if (parent.ended_at !== null) throw new WorkoutFinishedError();
 
       // §6.1 point 2: validate the body as sent; no stored row to merge.
-      const modality = parent.modality_snapshot as Modality;
       const next = fieldsToMeasures(fields);
       assertSetMeasuresValid(modality, next);
 
-      const set = await prisma.$transaction(async (tx) => {
+      return prisma.$transaction(async (tx) => {
         // §6.3: the lock is its own first statement; the max read is a
         // separate, later statement (03.2 D23's snapshot trap).
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutExerciseId}))`;
+        // AC23: creates on one workout_exercise are serialized by the lock, so
+        // a same-key create that was in flight during the lookup above has
+        // committed by now. The unique index is only the backstop.
+        if (key !== undefined) {
+          const stored = await findSetByClientGeneratedId(tx, workoutExerciseId, key);
+          if (stored) return { set: stored, modalitySnapshot: modality, created: false };
+        }
         // AC11: a concurrent finish holds FOR UPDATE on this row; we either
         // run before it or see its committed ended_at.
         const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
@@ -206,18 +238,19 @@ export function createSetEntryMethods(
         const inserted = await tx.$queryRaw<SetEntryDbRow[]>`
           INSERT INTO "set_entry"
             (id, workout_exercise_id, set_number, set_type, reps, weight, weight_unit,
-             distance, distance_unit, duration_s, rpe, is_complete, completed_at, created_at, updated_at)
+             distance, distance_unit, duration_s, rpe, is_complete, completed_at, created_at, updated_at,
+             client_generated_id)
           VALUES
             (${uuidv7()}::uuid, ${workoutExerciseId}::uuid, ${setNumber}::smallint, ${next.setType},
              ${next.reps}::smallint, ${next.weight}::numeric, ${next.weightUnit},
              ${next.distance}::numeric, ${next.distanceUnit}, ${next.durationS}::integer,
              ${next.rpe}::numeric, ${next.isComplete}::boolean,
-             CASE WHEN ${next.isComplete}::boolean THEN now() ELSE NULL END, now(), now())
+             CASE WHEN ${next.isComplete}::boolean THEN now() ELSE NULL END, now(), now(),
+             ${key ?? null}::uuid)
           RETURNING ${SET_ENTRY_COLUMNS}
         `;
-        return toSetRecord(inserted[0]!);
+        return { set: toSetRecord(inserted[0]!), modalitySnapshot: modality, created: true };
       });
-      return { set, modalitySnapshot: modality };
     },
 
     async updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord> {

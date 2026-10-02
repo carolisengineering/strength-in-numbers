@@ -76,6 +76,8 @@ export interface UpdateWorkoutExerciseFields {
 export interface SetEntryRecord {
   id: string;
   workoutExerciseId: string;
+  /** The create's idempotency key; `null` when it sent none (Spec 05.1 D15). */
+  clientGeneratedId: string | null;
   setNumber: number;
   setType: string;
   reps: number | null;
@@ -96,6 +98,8 @@ export interface SetEntryRecord {
 /** `POST /v1/workout-exercises/{id}/sets` body, already schema-validated
  * (Spec 05.1 §5). Omitted = not sent; `null` = explicitly empty. */
 export interface CreateSetFields {
+  /** Idempotency key, unique per workout_exercise (Spec 05.1 §6.2, D15). */
+  clientGeneratedId?: string;
   setType?: SetType;
   reps?: number | null;
   weight?: number | null;
@@ -107,8 +111,9 @@ export interface CreateSetFields {
   isComplete?: boolean;
 }
 
-/** `PATCH /v1/sets/{id}` body — same shape as create (Spec 05.1 §5). */
-export type UpdateSetFields = CreateSetFields;
+/** `PATCH /v1/sets/{id}` body — create's fields minus the idempotency key
+ * (Spec 05.1 §5). */
+export type UpdateSetFields = Omit<CreateSetFields, "clientGeneratedId">;
 
 export interface WorkoutExerciseDetailRecord extends WorkoutExerciseRecord {
   /** Ordered by `setNumber` ascending (Spec 05.1 AC12). */
@@ -116,10 +121,12 @@ export interface WorkoutExerciseDetailRecord extends WorkoutExerciseRecord {
 }
 
 /** `createSet`'s result: the route logs `set_created` with the parent's
- * `modality_snapshot` (Spec 05.1 §6.6) without a second read. */
+ * `modality_snapshot` (Spec 05.1 §6.6) without a second read. `created` is
+ * `false` for an idempotent replay — `200`, no `Location`, no log line. */
 export interface CreateSetResult {
   set: SetEntryRecord;
   modalitySnapshot: string;
+  created: boolean;
 }
 
 /**
@@ -225,7 +232,10 @@ export interface WorkoutRepository {
    * Spec 05.1 §6.2/§6.3. Resolves the workout_exercise through its workout
    * (404 not 403), validates the body against its modality (§6.1), then
    * appends at `max(set_number) + 1` under a per-workout_exercise advisory
-   * lock. Throws `NotFoundError`, `WorkoutFinishedError`, `ValidationError`.
+   * lock. A `clientGeneratedId` already stored under this workout_exercise
+   * returns that row with `created: false`, ahead of the finished check and
+   * the validation (D15). Throws `NotFoundError`, `WorkoutFinishedError`,
+   * `ValidationError`.
    */
   createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult>;
 

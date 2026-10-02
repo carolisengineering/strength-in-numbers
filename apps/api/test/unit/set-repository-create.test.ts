@@ -34,6 +34,7 @@ const repoOver = (stub: ScriptedPrisma) =>
 const setRow = (o: Record<string, unknown> = {}) => ({
   id: uuidv7(),
   workout_exercise_id: uuidv7(),
+  client_generated_id: null,
   set_number: 1,
   set_type: "working",
   reps: 5,
@@ -122,7 +123,10 @@ describe("AC10/AC11 + Review Focus 5 — statement order inside the create trans
   it("advisory lock → workout FOR SHARE → workout_exercise FOR SHARE → max read → INSERT, each its own statement", async () => {
     const stub = new ScriptedPrisma();
     queueHappyPath(stub, 0);
-    await repoOver(stub).createSet(uuidv7(), uuidv7(), {});
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), {});
+    expect(result.created).toBe(true);
+    // No clientGeneratedId ⇒ no key lookup, before or under the lock (AC22).
+    expect(stub.calls).toHaveLength(6);
     const [, lock, workoutShare, weShare, max, insert] = stub.calls;
     expect(lock).toContain("pg_advisory_xact_lock(hashtext(");
     expect(workoutShare).toMatch(/FROM "workout" WHERE .* FOR SHARE/s);
@@ -147,5 +151,82 @@ describe("AC10/AC11 + Review Focus 5 — statement order inside the create trans
       .queue_([]);
     await expect(repoOver(stub).createSet(uuidv7(), uuidv7(), {})).rejects.toBeInstanceOf(NotFoundError);
     expect(stub.calls.some((s) => s.includes("INSERT"))).toBe(false);
+  });
+});
+
+describe("AC22 — createSet with a clientGeneratedId is idempotent", () => {
+  const phase1 = (endedAt: Date | null = null) => [
+    { workout_id: uuidv7(), modality_snapshot: "weight_reps", ended_at: endedAt },
+  ];
+
+  it("a stored key is answered by the first lookup: created false, the stored row, no lock and no INSERT", async () => {
+    const key = uuidv7();
+    const storedRow = setRow({ client_generated_id: key, set_number: 2 });
+    const stub = new ScriptedPrisma().queue_(phase1()).queue_([storedRow]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: key, reps: 99 });
+    expect(result.created).toBe(false);
+    expect(result.set).toMatchObject({ id: storedRow.id, setNumber: 2, reps: 5, clientGeneratedId: key });
+    expect(result.modalitySnapshot).toBe("weight_reps");
+    expect(stub.calls).toHaveLength(2);
+    expect(stub.calls[1]).toMatch(/FROM "set_entry"\s+WHERE .*client_generated_id = /s);
+    expect(stub.values[1]).toContain(key);
+  });
+
+  it("the lookup runs before the finished check and before validation: a replay is never 409 or 422", async () => {
+    const key = uuidv7();
+    const stub = new ScriptedPrisma().queue_(phase1(new Date())).queue_([setRow({ client_generated_id: key })]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: key, durationS: 30 });
+    expect(result.created).toBe(false);
+  });
+
+  it("a new key on a finished workout is still WorkoutFinishedError", async () => {
+    const stub = new ScriptedPrisma().queue_(phase1(new Date())).queue_([]);
+    await expect(
+      repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: uuidv7() }),
+    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+  });
+
+  it("a new key is looked up again under the advisory lock, then inserted with the key: created true", async () => {
+    const key = uuidv7();
+    const inserted = setRow({ client_generated_id: key });
+    const stub = new ScriptedPrisma()
+      .queue_(phase1())
+      .queue_([]) // lookup, no lock
+      .queue_(1) // advisory lock
+      .queue_([]) // lookup under the lock
+      .queue_([{ ended_at: null }])
+      .queue_([{ id: uuidv7() }])
+      .queue_([{ max: null }])
+      .queue_([inserted]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: key });
+    expect(result.created).toBe(true);
+    expect(result.set.clientGeneratedId).toBe(key);
+    const [, lookup, lock, lockedLookup, workoutShare, , , insert] = stub.calls;
+    expect(lookup).toContain("client_generated_id");
+    expect(lock).toContain("pg_advisory_xact_lock(hashtext(");
+    expect(lockedLookup).toContain("client_generated_id");
+    expect(workoutShare).toMatch(/FROM "workout" WHERE .* FOR SHARE/s);
+    expect(insert).toContain('INSERT INTO "set_entry"');
+    expect(insert).toContain("client_generated_id");
+    expect(stub.values.at(-1)).toContain(key);
+  });
+
+  it("AC23 — the same key committed by a concurrent create while we waited for the lock: created false, no INSERT", async () => {
+    const key = uuidv7();
+    const storedRow = setRow({ client_generated_id: key });
+    const stub = new ScriptedPrisma().queue_(phase1()).queue_([]).queue_(1).queue_([storedRow]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: key });
+    expect(result.created).toBe(false);
+    expect(result.set.id).toBe(storedRow.id);
+    expect(stub.calls.some((s) => s.includes("INSERT"))).toBe(false);
+  });
+
+  it("a keyless create binds NULL for client_generated_id", async () => {
+    const stub = new ScriptedPrisma();
+    queueHappyPath(stub, null);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), {});
+    expect(stub.calls.at(-1)).toContain("client_generated_id");
+    expect(stub.values.at(-1)).toContain(null);
+    expect(result.set.clientGeneratedId).toBeNull();
   });
 });

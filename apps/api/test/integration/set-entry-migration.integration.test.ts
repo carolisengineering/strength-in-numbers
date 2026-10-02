@@ -13,17 +13,20 @@ const MIGRATIONS = [
   "0005_create_workout_session",
   "0006_create_set_entry",
 ];
+const CLIENT_ID_MIGRATION = "0007_set_entry_client_generated_id";
 
 /**
- * Spec 05.1 §4 / §10 AC1, AC2 — migrates a fresh container through 0001..0006,
+ * Spec 05.1 §4 / §10 AC1, AC2 — migrates a fresh container through 0001..0007,
  * asserts set_entry's exact shape, the generated-column arithmetic, and the
  * whole-schema no-drift check. The drift check lives in the NEWEST
  * migration's test: it diffs the migrated DB against the full schema.prisma,
- * so it can only pass once every migration is applied.
+ * so it can only pass once every migration is applied. 0007 is applied after
+ * a row already exists, the way it meets a live table.
  */
-describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry (real Postgres)", () => {
+describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry + 0007 (real Postgres)", () => {
   let db: IntegrationDb;
   let weId: string;
+  let preExistingSetId: string;
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
@@ -57,13 +60,20 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry (rea
       workoutId,
       exerciseId,
     );
+    preExistingSetId = uuidv7();
+    await db.prisma.$executeRawUnsafe(
+      `INSERT INTO "set_entry" ("id", "workout_exercise_id", "set_number", "reps") VALUES ($1::uuid, $2::uuid, 1, 5)`,
+      preExistingSetId,
+      weId,
+    );
+    applyMigrationFile(db.url, CLIENT_ID_MIGRATION);
   }, 180_000);
 
   afterAll(async () => {
     await db?.stop();
   });
 
-  let nextSetNumber = 1;
+  let nextSetNumber = 2;
   async function insertSet(cols: Record<string, unknown>): Promise<Record<string, unknown>> {
     const names = ["id", "workout_exercise_id", "set_number", ...Object.keys(cols)];
     const values = [uuidv7(), weId, nextSetNumber++, ...Object.values(cols)];
@@ -96,8 +106,9 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry (rea
     expect(Object.keys(byName)).toEqual([
       "id", "workout_exercise_id", "set_number", "set_type", "reps", "weight", "weight_unit",
       "weight_kg", "distance", "distance_unit", "distance_m", "duration_s", "rpe",
-      "is_complete", "completed_at", "created_at", "updated_at",
+      "is_complete", "completed_at", "created_at", "updated_at", "client_generated_id",
     ]);
+    expect(byName.client_generated_id).toMatchObject({ data_type: "uuid", is_nullable: "YES" });
     expect(byName.id).toMatchObject({ data_type: "uuid", is_nullable: "NO" });
     expect(byName.workout_exercise_id).toMatchObject({ data_type: "uuid", is_nullable: "NO" });
     expect(byName.set_number).toMatchObject({ data_type: "smallint", is_nullable: "NO" });
@@ -135,6 +146,37 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry (rea
     );
     expect(idx[0]?.indexdef).toContain("UNIQUE INDEX");
     expect(idx[0]?.indexdef).toContain("(workout_exercise_id, set_number)");
+  });
+
+  it("AC22 — 0007 is additive: a row written before it keeps its data and holds a NULL key", async () => {
+    const rows = await db.prisma.$queryRawUnsafe<{ reps: number; client_generated_id: string | null }[]>(
+      `SELECT reps, client_generated_id FROM "set_entry" WHERE id = $1::uuid`,
+      preExistingSetId,
+    );
+    expect(rows).toEqual([{ reps: 5, client_generated_id: null }]);
+  });
+
+  it("AC22 — the key is unique per workout_exercise; any number of sets may have none", async () => {
+    const idx = await db.prisma.$queryRawUnsafe<{ indexdef: string }[]>(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'set_entry_workout_exercise_client_id_key'`,
+    );
+    expect(idx[0]?.indexdef).toContain("UNIQUE INDEX");
+    expect(idx[0]?.indexdef).toContain("(workout_exercise_id, client_generated_id)");
+
+    const key = uuidv7();
+    const insertKeyed = (k: string | null) =>
+      db.prisma.$executeRawUnsafe(
+        `INSERT INTO "set_entry" ("id", "workout_exercise_id", "set_number", "client_generated_id")
+         VALUES ($1::uuid, $2::uuid, $3, $4::uuid)`,
+        uuidv7(),
+        weId,
+        nextSetNumber++,
+        k,
+      );
+    await insertKeyed(key);
+    await expect(insertKeyed(key)).rejects.toThrow(/client_generated_id/);
+    await insertKeyed(null);
+    await insertKeyed(null);
   });
 
   it("§4 — the generated columns convert with the canonical constants", async () => {
