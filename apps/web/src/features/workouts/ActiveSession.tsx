@@ -32,6 +32,8 @@ export interface ActiveSessionProps {
   workout: WorkoutDetail;
   /** A one-line message carried over from another screen (e.g. "…resumed it."). */
   notice?: string | null;
+  /** Given when `notice` may be put away; omitted for a notice that tracks live state. */
+  onDismissNotice?: () => void;
   /**
    * The workout is gone or finished elsewhere: hand back to the Workouts screen (§5.8 gone path).
    * `refetched` says `/active` was already re-read, so the caller need not read it again.
@@ -57,7 +59,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * sibling `position`s, and the next move's arithmetic comes from the list on screen, so one write plus
  * its refetch at a time (§6.3).
  */
-export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
+export function ActiveSession({ workout, notice, onDismissNotice, onGone }: ActiveSessionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const client = useWorkoutClient();
@@ -323,6 +325,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
   }
 
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
+  const dismiss = banner === null ? onDismissNotice : undefined;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy;
 
   return (
@@ -349,6 +352,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
                 },
               }
             : {})}
+          {...(dismiss ? { onDismiss: dismiss } : {})}
         >
           {shown.text}
         </InlineNotice>

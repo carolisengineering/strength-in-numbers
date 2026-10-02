@@ -32,7 +32,7 @@ vi.mock("react-router", async (importOriginal) => {
 });
 
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
 import type { Exercise } from "@sin/core";
@@ -214,6 +214,74 @@ describe("06.4 AC7 — an add-exercise 404 costs one GET /v1/workouts/active", (
     expect(await screen.findByRole("alert")).toHaveTextContent("That exercise isn't available");
     await new Promise((r) => setTimeout(r, 20));
     expect(activeReads(fake) - before).toBe(1);
+  });
+});
+
+// ---- AC8 ----------------------------------------------------------------------------------------
+
+describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () => {
+  const twoExercises: ExerciseSpec[] = [
+    { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] },
+    { modality: "weight_reps", name: "Y" },
+  ];
+
+  it("resumed: Dismiss hides it; it stays hidden through a banner, its retry and the refetch; a later notice shows", async () => {
+    const fake = createWorkoutFake();
+    prepareApp({ auth, fake });
+    const { user } = renderApp("/app/workouts");
+    const start = await screen.findByRole("button", { name: "Start workout" });
+    // Started on another device after this one loaded: the start answers 409 and we resume it.
+    fake.state.active = makeWorkoutDetail({ exercises: twoExercises });
+    await user.click(start);
+    expect(await screen.findByText("You already had a workout in progress — resumed it.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/resumed it/)).not.toBeInTheDocument();
+
+    // A banner appears (a failed move), then clears through its own retry, which refetches.
+    fake.failNext({ method: "PATCH", path: /\/v1\/workout-exercises\// }, () => problemResponse(500, "about:blank"));
+    const x = within(screen.getByRole("article", { name: "X" }));
+    await user.click(x.getByRole("button", { name: "Options" }));
+    await user.click(x.getByRole("button", { name: "Move down" }));
+    const alert = await screen.findByRole("alert");
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.queryByText(/resumed it/)).not.toBeInTheDocument();
+
+    // A new notice later (a set write 404 on a still-active workout) shows, with its own Dismiss.
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(404, "not-found"));
+    const y = within(screen.getByRole("article", { name: "Y" }));
+    await user.type(y.getByLabelText("Weight"), "60");
+    await user.type(y.getByLabelText("Reps"), "8");
+    await user.click(y.getByRole("button", { name: "Log set" }));
+    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/out of date/)).not.toBeInTheDocument();
+  });
+
+  it("the gone notice on the Start screen can be dismissed", async () => {
+    const { fake, user } = await setup(oneSet);
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
+    fake.state.active = null;
+
+    await user.click(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: "Log set" }));
+    expect(await screen.findByText("That workout was already finished or removed.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/already finished or removed/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
+  });
+
+  it("the refresh-failed notice has no Dismiss (it clears when a refetch succeeds)", async () => {
+    const { fake } = await setup(oneSet);
+    fake.failNext({ method: "GET", path: /\/v1\/workouts\/active$/ }, () => problemResponse(500, "about:blank"));
+
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    expect(await screen.findByText(/Couldn't refresh your workout/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+    focusManager.setFocused(undefined);
   });
 });
 

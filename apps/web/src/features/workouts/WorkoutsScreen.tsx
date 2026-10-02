@@ -37,6 +37,12 @@ export function WorkoutsScreen() {
     [queryClient],
   );
 
+  // Clears the state the notice is derived from, so a banner clearing later cannot bring it back.
+  const dismissNotice = useCallback(() => {
+    setNotice(null);
+    setGoneId(null);
+  }, []);
+
   const goneNotice =
     goneId === null ? null : active.data?.id === goneId ? STALE_NOTICE : GONE_NOTICE;
   const shownNotice = goneNotice ?? notice;
@@ -65,6 +71,7 @@ export function WorkoutsScreen() {
     return (
       <StartWorkout
         notice={shownNotice}
+        onDismissNotice={dismissNotice}
         onStarted={(resumed) => {
           setGoneId(null);
           setNotice(resumed ? RESUMED_NOTICE : null);
@@ -78,6 +85,8 @@ export function WorkoutsScreen() {
     <ActiveSession
       workout={active.data}
       notice={active.isError ? REFRESH_FAILED_NOTICE : shownNotice}
+      // The refresh-failed line reflects live state and clears itself when a refetch succeeds.
+      {...(active.isError ? {} : { onDismissNotice: dismissNotice })}
       onGone={(options) => markGone(workoutId, options?.refetched)}
     />
   );

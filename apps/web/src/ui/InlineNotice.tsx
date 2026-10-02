@@ -10,6 +10,8 @@ export interface InlineNoticeProps {
   requestId?: string | null;
   actionLabel?: string;
   onAction?: () => void;
+  /** Given only for a message the reader may put away (a one-line notice, not an error to act on). */
+  onDismiss?: () => void;
 }
 
 /**
@@ -18,7 +20,14 @@ export interface InlineNoticeProps {
  * (announced at once); information is a polite status. The tone is also carried by a text prefix,
  * never by colour alone.
  */
-export function InlineNotice({ tone = "info", children, requestId, actionLabel, onAction }: InlineNoticeProps) {
+export function InlineNotice({
+  tone = "info",
+  children,
+  requestId,
+  actionLabel,
+  onAction,
+  onDismiss,
+}: InlineNoticeProps) {
   return (
     <div className={`${styles.notice} ${styles[tone]}`} role={tone === "info" ? "status" : "alert"}>
       <p className={styles.message}>{children}</p>
@@ -26,6 +35,11 @@ export function InlineNotice({ tone = "info", children, requestId, actionLabel, 
       {actionLabel && onAction ? (
         <Button variant="secondary" onClick={onAction}>
           {actionLabel}
+        </Button>
+      ) : null}
+      {onDismiss ? (
+        <Button variant="secondary" onClick={onDismiss}>
+          Dismiss
         </Button>
       ) : null}
     </div>
