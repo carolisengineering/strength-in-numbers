@@ -209,6 +209,7 @@ describe("AC4 — session-resume bridge (routing)", () => {
     const { router } = renderAt(["/"]);
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
     // `/app` redirects into Workouts (Spec 06.1 D20).
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });
@@ -223,6 +224,7 @@ describe("AC6 — callback completes or fails cleanly", () => {
     makeOnRedirectCallback(router)({ returnTo: "/app" });
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
     // The clean path is `/app`, which redirects into Workouts (Spec 06.1 D20).
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
     expect(router.state.location.search).toBe("");
@@ -275,6 +277,7 @@ describe("makeOnRedirectCallback", () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/app"));
     await screen.findByTestId("app-shell");
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
   });
 });
 
@@ -314,6 +317,7 @@ describe("AC13 — protected routes capture returnTo in router state", () => {
     const { router } = renderAt(["/"]);
 
     await screen.findByTestId("app-shell");
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
 
     makeOnRedirectCallback(router)({ returnTo: "/app/history/123" });
 
@@ -334,6 +338,7 @@ describe("AC9 — session bootstrap order", () => {
     expect(screen.queryByTestId("app-shell")).toBeNull();
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
     expect(screen.getByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
@@ -355,6 +360,7 @@ describe("AC9 — session bootstrap order", () => {
     renderAt(["/app"]);
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
     expect(screen.getByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
@@ -456,6 +462,7 @@ describe("AC10 — bootstrap failure modes", () => {
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
 
     expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
     expect(attempt).toBe(2);
   });
 });

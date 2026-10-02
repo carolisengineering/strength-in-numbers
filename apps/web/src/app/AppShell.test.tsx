@@ -114,6 +114,7 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
     auth.state.isAuthenticated = true;
     renderAt(["/app"]);
     await screen.findByTestId("app-shell");
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
@@ -159,6 +160,7 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
     expect(await screen.findByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
   });
 
   it("unauthenticated visit to /app/profile → redirected to /, shell never mounts", async () => {

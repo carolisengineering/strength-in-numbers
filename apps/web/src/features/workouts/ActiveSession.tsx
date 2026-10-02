@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Exercise, WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
 
+import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -41,6 +42,7 @@ const startedTime = (iso: string): string =>
  */
 export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
   const queryClient = useQueryClient();
+  const { user } = useSession();
   const catalog = useCatalog();
   const add = useAddExercise();
   const move = useMoveExercise();
@@ -192,6 +194,11 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
             structureBusy={structureBusy}
             onMove={(direction) => void moveExercise(exercise, direction)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+            unitPreference={user?.unitPreference ?? "kg"}
+            onGone={() => {
+              track("workout_conflict", { kind: "gone" });
+              onGone();
+            }}
           />
         ))}
         {pending ? (

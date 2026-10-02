@@ -3,6 +3,7 @@ import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { MODALITY_LABELS } from "../catalog/labels";
+import { EntryRow } from "./EntryRow";
 import { formatSet } from "./format";
 import styles from "./ExerciseCard.module.css";
 
@@ -14,13 +15,26 @@ export interface ExerciseCardProps {
   structureBusy: boolean;
   onMove: (direction: "up" | "down") => void;
   onRemove: () => void;
+  /** Weight and distance units default from the profile (D26). */
+  unitPreference: "kg" | "lb";
+  /** The workout is gone or finished elsewhere (§5.8 gone path). */
+  onGone: () => void;
 }
 
 /**
  * One exercise in the session (Spec 06.1 §5.4): its name and modality, an Options row (Move up / Move
  * down / Remove exercise — buttons, not drag-and-drop, D16), and its logged sets.
  */
-export function ExerciseCard({ exercise, isFirst, isLast, structureBusy, onMove, onRemove }: ExerciseCardProps) {
+export function ExerciseCard({
+  exercise,
+  isFirst,
+  isLast,
+  structureBusy,
+  onMove,
+  onRemove,
+  unitPreference,
+  onGone,
+}: ExerciseCardProps) {
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
 
@@ -62,6 +76,8 @@ export function ExerciseCard({ exercise, isFirst, isLast, structureBusy, onMove,
           ))}
         </ol>
       ) : null}
+
+      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} />
     </article>
   );
 }
