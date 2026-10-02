@@ -264,6 +264,16 @@ describe("AC22 — a create carrying clientGeneratedId is idempotent (route leve
     expect(replay.json().id).toBe(first.json().id);
     expect((await postSet(app, weId, { clientGeneratedId: uuidv7(), reps: 10 })).statusCode).toBe(409);
   });
+  it("an upper-case key is echoed lower-case, and replays match whatever their case", async () => {
+    const { app, weId } = await setup();
+    const clientGeneratedId = uuidv7();
+    const first = await postSet(app, weId, { clientGeneratedId: clientGeneratedId.toUpperCase() });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().clientGeneratedId).toBe(clientGeneratedId);
+    const replay = await postSet(app, weId, { clientGeneratedId });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe(first.json().id);
+  });
   it("a malformed key is 422; the key is not a PATCH field", async () => {
     const { app, weId } = await setup();
     expect((await postSet(app, weId, { clientGeneratedId: "not-a-uuid" })).statusCode).toBe(422);

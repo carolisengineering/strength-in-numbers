@@ -114,6 +114,10 @@ describe("AC22 — clientGeneratedId is a create-only idempotency key", () => {
     expect(CreateSetSchema.safeParse({ clientGeneratedId: key }).success).toBe(true);
     expect(CreateSetSchema.safeParse({}).success).toBe(true);
   });
+  it("CreateSetSchema lower-cases the key, the form Postgres echoes a uuid in", () => {
+    const parsed = CreateSetSchema.parse({ clientGeneratedId: key.toUpperCase() });
+    expect(parsed.clientGeneratedId).toBe(key);
+  });
   it("CreateSetSchema rejects a non-GUID and null", () => {
     expect(CreateSetSchema.safeParse({ clientGeneratedId: "not-a-uuid" }).success).toBe(false);
     expect(CreateSetSchema.safeParse({ clientGeneratedId: null }).success).toBe(false);

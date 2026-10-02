@@ -81,10 +81,12 @@ export type SetEntry = z.infer<typeof SetEntrySchema>;
  *
  * `clientGeneratedId` is an optional idempotency key, unique per
  * workout-exercise: replaying a create that carries one returns the stored
- * set with `200` instead of adding a second row (§6.2, D15).
+ * set with `200` instead of adding a second row (§6.2, D15). It is lower-cased
+ * on the way in: Postgres echoes a `uuid` lower-case, so the key a client reads
+ * back equals the parsed one whatever case it sent.
  */
 export const CreateSetSchema = z.strictObject({
-  clientGeneratedId: z.guid().optional(),
+  clientGeneratedId: z.guid().toLowerCase().optional(),
   setType: z.enum(SET_TYPE_VALUES).optional(),
   reps: Reps.nullable().optional(),
   weight: Weight.nullable().optional(),

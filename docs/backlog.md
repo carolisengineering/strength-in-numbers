@@ -293,3 +293,24 @@ behaviour on the error path.
   (and possibly all `/v1` routes, since any path can be malformed). Then the
   `openapi-problem-matrix.test.ts` matrix is updated and `openapi.json` is
   re-emitted.
+
+## BL-11
+
+**`POST /v1/workouts` echoes `clientGeneratedId` in a different case than an upper-case client sent.**
+
+Found 2026-10-01 while reviewing the set idempotency key (Spec 05.1 D15).
+`CreateWorkoutSchema.clientGeneratedId` is `z.guid()`, which accepts upper-case
+hex, but the `uuid` column returns it lower-cased. A client that mints
+upper-case UUIDs (for example iOS `UUID().uuidString`) therefore reads back a
+key that is not string-equal to the one it sent. Replay detection itself is
+unaffected: Postgres compares `uuid` values, not their text.
+
+**Why deferred:** the web client mints lower-case keys (`crypto.randomUUID()`),
+so nothing is affected until a native client exists.
+
+**Done looks like:**
+- `CreateWorkoutSchema.clientGeneratedId` is `z.guid().toLowerCase()`, as
+  `CreateSetSchema` already is.
+- `FakeWorkoutRepository` keys its replay map on the parsed value, and a route
+  test posts an upper-case key and asserts the lower-case echo and a `200`
+  replay.
