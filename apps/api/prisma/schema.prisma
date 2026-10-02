@@ -160,7 +160,10 @@ model SetEntry {
   completedAt       DateTime?       @map("completed_at") @db.Timestamptz(6)
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  /// Optional create idempotency key (0007); NULL when the create sent none.
+  clientGeneratedId String?         @map("client_generated_id") @db.Uuid
 
   @@unique([workoutExerciseId, setNumber], map: "set_entry_workout_exercise_number_key")
+  @@unique([workoutExerciseId, clientGeneratedId], map: "set_entry_workout_exercise_client_id_key")
   @@map("set_entry")
 }

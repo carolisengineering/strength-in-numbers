@@ -81,6 +81,24 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set concurrency (real Postgr
     expect([...numbers].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it("AC23 — six concurrent creates carrying one clientGeneratedId: one created, five replays of it, one row", async () => {
+    const { userId, weIds } = await workoutWith("bodyweight_reps");
+    const clientGeneratedId = uuidv7();
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, () => repo.createSet(userId, weIds[0]!, { clientGeneratedId, reps: 5 })),
+    );
+    const rejected = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(rejected.map((r) => String(r.reason))).toEqual([]);
+    const values = results.map((r) => (r as PromiseFulfilledResult<CreateSetResult>).value);
+    expect(values.filter((v) => v.created)).toHaveLength(1);
+    expect(new Set(values.map((v) => v.set.id)).size).toBe(1);
+    const n = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM "set_entry" WHERE workout_exercise_id = $1::uuid`,
+      weIds[0]!,
+    );
+    expect(Number(n[0]!.n)).toBe(1);
+  });
+
   it("AC11 — a concurrent finish and create: the set commits first, or the create is 409 and writes nothing", async () => {
     for (let round = 0; round < 5; round += 1) {
       const { userId, workoutId, weIds } = await workoutWith("bodyweight_reps");

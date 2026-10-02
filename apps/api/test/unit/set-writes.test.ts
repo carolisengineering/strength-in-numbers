@@ -180,6 +180,7 @@ describe("§6.5 — isWorkingSetComplete", () => {
 const stored = (o: Partial<SetEntryRecord> = {}): SetEntryRecord => ({
   id: "018fcb3e-3b8a-7d6e-9c1a-000000000010",
   workoutExerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000005",
+  clientGeneratedId: null,
   setNumber: 1,
   setType: "working",
   reps: 5,

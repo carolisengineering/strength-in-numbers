@@ -90,6 +90,7 @@ describe("AC17 — CreateSetSchema / UpdateSetSchema", () => {
 const validSet = {
   id: "018fcb3e-3b8a-7d6e-9c1a-000000000010",
   workoutExerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000005",
+  clientGeneratedId: null,
   setNumber: 1,
   setType: "working",
   reps: 5,
@@ -106,6 +107,31 @@ const validSet = {
   createdAt: "2026-09-27T10:00:00.000Z",
   updatedAt: "2026-09-27T10:00:00.000Z",
 };
+
+describe("AC22 — clientGeneratedId is a create-only idempotency key", () => {
+  const key = "018fcb3e-3b8a-7d6e-9c1a-0000000000aa";
+  it("CreateSetSchema accepts a GUID, or no key at all", () => {
+    expect(CreateSetSchema.safeParse({ clientGeneratedId: key }).success).toBe(true);
+    expect(CreateSetSchema.safeParse({}).success).toBe(true);
+  });
+  it("CreateSetSchema rejects a non-GUID and null", () => {
+    expect(CreateSetSchema.safeParse({ clientGeneratedId: "not-a-uuid" }).success).toBe(false);
+    expect(CreateSetSchema.safeParse({ clientGeneratedId: null }).success).toBe(false);
+  });
+  it("UpdateSetSchema treats it as an unknown key, and keeps every other create field", () => {
+    expect(UpdateSetSchema.safeParse({ clientGeneratedId: key }).success).toBe(false);
+    expect(Object.keys(UpdateSetSchema.shape).sort()).toEqual(
+      Object.keys(CreateSetSchema.shape)
+        .filter((k) => k !== "clientGeneratedId")
+        .sort(),
+    );
+  });
+  it("SetEntrySchema echoes it back: a GUID, or null for a set created without one", () => {
+    expect(SetEntrySchema.safeParse({ ...validSet, clientGeneratedId: key }).success).toBe(true);
+    expect(SetEntrySchema.safeParse({ ...validSet, clientGeneratedId: null }).success).toBe(true);
+    expect(SetEntrySchema.safeParse({ ...validSet, clientGeneratedId: undefined }).success).toBe(false);
+  });
+});
 
 describe("AC17 — SetEntrySchema and the WorkoutDetail extension (D12)", () => {
   it("parses a valid set; rejects setNumber 0", () => {
