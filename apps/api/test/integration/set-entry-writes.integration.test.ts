@@ -161,12 +161,29 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     await expect(finish(userId, workoutId)).resolves.toBeDefined();
   });
 
-  it("AC14 / D13 — warmup / drop / failure sets with no measures and isComplete: true are writable and don't block the finish", async () => {
+  it("AC14 — warmup / drop / failure sets with no measures don't block the finish", async () => {
     const { userId, workoutId, weIds } = await workoutWith("weight_reps");
     for (const setType of ["warmup", "drop", "failure"] as const) {
-      await repo.createSet(userId, weIds[0]!, { setType, isComplete: true });
+      await repo.createSet(userId, weIds[0]!, { setType });
     }
     await expect(finish(userId, workoutId)).resolves.toBeDefined();
+  });
+
+  it("AC6 / D14 — a non-working set can't be marked complete without its required measures; reps: 0 plus the weight is a failed attempt", async () => {
+    const { userId, weIds } = await workoutWith("weight_reps");
+    for (const setType of ["warmup", "drop", "failure"] as const) {
+      await expect(repo.createSet(userId, weIds[0]!, { setType, isComplete: true })).rejects.toBeInstanceOf(
+        ValidationError,
+      );
+    }
+    const failed = await repo.createSet(userId, weIds[0]!, {
+      setType: "failure",
+      reps: 0,
+      weight: 140,
+      weightUnit: "kg",
+      isComplete: true,
+    });
+    expect(failed.set).toMatchObject({ setType: "failure", reps: 0, weight: 140, isComplete: true });
   });
 
   it("AC14 — the exempt types still get per-write validation: a drop set with weight + reps validates like a working one", async () => {

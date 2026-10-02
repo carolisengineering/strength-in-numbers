@@ -79,10 +79,18 @@ describe("AC6 — required measures gate isComplete: true", () => {
   });
 });
 
-describe("AC14 / D13 — non-working sets skip the required gate, keep every other check", () => {
+describe("AC6 / D14 — the required gate applies to every set type", () => {
   for (const setType of ["warmup", "drop", "failure"] as const) {
-    it(`${setType}: isComplete true with no measures is legal`, () => {
-      expect(() => assertSetMeasuresValid("weight_reps", { ...EMPTY, setType, isComplete: true })).not.toThrow();
+    it(`${setType}: isComplete true with no measures is 422 naming every required measure`, () => {
+      expect(
+        fieldPaths(() => assertSetMeasuresValid("weight_reps", { ...EMPTY, setType, isComplete: true })),
+      ).toEqual(["reps", "weight"]);
+    });
+    it(`${setType}: isComplete true with every required measure passes`, () => {
+      expect(() => assertSetMeasuresValid("weight_reps", { ...complete("weight_reps"), setType })).not.toThrow();
+    });
+    it(`${setType}: no measures with isComplete false is legal`, () => {
+      expect(() => assertSetMeasuresValid("weight_reps", { ...EMPTY, setType })).not.toThrow();
     });
     it(`${setType}: a forbidden measure is still 422; unit pairing still applies`, () => {
       expect(fieldPaths(() => assertSetMeasuresValid("weight_reps", { ...EMPTY, setType, durationS: 30 }))).toEqual([
@@ -93,6 +101,18 @@ describe("AC14 / D13 — non-working sets skip the required gate, keep every oth
       ]);
     });
   }
+  it("a failed attempt is a complete failure set with reps: 0 and the weight", () => {
+    expect(() =>
+      assertSetMeasuresValid("weight_reps", {
+        ...EMPTY,
+        setType: "failure",
+        reps: 0,
+        weight: 140,
+        weightUnit: "kg",
+        isComplete: true,
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe("AC7 — forbidden measures are rejected regardless of isComplete", () => {
