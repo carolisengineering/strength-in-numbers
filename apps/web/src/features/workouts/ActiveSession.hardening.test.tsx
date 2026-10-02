@@ -35,12 +35,15 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
-import type { Exercise } from "@sin/core";
+import type { Exercise, WorkoutDetail } from "@sin/core";
+import { http, HttpResponse } from "msw";
 import { routes } from "../../app/router";
+import { API_BASE_URL } from "../../test/catalogHarness";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
+import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
-import { cleanupApp, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
+import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
 import { WORKOUT_KEYS } from "./queries";
 import { WorkoutsScreen } from "./WorkoutsScreen";
 
@@ -108,6 +111,7 @@ async function setupHosted(exercises: ExerciseSpec[]) {
   return { fake, router, queryClient, user: userEvent.setup() };
 }
 
+const ACTIVE_URL = `${API_BASE_URL}/v1/workouts/active`;
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
 
@@ -282,6 +286,111 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
     expect(await screen.findByText(/Couldn't refresh your workout/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
     focusManager.setFocused(undefined);
+  });
+});
+
+// ---- AC9 ----------------------------------------------------------------------------------------
+
+describe("06.4 AC9 — a diagnosis interrupted by the next set write is corrected by retrying Finish", () => {
+  it("interim banner from the old copy, then the server's list, then a fresh diagnosis flags the real set", async () => {
+    const { fake, user, queryClient } = await setup(oneSet);
+    // Another client adds an incomplete working set this screen has not seen.
+    const active = fake.state.active!;
+    const exercise = active.exercises[0]!;
+    const hidden = makeSet({
+      setNumber: 2,
+      workoutExerciseId: exercise.id,
+      weight: null,
+      weightUnit: null,
+      reps: 8,
+      isComplete: false,
+    });
+    fake.state.active = { ...active, exercises: [{ ...exercise, sets: [...exercise.sets, hidden] }] };
+
+    // The diagnosis re-read is held open…
+    const gate = deferred<void>();
+    server.use(
+      http.get(
+        ACTIVE_URL,
+        async () => {
+          await gate.promise;
+          return HttpResponse.json(fake.state.active);
+        },
+        { once: true },
+      ),
+    );
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+
+    // …and a set logged meanwhile cancels it (06.1 AC11).
+    const x = within(screen.getByRole("article", { name: "X" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish workout?" })).not.toBeInTheDocument());
+    await user.click(x.getByRole("button", { name: "Log set" }));
+
+    // The banner is computed from the pre-refetch copy: no ids to flag, so the fallback.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Some sets are incomplete — reload and check your sets.");
+    expect(screen.queryByText("Needs data")).not.toBeInTheDocument();
+
+    // The I1 re-read after the set write lands: the list is the server's (set 1, the hidden set 2, the new set 3).
+    await waitFor(() => expect(x.getAllByRole("button", { name: /^\d/ })).toHaveLength(3));
+    gate.resolve();
+
+    // Finish again: the 409 again, diagnosed from fresh data.
+    await waitFor(() => expect(finishButton()).toBeEnabled());
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+
+    expect(await screen.findByText("1 working set is missing data. Fix or delete them, then finish again.")).toBeInTheDocument();
+    const flagged = x.getAllByText("Needs data");
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.closest("button")).toHaveTextContent(/– × 8/);
+    // No flagged row is one the cache holds as complete.
+    const cached = queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)!;
+    const flaggedSet = cached.exercises[0]!.sets.find((s) => s.id === hidden.id)!;
+    expect(flaggedSet.isComplete).toBe(false);
+  });
+});
+
+// ---- AC10 ---------------------------------------------------------------------------------------
+
+describe("06.4 AC10 — a set write answering 404 while the workout still exists", () => {
+  it("update set: sheet closes, one /active read, the out-of-date notice, one gone conflict", async () => {
+    const { fake, user } = await setup(oneSet);
+    const x = within(screen.getByRole("article", { name: "X" }));
+    await user.click(x.getByRole("button", { name: /60 kg × 8/ }));
+    const sheet = screen.getByRole("dialog", { name: /Set 1/ });
+    await user.type(within(sheet).getByLabelText("Reps"), "{Control>}a{/Control}9");
+    fake.failNext({ method: "PATCH", path: /\/v1\/sets\// }, () => problemResponse(404, "not-found"));
+    const before = activeReads(fake);
+
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Set 1/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/already finished or removed/)).not.toBeInTheDocument();
+    expect(x.getByRole("button", { name: /60 kg × 8/ })).toBeInTheDocument(); // the server's copy
+    await new Promise((r) => setTimeout(r, 20));
+    expect(activeReads(fake) - before).toBe(1);
+    const conflicts = observability.track.mock.calls.filter(([name]) => name === "workout_conflict");
+    expect(conflicts).toEqual([["workout_conflict", { kind: "gone" }]]);
+  });
+
+  it("delete set: sheet closes, the row goes, no notice, no /active read, set_deleted tracked", async () => {
+    const { fake, user } = await setup(oneSet);
+    const x = within(screen.getByRole("article", { name: "X" }));
+    await user.click(x.getByRole("button", { name: /60 kg × 8/ }));
+    fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(404, "not-found"));
+    const before = activeReads(fake);
+
+    await user.click(within(screen.getByRole("dialog", { name: /Set 1/ })).getByRole("button", { name: "Delete set" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Set 1/ })).not.toBeInTheDocument());
+    expect(x.queryByRole("button", { name: /60 kg × 8/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/out of date|already finished/)).not.toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(activeReads(fake)).toBe(before);
+    expect(observability.track).toHaveBeenCalledWith("set_deleted", { modality: "weight_reps" });
+    expect(fake.state.active).not.toBeNull(); // the workout itself is still active
   });
 });
 
