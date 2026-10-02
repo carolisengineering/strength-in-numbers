@@ -1,0 +1,57 @@
+.meta {
+  color: var(--color-muted);
+}
+
+.exercises {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.exercise {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.name {
+  font-size: var(--font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.sets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+
+.set {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.setNumber {
+  min-width: var(--space-6);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* A link styled as a tap target (Spec 06.1 AC33). */
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  color: var(--color-accent);
+}
