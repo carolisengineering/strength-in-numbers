@@ -1,0 +1,67 @@
+import { useId, useState } from "react";
+import type { WorkoutExerciseDetail } from "@sin/core";
+
+import { Button } from "../../ui/Button";
+import { MODALITY_LABELS } from "../catalog/labels";
+import { formatSet } from "./format";
+import styles from "./ExerciseCard.module.css";
+
+export interface ExerciseCardProps {
+  exercise: WorkoutExerciseDetail;
+  isFirst: boolean;
+  isLast: boolean;
+  /** An exercise-structure write (or its refetch) is in flight: every structure control waits. */
+  structureBusy: boolean;
+  onMove: (direction: "up" | "down") => void;
+  onRemove: () => void;
+}
+
+/**
+ * One exercise in the session (Spec 06.1 §5.4): its name and modality, an Options row (Move up / Move
+ * down / Remove exercise — buttons, not drag-and-drop, D16), and its logged sets.
+ */
+export function ExerciseCard({ exercise, isFirst, isLast, structureBusy, onMove, onRemove }: ExerciseCardProps) {
+  const headingId = useId();
+  const [optionsOpen, setOptionsOpen] = useState(false);
+
+  return (
+    <article className={styles.card} aria-labelledby={headingId}>
+      <header className={styles.header}>
+        <div className={styles.titles}>
+          <h2 className={styles.name} id={headingId}>
+            {exercise.exerciseNameSnapshot}
+          </h2>
+          <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
+        </div>
+        <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+          Options
+        </Button>
+      </header>
+
+      {optionsOpen ? (
+        <div className={styles.options}>
+          <Button variant="secondary" disabled={isFirst || structureBusy} onClick={() => onMove("up")}>
+            Move up
+          </Button>
+          <Button variant="secondary" disabled={isLast || structureBusy} onClick={() => onMove("down")}>
+            Move down
+          </Button>
+          <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
+            Remove exercise
+          </Button>
+        </div>
+      ) : null}
+
+      {exercise.sets.length > 0 ? (
+        <ol className={styles.sets}>
+          {exercise.sets.map((set) => (
+            <li key={set.id} className={styles.set}>
+              <span className={styles.setNumber}>{set.setNumber}</span>
+              <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </article>
+  );
+}

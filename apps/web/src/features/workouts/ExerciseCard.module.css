@@ -1,0 +1,58 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.titles {
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.modality {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.set {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+}
+
+.setNumber {
+  min-width: var(--space-6);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
