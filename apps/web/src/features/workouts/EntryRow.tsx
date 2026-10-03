@@ -19,6 +19,7 @@ import styles from "./EntryRow.module.css";
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
+const DOUBLE_TAP_MS = 600;
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "rpe"]);
 
 export interface EntryRowProps {
@@ -47,6 +48,9 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const [formError, setFormError] = useState<{ text: string } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const inFlight = useRef(false); // synchronous guard against a double tap
+  // Spec 06.2: a queued log resolves at once, so the busy button no longer spans a double tap. A second
+  // tap within this window with nothing typed in between is the same tap, not a second set.
+  const lastLoggedAt = useRef(Number.NEGATIVE_INFINITY);
   const firstTouchAt = useRef<number | null>(null);
   const edited = useRef(false);
   // True once the lifter types after tapping Log: on a slow link they may already be entering the next
@@ -84,7 +88,8 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
 
   async function log(event?: FormEvent) {
     event?.preventDefault();
-    if (inFlight.current || !parsed.ok) return;
+    const repeatTap = !editedSinceTap.current && Date.now() - lastLoggedAt.current < DOUBLE_TAP_MS;
+    if (inFlight.current || !parsed.ok || repeatTap) return;
     inFlight.current = true;
     setServerErrors({});
     setFormError(null);
@@ -98,6 +103,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         msToLog,
         edited: edited.current,
       });
+      lastLoggedAt.current = Date.now();
       setAnnouncement(`Set ${set.setNumber} logged`);
       if (editedSinceTap.current) {
         // The next set is already being entered: keep it, and give it a fresh attempt key.

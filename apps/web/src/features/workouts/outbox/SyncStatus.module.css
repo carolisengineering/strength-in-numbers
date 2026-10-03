@@ -1,0 +1,21 @@
+/* The session's "not saved yet" line (Spec 06.2 AC15). */
+.status {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.failed {
+  color: var(--color-danger);
+  font-weight: 700;
+}

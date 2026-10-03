@@ -282,24 +282,20 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.queryByText(/resumed it/)).not.toBeInTheDocument();
-
-    // A new notice later (a set write 404 on a still-active workout) shows, with its own Dismiss.
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(404, "not-found"));
-    const y = within(screen.getByRole("article", { name: "Y" }));
-    await user.type(y.getByLabelText("Weight"), "60");
-    await user.type(y.getByLabelText("Reps"), "8");
-    await user.click(y.getByRole("button", { name: "Log set" }));
-    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByText(/out of date/)).not.toBeInTheDocument();
+    // (06.2: queued set writes no longer raise the "out of date" notice; a later notice showing again is
+    // covered by the gone-notice test below.)
   });
 
   it("the gone notice on the Start screen can be dismissed", async () => {
     const { fake, user } = await setup(oneSet);
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
+    // Reach the gone path through Finish (06.2: a queued set write fails on its row instead).
+    const active = fake.state.active!;
+    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
+    fake.state.finished.set(active.id, { ...active, endedAt: null }); // getById: "not finished" ⇒ gone
     fake.state.active = null;
 
-    await user.click(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: "Log set" }));
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
     expect(await screen.findByText("That workout was already finished or removed.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
@@ -385,7 +381,7 @@ describe("06.4 AC9 — a diagnosis interrupted by the next set write is correcte
 // ---- AC10 ---------------------------------------------------------------------------------------
 
 describe("06.4 AC10 — a set write answering 404 while the workout still exists", () => {
-  it("update set: sheet closes, one /active read, the out-of-date notice, one gone conflict", async () => {
+  it("update set (06.2): the sheet closes at once; a 404 fails the row, refetches once, raises no notice or conflict", async () => {
     const { fake, user } = await setup(oneSet);
     const x = within(screen.getByRole("article", { name: "X" }));
     await user.click(x.getByRole("button", { name: /60 kg × 8/ }));
@@ -396,14 +392,12 @@ describe("06.4 AC10 — a set write answering 404 while the workout still exists
 
     await user.click(within(sheet).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /Set 1/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/already finished or removed/)).not.toBeInTheDocument();
-    expect(x.getByRole("button", { name: /60 kg × 8/ })).toBeInTheDocument(); // the server's copy
-    await new Promise((r) => setTimeout(r, 20));
-    expect(activeReads(fake) - before).toBe(1);
-    const conflicts = observability.track.mock.calls.filter(([name]) => name === "workout_conflict");
-    expect(conflicts).toEqual([["workout_conflict", { kind: "gone" }]]);
+    expect(await x.findByText("Couldn't save")).toBeInTheDocument();
+    await waitFor(() => expect(activeReads(fake) - before).toBe(1));
+    expect(screen.queryByText(/out of date|already finished/)).not.toBeInTheDocument();
+    expect(observability.track.mock.calls.filter(([name]) => name === "workout_conflict")).toEqual([]);
+    expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 404 });
   });
 
   it("delete set: sheet closes, the row goes, no notice, no /active read, set_deleted tracked", async () => {

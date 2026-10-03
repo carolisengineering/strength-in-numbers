@@ -80,6 +80,22 @@ export function routeTemplate(path: string): string {
     .join("/");
 }
 
+const browserOnline = (): boolean => typeof navigator === "undefined" || navigator.onLine !== false;
+
+/**
+ * Is a token failure a lost session (log out, clear user data) rather than the network? Spec 06.2
+ * AC9: logging out clears the outbox of sets the lifter has not saved yet, so a failure is the
+ * network when the browser is offline, when fetch itself failed (`TypeError`), or when Auth0's token
+ * request timed out. Anything else — the listed lost-session codes, but also an unlisted code such as
+ * `mfa_required` or a blocked user's `access_denied` — is a real auth problem (owner decision, code
+ * review #4): treating it as the network would retry forever on a working connection.
+ */
+export function isLostSession(cause: unknown, online: boolean = browserOnline()): boolean {
+  if (!online || cause instanceof TypeError) return false;
+  const code = cause instanceof Error ? (cause as Error & { error?: unknown }).error : undefined;
+  return code !== "timeout";
+}
+
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const { baseUrl, appEnv, getToken, onAuthLost } = options;
 
@@ -93,6 +109,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     try {
       token = await getToken(ignoreCache ? { ignoreCache: true } : undefined);
     } catch (cause) {
+      if (!isLostSession(cause)) throw ApiError.network(requestId, cause);
       // No token — a lost session (cold cache `missing_refresh_token`, or a
       // rotation-reuse failure). AC12.
       onAuthLost();

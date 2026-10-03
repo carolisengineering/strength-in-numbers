@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -18,11 +18,9 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
-import { API_BASE_URL } from "../../test/catalogHarness";
-import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
-import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { WORKOUT_KEYS } from "./queries";
 
 const scrollIntoView = vi.fn();
@@ -128,15 +126,9 @@ describe("AC26 — Finish: confirm and success", () => {
     expect(patches(fake)).toHaveLength(1);
   });
 
-  it("Finish waits for a set write that is still in flight", async () => {
-    const { user } = await setup();
-    const gate = deferred<void>();
-    server.use(
-      http.post(`${API_BASE_URL}/v1/workout-exercises/:id/sets`, async () => {
-        await gate.promise;
-        return problemResponse(500, "about:blank");
-      }),
-    );
+  it("Finish waits for a set write that is not saved yet (06.2 AC16)", async () => {
+    const { fake, user } = await setup();
+    fake.setOffline(true); // the send fails at the network and is retried
     const row = within(screen.getByRole("article", { name: "X" }));
     await user.type(row.getByLabelText("Weight"), "{Control>}a{/Control}61"); // prefilled: replace
     expect(finishButton()).toBeEnabled();
@@ -144,7 +136,8 @@ describe("AC26 — Finish: confirm and success", () => {
     await user.click(row.getByRole("button", { name: "Log set" }));
 
     expect(finishButton()).toBeDisabled();
-    gate.resolve();
+    fake.setOffline(false);
+    await user.click(await screen.findByRole("button", { name: "Retry now" }));
     await waitFor(() => expect(finishButton()).toBeEnabled());
   });
 });
@@ -272,7 +265,7 @@ describe("AC28 — other finish outcomes", () => {
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Couldn't finish — try again");
+    expect(alert).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15
     expect(alert).toHaveTextContent(/Request ID: /);
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
 
@@ -325,7 +318,7 @@ describe("AC29 — discard and the gone path", () => {
     await user.click(within(dialog).getByRole("button", { name: "Discard" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Couldn't discard the workout — try again");
+    expect(alert).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
 
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
@@ -341,15 +334,15 @@ describe("AC29 — discard and the gone path", () => {
     expect(fake.requests.filter((r) => r.method === "DELETE")).toHaveLength(0);
   });
 
-  it("a 409 workout-finished on a set write sends the lifter to Start with the gone notice", async () => {
+  it("06.2 AC16 AC17 — a 409 workout-finished on a set write fails the row and keeps Finish disabled", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
-    fake.state.active = null;
     const row = within(screen.getByRole("article", { name: "X" }));
 
     await user.click(row.getByRole("button", { name: "Log set" }));
 
-    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("That workout was already finished or removed.");
+    expect(await row.findByText("Couldn't save")).toBeInTheDocument();
+    expect(finishButton()).toBeDisabled();
+    expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
   });
 });

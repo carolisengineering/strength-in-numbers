@@ -14,6 +14,11 @@ import { useCatalog } from "../catalog/useCatalog";
 import { ExerciseCard } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
+import { isNetworkFailure } from "./outbox/classify";
+import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
+import { unsavedSets } from "./outbox/ops";
+import { project } from "./outbox/project";
+import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
@@ -49,6 +54,8 @@ interface Banner {
 }
 
 const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time, then try again.";
+/** A structure write, finish or discard that failed at the network (Spec 06.2 AC15). */
+const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -117,6 +124,25 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     firstFlaggedRef.current = node;
   }, []);
 
+  // ---- outbox (Spec 06.2) ------------------------------------------------------------------------
+  const outbox = useOutbox();
+  const outboxState = useOutboxState();
+  // The cached workout is already projected; projecting it again only yields the per-row sync map.
+  const { sync } = useMemo(() => project(workout, outboxState), [workout, outboxState]);
+  // Counted in sets, not queued writes: a set with an appended edit is still one set.
+  const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
+  const firstFailedId = useMemo(() => {
+    for (const exercise of exercises) {
+      const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
+      if (set) return set.id;
+    }
+    return null;
+  }, [exercises, sync]);
+  const failedRowRef = useRef<HTMLLIElement | null>(null);
+  const setFailedRowRef = useCallback((node: HTMLLIElement | null) => {
+    failedRowRef.current = node;
+  }, []);
+
   // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
   // Once per diagnosis: the flagged set may only render a beat later, when the re-read reaches this
   // screen's `workout` prop, so wait for its row; fixing that row later must not scroll to the next.
@@ -169,7 +195,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         setBanner({ tone: "warning", text: action.text, requestId: action.requestId });
         return;
       default: {
-        const text = action.type === "retry" ? action.text : "Something went wrong — try again";
+        const text = isNetworkFailure(error)
+          ? OFFLINE_MESSAGE
+          : action.type === "retry"
+            ? action.text
+            : "Something went wrong — try again";
         const requestId = "requestId" in action ? action.requestId : null;
         setBanner({ tone: "error", text, requestId, ...(retry ? { retry } : {}) });
       }
@@ -308,7 +338,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         default:
           setBanner({
             tone: "error",
-            text: action.type === "retry" ? action.text : "Couldn't finish — try again",
+            text: isNetworkFailure(error)
+              ? OFFLINE_MESSAGE
+              : action.type === "retry"
+                ? action.text
+                : "Couldn't finish — try again",
             requestId: "requestId" in action ? action.requestId : null,
             retry: () => void confirmFinish(),
           });
@@ -333,7 +367,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       const action = resolveFailure("discard", error);
       setBanner({
         tone: "error",
-        text: action.type === "retry" ? action.text : "Couldn't discard the workout — try again",
+        text: isNetworkFailure(error)
+          ? OFFLINE_MESSAGE
+          : action.type === "retry"
+            ? action.text
+            : "Couldn't discard the workout — try again",
         requestId: "requestId" in action ? action.requestId : null,
         retry: () => void confirmDiscard(),
       });
@@ -344,7 +382,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy;
+  const unsaved = pendingCount + failedCount;
+  // Spec 06.2 AC16: Finish waits for every queued or failed set write of this workout.
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0;
 
   return (
     <Screen title="Workout">
@@ -376,6 +416,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </InlineNotice>
       ) : null}
 
+      {outboxState.conflict ? (
+        <InlineNotice tone="warning" actionLabel="Reload" onAction={() => window.location.reload()}>
+          This workout is open in another tab. Reload to continue here.
+        </InlineNotice>
+      ) : null}
+
       <div className={styles.cards}>
         {exercises.length === 0 && pending === null ? (
           <p className={styles.hint}>Add your first exercise</p>
@@ -394,6 +440,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             unitPreference={user?.unitPreference ?? "kg"}
             onGone={gone}
+            sync={sync}
+            onDiscardOp={(opId) => outbox?.discard(opId)}
+            firstFailedId={firstFailedId}
+            failedRowRef={setFailedRowRef}
           />
         ))}
         {pending ? (
@@ -403,6 +453,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         ) : null}
       </div>
 
+      <SyncStatus
+        pending={pendingCount}
+        failed={failedCount}
+        online={outboxState.online}
+        onRetry={() => outbox?.retryNow()}
+        onDiscardFailed={() => outbox?.discardFailed(workout.id)}
+        onShowFailed={firstFailedId ? () => failedRowRef.current?.scrollIntoView?.({ block: "center" }) : null}
+      />
+
       <div className={styles.bar} data-testid="session-bar">
         <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
           Add exercise
@@ -411,6 +470,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           Finish
         </Button>
         {totalSets === 0 ? <p className={styles.barHint}>Log at least one set to finish</p> : null}
+        {unsaved > 0 ? <p className={styles.barHint}>{plural(unsaved, "set", "sets")} not saved yet</p> : null}
       </div>
 
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />

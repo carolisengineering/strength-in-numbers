@@ -132,7 +132,7 @@ describe("AC25 — edit and delete a logged set", () => {
     await waitFor(() => expect(within(card()).queryByText("60 kg × 8")).not.toBeInTheDocument());
   });
 
-  it("422 on save shows the server's message under the matching field and keeps the sheet open", async () => {
+  it("06.2 AC14 — 422 on save: the sheet closes, the row is marked 'Couldn't save' with Edit", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "PATCH", path: /\/sets\// }, () =>
       problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }),
@@ -144,11 +144,12 @@ describe("AC25 — edit and delete a logged set", () => {
 
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 
-    expect(await within(dialog()).findByText("Too heavy")).toBeInTheDocument();
-    expect(within(dialog()).getByLabelText("Weight")).toHaveValue("70");
+    expect(screen.queryByRole("dialog", { name: /^Set/ })).not.toBeInTheDocument();
+    const failed = (await within(card()).findByText("Couldn't save")).closest("li")!;
+    expect(within(failed).getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
 
-  it("a network failure on save shows a retryable error and keeps the sheet and values", async () => {
+  it("06.2 AC14 — a network failure on save keeps the new value pending; Retry now saves it", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "PATCH", path: /\/sets\// }, () => HttpResponse.error());
     await user.click(setRow(/60 kg × 8/));
@@ -158,27 +159,27 @@ describe("AC25 — edit and delete a logged set", () => {
 
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 
-    expect(await within(dialog()).findByRole("alert")).toHaveTextContent("Couldn't save the set — try again");
-    expect(within(dialog()).getByLabelText("Weight")).toHaveValue("65");
-    await user.click(within(dialog()).getByRole("button", { name: "Save" }));
-    await within(card()).findByText("65 kg × 8");
+    expect(setRow(/65 kg × 8/)).toHaveTextContent("Not saved yet");
+    await user.click(await screen.findByRole("button", { name: "Retry now" }));
+    await waitFor(() => expect(setRow(/65 kg × 8/)).not.toHaveTextContent("Not saved yet"));
+    expect(fake.state.active!.exercises[0]!.sets[0]!.weight).toBe(65);
   });
 
-  it("a network failure on delete shows a retryable error", async () => {
+  it("06.2 AC14 — a network failure on delete removes the row at once; Retry now deletes it on the server", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "DELETE", path: /\/sets\// }, () => HttpResponse.error());
     await user.click(setRow(/60 kg × 8/));
 
     await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
 
-    expect(await within(dialog()).findByRole("alert")).toHaveTextContent("Couldn't delete the set — try again");
-    expect(within(card()).getByText("60 kg × 8")).toBeInTheDocument();
+    expect(within(card()).queryByText("60 kg × 8")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Retry now" }));
+    await waitFor(() => expect(fake.state.active!.exercises[0]!.sets.map((s) => s.reps)).toEqual([7]));
   });
 
-  it("409 workout-finished takes the gone path", async () => {
+  it("06.2 AC17 — 409 workout-finished on save marks the row failed", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "PATCH", path: /\/sets\// }, () => problemResponse(409, "workout-finished"));
-    fake.state.active = null;
     await user.click(setRow(/60 kg × 8/));
     const weight = within(dialog()).getByLabelText("Weight");
     await user.clear(weight);
@@ -186,8 +187,7 @@ describe("AC25 — edit and delete a logged set", () => {
 
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("That workout was already finished or removed.");
+    expect(await within(card()).findByText("Couldn't save")).toBeInTheDocument();
   });
 
   it("the sheet always opens on the set that was tapped (second row)", async () => {

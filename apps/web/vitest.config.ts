@@ -31,6 +31,8 @@ export default defineConfig({
         "src/auth/**": { lines: 90 },
         "src/features/catalog/**": { lines: 90 },
         "src/features/workouts/**": { lines: 90 },
+        // Spec 06.2 AC20: the outbox decides whether a lifter's set reaches the server.
+        "src/features/workouts/outbox/**": { lines: 90 },
         "src/storage/**": { lines: 90 },
       },
     },

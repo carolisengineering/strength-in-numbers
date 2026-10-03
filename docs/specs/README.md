@@ -28,9 +28,10 @@ spec small enough to finish in one work session.
 | 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0 (05.1 soft) | Not started |
 | 06.0 | [Exercise picker & catalog client](06.0-exercise-picker.md) — React-free catalog store (`localStorage` sync-token cache behind a `StorageAdapter`), picker UI (recents + A–Z + filters), create-custom form; forked-origin hiding | UI | web | 03.3, 04.1 | Implemented |
 | 06.1 | [Workout session screen](06.1-workout-session-screen.md) — start/resume, add/reorder/remove exercises, per-modality set rows, finish (incl. `409 incomplete-working-sets`), delete workout (the browser smoke is 06.3) | UI | web | 06.0, 05.0, 05.1 | Implemented |
-| 06.2 | Connectivity resilience — write queue, unsynced-state UI, retry/backoff (keyed on 05.1's `clientGeneratedId`), `localStorage` mirror of the in-progress workout, Finish blocked on pending writes | UI | web | 06.1, 06.4 | Not started |
+| 06.2 | [Connectivity queue](06.2-connectivity-queue.md) — persisted outbox for set writes (keyed on 05.1's `clientGeneratedId`) with a pure projection, retry/backoff, per-row sync state, the queue survives a reload, Finish blocked on unsaved sets | UI | web | 06.1, 06.4 | Implemented |
 | 06.3 | [M1 Playwright smoke](06.3-m1-playwright-smoke.md) — one happy-path browser run against staging with a real Auth0 test user; post-deploy CI job; the 04.0 / 04.1 browser-only obligations | e2e / CI | CI job (no app change except a build-commit meta tag) | 06.1 | Draft |
 | 06.4 | [Session screen hardening](06.4-session-screen-hardening.md) — 06.1's deferred review items: Finish cache-removal ordering, `hourCycle` start time, ref-based scroll, Enter-in-invalid-row feedback, id encoding, single-GET add-404, dismissible notices, missing 404 tests, the catalog-store interleaving tests (BL-12), and 06.1 doc reconciliation | UI | web | 06.1 | Implemented |
+| 06.5 | Connectivity extras — persisted entry-row drafts, logout guard for unsaved sets, multi-tab co-operation (Web Locks), Playwright offline run | UI | web | 06.2 | Not started |
 | 07 | History, progress & PR engine | API | endpoints | 05.1 | Not started |
 | 08 | History & progress | UI | web | 06, 07 | Not started |
 | 09 | Routines & supersets (Tier B) — adds `routine_id` / `superset_group` | API | endpoints | 05.0 | Not started |
@@ -76,12 +77,12 @@ either order; the smoke should be re-run once 06.2 lands); 06.4 needs 06.1 and
 should land **before 06.2** (it carries BL-12's catalog-store interleaving tests,
 which must exist before 06.2 wraps `createCustom` in a queue, and settles where
 Finish's cache removal lives, which 06.2's queue assumes) — it is independent of
-06.3. The API specs (05.0, 05.1, 05.2, 07, 09, 11) can run
+06.3. 06.5 needs 06.2. The API specs (05.0, 05.1, 05.2, 07, 09, 11) can run
 ahead of their UIs. 16 has no downstream dependents and can land any time
 after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
-05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
+05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
 Phase 2 = 15. (`packages/core` (02) is a foundation both M0 clients import — an
 M0 prerequisite, not M1 work.)
 

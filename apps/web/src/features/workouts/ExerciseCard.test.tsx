@@ -44,6 +44,9 @@ const setPosts = (fake: ReturnType<typeof createWorkoutFake>) =>
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
 const logButton = (name = "X") => within(card(name)).getByRole("button", { name: "Log set" });
+// A same-values tap within EntryRow's double-tap window (600 ms) is the same tap (Spec 06.2); a real
+// second set comes after a rest.
+const restBetweenSets = () => new Promise((resolve) => setTimeout(resolve, 650));
 
 const FIELDS: Record<Modality, { shown: string[]; hidden: string[]; units: string[] }> = {
   weight_reps: { shown: ["Weight", "Reps"], hidden: ["Added weight", "Minutes", "Seconds", "Distance"], units: ["Weight unit"] },
@@ -139,6 +142,7 @@ describe("AC22 — prefill", () => {
     await user.click(logButton());
     await within(card("X")).findByText(/60 kg × 8/);
     expect(row.getByLabelText("Weight")).toHaveValue("60");
+    await restBetweenSets();
     await user.click(logButton());
     await waitFor(() => expect(setPosts(fake)).toHaveLength(2));
 
@@ -209,27 +213,18 @@ describe("AC23 — Log set", () => {
     expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "failure", reps: 0, weight: 100 });
   });
 
-  it("a second tap while the first is still in flight sends nothing", async () => {
-    const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
+  it("a double tap logs one set (06.2: the write resolves at once, so a short guard stands in for the busy button)", async () => {
+    const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
-    const gate = deferred<void>();
-    let posts = 0;
-    server.use(
-      http.post(`${API_BASE_URL}/v1/workout-exercises/:id/sets`, async () => {
-        posts += 1;
-        await gate.promise;
-        return problemResponse(500, "about:blank");
-      }),
-    );
 
     await user.dblClick(logButton());
 
-    expect(logButton()).toHaveAttribute("aria-busy", "true");
-    gate.resolve();
-    await row.findByRole("alert");
-    expect(posts).toBe(1);
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(setPosts(fake)).toHaveLength(1);
+    expect(row.getAllByRole("button", { name: /60 kg × 8/ })).toHaveLength(1);
   });
 
   it("values typed while the POST is in flight survive the response, and the next tap logs them (final review I3)", async () => {
@@ -273,6 +268,7 @@ describe("AC23 — Log set", () => {
 
     await user.click(logButton());
     await waitFor(() => expect(row.getAllByText("60 kg × 8")).toHaveLength(1));
+    await restBetweenSets();
     await user.click(logButton());
 
     await waitFor(() => expect(row.getAllByText("60 kg × 8")).toHaveLength(2));
@@ -306,7 +302,7 @@ describe("AC23 — Log set", () => {
   });
 });
 
-describe("AC24 — Log set failures", () => {
+describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", () => {
   async function filled() {
     const ctx = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
@@ -315,81 +311,52 @@ describe("AC24 — Log set failures", () => {
     return { ...ctx, row };
   }
 
-  it("422 maps errors[].path to the matching field", async () => {
+  it("422 logs the set, then marks it 'Couldn't save' with Edit; the entry row is ready for the next set", async () => {
     const { fake, user, row } = await filled();
     fake.failNext({ method: "POST", path: /\/sets$/ }, () =>
       problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }),
     );
-
     await user.click(logButton());
-
-    expect(await row.findByText("Too heavy")).toBeInTheDocument();
-    expect(row.getByLabelText("Weight")).toHaveAttribute("aria-invalid", "true");
-    expect(row.getByLabelText("Weight")).toHaveValue("60");
-    expect(logButton()).toBeEnabled();
+    const failed = (await row.findByText("Couldn't save")).closest("li")!;
+    expect(within(failed).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(row.getByLabelText("Weight")).toBeInTheDocument();
   });
 
-  it("422 with a path that matches no field shows a form-level message", async () => {
+  it.each([
+    ["a network failure", () => HttpResponse.error()],
+    ["a 5xx", () => problemResponse(500, "about:blank")],
+  ])("%s leaves the row pending; Retry now resends with the same attempt key", async (_label, response) => {
     const { fake, user, row } = await filled();
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () =>
-      problemResponse(422, "validation-error", { errors: [{ path: "isComplete", message: "Cannot complete this set" }] }),
-    );
-
+    fake.failNext({ method: "POST", path: /\/sets$/ }, response);
     await user.click(logButton());
-
-    expect(await row.findByRole("alert")).toHaveTextContent("Cannot complete this set");
-    expect(logButton()).toBeEnabled();
-  });
-
-  it("a network failure keeps the draft, says so, and the retry reuses the same attempt key", async () => {
-    const { fake, user, row } = await filled();
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () => HttpResponse.error());
-
-    await user.click(logButton());
-
-    expect(await row.findByRole("alert")).toHaveTextContent("Couldn't log set — try again");
-    expect(row.getByLabelText("Weight")).toHaveValue("60");
-    expect(logButton()).toBeEnabled();
-    await user.click(logButton());
-
-    await row.findByText("60 kg × 8");
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    expect(row.getByRole("button", { name: /60 kg × 8/ })).toHaveTextContent("Not saved yet");
+    await user.click(await screen.findByRole("button", { name: "Retry now" }));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(2));
     const [first, second] = setPosts(fake);
     expect((second!.body as Record<string, unknown>)["clientGeneratedId"]).toBe(
       (first!.body as Record<string, unknown>)["clientGeneratedId"],
     );
-    expect(row.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() => expect(row.getByRole("button", { name: /60 kg × 8/ })).not.toHaveTextContent("Not saved yet"));
   });
 
-  it("a 5xx failure is the same retryable message", async () => {
-    const { fake, user, row } = await filled();
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(500, "about:blank"));
-
-    await user.click(logButton());
-
-    expect(await row.findByRole("alert")).toHaveTextContent("Couldn't log set — try again");
-  });
-
-  it("a 404 while the workout still exists does not claim the workout is gone (final review I4)", async () => {
+  it("a 404 while the workout still exists fails the row and refetches once; no 'out of date' notice (final review I4)", async () => {
     const { fake, user, row } = await filled();
     // The exercise was removed on another device; the workout itself is fine.
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(404, "not-found"));
-
+    const before = activeReads(fake);
     await user.click(logButton());
-
-    expect(await screen.findByText("Your workout was out of date, so it has been reloaded.")).toBeInTheDocument();
-    expect(screen.queryByText(/already finished or removed/)).not.toBeInTheDocument();
+    expect(await row.findByText("Couldn't save")).toBeInTheDocument();
+    await waitFor(() => expect(activeReads(fake) - before).toBe(1));
+    expect(screen.queryByText(/out of date|already finished/)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Workout" })).toBeInTheDocument();
-    expect(row.getByLabelText("Weight")).toBeInTheDocument();
   });
 
-  it("404 and 409 workout-finished take the gone path", async () => {
-    const { fake, user } = await filled();
+  it("409 workout-finished fails the row; the status line counts it", async () => {
+    const { fake, user, row } = await filled();
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
-    fake.state.active = null;
-
     await user.click(logButton());
-
-    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("That workout was already finished or removed.");
+    expect(await row.findByText("Couldn't save")).toBeInTheDocument();
+    expect(screen.getByText("1 set couldn't be saved")).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
+import { makeWorkoutDetail } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
@@ -138,5 +139,28 @@ describe("the workout fake mirrors the API rules the screen depends on", () => {
     expect((await call("GET", "/exercises")).json!["exercises"]).toHaveLength(1);
     expect((await call("GET", "/muscle-groups")).status).toBe(200);
     expect((await call("GET", "/equipment")).status).toBe(200);
+  });
+});
+
+describe("06.2 — the fake's offline switch and lost responses", () => {
+  it("offline fails every request unrecorded; a lost response still applies the write", async () => {
+    const fake = createWorkoutFake({ active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X" }] }) });
+    server.use(...fake.handlers);
+    const we = fake.state.active!.exercises[0]!;
+    fake.setOffline(true);
+    await expect(call("GET", "/workouts/active")).rejects.toThrow();
+    expect(fake.requests).toHaveLength(0);
+    fake.setOffline(false);
+    fake.loseNextResponse({ method: "POST", path: /\/sets$/ });
+    await expect(
+      call("POST", `/workout-exercises/${we.id}/sets`, {
+        weight: 60,
+        weightUnit: "kg",
+        reps: 5,
+        isComplete: true,
+        clientGeneratedId: "30000000-0000-4000-8000-000000000001",
+      }),
+    ).rejects.toThrow();
+    expect(fake.state.active!.exercises[0]!.sets).toHaveLength(1);
   });
 });
