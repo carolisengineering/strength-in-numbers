@@ -16,6 +16,7 @@ import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
+import { unsavedSets } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
@@ -128,9 +129,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const outboxState = useOutboxState();
   // The cached workout is already projected; projecting it again only yields the per-row sync map.
   const { sync } = useMemo(() => project(workout, outboxState), [workout, outboxState]);
-  const mine = outboxState.ops.filter((op) => op.workoutId === workout.id);
-  const failedCount = mine.filter((op) => op.status === "failed").length;
-  const pendingCount = mine.length - failedCount;
+  // Counted in sets, not queued writes: a set with an appended edit is still one set.
+  const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
   const firstFailedId = useMemo(() => {
     for (const exercise of exercises) {
       const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
@@ -382,7 +382,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
-  const unsaved = mine.length;
+  const unsaved = pendingCount + failedCount;
   // Spec 06.2 AC16: Finish waits for every queued or failed set write of this workout.
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0;
 

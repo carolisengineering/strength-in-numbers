@@ -250,6 +250,21 @@ describe("06.2 AC15 — the status line", () => {
   });
 });
 
+describe("06.2 AC15, 06.2 AC16 — counts are sets, not queued writes (code review #3)", () => {
+  it("a set whose create is retrying and then gets edited reads as one set", async () => {
+    const { fake, user } = await setup();
+    fake.setOffline(true); // the browser thinks it is online: the create is sent, fails, and backs off
+    await logSet(user, "5");
+    await waitFor(() => expect(screen.getByText("Saving 1 set…")).toBeInTheDocument());
+    await user.click(card().getByRole("button", { name: /× 5/ }));
+    const sheet = screen.getByRole("dialog", { name: /Set 2/ });
+    await user.type(within(sheet).getByLabelText("Reps"), "{Control>}a{/Control}6");
+    await user.click(within(sheet).getByRole("button", { name: "Save" })); // appended: the create was sent
+    expect(screen.getByText("Saving 1 set…")).toBeInTheDocument();
+    expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+  });
+});
+
 describe("06.2 AC16 — Finish waits for the outbox", () => {
   it("disabled with 'N sets not saved yet' while ops exist; enabled after they sync", async () => {
     const { fake, user } = await setup();

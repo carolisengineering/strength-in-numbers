@@ -80,26 +80,20 @@ export function routeTemplate(path: string): string {
     .join("/");
 }
 
-/** Auth0 SDK codes that mean the session is really gone (refresh token revoked, expired or missing). */
-const LOST_SESSION_CODES = new Set([
-  "login_required",
-  "invalid_grant",
-  "missing_refresh_token",
-  "consent_required",
-  "interaction_required",
-]);
-
 const browserOnline = (): boolean => typeof navigator === "undefined" || navigator.onLine !== false;
 
 /**
- * True only when a token failure means the session is gone. A failure while the browser is offline,
- * a fetch `TypeError` or any unrecognised error counts as the network (Spec 06.2 AC9): logging out
- * would clear the outbox of sets the lifter has not saved yet.
+ * Is a token failure a lost session (log out, clear user data) rather than the network? Spec 06.2
+ * AC9: logging out clears the outbox of sets the lifter has not saved yet, so a failure is the
+ * network when the browser is offline, when fetch itself failed (`TypeError`), or when Auth0's token
+ * request timed out. Anything else — the listed lost-session codes, but also an unlisted code such as
+ * `mfa_required` or a blocked user's `access_denied` — is a real auth problem (owner decision, code
+ * review #4): treating it as the network would retry forever on a working connection.
  */
 export function isLostSession(cause: unknown, online: boolean = browserOnline()): boolean {
-  if (!online || !(cause instanceof Error)) return false;
-  const code = (cause as Error & { error?: unknown }).error;
-  return LOST_SESSION_CODES.has(typeof code === "string" ? code : cause.message);
+  if (!online || cause instanceof TypeError) return false;
+  const code = cause instanceof Error ? (cause as Error & { error?: unknown }).error : undefined;
+  return code !== "timeout";
 }
 
 export function createApiClient(options: CreateApiClientOptions): ApiClient {

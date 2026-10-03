@@ -81,8 +81,45 @@ export function sameTarget(a: OpTarget, b: OpTarget): boolean {
   return "clientGeneratedId" in b && a.clientGeneratedId === b.clientGeneratedId;
 }
 
+/** One key per set: a set created here is keyed by its client key even when an op names its server id. */
+function setKeyOf(op: OutboxOp, idMap: IdMap): string {
+  if ("clientGeneratedId" in op.target) return `c:${op.target.clientGeneratedId}`;
+  const { setId } = op.target;
+  const created = Object.entries(idMap).find(([, entry]) => entry.setId === setId);
+  return created ? `c:${created[0]}` : `s:${setId}`;
+}
+
+/**
+ * How many *sets* of `workoutId` are not saved yet (Spec 06.2 AC15, AC16): a set with several queued
+ * ops counts once, and a set with any failed op counts as failed, not pending (code review #3).
+ */
+export function unsavedSets(ops: readonly OutboxOp[], workoutId: string, idMap: IdMap): { pending: number; failed: number } {
+  const failed = new Set<string>();
+  const all = new Set<string>();
+  for (const op of ops) {
+    if (op.workoutId !== workoutId) continue;
+    const key = setKeyOf(op, idMap);
+    all.add(key);
+    if (op.status === "failed") failed.add(key);
+  }
+  return { pending: all.size - failed.size, failed: failed.size };
+}
+
 const replaceAt = (ops: readonly OutboxOp[], index: number, op: OutboxOp): OutboxOp[] =>
   ops.map((o, i) => (i === index ? op : o));
+
+/**
+ * A delete of a set whose create failed permanently: the server never stored it, so there is nothing
+ * to delete — drop the create and every follow-up instead of queueing a delete that can never resolve
+ * to a server id (code review #1). `null` when the rule does not apply.
+ */
+function dropNeverStoredSet(ops: readonly OutboxOp[], incoming: UpdateOp | DeleteOp): OutboxOp[] | null {
+  if (incoming.kind !== "delete" || !("clientGeneratedId" in incoming.target)) return null;
+  const key = incoming.target;
+  const created = ops.find((o) => o.kind === "create" && sameTarget(o.target, key));
+  if (!created || created.status !== "failed") return null;
+  return ops.filter((o) => !sameTarget(o.target, key));
+}
 
 /**
  * An edit of a set whose create the server rejected with `422` (so nothing was stored): fold the
@@ -118,6 +155,8 @@ function refoldRejectedCreate(ops: readonly OutboxOp[], incoming: UpdateOp | Del
  */
 export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[] {
   if (incoming.kind === "create") return [...ops, incoming];
+  const dropped = dropNeverStoredSet(ops, incoming);
+  if (dropped) return dropped;
   const refolded = refoldRejectedCreate(ops, incoming);
   if (refolded) return refolded;
   let index = -1;

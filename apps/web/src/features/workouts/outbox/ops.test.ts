@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { combine, OutboxFileSchema, type CreateOp, type DeleteOp, type OutboxOp, type UpdateOp } from "./ops";
+import { combine, OutboxFileSchema, unsavedSets, type CreateOp, type DeleteOp, type OutboxOp, type UpdateOp } from "./ops";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY9 = "30000000-0000-4000-8000-000000000009";
@@ -116,6 +116,17 @@ describe("06.2 AC14 — editing a set whose op failed with 422 replaces the fail
     expect(out[0]).toMatchObject({ kind: "create", status: "queued", attempted: false, nextAttemptAt: 7, body: { reps: 6, weight: 55 } });
   });
 
+  it.each([422, 409, 404])(
+    "deleting a set whose create failed (%s, never stored) drops the create and its follow-ups (code review #1)",
+    (status) => {
+      const failure = { status, type: "x", requestId: null };
+      const failedCreate = create({ status: "failed", attempted: true, failure });
+      const failedEdit = update({ reps: 6 }, { status: "failed", failure });
+      const other = create({ target: { clientGeneratedId: KEY9 }, body: { clientGeneratedId: KEY9, reps: 1, isComplete: true } });
+      expect(combine([failedCreate, failedEdit, other], del())).toEqual([other]);
+    },
+  );
+
   it("a non-422 failed op is not reset by an edit", () => {
     const failed = create({
       status: "failed",
@@ -123,6 +134,28 @@ describe("06.2 AC14 — editing a set whose op failed with 422 replaces the fail
       failure: { status: 409, type: "workout-finished", requestId: null },
     });
     expect(combine([failed], update({ weight: 50 }))).toHaveLength(2);
+  });
+});
+
+describe("06.2 AC15, 06.2 AC16 — unsavedSets counts sets, not ops (code review #3)", () => {
+  it("a create plus its edits is one set; a failed op makes its set failed; other workouts are ignored", () => {
+    const attempted = create({ attempted: true });
+    const edit = update({ reps: 6 });
+    const edit2 = update({ reps: 7 });
+    const synced = update({ reps: 2 }, { target: { setId: SET } });
+    const failedOther = create({
+      target: { clientGeneratedId: KEY9 },
+      body: { clientGeneratedId: KEY9, reps: 1, isComplete: true },
+      status: "failed",
+      failure: { status: 409, type: "workout-finished", requestId: null },
+    });
+    const elsewhere = create({ workoutId: "other" });
+    expect(unsavedSets([attempted, edit, edit2, synced, failedOther, elsewhere], "w", {})).toEqual({ pending: 2, failed: 1 });
+  });
+
+  it("an edit by server id of a set created here counts with its create", () => {
+    const ops = [create({ attempted: true }), update({ reps: 6 }, { target: { setId: SET } })];
+    expect(unsavedSets(ops, "w", { [KEY]: { setId: SET, workoutId: "w" } })).toEqual({ pending: 1, failed: 0 });
   });
 });
 

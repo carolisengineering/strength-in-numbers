@@ -24,11 +24,19 @@ describe("06.2 AC9 — losing the network is not losing the session", () => {
 
   it.each([
     ["a fetch TypeError", new TypeError("Failed to fetch")],
-    ["an Auth0 timeout", auth0Error("timeout")],
+    ["an Auth0 timeout (the token request never answered)", auth0Error("timeout")],
+  ])("%s is not a lost session: it is the network", (_label, cause) => {
+    expect(isLostSession(cause, true)).toBe(false);
+  });
+
+  // Owner decision (code review #4, option b): online, any other token failure is a real auth problem.
+  it.each([
+    ["an unlisted Auth0 code (mfa_required)", auth0Error("mfa_required")],
+    ["a blocked user (access_denied)", auth0Error("access_denied")],
     ["an unknown Error", new Error("boom")],
     ["a non-Error value", "nope"],
-  ])("%s is not a lost session", (_label, cause) => {
-    expect(isLostSession(cause, true)).toBe(false);
+  ])("online, %s is a lost session", (_label, cause) => {
+    expect(isLostSession(cause, true)).toBe(true);
   });
 
   it("nothing is a lost session while the browser is offline", () => {

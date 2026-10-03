@@ -302,7 +302,14 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       deps.onDiscarded?.(removed);
     },
     discardFailed: (workoutId) => {
-      const removed = remove((o) => o.workoutId === workoutId && o.status === "failed");
+      // A failed create takes its follow-ups with it, queued or not (code review #2): without the
+      // create they can never resolve to a server id.
+      const failedCreates = state.ops.filter((o) => o.workoutId === workoutId && o.kind === "create" && o.status === "failed");
+      const removed = remove(
+        (o) =>
+          (o.workoutId === workoutId && o.status === "failed") ||
+          failedCreates.some((c) => sameTarget(o.target, c.target)),
+      );
       if (removed.length > 0) deps.onDiscarded?.(removed);
     },
     retainOnly: (workoutId) => {
