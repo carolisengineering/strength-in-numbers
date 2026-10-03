@@ -167,6 +167,20 @@ describe("06.2 — targetFor, discard, retainOnly", () => {
     expect(onDiscarded.mock.calls[0]![0]).toHaveLength(2);
   });
 
+  it("discarding a failed follow-up of a failed create discards the create and every follow-up (final review I2)", () => {
+    const onDiscarded = vi.fn();
+    const outbox = make({ onDiscarded });
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    const create = outbox.getState().ops[0]!;
+    outbox.__setForTests([{ ...create, attempted: true }]);
+    outbox.enqueueUpdate({ workoutId: "w", workoutExerciseId: "we", target: { clientGeneratedId: KEY }, body: { reps: 1 } });
+    const [c, u] = outbox.getState().ops;
+    outbox.__setForTests([failedAs(c!), failedAs(u!)]);
+    outbox.discard(u!.id);
+    expect(outbox.getState().ops).toEqual([]);
+    expect(onDiscarded.mock.calls[0]![0].map((o: OutboxOp) => o.kind)).toEqual(["create", "update"]);
+  });
+
   it("discard of an unknown op does nothing", () => {
     const onDiscarded = vi.fn();
     const outbox = make({ onDiscarded });

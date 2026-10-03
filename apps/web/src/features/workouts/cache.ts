@@ -15,13 +15,16 @@ export function withSetUpserted(detail: WorkoutDetail, set: SetEntry): WorkoutDe
   };
 }
 
-/** Drop a set; exercises it was not in keep reference equality. Pure. */
+/**
+ * Drop a set, named by its id or by its `clientGeneratedId` (Spec 06.2: a sheet opened on a pending set
+ * still holds the client key after the row took its server id). Exercises it was not in keep reference
+ * equality. Pure.
+ */
 export function withSetRemoved(detail: WorkoutDetail, setId: string): WorkoutDetail {
-  if (!detail.exercises.some((e) => e.sets.some((s) => s.id === setId))) return detail;
+  const named = (s: SetEntry) => s.id === setId || s.clientGeneratedId === setId;
+  if (!detail.exercises.some((e) => e.sets.some(named))) return detail;
   return {
     ...detail,
-    exercises: detail.exercises.map((e) =>
-      e.sets.some((s) => s.id === setId) ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e,
-    ),
+    exercises: detail.exercises.map((e) => (e.sets.some(named) ? { ...e, sets: e.sets.filter((s) => !named(s)) } : e)),
   };
 }

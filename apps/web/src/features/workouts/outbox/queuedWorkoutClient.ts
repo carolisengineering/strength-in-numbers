@@ -18,8 +18,15 @@ export interface QueuedClientDeps {
 export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClientDeps): WorkoutClient {
   const view = (workout: WorkoutDetail) => project(workout, outbox.getState()).workout;
 
-  const exerciseOfSet = (workout: WorkoutDetail, setId: string) =>
-    workout.exercises.find((e) => e.sets.some((s) => s.id === setId));
+  /**
+   * The exercise holding the set the screen called `setId`. A sheet opened on a pending set keeps its
+   * client key after the set syncs and the cache row takes the server id, so match through the id map.
+   */
+  const exerciseOfSet = (workout: WorkoutDetail, setId: string) => {
+    const target = outbox.targetFor(setId);
+    const { idMap } = outbox.getState();
+    return workout.exercises.find((e) => e.sets.some((s) => s.id === setId || matches(s, target, idMap)));
+  };
 
   const rowIn = (workout: WorkoutDetail, find: (s: SetEntry) => boolean): SetEntry => {
     for (const exercise of workout.exercises) {
@@ -51,8 +58,9 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       const workout = cached();
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;
       if (!workout || !exercise) return rest.updateSet(id, body);
-      outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id), body });
-      return rowIn(view(workout), (s) => s.id === id);
+      const target = outbox.targetFor(id);
+      outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target, body });
+      return rowIn(view(workout), (s) => s.id === id || matches(s, target, outbox.getState().idMap));
     },
 
     async deleteSet(id) {

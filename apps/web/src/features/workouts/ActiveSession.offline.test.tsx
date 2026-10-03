@@ -17,11 +17,13 @@ vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import { focusManager, onlineManager } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
 import { localStorageAdapter } from "../../storage/storage";
-import { USER_ID } from "../../test/catalogHarness";
+import { API_BASE_URL, USER_ID } from "../../test/catalogHarness";
+import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
-import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -280,6 +282,72 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     fake.state.active = null; // finished or deleted elsewhere while offline
     goOnline(fake); // the POST answers 404 ⇒ refetch ⇒ no active workout ⇒ its ops are dropped
     await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).toBeNull());
+  });
+});
+
+describe("06.2 AC10 — a sheet opened on a pending set still works after the set synced (final review C1)", () => {
+  async function sheetOnPendingThenSync() {
+    const ctx = await setup();
+    goOffline(ctx.fake);
+    await logSet(ctx.user, "5");
+    await ctx.user.click(card().getByRole("button", { name: /× 5/ }));
+    screen.getByRole("dialog", { name: /Set 2/ });
+    goOnline(ctx.fake);
+    await waitFor(() => expect(ctx.fake.state.active!.exercises[0]!.sets).toHaveLength(2));
+    await waitFor(() => expect(card().getByRole("button", { name: /× 5/ })).not.toHaveTextContent("Not saved yet"));
+    return ctx;
+  }
+
+  it("Save edits the synced set on the server (by its server id)", async () => {
+    const { fake, user } = await sheetOnPendingThenSync();
+    const sheet = screen.getByRole("dialog", { name: /Set 2/ });
+    await user.type(within(sheet).getByLabelText("Reps"), "{Control>}a{/Control}6");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fake.state.active!.exercises[0]!.sets.map((s) => s.reps)).toEqual([8, 6]));
+    expect(screen.queryByText(/out of date/)).not.toBeInTheDocument();
+  });
+
+  it("Delete removes the synced set on the server and on screen", async () => {
+    const { fake, user } = await sheetOnPendingThenSync();
+    await user.click(within(screen.getByRole("dialog", { name: /Set 2/ })).getByRole("button", { name: "Delete set" }));
+    await waitFor(() => expect(fake.state.active!.exercises[0]!.sets).toHaveLength(1));
+    expect(card().queryByRole("button", { name: /× 5/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("06.2 AC12 — a stale /active read that lands after a sync does not hide the set (final review I1)", () => {
+  it("the synced row survives a read whose snapshot predates the POST", async () => {
+    const { fake, user } = await setup();
+    goOffline(fake);
+    await logSet(user, "5");
+
+    // Back online for TanStack only (no window event, so the outbox does not drain yet).
+    online = true;
+    fake.setOffline(false);
+    onlineManager.setOnline(true);
+    const gate = deferred<void>();
+    server.use(
+      http.get(
+        `${API_BASE_URL}/v1/workouts/active`,
+        async () => {
+          const snapshot = structuredClone(fake.state.active); // before the POST lands
+          await gate.promise;
+          return HttpResponse.json(snapshot);
+        },
+        { once: true },
+      ),
+    );
+    focusManager.setFocused(false);
+    focusManager.setFocused(true); // the read starts and is held
+
+    await waitFor(() => expect(activeReads(fake)).toBeGreaterThan(0)); // the held read has started
+    window.dispatchEvent(new Event("online")); // now the outbox drains: the create syncs
+    await waitFor(() => expect(fake.state.active!.exercises[0]!.sets).toHaveLength(2));
+    gate.resolve();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(card().getAllByRole("button", { name: /× 5/ })).toHaveLength(1);
+    focusManager.setFocused(undefined);
   });
 });
 

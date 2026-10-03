@@ -289,10 +289,16 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       return { setId };
     },
     discard: (opId) => {
-      const op = state.ops.find((o) => o.id === opId);
+      let op = state.ops.find((o) => o.id === opId);
       if (!op) return;
-      const key = op.kind === "create" ? op.target : null;
-      const removed = remove((o) => o.id === opId || (key !== null && sameTarget(o.target, key)));
+      // A follow-up of a create that failed too: discarding it means discarding that set — the create
+      // and every follow-up (final review I2), or the row would stay with one "Couldn't save" left.
+      const target = op.target;
+      const root = state.ops.find((o) => o.kind === "create" && o.status === "failed" && sameTarget(o.target, target));
+      if (op.status === "failed" && root) op = root;
+      const chosen = op;
+      const key = chosen.kind === "create" ? chosen.target : null;
+      const removed = remove((o) => o.id === chosen.id || (key !== null && sameTarget(o.target, key)));
       deps.onDiscarded?.(removed);
     },
     discardFailed: (workoutId) => {

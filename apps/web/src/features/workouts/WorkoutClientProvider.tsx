@@ -16,13 +16,22 @@ import { createWorkoutClient } from "./workoutClient";
 
 const REPORT_OP = { create: "create-set", update: "update-set", delete: "delete-set" } as const;
 
-/** Swap a synced op's local row for the server's, then re-overlay what is still queued (AC12). */
+/**
+ * Swap a synced op's local row for the server's, then re-overlay what is still queued (AC12). A read
+ * of `/active` already in flight may hold a snapshot from before this write; it would land with the op
+ * gone from the outbox and erase the row. So cancel it first and re-read once the cache is written —
+ * the same move as `cancelActiveReads` for the mutation hooks.
+ */
 function applySynced(queryClient: QueryClient, outbox: Outbox, op: OutboxOp, row: SetEntry | null): void {
-  queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => {
-    if (!d || d.id !== op.workoutId) return d;
-    let next = op.kind === "create" ? withSetRemoved(d, op.target.clientGeneratedId) : d;
-    if (row) next = withSetUpserted(next, row);
-    return project(next, outbox.getState()).workout;
+  const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;
+  void queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active }).then(() => {
+    queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => {
+      if (!d || d.id !== op.workoutId) return d;
+      let next = op.kind === "create" ? withSetRemoved(d, op.target.clientGeneratedId) : d;
+      if (row) next = withSetUpserted(next, row);
+      return project(next, outbox.getState()).workout;
+    });
+    if (interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
   });
 }
 

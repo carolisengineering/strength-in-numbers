@@ -107,6 +107,15 @@ describe("06.2 AC14 — editing a set whose op failed with 422 replaces the fail
     expect(out[0]!.failure).toBeUndefined();
   });
 
+  it("a 422-rejected create with a failed follow-up edit: a new edit folds all of them into one fresh create (final review I3)", () => {
+    const rejected = { status: 422, type: "validation-error", requestId: "r" };
+    const failedCreate = create({ status: "failed", attempted: true, attempts: 1, failure: rejected });
+    const failedEdit = update({ reps: 6 }, { status: "failed", failure: rejected });
+    const out = combine([failedCreate, failedEdit], update({ weight: 55 }, { enqueuedAt: 7 }));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ kind: "create", status: "queued", attempted: false, nextAttemptAt: 7, body: { reps: 6, weight: 55 } });
+  });
+
   it("a non-422 failed op is not reset by an edit", () => {
     const failed = create({
       status: "failed",

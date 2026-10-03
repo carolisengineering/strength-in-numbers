@@ -85,12 +85,41 @@ const replaceAt = (ops: readonly OutboxOp[], index: number, op: OutboxOp): Outbo
   ops.map((o, i) => (i === index ? op : o));
 
 /**
+ * An edit of a set whose create the server rejected with `422` (so nothing was stored): fold the
+ * create, any follow-up edits that failed with it, and this edit into one fresh create (final review
+ * I3 — merging into the last follow-up instead would leave it waiting on a create that never syncs).
+ * `null` when the rule does not apply.
+ */
+function refoldRejectedCreate(ops: readonly OutboxOp[], incoming: UpdateOp | DeleteOp): OutboxOp[] | null {
+  if (incoming.kind !== "update" || !("clientGeneratedId" in incoming.target)) return null;
+  const key = incoming.target;
+  const index = ops.findIndex((o) => o.kind === "create" && sameTarget(o.target, key));
+  const created = ops[index];
+  if (!created || created.kind !== "create" || created.status !== "failed" || created.failure?.status !== 422) return null;
+  const followUps = ops.filter((o, i) => i > index && sameTarget(o.target, key));
+  if (followUps.some((o) => o.kind === "delete")) return null;
+  const body = followUps.reduce<CreateOp["body"]>((b, o) => (o.kind === "update" ? { ...b, ...o.body } : b), created.body);
+  const fresh: CreateOp = {
+    ...created,
+    status: "queued",
+    attempted: false,
+    attempts: 0,
+    nextAttemptAt: incoming.enqueuedAt,
+    failure: undefined,
+    body: { ...body, ...incoming.body },
+  };
+  return ops.filter((o) => !followUps.includes(o)).map((o) => (o === created ? fresh : o));
+}
+
+/**
  * Add `incoming` to the queue, merging it into the last op for the same set when that op was never
  * sent (Spec 06.2 §6.2, AC2, AC3). A `422`-failed op was rejected without being stored, so an edit
  * replaces it with a fresh op (AC14).
  */
 export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[] {
   if (incoming.kind === "create") return [...ops, incoming];
+  const refolded = refoldRejectedCreate(ops, incoming);
+  if (refolded) return refolded;
   let index = -1;
   for (let i = ops.length - 1; i >= 0; i -= 1) {
     if (sameTarget(ops[i]!.target, incoming.target)) {
