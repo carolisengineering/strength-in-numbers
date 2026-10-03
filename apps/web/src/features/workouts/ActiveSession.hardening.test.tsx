@@ -175,6 +175,36 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
     await act(() => router.navigate("/app/workouts"));
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
   });
+
+  it("a finish that lands after the lifter left the screen still clears the active entry", async () => {
+    const { fake, user, router, queryClient } = await setupHosted(oneSet);
+    const active = fake.state.active!;
+    const gate = deferred<void>();
+    server.use(
+      http.patch(
+        `${API_BASE_URL}/v1/workouts/${active.id}`,
+        async () => {
+          await gate.promise;
+          const finished = { ...active, endedAt: new Date().toISOString() };
+          fake.state.finished.set(active.id, finished);
+          fake.state.active = null;
+          return HttpResponse.json(finished); // the client's Workout schema drops `exercises`
+        },
+        { once: true },
+      ),
+    );
+
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+    await act(() => router.navigate("/app/profile")); // switch tab mid-request
+    gate.resolve();
+
+    await waitFor(() => expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined());
+    expect(router.state.location.pathname).toBe("/app/profile"); // no yank back across screens
+    await act(() => router.navigate("/app/workouts"));
+    expect(screen.queryByRole("heading", { name: "Workout" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
+  });
 });
 
 // ---- AC7 ----------------------------------------------------------------------------------------
@@ -443,5 +473,42 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     const target = scrolled[0]!;
     expect(within(screen.getByRole("article", { name: "X" })).getByText("Needs data").closest("button")).toBe(target);
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+  });
+
+  it("scrolls to a flagged set this screen had not seen, which arrives with the diagnosis re-read", async () => {
+    const { fake, user } = await setup(oneSet);
+    // Another client adds an incomplete working set; this screen's copy has only the complete one.
+    const active = fake.state.active!;
+    const exercise = active.exercises[0]!;
+    const hidden = { ...incompleteSet(2), workoutExerciseId: exercise.id };
+    fake.state.active = { ...active, exercises: [{ ...exercise, sets: [...exercise.sets, hidden] }] };
+
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+
+    const row = (await screen.findByText("Needs data")).closest("button");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(scrolled[0]).toBe(row);
+  });
+
+  it("fixing the first flagged row does not scroll again to the next one", async () => {
+    const { user } = await setup([
+      { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 }), incompleteSet(2)] },
+      { modality: "weight_reps", name: "Y", sets: [incompleteSet(1)] },
+    ]);
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+    await screen.findByRole("alert");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    const x = within(screen.getByRole("article", { name: "X" }));
+    await user.click(x.getByText("Needs data").closest("button")!);
+    const sheet = screen.getByRole("dialog", { name: /Set 2/ });
+    await user.click(within(sheet).getByRole("button", { name: "Delete set" }));
+    await waitFor(() => expect(x.queryByText("Needs data")).not.toBeInTheDocument());
+
+    expect(screen.getAllByText("Needs data")).toHaveLength(1); // Y's row is now the first flagged
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });

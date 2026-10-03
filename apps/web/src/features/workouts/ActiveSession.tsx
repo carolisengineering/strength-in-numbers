@@ -118,10 +118,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, []);
 
   // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
+  // Once per diagnosis: the flagged set may only render a beat later, when the re-read reaches this
+  // screen's `workout` prop, so wait for its row; fixing that row later must not scroll to the next.
+  const scrollPending = useRef(false);
   useEffect(() => {
-    if (flaggedIds.size === 0) return;
-    firstFlaggedRef.current?.scrollIntoView?.({ block: "center" });
-  }, [flaggedIds]);
+    if (!scrollPending.current || firstFlaggedRef.current === null) return;
+    scrollPending.current = false;
+    firstFlaggedRef.current.scrollIntoView?.({ block: "center" });
+  }, [flaggedIds, firstFlaggedId]);
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
@@ -227,6 +231,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
     const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
     track("finish_blocked", { incompleteCount: ids.length });
+    scrollPending.current = ids.length > 0;
     setFlaggedIds(new Set(ids));
     setBanner({
       tone: "warning",
@@ -253,9 +258,22 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
         viaReplay: true,
       });
-      if (mounted.current) void navigate(`/app/workouts/${workout.id}`);
+      afterFinished();
     } catch {
       setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish() });
+    }
+  }
+
+  /**
+   * After a successful finish: open the summary, which clears the active entry (Spec 06.4 D1). If the
+   * lifter already left this screen, the summary never mounts, so clear the entry here instead — else
+   * the finished workout would come back as an active session from cache.
+   */
+  function afterFinished() {
+    if (mounted.current) {
+      void navigate(`/app/workouts/${workout.id}`);
+    } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }
   }
 
@@ -268,7 +286,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       setFinishOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
       // screen must not yank them back across screens.
-      if (mounted.current) void navigate(`/app/workouts/${workout.id}`);
+      afterFinished();
     } catch (error) {
       setFinishOpen(false);
       reportUnexpected("finish", error);
