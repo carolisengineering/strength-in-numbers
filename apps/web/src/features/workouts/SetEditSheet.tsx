@@ -97,9 +97,8 @@ function EditForm({
       }
     } else if (action.type === "retry") {
       setFormError(action.text);
-    } else if (action.type === "ok") {
-      onClose();
     }
+    // No `ok` branch: `useDeleteSet` already turns a 404 into success, so it never reaches here.
   }
 
   async function save(event: FormEvent) {

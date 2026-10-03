@@ -45,3 +45,41 @@ describe("AC34 — no inline styles; tokens stay central", () => {
     expect(offenders(new RegExp(banned, "i"))).toEqual([]);
   });
 });
+
+const featureOffenders = (pattern: RegExp) =>
+  Object.entries(featureSources)
+    .filter(([, source]) => pattern.test(stripComments(source)))
+    .map(([path]) => path);
+
+describe("06.4 AC2 — times use hourCycle, not hour12", () => {
+  it("no feature module mentions hour12 (it prints 24:05 at five past midnight)", () => {
+    expect(featureOffenders(/hour12/)).toEqual([]);
+  });
+});
+
+describe("06.4 AC3 — the feature reaches DOM nodes through refs, not the document", () => {
+  it("no feature module queries the document", () => {
+    expect(featureOffenders(/document\.(querySelector|querySelectorAll|getElementById)\b/)).toEqual([]);
+  });
+});
+
+// Raw (comments included): the point is that no comment points at a review note that has gone.
+const appSources = import.meta.glob(["../../**/*.ts", "../../**/*.tsx", "!../../**/*.test.ts", "!../../**/*.test.tsx"], {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+describe("06.4 AC11 — no stale review-note references", () => {
+  it("found the app sources", () => {
+    expect(Object.keys(appSources).length).toBeGreaterThan(50);
+  });
+
+  it("no non-test source under apps/web/src mentions a Review Focus item", () => {
+    const pattern = ["Review", "Focus"].join(" ");
+    const hits = Object.entries(appSources)
+      .filter(([, source]) => source.includes(pattern))
+      .map(([path]) => path);
+    expect(hits).toEqual([]);
+  });
+});

@@ -98,7 +98,8 @@ describe("AC26 — Finish: confirm and success", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
     expect(patches(fake)).toHaveLength(1);
     expect(Object.keys(patches(fake)[0]!.body as object)).toEqual(["endedAt"]);
-    expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined();
+    // The summary clears the entry from a passive effect after it mounts (Spec 06.4 D1), so wait for it.
+    await waitFor(() => expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined());
     expect(queryClient.getQueryData<{ endedAt: string | null }>(WORKOUT_KEYS.detail(id))?.endedAt).not.toBeNull();
     expect(observability.track).toHaveBeenCalledWith(
       "workout_finished",

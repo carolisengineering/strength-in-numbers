@@ -20,7 +20,8 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
 | [BL-8](#bl-8) | Infra / catalog sync | No `idle_in_transaction_session_timeout` on the app DB role, so a leaked idle-in-transaction session can pin the sync-token horizon | Minor | 2026-09-19 |
 | [BL-10](#bl-10) | Error contract | A malformed percent-encoded URL gets Fastify's plain-JSON 400, not problem+json | Minor | 2026-09-28 |
-| [BL-12](#bl-12) | Testing / catalog | The catalog store has no test where a refresh overlaps `createCustom` or `recordPick` (due before Spec 06.2 wraps `createCustom` in a queue) | Minor | 2026-10-02 |
+| [BL-11](#bl-11) | API contract | `POST /v1/workouts` echoes an upper-case `clientGeneratedId` lower-cased | Minor | 2026-10-01 |
+| [BL-12](#bl-12) | Testing / catalog | **Resolved (Spec 06.4)** — the catalog store had no test where a refresh overlaps `createCustom` or `recordPick` | Minor | 2026-10-02 |
 
 ---
 
@@ -319,6 +320,13 @@ so nothing is affected until a native client exists.
 ## BL-12
 
 **The catalog store has no test where a refresh overlaps another store write.**
+
+**Status: Resolved (2026-10-02)** by [Spec 06.4](specs/06.4-session-screen-hardening.md)
+AC12–AC15 (`apps/web/src/features/catalog/catalogStore.interleaving.test.ts`).
+The tests found no defect. One transient gap is accepted rather than fixed
+(06.4 D5): a **full pull** that started before `createCustom` replaces the rows
+without the new one, which reappears when the follow-up refresh `createCustom`
+already queues lands (AC13 pins both halves). A delta keeps it throughout (AC12).
 
 Spec 06.0 handed Spec 06.1 a list of deferred items that included "store
 interleaving test gaps" without enumerating them; Spec 06.1 D7 sent them on to

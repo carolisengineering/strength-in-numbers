@@ -27,7 +27,7 @@ import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
  * Navigation stays at the call site for the opposite reason.
  */
 
-/** Every set write carries this key so Finish can wait for them (Review Focus #4). */
+/** Every set write carries this key: Finish stays disabled while any set write is in flight. */
 export const SET_MUTATION_KEY = ["workouts", "set"] as const;
 
 export function useIsSetWritePending(): boolean {
@@ -84,9 +84,12 @@ export function useFinishWorkout(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, endedAt }) => client.finish(id, { endedAt }),
+    // Seed the summary only. Removing the active entry here would leave the Workouts screen's observer
+    // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
+    // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),
+    // or `ActiveSession` does when the response lands after the lifter left (no summary will mount).
     onSuccess: (workout, { id, viaReplay }) => {
       const cached = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
-      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
       if (cached) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...cached, ...workout });
       track("workout_finished", {
         exerciseCount: cached?.exercises.length ?? 0,

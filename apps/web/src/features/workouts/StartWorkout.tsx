@@ -18,6 +18,7 @@ const FAILED_MESSAGE = "Couldn't start your workout — try again.";
 export interface StartWorkoutProps {
   /** A one-line message carried over from another screen ("That workout was already finished…"). */
   notice: string | null;
+  onDismissNotice?: () => void;
   /** `resumed` is true when the server said a workout was already in progress and we adopted it. */
   onStarted: (resumed: boolean) => void;
 }
@@ -28,7 +29,7 @@ export interface StartWorkoutProps {
  * create a second workout. Nothing is persisted: a reload mints a new key, and the
  * `409 workout-in-progress-exists` → resume path covers a started-but-unseen workout.
  */
-export function StartWorkout({ notice, onStarted }: StartWorkoutProps) {
+export function StartWorkout({ notice, onDismissNotice, onStarted }: StartWorkoutProps) {
   const start = useStartWorkout();
   const queryClient = useQueryClient();
   const keyRef = useRef<string | null>(null);
@@ -67,7 +68,7 @@ export function StartWorkout({ notice, onStarted }: StartWorkoutProps) {
     <Screen title="Start a workout">
       <div className={styles.start}>
         <div className={styles.messages}>
-          {notice ? <InlineNotice>{notice}</InlineNotice> : null}
+          {notice ? <InlineNotice {...(onDismissNotice ? { onDismiss: onDismissNotice } : {})}>{notice}</InlineNotice> : null}
           {error ? (
             <InlineNotice tone="error" requestId={requestId} actionLabel="Try again" onAction={() => void begin()}>
               {error}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { Exercise, WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
@@ -12,6 +12,7 @@ import { Screen } from "../../ui/Screen";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { useCatalog } from "../catalog/useCatalog";
 import { ExerciseCard } from "./ExerciseCard";
+import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
@@ -31,8 +32,13 @@ export interface ActiveSessionProps {
   workout: WorkoutDetail;
   /** A one-line message carried over from another screen (e.g. "…resumed it."). */
   notice?: string | null;
-  /** The workout is gone or finished elsewhere: hand back to the Workouts screen (§5.8 gone path). */
-  onGone: () => void;
+  /** Given when `notice` may be put away; omitted for a notice that tracks live state. */
+  onDismissNotice?: () => void;
+  /**
+   * The workout is gone or finished elsewhere: hand back to the Workouts screen (§5.8 gone path).
+   * `refetched` says `/active` was already re-read, so the caller need not read it again.
+   */
+  onGone: (options?: { refetched?: boolean }) => void;
 }
 
 interface Banner {
@@ -47,16 +53,13 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-const startedTime = (iso: string): string =>
-  new Date(iso).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: false });
-
 /**
  * The in-progress workout (Spec 06.1 §5.3): exercise cards, a sticky action bar, the exercise picker,
  * Finish and Discard. Exercise-structure writes (add / move / remove) are serialised: each changes
  * sibling `position`s, and the next move's arithmetic comes from the list on screen, so one write plus
  * its refetch at a time (§6.3).
  */
-export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
+export function ActiveSession({ workout, notice, onDismissNotice, onGone }: ActiveSessionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const client = useWorkoutClient();
@@ -101,17 +104,34 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
     return new Set(findIncompleteWorkingSets(workout).filter((id) => flaggedIds.has(id)));
   }, [flaggedIds, workout]);
 
+  // The first flagged row in display order (exercise position, then set order) gets the ref.
+  const firstFlaggedId = useMemo(() => {
+    for (const exercise of exercises) {
+      const set = exercise.sets.find((s) => flagged.has(s.id));
+      if (set) return set.id;
+    }
+    return null;
+  }, [exercises, flagged]);
+  const firstFlaggedRef = useRef<HTMLButtonElement | null>(null);
+  const setFirstFlaggedRef = useCallback((node: HTMLButtonElement | null) => {
+    firstFlaggedRef.current = node;
+  }, []);
+
   // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
+  // Once per diagnosis: the flagged set may only render a beat later, when the re-read reaches this
+  // screen's `workout` prop, so wait for its row; fixing that row later must not scroll to the next.
+  const scrollPending = useRef(false);
   useEffect(() => {
-    if (flaggedIds.size === 0) return;
-    document.querySelector("[data-needs-data='true']")?.scrollIntoView?.({ block: "center" });
-  }, [flaggedIds]);
+    if (!scrollPending.current || firstFlaggedRef.current === null) return;
+    scrollPending.current = false;
+    firstFlaggedRef.current.scrollIntoView?.({ block: "center" });
+  }, [flaggedIds, firstFlaggedId]);
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
-  const gone = (reason: "gone" | "finished") => {
+  const gone = (reason: "gone" | "finished", options?: { refetched?: boolean }) => {
     track("workout_conflict", { kind: reason });
-    onGone();
+    onGone(options);
   };
 
   /** Resolve a failed exercise-structure write per §5.8. */
@@ -122,8 +142,6 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
       case "gone":
         gone(action.reason);
         return;
-      case "ok":
-        return;
       case "refetch":
         track("workout_conflict", { kind: "stale-position" });
         await refetchActive();
@@ -133,7 +151,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
         await refetchActive();
         const current = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
         if (!current || current.id !== workout.id) {
-          gone("gone");
+          gone("gone", { refetched: true });
         } else {
           track("workout_conflict", { kind: "unavailable" });
           setBanner({ tone: "warning", text: "That exercise isn't available" });
@@ -213,6 +231,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
     const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
     const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
     track("finish_blocked", { incompleteCount: ids.length });
+    scrollPending.current = ids.length > 0;
     setFlaggedIds(new Set(ids));
     setBanner({
       tone: "warning",
@@ -231,7 +250,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
         gone("gone");
         return;
       }
-      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
+      // As in `useFinishWorkout`: seed only; the summary screen clears the active entry.
       queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workout.id), fresh);
       track("workout_finished", {
         exerciseCount: fresh.exercises.length,
@@ -239,9 +258,22 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
         durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
         viaReplay: true,
       });
-      if (mounted.current) void navigate(`/app/workouts/${workout.id}`);
+      afterFinished();
     } catch {
       setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish() });
+    }
+  }
+
+  /**
+   * After a successful finish: open the summary, which clears the active entry (Spec 06.4 D1). If the
+   * lifter already left this screen, the summary never mounts, so clear the entry here instead — else
+   * the finished workout would come back as an active session from cache.
+   */
+  function afterFinished() {
+    if (mounted.current) {
+      void navigate(`/app/workouts/${workout.id}`);
+    } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }
   }
 
@@ -254,7 +286,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
       setFinishOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
       // screen must not yank them back across screens.
-      if (mounted.current) void navigate(`/app/workouts/${workout.id}`);
+      afterFinished();
     } catch (error) {
       setFinishOpen(false);
       reportUnexpected("finish", error);
@@ -311,12 +343,13 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
   }
 
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
+  const dismiss = banner === null ? onDismissNotice : undefined;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy;
 
   return (
     <Screen title="Workout">
       <div className={styles.topRow}>
-        <p className={styles.started}>Started {startedTime(workout.startedAt)}</p>
+        <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
         {/* Away from the thumb on purpose, and it confirms: discarding deletes every logged set. */}
         <Button variant="secondary" onClick={() => setDiscardOpen(true)}>
           Discard workout
@@ -337,6 +370,7 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
                 },
               }
             : {})}
+          {...(dismiss ? { onDismiss: dismiss } : {})}
         >
           {shown.text}
         </InlineNotice>
@@ -354,6 +388,8 @@ export function ActiveSession({ workout, notice, onGone }: ActiveSessionProps) {
             isLast={index === exercises.length - 1}
             structureBusy={structureBusy}
             flaggedIds={flagged}
+            firstFlaggedId={firstFlaggedId}
+            firstFlaggedRef={setFirstFlaggedRef}
             onMove={(direction) => void moveExercise(exercise, direction)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             unitPreference={user?.unitPreference ?? "kg"}

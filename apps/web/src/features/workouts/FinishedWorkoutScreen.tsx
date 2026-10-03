@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
 
@@ -10,7 +11,7 @@ import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
 import { classifyWorkoutError } from "./errors";
 import { formatSet } from "./format";
-import { useWorkoutDetail } from "./queries";
+import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { useDeleteWorkout } from "./useWorkoutMutations";
@@ -29,10 +30,22 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function FinishedWorkoutScreen() {
   const { id = "" } = useParams();
   const detail = useWorkoutDetail(id);
+  const queryClient = useQueryClient();
+  const finished = detail.data !== undefined && detail.data.endedAt !== null;
 
   useEffect(() => {
     if (detail.error) reportUnexpected("load-workout", detail.error);
   }, [detail.error]);
+
+  // The finish flow leaves the active entry in place so the Workouts screen keeps its session until
+  // the route changes (Spec 06.4 D1). Here no observer of it is mounted, so it can go. Only if it is
+  // this workout: Spec 08 opens this screen from history while another workout may be in progress.
+  useEffect(() => {
+    if (!finished) return;
+    if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === id) {
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
+    }
+  }, [finished, id, queryClient]);
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 

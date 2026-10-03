@@ -11,6 +11,19 @@ export const SET_TYPE_LABELS: Record<SetType, string> = {
   failure: "Failure",
 };
 
+/**
+ * "HH:MM", 24-hour. `hourCycle: "h23"`, not `hour12: false`: the latter resolves to h24 in some ICU
+ * builds and prints "24:05" at five past midnight. `timeZone` exists so tests are machine-independent.
+ */
+export function formatStartedTime(iso: string, { timeZone }: { timeZone?: string } = {}): string {
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(new Date(iso));
+}
+
 export function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

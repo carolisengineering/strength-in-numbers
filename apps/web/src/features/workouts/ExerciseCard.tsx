@@ -18,6 +18,9 @@ export interface ExerciseCardProps {
   onRemove: () => void;
   /** Working sets the server refused to finish over (§5.6): marked with visible "Needs data" text. */
   flaggedIds: ReadonlySet<string>;
+  /** The session's first flagged set (in display order): its row gets `firstFlaggedRef`, for scroll-into-view. */
+  firstFlaggedId?: string | null;
+  firstFlaggedRef?: (node: HTMLButtonElement | null) => void;
   /** Weight and distance units default from the profile (D26). */
   unitPreference: "kg" | "lb";
   /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
@@ -36,6 +39,8 @@ export function ExerciseCard({
   onMove,
   onRemove,
   flaggedIds,
+  firstFlaggedId = null,
+  firstFlaggedRef,
   unitPreference,
   onGone,
 }: ExerciseCardProps) {
@@ -79,6 +84,7 @@ export function ExerciseCard({
               <li key={set.id}>
                 <button
                   type="button"
+                  ref={set.id === firstFlaggedId ? firstFlaggedRef : undefined}
                   className={needsData ? `${styles.set} ${styles.needsData}` : styles.set}
                   data-needs-data={needsData ? "true" : undefined}
                   onClick={() => setEditing(set)}
