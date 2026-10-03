@@ -173,7 +173,7 @@ describe("06.2 AC5 — retry with backoff; permanent failures stop", () => {
     expect(onSynced).toHaveBeenCalledWith(expect.objectContaining({ kind: "delete" }), null);
   });
 
-  it("409 workout-finished fails that op and every later op of the workout, once each in telemetry", async () => {
+  it("409 workout-finished fails that op and every later op of the workout, once each in telemetry (06.2 AC17, 06.2 AC18)", async () => {
     const { outbox, rest, onFailed } = setup();
     rest.createSet.mockRejectedValueOnce(api(409, "workout-finished"));
     add(outbox);
@@ -194,7 +194,7 @@ describe("06.2 AC5 — retry with backoff; permanent failures stop", () => {
     ]);
   });
 
-  it("a slow sync (> 2 s) tracks set_sync_delayed with the duration only; a fast one does not", async () => {
+  it("06.2 AC18 — a slow sync (> 2 s) tracks set_sync_delayed with the duration only; a fast one does not", async () => {
     const { outbox, rest } = setup();
     add(outbox, KEY2);
     await settle();

@@ -501,15 +501,19 @@ which is idempotent (Spec 05.1 §5). There is no debounced autosave of half-fill
 rows: planned targets are UI placeholders, never server rows. Because the create
 carries a key, a create whose outcome is unknown can be replayed safely: the
 server returns the stored set instead of adding a second one (§6 "Idempotency").
-Spec 06.1 ships this loop with pessimistic writes (the screen waits for the
-server and offers a manual retry); Spec 06.2 adds the queue: if a write fails,
-the set is marked "unsynced" in the UI and retried with backoff, and **Finish**
-is blocked only if unsynced changes remain, with a clear retry affordance.
+Spec 06.1 shipped this loop with pessimistic writes; Spec 06.2 queues set
+writes (create / edit / delete) in a persisted outbox, shows them at once with a
+"Not saved yet" state, sends them in order with backoff, and blocks **Finish**
+while any remain. Exercise-structure writes, start and finish stay pessimistic
+(workout-exercise create has no idempotency key) and say "You're offline" when
+the network is down. Spec 06.5 adds persisted drafts, a logout warning for
+unsaved sets and multi-tab co-operation.
 
-Recommended cheap mitigation for the gym case (Risk R1): mirror the in-progress
-workout to `localStorage`/IndexedDB and drain a bounded retry queue on reconnect,
-so a dropped connection or an accidental tab close does not lose the session. This
-is a small amount of work in the SPA and is the same seam a future PWA
+The gym-case mitigation (Risk R1) is implemented for set writes by Specs 06.2 /
+06.5: the outbox lives in `localStorage` (behind `StorageAdapter`), so a dropped
+connection or a closed tab does not lose a logged set. With memory-only tokens
+(Q12) a reloaded tab cannot sign in offline, so the queue drains after the next
+sign-in. The outbox and its pure projection are the seam a future PWA
 service-worker or React Native app would build on.
 
 > Connectivity is still the weakest point in the v1 plan for a gym product.
@@ -731,7 +735,7 @@ Planning implications:
 
 | # | Risk | Impact | Mitigation |
 |---|---|---|---|
-| **R1** | "Online required" in a product used in gyms with poor signal, now via a **phone browser** → lost sets, abandoned sessions. A backgrounded mobile-browser tab can also be evicted mid-session. | High — directly hits the core loop and retention metric. | Mirror the in-progress workout to `localStorage`/IndexedDB; drain a bounded retry queue on reconnect and on tab restore. Small work in the SPA, lands in M4 (earlier if it bites). Not the full offline-first layer, but removes the worst failure mode and is the seam a later PWA/RN client reuses. |
+| **R1** | "Online required" in a product used in gyms with poor signal, now via a **phone browser** → lost sets, abandoned sessions. A backgrounded mobile-browser tab can also be evicted mid-session. | High — directly hits the core loop and retention metric. | Persist set writes in a `localStorage` outbox and drain it with backoff on reconnect and on tab restore. Lands in M1 as Specs 06.2 (queue) and 06.5 (drafts, logout guard, multi-tab). Not the full offline-first layer, but removes the worst failure mode and is the seam a later PWA/RN client reuses. |
 | **R2** | Deferring native mobile could turn into "never", or the API/core pick up web-only assumptions that make the eventual RN app expensive. | Medium — strategic, not immediate. | §3.4 principles + the CI purity check on `packages/core` keep the seam honest from day one, even while only the web app exists. |
 | **R3** | Managed auth provider lock-in / pricing at scale. | Medium | Keep all identity data (`user` table) in our DB keyed by `sub`; provider stores only credentials. Migration path stays open. |
 | **R4** | PR / progress math wrong in a way users notice and lose trust. | Medium | All formulas in `packages/core` with heavy tests; PR table is a rebuildable cache; show the underlying set on every PR. |
