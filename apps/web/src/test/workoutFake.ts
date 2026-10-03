@@ -51,6 +51,10 @@ export interface WorkoutFake {
   requests: RecordedRequest[];
   /** Answer the next `times` requests matching `match` with `response()` instead of the normal handler. */
   failNext(match: FailMatch, response: () => Response, times?: number): void;
+  /** While true, every workout request fails at the network (`HttpResponse.error()`) and is not recorded (Spec 06.2). */
+  setOffline(offline: boolean): void;
+  /** Apply the next request matching `match` normally, then fail its response at the network: a lost response. */
+  loseNextResponse(match: FailMatch): void;
 }
 
 export interface WorkoutFakeOptions {
@@ -96,6 +100,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   const catalog = options.catalog ?? [];
   const requests: RecordedRequest[] = [];
   const failures: { match: FailMatch; response: () => Response; remaining: number }[] = [];
+  const losses: FailMatch[] = [];
+  let offline = false;
 
   type Located =
     | { kind: "active"; detail: WorkoutDetail }
@@ -129,6 +135,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     resolve: (ctx: { params: Record<string, string>; body: unknown }) => Response | Promise<Response>,
   ): RequestHandler {
     return http[method](`${BASE}${path}`, async ({ request, params }) => {
+      if (offline) return HttpResponse.error();
       const url = new URL(request.url);
       const text = await request.clone().text();
       const body: unknown = text === "" ? undefined : JSON.parse(text);
@@ -140,7 +147,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         failure.remaining -= 1;
         return failure.response();
       }
-      return resolve({ params: params as Record<string, string>, body });
+      const response = await resolve({ params: params as Record<string, string>, body });
+      const loss = losses.findIndex((m) => m.method === request.method && m.path.test(url.pathname));
+      if (loss >= 0) {
+        losses.splice(loss, 1);
+        return HttpResponse.error();
+      }
+      return response;
     });
   }
 
@@ -379,6 +392,12 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     requests,
     failNext(match, response, times = 1) {
       failures.push({ match, response, remaining: times });
+    },
+    setOffline(value) {
+      offline = value;
+    },
+    loseNextResponse(match) {
+      losses.push(match);
     },
   };
 }

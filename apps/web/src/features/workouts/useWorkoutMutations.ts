@@ -180,6 +180,8 @@ export function useCreateSet(): UseMutationResult<SetEntry, Error, CreateSetVars
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
+    // Spec 06.2 D5: run while the browser reports offline — the queued client enqueues and resolves at once.
+    networkMode: "always",
     mutationFn: ({ workoutExerciseId, body }) => client.createSet(workoutExerciseId, body),
     // Stop an in-flight refetch landing on top of the write and erasing it (§6.2, AC11).
     onMutate: () => cancelActiveReads(queryClient),
@@ -200,6 +202,7 @@ export function useUpdateSet(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
+    networkMode: "always",
     mutationFn: ({ id, body }) => client.updateSet(id, body),
     onMutate: () => cancelActiveReads(queryClient),
     onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
@@ -215,6 +218,7 @@ export function useDeleteSet(): UseMutationResult<void, Error, { id: string; mod
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
+    networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteSet(id)),
     onMutate: () => cancelActiveReads(queryClient),
     onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),

@@ -51,7 +51,7 @@ export function ProtectedLayout() {
   // workout client needs an authenticated API client.
   return (
     <CatalogProvider userId={query.data.id}>
-      <WorkoutClientProvider>
+      <WorkoutClientProvider userId={query.data.id}>
         <AppShell />
       </WorkoutClientProvider>
     </CatalogProvider>
