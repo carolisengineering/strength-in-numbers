@@ -71,6 +71,32 @@
   font-weight: 700;
 }
 
+/* A row plus, when its write failed, the Edit / Discard actions (Spec 06.2 AC14). */
+.setRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pendingTag {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.failedTag {
+  margin-left: auto;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.rowActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .setNumber {
   min-width: var(--space-6);
   color: var(--color-muted);

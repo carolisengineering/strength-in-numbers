@@ -5,6 +5,7 @@ import { Button } from "../../ui/Button";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow } from "./EntryRow";
 import { formatSet } from "./format";
+import type { RowSync } from "./outbox/project";
 import { SetEditSheet } from "./SetEditSheet";
 import styles from "./ExerciseCard.module.css";
 
@@ -25,7 +26,15 @@ export interface ExerciseCardProps {
   unitPreference: "kg" | "lb";
   /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
   onGone: (reason: "gone" | "finished") => void;
+  /** Per-row sync state from the outbox projection (Spec 06.2 AC14); synced rows are absent. */
+  sync?: ReadonlyMap<string, RowSync>;
+  onDiscardOp?: (opId: string) => void;
+  /** The session's first failed row gets `failedRowRef` (the status line's "Show"). */
+  firstFailedId?: string | null;
+  failedRowRef?: (node: HTMLLIElement | null) => void;
 }
+
+const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();
 
 /**
  * One exercise in the session (Spec 06.1 §5.4): its name and modality, an Options row (Move up / Move
@@ -43,6 +52,10 @@ export function ExerciseCard({
   firstFlaggedRef,
   unitPreference,
   onGone,
+  sync = NO_SYNC,
+  onDiscardOp,
+  firstFailedId = null,
+  failedRowRef,
 }: ExerciseCardProps) {
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -80,8 +93,13 @@ export function ExerciseCard({
         <ol className={styles.sets}>
           {exercise.sets.map((set) => {
             const needsData = flaggedIds.has(set.id);
+            const rowSync = sync.get(set.id);
             return (
-              <li key={set.id}>
+              <li
+                key={set.id}
+                ref={set.id === firstFailedId ? failedRowRef : undefined}
+                className={rowSync?.state === "failed" ? styles.setRow : undefined}
+              >
                 <button
                   type="button"
                   ref={set.id === firstFlaggedId ? firstFlaggedRef : undefined}
@@ -93,7 +111,21 @@ export function ExerciseCard({
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
                   {/* Text, not colour alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
+                  {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+                  {rowSync?.state === "failed" ? <span className={styles.failedTag}>Couldn't save</span> : null}
                 </button>
+                {rowSync?.state === "failed" ? (
+                  <span className={styles.rowActions}>
+                    {rowSync.status === 422 ? (
+                      <Button variant="secondary" onClick={() => setEditing(set)}>
+                        Edit
+                      </Button>
+                    ) : null}
+                    <Button variant="secondary" onClick={() => onDiscardOp?.(rowSync.opId)}>
+                      Discard
+                    </Button>
+                  </span>
+                ) : null}
               </li>
             );
           })}

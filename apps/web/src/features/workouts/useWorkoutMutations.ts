@@ -25,6 +25,10 @@ import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
  * TanStack skips call-level callbacks when the calling component unmounted before the response, but
  * runs hook-level ones. So a lifter who switches tabs mid-request still gets a correct cache (AC12).
  * Navigation stays at the call site for the opposite reason.
+ *
+ * Every mutation here uses `networkMode: "always"` (Spec 06.2 D5): TanStack's default pauses a
+ * mutation while the browser reports offline. Set writes must reach the outbox at once; every other
+ * write must fail at once, so the screen can say "You're offline" instead of hanging.
  */
 
 /** Every set write carries this key: Finish stays disabled while any set write is in flight. */
@@ -68,6 +72,7 @@ export function useStartWorkout(): UseMutationResult<Workout, Error, { body: Cre
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ body }) => client.start(body),
     // `start` returns a Workout, not a WorkoutDetail, and a 200 replay may already have exercises:
     // refetch rather than seed. Returning the promise keeps the mutation pending until it lands.
@@ -83,6 +88,7 @@ export function useFinishWorkout(): UseMutationResult<
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ id, endedAt }) => client.finish(id, { endedAt }),
     // Seed the summary only. Removing the active entry here would leave the Workouts screen's observer
     // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
@@ -109,6 +115,7 @@ export function useDeleteWorkout(): UseMutationResult<
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
     onSuccess: (_void, { id, phase, setCount }) => {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
@@ -129,6 +136,7 @@ export function useAddExercise(): UseMutationResult<
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ workoutId, exerciseId }) => client.addExercise(workoutId, { exerciseId }),
     onSuccess: (_row, { modality }) => {
       track("exercise_added", { modality });
@@ -145,6 +153,7 @@ export function useMoveExercise(): UseMutationResult<
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ id, position }) => client.moveExercise(id, position),
     onSuccess: (_row, { direction }) => {
       track("exercise_moved", { direction });
@@ -157,6 +166,7 @@ export function useRemoveExercise(): UseMutationResult<void, Error, { id: string
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
+    networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.removeExercise(id)),
     onSuccess: (_void, { setCount }) => {
       track("exercise_removed", { setCount });
@@ -180,7 +190,6 @@ export function useCreateSet(): UseMutationResult<SetEntry, Error, CreateSetVars
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: SET_MUTATION_KEY,
-    // Spec 06.2 D5: run while the browser reports offline — the queued client enqueues and resolves at once.
     networkMode: "always",
     mutationFn: ({ workoutExerciseId, body }) => client.createSet(workoutExerciseId, body),
     // Stop an in-flight refetch landing on top of the write and erasing it (§6.2, AC11).
