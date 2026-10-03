@@ -1,8 +1,9 @@
-import { createBrowserRouter, type RouteObject } from "react-router";
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 
 import { Callback } from "../auth/Callback";
 import { ProfileScreen } from "../features/me/ProfileScreen";
-import { AppIndex } from "../screens/AppIndex";
+import { FinishedWorkoutScreen } from "../features/workouts/FinishedWorkoutScreen";
+import { WorkoutsScreen } from "../features/workouts/WorkoutsScreen";
 import { ComingSoon } from "../screens/ComingSoon";
 import { NotFound } from "../screens/NotFound";
 import { BootstrapGate } from "./BootstrapGate";
@@ -17,9 +18,11 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *
  *   /            BootstrapGate > PublicEntry                              public — resume decision (§6.8)
  *   /callback    BootstrapGate > Callback                                 public — transient PKCE handler
- *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > AppIndex        protected (index)
+ *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > redirect (replace) to /app/workouts (Spec 06.1 D20)
  *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
- *   /app/workouts | history | progress                                > ComingSoon     protected (Specs 06 / 08 / 10)
+ *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
+ *   /app/workouts/:id                                                 > FinishedWorkoutScreen protected (Spec 06.1; reused by Spec 08)
+ *   /app/history | progress                                           > ComingSoon     protected (Specs 08 / 10)
  *   /app/*       …                                                    > NotFound       protected catch-all
  *   *            NotFound                                                              public catch-all
  *
@@ -44,9 +47,10 @@ export const routes: RouteObject[] = [
           {
             element: <ProtectedLayout />,
             children: [
-              { index: true, element: <AppIndex /> },
+              { index: true, element: <Navigate to="/app/workouts" replace /> },
               { path: "profile", element: <ProfileScreen /> },
-              { path: "workouts", element: <ComingSoon /> },
+              { path: "workouts", element: <WorkoutsScreen /> },
+              { path: "workouts/:id", element: <FinishedWorkoutScreen /> },
               { path: "history", element: <ComingSoon /> },
               { path: "progress", element: <ComingSoon /> },
               { path: "*", element: <NotFound /> },

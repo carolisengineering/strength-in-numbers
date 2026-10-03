@@ -23,6 +23,7 @@
   --color-on-accent: #ffffff;
   --color-danger: #ff5c5c;
   --color-success: #3ccf7a;
+  --color-warning: #f0b429;
   --color-focus: #8fb0ff;
 
   /* spacing scale */
@@ -69,6 +70,7 @@
     --color-on-accent: #ffffff;
     --color-danger: #d13232;
     --color-success: #1f9d55;
+    --color-warning: #9a6700;
     --color-focus: #2f5fe6;
   }
 }

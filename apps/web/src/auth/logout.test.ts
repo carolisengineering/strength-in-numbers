@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { memoryStorageAdapter, type StorageAdapter } from "../storage/storage";
+import { localStorageAdapter, memoryStorageAdapter, type StorageAdapter } from "../storage/storage";
 import { logoutAndClear } from "./logout";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +37,24 @@ describe("AC20 — logoutAndClear", () => {
     expect(auth0Logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },
     });
+  });
+
+  it("AC13 — blocks user-data writes before it starts clearing", () => {
+    let wroteDuringClear: string | null = "unset";
+    const probing: StorageAdapter = {
+      get: () => null,
+      set: () => undefined,
+      remove: () => undefined,
+      keys: () => {
+        localStorageAdapter().set("sin:catalog:v1:probe", "late write");
+        wroteDuringClear = window.localStorage.getItem("sin:catalog:v1:probe");
+        return [];
+      },
+    };
+
+    logoutAndClear(vi.fn(() => Promise.resolve()), probing);
+
+    expect(wroteDuringClear).toBeNull();
   });
 
   it("still logs out when storage throws", () => {

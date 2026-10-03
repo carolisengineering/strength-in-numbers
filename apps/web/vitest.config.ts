@@ -24,10 +24,13 @@ export default defineConfig({
       // Spec 06.0 AC31 adds the catalog client and the storage seam: a silent
       // bug there (a reset loop, a leaked forked origin, a storage failure
       // that crashes the app) is user-visible and hard to diagnose.
+      // Spec 06.1 AC36 adds the workout screen: a bug in set logging loses a
+      // lifter's data, and the failure matrix is the part that rots.
       thresholds: {
         "src/api/**": { lines: 90 },
         "src/auth/**": { lines: 90 },
         "src/features/catalog/**": { lines: 90 },
+        "src/features/workouts/**": { lines: 90 },
         "src/storage/**": { lines: 90 },
       },
     },

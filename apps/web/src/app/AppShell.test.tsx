@@ -29,6 +29,7 @@ vi.mock("@auth0/auth0-react", () => ({
 
 import { resetConfigCache } from "../config";
 import { server } from "../test/msw/server";
+import { catalogHandlers, createWorkoutFake } from "../test/workoutFake";
 import { NAV_ITEMS } from "./navItems";
 import { routes } from "./router";
 
@@ -60,6 +61,8 @@ beforeEach(() => {
   auth.state.isAuthenticated = false;
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
 
+  // `/app` lands on Workouts (Spec 06.1): give it a "no active workout" API and an empty catalog.
+  server.use(...createWorkoutFake().handlers, ...catalogHandlers([]));
   server.use(http.get(ME_URL, () => HttpResponse.json(ME, { status: 200 })));
 });
 
@@ -111,6 +114,7 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
     auth.state.isAuthenticated = true;
     renderAt(["/app"]);
     await screen.findByTestId("app-shell");
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
@@ -156,6 +160,7 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
     expect(await screen.findByTestId("app-shell-user")).toHaveTextContent(
       "lifter@example.com",
     );
+    await screen.findByRole("heading", { name: "Start a workout" }); // let /app's redirect + Workouts load settle
   });
 
   it("unauthenticated visit to /app/profile → redirected to /, shell never mounts", async () => {

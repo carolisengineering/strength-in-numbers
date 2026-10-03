@@ -24,6 +24,12 @@ export interface SheetProps {
 export function Sheet({ open, title, onClose, children }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // The latest `open`, so the native `close` handler can tell "the dialog closed itself" (a form
+  // method=dialog, a browser close request) from "the parent closed it" (the effect below).
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -42,6 +48,11 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
         // Controlled: tell the parent, and let it flip `open`.
         event.preventDefault();
         onClose();
+      }}
+      onClose={() => {
+        // Spec 06.1 AC32: a natively-closed sheet would leave the parent's `open` true, so the next
+        // "open" would do nothing. Silent when the parent did the closing.
+        if (openRef.current) onClose();
       }}
     >
       {open ? (

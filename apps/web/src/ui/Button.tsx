@@ -29,6 +29,7 @@ export function Button({
   type = "button",
   className,
   children,
+  "aria-busy": ariaBusy,
   ...rest
 }: ButtonProps) {
   const classes = [styles.button, styles[variant], block ? styles.block : "", className ?? ""]
@@ -41,7 +42,9 @@ export function Button({
       type={type}
       className={classes}
       disabled={disabled || busy}
-      aria-busy={busy || undefined}
+      // `busy` also disables; a caller that must keep focus while in flight (Spec 06.1's Log set)
+      // passes `aria-busy` itself and guards the double tap in its own handler.
+      aria-busy={busy || ariaBusy || undefined}
     >
       {children}
     </button>

@@ -1,3 +1,5 @@
+import { isUserDataKey } from "./clearUserData";
+
 /**
  * The persistence seam for user-scoped client data (Spec 06.0 §3). The catalog
  * store takes one of these instead of touching `window.localStorage`, so it is
@@ -13,6 +15,25 @@ export interface StorageAdapter {
   keys(): string[];
 }
 
+// Process-wide, not per adapter: the three logout sites each build their own adapter and none holds
+// the catalog store's. It is never cleared in production — the page is about to unload through the
+// Auth0 redirect (Spec 06.1 §6.7).
+let userDataWritesBlocked = false;
+
+/**
+ * Called first by `logoutAndClear`: from here on a user-data `set()` is a silent no-op, so a request
+ * still in flight (a catalog refresh) cannot re-persist what logout just cleared. Silent, not a throw:
+ * a throw would trip the catalog store's one-time `reportError` and flip it to in-memory mode.
+ */
+export function blockUserDataWrites(): void {
+  userDataWritesBlocked = true;
+}
+
+/** Test-only: clears the write block between tests. */
+export function resetUserDataWritesForTests(): void {
+  userDataWritesBlocked = false;
+}
+
 /**
  * `window.localStorage` behind the adapter. The property is read on every
  * call, never at construction: some privacy modes throw on the access itself,
@@ -23,6 +44,7 @@ export function localStorageAdapter(): StorageAdapter {
   return {
     get: (key) => ls().getItem(key),
     set: (key, value) => {
+      if (userDataWritesBlocked && isUserDataKey(key)) return;
       ls().setItem(key, value);
     },
     remove: (key) => {

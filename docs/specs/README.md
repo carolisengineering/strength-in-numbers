@@ -27,7 +27,7 @@ spec small enough to finish in one work session.
 | 05.1 | [Set logging](05.1-set-logging.md) — `set_entry`, per-modality validation, finish integrity rule | API | endpoints | 05.0 | Implemented |
 | 05.2 | Rate limiting & per-user write quotas — also closes 03.2's D20 / D21 | API / platform | config + middleware | 05.0 (05.1 soft) | Not started |
 | 06.0 | [Exercise picker & catalog client](06.0-exercise-picker.md) — React-free catalog store (`localStorage` sync-token cache behind a `StorageAdapter`), picker UI (recents + A–Z + filters), create-custom form; forked-origin hiding | UI | web | 03.3, 04.1 | Implemented |
-| 06.1 | [Workout session screen](06.1-workout-session-screen.md) — start/resume, add/reorder/remove exercises, per-modality set rows, finish (incl. `409 incomplete-working-sets`), delete workout (the browser smoke is 06.3) | UI | web | 06.0, 05.0, 05.1 | Draft |
+| 06.1 | [Workout session screen](06.1-workout-session-screen.md) — start/resume, add/reorder/remove exercises, per-modality set rows, finish (incl. `409 incomplete-working-sets`), delete workout (the browser smoke is 06.3) | UI | web | 06.0, 05.0, 05.1 | Implemented |
 | 06.2 | Connectivity resilience — write queue, unsynced-state UI, retry/backoff (keyed on 05.1's `clientGeneratedId`), `localStorage` mirror of the in-progress workout, Finish blocked on pending writes | UI | web | 06.1 | Not started |
 | 06.3 | [M1 Playwright smoke](06.3-m1-playwright-smoke.md) — one happy-path browser run against staging with a real Auth0 test user; post-deploy CI job; the 04.0 / 04.1 browser-only obligations | e2e / CI | CI job (no app change except a build-commit meta tag) | 06.1 | Draft |
 | 07 | History, progress & PR engine | API | endpoints | 05.1 | Not started |

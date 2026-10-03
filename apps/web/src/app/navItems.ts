@@ -23,7 +23,7 @@ export interface NavItem {
  * the shell's information architecture never changes shape.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/app/workouts", label: "Workouts", icon: DumbbellIcon, comingSoon: true },
+  { to: "/app/workouts", label: "Workouts", icon: DumbbellIcon },
   { to: "/app/history", label: "History", icon: ClockIcon, comingSoon: true },
   { to: "/app/progress", label: "Progress", icon: ChartIcon, comingSoon: true },
   { to: "/app/profile", label: "Profile", icon: PersonIcon },
