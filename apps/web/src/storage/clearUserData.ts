@@ -8,6 +8,7 @@ import type { StorageAdapter } from "./storage";
 export const USER_DATA_KEY_PREFIXES: readonly string[] = [
   "sin:catalog:",
   "sin:recents:",
+  "sin:workout:",
 ];
 
 export const isUserDataKey = (key: string): boolean =>

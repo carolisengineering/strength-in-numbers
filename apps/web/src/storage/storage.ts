@@ -62,6 +62,20 @@ export function localStorageAdapter(): StorageAdapter {
   };
 }
 
+/**
+ * Call `onWrite` when another tab of this origin changes `key` (or clears every key). The `storage`
+ * event never fires in the tab that wrote, so this tab's own writes are not reported. Returns an
+ * unsubscribe. Spec 06.2 AC19 uses it to stop a second tab corrupting the outbox.
+ */
+export function watchExternalWrites(key: string, onWrite: () => void): () => void {
+  const listener = (event: StorageEvent) => {
+    if (event.storageArea !== window.localStorage) return;
+    if (event.key === key || event.key === null) onWrite();
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
+}
+
 /** An in-memory adapter for tests. */
 export function memoryStorageAdapter(
   initial: Record<string, string> = {},
