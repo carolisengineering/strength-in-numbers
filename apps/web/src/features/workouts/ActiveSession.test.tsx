@@ -388,7 +388,7 @@ describe("AC19 — reorder", () => {
 
     await user.click(within(card("B")).getByRole("button", { name: "Move up" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Couldn't move that exercise — try again");
+    expect(alert).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
 
     await waitFor(() => expect(cardNames()).toEqual(["B", "A", "C"]));
@@ -471,7 +471,7 @@ describe("AC20 — remove", () => {
     await user.click(within(card("A")).getByRole("button", { name: "Options" }));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't remove that exercise — try again");
+    expect(await screen.findByRole("alert")).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15
     expect(screen.getByRole("article", { name: "A" })).toBeInTheDocument();
   });
 });

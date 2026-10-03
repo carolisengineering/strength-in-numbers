@@ -18,7 +18,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
-import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
+import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
 beforeEach(() => {
@@ -57,19 +57,19 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
     for (const control of controls) expect(control).toHaveAccessibleName();
   });
 
-  it("field error text is an alert tied to its input", async () => {
-    const { fake, user } = await setup();
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () =>
-      problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }),
-    );
+  it("field error text is an alert tied to its input (client validation; 06.2 queues server errors on the row)", async () => {
+    const { user } = await setup();
     const row = within(screen.getByRole("article", { name: "X" }));
-    // The entry row starts from the last set, which is partial here: give it a weight so it can log.
-    await user.type(row.getByLabelText("Weight"), "60");
-    await user.click(row.getByRole("button", { name: "Log set" }));
+    const weight = row.getByLabelText("Weight");
+    await user.clear(weight);
+    await user.type(weight, "abc");
+    await user.tab();
 
-    const message = await screen.findByText("Too heavy");
+    expect(weight).toHaveAttribute("aria-invalid", "true");
+    const describedBy = weight.getAttribute("aria-describedby")!;
+    const message = document.getElementById(describedBy.split(" ")[0]!)!;
     expect(message.closest("[role='alert']")).not.toBeNull();
-    expect(row.getByLabelText("Weight")).toHaveAccessibleDescription("Too heavy");
+    expect(weight).toHaveAccessibleDescription(message.textContent!);
   });
 
   it("each entry row has a polite live region for the 'Set N logged' announcement", async () => {

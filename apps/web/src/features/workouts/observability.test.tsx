@@ -45,6 +45,9 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   workout_discarded: { phase: "string", setCount: "number" },
   workout_conflict: { kind: "string" },
   exercise_picked: { source: "string", msSinceOpen: "number" },
+  // Spec 06.2 AC18: the outbox reports a status code and a duration only.
+  set_sync_failed: { status: "number" },
+  set_sync_delayed: { ms: "number" },
 };
 const ENUMS: Record<string, readonly string[]> = {
   modality: MODALITY_VALUES,
@@ -93,7 +96,9 @@ afterEach(() => {
 
 afterAll(() => {
   // Across the flows below, every event in §9 has actually fired.
-  for (const event of Object.keys(SHAPES).filter((e) => e !== "exercise_picked")) expect(seen, event).toContain(event);
+  // `set_sync_delayed` needs a > 2 s sync: covered on fake timers in outbox.drain.test.ts.
+  const elsewhere = new Set(["exercise_picked", "set_sync_delayed"]);
+  for (const event of Object.keys(SHAPES).filter((e) => !elsewhere.has(e))) expect(seen, event).toContain(event);
 });
 
 async function setup(exercises: ExerciseSpec[] = []) {
@@ -234,10 +239,12 @@ describe("AC35 — observability hygiene across the flows", () => {
     await user.click(screen.getByRole("button", { name: "Finish" }));
     await user.click(finishConfirm());
     await screen.findByText(/device clock looks wrong/);
-    // gone
-    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
+    // gone — through a structure write: queued set writes surface failures on the row instead (06.2)
+    fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
-    await user.click(card("X").getByRole("button", { name: "Log set" }));
+    await user.click(card("X").getByRole("button", { name: "Options" }));
+    await user.click(card("X").getByRole("button", { name: "Remove exercise" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /^Remove X/ })).getByRole("button", { name: "Remove" }));
     await screen.findByRole("heading", { name: "Start a workout" });
     for (const kind of ["retired", "clock", "finished"]) {
       expect(observability.track).toHaveBeenCalledWith("workout_conflict", { kind });
@@ -255,13 +262,12 @@ describe("AC35 — observability hygiene across the flows", () => {
     expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), { source: "workouts", op: "create-set" });
   });
 
-  it("expected failures are not reported", async () => {
+  it("expected failures are not reported (06.2: retried by the outbox)", async () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }]);
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => HttpResponse.error());
     await user.click(card("X").getByRole("button", { name: "Log set" }));
-    await screen.findByText("Couldn't log set — try again");
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(500, "about:blank"));
-    await user.click(card("X").getByRole("button", { name: "Log set" }));
+    await user.click(await screen.findByRole("button", { name: "Retry now" }));
     await waitFor(() => expect(fake.requests.filter((r) => r.path.endsWith("/sets"))).toHaveLength(2));
     expect(observability.reportError).not.toHaveBeenCalled();
   });
