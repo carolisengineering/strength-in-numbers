@@ -1,7 +1,7 @@
 import type { CreateSet, SetEntry, UpdateSet } from "@sin/core";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
-import type { StorageAdapter } from "../../../storage/storage";
+import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
 import { combine, OutboxFileSchema, sameTarget, type IdMap, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
@@ -325,10 +325,15 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       window.addEventListener("online", onOnline);
       window.addEventListener("offline", onOffline);
       document.addEventListener("visibilitychange", onVisible);
+      const unwatch = watchExternalWrites(OUTBOX_KEY, () => {
+        clearTimer();
+        set({ conflict: true }, false);
+      });
       void drain();
       return () => {
         stopped = true;
         clearTimer();
+        unwatch();
         window.removeEventListener("online", onOnline);
         window.removeEventListener("offline", onOffline);
         document.removeEventListener("visibilitychange", onVisible);
