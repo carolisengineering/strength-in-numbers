@@ -80,6 +80,28 @@ export function routeTemplate(path: string): string {
     .join("/");
 }
 
+/** Auth0 SDK codes that mean the session is really gone (refresh token revoked, expired or missing). */
+const LOST_SESSION_CODES = new Set([
+  "login_required",
+  "invalid_grant",
+  "missing_refresh_token",
+  "consent_required",
+  "interaction_required",
+]);
+
+const browserOnline = (): boolean => typeof navigator === "undefined" || navigator.onLine !== false;
+
+/**
+ * True only when a token failure means the session is gone. A failure while the browser is offline,
+ * a fetch `TypeError` or any unrecognised error counts as the network (Spec 06.2 AC9): logging out
+ * would clear the outbox of sets the lifter has not saved yet.
+ */
+export function isLostSession(cause: unknown, online: boolean = browserOnline()): boolean {
+  if (!online || !(cause instanceof Error)) return false;
+  const code = (cause as Error & { error?: unknown }).error;
+  return LOST_SESSION_CODES.has(typeof code === "string" ? code : cause.message);
+}
+
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const { baseUrl, appEnv, getToken, onAuthLost } = options;
 
@@ -93,6 +115,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     try {
       token = await getToken(ignoreCache ? { ignoreCache: true } : undefined);
     } catch (cause) {
+      if (!isLostSession(cause)) throw ApiError.network(requestId, cause);
       // No token — a lost session (cold cache `missing_refresh_token`, or a
       // rotation-reuse failure). AC12.
       onAuthLost();
