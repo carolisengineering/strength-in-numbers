@@ -87,6 +87,13 @@ describe("06.2 AC1 — project() overlays pending ops", () => {
     expect(p.sync.get(landed.id)).toEqual({ state: "pending" });
   });
 
+  it("a local row already in the copy (a projected cache) takes the create's current, merged body", () => {
+    const projected = view([create()]).workout;
+    const merged = create({ body: { clientGeneratedId: KEY, weight: 100, weightUnit: "lb", reps: 9, isComplete: true } });
+    const again = project(projected, { ops: [merged], idMap: {} });
+    expect(again.workout.exercises[0]!.sets[1]).toMatchObject({ id: KEY, reps: 9, setNumber: 2 });
+  });
+
   it("an update overwrites only its fields and recomputes weightKg", () => {
     const p = view([update({ setId: server1.id }, { weight: 70 })]);
     expect(setsOf(p)[0]).toMatchObject({ weight: 70, weightKg: 70, reps: 8 });

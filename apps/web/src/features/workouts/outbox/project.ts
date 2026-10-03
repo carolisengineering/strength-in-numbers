@@ -98,8 +98,12 @@ export function project(
     const exercise = exercises[index]!;
     let sets = exercise.sets;
     if (op.kind === "create") {
+      const key = op.target.clientGeneratedId;
       if (!sets.some((s) => matches(s, op.target, idMap))) {
         sets = [...sets, newRow(op, exercise, Math.max(0, ...sets.map((s) => s.setNumber)) + 1)];
+      } else if (sets.some((s) => s.id === key)) {
+        // A local row from an earlier projection: rebuild it from the create's current (merged) body.
+        sets = sets.map((s) => (s.id === key ? newRow(op, exercise, s.setNumber) : s));
       }
     } else if (op.kind === "update") {
       sets = sets.map((s) => (matches(s, op.target, idMap) ? withFields(s, op.body, op.enqueuedAt) : s));
