@@ -171,7 +171,8 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
     await screen.findByRole("heading", { name: "Workout summary" });
 
     expect(router.state.location.pathname).toBe(`/app/workouts/${id}`);
-    expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined();
+    // The summary clears the entry from a passive effect, which can run after the heading is painted.
+    await waitFor(() => expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined());
     await act(() => router.navigate("/app/workouts"));
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
   });
