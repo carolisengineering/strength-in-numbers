@@ -10,6 +10,7 @@ import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod
 import type { Config } from "./config.js";
 import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
+import { trustRenderProxy } from "./plugins/rate-limit.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
@@ -96,6 +97,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         : randomUUID();
     },
     bodyLimit: BODY_LIMIT_BYTES,
+    // Spec 05.2 §6.6: req.ip is the client Cloudflare saw, never a forged
+    // X-Forwarded-For entry. Confirmed post-deploy per spec §11.
+    trustProxy: trustRenderProxy,
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
