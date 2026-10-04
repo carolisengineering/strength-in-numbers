@@ -195,7 +195,10 @@ export async function pendingOutboxOps(page: Page): Promise<number> {
 
 /** Spec 06.3 §6.2 — wake the free-plan API before the first UI action. */
 export async function warmApi(request: APIRequestContext, apiUrl: string | undefined): Promise<void> {
-  if (!apiUrl) return;
+  if (!apiUrl) {
+    console.warn("e2e: E2E_API_URL is not set — skipping the API warm-up; a cold API may time out the first step");
+    return;
+  }
   const deadline = Date.now() + 120_000;
   let last = "no response";
   while (Date.now() < deadline) {

@@ -14,7 +14,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0, // §9: at most one; a pass-on-retry is reported flaky
   timeout: 6 * 60_000,
   expect: { timeout: 30_000 }, // free-plan API latency
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  // No HTML report: it stores every step title, and `fill` steps render the
+  // typed value — the test user's password would ship in the CI artifact (§7).
+  reporter: "list",
   use: {
     baseURL: process.env.E2E_BASE_URL,
     // §7 — traces record the Auth0 session cookie, so none in CI (whose

@@ -106,8 +106,10 @@ testing the old bundle.
 It is **not a required check** yet (D6). Make it required in branch protection
 once it has been green across several merges.
 
-On failure the job uploads `e2e-report` (HTML report and screenshots) for 3
-days. CI records **no traces**: a trace carries the Auth0 session cookie, and
+On failure the job uploads `e2e-report` (`test-results/`: a screenshot and
+the error context per failed test) for 3 days. There is no HTML report in CI:
+its step titles include typed values, i.e. the test user's password, and the
+repo is public. CI records **no traces**: a trace carries the Auth0 session cookie, and
 a login trace the typed password. Screenshots can show the test user's email.
 To debug with a trace, rerun locally (§2), where traces are kept on failure
 (never for the login step).
@@ -120,8 +122,8 @@ expected.
 
 ## 4. Reading a failure
 
-Download `e2e-report` from the run and open `playwright-report/index.html`
-(screenshot + error per step). For a trace, reproduce locally (§2). Common
+Download `e2e-report` from the run: each failed test has a screenshot and an
+`error-context.md` (the error plus the page's accessibility tree). For a trace, reproduce locally (§2). Common
 causes:
 
 | Symptom | Likely cause |

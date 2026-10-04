@@ -206,14 +206,13 @@ jobs:
         env:
           E2E_AUTH0_USERNAME: ${{ secrets.E2E_AUTH0_USERNAME }}
           E2E_AUTH0_PASSWORD: ${{ secrets.E2E_AUTH0_PASSWORD }}
-      # Failure-only, never apps/web/e2e/.auth (a live session cookie, §7); CI
-      # records no traces (they would carry the session cookie and the typed
-      # password), so this is the HTML report and screenshots.
+      # Failure-only screenshots + error context (§7). Never apps/web/e2e/.auth
+      # (a live session cookie), no traces (session cookie, typed password) and
+      # no HTML report (its step titles include the typed password). The repo is
+      # public, so anything here is downloadable by any GitHub user.
       - if: failure() && steps.creds.outputs.ready == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report
-          path: |
-            apps/web/test-results/
-            apps/web/playwright-report/
+          path: apps/web/test-results/
           retention-days: 3
