@@ -25,6 +25,7 @@ pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
 pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
 pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api / src/auth >=90% gates
+pnpm --filter @sin/web run e2e                  # Spec 06.3 browser smoke vs staging; needs E2E_BASE_URL + E2E_AUTH0_* (docs/runbooks/m1-browser-smoke.md)
 pnpm --filter @sin/web run assert:css-tokens    # AC1 tripwire: only tokens.css may hard-code colours / px
 ```
 
@@ -55,7 +56,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 ## Infrastructure
 
 - **Staging:** API at `https://si-api-ft2f.onrender.com` (Render free plan — cold starts after idle), Neon free Postgres. Auth0 tenant `dev-gncuqvfir0wv0t4l`, API audience `https://api.strengthinnumbers.app`.
-- **CI** (`.github/workflows/ci.yml`): lint/typecheck/unit/purity + integration + docker build on every PR; a `post-deploy smoke` job runs `apps/api/scripts/smoke.ts` against staging on push to `main`. Merge to `main` auto-deploys staging (Render `autoDeploy`).
+- **CI** (`.github/workflows/ci.yml`): lint/typecheck/unit/purity + integration + docker build on every PR; a `post-deploy smoke` job runs `apps/api/scripts/smoke.ts` and `apps/web/scripts/smoke.mjs` against staging on push to `main`, then the `e2e` job (Spec 06.3 Playwright smoke; waits for the deployed `<meta name="sin-commit">` to equal the SHA; skipped with a notice until the `E2E_AUTH0_*` secrets exist). Merge to `main` auto-deploys staging (Render `autoDeploy`).
 - **Prod** is not set up — the gated staging→prod pipeline is drafted in `docs/specs/01.1-prod-deploy-pipeline.md`.
 - Runbook for the whole deploy: `docs/runbooks/first-deploy.md`.
 - Phase 2 (post-M2): migrate off Render to AWS (CDK/Terraform + Fargate + RDS), tracked as Spec 15.
