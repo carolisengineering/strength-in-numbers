@@ -125,7 +125,7 @@ function documentedProblems(responses: Record<string, Resp>): Slugs {
   return out;
 }
 
-describe("#28 — every /v1 operation documents its problem+json responses", () => {
+describe("#28 + Spec 05.2 AC13 — every /v1 operation documents its problem+json responses (incl. 429 rate-limited)", () => {
   it("documents exactly the operations in the matrix — none missing, none extra", async () => {
     const doc = await servedDoc();
     const operations = Object.entries(doc.paths).flatMap(([path, item]) =>
