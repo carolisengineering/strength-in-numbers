@@ -18,6 +18,8 @@ export default defineConfig({
         "src/auth/**/*.ts": { lines: 90, functions: 90 },
         "src/plugins/auth.ts": { lines: 90, functions: 90 },
         "src/repositories/user.ts": { lines: 90, functions: 90 },
+        // Spec 05.2 §10: the rate limiter is held to the auth plugin's bar.
+        "src/plugins/rate-limit.ts": { lines: 90, functions: 90 },
       },
     },
   },
