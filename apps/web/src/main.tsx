@@ -1,3 +1,4 @@
+import "./zodConfig";
 import { bootstrap } from "./bootstrap";
 
 const rootElement = document.getElementById("root");
