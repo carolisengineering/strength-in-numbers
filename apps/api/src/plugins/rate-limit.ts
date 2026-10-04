@@ -136,6 +136,7 @@ export async function registerRateLimits(
       }),
     ]),
   ) as Record<WriteGroup, Limiter>;
+  const inflight = new InflightCounter(config.inflight);
 
   return {
     attachWriteLimits(v1) {
@@ -164,9 +165,57 @@ export async function registerRateLimits(
         const l2 = async (request: FastifyRequest) => enforce(limiter, request, { layer: "user-rate", group });
         const existing = route.preValidation === undefined ? [] : [route.preValidation].flat();
         route.preValidation = [...existing, l2] as typeof route.preValidation;
+        // L3 in preHandler: only a request that passed L2 and validation, i.e.
+        // one about to do real work, holds a slot.
+        const l3 = async (request: FastifyRequest) => inflight.acquire(request);
+        const existingPre = route.preHandler === undefined ? [] : [route.preHandler].flat();
+        route.preHandler = [...existingPre, l3] as typeof route.preHandler;
+      });
+      v1.addHook("onSend", async (request, _reply, payload) => {
+        inflight.release(request);
+        return payload;
+      });
+      // Backstop; a no-op once onSend released (per-request WeakMap).
+      v1.addHook("onResponse", async (request) => {
+        inflight.release(request);
       });
     },
   };
 }
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Spec 05.2 §6.5 — per-user writes in flight. Released on `onSend` (D13): after a
+ * mid-handler client abort, Fastify 5 fires `onSend` when the handler finishes but
+ * neither `onResponse` nor `onRequestAbort`, and releasing on the raw `close`
+ * would free the slot while the handler still holds a pooled connection.
+ */
+export class InflightCounter {
+  private readonly counts = new Map<string, number>();
+  private readonly held = new WeakMap<FastifyRequest, string>();
+
+  constructor(private readonly max: number) {}
+
+  acquire(request: FastifyRequest): void {
+    const id = request.user!.id;
+    const n = this.counts.get(id) ?? 0;
+    if (n >= this.max) throw new RateLimitedError(1, { layer: "user-inflight" });
+    this.counts.set(id, n + 1);
+    this.held.set(request, id);
+  }
+
+  release(request: FastifyRequest): void {
+    const id = this.held.get(request);
+    if (id === undefined) return;
+    this.held.delete(request);
+    const n = (this.counts.get(id) ?? 0) - 1;
+    if (n < 0) request.log.warn({ userId: id }, "inflight_underflow");
+    if (n <= 0) this.counts.delete(id);
+    else this.counts.set(id, n);
+  }
+
+  get size(): number {
+    return this.counts.size;
+  }
+}
