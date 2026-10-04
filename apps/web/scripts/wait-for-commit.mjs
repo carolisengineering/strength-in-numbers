@@ -8,7 +8,17 @@
  * Exits 0 when the stamp equals WAIT_COMMIT; exits 1 after the timeout with
  * the last stamp seen. A "dev" stamp or no stamp never matches, so a build
  * without RENDER_GIT_COMMIT fails loudly instead of testing a stale bundle.
+ *
+ * Superseded: if the site already serves a *newer* commit (WAIT_COMMIT is a
+ * git ancestor of it — a later push deployed first), this run has nothing to
+ * test; that later push's own run tests it. Exits 0 with a notice and writes
+ * `superseded=true` to $GITHUB_OUTPUT so the workflow skips the tests. Needs
+ * the history (`fetch-depth: 0`); without it the check is skipped and the wait
+ * runs to its bound as before.
  */
+import { execFileSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+
 const base = requireEnv("WAIT_BASE_URL").replace(/\/$/, "");
 const want = requireEnv("WAIT_COMMIT").toLowerCase();
 const timeoutS = Number(process.env.WAIT_TIMEOUT_S ?? "900");
@@ -23,6 +33,16 @@ function requireEnv(name) {
   return v;
 }
 
+function isNewerThanWanted(deployed) {
+  if (!/^[0-9a-f]{40}$/i.test(deployed)) return false;
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", want, deployed], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false; // not an ancestor, or the commit isn't in the local history
+  }
+}
+
 let seen = "nothing fetched";
 while (Date.now() < deadline) {
   try {
@@ -32,6 +52,13 @@ while (Date.now() < deadline) {
     seen = match ? match[1] : `no sin-commit meta (HTTP ${res.status})`;
     if (match && match[1].toLowerCase() === want) {
       process.stdout.write(`wait-for-commit: ok — ${base} serves ${want}\n`);
+      process.exit(0);
+    }
+    if (match && isNewerThanWanted(match[1])) {
+      process.stdout.write(
+        `::notice title=e2e superseded::${base} already serves ${match[1]}, a later commit than ${want}; its own run tests it\n`,
+      );
+      if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "superseded=true\n");
       process.exit(0);
     }
   } catch (error) {

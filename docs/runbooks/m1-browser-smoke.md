@@ -97,6 +97,8 @@ The `e2e` job in [`ci.yml`](../../.github/workflows/ci.yml) runs:
 
 Before the tests, `apps/web/scripts/wait-for-commit.mjs` polls the site until
 its `<meta name="sin-commit">` equals the pushed SHA, for up to 15 minutes.
+If a *later* push is already deployed, the run is superseded: it prints a
+notice and skips the tests, because that push's own run tests the build.
 Render stamps it from `RENDER_GIT_COMMIT` at build time. If it never matches
 (Render didn't redeploy, or the stamp says `dev`), the job fails rather than
 testing the old bundle.
@@ -104,17 +106,23 @@ testing the old bundle.
 It is **not a required check** yet (D6). Make it required in branch protection
 once it has been green across several merges.
 
-On failure the job uploads `e2e-report` (HTML report, screenshots, traces) for
-7 days. **Traces contain request headers, including a staging bearer token.**
-That is acceptable for a test user on the dev tenant, but don't paste traces
-anywhere public.
+On failure the job uploads `e2e-report` (HTML report and screenshots) for 3
+days. CI records **no traces**: a trace carries the Auth0 session cookie, and
+a login trace the typed password. Screenshots can show the test user's email.
+To debug with a trace, rerun locally (§2), where traces are kept on failure
+(never for the login step).
+
+The concurrency group keeps one running and one pending run; a third quick push
+cancels the pending one, which shows as a cancelled run on `main`. That is
+expected.
 
 ---
 
 ## 4. Reading a failure
 
-Download `e2e-report` from the run, unzip it, then run
-`npx playwright show-trace <trace.zip>`. Common causes:
+Download `e2e-report` from the run and open `playwright-report/index.html`
+(screenshot + error per step). For a trace, reproduce locally (§2). Common
+causes:
 
 | Symptom | Likely cause |
 |---|---|

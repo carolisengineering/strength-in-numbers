@@ -1,14 +1,16 @@
 import { expect, test as setup } from "@playwright/test";
 
 import { AUTH_STATE, E2E } from "./env";
-import { NAMES } from "./helpers";
+import { NAMES, warmApi } from "./helpers";
 
 /**
  * Spec 06.3 §6.1 — drive the real Universal Login once per run and save the
  * Auth0 session cookie + hint cookie. Tokens stay memory-only in the page.
  * Handles both the single-page and the identifier-first login prompts.
  */
-setup("log in through Auth0 Universal Login", async ({ page }) => {
+setup("log in through Auth0 Universal Login", async ({ page, request }) => {
+  // §6.2 — the login lands on a screen that calls the API: wake it first.
+  await warmApi(request, E2E.apiUrl);
   const workouts = `${E2E.baseUrl}/app/workouts`;
   await page.goto(workouts);
   await page.getByRole("button", { name: NAMES.logIn }).or(page.getByRole("link", { name: NAMES.logIn })).click();

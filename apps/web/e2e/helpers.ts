@@ -54,6 +54,17 @@ export function openDialog(page: Page, name: string | RegExp): Locator {
   return page.getByRole("dialog", { name });
 }
 
+/**
+ * AC2 — the one console error that is not a defect. `GET /v1/workouts/active`
+ * answers 404 when there is no workout in progress (Spec 05.0) and the client
+ * reads that as "show Start" (`workoutClient.getActive`), but Chromium still
+ * logs every 4xx response as "Failed to load resource". Only that exact pair —
+ * a 404 on that URL — is ignored.
+ */
+function isExpectedNoActiveWorkout(text: string, url: string): boolean {
+  return /Failed to load resource: .*status of 404\b/.test(text) && /\/v1\/workouts\/active$/.test(url);
+}
+
 export interface Guards {
   assertClean(): void;
 }
@@ -76,7 +87,8 @@ export async function installGuards(page: Page): Promise<Guards> {
     });
   });
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(`${page.url()} — ${message.text()}`);
+    if (message.type() !== "error" || isExpectedNoActiveWorkout(message.text(), message.location().url)) return;
+    consoleErrors.push(`${page.url()} — ${message.text()}`);
   });
   page.on("pageerror", (error) => consoleErrors.push(`${page.url()} — uncaught ${error.message}`));
   return {
@@ -120,6 +132,24 @@ export async function expectTapTargets(page: Page): Promise<void> {
   expect(tooSmall, `tap targets under 44×44 on ${page.url()}`).toEqual([]);
 }
 
+/**
+ * AC4 — a modal `<dialog>` keeps focus off the page behind it. Chromium does
+ * not cycle Tab inside the dialog: past its last control focus moves to the
+ * browser UI (`activeElement` becomes `body`). So the check is that focus is
+ * never on an element *outside* the dialog, in either direction.
+ */
+export async function expectFocusContained(page: Page, dialog: Locator): Promise<void> {
+  const handle = await dialog.elementHandle();
+  for (const key of ["Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    const escaped = await page.evaluate((d) => {
+      const active = document.activeElement;
+      return active && active !== document.body && !d?.contains(active) ? active.outerHTML.slice(0, 80) : null;
+    }, handle);
+    expect(escaped, `focus left the dialog after ${key}`).toBeNull();
+  }
+}
+
 /** AC3 — run checks at a 320 px wide viewport, then restore the device size. */
 export async function atNarrowViewport(page: Page, check: () => Promise<void>): Promise<void> {
   const original = page.viewportSize();
@@ -139,13 +169,28 @@ export async function atNarrowViewport(page: Page, check: () => Promise<void>): 
  */
 export async function waitSynced(page: Page, exerciseCard: Locator, expectedSets: number): Promise<void> {
   await expect(exerciseCard.getByRole("listitem")).toHaveCount(expectedSets);
-  await expect(page.getByText(NAMES.couldNotSave)).toHaveCount(0);
-  await expect(page.getByText(NAMES.notSavedYet)).toHaveCount(0);
+  const couldNotSave = page.getByText(NAMES.couldNotSave);
+  try {
+    await expect(page.getByText(NAMES.notSavedYet).or(couldNotSave)).toHaveCount(0);
+  } catch (error) {
+    // The bar hint counts failed sets too, so name the real cause.
+    if ((await couldNotSave.count()) > 0) {
+      throw new Error(`e2e: a set write failed against staging: "${await couldNotSave.first().innerText()}"`);
+    }
+    throw error;
+  }
 }
 
-/** Spec 06.3 §6.5 — the one place e2e reads browser storage. */
-export async function readOutbox(page: Page): Promise<string | null> {
-  return page.evaluate((key) => window.localStorage.getItem(key), OUTBOX_KEY);
+/**
+ * Spec 06.3 §6.5 — the one place e2e reads browser storage: how many writes
+ * the 06.2 outbox still holds. The key itself outlives a full sync (it keeps
+ * the id map of the workout's synced sets), so count the ops, not the key.
+ */
+export async function pendingOutboxOps(page: Page): Promise<number> {
+  return page.evaluate((key) => {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? 0 : (JSON.parse(raw) as { ops: unknown[] }).ops.length;
+  }, OUTBOX_KEY);
 }
 
 /** Spec 06.3 §6.2 — wake the free-plan API before the first UI action. */

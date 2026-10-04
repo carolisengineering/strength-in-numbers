@@ -8,9 +8,10 @@ import {
   card,
   expectNoHorizontalOverflow,
   expectTapTargets,
+  expectFocusContained,
   installGuards,
   openDialog,
-  readOutbox,
+  pendingOutboxOps,
   waitSynced,
   warmApi,
 } from "./helpers";
@@ -19,6 +20,8 @@ import {
  * Spec 06.3 — the M1 happy path against deployed staging, as one ordered run:
  * the steps share one workout, so they are `test.step`s of a single test.
  */
+// The setup project warms the API before it logs in; this covers a run with
+// a reused login (`--no-deps`) or a long gap since setup.
 test.beforeAll(async ({ request }) => {
   await warmApi(request, E2E.apiUrl);
 });
@@ -97,7 +100,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
 
   await test.step("AC1 — with the outbox empty, a reload restores everything from the server", async () => {
     await expect(finishButton).toBeEnabled();
-    expect(await readOutbox(page)).toBeNull();
+    expect(await pendingOutboxOps(page)).toBe(0);
     await page.reload();
     await page.waitForURL(workouts);
     for (const exercise of EXERCISES) {
@@ -138,10 +141,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await removeButton.click();
     const confirm = openDialog(page, NAMES.removeDialog(EXERCISES[4].name));
     await expect(confirm).toBeVisible();
-    for (let i = 0; i < 4; i++) {
-      await page.keyboard.press("Tab");
-      await expect(confirm.locator(":focus")).toHaveCount(1);
-    }
+    await expectFocusContained(page, confirm);
     await page.keyboard.press("Escape");
     await expect(confirm).toBeHidden();
     await expect(run).toBeVisible();

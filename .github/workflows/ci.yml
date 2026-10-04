@@ -148,15 +148,18 @@ jobs:
     concurrency:
       group: e2e-staging
       cancel-in-progress: false
+    # The credentials are scoped to the two steps that need them, not the job,
+    # so install scripts and apt never see them.
     env:
       E2E_BASE_URL: ${{ vars.STAGING_WEB_BASE_URL || 'https://si-web-staging.onrender.com' }}
       E2E_API_URL: ${{ vars.STAGING_BASE_URL }}
-      E2E_AUTH0_USERNAME: ${{ secrets.E2E_AUTH0_USERNAME }}
-      E2E_AUTH0_PASSWORD: ${{ secrets.E2E_AUTH0_PASSWORD }}
     steps:
       # D10 — until the owner creates the test user and its secrets, skip with
       # a notice instead of turning main red.
       - id: creds
+        env:
+          E2E_AUTH0_USERNAME: ${{ secrets.E2E_AUTH0_USERNAME }}
+          E2E_AUTH0_PASSWORD: ${{ secrets.E2E_AUTH0_PASSWORD }}
         run: |
           if [ -z "$E2E_AUTH0_USERNAME" ] || [ -z "$E2E_AUTH0_PASSWORD" ]; then
             echo "::notice title=e2e skipped::E2E_AUTH0_USERNAME / E2E_AUTH0_PASSWORD are not set — see docs/runbooks/m1-browser-smoke.md"
@@ -166,6 +169,8 @@ jobs:
           fi
       - if: steps.creds.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # wait-for-commit compares the deployed SHA with this one
       - if: steps.creds.outputs.ready == 'true'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
@@ -175,28 +180,35 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - if: steps.creds.outputs.ready == 'true'
-        run: pnpm install --frozen-lockfile
       # §6.3 — don't test the previous bundle: wait for Render to serve this SHA.
+      # If a later push is already deployed, this run is superseded and skips.
       - if: steps.creds.outputs.ready == 'true'
+        id: wait
         run: node apps/web/scripts/wait-for-commit.mjs
         env:
           WAIT_BASE_URL: ${{ env.E2E_BASE_URL }}
           WAIT_COMMIT: ${{ github.sha }}
-      - if: steps.creds.outputs.ready == 'true'
+      - if: steps.creds.outputs.ready == 'true' && steps.wait.outputs.superseded != 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.creds.outputs.ready == 'true' && steps.wait.outputs.superseded != 'true'
         id: pw-version
         run: echo "version=$(pnpm --filter @sin/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-      - if: steps.creds.outputs.ready == 'true'
+      - if: steps.creds.outputs.ready == 'true' && steps.wait.outputs.superseded != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
       # --with-deps needs apt even on a cache hit; fast when the browser is cached.
-      - if: steps.creds.outputs.ready == 'true'
+      - if: steps.creds.outputs.ready == 'true' && steps.wait.outputs.superseded != 'true'
         run: pnpm --filter @sin/web exec playwright install --with-deps chromium
-      - if: steps.creds.outputs.ready == 'true'
+      - if: steps.creds.outputs.ready == 'true' && steps.wait.outputs.superseded != 'true'
         run: pnpm --filter @sin/web run e2e
-      # Failure-only, and never apps/web/e2e/.auth (a live session cookie, §7).
+        env:
+          E2E_AUTH0_USERNAME: ${{ secrets.E2E_AUTH0_USERNAME }}
+          E2E_AUTH0_PASSWORD: ${{ secrets.E2E_AUTH0_PASSWORD }}
+      # Failure-only, never apps/web/e2e/.auth (a live session cookie, §7); CI
+      # records no traces (they would carry the session cookie and the typed
+      # password), so this is the HTML report and screenshots.
       - if: failure() && steps.creds.outputs.ready == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -204,4 +216,4 @@ jobs:
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
-          retention-days: 7
+          retention-days: 3

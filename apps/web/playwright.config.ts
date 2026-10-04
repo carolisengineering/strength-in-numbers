@@ -17,14 +17,17 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL,
-    trace: "retain-on-failure",
+    // §7 — traces record the Auth0 session cookie, so none in CI (whose
+    // failure artifact is uploaded); locally they are kept on failure.
+    trace: process.env.CI ? "off" : "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
     actionTimeout: 30_000,
     navigationTimeout: 60_000,
   },
   projects: [
-    { name: "setup", testMatch: /auth\.setup\.ts/, use: { ...devices["Pixel 7"] } },
+    // Never trace the login: a trace records the typed password.
+    { name: "setup", testMatch: /auth\.setup\.ts/, use: { ...devices["Pixel 7"], trace: "off" } },
     {
       name: "mobile-chromium",
       testMatch: /\.smoke\.spec\.ts/,
