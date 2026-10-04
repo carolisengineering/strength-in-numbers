@@ -39,9 +39,13 @@ describe("AC11 / D12 — clientAddress: CF-Connecting-IP behind a known proxy, e
     // [socket, headers, expected, why]
     ["127.0.0.1", { "cf-connecting-ip": "73.8.137.104" }, "73.8.137.104", "staging chain: loopback sidecar"],
     ["10.1.2.3", { "cf-connecting-ip": "73.8.137.104" }, "73.8.137.104", "private Render proxy"],
-    ["104.22.64.33", { "cf-connecting-ip": "73.8.137.104" }, "73.8.137.104", "socket is the Cloudflare edge"],
-    ["2606:4700::6810:1", { "cf-connecting-ip": "2001:db8::42" }, "2001:db8::42", "IPv6 edge and client"],
-    ["203.0.113.50", { "cf-connecting-ip": "6.6.6.6" }, "203.0.113.50", "a public non-Cloudflare peer can't choose its key"],
+    ["fd00::5", { "cf-connecting-ip": "2001:db8::42" }, "2001:db8::42", "IPv6 private proxy and client"],
+    // Code review #2: a Cloudflare-owned socket may be an end user (WARP egress,
+    // Workers from 2a06:98c0::/29 — inside Cloudflare's published ranges); only a
+    // private socket is trusted, so neither ever gets to choose its key.
+    ["104.28.1.2", { "cf-connecting-ip": "6.6.6.6" }, "104.28.1.2", "a WARP client connecting directly"],
+    ["2a06:98c0::1", { "cf-connecting-ip": "6.6.6.6" }, "2a06:98c0::1", "a Worker connecting directly"],
+    ["203.0.113.50", { "cf-connecting-ip": "6.6.6.6" }, "203.0.113.50", "a public peer can't choose its key"],
     ["127.0.0.1", {}, "127.0.0.1", "internal probe: no header → the socket"],
     ["10.1.2.3", { "cf-connecting-ip": "not-an-ip" }, "10.1.2.3", "garbage header → the socket"],
   ];
@@ -108,11 +112,13 @@ describe("§6.6 — trustProxyTripwire: the Cloudflare assumption broke", () => 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith({ socket: "10.1.2.3", reason: "no-cf-connecting-ip" }, "trust_proxy_suspect");
   });
-  it("warns once when a forwarded request arrives from an unknown public proxy", () => {
+  it("warns once when a forwarded request arrives from a public socket (e.g. the Cloudflare edge itself)", () => {
     const warn = vi.fn();
     const trip = trustProxyTripwire();
+    trip(req("104.22.64.33", { "x-forwarded-for": "73.8.137.104", "cf-connecting-ip": "73.8.137.104" }, warn));
     trip(req("198.18.0.9", { "x-forwarded-for": "73.8.137.104" }, warn));
-    expect(warn).toHaveBeenCalledWith({ socket: "198.18.0.9", reason: "unknown-proxy" }, "trust_proxy_suspect");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ socket: "104.22.64.33", reason: "unknown-proxy" }, "trust_proxy_suspect");
   });
 });
 

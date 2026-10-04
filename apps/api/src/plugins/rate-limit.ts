@@ -64,53 +64,6 @@ export function isPrivateAddress(ip: string): boolean {
   return PRIVATE.check(ip, family === 4 ? "ipv4" : "ipv6");
 }
 
-// Cloudflare's published edge ranges (https://www.cloudflare.com/ips-v4 and
-// /ips-v6, fetched 2026-10-04). They change rarely; re-check them when the
-// post-deploy client-IP check (runbook D4.d) fails.
-const CLOUDFLARE_V4: readonly [string, number][] = [
-  ["173.245.48.0", 20],
-  ["103.21.244.0", 22],
-  ["103.22.200.0", 22],
-  ["103.31.4.0", 22],
-  ["141.101.64.0", 18],
-  ["108.162.192.0", 18],
-  ["190.93.240.0", 20],
-  ["188.114.96.0", 20],
-  ["197.234.240.0", 22],
-  ["198.41.128.0", 17],
-  ["162.158.0.0", 15],
-  ["104.16.0.0", 13],
-  ["104.24.0.0", 14],
-  ["172.64.0.0", 13],
-  ["131.0.72.0", 22],
-];
-const CLOUDFLARE_V6: readonly [string, number][] = [
-  ["2400:cb00::", 32],
-  ["2606:4700::", 32],
-  ["2803:f800::", 32],
-  ["2405:b500::", 32],
-  ["2405:8100::", 32],
-  ["2a06:98c0::", 29],
-  ["2c0f:f248::", 32],
-];
-const CLOUDFLARE = new BlockList();
-for (const [network, prefix] of CLOUDFLARE_V4) {
-  CLOUDFLARE.addSubnet(network, prefix, "ipv4");
-  CLOUDFLARE.addSubnet(`::ffff:${network}`, 96 + prefix, "ipv6");
-}
-for (const [network, prefix] of CLOUDFLARE_V6) CLOUDFLARE.addSubnet(network, prefix, "ipv6");
-
-function isCloudflareAddress(ip: string): boolean {
-  const family = isIP(ip);
-  if (family === 0) return false;
-  return CLOUDFLARE.check(ip, family === 4 ? "ipv4" : "ipv6");
-}
-
-/** A peer that can only be Render's own infrastructure or a Cloudflare edge — never an end user's direct connection. */
-function isKnownProxy(ip: string): boolean {
-  return isPrivateAddress(ip) || isCloudflareAddress(ip);
-}
-
 function socketAddress(request: FastifyRequest): string {
   return request.socket?.remoteAddress ?? request.ip;
 }
@@ -126,33 +79,34 @@ function cfConnectingIp(request: FastifyRequest): string | null {
  * Spec 05.2 §6.6 / D12 — the client address the L1 limit keys on. Cloudflare
  * sets `CF-Connecting-IP` on every proxied request to the address that
  * connected to it, overwriting anything the client sent, so it is used — but
- * only when the socket is a known proxy (Render's internal hops or a Cloudflare
- * edge), i.e. the request really came through Cloudflare. Otherwise the socket
- * is the client. `X-Forwarded-For` is never read: Cloudflare's own ranges also
- * carry end-user traffic (WARP, Workers), so trusting them as hops let such a
- * client choose its key (code review, 2026-10-04).
+ * only behind a **private / loopback socket** (Render's own infrastructure),
+ * which no end user can connect from. Any public socket is itself the client,
+ * Cloudflare-owned ones included: WARP and Workers egress from Cloudflare
+ * ranges, so trusting those would let such a client choose its key (code
+ * reviews, 2026-10-04). `X-Forwarded-For` is never read.
  */
 export function clientAddress(request: FastifyRequest): string {
   const socket = socketAddress(request);
-  if (!isKnownProxy(socket)) return socket;
+  if (!isPrivateAddress(socket)) return socket;
   return cfConnectingIp(request) ?? socket;
 }
 
 /**
  * §6.6 — warn once per process when the Cloudflare assumption breaks for a
- * forwarded request: it came through a known proxy but has no usable
- * `CF-Connecting-IP` (`no-cf-connecting-ip`), or it came from a public peer we
- * don't know (`unknown-proxy` — e.g. a new load balancer). Either way every
- * user would share one L1 bucket. Requests with no `X-Forwarded-For` (internal
- * probes, health checks, direct clients) never count, so they can't spend the
- * single warning.
+ * forwarded request: it came through a private proxy but has no usable
+ * `CF-Connecting-IP` (`no-cf-connecting-ip`), or it came from a public socket
+ * (`unknown-proxy` — e.g. Render handing us the Cloudflare edge directly, or a
+ * new load balancer; the logged `socket` says which). Either way every user
+ * behind that proxy shares one L1 bucket. Requests with no `X-Forwarded-For`
+ * (internal probes, health checks, direct clients) never count, so they can't
+ * spend the single warning.
  */
 export function trustProxyTripwire(): (request: FastifyRequest) => void {
   let warned = false;
   return (request) => {
     if (warned || request.headers?.["x-forwarded-for"] === undefined) return;
     const socket = socketAddress(request);
-    const reason = isKnownProxy(socket)
+    const reason = isPrivateAddress(socket)
       ? cfConnectingIp(request) === null
         ? "no-cf-connecting-ip"
         : null
