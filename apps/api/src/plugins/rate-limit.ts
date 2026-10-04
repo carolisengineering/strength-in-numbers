@@ -106,46 +106,60 @@ function isCloudflareAddress(ip: string): boolean {
   return CLOUDFLARE.check(ip, family === 4 ? "ipv4" : "ipv6");
 }
 
-/** A hop we may trust to have appended the next address: Render's internal proxies or a Cloudflare edge. */
+/** A peer that can only be Render's own infrastructure or a Cloudflare edge — never an end user's direct connection. */
 function isKnownProxy(ip: string): boolean {
   return isPrivateAddress(ip) || isCloudflareAddress(ip);
 }
 
-/**
- * Spec 05.2 §6.6 / D12 — Fastify `trustProxy` function for Render + Cloudflare.
- * Trust by address, not by hop count: Fastify walks from the socket leftward
- * through `X-Forwarded-For`, skipping every hop this returns true for, and
- * `req.ip` is the first one it doesn't — the real client. The staging check
- * (runbook D4.d, 2026-10-04) showed the chain is not a fixed "private socket +
- * one hop" (that resolved to the Cloudflare edge), so any number of internal or
- * Cloudflare hops is skipped. A client can only prepend entries; Cloudflare
- * appends the address it saw, so a forged entry is never reached. A public,
- * non-Cloudflare peer is itself the client and its header is ignored.
- */
-export function trustRenderProxy(address: string): boolean {
-  return isKnownProxy(address);
+function socketAddress(request: FastifyRequest): string {
+  return request.socket?.remoteAddress ?? request.ip;
+}
+
+function cfConnectingIp(request: FastifyRequest): string | null {
+  const raw = request.headers?.["cf-connecting-ip"];
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return isIP(value) === 0 ? null : value;
 }
 
 /**
- * §6.6 — warn once per process when a request carried `X-Forwarded-For` but
- * no client came out of it: `req.ip` is still a known proxy address (the chain
- * ran out — a new hop range we don't trust yet) or the socket itself (the
- * header was ignored — an untrusted proxy). Either way every user would share
- * one L1 bucket. Requests without the header (internal probes, health checks)
- * never count, so they can't spend the single warning.
+ * Spec 05.2 §6.6 / D12 — the client address the L1 limit keys on. Cloudflare
+ * sets `CF-Connecting-IP` on every proxied request to the address that
+ * connected to it, overwriting anything the client sent, so it is used — but
+ * only when the socket is a known proxy (Render's internal hops or a Cloudflare
+ * edge), i.e. the request really came through Cloudflare. Otherwise the socket
+ * is the client. `X-Forwarded-For` is never read: Cloudflare's own ranges also
+ * carry end-user traffic (WARP, Workers), so trusting them as hops let such a
+ * client choose its key (code review, 2026-10-04).
+ */
+export function clientAddress(request: FastifyRequest): string {
+  const socket = socketAddress(request);
+  if (!isKnownProxy(socket)) return socket;
+  return cfConnectingIp(request) ?? socket;
+}
+
+/**
+ * §6.6 — warn once per process when the Cloudflare assumption breaks for a
+ * forwarded request: it came through a known proxy but has no usable
+ * `CF-Connecting-IP` (`no-cf-connecting-ip`), or it came from a public peer we
+ * don't know (`unknown-proxy` — e.g. a new load balancer). Either way every
+ * user would share one L1 bucket. Requests with no `X-Forwarded-For` (internal
+ * probes, health checks, direct clients) never count, so they can't spend the
+ * single warning.
  */
 export function trustProxyTripwire(): (request: FastifyRequest) => void {
   let warned = false;
   return (request) => {
     if (warned || request.headers?.["x-forwarded-for"] === undefined) return;
-    const reason = isKnownProxy(request.ip)
-      ? "proxy-address"
-      : request.ip === request.socket?.remoteAddress
-        ? "forwarded-ignored"
-        : null;
+    const socket = socketAddress(request);
+    const reason = isKnownProxy(socket)
+      ? cfConnectingIp(request) === null
+        ? "no-cf-connecting-ip"
+        : null
+      : "unknown-proxy";
     if (reason === null) return;
     warned = true;
-    request.log.warn({ ip: request.ip, reason }, "trust_proxy_suspect");
+    request.log.warn({ socket, reason }, "trust_proxy_suspect");
   };
 }
 
@@ -182,13 +196,20 @@ export async function registerRateLimits(
   // through createRateLimit (D11).
   await app.register(rateLimit, { global: false, ...(config.store ? { store: config.store } : {}) });
 
-  // The plugin's default key is normalizeIP(req.ip): one IPv6 /64 is one client.
-  const ipLimiter = app.createRateLimit({ max: config.ip, timeWindow: config.windowMs });
+  const ipLimiter = app.createRateLimit({
+    max: config.ip,
+    timeWindow: config.windowMs,
+    // The client behind Cloudflare (§6.6), normalised so one IPv6 /64 is one client.
+    keyGenerator: (req) => rateLimit.normalizeIP(clientAddress(req)),
+  });
   const tripwire = opts.isProduction ? trustProxyTripwire() : () => {};
 
   app.addHook("onRequest", async (request) => {
-    // Skip first: Render's health checks come from a private address and must
-    // not trip the trust-proxy tripwire.
+    // Every later log line of this request (incl. "request completed") carries
+    // the resolved client — the runbook D4.d check reads it.
+    (request.log as { setBindings?: (b: Record<string, unknown>) => void }).setBindings?.({
+      client_ip: clientAddress(request),
+    });
     if (request.routeOptions.config?.skipRateLimit === true) return;
     tripwire(request);
     await enforce(ipLimiter, request, { layer: "ip" });

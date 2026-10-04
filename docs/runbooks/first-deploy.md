@@ -620,26 +620,29 @@ Once b and c pass by hand, wiring Part C's GitHub secrets and pushing to `main`
 should make the CI `smoke` job go green for the same reasons.
 
 **d. Client IP behind Render + Cloudflare (Spec 05.2 §11).** The per-IP rate
-limit keys on `req.ip`, which `trustRenderProxy` derives by skipping every
-private/loopback and Cloudflare-published address in the forwarding chain. Check
-it after any deploy that touches it and after any hosting change:
+limit keys on `clientAddress()` (`apps/api/src/plugins/rate-limit.ts`):
+Cloudflare's `CF-Connecting-IP` when the socket is Render-internal or a
+Cloudflare edge, else the socket. Check it after any deploy that touches it and
+after any hosting change:
 
 ```bash
-curl -s -H 'X-Forwarded-For: 203.0.113.9' $BASE/healthz   # {"status":"ok"}
+curl -s -H 'X-Forwarded-For: 203.0.113.9' -H 'CF-Connecting-IP: 203.0.113.10' $BASE/healthz   # {"status":"ok"}
 ```
 
-In Render **Logs**, the matching `incoming request` line's `remoteAddress` must be
-**your real public IP** — not `203.0.113.9` (a forged header was trusted), not a
-`10.x` / `100.64.x` / `127.x` address, and not a Cloudflare address (a proxy in
-the chain isn't trusted, so every user shares one bucket). A `trust_proxy_suspect`
-warning in the logs means the same thing; its `reason` says which. If it's wrong,
-first re-check Cloudflare's ranges (`https://www.cloudflare.com/ips-v4`, `/ips-v6`)
-against the list in `apps/api/src/plugins/rate-limit.ts`, then fix
-`trustRenderProxy` there.
+In Render **Logs**, the matching `request completed` line's **`client_ip`** must
+be **your real public IP**: not `203.0.113.9` or `203.0.113.10` (a forged header
+was trusted), not a `10.x` / `100.64.x` / `127.x` address, and not a Cloudflare
+address (every user would share one bucket). (Fastify's own `remoteAddress` on
+the `incoming request` line is the socket — a proxy — by design.) A
+`trust_proxy_suspect` warning in the logs means the Cloudflare assumption broke;
+its `reason` says how. If it's wrong, first re-check Cloudflare's ranges
+(`https://www.cloudflare.com/ips-v4`, `/ips-v6`) against the list in
+`rate-limit.ts`, then fix `clientAddress()` there.
 
 *History:* the first check (2026-10-04) logged the Cloudflare edge `104.22.64.33`
-— the original "private socket + one hop" trust was one hop short. Fixed by
-trusting addresses rather than counting hops (Spec 05.2 D12 amendment).
+— the original "private socket + one hop" `trustProxy` was a hop short, and
+walking `X-Forwarded-For` through Cloudflare's ranges proved spoofable from
+WARP/Workers. Fixed by keying on `CF-Connecting-IP` (Spec 05.2 D12).
 
 ---
 
