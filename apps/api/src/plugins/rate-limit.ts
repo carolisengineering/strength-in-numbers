@@ -1,3 +1,4 @@
+import { BlockList, isIP } from "node:net";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import rateLimit, { type FastifyRateLimitStoreCtor } from "@fastify/rate-limit";
 import { RateLimitedError, type RateLimitSource } from "../errors/app-error.js";
@@ -37,21 +38,30 @@ export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   inflight: 4,
 });
 
-const PRIVATE_V4 = [
-  /^10\./,
-  /^127\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // 100.64.0.0/10 shared / CGNAT space
+// RFC 1918, RFC 6598 shared / CGNAT, loopback, link-local.
+const PRIVATE_V4: readonly [string, number][] = [
+  ["10.0.0.0", 8],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
 ];
+const PRIVATE = new BlockList();
+for (const [network, prefix] of PRIVATE_V4) {
+  PRIVATE.addSubnet(network, prefix, "ipv4");
+  // The same range as IPv4-mapped IPv6 (::ffff:a.b.c.d), in any spelling.
+  PRIVATE.addSubnet(`::ffff:${network}`, 96 + prefix, "ipv6");
+}
+PRIVATE.addAddress("::1", "ipv6");
+PRIVATE.addSubnet("fc00::", 7, "ipv6"); // unique local
+PRIVATE.addSubnet("fe80::", 10, "ipv6"); // link-local
 
 /** RFC 1918 / RFC 6598 shared / loopback / link-local / ULA, including IPv4-mapped IPv6. */
 export function isPrivateAddress(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  const v4 = lower.startsWith("::ffff:") ? lower.slice(7) : lower;
-  if (PRIVATE_V4.some((re) => re.test(v4))) return true;
-  return lower === "::1" || /^f[cd][0-9a-f]{2}:/.test(lower) || /^fe80:/.test(lower);
+  const family = isIP(ip);
+  if (family === 0) return false;
+  return PRIVATE.check(ip, family === 4 ? "ipv4" : "ipv6");
 }
 
 /**
@@ -125,12 +135,8 @@ export async function registerRateLimits(
   // through createRateLimit (D11).
   await app.register(rateLimit, { global: false, ...(config.store ? { store: config.store } : {}) });
 
-  const ipLimiter = app.createRateLimit({
-    max: config.ip,
-    timeWindow: config.windowMs,
-    // The plugin's IPv6 normalisation: one /64 is one client.
-    keyGenerator: (req) => rateLimit.normalizeIP(req.ip),
-  });
+  // The plugin's default key is normalizeIP(req.ip): one IPv6 /64 is one client.
+  const ipLimiter = app.createRateLimit({ max: config.ip, timeWindow: config.windowMs });
   const tripwire = opts.isProduction ? trustProxyTripwire() : () => {};
 
   app.addHook("onRequest", async (request) => {
@@ -177,24 +183,33 @@ export async function registerRateLimits(
           );
         }
         const limiter = groupLimiters[group];
-        // preValidation: after the auth onRequest hook (request.user is set) but
-        // before body validation, so a malformed-body flood still counts.
-        const l2 = async (request: FastifyRequest) => enforce(limiter, request, { layer: "user-rate", group });
-        const existing = route.preValidation === undefined ? [] : [route.preValidation].flat();
-        route.preValidation = [...existing, l2] as typeof route.preValidation;
+        // preParsing: after the auth onRequest hook (request.user is set) but
+        // before the body is read or validated, so a write that fails to parse
+        // (bad JSON, wrong media type, too large) or to validate still counts (D14).
+        const l2 = async (request: FastifyRequest, _reply: unknown, payload: unknown) => {
+          await enforce(limiter, request, { layer: "user-rate", group });
+          return payload;
+        };
+        const existing = route.preParsing === undefined ? [] : [route.preParsing].flat();
+        route.preParsing = [...existing, l2] as typeof route.preParsing;
         // L3 in preHandler: only a request that passed L2 and validation, i.e.
         // one about to do real work, holds a slot.
         const l3 = async (request: FastifyRequest) => inflight.acquire(request);
         const existingPre = route.preHandler === undefined ? [] : [route.preHandler].flat();
         route.preHandler = [...existingPre, l3] as typeof route.preHandler;
-      });
-      v1.addHook("onSend", async (request, _reply, payload) => {
-        inflight.release(request);
-        return payload;
-      });
-      // Backstop; a no-op once onSend released (per-request WeakMap).
-      v1.addHook("onResponse", async (request) => {
-        inflight.release(request);
+        // Release on this route only (reads never hold a slot). onResponse is a
+        // backstop; a no-op once onSend released (per-request WeakMap).
+        const release = async (request: FastifyRequest, _reply: unknown, payload: unknown) => {
+          inflight.release(request);
+          return payload;
+        };
+        const backstop = async (request: FastifyRequest) => {
+          inflight.release(request);
+        };
+        const existingSend = route.onSend === undefined ? [] : [route.onSend].flat();
+        route.onSend = [...existingSend, release] as typeof route.onSend;
+        const existingResponse = route.onResponse === undefined ? [] : [route.onResponse].flat();
+        route.onResponse = [...existingResponse, backstop] as typeof route.onResponse;
       });
     },
   };
@@ -215,7 +230,9 @@ export class InflightCounter {
   constructor(private readonly max: number) {}
 
   acquire(request: FastifyRequest): void {
-    const id = request.user!.id;
+    const id = request.user?.id;
+    // No user to key on: fail open like the other layers (AC10, D8).
+    if (id === undefined) return;
     const n = this.counts.get(id) ?? 0;
     if (n >= this.max) throw new RateLimitedError(1, { layer: "user-inflight" });
     this.counts.set(id, n + 1);

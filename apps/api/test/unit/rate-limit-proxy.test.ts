@@ -13,6 +13,10 @@ describe("§6.6 — isPrivateAddress", () => {
     ["::1", true],
     ["fd12:3456::1", true],
     ["::ffff:10.0.0.1", true],
+    ["::ffff:a00:5", true], // hex-form IPv4-mapped 10.0.0.5
+    ["::ffff:cb00:7109", false], // hex-form IPv4-mapped 203.0.113.9
+    ["febf::1", true], // inside fe80::/10, not the literal fe80: prefix
+    ["fec0::1", false],
     ["100.64.1.2", true], // CGNAT / shared address space (RFC 6598)
     ["100.127.255.1", true],
     ["100.128.0.1", false],

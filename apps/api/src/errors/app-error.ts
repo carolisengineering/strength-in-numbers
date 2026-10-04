@@ -290,7 +290,8 @@ export class RateLimitedError extends AppError {
   readonly source: RateLimitSource;
 
   constructor(retryAfterSeconds = 1, source: RateLimitSource = { layer: "ip" }) {
-    const seconds = Math.max(1, Math.ceil(retryAfterSeconds));
+    // A store with no usable ttl must still produce a whole number ≥ 1 (AC9).
+    const seconds = Number.isFinite(retryAfterSeconds) ? Math.max(1, Math.ceil(retryAfterSeconds)) : 1;
     super(`rate limited (${source.layer}${source.group ? `:${source.group}` : ""})`);
     this.retryAfterSeconds = seconds;
     this.source = source;

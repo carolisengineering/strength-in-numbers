@@ -76,6 +76,17 @@ describe("AC3 — routes in one group share one counter", () => {
   });
 });
 
+describe("AC3 / D14 — a write whose body fails to parse still counts", () => {
+  it("unparsable JSON is rejected, and still spends the group: the next one is 429", async () => {
+    const { app } = await buildTestApp({ tokenVerifier: verifier, rateLimits: limitsWith({ groups: { sets: 1 } }) });
+    const broken = { ...call("PATCH", `/v1/sets/${ID}`), payload: "{" };
+    const first = await app.inject(broken);
+    expect(first.statusCode).toBeGreaterThanOrEqual(400);
+    expect(first.statusCode).not.toBe(429);
+    expect((await app.inject(broken)).statusCode).toBe(429);
+  });
+});
+
 describe("AC4 — groups and users are isolated", () => {
   it("exhausting exercises leaves the same user's sets usable and user B's exercises usable", async () => {
     const { app } = await buildTestApp({ tokenVerifier: verifier, rateLimits: limitsWith({ groups: { exercises: 1 } }) });

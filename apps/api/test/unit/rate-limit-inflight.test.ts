@@ -61,6 +61,14 @@ describe("AC8 — InflightCounter releases exactly once", () => {
     c.release(req("u2")); // never acquired: no-op
     expect(c.size).toBe(0);
   });
+  it("AC10 — a request with no user is let through (fail open), never a TypeError / 500", () => {
+    const c = new InflightCounter(1);
+    const anonymous = { log: { warn: vi.fn() } } as unknown as FastifyRequest;
+    expect(() => c.acquire(anonymous)).not.toThrow();
+    expect(c.size).toBe(0);
+    c.release(anonymous);
+    expect(c.size).toBe(0);
+  });
 });
 
 describe("AC7 — the write past inflight.max is rejected at once", () => {

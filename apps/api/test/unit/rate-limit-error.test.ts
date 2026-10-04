@@ -20,6 +20,11 @@ describe("AC9 — RateLimitedError renders a 429 problem with Retry-After", () =
     expect(new RateLimitedError(2.2).retryAfterSeconds).toBe(3);
     expect(new RateLimitedError().retryAfterSeconds).toBe(1);
   });
+  it("a store with no usable ttl (NaN / Infinity) still yields Retry-After 1, never NaN", () => {
+    expect(new RateLimitedError(Number.NaN).retryAfterSeconds).toBe(1);
+    expect(new RateLimitedError(Number.POSITIVE_INFINITY).retryAfterSeconds).toBe(1);
+    expect(new RateLimitedError(Number.NaN).publicDetail).toBe("Too many requests — retry after 1 seconds.");
+  });
   it("body: rate-limited type, 429, generic detail naming the delay, instance; Retry-After header", async () => {
     const lines: Record<string, unknown>[] = [];
     const app = appThrowing(new RateLimitedError(17, { layer: "user-rate", group: "sets" }), lines);
