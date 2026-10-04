@@ -9,6 +9,9 @@
 .shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* minmax(0, …): a grid track's default minimum is its content's min-content
+     width, which let the nav push the page past a 320 px screen (Spec 06.3 AC3). */
+  grid-template-columns: minmax(0, 1fr);
   /* A definite height (not min-height) is what lets the middle row shrink and
      scroll, so the header and nav stay pinned to the viewport edges. */
   height: 100dvh;
@@ -61,7 +64,9 @@
 .nav {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  /* Equal columns that may shrink below their label's width; a label that
+     still doesn't fit ellipsizes (.navLabel) instead of widening the page. */
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   padding-bottom: calc(var(--space-1) + env(safe-area-inset-bottom));
@@ -82,6 +87,13 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   text-decoration: none;
+}
+
+.navLabel {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .navTarget[aria-current="page"] {
