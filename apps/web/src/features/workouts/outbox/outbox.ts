@@ -1,4 +1,5 @@
 import type { CreateSet, SetEntry, UpdateSet } from "@sin/core";
+import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
@@ -240,7 +241,11 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
       const verdict = classify(op.kind, error);
       if (verdict === "done") succeed(op, null);
-      else if (verdict === "retry") patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() + backoffMs(attempts, random) });
+      else if (verdict === "retry") {
+        // Spec 05.2 AC14: never retry sooner than the server's Retry-After.
+        const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
+        patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() + Math.max(backoffMs(attempts, random), floor) });
+      }
       else fail(op, failureOf(error), error);
     }
   }
