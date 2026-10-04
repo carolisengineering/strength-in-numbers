@@ -9,3 +9,8 @@ coverage/
 .DS_Store
 .superpowers/
 docs/superpowers/
+
+# Spec 06.3 — Playwright. e2e/.auth holds a live Auth0 session cookie (secret-equivalent).
+apps/web/e2e/.auth/
+apps/web/test-results/
+apps/web/playwright-report/

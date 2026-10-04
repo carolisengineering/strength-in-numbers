@@ -10,11 +10,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "e2e": "playwright test",
     "assert:build-output": "node scripts/assert-build-output.mjs",
     "assert:render-yaml": "node scripts/assert-render-yaml.mjs",
     "assert:css-tokens": "node scripts/assert-css-tokens.mjs"
@@ -30,6 +31,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@testing-library/dom": "10.4.1",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

@@ -501,6 +501,9 @@ below to the tab named in its Type column with **New repository secret** /
 | `AUTH0_STAGING_TOKEN_URL` | **Variable** | `https://<tenant>.us.auth0.com/oauth/token` — your tenant |
 | `AUTH0_STAGING_M2M_CLIENT_ID` | **Secret** | Client ID from A2 |
 | `AUTH0_STAGING_M2M_CLIENT_SECRET` | **Secret** | Client Secret from A2 |
+| `E2E_AUTH0_USERNAME` | **Secret** | the browser-smoke test user's email — see [`m1-browser-smoke.md`](m1-browser-smoke.md) |
+| `E2E_AUTH0_PASSWORD` | **Secret** | that user's password — same runbook |
+| `STAGING_WEB_BASE_URL` | Variable (optional) | overrides `https://si-web-staging.onrender.com` for the web smoke and the browser smoke |
 
 The `smoke` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
 maps these onto the env vars `scripts/smoke.ts` expects (`SMOKE_BASE_URL`,

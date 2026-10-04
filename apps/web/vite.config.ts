@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
+import { commitMeta } from "./src/build/commitMeta";
+
 // Auth0's refresh-token web worker, self-hosted so the production CSP can keep
 // `script-src 'self'` with no `blob:` / `worker-src` relaxation (Spec 04.0
 // §6.3 / §6.6 / AC8). The SDK ships this file; we copy it to the dist root and
@@ -20,6 +22,8 @@ export default defineConfig({
     viteStaticCopy({
       targets: [{ src: auth0Worker, dest: "." }],
     }),
+    // Spec 06.3 §6.3 — the e2e job waits until the deployed stamp is the pushed SHA.
+    commitMeta(process.env.RENDER_GIT_COMMIT),
   ],
   build: {
     // Emit no inline module-preload polyfill script, so `index.html` carries no
