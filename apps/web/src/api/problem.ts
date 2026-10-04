@@ -90,6 +90,15 @@ export function slugFromType(type: string): string {
   return segments.at(-1) ?? type;
 }
 
+const RETRY_AFTER_CAP_MS = 5 * 60 * 1000;
+
+/** Spec 05.2 §6.7 — `Retry-After` as delta-seconds only (an HTTP-date or
+ * anything else → null), in ms, capped at 5 minutes. */
+export function parseRetryAfter(value: string | null): number | null {
+  if (value === null || !/^\d+$/.test(value.trim())) return null;
+  return Math.min(Number(value.trim()) * 1000, RETRY_AFTER_CAP_MS);
+}
+
 export interface ApiErrorInit {
   readonly status: number;
   readonly type: string;
@@ -99,6 +108,7 @@ export interface ApiErrorInit {
   readonly errors?: readonly ProblemFieldError[];
   readonly requestId: string;
   readonly isNetworkError?: boolean;
+  readonly retryAfterMs?: number | null;
   readonly cause?: unknown;
 }
 
@@ -121,6 +131,8 @@ export class ApiError extends Error {
   readonly errors: readonly ProblemFieldError[];
   readonly requestId: string;
   readonly isNetworkError: boolean;
+  /** Spec 05.2 — the response's `Retry-After`, in ms; null when absent or unparsable. */
+  readonly retryAfterMs: number | null;
 
   constructor(init: ApiErrorInit) {
     super(
@@ -136,6 +148,7 @@ export class ApiError extends Error {
     this.errors = init.errors ?? [];
     this.requestId = init.requestId;
     this.isNetworkError = init.isNetworkError ?? false;
+    this.retryAfterMs = init.retryAfterMs ?? null;
   }
 
   /** `422 validation-error`. */
@@ -153,7 +166,7 @@ export class ApiError extends Error {
     return this.status === 503;
   }
 
-  static fromProblem(problem: Problem, requestId: string): ApiError {
+  static fromProblem(problem: Problem, requestId: string, retryAfterMs: number | null = null): ApiError {
     return new ApiError({
       status: problem.status,
       type: problem.type,
@@ -163,6 +176,7 @@ export class ApiError extends Error {
       errors: problem.errors,
       requestId,
       isNetworkError: false,
+      retryAfterMs,
     });
   }
 

@@ -177,6 +177,42 @@ describe("AC11 — typed errors from problem+json", () => {
     expect(apiError.requestId).toMatch(/[0-9a-f-]{36}/i);
   });
 
+  it("Spec 05.2 AC14 — a 429 carries the parsed Retry-After as retryAfterMs", async () => {
+    server.use(
+      http.get(
+        `${BASE_URL}/v1/me`,
+        () =>
+          new HttpResponse(
+            JSON.stringify({
+              type: "https://strengthinnumbers.app/problems/rate-limited",
+              title: "Too many requests",
+              status: 429,
+              detail: "Too many requests — retry after 12 seconds.",
+              instance: "server-req-id",
+            }),
+            { status: 429, headers: { "content-type": "application/problem+json", "retry-after": "12" } },
+          ),
+      ),
+    );
+    const error = (await makeClient()
+      .get("/v1/me")
+      .catch((e: unknown) => e)) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.type).toBe("rate-limited");
+    expect(error.retryAfterMs).toBe(12_000);
+  });
+
+  it("Spec 05.2 AC14 — a non-problem 429 still carries retryAfterMs", async () => {
+    server.use(
+      http.get(`${BASE_URL}/v1/me`, () => new HttpResponse("slow down", { status: 429, headers: { "retry-after": "3" } })),
+    );
+    const error = (await makeClient()
+      .get("/v1/me")
+      .catch((e: unknown) => e)) as ApiError;
+    expect(error.status).toBe(429);
+    expect(error.retryAfterMs).toBe(3_000);
+  });
+
   it("maps a dropped connection to a network ApiError (status 0, about:blank)", async () => {
     server.use(http.get(`${BASE_URL}/v1/ping`, () => HttpResponse.error()));
 

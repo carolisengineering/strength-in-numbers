@@ -10,6 +10,12 @@ import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod
 import type { Config } from "./config.js";
 import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
+import {
+  RATE_LIMITS,
+  registerRateLimits,
+  trustRenderProxy,
+  type RateLimitConfig,
+} from "./plugins/rate-limit.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
@@ -71,6 +77,8 @@ export interface BuildAppDeps extends AuthPluginDeps {
   readinessTtlMs?: number;
   exerciseRepository: ExerciseRepository;
   workoutRepository: WorkoutRepository;
+  /** Spec 05.2 — tests only; production uses `RATE_LIMITS`. No env var (D7). */
+  rateLimits?: RateLimitConfig;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -96,6 +104,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         : randomUUID();
     },
     bodyLimit: BODY_LIMIT_BYTES,
+    // Spec 05.2 §6.6: req.ip is the client Cloudflare saw, never a forged
+    // X-Forwarded-For entry. Confirmed post-deploy per spec §11.
+    trustProxy: trustRenderProxy,
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
@@ -161,8 +172,15 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     },
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type", "X-Request-Id"],
-    exposedHeaders: ["X-Request-Id"],
+    // Retry-After: the SPA's outbox waits it out on a 429 (Spec 05.2 AC12, AC14).
+    exposedHeaders: ["X-Request-Id", "Retry-After"],
     credentials: false,
+  });
+
+  // Spec 05.2: after cors (preflights are answered before L1 counts them),
+  // before the /v1 scope (L1 runs before the auth hook — AC2).
+  const writeLimits = await registerRateLimits(app, deps.rateLimits ?? RATE_LIMITS, {
+    isProduction: config.isProduction,
   });
 
   // Emit-only OpenAPI 3.1 (Spec 03.0 §6.3). Registered before any route so its
@@ -221,6 +239,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(
     async (v1) => {
       registerErrorContract(v1);
+      writeLimits.attachWriteLimits(v1);
       await v1.register(authPlugin, {
         tokenVerifier: deps.tokenVerifier,
         userRepository: deps.userRepository,
@@ -244,7 +263,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.addHook("onReady", async () => {
     openapiJson = JSON.stringify(app.swagger(), null, 2);
   });
-  app.get("/openapi.json", { schema: { hide: true } }, async (_request, reply) =>
+  app.get("/openapi.json", { schema: { hide: true }, config: { skipRateLimit: true } }, async (_request, reply) =>
     reply
       .type("application/json")
       .header("cache-control", "public, max-age=300")

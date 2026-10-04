@@ -68,6 +68,34 @@ afterEach(() => {
   observability.track.mockReset();
 });
 
+describe("Spec 05.2 AC14 — a 429 is retried no sooner than Retry-After", () => {
+  const T0 = Date.parse("2026-10-03T09:00:00Z");
+  const rateLimited = (retryAfterMs: number) =>
+    new ApiError({ status: 429, type: "https://x/problems/rate-limited", title: "t", requestId: "r", retryAfterMs });
+
+  it("nextAttemptAt = now + max(backoff, retryAfterMs)", async () => {
+    const { outbox, rest } = setup();
+    rest.createSet.mockRejectedValueOnce(rateLimited(20_000));
+    add(outbox);
+    await settle();
+    const op = outbox.getState().ops[0]!;
+    expect(op.status).toBe("queued");
+    expect(op.nextAttemptAt).toBe(T0 + 20_000);
+    await vi.advanceTimersByTimeAsync(19_000);
+    expect(rest.createSet).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(rest.createSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("a short Retry-After never shortens the backoff", async () => {
+    const { outbox, rest } = setup();
+    rest.createSet.mockRejectedValueOnce(rateLimited(0));
+    add(outbox);
+    await settle();
+    expect(outbox.getState().ops[0]!.nextAttemptAt).toBe(T0 + 1_000); // backoffMs(1) with random 0.5
+  });
+});
+
 describe("06.2 AC4 — one op in flight, first in, first out", () => {
   it("the second op is not sent until the first settles", async () => {
     const gate = deferred<SetEntry>();

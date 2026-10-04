@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError, parseProblem, slugFromType } from "./problem";
+import { ApiError, parseProblem, parseRetryAfter, slugFromType } from "./problem";
 
 describe("parseProblem", () => {
   it("maps a full RFC 9457 body, keeping value-free errors[]", () => {
@@ -90,5 +90,26 @@ describe("ApiError", () => {
     expect(error.isNetworkError).toBe(true);
     expect(error.requestId).toBe("rid");
     expect(error.cause).toBeInstanceOf(TypeError);
+  });
+});
+
+describe("Spec 05.2 AC14 — parseRetryAfter", () => {
+  it.each([
+    ["17", 17_000],
+    ["0", 0],
+    ["600", 300_000], // capped at 5 minutes
+    [null, null],
+    ["", null],
+    ["Wed, 21 Oct 2026 07:28:00 GMT", null], // HTTP-date not supported
+    ["1.5", null],
+    ["-3", null],
+  ])("%s → %s", (value, expected) => {
+    expect(parseRetryAfter(value)).toBe(expected);
+  });
+  it("ApiError carries retryAfterMs, null by default", () => {
+    expect(new ApiError({ status: 500, type: "about:blank", title: "t", requestId: "r" }).retryAfterMs).toBeNull();
+    expect(
+      new ApiError({ status: 429, type: "about:blank", title: "t", requestId: "r", retryAfterMs: 5000 }).retryAfterMs,
+    ).toBe(5000);
   });
 });

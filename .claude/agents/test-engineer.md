@@ -40,6 +40,10 @@ TypeScript). TDD is the working method here. You own test quality, not just test
 - `describe.skipIf(cond)` still runs `beforeAll` when `cond` is wrong — guard setup too.
 - Fastify v5 wants `loggerInstance` (not `logger`) for a prebuilt pino; `buildApp` branches on
   the arg type.
+- `buildTestApp` runs under the production `RATE_LIMITS` (Spec 05.2: 10 `PATCH /v1/me`, 20
+  exercise writes, 60 workout writes, 120 set writes per minute per user; 600 req/min per IP).
+  A test that legitimately sends more passes `rateLimits: GENEROUS_LIMITS` (or tightens one
+  limit with `limitsWith(...)`) — never loosen `RATE_LIMITS` itself.
 - The error contract must be registered on BOTH the root scope and the `/v1` child scope — a
   partial test app that skips one will misbehave.
 - `resolveDatabaseUrl` backfills `sslmode`/`sslaccept=strict`/`connection_limit` and rejects `verify-full` — assert on the resolved value.

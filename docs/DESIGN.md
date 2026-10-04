@@ -661,8 +661,11 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 - TLS 1.2+ in transit; encryption at rest for DB and bucket (managed).
 - Least-privilege DB credentials for the API; no shared admin creds.
 - Dependency scanning + Dependabot; secret scanning on the repo.
-- Rate limiting at the API (Fastify plugin), with Cloudflare in front once the
-  custom domain lands; per-user quotas on write endpoints.
+- Rate limiting at the API — Spec 05.2: a per-IP limit before auth, per-user
+  write-rate groups and a per-user in-flight write cap (`429 rate-limited` +
+  `Retry-After`), all in process memory on the single Render instance (Spec 15
+  swaps in a shared store for multiple instances); Cloudflare-level limiting
+  once the custom domain lands.
 - CORS is an exact-match origin allowlist (the SPA origin per environment), never
   a wildcard or reflected `Origin`; tokens travel in the `Authorization` header,
   not cookies, so credentialed CORS stays off. Configured in the API from M0

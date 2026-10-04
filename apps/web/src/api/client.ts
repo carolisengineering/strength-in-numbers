@@ -1,5 +1,5 @@
 import { reportError } from "../observability/reportError";
-import { ApiError, parseProblem } from "./problem";
+import { ApiError, parseProblem, parseRetryAfter } from "./problem";
 import { newRequestId, REQUEST_ID_HEADER } from "./requestId";
 
 /**
@@ -169,6 +169,8 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     requestId: string,
   ): Promise<ApiError> {
     const contentType = response.headers.get("content-type") ?? "";
+    // Spec 05.2: a 429 says how long to wait.
+    const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
     if (contentType.includes("json")) {
       let body: unknown;
       try {
@@ -177,7 +179,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
         body = undefined;
       }
       const problem = parseProblem(body, response.status);
-      if (problem) return ApiError.fromProblem(problem, requestId);
+      if (problem) return ApiError.fromProblem(problem, requestId, retryAfterMs);
     } else {
       // Drain the body defensively; its content is not useful.
       try {
@@ -193,6 +195,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       detail: `The server responded with ${response.status}.`,
       requestId,
       isNetworkError: false,
+      retryAfterMs,
     });
   }
 

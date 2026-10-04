@@ -615,6 +615,22 @@ curl -s -w '\n%{http_code}\n'            -H "authorization: Bearer $TOKEN" $BASE
 Once b and c pass by hand, wiring Part C's GitHub secrets and pushing to `main`
 should make the CI `smoke` job go green for the same reasons.
 
+**d. Client IP behind Render + Cloudflare (Spec 05.2 §11).** The per-IP rate
+limit keys on `req.ip`, which `trustRenderProxy` derives from Render's private
+proxy socket plus one Cloudflare hop. Check it after the first deploy of Spec 05.2
+and after any hosting change:
+
+```bash
+curl -s -H 'X-Forwarded-For: 203.0.113.9' $BASE/healthz   # {"status":"ok"}
+```
+
+In Render **Logs**, the matching `incoming request` line's `remoteAddress` must be
+**your real public IP** — not `203.0.113.9` (a forged header was trusted), not a
+`10.x` / `100.64.x` address (the proxy wasn't trusted, so every user shares one
+bucket), and not a Cloudflare address (one hop too few). Any `trust_proxy_suspect`
+warning in the logs means the same thing. If it's wrong, revert the deploy and fix
+`trustRenderProxy` in `apps/api/src/plugins/rate-limit.ts`.
+
 ---
 
 ## Part E — Production (deferred)
