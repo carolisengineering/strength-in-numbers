@@ -1,10 +1,41 @@
-import type { FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import rateLimit, { type FastifyRateLimitStoreCtor } from "@fastify/rate-limit";
+import { RateLimitedError, type RateLimitSource } from "../errors/app-error.js";
 
 /**
  * Spec 05.2 — rate limiting: L1 per-IP, L2 per-user write groups, L3 per-user
  * in-flight write cap. See the spec §6 for why the plugin's own hooks are not
  * used (D11) and why L3 releases on `onSend` (D13).
  */
+
+export type WriteGroup = "sets" | "workouts" | "exercises" | "me";
+export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercises", "me"];
+
+declare module "fastify" {
+  interface FastifyContextConfig {
+    /** Spec 05.2 AC6 — infra routes no layer counts. */
+    skipRateLimit?: boolean;
+    /** Spec 05.2 §6.1 — required on every /v1 write route. */
+    writeGroup?: WriteGroup;
+  }
+}
+
+export interface RateLimitConfig {
+  readonly windowMs: number;
+  readonly ip: number;
+  readonly groups: Readonly<Record<WriteGroup, number>>;
+  readonly inflight: number;
+  /** Tests only (AC10): replaces the plugin's in-memory LRU store. */
+  readonly store?: FastifyRateLimitStoreCtor;
+}
+
+/** Spec 05.2 §6.2 — the one place limits are written. */
+export const RATE_LIMITS: RateLimitConfig = Object.freeze({
+  windowMs: 60_000,
+  ip: 600,
+  groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, me: 10 }),
+  inflight: 4,
+});
 
 const PRIVATE_V4 = [/^10\./, /^127\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./];
 
@@ -41,5 +72,59 @@ export function trustProxyTripwire(): (request: FastifyRequest) => void {
     if (warned || !isPrivateAddress(request.ip)) return;
     warned = true;
     request.log.warn({ ip: request.ip }, "trust_proxy_suspect");
+  };
+}
+
+type Limiter = ReturnType<FastifyInstance["createRateLimit"]>;
+
+/** Run one limiter; throw on exceed; fail open (log, allow) if it throws (AC10, D8). */
+async function enforce(limiter: Limiter, request: FastifyRequest, source: RateLimitSource): Promise<void> {
+  let result: Awaited<ReturnType<Limiter>>;
+  try {
+    result = await limiter(request);
+  } catch (err) {
+    request.log.error({ err, layer: source.layer, group: source.group }, "rate_limiter_failed");
+    return;
+  }
+  if (!result.isAllowed && result.isExceeded) throw new RateLimitedError(result.ttlInSeconds, source);
+}
+
+export interface WriteLimits {
+  attachWriteLimits(v1: FastifyInstance): void;
+}
+
+/**
+ * Registers the store and the L1 hook on the ROOT instance. Call it after
+ * `@fastify/cors` registers (so preflights are answered first) and before the
+ * `/v1` scope registers (a parent's app-level `onRequest` runs before the
+ * child's auth hook — AC2).
+ */
+export async function registerRateLimits(
+  app: FastifyInstance,
+  config: RateLimitConfig,
+  opts: { isProduction: boolean },
+): Promise<WriteLimits> {
+  // global: false → the plugin adds no hooks of its own; we only use its store
+  // through createRateLimit (D11).
+  await app.register(rateLimit, { global: false, ...(config.store ? { store: config.store } : {}) });
+
+  const ipLimiter = app.createRateLimit({
+    max: config.ip,
+    timeWindow: config.windowMs,
+    // The plugin's IPv6 normalisation: one /64 is one client.
+    keyGenerator: (req) => rateLimit.normalizeIP(req.ip),
+  });
+  const tripwire = opts.isProduction ? trustProxyTripwire() : () => {};
+
+  app.addHook("onRequest", async (request) => {
+    // Skip first: Render's health checks come from a private address and must
+    // not trip the trust-proxy tripwire.
+    if (request.routeOptions.config?.skipRateLimit === true) return;
+    tripwire(request);
+    await enforce(ipLimiter, request, { layer: "ip" });
+  });
+
+  return {
+    attachWriteLimits: () => {},
   };
 }

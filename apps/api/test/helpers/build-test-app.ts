@@ -4,6 +4,7 @@ import { loadConfig, type Config } from "../../src/config.js";
 import type { TokenVerifier } from "../../src/auth/verify.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../../src/repositories/workout.js";
+import { RATE_LIMITS, type RateLimitConfig, type WriteGroup } from "../../src/plugins/rate-limit.js";
 import {
   FakeExerciseRepository,
   FakeUserRepository,
@@ -38,7 +39,26 @@ export interface TestAppOptions<
   logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
+  /** Spec 05.2 — defaults to the production `RATE_LIMITS`. */
+  rateLimits?: RateLimitConfig;
 }
+
+/** Spec 05.2 — for tests that legitimately send more requests than production allows. */
+export const GENEROUS_LIMITS: RateLimitConfig = {
+  windowMs: 60_000,
+  ip: 1_000_000,
+  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, me: 1_000_000 },
+  inflight: 1_000_000,
+};
+
+/** Spec 05.2 — `GENEROUS_LIMITS` with the given limits tightened. */
+export function limitsWith(
+  over: Partial<Omit<RateLimitConfig, "groups">> & { groups?: Partial<Record<WriteGroup, number>> },
+): RateLimitConfig {
+  return { ...GENEROUS_LIMITS, ...over, groups: { ...GENEROUS_LIMITS.groups, ...over.groups } };
+}
+
+export { RATE_LIMITS };
 
 export async function buildTestApp<
   R extends ExerciseRepository = FakeExerciseRepository,
@@ -65,6 +85,7 @@ export async function buildTestApp<
     userRepository: repo,
     exerciseRepository: exerciseRepo,
     workoutRepository: workoutRepo,
+    rateLimits: opts.rateLimits,
   };
   const app = await buildApp(deps);
   return { app, repo, exerciseRepo, workoutRepo };

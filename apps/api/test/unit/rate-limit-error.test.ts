@@ -1,11 +1,12 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyBaseLogger } from "fastify";
 import { pino } from "pino";
 import { describe, expect, it } from "vitest";
 import { RateLimitedError } from "../../src/errors/app-error.js";
 import { registerErrorContract } from "../../src/errors/contract.js";
 
 function appThrowing(err: Error, lines: Record<string, unknown>[]) {
-  const app = Fastify({ loggerInstance: pino({ level: "debug" }, { write: (s: string) => lines.push(JSON.parse(s)) }) });
+  const logger: FastifyBaseLogger = pino({ level: "debug" }, { write: (s: string) => lines.push(JSON.parse(s)) });
+  const app = Fastify({ loggerInstance: logger });
   registerErrorContract(app);
   app.get("/x", { schema: { hide: true } }, async () => {
     throw err;
