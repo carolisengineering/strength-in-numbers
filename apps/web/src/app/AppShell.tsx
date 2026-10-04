@@ -56,7 +56,7 @@ export function AppShell() {
               .join(" ")}
           >
             <Icon />
-            <span>{label}</span>
+            <span className={styles.navLabel}>{label}</span>
             {comingSoon ? (
               <span className={styles.navBadge} aria-label="coming soon">
                 ·
