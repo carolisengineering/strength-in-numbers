@@ -64,41 +64,88 @@ export function isPrivateAddress(ip: string): boolean {
   return PRIVATE.check(ip, family === 4 ? "ipv4" : "ipv6");
 }
 
-/**
- * Spec 05.2 §6.6 / D12 — Fastify `trustProxy` function for Render. Render fronts
- * every service with Cloudflare: a request reaches us from a Render proxy on a
- * private socket with `X-Forwarded-For: <client>, <cloudflare-edge>`, and
- * Cloudflare appends to any header the client sent. Trust the socket only if it
- * is private (Render's proxy — a public peer is the client itself), then exactly
- * one more hop (the edge); anything further left is client-supplied. A function,
- * not the hop count `2`: Fastify ≥ 5.12 ignores numeric `trustProxy` because a
- * count can't check the immediate peer.
- */
-export function trustRenderProxy(address: string, hop: number): boolean {
-  return hop === 0 ? isPrivateAddress(address) : hop === 1;
+// Cloudflare's published edge ranges (https://www.cloudflare.com/ips-v4 and
+// /ips-v6, fetched 2026-10-04). They change rarely; re-check them when the
+// post-deploy client-IP check (runbook D4.d) fails.
+const CLOUDFLARE_V4: readonly [string, number][] = [
+  ["173.245.48.0", 20],
+  ["103.21.244.0", 22],
+  ["103.22.200.0", 22],
+  ["103.31.4.0", 22],
+  ["141.101.64.0", 18],
+  ["108.162.192.0", 18],
+  ["190.93.240.0", 20],
+  ["188.114.96.0", 20],
+  ["197.234.240.0", 22],
+  ["198.41.128.0", 17],
+  ["162.158.0.0", 15],
+  ["104.16.0.0", 13],
+  ["104.24.0.0", 14],
+  ["172.64.0.0", 13],
+  ["131.0.72.0", 22],
+];
+const CLOUDFLARE_V6: readonly [string, number][] = [
+  ["2400:cb00::", 32],
+  ["2606:4700::", 32],
+  ["2803:f800::", 32],
+  ["2405:b500::", 32],
+  ["2405:8100::", 32],
+  ["2a06:98c0::", 29],
+  ["2c0f:f248::", 32],
+];
+const CLOUDFLARE = new BlockList();
+for (const [network, prefix] of CLOUDFLARE_V4) {
+  CLOUDFLARE.addSubnet(network, prefix, "ipv4");
+  CLOUDFLARE.addSubnet(`::ffff:${network}`, 96 + prefix, "ipv6");
+}
+for (const [network, prefix] of CLOUDFLARE_V6) CLOUDFLARE.addSubnet(network, prefix, "ipv6");
+
+function isCloudflareAddress(ip: string): boolean {
+  const family = isIP(ip);
+  if (family === 0) return false;
+  return CLOUDFLARE.check(ip, family === 4 ? "ipv4" : "ipv6");
+}
+
+/** A hop we may trust to have appended the next address: Render's internal proxies or a Cloudflare edge. */
+function isKnownProxy(ip: string): boolean {
+  return isPrivateAddress(ip) || isCloudflareAddress(ip);
 }
 
 /**
- * §6.6 — in production, a private `req.ip` means `trustProxy` no longer matches
- * the proxy chain (e.g. Spec 15's AWS move) and every user shares one L1 bucket.
- * The same holds when the request carried `X-Forwarded-For` but `req.ip` is still
- * the socket — the proxy's address wasn't trusted, whatever range it is in. Warn
- * once per process.
+ * Spec 05.2 §6.6 / D12 — Fastify `trustProxy` function for Render + Cloudflare.
+ * Trust by address, not by hop count: Fastify walks from the socket leftward
+ * through `X-Forwarded-For`, skipping every hop this returns true for, and
+ * `req.ip` is the first one it doesn't — the real client. The staging check
+ * (runbook D4.d, 2026-10-04) showed the chain is not a fixed "private socket +
+ * one hop" (that resolved to the Cloudflare edge), so any number of internal or
+ * Cloudflare hops is skipped. A client can only prepend entries; Cloudflare
+ * appends the address it saw, so a forged entry is never reached. A public,
+ * non-Cloudflare peer is itself the client and its header is ignored.
+ */
+export function trustRenderProxy(address: string): boolean {
+  return isKnownProxy(address);
+}
+
+/**
+ * §6.6 — warn once per process when a request carried `X-Forwarded-For` but
+ * no client came out of it: `req.ip` is still a known proxy address (the chain
+ * ran out — a new hop range we don't trust yet) or the socket itself (the
+ * header was ignored — an untrusted proxy). Either way every user would share
+ * one L1 bucket. Requests without the header (internal probes, health checks)
+ * never count, so they can't spend the single warning.
  */
 export function trustProxyTripwire(): (request: FastifyRequest) => void {
   let warned = false;
   return (request) => {
-    if (warned) return;
-    if (isPrivateAddress(request.ip)) {
-      warned = true;
-      request.log.warn({ ip: request.ip }, "trust_proxy_suspect");
-      return;
-    }
-    const forwarded = request.headers?.["x-forwarded-for"] !== undefined;
-    if (forwarded && request.ip === request.socket?.remoteAddress) {
-      warned = true;
-      request.log.warn({ ip: request.ip, forwardedIgnored: true }, "trust_proxy_suspect");
-    }
+    if (warned || request.headers?.["x-forwarded-for"] === undefined) return;
+    const reason = isKnownProxy(request.ip)
+      ? "proxy-address"
+      : request.ip === request.socket?.remoteAddress
+        ? "forwarded-ignored"
+        : null;
+    if (reason === null) return;
+    warned = true;
+    request.log.warn({ ip: request.ip, reason }, "trust_proxy_suspect");
   };
 }
 
