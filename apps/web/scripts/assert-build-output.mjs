@@ -10,6 +10,7 @@
  *   2. ships the self-hosted Auth0 worker at `/auth0-spa-js.worker.production.js`.
  *   3. bundled `@sin/core` (no unresolved / externalised import of it survives
  *      into the emitted JS).
+ *   4. carries the Spec 06.3 `sin-commit` meta stamp (`index.html`, check 1e).
  *
  * Any failure exits non-zero.
  */
@@ -77,6 +78,12 @@ for (const ref of refs) {
     );
   }
 }
+
+// ── 1e. the sin-commit stamp is present (Spec 06.3 AC8) ───────────────────
+assert(
+  /<meta name="sin-commit" content="(dev|[0-9a-f]{7,40})" \/>/i.test(html),
+  'index.html carries <meta name="sin-commit"> (dev or a hex commit)',
+);
 
 // ── 2. the self-hosted Auth0 refresh-token worker is present at the root ────
 assert(
