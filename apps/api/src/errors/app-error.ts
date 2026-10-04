@@ -270,3 +270,30 @@ export class IncompleteWorkingSetsError extends AppError {
     super(internal);
   }
 }
+
+export type RateLimitLayer = "ip" | "user-rate" | "user-inflight";
+
+/** Spec 05.2 §5 — which limit fired. Internal only: logged, never rendered. */
+export interface RateLimitSource {
+  readonly layer: RateLimitLayer;
+  readonly group?: string;
+}
+
+/** Spec 05.2 §5 — one of the three limit layers rejected the request. The
+ * error contract sets `Retry-After` from `retryAfterSeconds`. */
+export class RateLimitedError extends AppError {
+  readonly status = 429;
+  readonly slug = "rate-limited";
+  readonly title = "Too many requests";
+  readonly publicDetail: string;
+  readonly retryAfterSeconds: number;
+  readonly source: RateLimitSource;
+
+  constructor(retryAfterSeconds = 1, source: RateLimitSource = { layer: "ip" }) {
+    const seconds = Math.max(1, Math.ceil(retryAfterSeconds));
+    super(`rate limited (${source.layer}${source.group ? `:${source.group}` : ""})`);
+    this.retryAfterSeconds = seconds;
+    this.source = source;
+    this.publicDetail = `Too many requests — retry after ${seconds} seconds.`;
+  }
+}

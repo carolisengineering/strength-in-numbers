@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { NotFoundError, SyncTokenExpiredError } from "./app-error.js";
+import { NotFoundError, RateLimitedError, SyncTokenExpiredError } from "./app-error.js";
 import { problemResponse } from "./problem.js";
 
 /**
@@ -24,6 +24,14 @@ export function registerErrorContract(app: FastifyInstance): void {
       // warn + slug, so a real restore / client bug stands out from routine 4xx
       // (scoped to this class; the wider severity fix is BL-5).
       request.log.warn({ err, slug: err.slug }, "sync token expired");
+    } else if (err instanceof RateLimitedError) {
+      // Spec 05.2 AC9 / AC16: expected traffic shaping, not a server fault.
+      reply.header("retry-after", String(err.retryAfterSeconds));
+      const { layer, group } = err.source;
+      request.log.warn(
+        layer === "ip" ? { layer, ip: request.ip } : { layer, group, userId: request.user?.id },
+        "rate_limited",
+      );
     } else {
       // Internal reason to the logs; the client only ever sees the generic body.
       request.log.error({ err }, "request error");
