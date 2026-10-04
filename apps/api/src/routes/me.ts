@@ -57,7 +57,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
 
   r.patch(
     "/me",
-    { schema: { body: UpdateMeSchema, response: { 200: MeSchema } }, config: { problems: [] } },
+    { schema: { body: UpdateMeSchema, response: { 200: MeSchema } }, config: { problems: [], writeGroup: "me" } },
     async (request) => {
       const body = request.body;
       const patch: ProfilePatch = {};

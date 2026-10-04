@@ -57,7 +57,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
         body: CreateSetSchema,
         response: { 201: SetEntrySchema, 200: SetEntrySchema },
       },
-      config: { problems: [NotFoundError, WorkoutFinishedError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -90,7 +90,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
     "/sets/:id",
     {
       schema: { params: idParams, body: UpdateSetSchema, response: { 200: SetEntrySchema } },
-      config: { problems: [NotFoundError, WorkoutFinishedError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
     },
     async (request) => {
       const updated = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
@@ -102,7 +102,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
     "/sets/:id",
     {
       schema: { params: idParams, response: { 204: z.undefined() } },
-      config: { problems: [NotFoundError, WorkoutFinishedError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
     },
     async (request, reply) => {
       await deps.workoutRepository.deleteSet(request.user!.id, request.params.id);

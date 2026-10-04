@@ -99,7 +99,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts",
     {
       schema: { body: CreateWorkoutSchema, response: { 201: WorkoutSchema, 200: WorkoutSchema } },
-      config: { problems: [WorkoutInProgressExistsError] },
+      config: { problems: [WorkoutInProgressExistsError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -150,7 +150,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts/:id",
     {
       schema: { params: workoutIdParams, body: UpdateWorkoutSchema, response: { 200: WorkoutSchema } },
-      config: { problems: [NotFoundError, WorkoutFinishedError, IncompleteWorkingSetsError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError, IncompleteWorkingSetsError], writeGroup: "workouts" },
     },
     async (request) => {
       const actingUserId = request.user!.id;
@@ -178,7 +178,10 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
 
   r.delete(
     "/workouts/:id",
-    { schema: { params: workoutIdParams, response: { 204: z.undefined() } }, config: { problems: [NotFoundError] } },
+    {
+      schema: { params: workoutIdParams, response: { 204: z.undefined() } },
+      config: { problems: [NotFoundError], writeGroup: "workouts" },
+    },
     async (request, reply) => {
       const actingUserId = request.user!.id;
       const { wasFinished, exerciseCount } = await deps.workoutRepository.deleteWorkout(
@@ -207,7 +210,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: AddWorkoutExerciseSchema,
         response: { 201: WorkoutExerciseSchema },
       },
-      config: { problems: [NotFoundError, WorkoutFinishedError, ExerciseRetiredError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError, ExerciseRetiredError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -235,7 +238,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: UpdateWorkoutExerciseSchema,
         response: { 200: WorkoutExerciseSchema },
       },
-      config: { problems: [NotFoundError, WorkoutFinishedError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
     },
     async (request) => {
       const updated = await deps.workoutRepository.updateWorkoutExercise(
@@ -251,7 +254,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workout-exercises/:id",
     {
       schema: { params: workoutExerciseIdParams, response: { 204: z.undefined() } },
-      config: { problems: [NotFoundError, WorkoutFinishedError] },
+      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       await deps.workoutRepository.deleteWorkoutExercise(request.user!.id, request.params.id);

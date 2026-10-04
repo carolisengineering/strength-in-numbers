@@ -121,7 +121,7 @@ export function registerExerciseRoutes(
     "/exercises",
     {
       schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } },
-      config: { problems: [CustomExerciseLimitError] },
+      config: { problems: [CustomExerciseLimitError], writeGroup: "exercises" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -146,7 +146,7 @@ export function registerExerciseRoutes(
         body: UpdateExerciseSchema,
         response: { 200: ExerciseSchema },
       },
-      config: { problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError] },
+      config: { problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError], writeGroup: "exercises" },
     },
     async (request) => {
       const actingUserId = request.user!.id;
@@ -182,6 +182,7 @@ export function registerExerciseRoutes(
       },
       config: {
         problems: [NotFoundError, ExerciseAlreadyOwnedError, ExerciseRetiredError, CustomExerciseLimitError],
+        writeGroup: "exercises",
       },
     },
     async (request, reply) => {
@@ -208,7 +209,7 @@ export function registerExerciseRoutes(
     "/exercises/:id",
     {
       schema: { params: exerciseIdParams, response: { 204: z.undefined() } },
-      config: { problems: [ExerciseImmutableError, NotFoundError] },
+      config: { problems: [ExerciseImmutableError, NotFoundError], writeGroup: "exercises" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;

@@ -124,7 +124,49 @@ export async function registerRateLimits(
     await enforce(ipLimiter, request, { layer: "ip" });
   });
 
+  const groupLimiters = Object.fromEntries(
+    WRITE_GROUPS.map((group) => [
+      group,
+      // Each createRateLimit call gets its own child store (AC4); every route in
+      // the group calls this same limiter (AC3).
+      app.createRateLimit({
+        max: config.groups[group],
+        timeWindow: config.windowMs,
+        keyGenerator: (req) => req.user!.id,
+      }),
+    ]),
+  ) as Record<WriteGroup, Limiter>;
+
   return {
-    attachWriteLimits: () => {},
+    attachWriteLimits(v1) {
+      // Structural, like Spec 03.0's response-schema check: a /v1 write route
+      // that names no group fails app assembly instead of shipping unlimited.
+      v1.addHook("onRoute", (route) => {
+        const methods = [route.method].flat();
+        const group = route.config?.writeGroup;
+        if (methods.every((m) => READ_METHODS.has(m))) {
+          if (group !== undefined) {
+            throw new Error(
+              `Route ${methods.join(",")} ${route.url} is a read route but declares config.writeGroup (Spec 05.2 §6.1).`,
+            );
+          }
+          return;
+        }
+        if (group === undefined) {
+          throw new Error(
+            `Route ${methods.join(",")} ${route.url} is a write route with no config.writeGroup. ` +
+              "Every /v1 write route must name its rate-limit group (Spec 05.2 §6.1, §6.2).",
+          );
+        }
+        const limiter = groupLimiters[group];
+        // preValidation: after the auth onRequest hook (request.user is set) but
+        // before body validation, so a malformed-body flood still counts.
+        const l2 = async (request: FastifyRequest) => enforce(limiter, request, { layer: "user-rate", group });
+        const existing = route.preValidation === undefined ? [] : [route.preValidation].flat();
+        route.preValidation = [...existing, l2] as typeof route.preValidation;
+      });
+    },
   };
 }
+
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
