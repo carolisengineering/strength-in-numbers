@@ -13,6 +13,9 @@ describe("§6.6 — isPrivateAddress", () => {
     ["::1", true],
     ["fd12:3456::1", true],
     ["::ffff:10.0.0.1", true],
+    ["100.64.1.2", true], // CGNAT / shared address space (RFC 6598)
+    ["100.127.255.1", true],
+    ["100.128.0.1", false],
     ["172.32.0.1", false],
     ["203.0.113.9", false],
     ["2001:db8::1", false],
@@ -32,6 +35,24 @@ describe("§6.6 — trustProxyTripwire warns once on a private req.ip", () => {
     trip(req("10.0.0.6"));
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith({ ip: "10.0.0.5" }, "trust_proxy_suspect");
+  });
+  it("Final review — warns once when X-Forwarded-For was sent but ignored (req.ip is the socket)", () => {
+    const warn = vi.fn();
+    const req = (ip: string, socket: string, xff?: string) =>
+      ({
+        ip,
+        socket: { remoteAddress: socket },
+        headers: xff === undefined ? {} : { "x-forwarded-for": xff },
+        log: { warn },
+      }) as unknown as FastifyRequest;
+    const trip = trustProxyTripwire();
+    trip(req("198.51.100.7", "203.0.113.50")); // no header: a direct client, fine
+    trip(req("198.51.100.7", "10.0.0.5", "198.51.100.7, 172.70.1.1")); // header honoured
+    expect(warn).not.toHaveBeenCalled();
+    trip(req("198.18.0.9", "198.18.0.9", "198.51.100.7, 172.70.1.1")); // header ignored
+    trip(req("198.18.0.9", "198.18.0.9", "198.51.100.8, 172.70.1.1"));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ ip: "198.18.0.9", forwardedIgnored: true }, "trust_proxy_suspect");
   });
 });
 

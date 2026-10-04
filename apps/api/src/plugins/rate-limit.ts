@@ -37,9 +37,16 @@ export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   inflight: 4,
 });
 
-const PRIVATE_V4 = [/^10\./, /^127\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^169\.254\./];
+const PRIVATE_V4 = [
+  /^10\./,
+  /^127\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // 100.64.0.0/10 shared / CGNAT space
+];
 
-/** RFC 1918 / loopback / link-local / ULA, including IPv4-mapped IPv6. */
+/** RFC 1918 / RFC 6598 shared / loopback / link-local / ULA, including IPv4-mapped IPv6. */
 export function isPrivateAddress(ip: string): boolean {
   const lower = ip.toLowerCase();
   const v4 = lower.startsWith("::ffff:") ? lower.slice(7) : lower;
@@ -64,14 +71,24 @@ export function trustRenderProxy(address: string, hop: number): boolean {
 /**
  * §6.6 — in production, a private `req.ip` means `trustProxy` no longer matches
  * the proxy chain (e.g. Spec 15's AWS move) and every user shares one L1 bucket.
- * Warn once per process.
+ * The same holds when the request carried `X-Forwarded-For` but `req.ip` is still
+ * the socket — the proxy's address wasn't trusted, whatever range it is in. Warn
+ * once per process.
  */
 export function trustProxyTripwire(): (request: FastifyRequest) => void {
   let warned = false;
   return (request) => {
-    if (warned || !isPrivateAddress(request.ip)) return;
-    warned = true;
-    request.log.warn({ ip: request.ip }, "trust_proxy_suspect");
+    if (warned) return;
+    if (isPrivateAddress(request.ip)) {
+      warned = true;
+      request.log.warn({ ip: request.ip }, "trust_proxy_suspect");
+      return;
+    }
+    const forwarded = request.headers?.["x-forwarded-for"] !== undefined;
+    if (forwarded && request.ip === request.socket?.remoteAddress) {
+      warned = true;
+      request.log.warn({ ip: request.ip, forwardedIgnored: true }, "trust_proxy_suspect");
+    }
   };
 }
 
