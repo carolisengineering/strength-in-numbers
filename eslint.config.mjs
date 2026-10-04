@@ -80,9 +80,9 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "warn",
     },
   },
-  // apps/web config files run in Node at build/test time.
+  // apps/web config files and the Playwright suite run in Node (Spec 06.3).
   {
-    files: ["apps/web/*.{ts,mts,cts}"],
+    files: ["apps/web/*.{ts,mts,cts}", "apps/web/e2e/**/*.ts"],
     languageOptions: { globals: { ...nodeGlobals, importMeta: "readonly" } },
   },
 );
