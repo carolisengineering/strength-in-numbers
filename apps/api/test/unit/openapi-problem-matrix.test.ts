@@ -20,6 +20,8 @@ type Shape = "none" | "input" | "body";
 const CENTRAL: Slugs = {
   401: ["unauthenticated", "invalid-token"],
   403: ["account-deleted"],
+  // Spec 05.2 AC13: every /v1 operation can be rate limited.
+  429: ["rate-limited"],
   500: ["internal"],
   503: ["auth-unavailable"],
 };

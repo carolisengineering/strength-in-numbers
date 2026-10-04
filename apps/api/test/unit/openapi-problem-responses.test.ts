@@ -27,7 +27,7 @@ const byStatus = (groups: ProblemGroup[] | undefined) =>
   Object.fromEntries((groups ?? []).map((g) => [g.status, g.types]));
 
 describe("#28 — problemGroupsFor: which errors a route documents", () => {
-  it("gives every /v1 operation 401 / 403 / 500 / 503, and nothing else for a bare GET", () => {
+  it("gives every /v1 operation 401 / 403 / 429 / 500 / 503, and nothing else for a bare GET", () => {
     const groups = problemGroupsFor({
       method: "GET",
       url: "/v1/me",
@@ -37,6 +37,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
     expect(byStatus(groups)).toEqual({
       401: [P("unauthenticated"), P("invalid-token")],
       403: [P("account-deleted")],
+      429: [P("rate-limited")],
       500: [P("internal")],
       503: [P("auth-unavailable")],
     });

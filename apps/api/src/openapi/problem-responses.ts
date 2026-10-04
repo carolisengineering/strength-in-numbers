@@ -6,6 +6,7 @@ import {
   InternalError,
   InvalidTokenError,
   PayloadTooLargeError,
+  RateLimitedError,
   UnauthenticatedError,
   UnsupportedMediaTypeError,
   ValidationError,
@@ -78,6 +79,8 @@ const EVERY_V1_OPERATION: readonly ProblemDescriptor[] = [
   new AccountDeletedError(),
   new InternalError(),
   new AuthUnavailableError("openapi placeholder"),
+  // Spec 05.2: every /v1 route is behind the per-IP limit, writes also per-user.
+  new RateLimitedError(),
 ].map(descriptorOf);
 const HAS_INPUT: readonly ProblemDescriptor[] = [new ValidationError([])].map(descriptorOf);
 const HAS_BODY: readonly ProblemDescriptor[] = [
