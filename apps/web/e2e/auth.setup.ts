@@ -1,7 +1,7 @@
 import { expect, test as setup } from "@playwright/test";
 
 import { AUTH_STATE, E2E } from "./env";
-import { NAMES, warmApi } from "./helpers";
+import { NAMES, raceLoginOutcome, warmApi } from "./helpers";
 
 /**
  * Spec 06.3 §6.1 — drive the real Universal Login once per run and save the
@@ -26,10 +26,7 @@ setup("log in through Auth0 Universal Login", async ({ page, request }) => {
 
   // Bad credentials leave Universal Login showing an error: fail with it, not a 60 s timeout.
   const loginError = page.getByText(/wrong (email|username) or password|blocked|too many/i);
-  const outcome = await Promise.race([
-    page.waitForURL(workouts, { timeout: 60_000 }).then(() => "in" as const),
-    loginError.waitFor({ timeout: 60_000 }).then(() => "rejected" as const),
-  ]);
+  const outcome = await raceLoginOutcome(page, workouts, loginError, 60_000);
   if (outcome === "rejected") {
     throw new Error(`e2e: Auth0 rejected the test user: ${await loginError.first().innerText()}`);
   }

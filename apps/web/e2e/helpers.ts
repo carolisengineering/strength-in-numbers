@@ -193,6 +193,25 @@ export async function pendingOutboxOps(page: Page): Promise<number> {
   }, OUTBOX_KEY);
 }
 
+/**
+ * Universal Login either lands back on the app ("in") or shows an error
+ * ("rejected"). The losing wait keeps running until its timeout or until the
+ * page closes, then rejects; it is handled here so that rejection is never
+ * left unhandled. If both time out, the race rejects with the first error.
+ */
+export async function raceLoginOutcome(
+  page: Page,
+  url: string | RegExp,
+  loginError: Locator,
+  timeout: number,
+): Promise<"in" | "rejected"> {
+  const landed = page.waitForURL(url, { timeout }).then(() => "in" as const);
+  const refused = loginError.waitFor({ timeout }).then(() => "rejected" as const);
+  landed.catch(() => {});
+  refused.catch(() => {});
+  return Promise.race([landed, refused]);
+}
+
 /** Spec 06.3 §6.2 — wake the free-plan API before the first UI action. */
 export async function warmApi(request: APIRequestContext, apiUrl: string | undefined): Promise<void> {
   if (!apiUrl) {

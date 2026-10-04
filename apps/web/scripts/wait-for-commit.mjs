@@ -33,10 +33,24 @@ function requireEnv(name) {
   return v;
 }
 
+function git(args) {
+  execFileSync("git", args, { stdio: "ignore" });
+}
+
 function isNewerThanWanted(deployed) {
   if (!/^[0-9a-f]{40}$/i.test(deployed)) return false;
   try {
-    execFileSync("git", ["merge-base", "--is-ancestor", want, deployed], { stdio: "ignore" });
+    git(["cat-file", "-e", `${deployed}^{commit}`]);
+  } catch {
+    // Pushed after this job's checkout: fetch it so the ancestry check can see it.
+    try {
+      git(["fetch", "--quiet", "--no-tags", "origin", deployed]);
+    } catch {
+      return false; // not on origin (or no network): not provably newer
+    }
+  }
+  try {
+    git(["merge-base", "--is-ancestor", want, deployed]);
     return true;
   } catch {
     return false; // not an ancestor, or the commit isn't in the local history
