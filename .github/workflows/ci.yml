@@ -132,9 +132,76 @@ jobs:
           AUTH0_M2M_CLIENT_ID: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_ID }}
           AUTH0_M2M_CLIENT_SECRET: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_SECRET }}
           AUTH0_M2M_AUDIENCE: https://api.strengthinnumbers.app
-      # TODO(Track B): once the Render `si-web-staging` static site exists, add
-      # the web post-deploy smoke here (Spec 04.0 AC15/AC17):
-      #   - run: node apps/web/scripts/smoke.mjs
-      #     env:
-      #       WEB_SMOKE_BASE_URL: ${{ vars.STAGING_WEB_BASE_URL }}
-      # Left out until then so merges to main don't fail against a nonexistent host.
+      # Spec 04.0 AC15/AC17 — the static site serves the CSP + SPA rewrite.
+      # Enabled by Spec 06.3 (the site exists; verified 2026-10-04). The repo
+      # variable overrides the known staging origin.
+      - run: node apps/web/scripts/smoke.mjs
+        env:
+          WEB_SMOKE_BASE_URL: ${{ vars.STAGING_WEB_BASE_URL || 'https://si-web-staging.onrender.com' }}
+
+  e2e:
+    name: M1 browser smoke (staging, Spec 06.3)
+    needs: [smoke]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One Auth0 test user owns one active workout: never run two at once (§6.2).
+    concurrency:
+      group: e2e-staging
+      cancel-in-progress: false
+    env:
+      E2E_BASE_URL: ${{ vars.STAGING_WEB_BASE_URL || 'https://si-web-staging.onrender.com' }}
+      E2E_API_URL: ${{ vars.STAGING_BASE_URL }}
+      E2E_AUTH0_USERNAME: ${{ secrets.E2E_AUTH0_USERNAME }}
+      E2E_AUTH0_PASSWORD: ${{ secrets.E2E_AUTH0_PASSWORD }}
+    steps:
+      # D10 — until the owner creates the test user and its secrets, skip with
+      # a notice instead of turning main red.
+      - id: creds
+        run: |
+          if [ -z "$E2E_AUTH0_USERNAME" ] || [ -z "$E2E_AUTH0_PASSWORD" ]; then
+            echo "::notice title=e2e skipped::E2E_AUTH0_USERNAME / E2E_AUTH0_PASSWORD are not set — see docs/runbooks/m1-browser-smoke.md"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.creds.outputs.ready == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.creds.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+      # §6.3 — don't test the previous bundle: wait for Render to serve this SHA.
+      - if: steps.creds.outputs.ready == 'true'
+        run: node apps/web/scripts/wait-for-commit.mjs
+        env:
+          WAIT_BASE_URL: ${{ env.E2E_BASE_URL }}
+          WAIT_COMMIT: ${{ github.sha }}
+      - if: steps.creds.outputs.ready == 'true'
+        id: pw-version
+        run: echo "version=$(pnpm --filter @sin/web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
+      # --with-deps needs apt even on a cache hit; fast when the browser is cached.
+      - if: steps.creds.outputs.ready == 'true'
+        run: pnpm --filter @sin/web exec playwright install --with-deps chromium
+      - if: steps.creds.outputs.ready == 'true'
+        run: pnpm --filter @sin/web run e2e
+      # Failure-only, and never apps/web/e2e/.auth (a live session cookie, §7).
+      - if: failure() && steps.creds.outputs.ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 7

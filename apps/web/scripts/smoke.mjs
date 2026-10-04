@@ -11,9 +11,8 @@
  *   2. GET <web>/app  (cold, a protected deep link, no auth) → 200 text/html
  *      containing `<div id="root">` — the SPA rewrite serves index.html (AC17).
  *
- * NOT wired into CI yet — `si-web-staging` does not exist until the Render site
- * is created post-merge (Track B). See the TODO(Track B) marker in
- * .github/workflows/ci.yml.
+ * Run by the post-deploy `smoke` job in .github/workflows/ci.yml (enabled by
+ * Spec 06.3).
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
