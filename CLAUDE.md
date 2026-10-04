@@ -4,6 +4,10 @@ Workout-logging + progress-tracking web app. Responsive web only for v1 (mobile-
 
 ## Layout (pnpm workspaces, Node 22)
 
+The root `.npmrc` pins `use-node-version=22.23.3`: every `pnpm` command in this repo runs on that
+Node regardless of the shell's `node` (pnpm downloads it once). Use `pnpm run …` / `pnpm exec …`,
+never `npx` — `npx prisma` fetches the latest Prisma instead of the repo's pinned one.
+
 - `apps/api` — Fastify + Prisma + TypeScript backend (`@sin/api`)
 - `packages/core` — framework-agnostic domain code (`@sin/core`); CI purity check forbids
   React / DOM / Node-only imports
@@ -23,6 +27,8 @@ pnpm --filter @sin/api run test:unit           # apps/api/test/unit
 RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers Postgres
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
+DATABASE_URL='<url>' pnpm run db:migrate:status   # repo-pinned Prisma; for Neon use the exact DATABASE_URL from Render (runbook B4)
+DATABASE_URL='<url>' pnpm run db:migrate:deploy   # manual release step — migrations never run on boot
 pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
 pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api / src/auth >=90% gates
 pnpm --filter @sin/web run e2e                  # Spec 06.3 browser smoke vs staging; needs E2E_BASE_URL + E2E_AUTH0_* (docs/runbooks/m1-browser-smoke.md)
