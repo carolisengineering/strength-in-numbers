@@ -10,6 +10,7 @@ import {
   InvalidTokenError,
   SyncTokenExpiredError,
 } from "../../src/errors/app-error.js";
+import { strongEtag } from "../../src/routes/http-cache.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 
@@ -225,6 +226,63 @@ describe("AC9 (03.1 AC7) — GET /v1/exercises ETag / 304 / caching under since/
       headers: { ...BEARER, "if-none-match": full.headers.etag as string },
     });
     expect(replay.statusCode).toBe(200);
+  });
+
+  describe("#20 — the ETag is the hash of the exact `exercises` bytes on the wire", () => {
+    // Every DTO field populated, so a `toDto` key-order drift (or a key the schema
+    // strips) in any field makes the hashed bytes differ from the wire bytes.
+    const OWNER = "0190a1b2-c3d4-7e5f-8a9b-000000000001";
+    const rows = () => {
+      const global = makeExerciseRecord({
+        name: "Bench Press",
+        catalogKey: "bench-press",
+        secondaryMuscleIds: ["triceps", "front-delts"],
+      });
+      return [
+        global,
+        makeExerciseRecord({
+          name: "My Bench",
+          catalogKey: null,
+          ownerUserId: OWNER,
+          forkedFromExerciseId: global.id,
+          secondaryMuscleIds: ["front-delts"],
+          equipmentId: null,
+          modality: "bodyweight_reps",
+          updatedAt: new Date("2026-09-02T11:30:15.123Z"),
+        }),
+      ];
+    };
+
+    /** The `exercises` array exactly as sent, cut from the raw body and checked to be in it. */
+    function wireArray(body: string): string {
+      const array = JSON.stringify((JSON.parse(body) as { exercises: unknown }).exercises);
+      expect(body).toContain(`"exercises":${array}`);
+      return array;
+    }
+
+    it("full pull: ETag = strongEtag(\"full\", wire bytes)", async () => {
+      const exerciseRepo = new FakeExerciseRepository();
+      exerciseRepo.catalog = rows();
+      const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+      const res = await app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers.etag).toBe(strongEtag("full", wireArray(res.body)));
+    });
+
+    it("delta (with a retired row): ETag = strongEtag(<since>, wire bytes)", async () => {
+      const exerciseRepo = new FakeExerciseRepository();
+      const [global, custom] = rows();
+      exerciseRepo.delta = [{ ...global!, isActive: false }, custom!];
+      const { app } = await buildTestApp({ exerciseRepository: exerciseRepo });
+
+      const res = await app.inject({ method: "GET", url: "/v1/exercises?since=1.736", headers: BEARER });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().exercises).toHaveLength(2);
+      expect(res.headers.etag).toBe(strongEtag("1.736", wireArray(res.body)));
+    });
   });
 
   it("HEAD /v1/exercises returns the same ETag + cache headers, no body", async () => {
