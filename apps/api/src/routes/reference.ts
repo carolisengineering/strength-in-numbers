@@ -66,7 +66,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/muscle-groups",
-    { schema: { response: { 200: MuscleGroupsResponse, 304: z.undefined() } }, config: { problems: [] } },
+    { schema: { response: { 200: MuscleGroupsResponse, 304: z.undefined() } }, config: { published: true, problems: [] } },
     async (request, reply) => {
       const muscleGroups = (
         await deps.exerciseRepository.listMuscleGroups()
@@ -79,7 +79,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/equipment",
-    { schema: { response: { 200: EquipmentResponse, 304: z.undefined() } }, config: { problems: [] } },
+    { schema: { response: { 200: EquipmentResponse, 304: z.undefined() } }, config: { published: true, problems: [] } },
     async (request, reply) => {
       const equipment = (await deps.exerciseRepository.listEquipment()).map(
         toDto,

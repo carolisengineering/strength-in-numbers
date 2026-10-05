@@ -43,8 +43,9 @@ export type ProblemClass = new () => AppError;
 declare module "fastify" {
   interface FastifyContextConfig {
     /** #28 — documentation-only: the domain `AppError`s this route's handler can
-     * raise. `[]` when none. Required on every documented `/v1` route; the auth,
-     * 500 and schema-shape errors are added centrally, so do not list them. */
+     * raise. `[]` when none. Required on every published (`config.published`)
+     * route; the auth, 500 and schema-shape errors are added centrally, so do
+     * not list them. */
     problems?: ReadonlyArray<ProblemClass>;
   }
 }
@@ -99,7 +100,7 @@ export interface ProblemRouteLike {
     querystring?: unknown;
     [key: string]: unknown;
   };
-  config?: { problems?: ReadonlyArray<ProblemClass> };
+  config?: { problems?: ReadonlyArray<ProblemClass>; published?: boolean };
 }
 
 /** Methods whose request body Fastify's content-type parser reads. */
@@ -108,12 +109,12 @@ const BODY_PARSING_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH
 const methodsOf = (route: ProblemRouteLike): readonly string[] =>
   typeof route.method === "string" ? [route.method] : route.method;
 
-/** A public `/v1` operation: `/v1/…`, not hidden, and not a body-less
+/** A public `/v1` operation: `config.published` (#10 — which `assertPublication`
+ * already restricts to `/v1/…` and to non-hidden routes), and not a body-less
  * HEAD / OPTIONS twin (swagger calls `transform` for those too, and before
  * its own hide check). */
 function isDocumentedV1(route: ProblemRouteLike): boolean {
-  if (!route.url.startsWith("/v1/")) return false;
-  if (route.schema?.hide === true) return false;
+  if (route.config?.published !== true) return false;
   return !methodsOf(route).every((m) => m === "HEAD" || m === "OPTIONS");
 }
 
