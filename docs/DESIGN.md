@@ -565,30 +565,41 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   `fastify-type-provider-zod` wires them into Fastify route validation and
   handler typing, and `@fastify/swagger` **emits** an OpenAPI 3.1 document from
   them. The document is published (unauthenticated) at `/openapi.json` as the
-  external contract — **public `/v1` surface only** (probe/health routes hidden,
-  no internal host names) — and is **drift-checked in CI** (re-emit + `git
-  diff`). No client codegen — consumer types come from `z.infer` on the shared
-  schemas. The pipeline + the `/v1/me` migration onto it is Spec 03.0; Spec 02's
-  `MeSchema` is the first such DTO and the pattern the rest copy.
-  Error responses are documented too (issue #28): every `/v1` operation lists
-  each problem+json status it can return, `$ref`ing a shared
+  external contract — **public `/v1` surface only**, by **opt-in**: a route
+  appears only with `config.published: true` (issue #10; everything else,
+  including probe/health routes, is hidden by default), no internal host names —
+  and is **drift-checked in CI** (re-emit + `git diff`). No client codegen — 
+  consumer types come from `z.infer` on the shared schemas. The pipeline + the 
+  `/v1/me` migration onto it is Spec 03.0; Spec 02' `MeSchema` is the first such 
+  DTO and the pattern the rest copy. Error responses are documented too (issue #28): 
+  every `/v1` operation lists each problem+json status it can return, `$ref`ing a shared
   `components.schemas.Problem`, with `type` narrowed to the exact problem URLs
   that status carries on that operation. Routes declare their domain errors in
   `config.problems` (documentation-only; `[]` when none); auth (401 / 403
   `account-deleted` / 503), 500, and the request-shape errors (422 for
   params / querystring; 413 / 415 / 422 for any method Fastify parses a body
   on — POST, PUT, PATCH, DELETE — whether or not the route declares one) are
-  added centrally by `src/openapi/problem-responses.ts`. A documented `/v1`
-  route with no `config.problems` fails boot.
+  added centrally by `src/openapi/problem-responses.ts`. A published route with
+  no `config.problems` fails boot, as does a published route outside `/v1/`.
 - **Response schemas are field allowlists:** the Zod serializer strips unknown
   keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
   The allowlist is over **keys**, not value formats: a response schema asserts
   which fields appear and their type, not strict formats (`z.email()`, regexes,
   `Intl` checks) on values the server persisted from a trusted source. Format
   enforcement lives at ingress (Spec 03.0 P7).
-- **Per-user cacheable reads** (`GET /v1/exercises`) send `Cache-Control:
-  private, no-cache` + `Vary: Authorization` — a strong `ETag` over per-caller content
-  must never be reused across users by a shared cache.
+- **HTTP caching (`/v1`)** — one policy, set by a `/v1`-scope `onSend` hook
+  (`plugins/cache-policy.ts`), never by hand in a handler (issues #17, #18):
+  every `/v1` response is `Cache-Control: no-store`, except a `GET` that serves
+  a strong `ETag` and declares `config.httpCache: "revalidate"` (`/v1/exercises`
+  and the reference tables), which gets `private, no-cache`; any status ≥ 400 is
+  `no-store` regardless. `private` is what keeps per-caller content out of every
+  shared cache; there is **no** `Vary: Authorization` — under `no-cache` the
+  browser reuses a stored body only after a `304` to *this* caller's
+  `If-None-Match`, i.e. when the bytes are exactly this caller's response, and
+  `Vary` only cost a full re-download every time the in-memory token rotated —
+  live for the SPA's reference-table queries, which use the browser HTTP cache.
+  (The SPA's catalog bypasses the HTTP cache: its own store + `since` /
+  `syncToken`, fetched `no-store` — Spec 06.0 AC15, §5.2.)
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.

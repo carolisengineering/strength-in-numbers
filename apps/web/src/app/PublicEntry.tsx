@@ -1,9 +1,10 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useSearchParams } from "react-router";
 
 import { hasAuth0Session } from "../auth/authHint";
 import { login } from "../auth/login";
+import { markResumeAttempted, resumeAttempted } from "../auth/resumeAttempt";
 import { Landing } from "../screens/Landing";
 import { ResumingSession } from "../screens/ResumingSession";
 
@@ -35,7 +36,9 @@ function returnToOf(state: unknown): string {
  * SSO session is gone (cancel at Universal Login → `<AuthError/>` → back to `/` →
  * redirect again). `AuthError` / `ResumingSession` send the user to `/?signin`,
  * which suppresses the auto-resume for that visit and shows `<Landing/>` with its
- * explicit "Log in" control.
+ * explicit "Log in" control. A raw browser Back from Universal Login lands on bare
+ * `/` instead, so the resume also marks its history entry first
+ * (`resumeAttempted`, #14): coming back to that entry shows `<Landing/>` too.
  */
 export function PublicEntry() {
   const { isAuthenticated, loginWithRedirect } = useAuth0();
@@ -43,7 +46,22 @@ export function PublicEntry() {
   const [searchParams] = useSearchParams();
   const returnTo = returnToOf(location.state);
 
-  const resumeSuppressed = searchParams.has("signin");
+  // Did this history entry already send a resume to Auth0 (#14)? Read when the
+  // page arrives on the entry — mount (a Back or reload loads it fresh) or a
+  // back/forward-cache restore, which brings the page back exactly as it left
+  // (on `<ResumingSession/>`, `redirected` set) — never on an ordinary
+  // re-render: our own mark, made just before the redirect, must not flip the
+  // screen to `<Landing/>` while that redirect is still leaving.
+  const [alreadyAttempted, setAlreadyAttempted] = useState(() => resumeAttempted());
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setAlreadyAttempted(resumeAttempted());
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
+  const resumeSuppressed = searchParams.has("signin") || alreadyAttempted;
   const resuming =
     !isAuthenticated && !resumeSuppressed && hasAuth0Session();
   const redirected = useRef(false);
@@ -51,6 +69,7 @@ export function PublicEntry() {
   useEffect(() => {
     if (resuming && !redirected.current) {
       redirected.current = true;
+      markResumeAttempted();
       login(loginWithRedirect, returnTo);
     }
   }, [resuming, returnTo, loginWithRedirect]);

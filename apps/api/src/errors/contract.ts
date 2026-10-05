@@ -19,9 +19,9 @@ export function registerErrorContract(app: FastifyInstance): void {
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof SyncTokenExpiredError) {
-      // Spec 03.3 AC8: a 410 is heuristically cacheable; a cached one would keep
-      // a healed client failing.
-      reply.header("cache-control", "no-store");
+      // Spec 03.3 AC8's `Cache-Control: no-store` (a cached 410 would keep a
+      // healed client failing) comes from the /v1 cache policy, like every /v1
+      // error (plugins/cache-policy.ts, #18).
       // warn + slug, so a real restore / client bug stands out from routine 4xx
       // (scoped to this class; the wider severity fix is BL-5).
       request.log.warn({ err, slug: err.slug }, "sync token expired");
@@ -30,7 +30,9 @@ export function registerErrorContract(app: FastifyInstance): void {
       reply.header("retry-after", String(err.retryAfterSeconds));
       const { layer, group } = err.source;
       request.log.warn(
-        layer === "ip" ? { layer, ip: clientAddress(request) } : { layer, group, userId: request.user?.id },
+        layer === "ip" || layer === "ip-docs"
+          ? { layer, ip: clientAddress(request) }
+          : { layer, group, userId: request.user?.id },
         "rate_limited",
       );
     } else {

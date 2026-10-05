@@ -30,11 +30,12 @@ const DTO_KEYS = [
 ].sort();
 
 
-/** `Vary` must carry the CORS plugin's `Origin` *and* our `Authorization`. */
+/** #17: `Vary` keeps the CORS plugin's `Origin` and carries no `Authorization`
+ * (`private` + a per-caller content `ETag` already keep one caller's body from another). */
 function expectVaryTokens(vary: unknown): void {
   const tokens = String(vary).split(",").map((t) => t.trim().toLowerCase());
   expect(tokens).toContain("origin");
-  expect(tokens).toContain("authorization");
+  expect(tokens).not.toContain("authorization");
 }
 
 describe("GET /v1/exercises — full pull (03.1 AC5)", () => {
@@ -149,7 +150,7 @@ describe("AC9 (03.1 AC7) — GET /v1/exercises ETag / 304 / caching under since/
     expectVaryTokens(second.headers.vary);
   });
 
-  it("200 carries Cache-Control: private, no-cache + Vary: Authorization", async () => {
+  it("200 carries Cache-Control: private, no-cache and no Vary: Authorization (#17)", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
       method: "GET",
@@ -161,7 +162,7 @@ describe("AC9 (03.1 AC7) — GET /v1/exercises ETag / 304 / caching under since/
     expectVaryTokens(res.headers.vary);
   });
 
-  it("Vary keeps the CORS plugin's Origin token alongside Authorization", async () => {
+  it("Vary keeps the CORS plugin's Origin token, without Authorization (#17)", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
       method: "GET",
@@ -169,11 +170,7 @@ describe("AC9 (03.1 AC7) — GET /v1/exercises ETag / 304 / caching under since/
       headers: { ...BEARER, origin: "http://localhost:5173" },
     });
     expect(res.statusCode).toBe(200);
-    const tokens = String(res.headers.vary)
-      .split(",")
-      .map((t) => t.trim().toLowerCase());
-    expect(tokens).toContain("origin");
-    expect(tokens).toContain("authorization");
+    expectVaryTokens(res.headers.vary);
   });
 
   it("a catalog change produces a different ETag and a 200 (not 304)", async () => {

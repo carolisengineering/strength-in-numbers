@@ -99,7 +99,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts",
     {
       schema: { body: CreateWorkoutSchema, response: { 201: WorkoutSchema, 200: WorkoutSchema } },
-      config: { problems: [WorkoutInProgressExistsError], writeGroup: "workouts" },
+      config: { published: true, problems: [WorkoutInProgressExistsError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -130,7 +130,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
 
   r.get(
     "/workouts/active",
-    { schema: { response: { 200: WorkoutDetailSchema } }, config: { problems: [NotFoundError] } },
+    { schema: { response: { 200: WorkoutDetailSchema } }, config: { published: true, problems: [NotFoundError] } },
     async (request) => {
       const detail = await deps.workoutRepository.getActiveWorkout(request.user!.id);
       return toWorkoutDetailDto(detail);
@@ -139,7 +139,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
 
   r.get(
     "/workouts/:id",
-    { schema: { params: workoutIdParams, response: { 200: WorkoutDetailSchema } }, config: { problems: [NotFoundError] } },
+    { schema: { params: workoutIdParams, response: { 200: WorkoutDetailSchema } }, config: { published: true, problems: [NotFoundError] } },
     async (request) => {
       const detail = await deps.workoutRepository.getWorkoutById(request.user!.id, request.params.id);
       return toWorkoutDetailDto(detail);
@@ -150,7 +150,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts/:id",
     {
       schema: { params: workoutIdParams, body: UpdateWorkoutSchema, response: { 200: WorkoutSchema } },
-      config: { problems: [NotFoundError, WorkoutFinishedError, IncompleteWorkingSetsError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, WorkoutFinishedError, IncompleteWorkingSetsError], writeGroup: "workouts" },
     },
     async (request) => {
       const actingUserId = request.user!.id;
@@ -180,7 +180,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts/:id",
     {
       schema: { params: workoutIdParams, response: { 204: z.undefined() } },
-      config: { problems: [NotFoundError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -210,7 +210,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: AddWorkoutExerciseSchema,
         response: { 201: WorkoutExerciseSchema },
       },
-      config: { problems: [NotFoundError, WorkoutFinishedError, ExerciseRetiredError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, WorkoutFinishedError, ExerciseRetiredError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -238,7 +238,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: UpdateWorkoutExerciseSchema,
         response: { 200: WorkoutExerciseSchema },
       },
-      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
     },
     async (request) => {
       const updated = await deps.workoutRepository.updateWorkoutExercise(
@@ -254,7 +254,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workout-exercises/:id",
     {
       schema: { params: workoutExerciseIdParams, response: { 204: z.undefined() } },
-      config: { problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       await deps.workoutRepository.deleteWorkoutExercise(request.user!.id, request.params.id);

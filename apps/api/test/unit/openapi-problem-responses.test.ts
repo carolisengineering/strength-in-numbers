@@ -32,7 +32,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
       method: "GET",
       url: "/v1/me",
       schema: { response: {} },
-      config: { problems: [] },
+      config: { published: true, problems: [] },
     });
     expect(byStatus(groups)).toEqual({
       401: [P("unauthenticated"), P("invalid-token")],
@@ -45,7 +45,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
 
   it("adds 413 / 415 / 422 to a body-less DELETE — Fastify parses bodies by method, not schema", () => {
     const del = byStatus(
-      problemGroupsFor({ method: "DELETE", url: "/v1/x/:id", schema: { params: {} }, config: { problems: [] } }),
+      problemGroupsFor({ method: "DELETE", url: "/v1/x/:id", schema: { params: {} }, config: { published: true, problems: [] } }),
     );
     expect(del[422]).toEqual([P("validation-error")]);
     expect(del[413]).toEqual([P("payload-too-large")]);
@@ -54,19 +54,19 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
 
   it("adds 422 for params or querystring, and 413 / 415 only when there is a body", () => {
     const params = byStatus(
-      problemGroupsFor({ method: "GET", url: "/v1/x/:id", schema: { params: {} }, config: { problems: [] } }),
+      problemGroupsFor({ method: "GET", url: "/v1/x/:id", schema: { params: {} }, config: { published: true, problems: [] } }),
     );
     expect(params[422]).toEqual([P("validation-error")]);
     expect(params[413]).toBeUndefined();
     expect(params[415]).toBeUndefined();
 
     const query = byStatus(
-      problemGroupsFor({ method: "GET", url: "/v1/x", schema: { querystring: {} }, config: { problems: [] } }),
+      problemGroupsFor({ method: "GET", url: "/v1/x", schema: { querystring: {} }, config: { published: true, problems: [] } }),
     );
     expect(query[422]).toEqual([P("validation-error")]);
 
     const body = byStatus(
-      problemGroupsFor({ method: "POST", url: "/v1/x", schema: { body: {} }, config: { problems: [] } }),
+      problemGroupsFor({ method: "POST", url: "/v1/x", schema: { body: {} }, config: { published: true, problems: [] } }),
     );
     expect(body[422]).toEqual([P("validation-error")]);
     expect(body[413]).toEqual([P("payload-too-large")]);
@@ -78,7 +78,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
       method: "DELETE",
       url: "/v1/exercises/:id",
       schema: { params: {} },
-      config: { problems: [NotFoundError, ExerciseImmutableError] },
+      config: { published: true, problems: [NotFoundError, ExerciseImmutableError] },
     });
     const forbidden = groups!.find((g) => g.status === 403)!;
     expect(forbidden.types).toEqual([P("account-deleted"), P("exercise-immutable")]);
@@ -91,7 +91,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
       method: "PATCH",
       url: "/v1/x/:id",
       schema: { params: {}, body: {} },
-      config: { problems: [ExerciseRetiredError, NotFoundError] },
+      config: { published: true, problems: [ExerciseRetiredError, NotFoundError] },
     })!;
     const statuses = groups.map((g) => g.status);
     expect(statuses).toEqual([...statuses].sort((a, b) => a - b));
@@ -102,7 +102,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
       method: "GET",
       url: "/v1/x",
       schema: {},
-      config: { problems: [InternalError, NotFoundError, NotFoundError] },
+      config: { published: true, problems: [InternalError, NotFoundError, NotFoundError] },
     })!;
     const internal = groups.find((g) => g.status === 500)!;
     expect(internal.types).toEqual([P("internal")]);
@@ -110,7 +110,7 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
     expect(byStatus(groups)[404]).toEqual([P("not-found")]);
   });
 
-  it("returns undefined for hidden routes, even ones with no config.problems", () => {
+  it("returns undefined for hidden (hence unpublished) routes, even ones with no config.problems", () => {
     expect(
       problemGroupsFor({ method: "GET", url: "/v1/_authcheck", schema: { hide: true } }),
     ).toBeUndefined();
@@ -123,18 +123,21 @@ describe("#28 — problemGroupsFor: which errors a route documents", () => {
 
   it("treats a GET+HEAD method array as a documented operation", () => {
     expect(
-      problemGroupsFor({ method: ["GET", "HEAD"], url: "/v1/me", schema: {}, config: { problems: [] } }),
+      problemGroupsFor({ method: ["GET", "HEAD"], url: "/v1/me", schema: {}, config: { published: true, problems: [] } }),
     ).toBeDefined();
   });
 
-  it("ignores routes outside /v1/ — including a /v1-prefixed lookalike", () => {
+  it("ignores unpublished routes — outside /v1/, a /v1-prefixed lookalike, and /v1 routes without the flag (#10)", () => {
     expect(problemGroupsFor({ method: "GET", url: "/openapi.json", schema: {} })).toBeUndefined();
     expect(problemGroupsFor({ method: "GET", url: "/v1foo", schema: {} })).toBeUndefined();
+    expect(
+      problemGroupsFor({ method: "GET", url: "/v1/me", schema: {}, config: { problems: [] } }),
+    ).toBeUndefined();
   });
 
-  it("throws, naming the method and URL, when a documented /v1 route has no config.problems", () => {
+  it("throws, naming the method and URL, when a published route has no config.problems", () => {
     expect(() =>
-      problemGroupsFor({ method: "POST", url: "/v1/widgets", schema: { body: {} } }),
+      problemGroupsFor({ method: "POST", url: "/v1/widgets", schema: { body: {} }, config: { published: true } }),
     ).toThrow(/POST \/v1\/widgets.*config\.problems/);
   });
 });
