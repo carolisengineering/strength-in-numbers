@@ -48,6 +48,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 ## Conventions & gotchas
 
 - **Error contract** (RFC 9457 problem+json) must be registered on BOTH the root scope and the `/v1` child scope.
+- **OpenAPI publication is opt-in** (#10): a public `/v1` route needs `config: { published: true, problems: [...] }` to appear in `/openapi.json`; anything else is hidden by default. `schema: { hide: true }` is now only the infra routes' opt-out from the response-schema check. Never set `config.swaggerTransform` (app assembly fails — it bypasses the gate).
 - **Catalog seed** (`apps/api/prisma/seed.ts` → `src/seed/`) is a manual release step after `migrate deploy`, NOT Prisma's `prisma.seed` hook. Append-only: never edit a live row's `name`/`modality` in `prisma/catalog/exercises.json` — retire the key and add a new one.
 - **Prisma migrations** run as a release step, never on app boot. Additive / expand-only — never drop or rename a column in the same release as the code that stops using it.
 - **`DATABASE_URL`**: `resolveDatabaseUrl` backfills `sslmode=require` + `sslaccept=strict` (server-cert + hostname verification) + `connection_limit=8` at runtime, and boot rejects libpq's `sslmode=verify-full` (Prisma silently downgrades it to `prefer`). The stored secret must carry `sslaccept=strict` itself because `prisma migrate deploy` reads the raw URL. For Neon, use the **direct** host (not `-pooler`) for `prisma migrate deploy`.

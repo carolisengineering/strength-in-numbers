@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import Fastify from "fastify";
+import type fastifySwagger from "@fastify/swagger";
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Validator as ValidatorType } from "@seriousme/openapi-schema-validator";
@@ -201,6 +202,9 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
   it("excludes /v1/_authcheck, /healthz, /readyz, /openapi.json and any servers block", async () => {
     const { app } = await buildTestApp();
     const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
+    // Review gate (#10): this is the whole anonymous surface. Publication is
+    // opt-in (`config.published`), so adding a path here should be a deliberate
+    // decision to publish it, not a fix-up to make the test pass.
     expect(new Set(Object.keys(doc.paths))).toEqual(
       new Set([
         "/v1/me",
@@ -260,6 +264,74 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
     });
     expect(doc.security).toEqual([{ bearerAuth: [] }]);
   });
+});
+
+describe("AC4 / #10 — OpenAPI publication is opt-in (config.published)", () => {
+  const okResponse = { response: { 200: z.object({ ok: z.boolean() }) } };
+
+  async function docPaths(app: Awaited<ReturnType<typeof buildTestApp>>["app"]) {
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
+    return Object.keys(doc.paths);
+  }
+
+  it("a route without `published: true` is left out of the document, in or out of /v1", async () => {
+    const { app } = await buildTestApp();
+    const r = app.withTypeProvider<ZodTypeProvider>();
+    r.get("/v1/zz-unpublished", { schema: okResponse, config: { problems: [] } }, async () => ({ ok: true }));
+    r.get("/internal/zz-unpublished", { schema: okResponse }, async () => ({ ok: true }));
+    const paths = await docPaths(app);
+    expect(paths).not.toContain("/v1/zz-unpublished");
+    expect(paths).not.toContain("/internal/zz-unpublished");
+  });
+
+  it("a `/v1` route with `published: true` is in the document", async () => {
+    const { app } = await buildTestApp();
+    app
+      .withTypeProvider<ZodTypeProvider>()
+      .get("/v1/zz-published", { schema: okResponse, config: { published: true, problems: [] } }, async () => ({
+        ok: true,
+      }));
+    expect(await docPaths(app)).toContain("/v1/zz-published");
+  });
+
+  it("a published route outside /v1 fails app assembly", async () => {
+    const { app } = await buildTestApp();
+    await expect(async () => {
+      app.get("/internal/zz-published", { schema: okResponse, config: { published: true } }, async () => ({ ok: true }));
+      await app.ready();
+    }).rejects.toThrow(/\/internal\/zz-published.*\/v1/);
+  });
+
+  it("a route that is both published and hidden fails app assembly", async () => {
+    const { app } = await buildTestApp();
+    await expect(async () => {
+      app.get(
+        "/v1/zz-contradiction",
+        { schema: { ...okResponse, hide: true }, config: { published: true, problems: [] } },
+        async () => ({ ok: true }),
+      );
+      await app.ready();
+    }).rejects.toThrow(/\/v1\/zz-contradiction.*hide/);
+  });
+
+  const passThrough: fastifySwagger.SwaggerTransform = ({ schema, url }) => ({ schema, url });
+  it.each<[string, false | fastifySwagger.SwaggerTransform]>([
+    ["false", false],
+    ["a function", passThrough],
+  ])(
+    "a route that overrides `swaggerTransform` with %s (bypassing the publication gate) fails app assembly",
+    async (_label, swaggerTransform) => {
+      const { app } = await buildTestApp();
+      await expect(async () => {
+        app.get(
+          "/v1/zz-bypass",
+          { schema: okResponse, config: { problems: [], swaggerTransform } },
+          async () => ({ ok: true }),
+        );
+        await app.ready();
+      }).rejects.toThrow(/\/v1\/zz-bypass.*swaggerTransform/);
+    },
+  );
 });
 
 describe("SB — every non-hidden route must declare a response schema (structural egress allowlist)", () => {

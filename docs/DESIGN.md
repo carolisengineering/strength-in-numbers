@@ -564,23 +564,23 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Contract:** DTOs are authored **once** as Zod schemas in `packages/core`;
   `fastify-type-provider-zod` wires them into Fastify route validation and
   handler typing, and `@fastify/swagger` **emits** an OpenAPI 3.1 document from
-  them. The document is published (unauthenticated, rate-limited per IP — Spec
-  05.2 AC17) at `/openapi.json` as the
-  external contract — **public `/v1` surface only** (probe/health routes hidden,
-  no internal host names) — and is **drift-checked in CI** (re-emit + `git
-  diff`). No client codegen — consumer types come from `z.infer` on the shared
-  schemas. The pipeline + the `/v1/me` migration onto it is Spec 03.0; Spec 02's
-  `MeSchema` is the first such DTO and the pattern the rest copy.
-  Error responses are documented too (issue #28): every `/v1` operation lists
-  each problem+json status it can return, `$ref`ing a shared
+  them. The document is published (unauthenticated) at `/openapi.json` as the
+  external contract — **public `/v1` surface only**, by **opt-in**: a route
+  appears only with `config.published: true` (issue #10; everything else,
+  including probe/health routes, is hidden by default), no internal host names —
+  and is **drift-checked in CI** (re-emit + `git diff`). No client codegen — 
+  consumer types come from `z.infer` on the shared schemas. The pipeline + the 
+  `/v1/me` migration onto it is Spec 03.0; Spec 02' `MeSchema` is the first such 
+  DTO and the pattern the rest copy. Error responses are documented too (issue #28): 
+  every `/v1` operation lists each problem+json status it can return, `$ref`ing a shared
   `components.schemas.Problem`, with `type` narrowed to the exact problem URLs
   that status carries on that operation. Routes declare their domain errors in
   `config.problems` (documentation-only; `[]` when none); auth (401 / 403
   `account-deleted` / 503), 500, and the request-shape errors (422 for
   params / querystring; 413 / 415 / 422 for any method Fastify parses a body
   on — POST, PUT, PATCH, DELETE — whether or not the route declares one) are
-  added centrally by `src/openapi/problem-responses.ts`. A documented `/v1`
-  route with no `config.problems` fails boot.
+  added centrally by `src/openapi/problem-responses.ts`. A published route with
+  no `config.problems` fails boot, as does a published route outside `/v1/`.
 - **Response schemas are field allowlists:** the Zod serializer strips unknown
   keys, so a handler cannot leak an unlisted column onto the wire (Spec 03.0).
   The allowlist is over **keys**, not value formats: a response schema asserts
