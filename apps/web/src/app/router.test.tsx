@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import {
   createMemoryRouter,
@@ -27,7 +27,7 @@ import { resetConfigCache } from "../config";
 import { server } from "../test/msw/server";
 import { catalogHandlers, createWorkoutFake } from "../test/workoutFake";
 import { ProtectedRoute } from "./ProtectedRoute";
-import { makeOnRedirectCallback, routes } from "./router";
+import { createRouter, makeOnRedirectCallback, routes } from "./router";
 
 const CLIENT_ID = "spaClient123";
 const API_BASE_URL = "https://api.example.test";
@@ -53,6 +53,8 @@ let meCalls = 0;
 let lastMeHeaders: Headers | undefined;
 
 beforeEach(() => {
+  // jsdom keeps one session history for the whole file; #14's flag lives on it.
+  window.history.replaceState(null, "");
   resetConfigCache();
   vi.stubEnv("VITE_AUTH0_DOMAIN", "dev-tenant.us.auth0.com");
   vi.stubEnv("VITE_AUTH0_CLIENT_ID", CLIENT_ID);
@@ -201,6 +203,123 @@ describe("AC4 — session-resume bridge (routing)", () => {
 
     const link = await screen.findByRole("link", { name: /go to sign in/i });
     expect(link).toHaveAttribute("href", "/?signin");
+  });
+
+  describe("#14 — a raw browser Back from Universal Login does not resume again", () => {
+    /** What the browser fires when it restores a page from the back/forward cache. */
+    function pageshow(persisted: boolean): Event {
+      const event = new Event("pageshow");
+      Object.defineProperty(event, "persisted", { value: persisted });
+      return event;
+    }
+
+    it("marks the / history entry before it redirects", async () => {
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      let stateAtRedirect: unknown;
+      auth.state.loginWithRedirect = vi.fn(async () => {
+        stateAtRedirect = window.history.state;
+      });
+
+      renderAt(["/"]);
+
+      await waitFor(() => expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1));
+      expect(stateAtRedirect).toMatchObject({ sinResumeAttempted: true });
+    });
+
+    it("on the real browser history, the mark survives the router's own writes and a reload of the entry shows Landing", async () => {
+      // Production router (createBrowserRouter) over jsdom's real session history, entered on a deep
+      // link: ProtectedRoute's <Navigate replace> rewrites the entry to `/` + state.returnTo, then
+      // PublicEntry marks it. The memory-router tests above never touch window.history.
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      window.history.replaceState(null, "", "/app/history/1");
+      const renderBrowser = () => {
+        const router = createRouter();
+        const utils = render(
+          <QueryClientProvider client={new QueryClient()}>
+            <RouterProvider router={router} />
+          </QueryClientProvider>,
+        );
+        return { router, ...utils };
+      };
+
+      try {
+        const first = renderBrowser();
+        await waitFor(() => expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1));
+        expect(auth.state.loginWithRedirect).toHaveBeenCalledWith(
+          expect.objectContaining({ appState: { returnTo: "/app/history/1" } }),
+        );
+        expect(window.location.pathname).toBe("/");
+        expect(window.history.state).toMatchObject({
+          usr: { returnTo: "/app/history/1" },
+          sinResumeAttempted: true,
+        });
+
+        // Arriving on the same entry again (a Back that reloads it, or a reload).
+        first.unmount();
+        first.router.dispose();
+        const second = renderBrowser();
+        expect(await screen.findByTestId("landing")).toBeInTheDocument();
+        expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+        expect(window.history.state).toMatchObject({ sinResumeAttempted: true });
+        second.unmount();
+        second.router.dispose();
+      } finally {
+        window.history.replaceState(null, "", "/");
+      }
+    });
+
+    it("its own mark does not flip the screen to Landing while the redirect is still leaving", async () => {
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      const { router } = renderAt(["/"]);
+      await waitFor(() => expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1));
+
+      // An ordinary re-render of the same mounted page (a location update, not a remount).
+      await act(() => router.navigate("/", { replace: true, state: { returnTo: "/app" } }));
+
+      expect(screen.getByTestId("resuming-session")).toBeInTheDocument();
+      expect(screen.queryByTestId("landing")).toBeNull();
+      expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+    });
+
+    it("an entry a resume already left from shows Landing and never redirects (Back, or a reload of it)", async () => {
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      window.history.replaceState({ sinResumeAttempted: true }, "");
+
+      renderAt(["/"]);
+
+      expect(await screen.findByTestId("landing")).toBeInTheDocument();
+      expect(screen.queryByTestId("resuming-session")).toBeNull();
+      expect(auth.state.loginWithRedirect).not.toHaveBeenCalled();
+    });
+
+    it("a back/forward-cache restore of the resuming page re-renders as Landing", async () => {
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      renderAt(["/"]);
+      await waitFor(() => expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId("resuming-session")).toBeInTheDocument();
+
+      act(() => {
+        window.dispatchEvent(pageshow(true));
+      });
+
+      expect(await screen.findByTestId("landing")).toBeInTheDocument();
+      expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+    });
+
+    it("an ordinary (non-cache) pageshow changes nothing, even with the entry marked", async () => {
+      document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
+      renderAt(["/"]);
+      await waitFor(() => expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1));
+      // The entry is marked now; only a cache restore (`persisted: true`) may re-read it.
+      expect(window.history.state).toMatchObject({ sinResumeAttempted: true });
+
+      act(() => {
+        window.dispatchEvent(pageshow(false));
+      });
+
+      expect(screen.getByTestId("resuming-session")).toBeInTheDocument();
+      expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("sends an already-authenticated visitor of / straight to /app", async () => {
