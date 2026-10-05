@@ -10,8 +10,9 @@ import type { FastifyInstance } from "fastify";
 export function registerAuthcheckRoute(app: FastifyInstance): void {
   app.get(
     "/_authcheck",
-    // `hide: true` — smoke-only probe, kept out of the published contract
-    // (Spec 03.0 §5, AC4).
+    // `hide: true` — smoke-only probe with no response schema, so it opts out
+    // of the egress-allowlist check (Spec 03.0 §6.5). Not `published`, so it
+    // stays out of the OpenAPI document (#10).
     { config: { skipProvisioning: true }, schema: { hide: true } },
     async (request) => {
       const auth = request.auth!;
