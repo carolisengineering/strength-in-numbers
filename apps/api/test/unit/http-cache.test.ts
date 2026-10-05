@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import Fastify, { type FastifyReply } from "fastify";
-import { addVary, ifNoneMatchHits, strongEtag } from "../../src/routes/http-cache.js";
+import { ifNoneMatchHits, strongEtag } from "../../src/routes/http-cache.js";
 
 /** Spec 03.1 §6.1 step 4 / AC7 — the conditional-request helpers in isolation. */
 describe("AC7 — http-cache helpers", () => {
@@ -33,42 +32,6 @@ describe("AC7 — http-cache helpers", () => {
       expect(ifNoneMatchHits(undefined, etag)).toBe(false);
       expect(ifNoneMatchHits('"nope"', etag)).toBe(false);
       expect(ifNoneMatchHits(etag.slice(1, -1), etag)).toBe(false); // unquoted ≠
-    });
-  });
-
-  describe("addVary", () => {
-    async function varyAfter(setup: (reply: FastifyReply) => void) {
-      const app = Fastify();
-      app.get("/", async (_req, reply) => {
-        setup(reply);
-        return "ok";
-      });
-      const res = await app.inject({ method: "GET", url: "/" });
-      await app.close();
-      return res.headers.vary;
-    }
-
-    it("sets the header when absent", async () => {
-      expect(await varyAfter((r) => addVary(r, "Authorization"))).toBe("Authorization");
-    });
-
-    it("appends to an existing value instead of replacing it", async () => {
-      expect(
-        await varyAfter((r) => {
-          r.header("vary", "Origin");
-          addVary(r, "Authorization");
-        }),
-      ).toBe("Origin, Authorization");
-    });
-
-    it("is idempotent and case-insensitive", async () => {
-      expect(
-        await varyAfter((r) => {
-          r.header("vary", "authorization");
-          addVary(r, "Authorization");
-          addVary(r, "Authorization");
-        }),
-      ).toBe("authorization");
     });
   });
 });

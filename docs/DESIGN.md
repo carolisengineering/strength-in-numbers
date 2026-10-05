@@ -586,9 +586,19 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   which fields appear and their type, not strict formats (`z.email()`, regexes,
   `Intl` checks) on values the server persisted from a trusted source. Format
   enforcement lives at ingress (Spec 03.0 P7).
-- **Per-user cacheable reads** (`GET /v1/exercises`) send `Cache-Control:
-  private, no-cache` + `Vary: Authorization` — a strong `ETag` over per-caller content
-  must never be reused across users by a shared cache.
+- **HTTP caching (`/v1`)** — one policy, set by a `/v1`-scope `onSend` hook
+  (`plugins/cache-policy.ts`), never by hand in a handler (issues #17, #18):
+  every `/v1` response is `Cache-Control: no-store`, except a `GET` that serves
+  a strong `ETag` and declares `config.httpCache: "revalidate"` (`/v1/exercises`
+  and the reference tables), which gets `private, no-cache`; any status ≥ 400 is
+  `no-store` regardless. `private` is what keeps per-caller content out of every
+  shared cache; there is **no** `Vary: Authorization` — under `no-cache` the
+  browser reuses a stored body only after a `304` to *this* caller's
+  `If-None-Match`, i.e. when the bytes are exactly this caller's response, and
+  `Vary` only cost a full re-download every time the in-memory token rotated —
+  live for the SPA's reference-table queries, which use the browser HTTP cache.
+  (The SPA's catalog bypasses the HTTP cache: its own store + `since` /
+  `syncToken`, fetched `no-store` — Spec 06.0 AC15, §5.2.)
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.

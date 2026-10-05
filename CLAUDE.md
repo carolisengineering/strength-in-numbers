@@ -48,6 +48,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 ## Conventions & gotchas
 
 - **Error contract** (RFC 9457 problem+json) must be registered on BOTH the root scope and the `/v1` child scope.
+- **`/v1` caching** (#17/#18): `Cache-Control` is set only by the `/v1` cache policy (`apps/api/src/plugins/cache-policy.ts`) — `no-store` by default and on every error; a `GET` that serves an `ETag` declares `config: { httpCache: "revalidate" }` → `private, no-cache`. Never hand-set `Cache-Control` in a `/v1` handler, and no `Vary: Authorization` (`private` is the cross-user protection).
 - **Catalog seed** (`apps/api/prisma/seed.ts` → `src/seed/`) is a manual release step after `migrate deploy`, NOT Prisma's `prisma.seed` hook. Append-only: never edit a live row's `name`/`modality` in `prisma/catalog/exercises.json` — retire the key and add a new one.
 - **Prisma migrations** run as a release step, never on app boot. Additive / expand-only — never drop or rename a column in the same release as the code that stops using it.
 - **`DATABASE_URL`**: `resolveDatabaseUrl` backfills `sslmode=require` + `sslaccept=strict` (server-cert + hostname verification) + `connection_limit=8` at runtime, and boot rejects libpq's `sslmode=verify-full` (Prisma silently downgrades it to `prefer`). The stored secret must carry `sslaccept=strict` itself because `prisma migrate deploy` reads the raw URL. For Neon, use the **direct** host (not `-pooler`) for `prisma migrate deploy`.
