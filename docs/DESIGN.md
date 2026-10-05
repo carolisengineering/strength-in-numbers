@@ -564,7 +564,8 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Contract:** DTOs are authored **once** as Zod schemas in `packages/core`;
   `fastify-type-provider-zod` wires them into Fastify route validation and
   handler typing, and `@fastify/swagger` **emits** an OpenAPI 3.1 document from
-  them. The document is published (unauthenticated) at `/openapi.json` as the
+  them. The document is published (unauthenticated, rate-limited per IP — Spec
+  05.2 AC17) at `/openapi.json` as the
   external contract — **public `/v1` surface only** (probe/health routes hidden,
   no internal host names) — and is **drift-checked in CI** (re-emit + `git
   diff`). No client codegen — consumer types come from `z.infer` on the shared

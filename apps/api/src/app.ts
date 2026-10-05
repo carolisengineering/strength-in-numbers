@@ -12,6 +12,7 @@ import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
 import { RATE_LIMITS, registerRateLimits, type RateLimitConfig } from "./plugins/rate-limit.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { ifNoneMatchHits, strongEtag } from "./routes/http-cache.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
@@ -253,17 +254,21 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // plugin never runs) — a deliberate carve-out from Spec 01 §7: the document is
   // route + schema metadata, no user data. Rendered once at boot and served as a
   // constant string so this anonymous route can never be a per-request
-  // `app.swagger()` CPU amplifier.
+  // `app.swagger()` CPU amplifier. It is ~250 KB, though, so it is an egress
+  // amplifier instead: rate-limited by L1 plus its own per-IP `docs` budget
+  // (Spec 05.2 AC17, #12), and conditional — a client re-fetching the same
+  // document gets an empty `304`.
   let openapiJson = "{}";
+  let openapiEtag = "";
   app.addHook("onReady", async () => {
     openapiJson = JSON.stringify(app.swagger(), null, 2);
+    openapiEtag = strongEtag("openapi.json", openapiJson);
   });
-  app.get("/openapi.json", { schema: { hide: true }, config: { skipRateLimit: true } }, async (_request, reply) =>
-    reply
-      .type("application/json")
-      .header("cache-control", "public, max-age=300")
-      .send(openapiJson),
-  );
+  app.get("/openapi.json", { schema: { hide: true }, config: { ipBudget: "docs" } }, async (request, reply) => {
+    reply.header("cache-control", "public, max-age=300").header("etag", openapiEtag);
+    if (ifNoneMatchHits(request.headers["if-none-match"], openapiEtag)) return reply.code(304).send();
+    return reply.type("application/json").send(openapiJson);
+  });
 
   return app;
 }

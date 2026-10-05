@@ -225,6 +225,23 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
     expect(JSON.stringify(doc)).not.toContain("onrender.com");
   });
 
+  it("#12 — carries a strong ETag and answers a matching If-None-Match (strong or W/) with an empty 304", async () => {
+    const { app } = await buildTestApp();
+    const first = await app.inject({ method: "GET", url: "/openapi.json" });
+    const etag = first.headers.etag as string;
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
+    for (const tag of [etag, `W/${etag}`, `"other", ${etag}`, "*"]) {
+      const res = await app.inject({ method: "GET", url: "/openapi.json", headers: { "if-none-match": tag } });
+      expect(res.statusCode, tag).toBe(304);
+      expect(res.body).toBe("");
+      expect(res.headers.etag).toBe(etag);
+      expect(res.headers["cache-control"]).toBe("public, max-age=300");
+    }
+    const miss = await app.inject({ method: "GET", url: "/openapi.json", headers: { "if-none-match": '"stale"' } });
+    expect(miss.statusCode).toBe(200);
+    expect(miss.json().openapi).toMatch(/^3\.1/);
+  });
+
   it("is a boot-time constant — app.swagger() is called at most once across N requests", async () => {
     const { app } = await buildTestApp();
     const spy = vi.spyOn(app, "swagger");

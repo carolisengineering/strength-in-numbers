@@ -14,8 +14,11 @@ export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercis
 
 declare module "fastify" {
   interface FastifyContextConfig {
-    /** Spec 05.2 AC6 — infra routes no layer counts. */
+    /** Spec 05.2 AC6 — liveness / readiness probes only: no layer counts them. */
     skipRateLimit?: boolean;
+    /** Spec 05.2 AC17 (#12) — also charge this route to a tighter per-IP budget,
+     * after L1. `"docs"`: the ~250 KB `/openapi.json`, an egress amplifier. */
+    ipBudget?: "docs";
     /** Spec 05.2 §6.1 — required on every /v1 write route. */
     writeGroup?: WriteGroup;
   }
@@ -24,6 +27,8 @@ declare module "fastify" {
 export interface RateLimitConfig {
   readonly windowMs: number;
   readonly ip: number;
+  /** AC17 — per IP, for routes with `config.ipBudget: "docs"`. */
+  readonly docs: number;
   readonly groups: Readonly<Record<WriteGroup, number>>;
   readonly inflight: number;
   /** Tests only (AC10): replaces the plugin's in-memory LRU store. */
@@ -34,6 +39,8 @@ export interface RateLimitConfig {
 export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   windowMs: 60_000,
   ip: 600,
+  // ~250 KB per response: 30/min caps one IP at ~7.5 MB/min (L1 alone allows ~150).
+  docs: 30,
   groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, me: 10 }),
   inflight: 4,
 });
@@ -150,12 +157,11 @@ export async function registerRateLimits(
   // through createRateLimit (D11).
   await app.register(rateLimit, { global: false, ...(config.store ? { store: config.store } : {}) });
 
-  const ipLimiter = app.createRateLimit({
-    max: config.ip,
-    timeWindow: config.windowMs,
-    // The client behind Cloudflare (§6.6), normalised so one IPv6 /64 is one client.
-    keyGenerator: (req) => rateLimit.normalizeIP(clientAddress(req)),
-  });
+  // The client behind Cloudflare (§6.6), normalised so one IPv6 /64 is one client.
+  const ipKey = (req: FastifyRequest) => rateLimit.normalizeIP(clientAddress(req));
+  const ipLimiter = app.createRateLimit({ max: config.ip, timeWindow: config.windowMs, keyGenerator: ipKey });
+  // AC17: its own child store, so docs requests and L1 never share a counter.
+  const docsLimiter = app.createRateLimit({ max: config.docs, timeWindow: config.windowMs, keyGenerator: ipKey });
   const tripwire = opts.isProduction ? trustProxyTripwire() : () => {};
 
   app.addHook("onRequest", async (request) => {
@@ -167,6 +173,9 @@ export async function registerRateLimits(
     if (request.routeOptions.config?.skipRateLimit === true) return;
     tripwire(request);
     await enforce(ipLimiter, request, { layer: "ip" });
+    if (request.routeOptions.config?.ipBudget === "docs") {
+      await enforce(docsLimiter, request, { layer: "ip-docs" });
+    }
   });
 
   const groupLimiters = Object.fromEntries(
