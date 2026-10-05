@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { FastifyReply } from "fastify";
 
 /**
  * Conditional-request helpers shared by the catalog (`exercises.ts`) and
@@ -46,27 +45,3 @@ export function ifNoneMatchHits(
 
 const stripWeak = (tag: string): string =>
   tag.startsWith("W/") ? tag.slice(2) : tag;
-
-/**
- * Append `value` to the response `Vary` header without clobbering what is
- * already there. `@fastify/cors` sets `Vary: Origin` in an `onRequest` hook
- * that runs before the handler, and `reply.header("vary", …)` would *replace*
- * it — silently dropping `Origin` from every CORS response. Idempotent and
- * case-insensitive, so calling it twice yields one token.
- */
-export function addVary(reply: FastifyReply, value: string): void {
-  const existing = reply.getHeader("vary");
-  const current = Array.isArray(existing)
-    ? existing.join(",")
-    : existing === undefined
-      ? ""
-      : String(existing);
-  const tokens = current
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
-  if (!tokens.some((t) => t.toLowerCase() === value.toLowerCase())) {
-    tokens.push(value);
-  }
-  reply.header("vary", tokens.join(", "));
-}

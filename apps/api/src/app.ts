@@ -14,6 +14,7 @@ import { RATE_LIMITS, registerRateLimits, type RateLimitConfig } from "./plugins
 import { registerHealthRoutes } from "./routes/health.js";
 import { ifNoneMatchHits, strongEtag } from "./routes/http-cache.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
+import { registerV1CachePolicy } from "./plugins/cache-policy.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
@@ -243,6 +244,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(
     async (v1) => {
       registerErrorContract(v1);
+      // #17 / #18: every /v1 response's Cache-Control, in one place.
+      registerV1CachePolicy(v1);
       writeLimits.attachWriteLimits(v1);
       await v1.register(authPlugin, {
         tokenVerifier: deps.tokenVerifier,

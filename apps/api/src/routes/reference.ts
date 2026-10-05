@@ -9,16 +9,17 @@ import {
 } from "@sin/core";
 import type { ReferenceRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
-import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/muscle-groups` and `GET /v1/equipment` — the reference tables served
  * separately from the catalog (Spec 03.1 §5, §6.2). Each is the full table as
  * `camelCase` DTOs, ordered by `display_order` then `id COLLATE "C"` in the
- * repository, with its own strong content `ETag` / `304` and the same
- * `Cache-Control: private, no-cache` + `Vary: Authorization` headers as
- * `/v1/exercises` (the data is user-independent, but the response is auth-gated,
- * so shared caching stays off for consistency). No `since` token — the tables
+ * repository, with its own strong content `ETag` / `304` and, like
+ * `/v1/exercises`, `config.httpCache: "revalidate"` → `Cache-Control: private,
+ * no-cache` from the `/v1` cache policy (the data is user-independent, but the
+ * response is auth-gated, so shared caching stays off for consistency; no
+ * `Vary: Authorization` — #17). No `since` token — the tables
  * are tiny and change only on a deploy, so a client re-fetches whenever its
  * `If-None-Match` check misses.
  */
@@ -33,7 +34,7 @@ function toDto(r: ReferenceRecord): MuscleGroup & Equipment {
 }
 
 /**
- * Set the cache headers + strong `ETag` (namespaced by `sentinel` — the payload
+ * Set the strong `ETag` (namespaced by `sentinel` — the payload
  * key — so the two reference endpoints can never share a validator), then either
  * `304` with an empty body or hand the body back for the type provider to
  * serialize.
@@ -47,8 +48,6 @@ function serveReference<B extends object>(
 ): B | FastifyReply {
   const etag = strongEtag(sentinel, JSON.stringify(rows));
 
-  reply.header("cache-control", "private, no-cache");
-  addVary(reply, "Authorization");
   reply.header("etag", etag);
 
   if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
@@ -66,7 +65,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/muscle-groups",
-    { schema: { response: { 200: MuscleGroupsResponse, 304: z.undefined() } }, config: { published: true, problems: [] } },
+    { schema: { response: { 200: MuscleGroupsResponse, 304: z.undefined() } }, config: { published: true, problems: [], httpCache: "revalidate" } },
     async (request, reply) => {
       const muscleGroups = (
         await deps.exerciseRepository.listMuscleGroups()
@@ -79,7 +78,7 @@ export function registerReferenceRoutes(
 
   r.get(
     "/equipment",
-    { schema: { response: { 200: EquipmentResponse, 304: z.undefined() } }, config: { published: true, problems: [] } },
+    { schema: { response: { 200: EquipmentResponse, 304: z.undefined() } }, config: { published: true, problems: [], httpCache: "revalidate" } },
     async (request, reply) => {
       const equipment = (await deps.exerciseRepository.listEquipment()).map(
         toDto,

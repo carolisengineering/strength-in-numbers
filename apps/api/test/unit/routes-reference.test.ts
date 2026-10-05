@@ -84,7 +84,7 @@ describe.each([
     expect(res.statusCode).toBe(401);
   });
 
-  it("200 carries a strong ETag + Cache-Control: private, no-cache + Vary: Authorization", async () => {
+  it("200 carries a strong ETag + Cache-Control: private, no-cache, and no Vary: Authorization (#17)", async () => {
     const { app } = await appWith(seed);
     const res = await app.inject({ method: "GET", url, headers: BEARER });
 
@@ -132,11 +132,11 @@ describe.each([
 });
 
 
-/** `Vary` must carry the CORS plugin's `Origin` *and* our `Authorization`. */
+/** #17: `Vary` keeps the CORS plugin's `Origin` and carries no `Authorization`. */
 function expectVaryTokens(vary: unknown): void {
   const tokens = String(vary).split(",").map((t) => t.trim().toLowerCase());
   expect(tokens).toContain("origin");
-  expect(tokens).toContain("authorization");
+  expect(tokens).not.toContain("authorization");
 }
 
 describe("reference endpoints — cross-endpoint ETag isolation (AC8)", () => {

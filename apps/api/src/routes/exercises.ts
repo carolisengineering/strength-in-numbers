@@ -21,7 +21,7 @@ import {
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import { parseSyncToken } from "../repositories/sync-token.js";
-import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
 
 /**
  * `GET /v1/exercises` (+ the Fastify-generated `HEAD`) — the caller-visible
@@ -39,9 +39,11 @@ import { addVary, ifNoneMatchHits, strongEtag } from "./http-cache.js";
  *   `If-None-Match` produces a `304`. The sentinel — the `since` token on a
  *   delta, `"full"` otherwise — stops a delta that serializes to the same bytes
  *   as an earlier full pull from returning a spurious `304`.
- * - Every `200` and `304` carries `Cache-Control: private, no-cache` +
- *   `Vary: Authorization`: the payload is per-caller (custom rows join it in
- *   03.2), so no shared cache may reuse it across users (§7).
+ * - `config.httpCache: "revalidate"` → every `200` and `304` carries
+ *   `Cache-Control: private, no-cache` (set by the `/v1` cache policy,
+ *   `plugins/cache-policy.ts`; errors get `no-store`). `private` keeps the
+ *   per-caller payload out of every shared cache (§7); there is no
+ *   `Vary: Authorization` (#17).
  */
 
 export interface ExerciseRouteDeps {
@@ -88,7 +90,7 @@ export function registerExerciseRoutes(
         querystring: CatalogSinceQuery,
         response: { 200: ExercisesResponse, 304: z.undefined() },
       },
-      config: { published: true, problems: [SyncTokenExpiredError] },
+      config: { published: true, problems: [SyncTokenExpiredError], httpCache: "revalidate" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -102,8 +104,6 @@ export function registerExerciseRoutes(
       const exercises = page.rows.map(toDto);
       const etag = catalogEtag(since ?? "full", exercises);
 
-      reply.header("cache-control", "private, no-cache");
-      addVary(reply, "Authorization");
       reply.header("etag", etag);
 
       if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
