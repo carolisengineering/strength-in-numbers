@@ -30,7 +30,9 @@ export function registerErrorContract(app: FastifyInstance): void {
       reply.header("retry-after", String(err.retryAfterSeconds));
       const { layer, group } = err.source;
       request.log.warn(
-        layer === "ip" ? { layer, ip: clientAddress(request) } : { layer, group, userId: request.user?.id },
+        layer === "ip" || layer === "ip-docs"
+          ? { layer, ip: clientAddress(request) }
+          : { layer, group, userId: request.user?.id },
         "rate_limited",
       );
     } else {

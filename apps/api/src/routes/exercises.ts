@@ -90,7 +90,7 @@ export function registerExerciseRoutes(
         querystring: CatalogSinceQuery,
         response: { 200: ExercisesResponse, 304: z.undefined() },
       },
-      config: { problems: [SyncTokenExpiredError], httpCache: "revalidate" },
+      config: { published: true, problems: [SyncTokenExpiredError], httpCache: "revalidate" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -121,7 +121,7 @@ export function registerExerciseRoutes(
     "/exercises",
     {
       schema: { body: CreateExerciseSchema, response: { 201: ExerciseSchema } },
-      config: { problems: [CustomExerciseLimitError], writeGroup: "exercises" },
+      config: { published: true, problems: [CustomExerciseLimitError], writeGroup: "exercises" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -146,7 +146,7 @@ export function registerExerciseRoutes(
         body: UpdateExerciseSchema,
         response: { 200: ExerciseSchema },
       },
-      config: { problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError], writeGroup: "exercises" },
+      config: { published: true, problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError], writeGroup: "exercises" },
     },
     async (request) => {
       const actingUserId = request.user!.id;
@@ -181,6 +181,7 @@ export function registerExerciseRoutes(
         response: { 201: ExerciseSchema },
       },
       config: {
+        published: true,
         problems: [NotFoundError, ExerciseAlreadyOwnedError, ExerciseRetiredError, CustomExerciseLimitError],
         writeGroup: "exercises",
       },
@@ -209,7 +210,7 @@ export function registerExerciseRoutes(
     "/exercises/:id",
     {
       schema: { params: exerciseIdParams, response: { 204: z.undefined() } },
-      config: { problems: [ExerciseImmutableError, NotFoundError], writeGroup: "exercises" },
+      config: { published: true, problems: [ExerciseImmutableError, NotFoundError], writeGroup: "exercises" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;

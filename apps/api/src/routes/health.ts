@@ -62,8 +62,9 @@ export function registerHealthRoutes(
     return inFlight;
   };
 
-  // `hide: true` — health probes are infra, not part of the published `/v1`
-  // contract (Spec 03.0 §5, AC4).
+  // `hide: true` — health probes are infra with no response schema, so they opt
+  // out of the egress-allowlist check (Spec 03.0 §6.5). Not `published`, so
+  // they stay out of the OpenAPI document (#10).
   // `skipRateLimit` — Render's health checks must never be limited (Spec 05.2 AC6).
   app.get("/healthz", { schema: { hide: true }, config: { skipRateLimit: true } }, async () => ({
     status: "ok" as const,

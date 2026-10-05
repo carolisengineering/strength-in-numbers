@@ -157,7 +157,9 @@ export function normalizeError(error: unknown): AppError {
   // A `ResponseSerializationError` means a handler returned a shape that
   // violates its own declared `response` schema — a server bug, not a client
   // error. Map to a generic 500; the failing path/schema is left on `.cause` for
-  // the error-handler log and never reaches the wire (Spec 03.0 §6.2, AC2).
+  // the error-handler log and never reaches the wire (Spec 03.0 §6.2, AC2). The
+  // logger's `err` serializer scrubs the Zod issues in that chain down to
+  // schema-shaped fields, so a handler value cannot reach the log either (#11).
   if (error instanceof ResponseSerializationError) {
     return new InternalError("response schema violation", { cause: error });
   }

@@ -12,13 +12,15 @@ import { registerErrorContract } from "./errors/contract.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
 import { RATE_LIMITS, registerRateLimits, type RateLimitConfig } from "./plugins/rate-limit.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { ifNoneMatchHits, strongEtag } from "./routes/http-cache.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1CachePolicy } from "./plugins/cache-policy.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
 import { markNullableBodiesOptional } from "./openapi/optional-body.js";
-import { addProblemResponses, problemAwareTransform } from "./openapi/problem-responses.js";
+import { addProblemResponses } from "./openapi/problem-responses.js";
+import { assertPublication, publicationTransform } from "./openapi/publication.js";
 
 /**
  * Fastify application assembly (Spec 01 §5.5, §6).
@@ -44,8 +46,10 @@ const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
  *
  * Safe-by-default: the check is NOT gated to a path prefix (a `/v2` surface or a
  * root-scope data route must not slip past it). The opt-out is explicit —
- * `schema: { hide: true }`, which also keeps the route out of the OpenAPI
- * document — plus body-less methods (HEAD / OPTIONS).
+ * `schema: { hide: true }`, used by the bodyless/infra routes (health probes,
+ * `_authcheck`, `/openapi.json`) — plus body-less methods (HEAD / OPTIONS).
+ * Keeping a route out of the OpenAPI document needs no flag: publication is
+ * opt-in (#10, `openapi/publication.ts`).
  */
 export function assertRouteHasResponseSchema(route: {
   method: string | string[];
@@ -138,14 +142,16 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.setSerializerCompiler(serializerCompiler);
 
   // Structural egress allowlist: fail assembly if any non-hidden route ships
-  // without a `response` schema (see `assertRouteHasResponseSchema`). Added on
-  // the root instance before any route registers so it sees all of them.
+  // without a `response` schema (see `assertRouteHasResponseSchema`); and the
+  // OpenAPI publication invariant (#10, `assertPublication`). Added on the root
+  // instance before any route registers so it sees all of them.
   app.addHook("onRoute", (routeOptions) => {
     assertRouteHasResponseSchema({
       method: routeOptions.method,
       url: routeOptions.url,
       schema: routeOptions.schema,
     });
+    assertPublication(routeOptions);
   });
 
   await app.register(requestContextPlugin);
@@ -180,9 +186,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   });
 
   // Emit-only OpenAPI 3.1 (Spec 03.0 §6.3). Registered before any route so its
-  // onRoute hook sees them all; the health + `_authcheck` routes opt out with
-  // `schema.hide`. No `servers:` block — the document must not name an internal
-  // host (§7). `@fastify/swagger-ui` is deliberately not registered (emit only).
+  // onRoute hook sees them all. Publication is opt-in (#10): only routes with
+  // `config.published: true` are documented. No `servers:` block — the document
+  // must not name an internal host (§7). `@fastify/swagger-ui` is deliberately
+  // not registered (emit only).
   await app.register(fastifySwagger, {
     openapi: {
       openapi: "3.1.0",
@@ -208,10 +215,12 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       },
       security: [{ bearerAuth: [] }],
     },
-    // #28: `problemAwareTransform` wraps `jsonSchemaTransform` and tags each /v1
+    // #10: `publicationTransform` hides every route without `config.published`
+    // (see `openapi/publication.ts`). Published routes go through #28's
+    // `problemAwareTransform`, which wraps `jsonSchemaTransform` and tags each
     // route with its problem groups; `addProblemResponses` turns those into
     // documented problem+json responses — see `openapi/problem-responses.ts`.
-    transform: problemAwareTransform,
+    transform: publicationTransform,
     // BL-7: correct `requestBody.required` for routes whose body schema
     // admits `null` (e.g. the fork overlay) — see `openapi/optional-body.ts`.
     // Runs inside every `app.swagger()` call, so the served route, the emit
@@ -256,17 +265,21 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // plugin never runs) — a deliberate carve-out from Spec 01 §7: the document is
   // route + schema metadata, no user data. Rendered once at boot and served as a
   // constant string so this anonymous route can never be a per-request
-  // `app.swagger()` CPU amplifier.
+  // `app.swagger()` CPU amplifier. It is ~250 KB, though, so it is an egress
+  // amplifier instead: rate-limited by L1 plus its own per-IP `docs` budget
+  // (Spec 05.2 AC17, #12), and conditional — a client re-fetching the same
+  // document gets an empty `304`.
   let openapiJson = "{}";
+  let openapiEtag = "";
   app.addHook("onReady", async () => {
     openapiJson = JSON.stringify(app.swagger(), null, 2);
+    openapiEtag = strongEtag("openapi.json", openapiJson);
   });
-  app.get("/openapi.json", { schema: { hide: true }, config: { skipRateLimit: true } }, async (_request, reply) =>
-    reply
-      .type("application/json")
-      .header("cache-control", "public, max-age=300")
-      .send(openapiJson),
-  );
+  app.get("/openapi.json", { schema: { hide: true }, config: { ipBudget: "docs" } }, async (request, reply) => {
+    reply.header("cache-control", "public, max-age=300").header("etag", openapiEtag);
+    if (ifNoneMatchHits(request.headers["if-none-match"], openapiEtag)) return reply.code(304).send();
+    return reply.type("application/json").send(openapiJson);
+  });
 
   return app;
 }
