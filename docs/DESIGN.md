@@ -568,12 +568,11 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   external contract — **public `/v1` surface only**, by **opt-in**: a route
   appears only with `config.published: true` (issue #10; everything else,
   including probe/health routes, is hidden by default), no internal host names —
-  and is **drift-checked in CI** (re-emit + `git
-  diff`). No client codegen — consumer types come from `z.infer` on the shared
-  schemas. The pipeline + the `/v1/me` migration onto it is Spec 03.0; Spec 02's
-  `MeSchema` is the first such DTO and the pattern the rest copy.
-  Error responses are documented too (issue #28): every `/v1` operation lists
-  each problem+json status it can return, `$ref`ing a shared
+  and is **drift-checked in CI** (re-emit + `git diff`). No client codegen — 
+  consumer types come from `z.infer` on the shared schemas. The pipeline + the 
+  `/v1/me` migration onto it is Spec 03.0; Spec 02' `MeSchema` is the first such 
+  DTO and the pattern the rest copy. Error responses are documented too (issue #28): 
+  every `/v1` operation lists each problem+json status it can return, `$ref`ing a shared
   `components.schemas.Problem`, with `type` narrowed to the exact problem URLs
   that status carries on that operation. Routes declare their domain errors in
   `config.problems` (documentation-only; `[]` when none); auth (401 / 403

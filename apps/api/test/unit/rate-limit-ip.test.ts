@@ -60,12 +60,68 @@ describe("AC2 — L1 runs before auth", () => {
   });
 });
 
-describe("AC6 — health probes and /openapi.json are never limited", () => {
+describe("AC6 — health probes are never limited", () => {
   it("stay 200 past ip.max, from a private address", async () => {
     const { app } = await buildTestApp({ rateLimits: limitsWith({ ip: 1 }) });
-    for (const url of ["/healthz", "/readyz", "/openapi.json", "/healthz", "/readyz", "/openapi.json"]) {
+    for (const url of ["/healthz", "/readyz", "/healthz", "/readyz"]) {
       expect((await app.inject({ method: "GET", url, remoteAddress: "10.0.0.9" })).statusCode, url).toBe(200);
     }
+  });
+});
+
+describe("AC17 (#12) — /openapi.json is limited: L1 plus its own per-IP docs budget", () => {
+  const doc = (remoteAddress: string) => ({ method: "GET" as const, url: "/openapi.json", remoteAddress });
+
+  it("counts toward L1 like any other route", async () => {
+    const { app } = await buildTestApp({ rateLimits: limitsWith({ ip: 1 }) });
+    expect((await app.inject(doc("203.0.113.1"))).statusCode).toBe(200);
+    expect((await app.inject(me("203.0.113.1"))).statusCode).toBe(429);
+  });
+
+  it("past the docs budget → 429 problem+json with Retry-After; another address and /v1 are unaffected", async () => {
+    const { app } = await buildTestApp({ rateLimits: limitsWith({ docs: 1 }) });
+    expect((await app.inject(doc("203.0.113.1"))).statusCode).toBe(200);
+    const limited = await app.inject(doc("203.0.113.1"));
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["content-type"]).toContain("application/problem+json");
+    expect(limited.json().type).toContain("rate-limited");
+    expect(Number(limited.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    expect((await app.inject(doc("203.0.113.2"))).statusCode).toBe(200);
+    expect((await app.inject(me("203.0.113.1"))).statusCode).toBe(200);
+  });
+
+  it("only /openapi.json spends the docs budget", async () => {
+    const { app } = await buildTestApp({ rateLimits: limitsWith({ docs: 1 }) });
+    for (let i = 0; i < 3; i += 1) expect((await app.inject(me("203.0.113.1"))).statusCode).toBe(200);
+    expect((await app.inject(doc("203.0.113.1"))).statusCode).toBe(200);
+  });
+
+  it("the rejection logs layer ip-docs with the IP, no user", async () => {
+    const { logger, lines } = capturingLogger();
+    const { app } = await buildTestApp({ logger, rateLimits: limitsWith({ docs: 1 }) });
+    await app.inject(doc("203.0.113.1"));
+    await app.inject(doc("203.0.113.1"));
+    const hit = lines.find((l) => l.msg === "rate_limited");
+    expect(hit).toMatchObject({ level: 40, layer: "ip-docs", ip: "203.0.113.1" });
+    expect(hit).not.toHaveProperty("userId");
+  });
+
+  it("the docs limiter fails open too (AC10)", async () => {
+    class FailingStore {
+      incr(_key: string, cb: (err: Error | null) => void) {
+        cb(new Error("store down"));
+      }
+      child() {
+        return this;
+      }
+    }
+    const { logger, lines } = capturingLogger();
+    const { app } = await buildTestApp({
+      logger,
+      rateLimits: limitsWith({ ip: 1, docs: 1, store: FailingStore as never }),
+    });
+    for (let i = 0; i < 3; i += 1) expect((await app.inject(doc("203.0.113.1"))).statusCode).toBe(200);
+    expect(lines.some((l) => l.msg === "rate_limiter_failed" && l.layer === "ip-docs")).toBe(true);
   });
 });
 
