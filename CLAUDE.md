@@ -4,6 +4,10 @@ Workout-logging + progress-tracking web app. Responsive web only for v1 (mobile-
 
 ## Layout (pnpm workspaces, Node 22)
 
+The root `.npmrc` pins `use-node-version=22.23.3`: every `pnpm` command in this repo runs on that
+Node regardless of the shell's `node` (pnpm downloads it once). Use `pnpm run …` / `pnpm exec …`,
+never `npx` — `npx prisma` fetches the latest Prisma instead of the repo's pinned one.
+
 - `apps/api` — Fastify + Prisma + TypeScript backend (`@sin/api`)
 - `packages/core` — framework-agnostic domain code (`@sin/core`); CI purity check forbids
   React / DOM / Node-only imports
@@ -23,6 +27,8 @@ pnpm --filter @sin/api run test:unit           # apps/api/test/unit
 RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers Postgres
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
+DATABASE_URL='<url>' pnpm run db:migrate:status   # repo-pinned Prisma; for Neon use the exact DATABASE_URL from Render (runbook B4)
+DATABASE_URL='<url>' pnpm run db:migrate:deploy   # manual release step — migrations never run on boot
 pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
 pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api / src/auth >=90% gates
 pnpm --filter @sin/web run e2e                  # Spec 06.3 browser smoke vs staging; needs E2E_BASE_URL + E2E_AUTH0_* (docs/runbooks/m1-browser-smoke.md)
@@ -52,7 +58,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 - Never use the word "dummy" (code, comments, config, docs) — use placeholder / test / fake / stub.
 - **Web logout + user data** (Spec 06.0): `logoutAndClear()` (`apps/web/src/auth/logout.ts`) is the only place that calls Auth0 `logout` — a unit test fails if another source file builds `logoutParams`. Anything that persists per-user data in `localStorage` uses a `sin:<name>:` key prefix listed in `USER_DATA_KEY_PREFIXES` (`apps/web/src/storage/clearUserData.ts`) so logout clears it, and goes through the `StorageAdapter` in `apps/web/src/storage/storage.ts` — the Spec 04.0 AC7 source scan fails if any other non-test module names `localStorage` / `sessionStorage` (comments included).
 - **jsdom has no `<dialog>` `showModal()`/`close()`** — `apps/web/src/test/setup.ts` shims them (attribute toggle only). Real focus/Escape behavior needs a browser test.
-- **Rate limits** (Spec 05.2): every `/v1` write route declares `config: { writeGroup }` (app assembly fails without it); limits live only in `RATE_LIMITS` (`apps/api/src/plugins/rate-limit.ts`); a test that exceeds them passes `rateLimits: GENEROUS_LIMITS` / `limitsWith(...)` to `buildTestApp`. `trustProxy` is the `trustRenderProxy` function (private socket + one Cloudflare hop — Fastify ≥ 5.12 ignores a numeric `trustProxy`); re-check it on any hosting change.
+- **Rate limits** (Spec 05.2): every `/v1` write route declares `config: { writeGroup }` (app assembly fails without it); limits live only in `RATE_LIMITS` (`apps/api/src/plugins/rate-limit.ts`); a test that exceeds them passes `rateLimits: GENEROUS_LIMITS` / `limitsWith(...)` to `buildTestApp`. The client address is `clientAddress()` — `CF-Connecting-IP` only when the socket is private/loopback (Render's own infrastructure), else the socket itself; Fastify has no `trustProxy` and `X-Forwarded-For` is never read. Never trust Cloudflare's IP ranges as proxies — WARP/Worker end users egress from them and could forge either header. Every request logs `client_ip`; re-run runbook D4.d after any hosting change.
 
 ## Infrastructure
 

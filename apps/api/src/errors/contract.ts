@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { NotFoundError, RateLimitedError, SyncTokenExpiredError } from "./app-error.js";
 import { problemResponse } from "./problem.js";
+import { clientAddress } from "../plugins/rate-limit.js";
 
 /**
  * Installs the RFC 9457 error + not-found handlers on a Fastify context
@@ -29,7 +30,7 @@ export function registerErrorContract(app: FastifyInstance): void {
       reply.header("retry-after", String(err.retryAfterSeconds));
       const { layer, group } = err.source;
       request.log.warn(
-        layer === "ip" ? { layer, ip: request.ip } : { layer, group, userId: request.user?.id },
+        layer === "ip" ? { layer, ip: clientAddress(request) } : { layer, group, userId: request.user?.id },
         "rate_limited",
       );
     } else {

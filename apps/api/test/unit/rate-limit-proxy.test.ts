@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FastifyRequest } from "fastify";
-import { isPrivateAddress, trustProxyTripwire, trustRenderProxy } from "../../src/plugins/rate-limit.js";
-import { buildTestApp } from "../helpers/build-test-app.js";
+import { clientAddress, isPrivateAddress, trustProxyTripwire } from "../../src/plugins/rate-limit.js";
+import { buildTestApp, limitsWith } from "../helpers/build-test-app.js";
 
 describe("§6.6 — isPrivateAddress", () => {
   it.each([
@@ -29,71 +29,109 @@ describe("§6.6 — isPrivateAddress", () => {
   });
 });
 
-describe("§6.6 — trustProxyTripwire warns once on a private req.ip", () => {
-  it("one warn trust_proxy_suspect, then silent; public addresses never warn", () => {
-    const warn = vi.fn();
-    const req = (ip: string) => ({ ip, log: { warn } }) as unknown as FastifyRequest;
-    const trip = trustProxyTripwire();
-    trip(req("203.0.113.9"));
-    trip(req("10.0.0.5"));
-    trip(req("10.0.0.6"));
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith({ ip: "10.0.0.5" }, "trust_proxy_suspect");
+/** A request as `clientAddress` / the tripwire see it. */
+function req(socket: string, headers: Record<string, string> = {}, warn = vi.fn()): FastifyRequest {
+  return { ip: socket, socket: { remoteAddress: socket }, headers, log: { warn } } as unknown as FastifyRequest;
+}
+
+describe("AC11 / D12 — clientAddress: CF-Connecting-IP behind a known proxy, else the socket", () => {
+  const CASES: [socket: string, headers: Record<string, string>, expected: string, why: string][] = [
+    // [socket, headers, expected, why]
+    ["127.0.0.1", { "cf-connecting-ip": "73.8.137.104" }, "73.8.137.104", "staging chain: loopback sidecar"],
+    ["10.1.2.3", { "cf-connecting-ip": "73.8.137.104" }, "73.8.137.104", "private Render proxy"],
+    ["fd00::5", { "cf-connecting-ip": "2001:db8::42" }, "2001:db8::42", "IPv6 private proxy and client"],
+    // Code review #2: a Cloudflare-owned socket may be an end user (WARP egress,
+    // Workers from 2a06:98c0::/29 — inside Cloudflare's published ranges); only a
+    // private socket is trusted, so neither ever gets to choose its key.
+    ["104.28.1.2", { "cf-connecting-ip": "6.6.6.6" }, "104.28.1.2", "a WARP client connecting directly"],
+    ["2a06:98c0::1", { "cf-connecting-ip": "6.6.6.6" }, "2a06:98c0::1", "a Worker connecting directly"],
+    ["203.0.113.50", { "cf-connecting-ip": "6.6.6.6" }, "203.0.113.50", "a public peer can't choose its key"],
+    ["127.0.0.1", {}, "127.0.0.1", "internal probe: no header → the socket"],
+    ["10.1.2.3", { "cf-connecting-ip": "not-an-ip" }, "10.1.2.3", "garbage header → the socket"],
+  ];
+  it.each(CASES)("%s %j → %s (%s)", (socket, headers, expected) => {
+    expect(clientAddress(req(socket, headers))).toBe(expected);
   });
-  it("Final review — warns once when X-Forwarded-For was sent but ignored (req.ip is the socket)", () => {
-    const warn = vi.fn();
-    const req = (ip: string, socket: string, xff?: string) =>
-      ({
-        ip,
-        socket: { remoteAddress: socket },
-        headers: xff === undefined ? {} : { "x-forwarded-for": xff },
-        log: { warn },
-      }) as unknown as FastifyRequest;
-    const trip = trustProxyTripwire();
-    trip(req("198.51.100.7", "203.0.113.50")); // no header: a direct client, fine
-    trip(req("198.51.100.7", "10.0.0.5", "198.51.100.7, 172.70.1.1")); // header honoured
-    expect(warn).not.toHaveBeenCalled();
-    trip(req("198.18.0.9", "198.18.0.9", "198.51.100.7, 172.70.1.1")); // header ignored
-    trip(req("198.18.0.9", "198.18.0.9", "198.51.100.8, 172.70.1.1"));
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith({ ip: "198.18.0.9", forwardedIgnored: true }, "trust_proxy_suspect");
+
+  it("code review #1: a WARP / Worker client's forged X-Forwarded-For is never used", () => {
+    // Chain the reviews described: forged entry, the client's own Cloudflare
+    // egress (WARP 104.28.x), the edge, Render — Cloudflare sets CF-Connecting-IP
+    // to the egress address it actually saw.
+    const r = req("10.1.2.3", {
+      "x-forwarded-for": "6.6.6.6, 104.28.1.2, 104.22.64.33",
+      "cf-connecting-ip": "104.28.1.2",
+    });
+    expect(clientAddress(r)).toBe("104.28.1.2");
+  });
+
+  it("the L1 limit keys on it end to end: a forged X-Forwarded-For can't buy a fresh bucket", async () => {
+    const { app } = await buildTestApp({ rateLimits: limitsWith({ ip: 1 }) });
+    const call = (xff: string) =>
+      app.inject({
+        method: "GET",
+        url: "/v1/me",
+        remoteAddress: "10.1.2.3",
+        headers: { authorization: "Bearer t", "cf-connecting-ip": "104.28.1.2", "x-forwarded-for": xff },
+      });
+    expect((await call("6.6.6.6")).statusCode).not.toBe(429);
+    expect((await call("7.7.7.7")).statusCode).toBe(429);
   });
 });
 
-describe("AC11 — req.ip is the address Cloudflare saw; a forged X-Forwarded-For can't choose it", () => {
-  it("trusts exactly 2 hops", async () => {
-    const { app } = await buildTestApp();
-    app.get("/__ip", { schema: { hide: true } }, async (request) => ({ ip: request.ip }));
-    const ipFor = async (xff: string) =>
-      (
-        await app.inject({
-          method: "GET",
-          url: "/__ip",
-          remoteAddress: "10.0.0.5",
-          headers: { "x-forwarded-for": xff },
-        })
-      ).json().ip;
-    expect(await ipFor("198.51.100.7, 172.70.1.1")).toBe("198.51.100.7");
-    expect(await ipFor("6.6.6.6, 198.51.100.7, 172.70.1.1")).toBe("198.51.100.7");
+describe("§11 / runbook D4.d — every request logs its resolved client_ip, health checks included", () => {
+  it("the 'request completed' line of a /healthz call carries client_ip from CF-Connecting-IP", async () => {
+    const lines: Record<string, unknown>[] = [];
+    const { pino } = await import("pino");
+    const logger = pino({ level: "info" }, { write: (s: string) => lines.push(JSON.parse(s)) });
+    const { app } = await buildTestApp({ logger });
+    await app.inject({
+      method: "GET",
+      url: "/healthz",
+      remoteAddress: "127.0.0.1",
+      headers: { "cf-connecting-ip": "73.8.137.104", "x-forwarded-for": "203.0.113.9" },
+    });
+    const completed = lines.find((l) => l.msg === "request completed");
+    expect(completed).toMatchObject({ client_ip: "73.8.137.104" });
   });
-  it("a public socket (not Render's proxy) is the client; its X-Forwarded-For is ignored", async () => {
+});
+
+describe("§6.6 — trustProxyTripwire: the Cloudflare assumption broke", () => {
+  it("never warns for requests through a known proxy that carry CF-Connecting-IP, or for header-less probes", () => {
+    const warn = vi.fn();
+    const trip = trustProxyTripwire();
+    trip(req("127.0.0.1", { "cf-connecting-ip": "73.8.137.104", "x-forwarded-for": "73.8.137.104" }, warn));
+    trip(req("127.0.0.1", {}, warn));
+    trip(req("104.28.1.2", {}, warn)); // a WARP client hitting the origin directly with no header
+    expect(warn).not.toHaveBeenCalled();
+  });
+  it("warns once when a forwarded request through a known proxy has no usable CF-Connecting-IP", () => {
+    const warn = vi.fn();
+    const trip = trustProxyTripwire();
+    trip(req("10.1.2.3", { "x-forwarded-for": "73.8.137.104" }, warn));
+    trip(req("10.1.2.3", { "x-forwarded-for": "73.8.137.105" }, warn));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ socket: "10.1.2.3", reason: "no-cf-connecting-ip" }, "trust_proxy_suspect");
+  });
+  it("warns once when a forwarded request arrives from a public socket (e.g. the Cloudflare edge itself)", () => {
+    const warn = vi.fn();
+    const trip = trustProxyTripwire();
+    trip(req("104.22.64.33", { "x-forwarded-for": "73.8.137.104", "cf-connecting-ip": "73.8.137.104" }, warn));
+    trip(req("198.18.0.9", { "x-forwarded-for": "73.8.137.104" }, warn));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith({ socket: "104.22.64.33", reason: "unknown-proxy" }, "trust_proxy_suspect");
+  });
+});
+
+describe("D12 — Fastify no longer trusts X-Forwarded-For", () => {
+  it("req.ip is the socket even when a forwarding header is sent", async () => {
     const { app } = await buildTestApp();
     app.get("/__ip", { schema: { hide: true } }, async (request) => ({ ip: request.ip }));
     const res = await app.inject({
       method: "GET",
       url: "/__ip",
-      remoteAddress: "203.0.113.50",
-      headers: { "x-forwarded-for": "198.51.100.7, 172.70.1.1" },
+      remoteAddress: "10.1.2.3",
+      headers: { "x-forwarded-for": "6.6.6.6, 198.51.100.7" },
     });
-    expect(res.json().ip).toBe("203.0.113.50");
-  });
-});
-
-describe("D12 — trustRenderProxy", () => {
-  it("trusts a private socket and exactly one more hop", () => {
-    expect(trustRenderProxy("10.0.0.5", 0)).toBe(true);
-    expect(trustRenderProxy("203.0.113.50", 0)).toBe(false);
-    expect(trustRenderProxy("172.70.1.1", 1)).toBe(true);
-    expect(trustRenderProxy("198.51.100.7", 2)).toBe(false);
+    expect(res.json().ip).toBe("10.1.2.3");
   });
 });

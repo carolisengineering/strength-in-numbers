@@ -297,8 +297,12 @@ the local Docker URL. **`unset DATABASE_URL` when you're done** (end of B5) so a
 later local command doesn't point at Neon by accident.
 
 ```bash
-pnpm --filter @sin/api exec prisma migrate deploy
+pnpm run db:migrate:deploy   # = pnpm --filter @sin/api exec prisma migrate deploy
 ```
+
+Run it from the repo root with `pnpm`, never `npx prisma …` — `npx` fetches the
+latest Prisma (a different major) instead of the repo's pinned one. The root
+`.npmrc` makes pnpm use Node 22.23.3 even if your shell's `node` is another version.
 
 Expect `N migrations found` and one `Applying migration …` line per migration
 not yet on that database — on a fresh Neon branch that is every folder under
@@ -317,7 +321,7 @@ never run on app boot.)
 - **CLI, no console needed** (same exported `DATABASE_URL`):
 
   ```bash
-  pnpm --filter @sin/api exec prisma migrate status
+  pnpm run db:migrate:status
   ```
 
   Expect `Database schema is up to date!` and every migration folder listed as
@@ -616,20 +620,36 @@ Once b and c pass by hand, wiring Part C's GitHub secrets and pushing to `main`
 should make the CI `smoke` job go green for the same reasons.
 
 **d. Client IP behind Render + Cloudflare (Spec 05.2 §11).** The per-IP rate
-limit keys on `req.ip`, which `trustRenderProxy` derives from Render's private
-proxy socket plus one Cloudflare hop. Check it after the first deploy of Spec 05.2
-and after any hosting change:
+limit keys on `clientAddress()` (`apps/api/src/plugins/rate-limit.ts`):
+Cloudflare's `CF-Connecting-IP` when the socket is private/loopback (Render's own
+infrastructure), else the socket. Check it after any deploy that touches it and
+after any hosting change:
 
 ```bash
-curl -s -H 'X-Forwarded-For: 203.0.113.9' $BASE/healthz   # {"status":"ok"}
+curl -s -H 'X-Forwarded-For: 203.0.113.9' -H 'CF-Connecting-IP: 203.0.113.10' $BASE/healthz   # {"status":"ok"}
 ```
 
-In Render **Logs**, the matching `incoming request` line's `remoteAddress` must be
-**your real public IP** — not `203.0.113.9` (a forged header was trusted), not a
-`10.x` / `100.64.x` address (the proxy wasn't trusted, so every user shares one
-bucket), and not a Cloudflare address (one hop too few). Any `trust_proxy_suspect`
-warning in the logs means the same thing. If it's wrong, revert the deploy and fix
-`trustRenderProxy` in `apps/api/src/plugins/rate-limit.ts`.
+In Render **Logs**, the matching `request completed` line's **`client_ip`** must
+be **your real public IP**: not `203.0.113.9` or `203.0.113.10` (a forged header
+was trusted), not a `10.x` / `100.64.x` / `127.x` address, and not a Cloudflare
+address (every user would share one bucket). (Fastify's own `remoteAddress` on
+the `incoming request` line is the socket — a proxy — by design; note what it
+is.) A `trust_proxy_suspect` warning means the Cloudflare assumption broke; its
+`reason` says how:
+
+- `no-cf-connecting-ip` — Render stopped forwarding the header.
+- `unknown-proxy` with a Cloudflare `socket` (e.g. `104.x` / `172.64–71.x`) —
+  Render hands us the Cloudflare edge directly, so `client_ip` is the edge and
+  users behind one edge share a bucket. That is safe (unspoofable) but coarse;
+  deciding whether to trust that socket is a deliberate design change (Spec
+  05.2 D12: Cloudflare's ranges also carry WARP/Worker end users), not a quick
+  fix.
+
+*History:* the first check (2026-10-04) logged the Cloudflare edge `104.22.64.33`
+— the original "private socket + one hop" `trustProxy` was a hop short, and
+walking `X-Forwarded-For` through Cloudflare's ranges proved spoofable from
+WARP/Workers. Fixed by keying on `CF-Connecting-IP` behind a private socket
+only (Spec 05.2 D12).
 
 ---
 
