@@ -71,7 +71,11 @@ function toDto(r: ExerciseRecord): Exercise {
 }
 
 /** `sha256(<cursor-sentinel> ‖ <exercises wire bytes>)`, first 32 hex, strong.
- * The sentinel is the `since` token on a delta, `"full"` otherwise. */
+ * The sentinel is the `since` token on a delta, `"full"` otherwise.
+ * `JSON.stringify(exercises)` *is* the wire bytes: the Zod serializer sends
+ * `JSON.stringify(safeEncode(ExerciseSchema[], …))`, the schema has no transforms,
+ * and `toDto` emits keys in schema order — pinned by the #20 route test, so keep
+ * `toDto` in schema order (Spec 03.1 §6.1 step 3). */
 function catalogEtag(sentinel: string, exercises: Exercise[]): string {
   return strongEtag(sentinel, JSON.stringify(exercises));
 }

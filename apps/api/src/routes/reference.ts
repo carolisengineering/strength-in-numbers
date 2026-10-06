@@ -46,6 +46,8 @@ function serveReference<B extends object>(
   rows: (MuscleGroup & Equipment)[],
   body: B,
 ): B | FastifyReply {
+  // Equal to the serializer's bytes for `rows` (no schema transforms, `toDto` in
+  // schema order) — pinned by the #20 route test (Spec 03.1 §6.1 step 3).
   const etag = strongEtag(sentinel, JSON.stringify(rows));
 
   reply.header("etag", etag);

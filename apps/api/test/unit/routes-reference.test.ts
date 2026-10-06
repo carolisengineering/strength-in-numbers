@@ -3,6 +3,7 @@ import { buildTestApp } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, fakeVerifier } from "../helpers/fakes.js";
 import { InvalidTokenError } from "../../src/errors/app-error.js";
 import type { ReferenceRecord } from "../../src/repositories/exercise.js";
+import { strongEtag } from "../../src/routes/http-cache.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 const DTO_KEYS = ["id", "name", "displayOrder"].sort();
@@ -63,6 +64,15 @@ describe.each([
       name: rows[0]!.name,
       displayOrder: rows[0]!.displayOrder,
     });
+  });
+
+  it("#20 — the ETag is the hash of the exact table bytes on the wire (sentinel = payload key)", async () => {
+    const { app } = await appWith(seed);
+    const res = await app.inject({ method: "GET", url, headers: BEARER });
+
+    const wire = JSON.stringify((JSON.parse(res.body) as Record<string, unknown>)[key]);
+    expect(res.body).toContain(`"${key}":${wire}`);
+    expect(res.headers.etag).toBe(strongEtag(key, wire));
   });
 
   it("401 without a token", async () => {
