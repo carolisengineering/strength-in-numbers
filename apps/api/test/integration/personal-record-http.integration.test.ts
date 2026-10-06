@@ -103,10 +103,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HT
     const F2 = await insertExercise(db, { ownerUserId: userA, forkedFrom: G, name: "Paused Bench" });
     const C = await insertExercise(db, { ownerUserId: userA, name: "Landmine Press" });
     const X = await insertExercise(db, { ownerUserId: userB, name: "B only" });
+    // B's own fork of G: resolving it for A would reveal "B forked G" (§7).
+    const BFork = await insertExercise(db, { ownerUserId: userB, forkedFrom: G, name: "B's bench" });
     const onF1 = await session(JSON_A, F1, [{ reps: 5, weight: 100 }], 30);
     const onC = await session(JSON_A, C, [{ reps: 5, weight: 50 }], 20);
     const onX = await session(JSON_B, X, [{ reps: 5, weight: 70 }], 10);
-    return { G, F1, F2, C, X, onF1, onC, onX };
+    return { G, F1, F2, C, X, BFork, onF1, onC, onX };
   }
 
   describe("AC12/AC14 (HTTP) — finish carries newRecords; ?workoutId= recovers them", () => {
@@ -161,9 +163,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HT
 
   describe("AC20 — no existence oracle, no cross-user read", () => {
     it("foreign, absent and unseen ids all answer 200 with an identical empty body", async () => {
-      const { X, onX } = await arrange();
+      const { X, BFork, onX } = await arrange();
       const bodies: string[] = [];
-      for (const q of [`?exerciseId=${X}`, `?exerciseId=${uuidv7()}`, `?workoutId=${onX.workoutId}`, `?workoutId=${uuidv7()}`]) {
+      // BFork is the case that needs the visibility clause: A HAS rows on its
+      // root G, so only the owner check keeps A from learning B forked G.
+      for (const q of [
+        `?exerciseId=${X}`,
+        `?exerciseId=${BFork}`,
+        `?exerciseId=${uuidv7()}`,
+        `?workoutId=${onX.workoutId}`,
+        `?workoutId=${uuidv7()}`,
+      ]) {
         const res = await get(JSON_A, q);
         expect(res.statusCode).toBe(200);
         bodies.push(res.body);

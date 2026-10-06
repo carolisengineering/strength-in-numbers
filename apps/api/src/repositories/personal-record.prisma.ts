@@ -16,8 +16,10 @@ import type { RawClient } from "./set-entry.prisma.js";
  * `records:rebuild` (D8). Raw SQL like the other repositories.
  */
 
-/** Per-user PR advisory lock (D9). Callers on the finish/delete paths take
- * the workout row lock FIRST — lock order is row → this, everywhere. */
+/** Per-user PR advisory lock (D9, amended). Every PR writer takes this as its
+ * FIRST statement, before any workout row lock: the recompute's INSERTs take FK
+ * KEY SHARE locks on other workouts' rows, so a writer holding a row lock while
+ * waiting for this one can deadlock (AC18). */
 export async function lockUserRecords(client: RawClient, userId: string): Promise<void> {
   await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pr:${userId}`}))`;
 }

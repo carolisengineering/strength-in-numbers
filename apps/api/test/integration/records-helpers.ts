@@ -44,6 +44,8 @@ export interface SetSpec {
 }
 export interface ExerciseSpec {
   exerciseId: string;
+  /** Defaults to the array index; set it to insert rows out of position order. */
+  position?: number;
   modality?: string;
   name?: string;
   sets: SetSpec[];
@@ -72,7 +74,8 @@ export async function logWorkout(
     uuidv7(),
   );
   const setIds: string[][] = [];
-  for (const [position, ex] of spec.exercises.entries()) {
+  for (const [index, ex] of spec.exercises.entries()) {
+    const position = ex.position ?? index;
     const weId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "workout_exercise" ("id","workout_id","position","exercise_id","exercise_name_snapshot","modality_snapshot")

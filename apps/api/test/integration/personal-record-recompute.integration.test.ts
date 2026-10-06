@@ -108,20 +108,22 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — recomputeRecordsForRoots
   });
 
   describe("Review Focus 1 — one workout logging the same lineage twice", () => {
-    it("earliest by position wins a tie within the workout", async () => {
+    it("earliest by position wins a tie within the workout, regardless of insertion order", async () => {
       const user = await insertUser(db);
       const global = await insertExercise(db);
       const fork = await insertExercise(db, { ownerUserId: user, forkedFrom: global });
-      // position 0 = fork, position 1 = origin; both 100 kg × 5
+      // Inserted fork-first, but the ORIGIN sits at position 0; both 100 kg × 5.
+      // Insertion order, set ids and set_number all favour the fork, so only
+      // the loader's `we.position` sort can pick the origin's set.
       const { setIds } = await logWorkout(db, user, {
         startedAt: day(1),
         exercises: [
-          { exerciseId: fork, sets: [{ reps: 5, weight: 100 }] },
-          { exerciseId: global, sets: [{ reps: 5, weight: 100 }] },
+          { exerciseId: fork, position: 1, sets: [{ reps: 5, weight: 100 }] },
+          { exerciseId: global, position: 0, sets: [{ reps: 5, weight: 100 }] },
         ],
       });
       const written = await recompute(user, [global]);
-      expect(written.find((r) => r.recordType === "heaviest_weight")!.sourceSetId).toBe(setIds[0]![0]);
+      expect(written.find((r) => r.recordType === "heaviest_weight")!.sourceSetId).toBe(setIds[1]![0]);
     });
   });
 
