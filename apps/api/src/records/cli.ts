@@ -6,7 +6,8 @@
  * against live traffic: it takes the same per-user lock as the finish and
  * delete paths. Logs ids and counts only — never record values.
  *
- * Exit code 1 on a missing DATABASE_URL, a malformed --user, or any failure;
+ * Exit code 1 on a missing or rejected DATABASE_URL, any argument other than
+ * `--user <id>` / `--user=<id>`, or any failure;
  * a failed user's transaction rolls back and earlier users stay rebuilt.
  */
 import { realpathSync } from "node:fs";
@@ -17,6 +18,33 @@ import { isUserId } from "@sin/core";
 import { resolveDatabaseUrl } from "../db.js";
 import { rebuildRecords } from "./rebuild.js";
 
+export type RebuildArgs = { ok: true; userId: string | undefined } | { ok: false; error: string };
+
+/**
+ * The only accepted forms are no arguments, `--user <id>` and `--user=<id>`.
+ * Anything else is an error rather than ignored: a mistyped flag must never
+ * silently widen a one-user repair into a rebuild of every user.
+ */
+export function parseRebuildArgs(argv: readonly string[]): RebuildArgs {
+  let userId: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    let value: string | undefined;
+    if (arg === "--") continue; // `pnpm run records:rebuild -- --user <id>` may forward it
+    if (arg === "--user") {
+      value = argv[++i];
+    } else if (arg.startsWith("--user=")) {
+      value = arg.slice("--user=".length);
+    } else {
+      return { ok: false, error: `unrecognised argument: ${arg} (usage: [--user <id>])` };
+    }
+    if (userId !== undefined) return { ok: false, error: "--user given more than once" };
+    if (value === undefined || !isUserId(value)) return { ok: false, error: "--user needs a user id (uuid)" };
+    userId = value;
+  }
+  return { ok: true, userId };
+}
+
 export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
   const databaseUrl = env.DATABASE_URL;
@@ -24,23 +52,23 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
     log.error("DATABASE_URL is required");
     return 1;
   }
-  const userFlag = argv.indexOf("--user");
-  const userId = userFlag === -1 ? undefined : argv[userFlag + 1];
-  if (userFlag !== -1 && (userId === undefined || !isUserId(userId))) {
-    log.error("--user needs a user id (uuid)");
+  const args = parseRebuildArgs(argv);
+  if (!args.ok) {
+    log.error(args.error);
     return 1;
   }
 
-  const prisma = new PrismaClient({ datasourceUrl: resolveDatabaseUrl(databaseUrl) });
+  let prisma: PrismaClient | undefined;
   try {
-    const summary = await rebuildRecords(prisma, log, { userId });
+    prisma = new PrismaClient({ datasourceUrl: resolveDatabaseUrl(databaseUrl) });
+    const summary = await rebuildRecords(prisma, log, { userId: args.userId });
     log.info(summary, "records rebuild complete");
     return 0;
   } catch (err) {
     log.error({ err }, "records rebuild failed");
     return 1;
   } finally {
-    await prisma.$disconnect();
+    await prisma?.$disconnect();
   }
 }
 

@@ -51,7 +51,7 @@ describe("AC9/AC15 — deleteWorkout", () => {
     const finishedAt = new Date("2024-01-15T14:30:00Z");
     stub.queueRows([{ id, user_id: userId, ended_at: finishedAt }]); // ownership check: found, finished
     stub.queueRows([{ n: 4 }]); // exercise count (§9), read before the DELETE
-    stub.queueRows([]); // Spec 07.0: touched lineage roots — none, so no PR lock / recompute
+    stub.queueRows([]); // Spec 07.0: touched lineage roots — none, so no recompute (the PR lock is always taken first — D9)
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.deleteWorkout(userId, id);
