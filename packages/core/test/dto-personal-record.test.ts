@@ -26,7 +26,8 @@ describe("AC25 — PersonalRecordSchema", () => {
     expect(PersonalRecordSchema.parse({ ...validRecord, previousValue: null }).previousValue).toBeNull();
   });
   it("rejects a missing field and an unknown record type", () => {
-    const { workoutId: _omit, ...missing } = validRecord;
+    const missing: Record<string, unknown> = { ...validRecord };
+    delete missing.workoutId;
     expect(PersonalRecordSchema.safeParse(missing).success).toBe(false);
     expect(PersonalRecordSchema.safeParse({ ...validRecord, recordType: "rep_pr_at_weight" }).success).toBe(false);
   });

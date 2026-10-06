@@ -717,6 +717,10 @@ export class FakePersonalRecordRepository implements PersonalRecordRepository {
       .filter((r) => r.userId === actingUserId)
       .filter((r) => filter.exerciseId === undefined || r.exerciseId === filter.exerciseId)
       .filter((r) => filter.workoutId === undefined || r.workoutId === filter.workoutId)
-      .map(({ userId: _userId, ...rest }) => rest);
+      .map((r) => {
+        const record: Partial<typeof r> = { ...r };
+        delete record.userId;
+        return record as PersonalRecordRecord;
+      });
   }
 }
