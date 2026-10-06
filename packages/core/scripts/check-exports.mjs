@@ -46,6 +46,8 @@ const EXPECTED = [
   "MODALITY_VALUES",
   "SET_TYPE_VALUES",
   "RECORD_TYPE_VALUES",
+  "RECORD_UNIT_VALUES",
+  "RECORD_UNIT_BY_TYPE",
   // ids
   "brandId",
   "UserIdSchema",
@@ -121,6 +123,11 @@ const EXPECTED = [
   "CreateSetSchema",
   "UpdateSetSchema",
   "WorkoutExerciseDetailSchema",
+  // dto — personal records (Spec 07.0 §5)
+  "PersonalRecordSchema",
+  "PersonalRecordsQuerySchema",
+  "PersonalRecordsResponseSchema",
+  "UpdatedWorkoutSchema",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

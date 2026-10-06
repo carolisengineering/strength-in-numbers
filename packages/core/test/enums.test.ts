@@ -3,6 +3,8 @@ import {
   DISTANCE_UNIT_VALUES,
   MODALITY_VALUES,
   RECORD_TYPE_VALUES,
+  RECORD_UNIT_BY_TYPE,
+  RECORD_UNIT_VALUES,
   SET_TYPE_VALUES,
   UNIT_PREFERENCE_VALUES,
   WEIGHT_UNIT_VALUES,
@@ -35,12 +37,24 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
     expect([...SET_TYPE_VALUES]).toEqual(["warmup", "working", "drop", "failure"]);
   });
 
-  it("RECORD_TYPE_VALUES = the three v1 PR kinds (DESIGN §4.5)", () => {
+  it("RECORD_TYPE_VALUES = the four v1 PR kinds (DESIGN §4.5, Spec 07.0 D2)", () => {
     expect([...RECORD_TYPE_VALUES]).toEqual([
       "heaviest_weight",
       "best_est_1rm",
       "best_set_volume",
+      "max_reps",
     ]);
+  });
+
+  it("RECORD_UNIT_VALUES and RECORD_UNIT_BY_TYPE pair every type with exactly one unit (Spec 07.0 §4)", () => {
+    expect([...RECORD_UNIT_VALUES]).toEqual(["kg", "kg_reps", "reps"]);
+    expect(RECORD_UNIT_BY_TYPE).toEqual({
+      heaviest_weight: "kg",
+      best_est_1rm: "kg",
+      best_set_volume: "kg_reps",
+      max_reps: "reps",
+    });
+    expect(Object.isFrozen(RECORD_UNIT_BY_TYPE)).toBe(true);
   });
 
   it("every *_VALUES array is frozen (single source of truth)", () => {
@@ -51,6 +65,7 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
       MODALITY_VALUES,
       SET_TYPE_VALUES,
       RECORD_TYPE_VALUES,
+      RECORD_UNIT_VALUES,
     ]) {
       expect(Object.isFrozen(arr)).toBe(true);
     }

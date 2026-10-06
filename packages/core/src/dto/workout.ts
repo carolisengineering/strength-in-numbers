@@ -8,6 +8,7 @@ import { z } from "zod";
 import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "../enums.js";
 import { ExerciseIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
+import { PersonalRecordSchema } from "./personal-record.js";
 import { SetEntrySchema } from "./set-entry.js";
 
 export const WORKOUT_TITLE_MAX = 120;
@@ -119,3 +120,11 @@ export const UpdateWorkoutExerciseSchema = z.strictObject({
   notes: WorkoutNotes.nullable().optional(),
 });
 export type UpdateWorkoutExercise = z.infer<typeof UpdateWorkoutExerciseSchema>;
+
+/** `PATCH /v1/workouts/{id}` 200 body (Spec 07.0 §5, D12): the workout plus
+ * the records it holds after this request — `[]` for any non-finish PATCH.
+ * A new name, not a change to `WorkoutSchema`, which other routes share. */
+export const UpdatedWorkoutSchema = WorkoutSchema.extend({
+  newRecords: z.array(PersonalRecordSchema),
+});
+export type UpdatedWorkout = z.infer<typeof UpdatedWorkoutSchema>;

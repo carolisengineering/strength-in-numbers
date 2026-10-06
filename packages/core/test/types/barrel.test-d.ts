@@ -44,6 +44,7 @@ import {
   parseExerciseId,
   parseUserId,
   RECORD_TYPE_VALUES,
+  RECORD_UNIT_VALUES,
   SET_TYPE_VALUES,
   toCanonicalKg,
   toCanonicalMeters,
@@ -58,6 +59,8 @@ import {
   type Modality,
   type MuscleGroup,
   type RecordType,
+  type RecordUnit,
+  type PersonalRecord,
   type SetType,
   type UnitPreference,
   type UpdateMeInput,
@@ -126,6 +129,9 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf<Modality>().toBeString();
     expectTypeOf<SetType>().toBeString();
     expectTypeOf<RecordType>().toBeString();
+    expectTypeOf(RECORD_UNIT_VALUES).items.toBeString();
+    expectTypeOf<RecordUnit>().toBeString();
+    expectTypeOf<PersonalRecord["value"]>().toBeNumber();
     expectTypeOf<Exercise>().not.toBeAny();
     expectTypeOf<MuscleGroup>().not.toBeAny();
     expectTypeOf<Equipment>().not.toBeAny();
