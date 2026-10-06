@@ -9,6 +9,8 @@ import {
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
+  UpdatedWorkoutSchema,
+  type UpdatedWorkout,
   type Workout,
   type WorkoutDetail,
   type WorkoutExercise,
@@ -22,6 +24,7 @@ import {
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
 import { toSetEntryDto } from "./sets.js";
+import { toPersonalRecordDto } from "./personal-records.js";
 import { assertStartedAtInBounds } from "../repositories/workout-writes.js";
 import type {
   WorkoutDetailRecord,
@@ -149,13 +152,13 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
   r.patch(
     "/workouts/:id",
     {
-      schema: { params: workoutIdParams, body: UpdateWorkoutSchema, response: { 200: WorkoutSchema } },
+      schema: { params: workoutIdParams, body: UpdateWorkoutSchema, response: { 200: UpdatedWorkoutSchema } },
       config: { published: true, problems: [NotFoundError, WorkoutFinishedError, IncompleteWorkingSetsError], writeGroup: "workouts" },
     },
     async (request) => {
       const actingUserId = request.user!.id;
       const isFinishAttempt = request.body.endedAt !== undefined && request.body.endedAt !== null;
-      const { workout: updated, exerciseCount } = await deps.workoutRepository.updateWorkout(
+      const { workout: updated, exerciseCount, newRecords } = await deps.workoutRepository.updateWorkout(
         actingUserId,
         request.params.id,
         request.body,
@@ -168,11 +171,14 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
             user_id: actingUserId,
             duration_seconds: durationSeconds,
             exercise_count: exerciseCount,
+            record_count: newRecords.length,
           },
           "workout_finished",
         );
       }
-      return toWorkoutDto(updated);
+      // Spec 07.0 §5: the finish summary rides on the PATCH response.
+      const body: UpdatedWorkout = { ...toWorkoutDto(updated), newRecords: newRecords.map(toPersonalRecordDto) };
+      return body;
     },
   );
 

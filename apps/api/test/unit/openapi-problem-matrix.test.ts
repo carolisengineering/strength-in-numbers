@@ -60,6 +60,8 @@ const MATRIX: Record<string, Slugs> = {
   }),
   "POST /v1/workouts": withCentral("body", { 409: ["workout-in-progress-exists"] }),
   "GET /v1/workouts/active": withCentral("none", { 404: ["not-found"] }),
+  // Spec 07.0 §5: querystring ids → 422; unknown / foreign ids are an empty list, never 404.
+  "GET /v1/personal-records": withCentral("input"),
   "GET /v1/workouts/{id}": withCentral("input", { 404: ["not-found"] }),
   "PATCH /v1/workouts/{id}": withCentral("body", {
     404: ["not-found"],

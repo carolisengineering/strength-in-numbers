@@ -7,6 +7,7 @@ import { RATE_LIMITS } from "../../src/plugins/rate-limit.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
@@ -33,6 +34,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.2 AC15 — a real session neve
       userRepository: createUserRepository(db.prisma),
       exerciseRepository: createExerciseRepository(db.prisma),
       workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
+      personalRecordRepository: createPersonalRecordRepository(db.prisma),
       rateLimits: RATE_LIMITS, // production values, on purpose
     });
   }, 180_000);

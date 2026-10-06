@@ -5,6 +5,7 @@ import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
@@ -51,6 +52,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 cross-user 404s and account 
       userRepository: createUserRepository(db.prisma),
       exerciseRepository: createExerciseRepository(db.prisma),
       workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
+      personalRecordRepository: createPersonalRecordRepository(db.prisma),
     });
   }
 
