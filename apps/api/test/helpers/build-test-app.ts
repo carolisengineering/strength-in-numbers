@@ -4,9 +4,11 @@ import { loadConfig, type Config } from "../../src/config.js";
 import type { TokenVerifier } from "../../src/auth/verify.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../../src/repositories/workout.js";
+import type { PersonalRecordRepository } from "../../src/repositories/personal-record.js";
 import { RATE_LIMITS, type RateLimitConfig, type WriteGroup } from "../../src/plugins/rate-limit.js";
 import {
   FakeExerciseRepository,
+  FakePersonalRecordRepository,
   FakeUserRepository,
   FakeWorkoutRepository,
   authContext,
@@ -36,6 +38,8 @@ export interface TestAppOptions<
   exerciseRepository?: R;
   /** Defaults to a fake; integration tests pass the real repository. */
   workoutRepository?: W;
+  /** Spec 07.0 — defaults to an in-memory fake. */
+  personalRecordRepository?: PersonalRecordRepository;
   logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
@@ -86,6 +90,7 @@ export async function buildTestApp<
     userRepository: repo,
     exerciseRepository: exerciseRepo,
     workoutRepository: workoutRepo,
+    personalRecordRepository: opts.personalRecordRepository ?? new FakePersonalRecordRepository(),
     rateLimits: opts.rateLimits,
   };
   const app = await buildApp(deps);

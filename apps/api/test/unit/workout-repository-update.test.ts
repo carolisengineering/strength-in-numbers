@@ -18,6 +18,10 @@ class ScriptedPrisma {
     if (!next) throw new Error("ScriptedPrisma: no queued response");
     return Promise.resolve(next());
   };
+  $executeRaw = (strings: TemplateStringsArray): Promise<number> => {
+    this.calls.push({ sql: strings.join("?") });
+    return Promise.resolve(1);
+  };
   $transaction = async <T>(fn: (tx: this) => Promise<T>): Promise<T> => fn(this);
 }
 
@@ -66,6 +70,7 @@ describe("AC8 — finish transition and immutability", () => {
     stub.queueRows([]); // Spec 05.1 finish-integrity query: no working sets
     stub.queueRows([finished]); // UPDATE ... RETURNING
     stub.queueRows([{ n: 3 }]); // exercise count (§9)
+    stub.queueRows([]); // Spec 07.0: touched lineage roots — none, so no loader query
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
@@ -74,6 +79,7 @@ describe("AC8 — finish transition and immutability", () => {
 
     expect(result.workout.endedAt).toEqual(finished.ended_at);
     expect(result.exerciseCount).toBe(3);
+    expect(result.newRecords).toEqual([]);
   });
 
   it("title/notes-only edit on an in-progress workout succeeds and leaves localDate unchanged", async () => {
@@ -116,6 +122,7 @@ describe("AC8 — finish transition and immutability", () => {
     stub.queueRows([]); // Spec 05.1 finish-integrity query: no working sets
     stub.queueRows([finished]);
     stub.queueRows([{ n: 0 }]); // exercise count (§9)
+    stub.queueRows([]); // Spec 07.0: touched lineage roots — none
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, {
@@ -176,5 +183,42 @@ describe("AC8 — finish transition and immutability", () => {
     await repo.updateWorkout(inProgress.user_id, inProgress.id, { title: "x" });
 
     expect(stub.calls[0]!.sql).toContain("FOR UPDATE");
+  });
+});
+
+describe("AC13 — a non-finish PATCH takes no PR lock and returns newRecords: []", () => {
+  it("title-only edit issues no pg_advisory_xact_lock and no personal_record statement", async () => {
+    const stub = new ScriptedPrisma();
+    const inProgress = baseRow();
+    stub.queueRows([inProgress]);
+    stub.queueRows([{ ...inProgress, title: "x" }]);
+    stub.queueRows([{ n: 0 }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+
+    const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, { title: "x" });
+
+    expect(result.newRecords).toEqual([]);
+    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
+    expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
+  });
+
+  it("a finish takes the PR lock first, before the row lock (D9, amended by AC18)", async () => {
+    const stub = new ScriptedPrisma();
+    const inProgress = baseRow();
+    stub.queueRows([inProgress]);
+    stub.queueRows([]); // finish-integrity
+    stub.queueRows([{ ...inProgress, ended_at: new Date("2026-09-15T11:00:00.000Z") }]);
+    stub.queueRows([{ n: 1 }]);
+    stub.queueRows([{ root_id: uuidv7() }]); // touched roots — one, so the lock is taken
+    stub.queueRows([]); // loader: no qualifying sets (the lock and the DELETE are $executeRaw)
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+
+    await repo.updateWorkout(inProgress.user_id, inProgress.id, { endedAt: "2026-09-15T11:00:00.000Z" });
+
+    const rowLockAt = stub.calls.findIndex((c) => c.sql.includes("FOR UPDATE"));
+    const lockAt = stub.calls.findIndex((c) => c.sql.includes("pg_advisory_xact_lock"));
+    expect(lockAt).toBe(0);
+    expect(rowLockAt).toBeGreaterThan(lockAt);
+    expect(stub.calls.some((c) => c.sql.includes('DELETE FROM "personal_record"'))).toBe(true);
   });
 });

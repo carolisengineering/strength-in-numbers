@@ -71,6 +71,11 @@ import type {
   UpdateSetFields,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
+import type {
+  PersonalRecordFilter,
+  PersonalRecordRecord,
+  PersonalRecordRepository,
+} from "../../src/repositories/personal-record.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
   const now = new Date("2026-08-30T12:00:00.000Z");
@@ -503,7 +508,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     };
     this.workouts.set(id, updated);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    return { workout: updated, exerciseCount };
+    return { workout: updated, exerciseCount, newRecords: [] };
   }
 
   async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
@@ -698,4 +703,24 @@ export function authContext(overrides: Partial<AuthContext> = {}): AuthContext {
     },
     ...overrides,
   };
+}
+
+/** Spec 07.0 — in-memory read side. It filters on the stored `exerciseId`
+ * directly (no lineage resolution — that is covered against Postgres). */
+export class FakePersonalRecordRepository implements PersonalRecordRepository {
+  rows: Array<PersonalRecordRecord & { userId: string }> = [];
+  lastFilter: PersonalRecordFilter | undefined;
+
+  async list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]> {
+    this.lastFilter = filter;
+    return this.rows
+      .filter((r) => r.userId === actingUserId)
+      .filter((r) => filter.exerciseId === undefined || r.exerciseId === filter.exerciseId)
+      .filter((r) => filter.workoutId === undefined || r.workoutId === filter.workoutId)
+      .map((r) => {
+        const record: Partial<typeof r> = { ...r };
+        delete record.userId;
+        return record as PersonalRecordRecord;
+      });
+  }
 }

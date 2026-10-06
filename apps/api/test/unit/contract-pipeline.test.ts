@@ -220,6 +220,7 @@ describe("AC4 — OpenAPI 3.1 document served, scoped to the public surface", ()
         "/v1/workout-exercises/{id}",
         "/v1/workout-exercises/{id}/sets",
         "/v1/sets/{id}",
+        "/v1/personal-records", // Spec 07.0
       ]),
     );
     expect(doc.paths).not.toHaveProperty("/v1/_authcheck");

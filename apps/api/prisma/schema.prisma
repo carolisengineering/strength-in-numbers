@@ -29,6 +29,8 @@ model User {
   customExercises Exercise[]
   // Spec 05.0: back-reference for `workout.user_id`.
   workouts Workout[]
+  // Spec 07.0: back-reference for `personal_record.user_id`.
+  personalRecords PersonalRecord[]
 
   @@index([email], map: "user_email_idx")
   @@map("user")
@@ -59,6 +61,8 @@ model Exercise {
   forks              Exercise[]   @relation("ExerciseFork")
   // Spec 05.0: back-reference for `workout_exercise.exercise_id`.
   workoutExercises   WorkoutExercise[]
+  // Spec 07.0: back-reference for `personal_record.exercise_id` (a lineage root).
+  personalRecords    PersonalRecord[]
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
   // Spec 03.3 §4 — commit-ordered sync stamp, set by the exercise_change_xid trigger.
@@ -114,6 +118,8 @@ model Workout {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises          WorkoutExercise[]
+  // Spec 07.0: back-reference for `personal_record.workout_id`.
+  personalRecords    PersonalRecord[]
 
   @@unique([userId, clientGeneratedId], map: "workout_user_client_id_key")
   @@index([userId, startedAt(sort: Desc)], map: "workout_user_started_idx")
@@ -162,8 +168,37 @@ model SetEntry {
   updatedAt         DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
   /// Optional create idempotency key (0007); NULL when the create sent none.
   clientGeneratedId String?         @map("client_generated_id") @db.Uuid
+  // Spec 07.0: back-reference for `personal_record.source_set_entry_id`.
+  personalRecords   PersonalRecord[]
 
   @@unique([workoutExerciseId, setNumber], map: "set_entry_workout_exercise_number_key")
   @@unique([workoutExerciseId, clientGeneratedId], map: "set_entry_workout_exercise_client_id_key")
   @@map("set_entry")
+}
+
+// Spec 07.0 §4 — a rebuildable cache of personal records. `exerciseId` is the
+// LINEAGE ROOT (COALESCE(forked_from_exercise_id, id)), not necessarily the
+// exercise logged. CHECKs live in the hand-authored migration (drift-guarded).
+model PersonalRecord {
+  id               String    @id @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exerciseId       String    @map("exercise_id") @db.Uuid
+  exercise         Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  recordType       String    @map("record_type")
+  value            Decimal   @db.Decimal(12, 3)
+  unit             String
+  previousValue    Decimal?  @map("previous_value") @db.Decimal(12, 3)
+  sourceSetEntryId String    @map("source_set_entry_id") @db.Uuid
+  sourceSetEntry   SetEntry  @relation(fields: [sourceSetEntryId], references: [id], onDelete: Cascade)
+  workoutId        String    @map("workout_id") @db.Uuid
+  workout          Workout   @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  achievedAt       DateTime  @map("achieved_at") @db.Timestamptz(6)
+  localDate        DateTime  @map("local_date") @db.Date
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, exerciseId, recordType], map: "personal_record_user_exercise_type_key")
+  @@index([workoutId], map: "personal_record_workout_idx")
+  @@index([sourceSetEntryId], map: "personal_record_source_set_idx")
+  @@map("personal_record")
 }

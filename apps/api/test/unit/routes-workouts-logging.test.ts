@@ -33,7 +33,7 @@ describe("AC18 — the four business log lines, no free text", () => {
     expect(lines.filter((l) => l.msg === "workout_started")).toHaveLength(1); // still 1 — no second line on replay
   });
 
-  it("workout_finished fires on the finish transition only, not on a title/notes edit or a {} no-op, with its §9 fields", async () => {
+  it("AC18/AC24 — workout_finished fires on the finish transition only, not on a title/notes edit or a {} no-op, with its §9 fields and record_count", async () => {
     const { logger, lines } = capturingLogger();
     const exerciseRepo = new FakeExerciseRepository();
     const exercise = makeExerciseRecord({ name: "Bench Press", modality: "weight_reps", isActive: true });
@@ -77,7 +77,10 @@ describe("AC18 — the four business log lines, no free text", () => {
     expect(finishedLines[0]).toMatchObject({
       workout_id: id,
       exercise_count: 2,
+      record_count: 0, // AC24 (Spec 07.0)
     });
+    // AC24 (Spec 07.0): no record value, set id or exercise name in any line
+    expect(JSON.stringify(lines)).not.toMatch(/newRecords|sourceSetId|exerciseName|previous_value/);
     expect(typeof finishedLines[0]!.user_id).toBe("string");
     expect(typeof finishedLines[0]!.duration_seconds).toBe("number");
   });

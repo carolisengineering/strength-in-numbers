@@ -18,6 +18,7 @@ import { registerV1CachePolicy } from "./plugins/cache-policy.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
+import type { PersonalRecordRepository } from "./repositories/personal-record.js";
 import { markNullableBodiesOptional } from "./openapi/optional-body.js";
 import { addProblemResponses } from "./openapi/problem-responses.js";
 import { assertPublication, publicationTransform } from "./openapi/publication.js";
@@ -77,6 +78,7 @@ export interface BuildAppDeps extends AuthPluginDeps {
   readinessTtlMs?: number;
   exerciseRepository: ExerciseRepository;
   workoutRepository: WorkoutRepository;
+  personalRecordRepository: PersonalRecordRepository;
   /** Spec 05.2 — tests only; production uses `RATE_LIMITS`. No env var (D7). */
   rateLimits?: RateLimitConfig;
 }
@@ -255,6 +257,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         userRepository: deps.userRepository,
         exerciseRepository: deps.exerciseRepository,
         workoutRepository: deps.workoutRepository,
+        personalRecordRepository: deps.personalRecordRepository,
       });
     },
     { prefix: "/v1" },

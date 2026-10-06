@@ -17,6 +17,7 @@ import type { TokenVerifier } from "../src/auth/verify.js";
 import type { UserRepository } from "../src/repositories/user.js";
 import type { ExerciseRepository } from "../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../src/repositories/workout.js";
+import type { PersonalRecordRepository } from "../src/repositories/personal-record.js";
 
 const OUTPUT_PATH = fileURLToPath(new URL("../../../openapi.json", import.meta.url));
 
@@ -41,6 +42,11 @@ const inertWorkoutRepository = new Proxy({} as WorkoutRepository, {
     throw new Error("workout repository is not used during OpenAPI emit");
   },
 });
+const inertPersonalRecordRepository = new Proxy({} as PersonalRecordRepository, {
+  get() {
+    throw new Error("personal-record repository is not used during OpenAPI emit");
+  },
+});
 
 const EMIT_ENV: Record<string, string> = {
   NODE_ENV: "development",
@@ -61,6 +67,7 @@ async function main(): Promise<void> {
     userRepository: inertRepository,
     exerciseRepository: inertExerciseRepository,
     workoutRepository: inertWorkoutRepository,
+    personalRecordRepository: inertPersonalRecordRepository,
   });
   await app.ready();
   const doc = app.swagger();

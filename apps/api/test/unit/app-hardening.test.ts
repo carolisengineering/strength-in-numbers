@@ -3,6 +3,7 @@ import { pino } from "pino";
 import { buildApp } from "../../src/app.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
 import {
+  FakePersonalRecordRepository,
   authContext,
   fakeVerifier,
   FakeExerciseRepository,
@@ -20,6 +21,7 @@ describe("buildApp logger wiring", () => {
       userRepository: new FakeUserRepository(),
       exerciseRepository: new FakeExerciseRepository(),
       workoutRepository: new FakeWorkoutRepository(),
+      personalRecordRepository: new FakePersonalRecordRepository(),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);

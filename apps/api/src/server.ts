@@ -6,6 +6,7 @@ import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
 import { createExerciseRepository } from "./repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "./repositories/workout.prisma.js";
+import { createPersonalRecordRepository } from "./repositories/personal-record.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
 
 /**
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     userRepository: createUserRepository(prisma),
     exerciseRepository,
     workoutRepository: createWorkoutRepository(prisma, exerciseRepository),
+    personalRecordRepository: createPersonalRecordRepository(prisma),
   });
 
   const shutdown = createGracefulShutdown({ app, prisma, logger });

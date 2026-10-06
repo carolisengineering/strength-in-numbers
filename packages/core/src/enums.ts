@@ -49,10 +49,25 @@ export const SET_TYPE_VALUES = Object.freeze([
 ] as const);
 export type SetType = (typeof SET_TYPE_VALUES)[number];
 
-/** `personal_record.record_type` — the three v1 PR kinds (DESIGN §4.5). */
+/** `personal_record.record_type` — the four v1 PR kinds (DESIGN §4.5, Spec 07.0 D2). */
 export const RECORD_TYPE_VALUES = Object.freeze([
   "heaviest_weight",
   "best_est_1rm",
   "best_set_volume",
+  "max_reps",
 ] as const);
 export type RecordType = (typeof RECORD_TYPE_VALUES)[number];
+
+/** `personal_record.unit` — canonical units only (DESIGN §4.8). `kg_reps` is
+ * a set volume (reps × kg). */
+export const RECORD_UNIT_VALUES = Object.freeze(["kg", "kg_reps", "reps"] as const);
+export type RecordUnit = (typeof RECORD_UNIT_VALUES)[number];
+
+/** The one legal unit per record type — the migration's type↔unit CHECK is
+ * rendered from this (Spec 07.0 §4, D17). */
+export const RECORD_UNIT_BY_TYPE: Readonly<Record<RecordType, RecordUnit>> = Object.freeze({
+  heaviest_weight: "kg",
+  best_est_1rm: "kg",
+  best_set_volume: "kg_reps",
+  max_reps: "reps",
+});

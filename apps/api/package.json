@@ -17,6 +17,8 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "records:rebuild": "tsx --env-file-if-exists=.env scripts/rebuild-records.ts",
+    "bench:finish": "tsx scripts/bench-finish.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {
