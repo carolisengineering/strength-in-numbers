@@ -19,3 +19,4 @@ export * from "./dto/workout.js";
 export * from "./dto/set-entry.js";
 export * from "./dto/personal-record.js";
 export * from "./time.js";
+export * from "./records.js";

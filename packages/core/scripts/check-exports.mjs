@@ -128,6 +128,11 @@ const EXPECTED = [
   "PersonalRecordsQuerySchema",
   "PersonalRecordsResponseSchema",
   "UpdatedWorkoutSchema",
+  // records.ts (Spec 07.0 §6.1)
+  "parseWeightKgMilli",
+  "milliToDecimalString",
+  "estimate1rm",
+  "computeRecords",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));
