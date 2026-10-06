@@ -3,6 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { insertExercise, logWorkout } from "./records-helpers.js";
 
 describe.skipIf(!shouldRunIntegration())("AC17 — account purge reaches workout rows down both FK paths (real Postgres)", () => {
   let db: IntegrationDb;
@@ -101,5 +102,30 @@ describe.skipIf(!shouldRunIntegration())("AC17 — account purge reaches workout
       otherUser,
     );
     expect(Number(otherUserSurvives[0]!.n)).toBe(1);
+  });
+
+  it("AC23 (Spec 07.0) — an account purge reaches personal_record with no ordering step", async () => {
+    const purgedUser = await insertUser();
+    const otherUser = await insertUser();
+    const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
+    const bench = await insertExercise(db);
+    for (const userId of [purgedUser, otherUser]) {
+      const { workoutId } = await logWorkout(db, userId, {
+        startedAt: new Date(Date.UTC(2026, 8, 1, 10)),
+        finish: "none",
+        exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }],
+      });
+      await repo.updateWorkout(userId, workoutId, { endedAt: new Date(Date.UTC(2026, 8, 1, 11)).toISOString() });
+    }
+    const countFor = async (userId: string) =>
+      Number(
+        (await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "personal_record" WHERE user_id = $1::uuid`, userId))[0]!.n,
+      );
+    expect(await countFor(purgedUser)).toBe(3);
+
+    await db.prisma.$executeRawUnsafe(`DELETE FROM "user" WHERE id = $1::uuid`, purgedUser);
+
+    expect(await countFor(purgedUser)).toBe(0);
+    expect(await countFor(otherUser)).toBe(3);
   });
 });

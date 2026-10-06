@@ -155,4 +155,71 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — finish and delete write 
       expect(retry.newRecords).toHaveLength(3);
     });
   });
+
+  describe("AC16 — deleting a finished workout recomputes", () => {
+    it("deleting the holder promotes the next best with a correct previousValue", async () => {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishVia(user, 1, bench, [{ reps: 5, weight: 90 }]);
+      const { workoutId: w2 } = await finishVia(user, 2, bench, [{ reps: 5, weight: 95 }]);
+      const { workoutId: w3 } = await finishVia(user, 3, bench, [{ reps: 5, weight: 100 }]);
+
+      await repo().deleteWorkout(user, w3);
+
+      const heaviest = (await recordsOf(db, user)).find((r) => r.record_type === "heaviest_weight")!;
+      expect(heaviest).toMatchObject({ workout_id: w2, value: "95.000", previous_value: "90.000" });
+    });
+
+    it("deleting the only source leaves no rows", async () => {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId } = await finishVia(user, 1, bench, [{ reps: 5, weight: 100 }]);
+      await repo().deleteWorkout(user, workoutId);
+      expect(await recordsOf(db, user)).toEqual([]);
+    });
+
+    it("Review Focus 4 — deleting an earlier non-holder drops the later record's previousValue", async () => {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId: w1 } = await finishVia(user, 1, bench, [{ reps: 5, weight: 90 }]);
+      await finishVia(user, 2, bench, [{ reps: 5, weight: 100 }]);
+      await repo().deleteWorkout(user, w1);
+      const heaviest = (await recordsOf(db, user)).find((r) => r.record_type === "heaviest_weight")!;
+      expect(heaviest.value).toBe("100.000");
+      expect(heaviest.previous_value).toBeNull();
+    });
+
+    it("deleting an in-progress workout leaves personal_record untouched", async () => {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishVia(user, 1, bench, [{ reps: 5, weight: 100 }]);
+      const before = await recordsOf(db, user);
+      const { workoutId } = await logWorkout(db, user, {
+        startedAt: day(2),
+        finish: "none",
+        exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 200 }] }],
+      });
+      await repo().deleteWorkout(user, workoutId);
+      expect(await recordsOf(db, user)).toEqual(before);
+    });
+  });
+
+  describe("AC17 — a recompute failure rolls the delete back", () => {
+    it("fault on INSERT → error, workout still exists, rows unchanged", async () => {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishVia(user, 1, bench, [{ reps: 5, weight: 90 }]);
+      const { workoutId: holder } = await finishVia(user, 2, bench, [{ reps: 5, weight: 100 }]);
+      const before = await recordsOf(db, user);
+      await withInsertFault(async () => {
+        await expect(repo().deleteWorkout(user, holder)).rejects.toThrow(/injected PR fault/);
+        const w = await db.prisma.$queryRawUnsafe<{ n: number }[]>(
+          `SELECT count(*)::int AS n FROM "workout" WHERE id = $1::uuid`,
+          holder,
+        );
+        expect(w[0]!.n).toBe(1);
+        expect(await recordsOf(db, user)).toEqual(before);
+      });
+    });
+  });
 });

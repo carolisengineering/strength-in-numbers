@@ -404,9 +404,13 @@ export function createWorkoutRepository(
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
       return prisma.$transaction(async (tx) => {
+        // Spec 07.0 D9: a row lock first, so lock order is workout row → PR
+        // advisory lock everywhere (a finish of this workout cannot deadlock
+        // with its delete — AC18(b)).
         const owned = await tx.$queryRaw<{ id: string; user_id: string; ended_at: Date | null }[]>`
           SELECT id, user_id, ended_at FROM "workout"
           WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+          FOR UPDATE
         `;
         if (!owned[0]) {
           throw new NotFoundError("workout not found or not owned by the acting user");
@@ -420,6 +424,11 @@ export function createWorkoutRepository(
         `;
         const exerciseCount = countRows[0]!.n;
 
+        // Spec 07.0 §6.3: only a finished workout can have sourced records.
+        // Capture its lineage roots before the DELETE cascades its exercises away.
+        const roots = wasFinished ? await rootsForWorkout(tx, id) : [];
+        if (roots.length > 0) await lockUserRecords(tx, actingUserId);
+
         // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE
         // exemption — allowed on an in-progress or finished workout, no
         // state check here).
@@ -427,6 +436,9 @@ export function createWorkoutRepository(
         if (affectedRows === 0) {
           throw new NotFoundError("workout not found or not owned by the acting user");
         }
+        // The cascade removed the rows this workout sourced; recompute the
+        // lineages from what is left (promotes the next best, or no row).
+        await recomputeRecordsForRoots(tx, actingUserId, roots);
         return { wasFinished, exerciseCount };
       });
     },
