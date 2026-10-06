@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { SET_TYPE_VALUES } from "@sin/core";
@@ -17,11 +15,11 @@ const CLIENT_ID_MIGRATION = "0007_set_entry_client_generated_id";
 
 /**
  * Spec 05.1 §4 / §10 AC1, AC2 — migrates a fresh container through 0001..0007,
- * asserts set_entry's exact shape, the generated-column arithmetic, and the
- * whole-schema no-drift check. The drift check lives in the NEWEST
- * migration's test: it diffs the migrated DB against the full schema.prisma,
- * so it can only pass once every migration is applied. 0007 is applied after
- * a row already exists, the way it meets a live table.
+ * asserts set_entry's exact shape and the generated-column arithmetic. The
+ * whole-schema no-drift check lives in the newest migration's test (0008's,
+ * Spec 07.0): it diffs the migrated DB against the full schema.prisma, so it
+ * can only pass once every migration is applied. 0007 is applied after a row
+ * already exists, the way it meets a live table.
  */
 describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry + 0007 (real Postgres)", () => {
   let db: IntegrationDb;
@@ -197,35 +195,5 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0006_create_set_entry + 00
     for (const t of SET_TYPE_VALUES) {
       await expect(insertSet({ set_type: t })).resolves.toMatchObject({ set_type: t });
     }
-  });
-
-  it("AC1 — prisma migrate diff (migrated DB → schema.prisma) reports no difference beyond the two generated columns", () => {
-    // spawnSync, not execFileSync + try/catch: a CLI that fails to run at all
-    // must FAIL this test, not look like "no diff" (05.0 D49's pattern).
-    //
-    // Prisma has no generated-column DSL: it introspects `weight_kg` /
-    // `distance_m` as columns whose default is `dbgenerated(<expression>)`,
-    // while the model declares none, and reports that as a changed default.
-    // Declaring `@default(dbgenerated(...))` would silence it, but a later
-    // `migrate dev` would then emit `ALTER COLUMN ... SET DEFAULT`, which
-    // Postgres rejects on a generated column. So the model stays default-free
-    // and this test pins the diff to exactly those two columns — any other
-    // reported change is real drift (Spec 05.1 §4; plan Task 1 Step 8 fallback).
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2); // 2 = "diff found"; anything else means the CLI itself failed
-    const changeLines = r.stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });
