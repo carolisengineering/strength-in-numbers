@@ -202,7 +202,7 @@ describe("AC13 — a non-finish PATCH takes no PR lock and returns newRecords: [
     expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
   });
 
-  it("a finish takes the PR lock after the UPDATE (D9)", async () => {
+  it("a finish takes the PR lock first, before the row lock (D9, amended by AC18)", async () => {
     const stub = new ScriptedPrisma();
     const inProgress = baseRow();
     stub.queueRows([inProgress]);
@@ -215,9 +215,10 @@ describe("AC13 — a non-finish PATCH takes no PR lock and returns newRecords: [
 
     await repo.updateWorkout(inProgress.user_id, inProgress.id, { endedAt: "2026-09-15T11:00:00.000Z" });
 
-    const updateAt = stub.calls.findIndex((c) => c.sql.includes('UPDATE "workout"'));
+    const rowLockAt = stub.calls.findIndex((c) => c.sql.includes("FOR UPDATE"));
     const lockAt = stub.calls.findIndex((c) => c.sql.includes("pg_advisory_xact_lock"));
-    expect(updateAt).toBeGreaterThan(-1);
-    expect(lockAt).toBeGreaterThan(updateAt);
+    expect(lockAt).toBe(0);
+    expect(rowLockAt).toBeGreaterThan(lockAt);
+    expect(stub.calls.some((c) => c.sql.includes('DELETE FROM "personal_record"'))).toBe(true);
   });
 });

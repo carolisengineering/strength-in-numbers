@@ -43,7 +43,7 @@ describe("AC9/AC15 — deleteWorkout", () => {
     );
   });
 
-  it("deletes an owned finished row using four queries: ownership-check SELECT (FOR UPDATE), exercise-count SELECT, lineage-roots SELECT, then DELETE — and reports §9's was_finished/exercise_count from inside the transaction", async () => {
+  it("deletes an owned finished row: PR lock, ownership-check SELECT (FOR UPDATE), exercise-count SELECT, lineage-roots SELECT, then DELETE — and reports §9's was_finished/exercise_count from inside the transaction", async () => {
     const userId = uuidv7();
     const id = uuidv7();
     const stub = new ScriptedPrisma();
@@ -56,13 +56,15 @@ describe("AC9/AC15 — deleteWorkout", () => {
 
     const result = await repo.deleteWorkout(userId, id);
 
-    // In order: SELECT ownership (FOR UPDATE — Spec 07.0 D9), SELECT count,
-    // SELECT roots (finished workouts only), then DELETE.
-    expect(stub.calls).toHaveLength(4);
-    expect(stub.calls[0]!.sql).toContain("FOR UPDATE");
-    expect(stub.calls[1]!.sql).toContain("SELECT");
-    expect(stub.calls[2]!.sql).toContain("COALESCE");
-    expect(stub.calls[3]!.sql).toContain("DELETE FROM");
+    // In order: PR advisory lock (Spec 07.0 D9 — before any row lock),
+    // SELECT ownership (FOR UPDATE), SELECT count, SELECT roots (finished
+    // workouts only), then DELETE.
+    expect(stub.calls).toHaveLength(5);
+    expect(stub.calls[0]!.sql).toContain("pg_advisory_xact_lock");
+    expect(stub.calls[1]!.sql).toContain("FOR UPDATE");
+    expect(stub.calls[2]!.sql).toContain("SELECT");
+    expect(stub.calls[3]!.sql).toContain("COALESCE");
+    expect(stub.calls[4]!.sql).toContain("DELETE FROM");
     expect(result).toEqual({ wasFinished: true, exerciseCount: 4 });
   });
 
@@ -80,8 +82,8 @@ describe("AC9/AC15 — deleteWorkout", () => {
   });
 });
 
-describe("AC16 — deleting an in-progress workout takes no PR lock and runs no recompute", () => {
-  it("issues exactly ownership SELECT (FOR UPDATE), count SELECT, DELETE", async () => {
+describe("AC16 — deleting an in-progress workout runs no recompute", () => {
+  it("issues exactly PR lock, ownership SELECT (FOR UPDATE), count SELECT, DELETE — no roots query, no personal_record statement", async () => {
     const userId = uuidv7();
     const id = uuidv7();
     const stub = new ScriptedPrisma();
@@ -91,9 +93,10 @@ describe("AC16 — deleting an in-progress workout takes no PR lock and runs no 
 
     await repo.deleteWorkout(userId, id);
 
-    expect(stub.calls).toHaveLength(3);
-    expect(stub.calls[0]!.sql).toContain("FOR UPDATE");
-    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
+    expect(stub.calls).toHaveLength(4);
+    expect(stub.calls[0]!.sql).toContain("pg_advisory_xact_lock");
+    expect(stub.calls[1]!.sql).toContain("FOR UPDATE");
+    expect(stub.calls.some((c) => c.sql.includes("COALESCE"))).toBe(false);
     expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
   });
 });

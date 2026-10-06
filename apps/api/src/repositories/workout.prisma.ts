@@ -325,8 +325,17 @@ export function createWorkoutRepository(
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
       return prisma.$transaction(async (tx) => {
-        // The lock is this transaction's first data-touching statement,
-        // ahead of every check (Global Constraints; §6.5's ordering rule) —
+        // Spec 07.0 D9 (amended): a finish attempt takes the per-user PR
+        // advisory lock BEFORE the row lock. The recompute's INSERTs take
+        // FK KEY SHARE locks on other workouts' rows, so a PR writer that held
+        // a row lock while waiting for the PR lock could deadlock with one
+        // that holds the PR lock (found by AC18). PR lock → row locks,
+        // everywhere. A non-finish PATCH never takes it (AC13).
+        if (patch.endedAt != null) {
+          await lockUserRecords(tx, actingUserId);
+        }
+        // The row lock is the first data-touching statement, ahead of every
+        // check (Global Constraints; §6.5's ordering rule) —
         // an explicit row lock, chosen over "issue the UPDATE first" so a
         // later spec's own check (05.1's set-integrity rule) can sit between
         // this lock and the write with no restructuring.
@@ -384,17 +393,12 @@ export function createWorkoutRepository(
         `;
         // Spec 07.0 §6.3: after the UPDATE so the loader's `ended_at IS NOT
         // NULL` sees this workout as finished (a transaction reads its own
-        // writes). Lock order: workout row (above) → PR advisory lock (D9).
-        // The roots come from this workout's own exercises, which the row
-        // lock already freezes; a finish with no exercises takes no PR lock.
+        // writes). The PR lock was taken at the top of this transaction.
         let newRecords: PersonalRecordRecord[] = [];
         if (nextEndedAt !== null) {
           const roots = await rootsForWorkout(tx, id);
-          if (roots.length > 0) {
-            await lockUserRecords(tx, actingUserId);
-            const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
-            newRecords = written.filter((r) => r.workoutId === id);
-          }
+          const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
+          newRecords = written.filter((r) => r.workoutId === id);
         }
         return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n, newRecords };
       });
@@ -404,9 +408,11 @@ export function createWorkoutRepository(
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
       return prisma.$transaction(async (tx) => {
-        // Spec 07.0 D9: a row lock first, so lock order is workout row → PR
-        // advisory lock everywhere (a finish of this workout cannot deadlock
-        // with its delete — AC18(b)).
+        // Spec 07.0 D9 (amended): PR advisory lock first, then the row lock —
+        // the same order as the finish path (see updateWorkout). Taken even
+        // for an in-progress workout: whether it is finished is only known
+        // once the row is locked, and a concurrent finish may complete first.
+        await lockUserRecords(tx, actingUserId);
         const owned = await tx.$queryRaw<{ id: string; user_id: string; ended_at: Date | null }[]>`
           SELECT id, user_id, ended_at FROM "workout"
           WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
@@ -427,7 +433,6 @@ export function createWorkoutRepository(
         // Spec 07.0 §6.3: only a finished workout can have sourced records.
         // Capture its lineage roots before the DELETE cascades its exercises away.
         const roots = wasFinished ? await rootsForWorkout(tx, id) : [];
-        if (roots.length > 0) await lockUserRecords(tx, actingUserId);
 
         // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE
         // exemption — allowed on an in-progress or finished workout, no
