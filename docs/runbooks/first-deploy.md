@@ -397,6 +397,28 @@ Equivalent DB-side check, Neon SQL editor on the same branch:
 
 Keep `DATABASE_URL` exported for B6.
 
+### B5a. Rebuild personal records (by hand, after B4 + the Spec 07.0 deploy) — Spec 07.0
+
+`personal_record` (migration `0008`, applied by B4) is a derived cache that the
+finish / delete paths keep current from the 07.0 deploy onward. **Workouts finished
+before that deploy have no rows until this step runs** (staging already has some).
+Like B5 it is a manual release step: run it after `migrate deploy` and after the
+code is live, with the same direct-host `DATABASE_URL` still exported from B4.
+Idempotent — re-run any time, and **always after a rollback window** (finishes and
+deletes during a rollback don't update the table).
+
+```bash
+pnpm --filter @sin/api run records:rebuild            # every user
+pnpm --filter @sin/api run records:rebuild -- --user <user-uuid>   # one account
+```
+
+Expect one `records_rebuilt` JSON line per user (`user_id`, `root_count`,
+`record_count`) and a final summary. It takes the same per-user advisory lock as
+the live path, so it is safe to run while the service is taking traffic. Verify
+through the API: `GET $BASE/v1/personal-records` with a bearer (as in B5) returns
+the test user's records, `[]` only if that user has no finished workouts with
+eligible sets.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
@@ -696,6 +718,7 @@ Production comes later, via Spec 01.1.
 | Boot fails: `DATABASE_URL: sslmode=verify-full is not supported by Prisma's engine` | You used libpq's mode. Prisma would silently downgrade it to `prefer`, so the app refuses it. Use `sslmode=require&sslaccept=strict` (B1). |
 | B6 `openssl s_client` prints `Verify return code` ≠ 0 | Neon's chain isn't trusted by your local root store — usually a stale OS or a corporate TLS proxy. Try B6c (the image's own `ca-certificates`) before assuming Neon changed CAs. |
 | B6d (negative control) *succeeds*, or fails with `Endpoint ID is not specified` | Strict mode is not validating (the endpoint-ID error is Neon replying at the Postgres protocol level, which only happens after a TLS handshake that should have been rejected). Check the URL actually carries `sslaccept=strict` (not `sslmode=strict`), and whether Prisma was upgraded since this was verified (6.19.x) — a major bump could change the `sslaccept` semantics. Do not deploy. |
+| `GET /v1/personal-records` is empty on staging for a user who has finished workouts | B5a was skipped (rows exist only for workouts finished after the 07.0 deploy, plus exercises later touched). Run `records:rebuild`. |
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |

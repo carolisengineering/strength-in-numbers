@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.4 — decisions Q1–Q12 resolved; consistency pass done
-**Last updated:** 2026-09-05 (§3.2/§5.1/§7/§8.2/§9 + Q10–Q12 added, from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q13 resolved; consistency pass done
+**Last updated:** 2026-10-06 (§4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2. Earlier: 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -81,7 +81,8 @@ resolved) and Risk R6.
 5. **History** — chronological list of past workouts, drill into any session.
    Finished workouts are read-only in v1 (delete-whole-workout aside, §4.5).
 6. **Progress** — per-exercise charts: top-set weight, estimated 1RM, total
-   volume; personal-record list and PR notifications at finish.
+   volume; personal-record list and PR notifications at finish. (PR engine and
+   list: Spec 07.0; history list: 07.1; the chart series: 07.2.)
 7. **Responsive web app** — the sole v1 client. Full logging + history + progress,
    laid out to work one-handed on a phone browser in the gym and to expand on a
    desktop for planning and review.
@@ -326,31 +327,58 @@ is one (web) client.
 
 ### 4.5 Personal records (derived cache)
 
-- **personal_record** — `user_id`, `exercise_id`, `record_type`, `value` (canonical
-  units), `unit`, `source_set_entry_id`, `workout_id`, `achieved_at`,
-  `local_date`. One row per `(user_id, exercise_id, record_type)`.
+- **personal_record** — `id`, `user_id`, `exercise_id` (the **lineage root**, below),
+  `record_type`, `value numeric(12,3)` (canonical units), `unit`,
+  `previous_value numeric(12,3) NULL` (the best of that type from strictly-earlier
+  workouts), `source_set_entry_id`, `workout_id`, `achieved_at` (= the workout's
+  `started_at`), `local_date`, `created_at`. One row per
+  `(user_id, exercise_id, record_type)`. All four FKs are `ON DELETE CASCADE`.
+  Spec 07.0 §4 owns the table (migration `0008`).
 
-v1 tracks **three** record types (decided 2026-08-30):
+v1 tracks **four** record types, decided per modality (Spec 07.0 D2, 2026-10-06;
+supersedes the three-type decision of 2026-08-30). A set qualifies if it is a
+`working` set in a **finished** workout; warmup/drop/failure are excluded, and
+`is_complete` is **ignored** (finish integrity already guarantees the required
+measures, and many users never tick the box). Eligibility uses the set's own
+`workout_exercise.modality_snapshot`:
 
-| `record_type` | Rule (working sets only; warmup/drop/failure excluded) |
-|---|---|
-| `heaviest_weight` | max `weight_kg` where `reps ≥ 1`. Reps otherwise ignored. |
-| `best_est_1rm` | max Epley e1RM = `weight_kg × (1 + reps/30)`, considering only sets with `1 ≤ reps ≤ 12`. |
-| `best_set_volume` | max `reps × weight_kg` over a single set. |
+| `record_type` (`unit`) | Rule | Modalities |
+|---|---|---|
+| `heaviest_weight` (`kg`) | max `weight_kg` where `reps ≥ 1` | `weight_reps`, `weighted_bodyweight` |
+| `best_est_1rm` (`kg`) | max Epley e1RM = `weight_kg × (30 + reps) / 30`, rounded half-up to 0.001 kg, only sets with `1 ≤ reps ≤ 12` | same |
+| `best_set_volume` (`kg_reps`) | max `reps × weight_kg` over a single set | same |
+| `max_reps` (`reps`) | max `reps` where `reps ≥ 1` | `bodyweight_reps` |
 
-Bodyweight-only exercises: `heaviest_weight` and volume use bodyweight if
-recorded, else the record is `reps`-based (`value` = reps, `unit` = `'reps'`).
-Deferred: `rep_pr_at_weight` (a set of rows, not one) — revisit post-v1.
+`duration` and `distance_duration` exercises have no PRs in v1. For
+`weighted_bodyweight` the weight is the **added load only** — a
+body-weight-inclusive total waits for the `body_metric` table. A weight-based type
+also needs `weight_kg > 0`; a value of 0 is never a record. Deferred:
+`rep_pr_at_weight` (a set of rows, not one) — revisit post-v1.
 
-The M1 finish (Spec 05.0) sets only `ended_at`; Spec 07 (M2) adds the PR write
-to the same transaction, once `personal_record` exists. PRs are written
-transactionally when a workout is finished. Invalidation is simple
-because **finished workouts are immutable in v1** — the only mutations that affect
-PRs are finishing a workout (recompute for that workout's exercises) and deleting
-a whole workout (recompute for its exercises). Editing individual sets of a past
-session is post-v1 and will need the same recompute hook. The whole table can be
-rebuilt from `set_entry` by a job — it is a cache, not a source of truth. All PR
-math lives in `packages/core` with exhaustive tests (Risk R4).
+**Rules.** *Exact arithmetic:* weights are compared as integer thousandths of a kg,
+never floats. *Ties:* the earliest set with the best value keeps the record —
+equalling is not a new PR. *Chronology:* the workout's `started_at` (then workout
+id, `workout_exercise.position`, `set_number`), **not** `ended_at`, so a backdated
+session takes its real place in history and can take a record from a later
+workout. *Fork lineage:* a set's lineage root is
+`COALESCE(exercise.forked_from_exercise_id, exercise.id)` — forking never chains
+(Spec 03.2), and a user may fork a global row more than once, so the origin and all
+of the user's forks share one root; a from-scratch custom exercise is its own root.
+`exercise_id` holds the root; the API also returns the source set's own exercise id
+and name snapshot.
+
+**Write path.** PRs are written transactionally, by recomputing the **touched
+lineages from their full qualifying history** — one function used for all three
+triggers (Spec 07.0 D8, Q13): finishing a workout (inside Spec 05.0's finish
+transaction, after the `ended_at` write and 05.1's integrity check), deleting a
+finished workout (same transaction as the delete; deleting an in-progress workout
+touches nothing), and the `records:rebuild` release step (like the catalog seed, run
+after `migrate deploy`; idempotent; `--user` for one account). A per-user advisory
+lock serializes the writers; a recompute failure rolls the finish back. Invalidation
+stays simple because **finished workouts are immutable in v1**; editing a finished
+workout's sets is post-v1 and will call the same recompute. The table is a cache,
+not a source of truth — rebuildable from `set_entry` at any time. All PR math lives
+in `packages/core` with exhaustive tests (Risk R4).
 
 ### 4.6 Progress views
 
@@ -545,7 +573,9 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   No offset pagination. **Exception:** `GET /v1/exercises` returns the whole
   caller-visible catalog un-paginated — it is bounded (low hundreds of rows) and
   pulled whole into a local cache; `since` (a sync token) bounds every later
-  transfer (§5.2, Specs 03.1 / 03.3).
+  transfer (§5.2, Specs 03.1 / 03.3). **Second exception:** `GET /v1/personal-records`
+  returns every matching record un-paginated — at most 4 rows per lineage root
+  (Spec 07.0 §5).
 - **Time:** RFC 3339 UTC, always. Client sends its own `started_at`/`completed_at`
   timestamps (device clock) plus the server records receipt time. For calendar
   fields (§4.0), the client also sends its current UTC offset; the server stores
@@ -612,9 +642,9 @@ All paths are under `/v1`.
 POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinutes?, title?, notes? }
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
-GET    /workouts?cursor=          → history list (Spec 07)
+GET    /workouts?cursor=          → history list (Spec 07.1)
 GET    /workouts/{id}
-PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; PR recompute is Spec 07's
+PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
 DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exerciseId, position? }
 PATCH  /workout-exercises/{id}    { position?, notes? }
@@ -624,8 +654,8 @@ PATCH  /sets/{id}                     { same fields minus clientGeneratedId, all
 DELETE /sets/{id}
 GET    /exercises?since=          → catalog (global + custom), ETag
 POST   /exercises                 → custom exercise
-GET    /progress/exercises/{id}?metric=est_1rm&from=&to=
-GET    /personal-records
+GET    /progress/exercises/{id}?metric=est_1rm&from=&to=     # Spec 07.2
+GET    /personal-records?exerciseId=&workoutId=   → { records[] }, un-paginated (Spec 07.0)
 POST   /account/export            → 202, async job
 DELETE /account                   → 202, soft-delete + purge scheduled
 ```
@@ -726,7 +756,7 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07, 08 ·
+  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08 ·
   M3 = 09, 10 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
@@ -734,7 +764,7 @@ Planning implications:
 |---|---|---|
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
-| **M2 — History & progress** | History list + detail; per-exercise charts (top set, est-1RM, volume); PR detection + finish-screen summary. | Progress numbers reconciled by hand for 10 sessions. |
+| **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08 UI) | History list + detail; per-exercise charts (top set, est-1RM, volume); PR detection + finish-screen summary. | Progress numbers reconciled by hand for 10 sessions. |
 | **M3 — Routines + supersets** | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — bracketed display + one rest timer per group. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
@@ -760,7 +790,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.4 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -838,6 +868,20 @@ with rationale so the "why" survives.
   persistence (the R1 offline mitigation, M4) as the full fix. Revisit the storage
   choice itself only if that cost proves frequent in real use, and then only
   paired with a tightened CSP. See Spec 04.0 §6.8 / §7 / §12.
+- **Q13 — PR engine design.** ✅ **Resolved (Spec 07.0, 2026-10-06): recompute the
+  touched fork-lineages from their full qualifying history, through one function
+  used by finish, delete-of-a-finished-workout and the `records:rebuild` release
+  step; exact integer math in `@sin/core`; `personal_record` stays a rebuildable
+  cache.** Rationale: R4 (PR math wrong ⇒ lost trust) is a "two implementations
+  drift" risk, so the design minimises implementations — one recompute path makes
+  "rebuild equals live" true by construction, and keeps Epley, the tie rule and the
+  eligibility table in one tested TypeScript module the web and a future mobile
+  client can also import. Rejected: incremental-at-finish (separate algorithms for
+  delete, backdated finish and rebuild) and SQL-side aggregation (a second
+  implementation of the math in SQL). Cost: O(touched lineages' history) per finish,
+  watched against §1.3's 400 ms p99 (07.0 AC27). Chronology is `started_at`, ties go
+  to the earliest set, and `max_reps` replaces the old reps-in-`value` overload.
+  See Spec 07.0 §12 (D1–D22).
 
 ---
 
@@ -849,4 +893,8 @@ with rationale so the "why" survives.
   `w * (1 + reps/30)`.
 - **Volume** — `reps × weight` for a single set (`best_set_volume`); summed over
   sets for an exercise or session (progress charts, §4.6).
-- **PR** — Personal Record; see `personal_record.record_type` for the tracked kinds.
+- **PR** — Personal Record; four kinds (`heaviest_weight`, `best_est_1rm`,
+  `best_set_volume`, `max_reps` — §4.5), tracked per **lineage root** (a global
+  exercise and the user's forks of it count as one exercise).
+- **Lineage root** — `COALESCE(exercise.forked_from_exercise_id, exercise.id)`; the
+  exercise a PR is filed under (§4.5).

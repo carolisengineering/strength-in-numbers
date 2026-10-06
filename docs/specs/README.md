@@ -32,8 +32,10 @@ spec small enough to finish in one work session.
 | 06.3 | [M1 Playwright smoke](06.3-m1-playwright-smoke.md) — one happy-path browser run against staging with a real Auth0 test user; post-deploy CI job; the 04.0 / 04.1 browser-only obligations | e2e / CI | CI job (no app change except a build-commit meta tag) | 06.1 | Implemented (first live run pending the test user) |
 | 06.4 | [Session screen hardening](06.4-session-screen-hardening.md) — 06.1's deferred review items: Finish cache-removal ordering, `hourCycle` start time, ref-based scroll, Enter-in-invalid-row feedback, id encoding, single-GET add-404, dismissible notices, missing 404 tests, the catalog-store interleaving tests (BL-12), and 06.1 doc reconciliation | UI | web | 06.1 | Implemented |
 | 06.5 | Connectivity extras — persisted entry-row drafts, logout guard for unsaved sets, multi-tab co-operation (Web Locks), Playwright offline run | UI | web | 06.2 | Not started |
-| 07 | History, progress & PR engine | API | endpoints | 05.1 | Not started |
-| 08 | History & progress | UI | web | 06, 07 | Not started |
+| 07.0 | [PR engine](07.0-pr-engine.md) — `personal_record` (four record types, fork-lineage roots), pure `@sin/core` e1RM/PR math, recompute-per-lineage on finish + delete in the 05.0 transactions, `records:rebuild` release step, `newRecords` on the finish response, `GET /v1/personal-records` | API | endpoints + migration `0008` | 05.0, 05.1, 03.2 | Draft |
+| 07.1 | History list API — `GET /v1/workouts?cursor=` | API | endpoints | 05.1 | Not started |
+| 07.2 | Progress series API — `GET /v1/progress/exercises/{id}` (reuses 07.0's `estimate1rm`) | API | endpoints | 05.1, 07.0 | Not started |
+| 08 | History & progress | UI | web | 06, 07.0, 07.1, 07.2 | Not started |
 | 09 | Routines & supersets (Tier B) — adds `routine_id` / `superset_group` | API | endpoints | 05.0 | Not started |
 | 10 | Routines & supersets | UI | web | 06, 09 | Not started |
 | 11 | Account lifecycle — export, delete, purge cron, R2 bucket | API + cron | endpoints + job | 05.0, 05.1 | Not started |
@@ -52,7 +54,7 @@ spec small enough to finish in one work session.
   carried forward in 05.0 §12 "Open"); 05.2 closed it (D20 fully; D21 as a
   bounded growth rate, its D3).
 - **`packages/core` domain math** (e1RM, volume, PR rules) — defined in the
-  feature spec that uses it (05.1, 07) and added to `core` there. Spec 02 only
+  feature spec that uses it (05.1, 07.0) and added to `core` there. Spec 02 only
   lays the foundation.
 - **Exercise catalog UI** (picker, create-custom) — Spec 06.0. A future
   "my exercises" management screen (edit/fork/delete) is not yet scheduled.
@@ -78,12 +80,12 @@ either order; the smoke should be re-run once 06.2 lands); 06.4 needs 06.1 and
 should land **before 06.2** (it carries BL-12's catalog-store interleaving tests,
 which must exist before 06.2 wraps `createCustom` in a queue, and settles where
 Finish's cache removal lives, which 06.2's queue assumes) — it is independent of
-06.3. 06.5 needs 06.2. The API specs (05.0, 05.1, 05.2, 07, 09, 11) can run
-ahead of their UIs. 16 has no downstream dependents and can land any time
+06.3. 06.5 needs 06.2. The API specs (05.0, 05.1, 05.2, 07.0, 07.1, 07.2, 09, 11) can run
+ahead of their UIs. 07.0 needs 05.0/05.1 (it extends the finish and delete transactions) and 03.2 (fork lineage); 07.1 and 07.2 need only 05.1 and are independent of 07.0 except that 07.2 reuses its `estimate1rm`. 16 has no downstream dependents and can land any time
 after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
-05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
+05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08 · M3 = 09, 10 · M4 = 11, 12, 13 · GA = 14 ·
 Phase 2 = 15. (`packages/core` (02) is a foundation both M0 clients import — an
 M0 prerequisite, not M1 work.)
 
