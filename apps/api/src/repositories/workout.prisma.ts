@@ -33,6 +33,8 @@ import {
   computeAppendPosition,
 } from "./workout-writes.js";
 import { assertWorkingSetsComplete, createSetEntryMethods, loadSetsForWorkout } from "./set-entry.prisma.js";
+import type { PersonalRecordRecord } from "./personal-record.js";
+import { lockUserRecords, recomputeRecordsForRoots, rootsForWorkout } from "./personal-record.prisma.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -360,8 +362,8 @@ export function createWorkoutRepository(
 
         // Spec 05.1 §6.5 (05.0's Extension seam 1): a finish must find every
         // working set complete. Runs after the FOR UPDATE lock above and after
-        // parseEndedAt's own checks, before the UPDATE (05.1 D9). Spec 07's
-        // PR recompute goes after this one, still before the UPDATE.
+        // parseEndedAt's own checks, before the UPDATE (05.1 D9). Spec 07.0's
+        // PR recompute runs after the UPDATE (07.0 D9), below.
         if (nextEndedAt !== null) {
           await assertWorkingSetsComplete(tx, id);
         }
@@ -380,7 +382,21 @@ export function createWorkoutRepository(
         const countRows = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${id}::uuid
         `;
-        return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n };
+        // Spec 07.0 §6.3: after the UPDATE so the loader's `ended_at IS NOT
+        // NULL` sees this workout as finished (a transaction reads its own
+        // writes). Lock order: workout row (above) → PR advisory lock (D9).
+        // The roots come from this workout's own exercises, which the row
+        // lock already freezes; a finish with no exercises takes no PR lock.
+        let newRecords: PersonalRecordRecord[] = [];
+        if (nextEndedAt !== null) {
+          const roots = await rootsForWorkout(tx, id);
+          if (roots.length > 0) {
+            await lockUserRecords(tx, actingUserId);
+            const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
+            newRecords = written.filter((r) => r.workoutId === id);
+          }
+        }
+        return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n, newRecords };
       });
     },
     async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {

@@ -503,7 +503,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     };
     this.workouts.set(id, updated);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    return { workout: updated, exerciseCount };
+    return { workout: updated, exerciseCount, newRecords: [] };
   }
 
   async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {

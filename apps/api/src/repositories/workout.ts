@@ -7,6 +7,7 @@
  * does with `isExerciseId`.
  */
 import type { DistanceUnit, SetType, WeightUnit } from "@sin/core";
+import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
   id: string;
@@ -147,6 +148,9 @@ export interface CreateWorkoutResult {
 export interface UpdateWorkoutResult {
   workout: WorkoutRecord;
   exerciseCount: number;
+  /** Spec 07.0 §6.3: the records this workout holds after a finish — `[]`
+   * for any non-finish PATCH. */
+  newRecords: PersonalRecordRecord[];
 }
 
 /**
