@@ -81,6 +81,7 @@ import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
   PersonalRecordRepository,
+  ProgressSeriesRecord,
 } from "../../src/repositories/personal-record.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -759,6 +760,10 @@ export function authContext(overrides: Partial<AuthContext> = {}): AuthContext {
 export class FakePersonalRecordRepository implements PersonalRecordRepository {
   rows: Array<PersonalRecordRecord & { userId: string }> = [];
   lastFilter: PersonalRecordFilter | undefined;
+
+  async getProgressSeries(): Promise<ProgressSeriesRecord> {
+    throw new Error("FakePersonalRecordRepository.getProgressSeries: implemented in Spec 07.2 Task 6");
+  }
 
   async list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]> {
     this.lastFilter = filter;

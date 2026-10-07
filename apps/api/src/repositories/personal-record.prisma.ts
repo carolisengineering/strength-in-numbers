@@ -3,14 +3,22 @@ import {
   computeRecords,
   milliToDecimalString,
   parseWeightKgMilli,
+  progressPoints,
   type RecordSet,
   type RecordType,
   type RecordUnit,
 } from "@sin/core";
 import { Prisma } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import type { PersonalRecordFilter, PersonalRecordRecord, PersonalRecordRepository } from "./personal-record.js";
+import type {
+  PersonalRecordFilter,
+  PersonalRecordRecord,
+  PersonalRecordRepository,
+  ProgressRange,
+  ProgressSeriesRecord,
+} from "./personal-record.js";
 import type { RawClient } from "./set-entry.prisma.js";
+import { NotFoundError } from "../errors/app-error.js";
 
 /**
  * Spec 07.0 §6.3 — the one recompute shared by finish, delete and
@@ -230,6 +238,26 @@ export function createPersonalRecordRepository(prisma: RawClient): PersonalRecor
         achievedAt: r.achieved_at,
         localDate: r.local_date.toISOString().slice(0, 10),
       }));
+    },
+    async getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord> {
+      const root = await resolveVisibleRoot(prisma, actingUserId, exerciseId);
+      if (root === null) throw new NotFoundError("exercise not found or not visible to the acting user");
+      const rows = (await loadLineageSets(prisma, actingUserId, [root], range)).get(root) ?? [];
+      const firstRowOf = new Map<string, LineageSetRow>();
+      for (const r of rows) if (!firstRowOf.has(r.workout_id)) firstRowOf.set(r.workout_id, r);
+      const points = progressPoints(
+        rows.map((r) => ({
+          setId: r.set_id,
+          workoutId: r.workout_id,
+          modality: r.modality_snapshot,
+          weightKgMilli: r.weight_kg === null ? null : parseWeightKgMilli(r.weight_kg),
+          reps: r.reps,
+        })),
+      ).map((p) => {
+        const row = firstRowOf.get(p.workoutId)!;
+        return { ...p, localDate: row.local_date.toISOString().slice(0, 10), startedAt: row.started_at };
+      });
+      return { exerciseId: root, points };
     },
   };
 }

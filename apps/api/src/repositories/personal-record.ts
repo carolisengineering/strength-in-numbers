@@ -28,4 +28,32 @@ export interface PersonalRecordFilter {
 export interface PersonalRecordRepository {
   /** Always scoped to `actingUserId`; unknown / foreign / unseen ids → [] (AC20). */
   list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]>;
+
+  /** Spec 07.2: one point per finished workout of the exercise's lineage,
+   * oldest first. Throws `NotFoundError` when the exercise is absent or not
+   * visible (global or owned, retired included). */
+  getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord>;
+}
+
+/** One chart point (Spec 07.2 §6.1); metrics in integer milli — the route converts. */
+export interface ProgressPointRecord {
+  workoutId: string;
+  /** YYYY-MM-DD. */
+  localDate: string;
+  startedAt: Date;
+  topSetWeightMilli: number | null;
+  bestE1rmMilli: number | null;
+  totalVolumeMilli: number | null;
+  maxRepsMilli: number | null;
+}
+
+export interface ProgressSeriesRecord {
+  /** The lineage root. */
+  exerciseId: string;
+  points: ProgressPointRecord[];
+}
+
+export interface ProgressRange {
+  from?: string | undefined;
+  to?: string | undefined;
 }
