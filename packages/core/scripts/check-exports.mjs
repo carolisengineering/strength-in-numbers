@@ -136,6 +136,7 @@ const EXPECTED = [
   "setVolumeMilli",
   "sumVolumeMilli",
   "setRecordValueMilli",
+  "progressPoints",
   // dto — workout history (Spec 07.1 §5)
   "WORKOUT_HISTORY_LIMIT_DEFAULT",
   "WORKOUT_HISTORY_LIMIT_MAX",
