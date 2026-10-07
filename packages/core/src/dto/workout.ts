@@ -128,3 +128,45 @@ export const UpdatedWorkoutSchema = WorkoutSchema.extend({
   newRecords: z.array(PersonalRecordSchema),
 });
 export type UpdatedWorkout = z.infer<typeof UpdatedWorkoutSchema>;
+
+/** `GET /v1/workouts` page size (Spec 07.1 D2). */
+export const WORKOUT_HISTORY_LIMIT_DEFAULT = 20;
+export const WORKOUT_HISTORY_LIMIT_MAX = 50;
+/** How many exercise names a history row carries; the SQL `LIMIT` uses it too (D16). */
+export const WORKOUT_SUMMARY_NAMES_MAX = 3;
+
+/** One row of the history list: the Workout plus a summary (Spec 07.1 §5). A new
+ * name rather than a change to `WorkoutSchema`, which other routes share. */
+export const WorkoutSummarySchema = WorkoutSchema.extend({
+  exerciseCount: z.number().int().min(0),
+  /** The first names by position — the snapshots taken when each was added. */
+  exerciseNames: z.array(z.string()).max(WORKOUT_SUMMARY_NAMES_MAX),
+  /** `set_type = 'working'` sets, any `is_complete` (D4). */
+  workingSetCount: z.number().int().min(0),
+  /** kg × reps over qualifying working sets; `null` when none qualifies — never 0. */
+  totalVolume: z.number().positive().nullable(),
+  /** `personal_record` rows this workout holds now (07.0 D18). */
+  recordCount: z.number().int().min(0),
+});
+export type WorkoutSummary = z.infer<typeof WorkoutSummarySchema>;
+
+/** Querystring values arrive as strings: digits only, then an integer in range (D11). */
+const HistoryLimit = z
+  .string()
+  .regex(/^\d{1,3}$/, "must be a whole number")
+  .transform(Number)
+  .pipe(z.number().int().min(1).max(WORKOUT_HISTORY_LIMIT_MAX))
+  .default(WORKOUT_HISTORY_LIMIT_DEFAULT);
+
+/** `GET /v1/workouts` querystring. `cursor` is decoded and validated server-side (§6.2). */
+export const WorkoutHistoryQuerySchema = z.object({
+  limit: HistoryLimit,
+  cursor: z.string().optional(),
+});
+export type WorkoutHistoryQuery = z.infer<typeof WorkoutHistoryQuerySchema>;
+
+export const WorkoutHistoryResponseSchema = z.object({
+  items: z.array(WorkoutSummarySchema),
+  next: z.string().nullable(),
+});
+export type WorkoutHistoryResponse = z.infer<typeof WorkoutHistoryResponseSchema>;
