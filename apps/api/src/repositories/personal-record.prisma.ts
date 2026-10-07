@@ -7,6 +7,7 @@ import {
   type RecordType,
   type RecordUnit,
 } from "@sin/core";
+import { Prisma } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import type { PersonalRecordFilter, PersonalRecordRecord, PersonalRecordRepository } from "./personal-record.js";
 import type { RawClient } from "./set-entry.prisma.js";
@@ -35,7 +36,7 @@ export async function rootsForWorkout(client: RawClient, workoutId: string): Pro
   return rows.map((r) => r.root_id);
 }
 
-interface LoaderRow {
+export interface LineageSetRow {
   root_id: string;
   set_id: string;
   reps: number | null;
@@ -53,6 +54,68 @@ interface LoaderRow {
  * agree (§6.7). */
 const milliToNumber = (milli: number): number => Number(milliToDecimalString(milli));
 
+export interface LineageRange {
+  from?: string | undefined;
+  to?: string | undefined;
+}
+
+/** Inclusive `local_date` bounds as bound parameters; `Prisma.empty` when
+ * unbounded, so the recompute's statement is byte-for-byte what it was (07.2 AC15). */
+export function lineageRangeSql(range: LineageRange): Prisma.Sql {
+  const parts: Prisma.Sql[] = [];
+  if (range.from !== undefined) parts.push(Prisma.sql`AND w.local_date >= ${range.from}::date`);
+  if (range.to !== undefined) parts.push(Prisma.sql`AND w.local_date <= ${range.to}::date`);
+  return parts.length === 0 ? Prisma.empty : Prisma.join(parts, " ");
+}
+
+/** A visible exercise (global, or owned by the caller — retired included) →
+ * its lineage root; null otherwise (07.0 §6.7, shared since Spec 07.2). */
+export async function resolveVisibleRoot(client: RawClient, userId: string, exerciseId: string): Promise<string | null> {
+  const r = await client.$queryRaw<{ root_id: string }[]>`
+    SELECT COALESCE(forked_from_exercise_id, id)::text AS root_id FROM "exercise"
+    WHERE id = ${exerciseId}::uuid
+      AND (owner_user_id IS NULL OR owner_user_id = ${userId}::uuid)
+  `;
+  return r[0]?.root_id ?? null;
+}
+
+/**
+ * 07.0 §6.3's loader, shared since Spec 07.2: the user's working sets of
+ * finished workouts in the given lineages, ordered (root, started_at, workout
+ * id, position, set_number), grouped by root. `is_complete` is ignored (07.0 D5).
+ */
+export async function loadLineageSets(
+  client: RawClient,
+  userId: string,
+  roots: readonly string[],
+  range: LineageRange = {},
+): Promise<Map<string, LineageSetRow[]>> {
+  const byRoot = new Map<string, LineageSetRow[]>();
+  if (roots.length === 0) return byRoot;
+  const rootList = [...roots];
+  const rows = await client.$queryRaw<LineageSetRow[]>`
+    SELECT root.id::text AS root_id, se.id::text AS set_id, se.reps,
+           se.weight_kg::text AS weight_kg, we.modality_snapshot,
+           we.exercise_id::text AS source_exercise_id, we.exercise_name_snapshot,
+           w.id::text AS workout_id, w.started_at, w.local_date
+    FROM "set_entry" se
+    JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
+    JOIN "workout" w           ON w.id = we.workout_id
+                              AND w.user_id = ${userId}::uuid AND w.ended_at IS NOT NULL
+    JOIN "exercise" e          ON e.id = we.exercise_id
+    CROSS JOIN LATERAL (SELECT COALESCE(e.forked_from_exercise_id, e.id) AS id) root
+    WHERE se.set_type = 'working' AND root.id = ANY(${rootList}::uuid[])
+      ${lineageRangeSql(range)}
+    ORDER BY root.id, w.started_at, w.id, we.position, se.set_number
+  `;
+  for (const row of rows) {
+    const group = byRoot.get(row.root_id);
+    if (group) group.push(row);
+    else byRoot.set(row.root_id, [row]);
+  }
+  return byRoot;
+}
+
 /**
  * For each root: load its full qualifying history (working sets of the
  * user's finished workouts — `is_complete` deliberately ignored, D5), run
@@ -67,32 +130,12 @@ export async function recomputeRecordsForRoots(
   if (roots.length === 0) return [];
   const rootList = [...roots];
 
-  const rows = await client.$queryRaw<LoaderRow[]>`
-    SELECT root.id::text AS root_id, se.id::text AS set_id, se.reps,
-           se.weight_kg::text AS weight_kg, we.modality_snapshot,
-           we.exercise_id::text AS source_exercise_id, we.exercise_name_snapshot,
-           w.id::text AS workout_id, w.started_at, w.local_date
-    FROM "set_entry" se
-    JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
-    JOIN "workout" w           ON w.id = we.workout_id
-                              AND w.user_id = ${userId}::uuid AND w.ended_at IS NOT NULL
-    JOIN "exercise" e          ON e.id = we.exercise_id
-    CROSS JOIN LATERAL (SELECT COALESCE(e.forked_from_exercise_id, e.id) AS id) root
-    WHERE se.set_type = 'working' AND root.id = ANY(${rootList}::uuid[])
-    ORDER BY root.id, w.started_at, w.id, we.position, se.set_number
-  `;
+  const byRoot = await loadLineageSets(client, userId, rootList);
 
   await client.$executeRaw`
     DELETE FROM "personal_record"
     WHERE user_id = ${userId}::uuid AND exercise_id = ANY(${rootList}::uuid[])
   `;
-
-  const byRoot = new Map<string, LoaderRow[]>();
-  for (const row of rows) {
-    const group = byRoot.get(row.root_id);
-    if (group) group.push(row);
-    else byRoot.set(row.root_id, [row]);
-  }
 
   const written: PersonalRecordRecord[] = [];
   for (const [rootId, group] of byRoot) {
@@ -156,13 +199,8 @@ export function createPersonalRecordRepository(prisma: RawClient): PersonalRecor
       if (filter.exerciseId !== undefined) {
         // Resolve only through exercises the caller may see (global or owned,
         // retired included) — anything else matches nothing (§7, AC20).
-        const r = await prisma.$queryRaw<{ root_id: string }[]>`
-          SELECT COALESCE(forked_from_exercise_id, id)::text AS root_id FROM "exercise"
-          WHERE id = ${filter.exerciseId}::uuid
-            AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
-        `;
-        if (!r[0]) return [];
-        root = r[0].root_id;
+        root = await resolveVisibleRoot(prisma, actingUserId, filter.exerciseId);
+        if (root === null) return [];
       }
       const workoutId = filter.workoutId ?? null;
       const rows = await prisma.$queryRaw<ReadRow[]>`
