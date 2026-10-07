@@ -6,6 +6,13 @@ import { ValidationError } from "../../src/errors/app-error.js";
 import { encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
+import { WorkoutHistoryResponseSchema } from "@sin/core";
+import { buildApp } from "../../src/app.js";
+import { checkDatabaseReady } from "../../src/db.js";
+import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
+import { authContext, fakeVerifier } from "../helpers/fakes.js";
 
 const at = (n: number) => new Date(Date.UTC(2026, 0, 1) + n * 86_400_000); // day n of 2026
 
@@ -225,6 +232,37 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
       expect(rows.find((r) => r.id === later)!.recordCount).toBe(0);
       const counts = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, later);
       expect(counts[0]!.n).toBe(0);
+    });
+  });
+
+  describe("AC1 (HTTP) — the real wiring", () => {
+    it("pages a user's history over HTTP with a schema-valid body", async () => {
+      const app = await buildApp({
+        config: testConfig(),
+        logger: false,
+        checkReadiness: () => checkDatabaseReady(db.prisma),
+        tokenVerifier: fakeVerifier(() => authContext({ authSub: "auth0|history", email: "h@ex.com" })),
+        userRepository: createUserRepository(db.prisma),
+        exerciseRepository: createExerciseRepository(db.prisma),
+        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
+        personalRecordRepository: createPersonalRecordRepository(db.prisma),
+        rateLimits: GENEROUS_LIMITS,
+      });
+      try {
+        const headers = { authorization: "Bearer t" };
+        const userId = (await app.inject({ method: "GET", url: "/v1/me", headers })).json().id as string;
+        const all = await seedDays(userId, 3);
+        const p1 = await app.inject({ method: "GET", url: "/v1/workouts?limit=2", headers });
+        expect(p1.statusCode).toBe(200);
+        const b1 = WorkoutHistoryResponseSchema.parse(p1.json());
+        const p2 = WorkoutHistoryResponseSchema.parse(
+          (await app.inject({ method: "GET", url: `/v1/workouts?limit=2&cursor=${b1.next}`, headers })).json(),
+        );
+        expect([...b1.items, ...p2.items].map((w) => w.id)).toEqual(all);
+        expect(p2.next).toBeNull();
+      } finally {
+        await app.close();
+      }
     });
   });
 });

@@ -19,6 +19,7 @@
     "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "records:rebuild": "tsx --env-file-if-exists=.env scripts/rebuild-records.ts",
     "bench:finish": "tsx scripts/bench-finish.ts",
+    "bench:history": "tsx scripts/bench-history.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {
