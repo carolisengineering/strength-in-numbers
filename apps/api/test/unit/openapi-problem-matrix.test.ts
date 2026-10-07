@@ -62,6 +62,8 @@ const MATRIX: Record<string, Slugs> = {
   "GET /v1/workouts/active": withCentral("none", { 404: ["not-found"] }),
   // Spec 07.1 §5: limit / cursor are querystring 422s; no domain problems.
   "GET /v1/workouts": withCentral("input"),
+  // Spec 07.2 §5: malformed id / from / to are 422; an unseen exercise is 404.
+  "GET /v1/progress/exercises/{id}": withCentral("input", { 404: ["not-found"] }),
   // Spec 07.0 §5: querystring ids → 422; unknown / foreign ids are an empty list, never 404.
   "GET /v1/personal-records": withCentral("input"),
   "GET /v1/workouts/{id}": withCentral("input", { 404: ["not-found"] }),

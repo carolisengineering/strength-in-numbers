@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q14 resolved; consistency pass done
-**Last updated:** 2026-10-07 (§6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q15 resolved; consistency pass done
+**Last updated:** 2026-10-07 (§6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -389,7 +389,12 @@ v1 (§1.3 scale does not need it). **Volume** in every view — the history row'
 `totalVolume` (Spec 07.1), the progress series, `best_set_volume` — means `set_type =
 'working'` sets of the load modalities (`weight_reps`, `weighted_bodyweight`) with
 `best_set_volume`'s eligibility (reps ≥ 1, `weight_kg > 0`), one function in
-`@sin/core` (`setVolumeMilli`).
+`@sin/core` (`setVolumeMilli`). A **progress series** has one point per finished workout
+(Spec 07.2); over a lineage's full history the series maximum of `topSetWeight`,
+`bestE1rm` and `maxReps` equals the PR of `heaviest_weight`, `best_est_1rm` and
+`max_reps` (both go through one per-type eligibility function, `setRecordValueMilli`).
+`totalVolume` is a **session sum**, not `best_set_volume` (a single-set best), so that
+guarantee does not cover it.
 
 ### 4.7 Future-proofing for wearable import (design only — no v1 tables beyond `workout.source`)
 
@@ -585,7 +590,9 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   pulled whole into a local cache; `since` (a sync token) bounds every later
   transfer (§5.2, Specs 03.1 / 03.3). **Second exception:** `GET /v1/personal-records`
   returns every matching record un-paginated — at most 4 rows per lineage root
-  (Spec 07.0 §5).
+  (Spec 07.0 §5). **Third exception:** `GET /v1/progress/exercises/{id}` returns the
+  whole requested range un-paginated — one point per workout, bounded by training
+  frequency (~100 points per year per exercise; Spec 07.2 D6).
 - **Time:** RFC 3339 UTC, always. Client sends its own `started_at`/`completed_at`
   timestamps (device clock) plus the server records receipt time. For calendar
   fields (§4.0), the client also sends its current UTC offset; the server stores
@@ -664,7 +671,9 @@ PATCH  /sets/{id}                     { same fields minus clientGeneratedId, all
 DELETE /sets/{id}
 GET    /exercises?since=          → catalog (global + custom), ETag
 POST   /exercises                 → custom exercise
-GET    /progress/exercises/{id}?metric=est_1rm&from=&to=     # Spec 07.2
+GET    /progress/exercises/{id}?from=&to=   → { exerciseId, points[] }, un-paginated (Spec 07.2)
+                                   # one point per finished workout: topSetWeight, bestE1rm, totalVolume, maxReps (each nullable);
+                                   # {id} resolves through fork lineage (exerciseId = root); 404 if not visible; from/to inclusive on local_date
 GET    /personal-records?exerciseId=&workoutId=   → { records[] }, un-paginated (Spec 07.0)
 POST   /account/export            → 202, async job
 DELETE /account                   → 202, soft-delete + purge scheduled
@@ -800,7 +809,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -905,6 +914,21 @@ with rationale so the "why" survives.
   Postgres-text timestamp avoids the microsecond-vs-`Date` boundary error. Rejected:
   all-in-SQL volume; stored summary columns. Cost: two indexed statements per page,
   measured in 07.1 AC20. See Spec 07.1 §12 (D1–D16).
+- **Q15 — Progress series shape.** ✅ **Resolved (Spec 07.2, 2026-10-07; replaces the
+  `?metric=est_1rm` sketch): `GET /v1/progress/exercises/{id}?from=&to=` returns one
+  point per finished workout carrying all four metrics (`topSetWeight`, `bestE1rm`,
+  `totalVolume`, `maxReps`, each nullable), computed in `@sin/core` from the same
+  fork-lineage working sets Spec 07.0 loads; `404` for an exercise not visible to the
+  caller, `200` with `points: []` for a visible exercise with no sessions.** Rationale:
+  the series is derived data whose numbers must agree with the PR list (R4), so the
+  per-set eligibility function `computeRecords` uses is exported and reused — the
+  series maximum of three metrics equals the PR by construction — rather than
+  re-implemented in SQL (a second implementation of the math, DESIGN §3.2) or stored in
+  a rollup (§4.6 defers it). All metrics per point lets the UI switch charts without a
+  refetch and leaves no `metric` enum to grow. Rejected: SQL `GROUP BY` aggregation;
+  daily rollup table; a `?metric=` parameter. Cost: one lineage's working sets loaded
+  per request, un-paginated (a documented exception to §6), measured in 07.2 AC19.
+  See Spec 07.2 §12 (D1–D14).
 
 ---
 

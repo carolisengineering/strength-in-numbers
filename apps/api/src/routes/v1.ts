@@ -6,6 +6,7 @@ import type { PersonalRecordRepository } from "../repositories/personal-record.j
 import { registerAuthcheckRoute } from "./authcheck.js";
 import { registerMeRoutes } from "./me.js";
 import { registerPersonalRecordRoutes } from "./personal-records.js";
+import { registerProgressRoutes } from "./progress.js";
 import { registerExerciseRoutes } from "./exercises.js";
 import { registerReferenceRoutes } from "./reference.js";
 import { registerSetRoutes } from "./sets.js";
@@ -29,4 +30,5 @@ export function registerV1Routes(
   registerWorkoutRoutes(app, { workoutRepository: deps.workoutRepository });
   registerSetRoutes(app, { workoutRepository: deps.workoutRepository });
   registerPersonalRecordRoutes(app, { personalRecordRepository: deps.personalRecordRepository });
+  registerProgressRoutes(app, { personalRecordRepository: deps.personalRecordRepository });
 }

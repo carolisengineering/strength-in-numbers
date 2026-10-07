@@ -33,6 +33,7 @@ pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 0
 DATABASE_URL='<url>' pnpm --filter @sin/api run records:rebuild [--user <id>]  # Spec 07.0; manual release step after migrate deploy (runbook B5a)
 pnpm --filter @sin/api run bench:finish         # Spec 07.0 AC27 finish-latency benchmark (Docker; dev tool, not CI)
 pnpm --filter @sin/api run bench:history        # Spec 07.1 AC20 history-page latency benchmark (Docker; dev tool, not CI)
+pnpm --filter @sin/api run bench:progress       # Spec 07.2 AC19 progress-series latency benchmark (Docker; dev tool, not CI)
 pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api / src/auth >=90% gates
 pnpm --filter @sin/web run e2e                  # Spec 06.3 browser smoke vs staging; needs E2E_BASE_URL + E2E_AUTH0_* (docs/runbooks/m1-browser-smoke.md)
 pnpm --filter @sin/web run assert:css-tokens    # AC1 tripwire: only tokens.css may hard-code colours / px

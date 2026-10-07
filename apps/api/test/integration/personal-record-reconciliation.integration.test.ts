@@ -5,6 +5,9 @@ import { createWorkoutRepository } from "../../src/repositories/workout.prisma.j
 import { rebuildRecords } from "../../src/records/rebuild.js";
 import { EXERCISES, SESSIONS, type ExerciseKey } from "../fixtures/pr-reconciliation/sessions.js";
 import { EXPECTED, type Expected } from "../fixtures/pr-reconciliation/expected.js";
+import { EXPECTED_PROGRESS } from "../fixtures/pr-reconciliation/expected-progress.js";
+import { milliToDecimalString } from "@sin/core";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, recordsOf } from "./records-helpers.js";
 
@@ -65,5 +68,29 @@ describe.skipIf(!shouldRunIntegration())("AC26 — hand reconciliation over 10 s
     await db.prisma.$executeRawUnsafe(`DELETE FROM "personal_record"`);
     await rebuildRecords(db.prisma, pino({ level: "silent" }), {});
     expect(await actual()).toEqual(order(EXPECTED));
+  });
+
+  it("AC18 (Spec 07.2) — the progress series matches expected-progress.ts, and its max equals the PRs", async () => {
+    const repo = createPersonalRecordRepository(db.prisma);
+    const s = (m: number | null) => (m === null ? null : milliToDecimalString(m));
+    for (const key of ["bench", "squat", "dips", "pullup"] as const) {
+      const { points } = await repo.getProgressSeries(user, idOf[key], {});
+      expect(
+        points.map((p) => ({
+          session: sessionOf.get(p.workoutId)!,
+          localDate: p.localDate,
+          topSetWeight: s(p.topSetWeightMilli),
+          bestE1rm: s(p.bestE1rmMilli),
+          totalVolume: s(p.totalVolumeMilli),
+          maxReps: s(p.maxRepsMilli),
+        })),
+        key,
+      ).toEqual(EXPECTED_PROGRESS[key]);
+      for (const [metric, type] of [["topSetWeight", "heaviest_weight"], ["bestE1rm", "best_est_1rm"], ["maxReps", "max_reps"]] as const) {
+        const pr = EXPECTED.find((e) => e.exercise === key && e.recordType === type);
+        const values = EXPECTED_PROGRESS[key].map((p) => p[metric]).filter((v): v is string => v !== null).map(Number);
+        expect(values.length ? Math.max(...values).toFixed(3) : null, `${key} ${type}`).toBe(pr ? pr.value : null);
+      }
+    }
   });
 });

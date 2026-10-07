@@ -81,6 +81,9 @@ import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
   PersonalRecordRepository,
+  ProgressPointRecord,
+  ProgressRange,
+  ProgressSeriesRecord,
 } from "../../src/repositories/personal-record.js";
 
 export function makeUser(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -759,6 +762,26 @@ export function authContext(overrides: Partial<AuthContext> = {}): AuthContext {
 export class FakePersonalRecordRepository implements PersonalRecordRepository {
   rows: Array<PersonalRecordRecord & { userId: string }> = [];
   lastFilter: PersonalRecordFilter | undefined;
+
+  /** Spec 07.2 — seeded series, keyed `${userId}:${exerciseId}` (no lineage
+   * resolution — that is covered against Postgres). Absent key ⇒ NotFoundError. */
+  progress = new Map<string, ProgressPointRecord[]>();
+  lastProgressQuery: { exerciseId: string; range: ProgressRange } | undefined;
+  /** Requested id → lineage root, so route tests can tell the two apart (the
+   * real repository returns the root; unmapped ids are their own root). */
+  progressRoots = new Map<string, string>();
+
+  async getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord> {
+    this.lastProgressQuery = { exerciseId, range };
+    const points = this.progress.get(`${actingUserId}:${exerciseId}`);
+    if (points === undefined) throw new NotFoundError("exercise not found or not visible to the acting user");
+    return {
+      exerciseId: this.progressRoots.get(exerciseId) ?? exerciseId,
+      points: points.filter(
+        (p) => (range.from === undefined || p.localDate >= range.from) && (range.to === undefined || p.localDate <= range.to),
+      ),
+    };
+  }
 
   async list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]> {
     this.lastFilter = filter;

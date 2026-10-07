@@ -91,8 +91,10 @@ export function sumVolumeMilli(
   return total;
 }
 
-/** The set's candidate value for one type, or null when ineligible (§6.1 table, D5). */
-function candidate(recordType: RecordType, s: RecordSet): number | null {
+/** The set's candidate value (milli) for one record type, or null when
+ * ineligible (07.0 §6.1 table, D5). Exported for Spec 07.2's progress series —
+ * one per-set rule for PRs and charts. */
+export function setRecordValueMilli(recordType: RecordType, s: RecordSet): number | null {
   const reps = s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 ? s.reps : null;
   if (recordType === "max_reps") {
     return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;
@@ -113,13 +115,9 @@ function candidate(recordType: RecordType, s: RecordSet): number | null {
   }
 }
 
-/**
- * One lineage's records (§6.1). Walks workouts in input order; within a
- * workout the earliest best set wins (strict `>`); a workout's best becomes
- * the holder only if it beats the running best of earlier workouts.
- * Throws if a workout's sets are not contiguous (a caller bug).
- */
-export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
+/** Contiguous per-workout runs of `sets`, in input order. Throws if a
+ * workout's sets reappear after another workout began (a caller bug). */
+function groupByWorkout(sets: readonly RecordSet[], caller: string): RecordSet[][] {
   const workouts: RecordSet[][] = [];
   const seen = new Set<string>();
   for (const s of sets) {
@@ -129,11 +127,22 @@ export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
       continue;
     }
     if (seen.has(s.workoutId)) {
-      throw new Error(`computeRecords: sets of workout ${s.workoutId} are not contiguous`);
+      throw new Error(`${caller}: sets of workout ${s.workoutId} are not contiguous`);
     }
     seen.add(s.workoutId);
     workouts.push([s]);
   }
+  return workouts;
+}
+
+/**
+ * One lineage's records (§6.1). Walks workouts in input order; within a
+ * workout the earliest best set wins (strict `>`); a workout's best becomes
+ * the holder only if it beats the running best of earlier workouts.
+ * Throws if a workout's sets are not contiguous (a caller bug).
+ */
+export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
+  const workouts = groupByWorkout(sets, "computeRecords");
 
   const out: ComputedRecord[] = [];
   for (const recordType of RECORD_TYPE_VALUES) {
@@ -142,7 +151,7 @@ export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
     for (const group of workouts) {
       let best: { value: number; set: RecordSet } | null = null;
       for (const s of group) {
-        const v = candidate(recordType, s);
+        const v = setRecordValueMilli(recordType, s);
         if (v !== null && v > 0 && (best === null || v > best.value)) best = { value: v, set: s };
       }
       if (best === null) continue;
@@ -161,4 +170,43 @@ export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
     if (holder) out.push(holder);
   }
   return out;
+}
+
+/** One chart point (Spec 07.2 §5): a workout's best per metric, integer milli. */
+export interface ProgressPointMilli {
+  workoutId: string;
+  topSetWeightMilli: number | null;
+  bestE1rmMilli: number | null;
+  /** A SESSION SUM (sumVolumeMilli) — not best_set_volume's single set. */
+  totalVolumeMilli: number | null;
+  /** reps × 1000, bodyweight_reps only. */
+  maxRepsMilli: number | null;
+}
+
+/** The workout's best value of one type (computeRecords' own `v > 0` guard). */
+function bestOf(recordType: RecordType, group: readonly RecordSet[]): number | null {
+  let best: number | null = null;
+  for (const s of group) {
+    const v = setRecordValueMilli(recordType, s);
+    if (v !== null && v > 0 && (best === null || v > best)) best = v;
+  }
+  return best;
+}
+
+/**
+ * Spec 07.2 §6.2 — one point per workout, in input order, from the SAME
+ * per-set function as computeRecords, so the series max of topSetWeight /
+ * bestE1rm / maxReps equals the heaviest_weight / best_est_1rm / max_reps PR
+ * (AC14). Input: one lineage's working sets, sorted as computeRecords needs.
+ * Each point depends only on its own workout, so a date-range filter upstream
+ * changes which points appear, never their values (D10).
+ */
+export function progressPoints(sets: readonly RecordSet[]): ProgressPointMilli[] {
+  return groupByWorkout(sets, "progressPoints").map((group) => ({
+    workoutId: group[0]!.workoutId,
+    topSetWeightMilli: bestOf("heaviest_weight", group),
+    bestE1rmMilli: bestOf("best_est_1rm", group),
+    totalVolumeMilli: sumVolumeMilli(group),
+    maxRepsMilli: bestOf("max_reps", group),
+  }));
 }

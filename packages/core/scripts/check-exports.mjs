@@ -135,6 +135,12 @@ const EXPECTED = [
   "computeRecords",
   "setVolumeMilli",
   "sumVolumeMilli",
+  "setRecordValueMilli",
+  "progressPoints",
+  // dto — progress series (Spec 07.2 §5)
+  "ProgressPointSchema",
+  "ProgressSeriesSchema",
+  "ProgressQuerySchema",
   // dto — workout history (Spec 07.1 §5)
   "WORKOUT_HISTORY_LIMIT_DEFAULT",
   "WORKOUT_HISTORY_LIMIT_MAX",
