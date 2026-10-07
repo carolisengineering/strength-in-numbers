@@ -42,6 +42,14 @@ describe("AC1/AC8 — contract and serialization", () => {
     expect(dto.maxReps).toBe(12);
     expect(Number.isInteger(dto.maxReps)).toBe(true);
   });
+  it("AC4 — the response exerciseId is the repository's lineage root, not the requested id", async () => {
+    const { app, prRepo, userId } = await setup();
+    const ROOT = "018fcb3e-3b8a-7d6e-9c1a-0000000000aa";
+    prRepo.progress.set(`${userId}:${EX}`, [point(1)]);
+    prRepo.progressRoots.set(EX, ROOT);
+    const res = await get(app, `/v1/progress/exercises/${EX}`);
+    expect(res.json().exerciseId).toBe(ROOT);
+  });
   it("401 without a token", async () => {
     const { app } = await setup();
     expect((await app.inject({ method: "GET", url: `/v1/progress/exercises/${EX}` })).statusCode).toBe(401);
