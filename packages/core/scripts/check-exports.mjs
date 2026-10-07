@@ -133,6 +133,8 @@ const EXPECTED = [
   "milliToDecimalString",
   "estimate1rm",
   "computeRecords",
+  "setVolumeMilli",
+  "sumVolumeMilli",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

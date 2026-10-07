@@ -66,6 +66,31 @@ export function estimate1rm(weightKgMilli: number, reps: number): number | null 
 
 const LOAD_MODALITIES = new Set(["weight_reps", "weighted_bodyweight"]);
 
+/**
+ * The one definition of a set's volume (Spec 07.1 D4): reps × weight in milli,
+ * for load modalities only, with reps an integer ≥ 1 and weight > 0. 07.0's
+ * best_set_volume and 07.1's history totalVolume both go through it. Callers
+ * pass working sets only.
+ */
+export function setVolumeMilli(modality: string, weightKgMilli: number | null, reps: number | null): number | null {
+  if (!LOAD_MODALITIES.has(modality)) return null;
+  if (reps === null || !Number.isInteger(reps) || reps < 1) return null;
+  if (weightKgMilli === null || weightKgMilli <= 0) return null;
+  return reps * weightKgMilli;
+}
+
+/** Sum of `setVolumeMilli` over `sets`; `null` when no set qualifies (07.1 §5). */
+export function sumVolumeMilli(
+  sets: Iterable<{ modality: string; weightKgMilli: number | null; reps: number | null }>,
+): number | null {
+  let total: number | null = null;
+  for (const s of sets) {
+    const v = setVolumeMilli(s.modality, s.weightKgMilli, s.reps);
+    if (v !== null) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
 /** The set's candidate value for one type, or null when ineligible (§6.1 table, D5). */
 function candidate(recordType: RecordType, s: RecordSet): number | null {
   const reps = s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 ? s.reps : null;
@@ -81,7 +106,7 @@ function candidate(recordType: RecordType, s: RecordSet): number | null {
     case "best_est_1rm":
       return estimate1rm(w, reps);
     case "best_set_volume":
-      return reps * w;
+      return setVolumeMilli(s.modality, w, reps);
   }
 }
 
