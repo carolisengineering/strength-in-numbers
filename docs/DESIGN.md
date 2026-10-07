@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q13 resolved; consistency pass done
-**Last updated:** 2026-10-06 (§4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2. Earlier: 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q14 resolved; consistency pass done
+**Last updated:** 2026-10-07 (§6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -385,7 +385,11 @@ in `packages/core` with exhaustive tests (Risk R4).
 Charts (volume over time, e1RM trend, top-set weight) are **queries**, not stored
 entities, computed from `set_entry` + `weight_kg`. If aggregate latency becomes a
 problem at real data sizes, add a nightly `exercise_daily_stat` rollup — not in
-v1 (§1.3 scale does not need it).
+v1 (§1.3 scale does not need it). **Volume** in every view — the history row's
+`totalVolume` (Spec 07.1), the progress series, `best_set_volume` — means `set_type =
+'working'` sets of the load modalities (`weight_reps`, `weighted_bodyweight`) with
+`best_set_volume`'s eligibility (reps ≥ 1, `weight_kg > 0`), one function in
+`@sin/core` (`setVolumeMilli`).
 
 ### 4.7 Future-proofing for wearable import (design only — no v1 tables beyond `workout.source`)
 
@@ -569,8 +573,14 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 - **Auth:** `Authorization: Bearer <jwt>`.
 - **Errors:** RFC 9457 `application/problem+json` — `type`, `title`, `status`,
   `detail`, `errors[]` for field-level validation.
-- **Pagination:** opaque cursor (`?limit=&cursor=`), `next` cursor in the body.
-  No offset pagination. **Exception:** `GET /v1/exercises` returns the whole
+- **Pagination:** opaque cursor (`?limit=&cursor=`), `next` cursor in the body
+  (`null` on the last page). No offset pagination. **Cursor contract** (reference
+  pattern, Spec 07.1 §6.2): a `v1.`-prefixed base64url token carrying the last row's
+  sort-key tuple — keyset on a total order such as `(started_at, id)`, never an offset;
+  timestamps travel as Postgres text, never through a JS `Date` (microsecond
+  `timestamptz` vs millisecond `Date` can skip or repeat a row at a page boundary); a
+  malformed cursor is `422 validation-error`; the cursor only positions within the
+  caller's own rows, so it is unsigned. First user: `GET /v1/workouts`. **Exception:** `GET /v1/exercises` returns the whole
   caller-visible catalog un-paginated — it is bounded (low hundreds of rows) and
   pulled whole into a local cache; `since` (a sync token) bounds every later
   transfer (§5.2, Specs 03.1 / 03.3). **Second exception:** `GET /v1/personal-records`
@@ -642,7 +652,7 @@ All paths are under `/v1`.
 POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinutes?, title?, notes? }
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
-GET    /workouts?cursor=          → history list (Spec 07.1)
+GET    /workouts?limit=&cursor=   → { items: WorkoutSummary[], next } history list (Spec 07.1)
 GET    /workouts/{id}
 PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
 DELETE /workouts/{id}            # whole session only, allowed finished or not
@@ -790,7 +800,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -882,6 +892,19 @@ with rationale so the "why" survives.
   watched against §1.3's 400 ms p99 (07.0 AC27). Chronology is `started_at`, ties go
   to the earliest set, and `max_reps` replaces the old reps-in-`value` overload.
   See Spec 07.0 §12 (D1–D22).
+- **Q14 — History list & cursor pagination pattern.** ✅ **Resolved (Spec 07.1,
+  2026-10-07): `GET /v1/workouts?limit=&cursor=` returns the caller's finished
+  workouts newest-first, each with a summary computed at read time (a keyset page
+  query with correlated subqueries, plus volume summed in `@sin/core`); cursors are
+  opaque `v1.` tokens over `(started_at, id)` with the timestamp carried as Postgres
+  text.** Rationale: the summary is derived data, and storing it (a migration plus
+  maintenance in every finish/delete) or computing volume in SQL (a second
+  implementation of the volume rule) would reintroduce the drift Q13 avoids — so
+  volume is one `@sin/core` function shared with `best_set_volume`. Keyset (not
+  offset) paging is stable under concurrent finishes and deletes, and the
+  Postgres-text timestamp avoids the microsecond-vs-`Date` boundary error. Rejected:
+  all-in-SQL volume; stored summary columns. Cost: two indexed statements per page,
+  measured in 07.1 AC20. See Spec 07.1 §12 (D1–D16).
 
 ---
 
@@ -892,7 +915,9 @@ with rationale so the "why" survives.
 - **Estimated 1RM (e1RM)** — predicted one-rep max from a submaximal set; Epley:
   `w * (1 + reps/30)`.
 - **Volume** — `reps × weight` for a single set (`best_set_volume`); summed over
-  sets for an exercise or session (progress charts, §4.6).
+  sets for an exercise or session (history `totalVolume`, progress charts, §4.6).
+  Counts **working sets only**, of the load modalities, with the same eligibility as
+  `best_set_volume` (reps ≥ 1, `weight_kg > 0`); `null`, not 0, when nothing qualifies.
 - **PR** — Personal Record; four kinds (`heaviest_weight`, `best_est_1rm`,
   `best_set_volume`, `max_reps` — §4.5), tracked per **lineage root** (a global
   exercise and the user's forks of it count as one exercise).
