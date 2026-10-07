@@ -65,6 +65,7 @@ import type {
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
+  WorkoutHistoryPage,
   CreateSetFields,
   CreateSetResult,
   SetEntryRecord,
@@ -465,6 +466,10 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     );
     if (!w) throw new NotFoundError("no active workout for the acting user");
     return this.detail(w);
+  }
+
+  async listFinishedWorkouts(): Promise<WorkoutHistoryPage> {
+    throw new Error("FakeWorkoutRepository.listFinishedWorkouts: implemented in Spec 07.1 Task 5");
   }
 
   async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {
