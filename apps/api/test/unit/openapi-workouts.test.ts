@@ -26,8 +26,8 @@ type Doc = {
 
 const isCamelCase = (k: string) => /^[a-z][A-Za-z0-9]*$/.test(k) && !k.includes("_");
 
-describe("AC20 — the eight workout routes are in the published OpenAPI contract", () => {
-  it("GET /openapi.json lists all eight paths with a declared response schema, including both 204 deletes", async () => {
+describe("AC20 — the nine workout operations are in the published OpenAPI contract", () => {
+  it("GET /openapi.json lists every workout path with a declared response schema, including both 204 deletes", async () => {
     const { app } = await buildTestApp();
     await app.ready();
     const res = await app.inject({ method: "GET", url: "/openapi.json" });
@@ -44,7 +44,7 @@ describe("AC20 — the eight workout routes are in the published OpenAPI contrac
     );
 
     const expectedMethods: Record<string, string[]> = {
-      "/v1/workouts": ["post"],
+      "/v1/workouts": ["get", "post"], // GET = the history list (Spec 07.1)
       "/v1/workouts/active": ["get"],
       "/v1/workouts/{id}": ["get", "patch", "delete"],
       "/v1/workouts/{id}/exercises": ["post"],
@@ -64,14 +64,14 @@ describe("AC20 — the eight workout routes are in the published OpenAPI contrac
     };
     expect(weDelete.responses["204"]).toBeDefined();
 
-    // Eight routes total (2 GET/POST on /v1/workouts, GET active, PATCH+DELETE
-    // on /v1/workouts/{id}, POST on .../exercises, PATCH+DELETE on
-    // /v1/workout-exercises/{id}).
+    // Nine operations: GET (history, Spec 07.1) + POST on /v1/workouts, GET
+    // active, GET+PATCH+DELETE on /v1/workouts/{id}, POST on .../exercises,
+    // PATCH+DELETE on /v1/workout-exercises/{id}.
     const workoutOperationCount = Object.entries(expectedMethods).reduce(
       (n, [, methods]) => n + methods.length,
       0,
     );
-    expect(workoutOperationCount).toBe(8);
+    expect(workoutOperationCount).toBe(9);
   });
 
   it("every workout response schema uses camelCase field names (DESIGN §6)", async () => {

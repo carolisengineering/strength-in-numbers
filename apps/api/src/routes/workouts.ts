@@ -9,6 +9,10 @@ import {
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
+  WorkoutHistoryQuerySchema,
+  WorkoutHistoryResponseSchema,
+  milliToDecimalString,
+  type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
   type Workout,
@@ -31,6 +35,7 @@ import type {
   WorkoutExerciseRecord,
   WorkoutRecord,
   WorkoutRepository,
+  WorkoutSummaryRecord,
 } from "../repositories/workout.js";
 
 /**
@@ -60,6 +65,19 @@ function toWorkoutDto(r: WorkoutRecord): Workout {
     source: r.source as Workout["source"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+/** History row -> wire DTO (Spec 07.1 §5). Volume via the decimal string, no
+ * division (D5). */
+function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
+  return {
+    ...toWorkoutDto(r),
+    exerciseCount: r.exerciseCount,
+    exerciseNames: r.exerciseNames,
+    workingSetCount: r.workingSetCount,
+    totalVolume: r.totalVolumeMilli === null ? null : Number(milliToDecimalString(r.totalVolumeMilli)),
+    recordCount: r.recordCount,
   };
 }
 
@@ -128,6 +146,23 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         reply.code(200);
       }
       return toWorkoutDto(workout);
+    },
+  );
+
+  // Spec 07.1 — the history list. Newest finished first, keyset-paged by an
+  // opaque cursor (§6.2). Default no-store (D14); a GET, so no writeGroup.
+  r.get(
+    "/workouts",
+    {
+      schema: { querystring: WorkoutHistoryQuerySchema, response: { 200: WorkoutHistoryResponseSchema } },
+      config: { published: true, problems: [] },
+    },
+    async (request) => {
+      const page = await deps.workoutRepository.listFinishedWorkouts(request.user!.id, {
+        limit: request.query.limit,
+        cursor: request.query.cursor,
+      });
+      return { items: page.items.map(toWorkoutSummaryDto), next: page.next };
     },
   );
 

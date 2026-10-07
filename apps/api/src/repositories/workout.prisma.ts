@@ -35,6 +35,7 @@ import {
 import { assertWorkingSetsComplete, createSetEntryMethods, loadSetsForWorkout } from "./set-entry.prisma.js";
 import type { PersonalRecordRecord } from "./personal-record.js";
 import { lockUserRecords, recomputeRecordsForRoots, rootsForWorkout } from "./personal-record.prisma.js";
+import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-history.prisma.js";
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -225,6 +226,8 @@ export function createWorkoutRepository(
 
   return {
     ...createSetEntryMethods(prisma),
+    // Spec 07.1 (D9): the history list's read-only queries live in their own module.
+    listFinishedWorkouts: (actingUserId, opts) => listFinishedWorkoutsQuery(prisma, actingUserId, opts),
     async createWorkout(
       actingUserId: string,
       fields: CreateWorkoutFields,

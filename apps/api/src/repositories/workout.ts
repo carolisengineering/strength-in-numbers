@@ -25,6 +25,28 @@ export interface WorkoutRecord {
   updatedAt: Date;
 }
 
+/** One history row (Spec 07.1 §6.4): the workout plus its summary. Volume stays
+ * in integer milli here; the route converts it (D5). */
+export interface WorkoutSummaryRecord extends WorkoutRecord {
+  exerciseCount: number;
+  exerciseNames: string[];
+  workingSetCount: number;
+  totalVolumeMilli: number | null;
+  recordCount: number;
+}
+
+export interface ListFinishedWorkoutsOptions {
+  limit: number;
+  /** The raw token from the client — decoded (and 422'd) by the repository (D8). */
+  cursor?: string | undefined;
+}
+
+export interface WorkoutHistoryPage {
+  items: WorkoutSummaryRecord[];
+  /** Encoded cursor for the next page, or null when this is the last. */
+  next: string | null;
+}
+
 export interface WorkoutExerciseRecord {
   id: string;
   workoutId: string;
@@ -184,6 +206,11 @@ export interface WorkoutRepository {
   /** A workout by id, in progress or finished, with its exercises. Throws
    * `NotFoundError` on a miss, another user's row, or a malformed id. */
   getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord>;
+
+  /** `GET /v1/workouts` (Spec 07.1): the caller's finished workouts, newest
+   * first, keyset-paged. Throws `ValidationError` (422) on a malformed cursor,
+   * before any query. */
+  listFinishedWorkouts(actingUserId: string, opts: ListFinishedWorkoutsOptions): Promise<WorkoutHistoryPage>;
 
   /**
    * `PATCH /v1/workouts/{id}` (§6.5). Applies `title`/`notes`/`endedAt`
