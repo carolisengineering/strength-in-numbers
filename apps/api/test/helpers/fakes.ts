@@ -6,10 +6,14 @@ import {
   localDateFor,
   MAX_CUSTOM_EXERCISES_PER_USER,
   offsetMinutesForZone,
+  parseWeightKgMilli,
+  sumVolumeMilli,
   toCanonicalKg,
   toCanonicalMeters,
+  WORKOUT_SUMMARY_NAMES_MAX,
   type Modality,
 } from "@sin/core";
+import { decodeWorkoutCursor, encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
 import { uuidv7 } from "uuidv7";
 import type {
   ProfilePatch,
@@ -66,6 +70,7 @@ import type {
   WorkoutRecord,
   WorkoutRepository,
   WorkoutHistoryPage,
+  ListFinishedWorkoutsOptions,
   CreateSetFields,
   CreateSetResult,
   SetEntryRecord,
@@ -468,8 +473,47 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return this.detail(w);
   }
 
-  async listFinishedWorkouts(): Promise<WorkoutHistoryPage> {
-    throw new Error("FakeWorkoutRepository.listFinishedWorkouts: implemented in Spec 07.1 Task 5");
+  /** Spec 07.1 — counts list calls that got past cursor decoding (AC7). */
+  historyScans = 0;
+
+  async listFinishedWorkouts(actingUserId: string, opts: ListFinishedWorkoutsOptions): Promise<WorkoutHistoryPage> {
+    const cursor = opts.cursor === undefined ? null : decodeWorkoutCursor(opts.cursor);
+    this.historyScans += 1;
+    // The fake's Dates have millisecond precision; pad to the cursor's 6 digits.
+    const text = (d: Date) => d.toISOString().replace("Z", "000Z");
+    const rows = [...this.workouts.values()]
+      .filter((w) => w.userId === actingUserId && w.endedAt !== null)
+      .map((w) => ({ w, t: text(w.startedAt) }))
+      .sort((a, b) => (a.t === b.t ? (a.w.id < b.w.id ? 1 : -1) : a.t < b.t ? 1 : -1))
+      .filter(({ w, t }) => !cursor || t < cursor.startedAtText || (t === cursor.startedAtText && w.id < cursor.id));
+    const page = rows.slice(0, opts.limit);
+    const items = page.map(({ w }) => {
+      const exercises = [...this.exercises.values()]
+        .filter((e) => e.workoutId === w.id)
+        .sort((a, b) => a.position - b.position);
+      const working = [...this.sets.values()].filter(
+        (s) => s.setType === "working" && exercises.some((e) => e.id === s.workoutExerciseId),
+      );
+      return {
+        ...w,
+        exerciseCount: exercises.length,
+        exerciseNames: exercises.slice(0, WORKOUT_SUMMARY_NAMES_MAX).map((e) => e.exerciseNameSnapshot),
+        workingSetCount: working.length,
+        totalVolumeMilli: sumVolumeMilli(
+          working.map((s) => ({
+            modality: exercises.find((e) => e.id === s.workoutExerciseId)!.modalitySnapshot,
+            weightKgMilli: s.weightKg === null ? null : parseWeightKgMilli(s.weightKg.toFixed(3)),
+            reps: s.reps,
+          })),
+        ),
+        recordCount: 0, // the fake keeps no personal_record rows
+      };
+    });
+    const last = page[page.length - 1];
+    return {
+      items,
+      next: rows.length > opts.limit && last ? encodeWorkoutCursor({ startedAtText: last.t, id: last.w.id }) : null,
+    };
   }
 
   async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {
