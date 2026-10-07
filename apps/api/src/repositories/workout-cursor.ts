@@ -35,7 +35,12 @@ function isRealTimestamp(s: string): boolean {
   const m = TIMESTAMP.exec(s);
   if (!m) return false;
   const [y, mo, d, h, mi, se] = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
-  const t = new Date(Date.UTC(y, mo - 1, d, h, mi, se));
+  // Postgres has no year 0. setUTCFullYear, not Date.UTC: Date.UTC reads years
+  // 0–99 as 1900–1999, which would reject a cursor the server itself issued.
+  if (y < 1) return false;
+  const t = new Date(0);
+  t.setUTCFullYear(y, mo - 1, d);
+  t.setUTCHours(h, mi, se, 0);
   return (
     t.getUTCFullYear() === y &&
     t.getUTCMonth() === mo - 1 &&

@@ -25,6 +25,13 @@ describe("AC6 — cursor round-trip", () => {
     const c = { startedAtText: "2026-09-01T10:00:00.123457Z", id: ID };
     expect(decodeWorkoutCursor(encodeWorkoutCursor(c))).toEqual(c);
   });
+  it.each(["0001-01-01T00:00:00.000000Z", "0099-06-01T12:30:00.000001Z", "9999-12-31T23:59:59.999999Z"])(
+    "every year Postgres can format as YYYY round-trips (%s) — no history is cut off by its own cursor",
+    (s) => {
+      const c = { startedAtText: s, id: ID };
+      expect(decodeWorkoutCursor(encodeWorkoutCursor(c))).toEqual(c);
+    },
+  );
   it("tokens are v1.-prefixed unpadded base64url", () => {
     const t = encodeWorkoutCursor({ startedAtText: "2026-09-01T10:00:00.000000Z", id: ID });
     expect(t.startsWith("v1.")).toBe(true);
@@ -48,10 +55,8 @@ describe("AC6/AC7 — strict decode: every malformed shape is a 422 on `cursor`"
     ["offset timestamp", token({ s: "2026-09-01T10:00:00.000000+00:00", i: ID })],
     ["impossible date (Review Focus 1)", token({ s: "2026-13-45T25:61:00.000000Z", i: ID })],
     ["Feb 30", token({ s: "2026-02-30T10:00:00.000000Z", i: ID })],
-    // Postgres has no year 0 (the cast would 500); Date.UTC maps 0–99 to 19xx,
-    // so the round-trip check rejects these before any query.
+    // Postgres has no year 0 — the ::timestamptz cast would 500.
     ["year 0000", token({ s: "0000-01-01T00:00:00.000000Z", i: ID })],
-    ["year 0099", token({ s: "0099-06-01T00:00:00.000000Z", i: ID })],
     ["non-UUID id", token({ s: "2026-09-01T10:00:00.000000Z", i: "not-a-uuid" })],
     ["over-long", `v1.${"A".repeat(WORKOUT_CURSOR_MAX_LENGTH)}`],
   ])("%s", (_label, t) => {

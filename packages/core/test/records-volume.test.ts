@@ -57,6 +57,15 @@ describe("AC15 — computeRecords' best_set_volume goes through setVolumeMilli (
     const src = readFileSync(new URL("../src/records.ts", import.meta.url), "utf8");
     expect(src.match(/reps \* w/g) ?? []).toHaveLength(1);
   });
+  it("candidate() hands best_set_volume to setVolumeMilli before any other eligibility guard (no second copy of the rule)", () => {
+    const src = readFileSync(new URL("../src/records.ts", import.meta.url), "utf8");
+    const body = src.slice(src.indexOf("function candidate("));
+    const volumeBranch = body.indexOf('recordType === "best_set_volume"');
+    const loadGuard = body.indexOf("LOAD_MODALITIES.has(s.modality)");
+    expect(volumeBranch).toBeGreaterThan(-1);
+    expect(volumeBranch).toBeLessThan(loadGuard);
+    expect(body).toContain("setVolumeMilli(s.modality, s.weightKgMilli, s.reps)");
+  });
   it("best_set_volume equals setVolumeMilli for the record's set", () => {
     const [vol] = computeRecords([
       { setId: "a", workoutId: "w", modality: "weight_reps", weightKgMilli: 61_235, reps: 3 },

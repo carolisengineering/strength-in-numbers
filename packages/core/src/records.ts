@@ -97,6 +97,11 @@ function candidate(recordType: RecordType, s: RecordSet): number | null {
   if (recordType === "max_reps") {
     return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;
   }
+  if (recordType === "best_set_volume") {
+    // Spec 07.1 D4: setVolumeMilli alone decides a set's volume, so the PR
+    // and the history list can never disagree about which sets count.
+    return setVolumeMilli(s.modality, s.weightKgMilli, s.reps);
+  }
   if (!LOAD_MODALITIES.has(s.modality) || reps === null) return null;
   const w = s.weightKgMilli;
   if (w === null || w <= 0) return null;
@@ -105,8 +110,6 @@ function candidate(recordType: RecordType, s: RecordSet): number | null {
       return w;
     case "best_est_1rm":
       return estimate1rm(w, reps);
-    case "best_set_volume":
-      return setVolumeMilli(s.modality, w, reps);
   }
 }
 
