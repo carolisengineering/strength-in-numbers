@@ -26,8 +26,8 @@ type Doc = {
 
 const isCamelCase = (k: string) => /^[a-z][A-Za-z0-9]*$/.test(k) && !k.includes("_");
 
-describe("AC20 — the eight workout routes are in the published OpenAPI contract", () => {
-  it("GET /openapi.json lists all eight paths with a declared response schema, including both 204 deletes", async () => {
+describe("AC20 — the nine workout operations are in the published OpenAPI contract", () => {
+  it("GET /openapi.json lists every workout path with a declared response schema, including both 204 deletes", async () => {
     const { app } = await buildTestApp();
     await app.ready();
     const res = await app.inject({ method: "GET", url: "/openapi.json" });

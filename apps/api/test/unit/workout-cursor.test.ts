@@ -48,6 +48,10 @@ describe("AC6/AC7 — strict decode: every malformed shape is a 422 on `cursor`"
     ["offset timestamp", token({ s: "2026-09-01T10:00:00.000000+00:00", i: ID })],
     ["impossible date (Review Focus 1)", token({ s: "2026-13-45T25:61:00.000000Z", i: ID })],
     ["Feb 30", token({ s: "2026-02-30T10:00:00.000000Z", i: ID })],
+    // Postgres has no year 0 (the cast would 500); Date.UTC maps 0–99 to 19xx,
+    // so the round-trip check rejects these before any query.
+    ["year 0000", token({ s: "0000-01-01T00:00:00.000000Z", i: ID })],
+    ["year 0099", token({ s: "0099-06-01T00:00:00.000000Z", i: ID })],
     ["non-UUID id", token({ s: "2026-09-01T10:00:00.000000Z", i: "not-a-uuid" })],
     ["over-long", `v1.${"A".repeat(WORKOUT_CURSOR_MAX_LENGTH)}`],
   ])("%s", (_label, t) => {
