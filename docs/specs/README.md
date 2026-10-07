@@ -34,7 +34,7 @@ spec small enough to finish in one work session.
 | 06.5 | Connectivity extras — persisted entry-row drafts, logout guard for unsaved sets, multi-tab co-operation (Web Locks), Playwright offline run | UI | web | 06.2 | Not started |
 | 07.0 | [PR engine](07.0-pr-engine.md) — `personal_record` (four record types, fork-lineage roots), pure `@sin/core` e1RM/PR math, recompute-per-lineage on finish + delete in the 05.0 transactions, `records:rebuild` release step, `newRecords` on the finish response, `GET /v1/personal-records` | API | endpoints + migration `0008` | 05.0, 05.1, 03.2 | Implemented (`records:rebuild` pending on staging) |
 | 07.1 | [History list API](07.1-history-list-api.md) — `GET /v1/workouts?limit=&cursor=`: finished workouts newest-first with a per-row summary (names, working sets, volume, records held); the reference keyset-cursor pattern; extracts `setVolumeMilli` in `@sin/core` | API | endpoint (no migration) | 05.1, 07.0 | Implemented |
-| 07.2 | Progress series API — `GET /v1/progress/exercises/{id}` (reuses 07.0's `estimate1rm`) | API | endpoints | 05.1, 07.0 | Not started |
+| 07.2 | [Progress series API](07.2-progress-series-api.md) — `GET /v1/progress/exercises/{id}?from=&to=`: one point per finished workout (top-set weight, best e1RM, total volume, max reps), fork-lineage resolution, series max = PR for three metrics; shares 07.0's lineage loader and `records.ts` | API | endpoint (no migration) | 05.1, 07.0, 07.1 | Draft |
 | 08 | History & progress | UI | web | 06, 07.0, 07.1, 07.2 | Not started |
 | 09 | Routines & supersets (Tier B) — adds `routine_id` / `superset_group` | API | endpoints | 05.0 | Not started |
 | 10 | Routines & supersets | UI | web | 06, 09 | Not started |
@@ -81,7 +81,7 @@ should land **before 06.2** (it carries BL-12's catalog-store interleaving tests
 which must exist before 06.2 wraps `createCustom` in a queue, and settles where
 Finish's cache removal lives, which 06.2's queue assumes) — it is independent of
 06.3. 06.5 needs 06.2. The API specs (05.0, 05.1, 05.2, 07.0, 07.1, 07.2, 09, 11) can run
-ahead of their UIs. 07.0 needs 05.0/05.1 (it extends the finish and delete transactions) and 03.2 (fork lineage); 07.1 needs 05.1 and 07.0 (it reads `personal_record` for `recordCount` and extracts the volume rule from 07.0's `records.ts`); 07.2 needs 05.1 and reuses 07.0's `estimate1rm`. 16 has no downstream dependents and can land any time
+ahead of their UIs. 07.0 needs 05.0/05.1 (it extends the finish and delete transactions) and 03.2 (fork lineage); 07.1 needs 05.1 and 07.0 (it reads `personal_record` for `recordCount` and extracts the volume rule from 07.0's `records.ts`); 07.2 needs 05.1, 07.0 and 07.1 (it shares 07.0's lineage loader and `records.ts` eligibility function, and sums with 07.1's `sumVolumeMilli`). 16 has no downstream dependents and can land any time
 after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
