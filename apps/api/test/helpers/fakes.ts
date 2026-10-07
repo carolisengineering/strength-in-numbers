@@ -81,6 +81,8 @@ import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
   PersonalRecordRepository,
+  ProgressPointRecord,
+  ProgressRange,
   ProgressSeriesRecord,
 } from "../../src/repositories/personal-record.js";
 
@@ -761,8 +763,21 @@ export class FakePersonalRecordRepository implements PersonalRecordRepository {
   rows: Array<PersonalRecordRecord & { userId: string }> = [];
   lastFilter: PersonalRecordFilter | undefined;
 
-  async getProgressSeries(): Promise<ProgressSeriesRecord> {
-    throw new Error("FakePersonalRecordRepository.getProgressSeries: implemented in Spec 07.2 Task 6");
+  /** Spec 07.2 — seeded series, keyed `${userId}:${exerciseId}` (no lineage
+   * resolution — that is covered against Postgres). Absent key ⇒ NotFoundError. */
+  progress = new Map<string, ProgressPointRecord[]>();
+  lastProgressQuery: { exerciseId: string; range: ProgressRange } | undefined;
+
+  async getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord> {
+    this.lastProgressQuery = { exerciseId, range };
+    const points = this.progress.get(`${actingUserId}:${exerciseId}`);
+    if (points === undefined) throw new NotFoundError("exercise not found or not visible to the acting user");
+    return {
+      exerciseId,
+      points: points.filter(
+        (p) => (range.from === undefined || p.localDate >= range.from) && (range.to === undefined || p.localDate <= range.to),
+      ),
+    };
   }
 
   async list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]> {

@@ -4,6 +4,14 @@ import { NotFoundError } from "../../src/errors/app-error.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
+import { ProgressSeriesSchema } from "@sin/core";
+import { buildApp } from "../../src/app.js";
+import { checkDatabaseReady } from "../../src/db.js";
+import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
+import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
+import { authContext, fakeVerifier } from "../helpers/fakes.js";
 
 const at = (day: number, hour = 10) => new Date(Date.UTC(2026, 8, day, hour)); // Sept 2026
 
@@ -164,6 +172,47 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.2 — getProgressSeries (real 
       expect(await series(u, bench)).toEqual({ exerciseId: bench, points: [] });
       await logWorkout(db, u, { startedAt: at(1), exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
       expect((await series(u, bench, { from: "2026-10-01" })).points).toEqual([]);
+    });
+  });
+  describe("AC1/AC2 (HTTP) — real wiring; byte-identical 404s", () => {
+    it("serves a schema-valid series; unknown and foreign ids give identical 404 bodies", async () => {
+      const app = await buildApp({
+        config: testConfig(),
+        logger: false,
+        checkReadiness: () => checkDatabaseReady(db.prisma),
+        tokenVerifier: fakeVerifier((t) => authContext({ authSub: `auth0|${t}`, email: `${t}@ex.com` })),
+        userRepository: createUserRepository(db.prisma),
+        exerciseRepository: createExerciseRepository(db.prisma),
+        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
+        personalRecordRepository: createPersonalRecordRepository(db.prisma),
+        rateLimits: GENEROUS_LIMITS,
+      });
+      try {
+        const A = { authorization: "Bearer a" };
+        const B = { authorization: "Bearer b" };
+        const userA = (await app.inject({ method: "GET", url: "/v1/me", headers: A })).json().id as string;
+        const userB = (await app.inject({ method: "GET", url: "/v1/me", headers: B })).json().id as string;
+        const global = await insertExercise(db);
+        const bCustom = await insertExercise(db, { ownerUserId: userB });
+        const bFork = await insertExercise(db, { ownerUserId: userB, forkedFrom: global });
+        await logWorkout(db, userA, { startedAt: at(1), exercises: [{ exerciseId: global, sets: [{ reps: 5, weight: 100 }] }] });
+
+        const ok = await app.inject({ method: "GET", url: `/v1/progress/exercises/${global}`, headers: A });
+        expect(ok.statusCode).toBe(200);
+        expect(ProgressSeriesSchema.parse(ok.json()).points).toHaveLength(1);
+
+        const bodies = new Set<string>();
+        for (const id of [uuidv7(), bCustom, bFork]) {
+          const res = await app.inject({ method: "GET", url: `/v1/progress/exercises/${id}`, headers: A });
+          expect(res.statusCode).toBe(404);
+          const body = res.json();
+          delete body.instance; // the request path differs by design
+          bodies.add(JSON.stringify(body));
+        }
+        expect(bodies.size).toBe(1);
+      } finally {
+        await app.close();
+      }
     });
   });
 });
