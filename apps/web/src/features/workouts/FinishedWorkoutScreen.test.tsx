@@ -211,6 +211,8 @@ describe("08.0 AC20 — the section prop", () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/history"));
     expect(fake.state.finished.has(workout.id)).toBe(false);
+    // Review Focus 3: History refetches, so the deleted workout's row is gone.
+    expect(await screen.findByText("No finished workouts yet")).toBeInTheDocument();
   });
 
   it("from Workouts: Back to Workouts, and a delete lands on Workouts (unchanged)", async () => {

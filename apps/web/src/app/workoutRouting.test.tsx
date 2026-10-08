@@ -103,7 +103,9 @@ describe("AC14 — routing and mounting", () => {
     const workouts = NAV_ITEMS.find((item) => item.to === "/app/workouts");
     expect(workouts).toBeDefined();
     expect(workouts?.comingSoon).toBeUndefined();
-    expect(NAV_ITEMS.find((i) => i.to === "/app/history")?.comingSoon).toBe(true);
+    // Spec 08.0 ships History; Progress stays a stub until Spec 08.1.
+    expect(NAV_ITEMS.find((i) => i.to === "/app/history")?.comingSoon).toBeUndefined();
+    expect(NAV_ITEMS.find((i) => i.to === "/app/progress")?.comingSoon).toBe(true);
   });
 
   it("/app/workouts and /app/workouts/:id are protected children of the shell", async () => {

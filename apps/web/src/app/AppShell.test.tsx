@@ -203,9 +203,9 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
 
   it("coming-soon sections render the stub under their section title", async () => {
     auth.state.isAuthenticated = true;
-    renderAt(["/app/history"]);
+    renderAt(["/app/progress"]);
 
     await screen.findByTestId("coming-soon");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("History");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Progress");
   });
 });
