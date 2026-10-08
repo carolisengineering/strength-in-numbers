@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
+import { PROGRESS_KEYS } from "../progress/queries";
 import { applyDeletedCaches, applyFinishedCaches } from "./cache";
 import { RECORDS_KEYS } from "./queries";
 
@@ -14,6 +15,7 @@ function seeded() {
   qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
   qc.setQueryData(RECORDS_KEYS.forWorkout(OTHER), []);
   qc.setQueryData(RECORDS_KEYS.forExercise(EX), []);
+  qc.setQueryData(PROGRESS_KEYS.series("e", "3m"), { exerciseId: "e", points: [] });
   return qc;
 }
 const invalidated = (qc: ReturnType<typeof makeQueryClient>, key: readonly unknown[]) => qc.getQueryState(key)?.isInvalidated;
@@ -56,5 +58,21 @@ describe("08.0 AC8 — applyDeletedCaches", () => {
     expect(qc.getQueryState(RECORDS_KEYS.forWorkout(W))).toBeUndefined();
     expect(invalidated(qc, HISTORY_KEYS.list)).toBe(true);
     expect(invalidated(qc, RECORDS_KEYS.forExercise(EX))).toBe(true);
+  });
+});
+
+describe("08.1 AC8 — finish and delete invalidate every progress series", () => {
+  it("applyFinishedCaches (with or without newRecords) invalidates ['progress']", () => {
+    for (const newRecords of [[makePersonalRecord({ workoutId: W })], null]) {
+      const qc = seeded();
+      applyFinishedCaches(qc, W, newRecords);
+      expect(invalidated(qc, PROGRESS_KEYS.series("e", "3m"))).toBe(true);
+    }
+  });
+
+  it("applyDeletedCaches invalidates ['progress']", () => {
+    const qc = seeded();
+    applyDeletedCaches(qc, W);
+    expect(invalidated(qc, PROGRESS_KEYS.series("e", "3m"))).toBe(true);
   });
 });
