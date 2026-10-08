@@ -1,6 +1,7 @@
 import { ApiError } from "../api/problem";
 import { CatalogProvider } from "../features/catalog/CatalogProvider";
 import { useMe } from "../features/me/useMe";
+import { HistoryRecordsClientProvider } from "../features/history/HistoryRecordsClientProvider";
 import { WorkoutClientProvider } from "../features/workouts/WorkoutClientProvider";
 import { AccountDeleted } from "../screens/AccountDeleted";
 import { RetryScreen } from "../screens/RetryScreen";
@@ -21,7 +22,7 @@ import { AppShell } from "./AppShell";
  *
  * Spec 04.1 §5: the gate is unchanged; only the `200` branch now renders the
  * styled shell instead of a bare `<Outlet/>`. Spec 06.1 mounts the catalog and
- * workout-client providers around it.
+ * workout-client providers around it; Spec 08.0 adds the history/records read clients.
  */
 export function ProtectedLayout() {
   const query = useMe();
@@ -52,7 +53,9 @@ export function ProtectedLayout() {
   return (
     <CatalogProvider userId={query.data.id}>
       <WorkoutClientProvider userId={query.data.id}>
-        <AppShell />
+        <HistoryRecordsClientProvider>
+          <AppShell />
+        </HistoryRecordsClientProvider>
       </WorkoutClientProvider>
     </CatalogProvider>
   );
