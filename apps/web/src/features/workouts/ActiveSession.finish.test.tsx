@@ -347,6 +347,28 @@ describe("AC29 — discard and the gone path", () => {
   });
 });
 
+describe("08.0 AC21 — finish lands on a summary with its PRs and no extra fetch", () => {
+  it("shows newRecords on first paint, never GETs records, and History shows the new row with its badge", async () => {
+    const active = makeWorkoutDetail({ exercises: oneSet });
+    const fake = createWorkoutFake({ active, newRecordsOnFinish: [makePersonalRecord({ exerciseName: "X" })] });
+    prepareApp({ auth, fake });
+    const { user, router } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByText(/^X — Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+    expect(fake.requests.some((r) => r.path === "/v1/personal-records")).toBe(false);
+
+    await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "History" }));
+    const row = await screen.findByRole("link", { name: /1 personal record/ });
+    expect(row).toHaveAttribute("href", `/app/history/${active.id}`);
+  });
+});
+
 describe("08.0 AC7 — the 409 recovery path gets the cache effects", () => {
   it("removes the records entry so the summary fetches its records once by workoutId", async () => {
     const active = makeWorkoutDetail({ exercises: oneSet });
