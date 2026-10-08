@@ -1,10 +1,12 @@
 import {
   PersonalRecordSchema,
+  ProgressPointSchema,
   SetEntrySchema,
   WorkoutDetailSchema,
   WorkoutSummarySchema,
   type Modality,
   type PersonalRecord,
+  type ProgressPoint,
   type SetEntry,
   type WorkoutDetail,
   type WorkoutSummary,
@@ -127,6 +129,20 @@ export function makePersonalRecord(overrides: Record<string, unknown> = {}): Per
     workoutId: nextId(),
     achievedAt: T0,
     localDate: "2026-10-02",
+    ...overrides,
+  });
+}
+
+/** A `ProgressPoint` (Spec 07.2) parsed through the core schema: 100 kg × 5 on 2 Oct, no reps metric. */
+export function makeProgressPoint(overrides: Record<string, unknown> = {}): ProgressPoint {
+  return ProgressPointSchema.parse({
+    workoutId: nextId(),
+    localDate: "2026-10-02",
+    startedAt: T0,
+    topSetWeight: 100,
+    bestE1rm: 116.667,
+    totalVolume: 500,
+    maxReps: null,
     ...overrides,
   });
 }
