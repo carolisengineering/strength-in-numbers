@@ -1,6 +1,66 @@
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chartArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.readoutRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.readout {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.caption,
+.status {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.link,
 .back {
   display: inline-flex;
   align-items: center;
   min-height: var(--tap-target-min);
   color: var(--color-accent);
+}
+
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session {
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.session[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-surface-raised);
 }

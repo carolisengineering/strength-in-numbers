@@ -19,7 +19,7 @@ vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import { NAV_ITEMS } from "../../app/navItems";
-import { makePersonalRecord } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
@@ -37,7 +37,7 @@ const records = [
 const LIST = { method: "GET", path: /^\/v1\/personal-records$/ };
 
 function setup(options: { records?: typeof records; unitPreference?: "kg" | "lb"; fail?: () => Response } = {}) {
-  const fake = createWorkoutFake({ records: options.records ?? records });
+  const fake = createWorkoutFake({ records: options.records ?? records, progress: { [BENCH]: [makeProgressPoint({ localDate: "2026-10-06" })] } });
   if (options.fail) fake.failNext(LIST, options.fail);
   prepareApp({ auth, fake, ...(options.unitPreference ? { unitPreference: options.unitPreference } : {}) });
   return { fake, ...renderApp("/app/progress") };
@@ -57,8 +57,9 @@ describe("08.1 AC10 — routes and navigation", () => {
     const { router } = setup();
     await screen.findByRole("list", { name: "Exercises" });
     await router.navigate(`/app/progress/${BENCH}`);
+    await screen.findByRole("img", { name: /^Est\. 1RM, / });
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    await waitFor(() => expect(within(nav).getByRole("link", { name: "Progress" })).toHaveAttribute("aria-current", "page"));
+    expect(within(nav).getByRole("link", { name: "Progress" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "History" })).not.toHaveAttribute("aria-current");
   });
 });
