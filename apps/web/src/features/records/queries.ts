@@ -9,6 +9,8 @@ import type { RecordsClient } from "./recordsClient";
  */
 export const RECORDS_KEYS = {
   all: ["records"] as const,
+  /** Every record the lifter holds — the Progress list (Spec 08.1). */
+  list: ["records", "all"] as const,
   forWorkout: (workoutId: string) => ["records", { workoutId }] as const,
   forExercise: (exerciseId: string) => ["records", { exerciseId }] as const,
 };
@@ -30,6 +32,22 @@ export function useWorkoutRecords(workoutId: string): UseQueryResult<PersonalRec
   return useQuery({
     queryKey: RECORDS_KEYS.forWorkout(workoutId),
     queryFn: () => client.listRecords({ workoutId }),
+    retry: false,
+  });
+}
+
+/** Every record the lifter holds — the Progress list (Spec 08.1 AC6, D6). */
+export function useAllRecords(): UseQueryResult<PersonalRecord[]> {
+  const client = useRecordsClient();
+  return useQuery({ queryKey: RECORDS_KEYS.list, queryFn: () => client.listRecords({}), retry: false });
+}
+
+/** One lineage's records — the exercise screen (Spec 08.1 AC19). */
+export function useExerciseRecords(exerciseId: string): UseQueryResult<PersonalRecord[]> {
+  const client = useRecordsClient();
+  return useQuery({
+    queryKey: RECORDS_KEYS.forExercise(exerciseId),
+    queryFn: () => client.listRecords({ exerciseId }),
     retry: false,
   });
 }
