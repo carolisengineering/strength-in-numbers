@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { onlineManager } from "@tanstack/react-query";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -25,6 +26,7 @@ import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
 afterEach(() => {
   observability.reportError.mockReset();
+  onlineManager.setOnline(true);
   cleanupApp();
 });
 
@@ -101,6 +103,17 @@ describe("08.1 AC12 — list states", () => {
     await waitFor(() =>
       expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), { source: "workouts", op: "load-progress-list" }),
     );
+  });
+
+  it("signal lost, then Progress opened → the network notice, not an endless spinner (code review #1)", async () => {
+    const fake = createWorkoutFake({ records });
+    prepareApp({ auth, fake });
+    const { router } = renderApp("/app/history");
+    await screen.findByRole("heading", { level: 1, name: "History" });
+    fake.setOffline(true);
+    onlineManager.setOnline(false);
+    await router.navigate("/app/progress");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your progress");
   });
 
   it("a failed refresh keeps the rows", async () => {

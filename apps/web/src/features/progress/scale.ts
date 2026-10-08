@@ -20,9 +20,14 @@ export function niceTicks(min: number, max: number, count: number, { integer = f
   let lo = Math.min(min, max);
   let hi = Math.max(min, max);
   if (lo === hi) {
-    const padBy = lo === 0 ? 1 : Math.abs(lo) * 0.1;
-    lo -= padBy;
-    hi += padBy;
+    // All zero pads upward only: no metric here is negative (code review #5).
+    if (lo === 0) {
+      hi = 1;
+    } else {
+      const padBy = Math.abs(lo) * 0.1;
+      lo -= padBy;
+      hi += padBy;
+    }
   }
   const raw = (hi - lo) / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
@@ -100,11 +105,19 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
     const x = column[0]!.x;
     const left = i === 0 ? 0 : (columns[i - 1]![0]!.x + x) / 2;
     const right = i === columns.length - 1 ? VIEW.width : (x + columns[i + 1]![0]!.x) / 2;
-    const byY = [...column].sort((a, b) => a.py - b.py);
-    byY.forEach((p, j) => {
-      const top = j === 0 ? 0 : (byY[j - 1]!.py + p.py) / 2;
-      const bottom = j === byY.length - 1 ? VIEW.height : (p.py + byY[j + 1]!.py) / 2;
-      byId.set(p.id, { id: p.id, x: left, y: top, width: right - left, height: bottom - top });
+    // Equal values on one date share a y slice, split side by side, so none is left with zero area (code review #6).
+    const rows: PlottedPoint[][] = [];
+    for (const p of [...column].sort((a, b) => a.py - b.py)) {
+      const row = rows.at(-1);
+      if (row && row[0]!.py === p.py) row.push(p);
+      else rows.push([p]);
+    }
+    rows.forEach((row, j) => {
+      const py = row[0]!.py;
+      const top = j === 0 ? 0 : (rows[j - 1]![0]!.py + py) / 2;
+      const bottom = j === rows.length - 1 ? VIEW.height : (py + rows[j + 1]![0]!.py) / 2;
+      const width = (right - left) / row.length;
+      row.forEach((p, k) => byId.set(p.id, { id: p.id, x: left + k * width, y: top, width, height: bottom - top }));
     });
   });
   return layout.points.map((p) => byId.get(p.id)!);

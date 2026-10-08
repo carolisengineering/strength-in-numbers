@@ -36,6 +36,13 @@ describe("08.1 AC3 — niceTicks", () => {
     expect(niceTicks(0.1, 0.3, 2)).toEqual([0.1, 0.2, 0.3]);
   });
 
+  it("an all-zero series pads upward only — no negative tick (code review #5)", () => {
+    const ticks = niceTicks(0, 0, 4);
+    expect(ticks[0]).toBe(0);
+    expect(Math.min(...ticks)).toBeGreaterThanOrEqual(0);
+    expect(ticks.at(-1)!).toBeGreaterThan(0);
+  });
+
   it("integer mode (reps): step ≥ 1, integers only", () => {
     expect(niceTicks(8, 12, 4, { integer: true })).toEqual([8, 9, 10, 11, 12]);
     for (const t of niceTicks(1, 1, 4, { integer: true })) expect(Number.isInteger(t)).toBe(true);
@@ -71,6 +78,15 @@ describe("08.1 AC4 — chart geometry", () => {
     const strictlyInside = (r: Rect, x: number, y: number) => x > r.x && x < r.x + r.width && y > r.y && y < r.y + r.height;
     const overlap = (a: Rect, b: Rect) =>
       Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+
+    it("same-date sessions with equal values share their slice side by side — none has zero area (code review #6)", () => {
+      const layout = layoutChart([pt("a", "2026-09-01", 5), pt("b", "2026-09-01", 5), pt("c", "2026-09-01", 5), pt("d", "2026-09-01", 7)]);
+      const areas = hitAreas(layout);
+      for (const a of areas) expect(a.width * a.height).toBeGreaterThan(0);
+      for (let i = 0; i < areas.length; i++) for (let j = i + 1; j < areas.length; j++) expect(overlap(areas[i]!, areas[j]!)).toBe(false);
+      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(VIEW.width * VIEW.height, 6);
+      layout.points.forEach((p, i) => expect(areas[i]!.y <= p.py && p.py <= areas[i]!.y + areas[i]!.height).toBe(true));
+    });
 
     it("one point owns the whole viewBox", () => {
       expect(hitAreas(layoutChart([pt("a", "2026-09-01", 1)]))).toEqual([{ id: "a", x: 0, y: 0, width: VIEW.width, height: VIEW.height }]);

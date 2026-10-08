@@ -36,10 +36,14 @@ export function useWorkoutRecords(workoutId: string): UseQueryResult<PersonalRec
   });
 }
 
-/** Every record the lifter holds — the Progress list (Spec 08.1 AC6, D6). */
+/**
+ * Every record the lifter holds — the Progress list (Spec 08.1 AC6, D6). This and `useExerciseRecords` use
+ * `networkMode: "always"` so offline is a `network` failure with a notice, not a paused query and an
+ * endless spinner (08.1 D11; code review #1).
+ */
 export function useAllRecords(): UseQueryResult<PersonalRecord[]> {
   const client = useRecordsClient();
-  return useQuery({ queryKey: RECORDS_KEYS.list, queryFn: () => client.listRecords({}), retry: false });
+  return useQuery({ queryKey: RECORDS_KEYS.list, queryFn: () => client.listRecords({}), retry: false, networkMode: "always" });
 }
 
 /** One lineage's records — the exercise screen (Spec 08.1 AC19). */
@@ -49,5 +53,6 @@ export function useExerciseRecords(exerciseId: string): UseQueryResult<PersonalR
     queryKey: RECORDS_KEYS.forExercise(exerciseId),
     queryFn: () => client.listRecords({ exerciseId }),
     retry: false,
+    networkMode: "always",
   });
 }

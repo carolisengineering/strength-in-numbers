@@ -286,6 +286,23 @@ describe("08.1 AC21 — series failure", () => {
     await screen.findByRole("img", { name: /1 year/ });
   });
 
+  it("Try again after a failed new range shows the loading status, not the stale notice (code review #3)", async () => {
+    const { fake, user } = setup();
+    await screen.findByRole("img", { name: /3 months/ });
+    fake.failNext({ method: "GET", path: SERIES }, () => problemResponse(500, "internal"));
+    await user.click(within(rangeGroup()).getByRole("button", { name: "1Y" }));
+    const alert = await screen.findByRole("alert");
+    const gate = deferred<void>();
+    server.use(http.get(`${API_BASE_URL}/v1/progress/exercises/:id`, async () => { await gate.promise; }, { once: true }));
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Loading 1 year…")).toHaveAttribute("role", "status");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelector("[aria-busy='true']")).not.toBeNull();
+    expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    gate.resolve();
+    await screen.findByRole("img", { name: /1 year/ });
+  });
+
   it("a failed refresh keeps the chart", async () => {
     const { fake, queryClient } = setup();
     await screen.findByRole("img", { name: /3 months/ });
