@@ -7,6 +7,7 @@ import { ApiError } from "../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
+import { PROGRESS_KEYS } from "../progress/queries";
 import { RECORDS_KEYS } from "../records/queries";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import {
@@ -262,6 +263,7 @@ describe("08.0 AC8 — delete success at hook level", () => {
     const W = "40000000-0000-4000-8000-0000000000ac";
     qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
     qc.setQueryData(RECORDS_KEYS.forExercise("e"), []);
+    qc.setQueryData(PROGRESS_KEYS.series("e", "3m"), { exerciseId: "e", points: [] });
     const { result } = renderHook(() => useDeleteWorkout(), {
       wrapper: wrapperWith(qc, fakeClient({ deleteWorkout: async () => undefined })),
     });
@@ -270,5 +272,7 @@ describe("08.0 AC8 — delete success at hook level", () => {
 
     expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(false);
     expect(qc.getQueryState(RECORDS_KEYS.forExercise("e"))?.isInvalidated).toBe(false);
+    // Spec 08.1 AC8: nor progress.
+    expect(qc.getQueryState(PROGRESS_KEYS.series("e", "3m"))?.isInvalidated).toBe(false);
   });
 });

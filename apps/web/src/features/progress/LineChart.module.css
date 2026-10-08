@@ -1,0 +1,42 @@
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.tick,
+.xLabel {
+  fill: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.dot {
+  fill: var(--color-accent);
+}
+
+/* Size and an outline, not colour alone, mark the selection (Spec 08.1 AC16). */
+.selected {
+  stroke: var(--color-text);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}

@@ -17,7 +17,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeProgressPoint, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
@@ -212,6 +212,62 @@ describe("08.0 AC23 — History and the records block, accessibly", () => {
       ["../history/*.tsx", "../records/*.tsx", "!../history/*.test.tsx", "!../records/*.test.tsx"],
       { query: "?raw", import: "default", eager: true },
     ) as Record<string, string>;
+    expect(Object.keys(sources).length).toBeGreaterThan(0);
+    const unstyled: string[] = [];
+    for (const [path, source] of Object.entries(sources)) {
+      for (const [tag] of stripComments(source).matchAll(/<(?:button|select|input|summary|Link|a)\b(?:=>|[^>])*>/g)) {
+        if (!/className=/.test(tag)) unstyled.push(`${path}: ${tag.slice(0, 60)}`);
+      }
+    }
+    expect(unstyled).toEqual([]);
+  });
+});
+
+describe("08.1 AC25 — Progress screens, accessibly", () => {
+  const ID = "10000000-0000-4000-8000-0000000000b1";
+
+  it("list: one h1, a named list of links", async () => {
+    prepareApp({ auth, fake: createWorkoutFake({ records: [makePersonalRecord({ exerciseId: ID })] }) });
+    renderApp("/app/progress");
+    const list = await screen.findByRole("list", { name: "Exercises" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    for (const link of within(list).getAllByRole("link")) expect(link).toHaveAccessibleName();
+  });
+
+  it("exercise: one h1, a named svg, named groups of pressed buttons, a live readout, nothing focusable in the svg", async () => {
+    prepareApp({
+      auth,
+      fake: createWorkoutFake({
+        progress: { [ID]: [makeProgressPoint({ localDate: "2026-09-01" }), makeProgressPoint({ localDate: "2026-10-01" })] },
+        records: [makePersonalRecord({ exerciseId: ID })],
+      }),
+    });
+    renderApp(`/app/progress/${ID}`);
+    const svg = await screen.findByRole("img");
+    expect(svg).toHaveAccessibleName();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    for (const name of ["Metric", "Range"]) {
+      for (const b of within(screen.getByRole("group", { name })).getAllByRole("button")) {
+        expect(b).toHaveAccessibleName();
+        expect(b).toHaveAttribute("aria-pressed");
+      }
+    }
+    expect(document.querySelector("[aria-live='polite']")).not.toBeNull();
+    expect(svg.querySelectorAll("[tabindex], a, button")).toHaveLength(0);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it.each([
+    ["../progress/ProgressScreen.module.css", ".row"],
+    ["../progress/ProgressScreen.module.css", ".emptyLink"],
+    ["../progress/ExerciseProgressScreen.module.css", ".session"],
+    ["../progress/ExerciseProgressScreen.module.css", ".back"],
+  ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
+    expect(hasTapTarget(file, selector)).toBe(true);
+  });
+
+  it("no raw interactive element in progress/ is left unstyled", () => {
+    const sources = import.meta.glob(["../progress/*.tsx", "!../progress/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
     expect(Object.keys(sources).length).toBeGreaterThan(0);
     const unstyled: string[] = [];
     for (const [path, source] of Object.entries(sources)) {

@@ -93,7 +93,7 @@ describe("08.0 AC10 — routes and navigation", () => {
     expect(screen.queryByTestId("coming-soon")).toBeNull();
   });
 
-  it("/app/history/:id highlights History, not Workouts; /app/progress is still coming soon", async () => {
+  it("/app/history/:id highlights History, not Workouts", async () => {
     const [w] = finishedWorkouts(1);
     const { router } = setup([w!]);
     await screen.findByRole("list", { name: "Finished workouts" });
@@ -104,7 +104,7 @@ describe("08.0 AC10 — routes and navigation", () => {
     expect(within(nav).getByRole("link", { name: "Workouts" })).not.toHaveAttribute("aria-current");
 
     await router.navigate("/app/progress");
-    expect(await screen.findByTestId("coming-soon")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Progress" })).toBeInTheDocument();
   });
 
   it("an unfinished id under /app/history still redirects to /app/workouts", async () => {

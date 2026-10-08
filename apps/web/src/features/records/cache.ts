@@ -1,6 +1,7 @@
 import { hashKey, type QueryClient } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
 import { HISTORY_KEYS } from "../history/queries";
+import { PROGRESS_KEYS } from "../progress/queries";
 import { RECORDS_KEYS } from "./queries";
 
 /**
@@ -34,5 +35,7 @@ export function applyDeletedCaches(queryClient: QueryClient, workoutId: string):
 function invalidateOthers(queryClient: QueryClient, own: readonly unknown[]): void {
   const ownHash = hashKey(own);
   void queryClient.invalidateQueries({ queryKey: HISTORY_KEYS.all });
+  // A finished or deleted session changes every chart it appears in (Spec 08.1 AC8).
+  void queryClient.invalidateQueries({ queryKey: PROGRESS_KEYS.all });
   void queryClient.invalidateQueries({ queryKey: RECORDS_KEYS.all, predicate: (q) => q.queryHash !== ownHash });
 }

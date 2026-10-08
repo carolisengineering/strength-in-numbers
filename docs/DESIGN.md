@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q16 resolved; consistency pass done
-**Last updated:** 2026-10-08 (§2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q17 resolved; consistency pass done
+**Last updated:** 2026-10-08 (§2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -84,8 +84,8 @@ resolved) and Risk R6.
 6. **Progress** — per-exercise charts: top-set weight, estimated 1RM, total
    volume; personal-record list and PR notifications at finish. (PR engine and
    list: Spec 07.0; history list: 07.1; the chart series: 07.2. UI: PR notifications
-   on the workout summary — Spec 08.0; charts and the per-exercise records list —
-   Spec 08.1.)
+   on the workout summary — Spec 08.0; charts (hand-written SVG, no chart library —
+   Q17) and the per-exercise records list — Spec 08.1.)
 7. **Responsive web app** — the sole v1 client. Full logging + history + progress,
    laid out to work one-handed on a phone browser in the gym and to expand on a
    desktop for planning and review.
@@ -397,7 +397,10 @@ v1 (§1.3 scale does not need it). **Volume** in every view — the history row'
 `bestE1rm` and `maxReps` equals the PR of `heaviest_weight`, `best_est_1rm` and
 `max_reps` (both go through one per-type eligibility function, `setRecordValueMilli`).
 `totalVolume` is a **session sum**, not `best_set_volume` (a single-set best), so that
-guarantee does not cover it.
+guarantee does not cover it. The UI draws these series client-side (Spec 08.1, Q17): any
+metric may be `null` at a point and is then **skipped, never plotted as zero**, and the
+client never recomputes an e1RM, top set or volume — it plots the served numbers (the
+only client arithmetic is the kg → lb display conversion).
 
 ### 4.7 Future-proofing for wearable import (design only — no v1 tables beyond `workout.source`)
 
@@ -757,7 +760,8 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   pick → log → reload (resume) → finish → summary → delete. The "see PR" step
   joins when a clean test account makes it assertable (Spec 08.0 D12); the smoke
   gains a History step in Spec 08.0 (open the finished workout from History, delete
-  from there).
+  from there), and Spec 08.1 has it open the Progress chart for the bench press
+  before that — still asserting no values.
 
 ---
 
@@ -787,7 +791,7 @@ Planning implications:
 |---|---|---|
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
-| **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (top set, est-1RM, volume) (08.1). | Progress numbers reconciled by hand for 10 sessions. |
+| **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (est-1RM, top set, volume, reps — hand-written SVG, Q17) and the per-exercise records list (08.1). | Progress numbers reconciled by hand for 10 sessions (records and history: 08.0 AC27; charts: 08.1 AC29). |
 | **M3 — Routines + supersets** | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — bracketed display + one rest timer per group. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
@@ -813,7 +817,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -957,6 +961,34 @@ with rationale so the "why" survives.
   pages (~35 ms each server-side, 07.1 O1); a workout finished on another device appears
   within the 30 s default `staleTime`. Settles 07.1 O2 (rows show no notes; the API
   shape is unchanged). See Spec 08.0 §12 (D1–D14).
+- **Q17 — Progress charts: hand-written SVG, nulls skipped client-side.** ✅ **Resolved
+  (Spec 08.1, 2026-10-08): the Progress tab lists the exercises the lifter holds records
+  for (one unfiltered `GET /v1/personal-records`, grouped by lineage root) and opens a
+  per-exercise screen that draws one metric of `GET /v1/progress/exercises/{id}` (est.
+  1RM, top set, volume, reps) as a small hand-written SVG line chart — no chart library —
+  over a 3M / 1Y / All range (the range becomes the API's `from`, computed on the device
+  from its local date), with tap-to-select points, an `aria-live` readout that links to
+  the session, a sessions list as the keyboard / screen-reader path, and the exercise's
+  records list. A metric that is `null` at a point is skipped, never plotted as zero —
+  which is also the resolution of Spec 07.2 O2: the API keeps all-`null` points
+  (07.2 D7) and the client decides what is chartable.** Rationale: the chart is one
+  series, a few hundred points, no animation — a few hundred lines of pure, exhaustively
+  testable geometry — whereas a library would bring its own styling path (inline `style`
+  or injected `<style>`, against the CSP and the "design values only in `tokens.css`"
+  rule), a resize observer and a bundle cost, and would put the plotted numbers through
+  code we did not write (R4). The series' per-point `null`s are per metric (a session
+  with one 15-rep set has a top set but no e1RM), so dropping all-`null` points in the
+  API would not remove the need to skip nulls in the client; keeping the API unchanged
+  also keeps 07.2's contract and tests. The client never re-derives a number (e1RM
+  included — it plots the served `bestE1rm`, which the API computes through `@sin/core`),
+  and the displayed string comes from the same `formatRecordValue` as History and the
+  records block. Each range is its own cache entry; finish and delete (08.0's helper
+  pair) invalidate `["progress"]`. Rejected: Recharts / visx / uPlot / Chart.js; a
+  canvas chart (no accessible structure); dropping all-`null` points server-side;
+  focusable dots (a keyboard trap — a sessions list gives the same action). Cost: no
+  zoom, pan or animation; dense windows degrade to precise tapping and the list. Open:
+  the catalog retire-and-replace seam (07.0 O2 / 07.2 O5) stays the owner's call. See
+  Spec 08.1 §12 (D1–D13).
 
 ---
 

@@ -28,6 +28,7 @@ vi.mock("@auth0/auth0-react", () => ({
 }));
 
 import { resetConfigCache } from "../config";
+import { ComingSoon } from "../screens/ComingSoon";
 import { server } from "../test/msw/server";
 import { catalogHandlers, createWorkoutFake } from "../test/workoutFake";
 import { NAV_ITEMS } from "./navItems";
@@ -201,11 +202,10 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
     expect(screen.queryByTestId("landing")).toBeNull();
   });
 
-  it("coming-soon sections render the stub under their section title", async () => {
-    auth.state.isAuthenticated = true;
-    renderAt(["/app/progress"]);
-
-    await screen.findByTestId("coming-soon");
+  it("the ComingSoon stub (kept for later sections, Spec 08.1 D12) renders under its section title", async () => {
+    const router = createMemoryRouter([{ path: "/app/progress", element: <ComingSoon /> }], { initialEntries: ["/app/progress"] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByTestId("coming-soon")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Progress");
   });
 });

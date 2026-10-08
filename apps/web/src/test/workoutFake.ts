@@ -3,7 +3,9 @@ import {
   AddWorkoutExerciseSchema,
   CreateSetSchema,
   CreateWorkoutSchema,
+  ExerciseIdSchema,
   PersonalRecordsResponseSchema,
+  ProgressSeriesSchema,
   SetEntrySchema,
   UpdatedWorkoutSchema,
   UpdateSetSchema,
@@ -20,6 +22,7 @@ import {
   type Exercise,
   type MeasureName,
   type PersonalRecord,
+  type ProgressPoint,
   type SetEntry,
   type WorkoutDetail,
 } from "@sin/core";
@@ -73,6 +76,8 @@ export interface WorkoutFakeOptions {
   records?: PersonalRecord[];
   /** Returned by the finishing PATCH (`workoutId` rewritten to the finished id) and stored (Spec 08.0). */
   newRecordsOnFinish?: PersonalRecord[];
+  /** Series served by `GET /v1/progress/exercises/:id`, keyed by lineage root (Spec 08.1). */
+  progress?: Record<string, ProgressPoint[]>;
 }
 
 export function problemResponse(
@@ -310,6 +315,17 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         (r) => (workoutId === null || r.workoutId === workoutId) && (exerciseId === null || r.exerciseId === exerciseId),
       );
       return HttpResponse.json(PersonalRecordsResponseSchema.parse({ records }));
+    }),
+    // Spec 07.2: one lineage's series; from/to inclusive on localDate; 422 malformed id, 404 unseen.
+    handle("get", "/progress/exercises/:id", ({ params, query }) => {
+      const id = params["id"]!;
+      if (!ExerciseIdSchema.safeParse(id).success) return validation([{ path: "id", message: "Invalid id" }]);
+      const points = options.progress?.[id];
+      if (!points) return notFound();
+      const from = query.get("from");
+      const to = query.get("to");
+      const inRange = points.filter((p) => (from === null || p.localDate >= from) && (to === null || p.localDate <= to));
+      return HttpResponse.json(ProgressSeriesSchema.parse({ exerciseId: id, points: inRange }));
     }),
     handle("get", "/workouts/:id", ({ params }) => {
       const found = locateWorkout(params["id"]!);
