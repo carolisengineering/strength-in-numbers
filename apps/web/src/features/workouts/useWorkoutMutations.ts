@@ -11,12 +11,14 @@ import type {
   Modality,
   SetEntry,
   UpdateSet,
+  UpdatedWorkout,
   Workout,
   WorkoutDetail,
   WorkoutExercise,
 } from "@sin/core";
 import { ApiError } from "../../api";
 import { track } from "../../observability/track";
+import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 
@@ -81,7 +83,7 @@ export function useStartWorkout(): UseMutationResult<Workout, Error, { body: Cre
 }
 
 export function useFinishWorkout(): UseMutationResult<
-  Workout,
+  UpdatedWorkout,
   Error,
   { id: string; endedAt: string; viaReplay?: boolean }
 > {
@@ -94,9 +96,12 @@ export function useFinishWorkout(): UseMutationResult<
     // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
     // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),
     // or `ActiveSession` does when the response lands after the lifter left (no summary will mount).
-    onSuccess: (workout, { id, viaReplay }) => {
+    onSuccess: (updated, { id, viaReplay }) => {
+      // `newRecords` belongs to the records cache, never to the workout detail (Spec 08.0 AC5).
+      const { newRecords, ...workout } = updated;
       const cached = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
       if (cached) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...cached, ...workout });
+      applyFinishedCaches(queryClient, id, newRecords);
       track("workout_finished", {
         exerciseCount: cached?.exercises.length ?? 0,
         setCount: cached?.exercises.reduce((n, e) => n + e.sets.length, 0) ?? 0,
@@ -119,6 +124,8 @@ export function useDeleteWorkout(): UseMutationResult<
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
     onSuccess: (_void, { id, phase, setCount }) => {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
+      // An in-progress workout has no records and no History row (Spec 08.0 AC8).
+      if (phase === "finished") applyDeletedCaches(queryClient, id);
       track("workout_discarded", { phase, setCount });
       return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
     },

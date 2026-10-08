@@ -189,7 +189,8 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
           const finished = { ...active, endedAt: new Date().toISOString() };
           fake.state.finished.set(active.id, finished);
           fake.state.active = null;
-          return HttpResponse.json(finished); // the client's Workout schema drops `exercises`
+          // The client's schema drops `exercises`; `newRecords` is on every PATCH response (Spec 07.0 D12).
+          return HttpResponse.json({ ...finished, newRecords: [] });
         },
         { once: true },
       ),
