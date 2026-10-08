@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Modality } from "@sin/core";
 import { makeSet } from "../../test/workoutFixtures";
-import { formatDuration, formatSet } from "./format";
+import { formatDuration, formatLocalDate, formatSet } from "./format";
 
 describe("AC8 — formatSet and formatDuration", () => {
   const none = { reps: null, weight: null, weightUnit: null, durationS: null, distance: null, distanceUnit: null };
@@ -37,5 +37,12 @@ describe("AC8 — formatSet and formatDuration", () => {
     [3725, "1:02:05"],
   ])("formatDuration(%i) → %s", (seconds, text) => {
     expect(formatDuration(seconds)).toBe(text);
+  });
+});
+
+describe("08.0 AC11 — formatLocalDate (shared with the summary)", () => {
+  it("formats a local date in en-GB, UTC-pinned, so the stored day never shifts", () => {
+    expect(formatLocalDate("2026-10-06")).toBe("Tue 6 Oct");
+    expect(formatLocalDate("2026-01-01")).toBe("Thu 1 Jan");
   });
 });

@@ -2,16 +2,19 @@ import { useEffect } from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { useIsMutating } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import type { WorkoutDetail } from "@sin/core";
+import { WorkoutSchema, type WorkoutDetail } from "@sin/core";
 import { ApiError } from "../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
-import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { HISTORY_KEYS } from "../history/queries";
+import { RECORDS_KEYS } from "../records/queries";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import {
   SET_MUTATION_KEY,
   useAddExercise,
   useCreateSet,
   useDeleteSet,
+  useDeleteWorkout,
   useFinishWorkout,
   useRemoveExercise,
   useUpdateSet,
@@ -191,12 +194,81 @@ describe("finish", () => {
       updatedAt: "2026-10-02T11:00:00.000Z",
     } as const;
     const { result } = renderHook(() => useFinishWorkout(), {
-      wrapper: wrapperWith(qc, fakeClient({ finish: async () => finished })),
+      wrapper: wrapperWith(qc, fakeClient({ finish: async () => ({ ...finished, newRecords: [] }) })),
     });
     await act(() => result.current.mutateAsync({ id: detail.id, endedAt: finished.endedAt }));
     expect(qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)?.id).toBe(detail.id);
     const seededDetail = qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(detail.id))!;
     expect(seededDetail.endedAt).toBe(finished.endedAt);
     expect(seededDetail.exercises).toHaveLength(1);
+  });
+});
+
+describe("08.0 AC5/AC6 — finish success at hook level", () => {
+  it("seeds records from newRecords, keeps newRecords out of the detail, invalidates history", async () => {
+    const qc = makeQueryClient();
+    const active = makeWorkoutDetail();
+    qc.setQueryData(WORKOUT_KEYS.active, active);
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
+    const endedAt = new Date(Date.parse(active.startedAt) + 60_000).toISOString();
+    const record = makePersonalRecord({ workoutId: active.id });
+    const client = fakeClient({
+      finish: async () => ({ ...WorkoutSchema.parse({ ...active, endedAt }), newRecords: [record] }),
+    });
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWith(qc, client) });
+
+    await act(() => result.current.mutateAsync({ id: active.id, endedAt }));
+
+    expect(qc.getQueryData(RECORDS_KEYS.forWorkout(active.id))).toEqual([record]);
+    expect(qc.getQueryState(RECORDS_KEYS.forWorkout(active.id))?.isInvalidated).toBe(false);
+    expect(qc.getQueryData(WORKOUT_KEYS.detail(active.id))).not.toHaveProperty("newRecords");
+    expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(true);
+  });
+});
+
+describe("08.0 AC8 — delete success at hook level", () => {
+  it("a finished-phase delete removes the records entry and invalidates history and records", async () => {
+    const qc = makeQueryClient();
+    const W = "40000000-0000-4000-8000-0000000000aa";
+    qc.setQueryData(RECORDS_KEYS.forWorkout(W), []);
+    qc.setQueryData(RECORDS_KEYS.forExercise("e"), []);
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
+    const { result } = renderHook(() => useDeleteWorkout(), {
+      wrapper: wrapperWith(qc, fakeClient({ deleteWorkout: async () => undefined })),
+    });
+
+    await act(() => result.current.mutateAsync({ id: W, phase: "finished", setCount: 1 }));
+
+    expect(qc.getQueryState(RECORDS_KEYS.forWorkout(W))).toBeUndefined();
+    expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(RECORDS_KEYS.forExercise("e"))?.isInvalidated).toBe(true);
+  });
+
+  it("a 404 on delete (already gone) applies the same effects", async () => {
+    const qc = makeQueryClient();
+    const W = "40000000-0000-4000-8000-0000000000ab";
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
+    const { result } = renderHook(() => useDeleteWorkout(), {
+      wrapper: wrapperWith(qc, fakeClient({ deleteWorkout: () => Promise.reject(notFound()) })),
+    });
+
+    await act(() => result.current.mutateAsync({ id: W, phase: "finished", setCount: 1 }));
+
+    expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(true);
+  });
+
+  it("an active-phase discard touches neither history nor records", async () => {
+    const qc = makeQueryClient();
+    const W = "40000000-0000-4000-8000-0000000000ac";
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
+    qc.setQueryData(RECORDS_KEYS.forExercise("e"), []);
+    const { result } = renderHook(() => useDeleteWorkout(), {
+      wrapper: wrapperWith(qc, fakeClient({ deleteWorkout: async () => undefined })),
+    });
+
+    await act(() => result.current.mutateAsync({ id: W, phase: "active", setCount: 0 }));
+
+    expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(RECORDS_KEYS.forExercise("e"))?.isInvalidated).toBe(false);
   });
 });

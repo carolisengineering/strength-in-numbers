@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q15 resolved; consistency pass done
-**Last updated:** 2026-10-07 (§6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q16 resolved; consistency pass done
+**Last updated:** 2026-10-08 (§2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -80,9 +80,12 @@ resolved) and Risk R6.
    check them off, session notes, finish. Rest timer lands in M4 (§9).
 5. **History** — chronological list of past workouts, drill into any session.
    Finished workouts are read-only in v1 (delete-whole-workout aside, §4.5).
+   (UI: Spec 08.0 — the History tab and `/app/history/:id`.)
 6. **Progress** — per-exercise charts: top-set weight, estimated 1RM, total
    volume; personal-record list and PR notifications at finish. (PR engine and
-   list: Spec 07.0; history list: 07.1; the chart series: 07.2.)
+   list: Spec 07.0; history list: 07.1; the chart series: 07.2. UI: PR notifications
+   on the workout summary — Spec 08.0; charts and the per-exercise records list —
+   Spec 08.1.)
 7. **Responsive web app** — the sole v1 client. Full logging + history + progress,
    laid out to work one-handed on a phone browser in the gym and to expand on a
    desktop for planning and review.
@@ -752,8 +755,9 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   idempotency and finish-workout paths.
 - E2E: one happy-path web smoke in CI, Playwright (Spec 06.3): sign in → start →
   pick → log → reload (resume) → finish → summary → delete. The "see PR" step
-  joins when Specs 07/08 exist; until then the smoke ends at finish / summary /
-  delete.
+  joins when a clean test account makes it assertable (Spec 08.0 D12); the smoke
+  gains a History step in Spec 08.0 (open the finished workout from History, delete
+  from there).
 
 ---
 
@@ -775,7 +779,7 @@ Planning implications:
 - Milestones are outcome bundles; the build units are the **component specs** in
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
-  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08 ·
+  M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
   M3 = 09, 10 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
@@ -783,7 +787,7 @@ Planning implications:
 |---|---|---|
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
-| **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08 UI) | History list + detail; per-exercise charts (top set, est-1RM, volume); PR detection + finish-screen summary. | Progress numbers reconciled by hand for 10 sessions. |
+| **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (top set, est-1RM, volume) (08.1). | Progress numbers reconciled by hand for 10 sessions. |
 | **M3 — Routines + supersets** | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — bracketed display + one rest timer per group. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
@@ -809,7 +813,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -929,6 +933,30 @@ with rationale so the "why" survives.
   daily rollup table; a `?metric=` parameter. Cost: one lineage's working sets loaded
   per request, un-paginated (a documented exception to §6), measured in 07.2 AC19.
   See Spec 07.2 §12 (D1–D14).
+- **Q16 — History screen & PR display (UI).** ✅ **Resolved (Spec 08.0, 2026-10-08):
+  Spec 08 is split — 08.0 ships a History tab and the "Personal records" block on the
+  workout summary, 08.1 the Progress tab with charts. History is a keyset list with an
+  explicit "Load more" button whose rows show date, exercise names, working sets ·
+  volume and a record badge (no notes); a workout opened from it reuses the existing
+  summary under `/app/history/:id` via a `section` prop. The finish response's
+  `newRecords` is parsed (the web client had been stripping it) and cached under
+  `["records", { workoutId }]`, with `GET /v1/personal-records?workoutId=` as the
+  fallback; finish, delete and the "already finished" recovery path all update the
+  caches through one shared helper. Units are converted on the client by pure
+  functions (kg as stored, lb at one decimal).** Rationale: nothing on the server
+  changes — the APIs of Q13–Q15 already serve everything shown — so the UI's job is to
+  show those numbers without a second implementation of any math (R4) and without a
+  spinner on the screen the lifter sees right after Finish. Reusing the summary under a
+  second route is one line and keeps the nav highlight honest (`navItemFor` matches by
+  pathname). A button instead of infinite scroll suits one-handed gym use and a cold
+  Render API, with no scroll-observer lifecycle to test. Nothing is persisted: both
+  lists are cheap server-derived reads that could be wrong if replayed from disk, and it
+  adds no `localStorage` key for logout to clear. Rejected: a `?from=` parameter or
+  router state for the back target; infinite scroll; persisting history offline; a
+  server-side unit conversion. Cost: an invalidated infinite query re-walks its loaded
+  pages (~35 ms each server-side, 07.1 O1); a workout finished on another device appears
+  within the 30 s default `staleTime`. Settles 07.1 O2 (rows show no notes; the API
+  shape is unchanged). See Spec 08.0 §12 (D1–D14).
 
 ---
 

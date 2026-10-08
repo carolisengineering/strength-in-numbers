@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
   SetEntrySchema,
+  UpdatedWorkoutSchema,
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
 } from "@sin/core";
 import { ApiError } from "../../api";
+import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutClient } from "./workoutClient";
+
+describe("08.0 AC5 — finish keeps newRecords", () => {
+  it("parses the PATCH response with UpdatedWorkoutSchema, so newRecords survives", async () => {
+    const detail = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z" });
+    const records = [
+      makePersonalRecord({ workoutId: detail.id }),
+      makePersonalRecord({ workoutId: detail.id, recordType: "best_est_1rm" }),
+    ];
+    const payload = { ...WorkoutSchema.parse(detail), newRecords: records };
+    const { api } = recordingApi((call) => (call.schema as { parse: (x: unknown) => unknown }).parse(payload));
+
+    const result = await createWorkoutClient(api).finish(detail.id, { endedAt: "2026-10-02T11:00:00.000Z" });
+
+    expect(result.newRecords).toEqual(records);
+  });
+});
 
 interface Call {
   method: "get" | "post" | "patch" | "delete";
@@ -49,7 +67,7 @@ describe("AC1 — createWorkoutClient maps each operation to its exact request",
       method: "patch",
       path: "/v1/workouts/w1",
       body: { endedAt: "2026-10-02T11:00:00.000Z" },
-      schema: WorkoutSchema,
+      schema: UpdatedWorkoutSchema,
     });
   });
 

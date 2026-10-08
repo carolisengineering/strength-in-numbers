@@ -1,5 +1,6 @@
 import {
   SetEntrySchema,
+  UpdatedWorkoutSchema,
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
@@ -7,6 +8,7 @@ import {
   type CreateWorkout,
   type SetEntry,
   type UpdateSet,
+  type UpdatedWorkout,
   type Workout,
   type WorkoutDetail,
   type WorkoutExercise,
@@ -23,7 +25,8 @@ export interface WorkoutClient {
   getActive(): Promise<WorkoutDetail | null>;
   getById(id: string): Promise<WorkoutDetail>;
   start(body: CreateWorkout): Promise<Workout>;
-  finish(id: string, body: { endedAt: string }): Promise<Workout>;
+  /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `UpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5). */
+  finish(id: string, body: { endedAt: string }): Promise<UpdatedWorkout>;
   deleteWorkout(id: string): Promise<void>;
   addExercise(workoutId: string, body: { exerciseId: string }): Promise<WorkoutExercise>;
   moveExercise(id: string, position: number): Promise<WorkoutExercise>;
@@ -50,7 +53,7 @@ export function createWorkoutClient(
     },
     getById: (id) => api.get(`/v1/workouts/${seg(id)}`, WorkoutDetailSchema),
     start: (body) => api.post("/v1/workouts", body, WorkoutSchema),
-    finish: (id, body) => api.patch(`/v1/workouts/${seg(id)}`, body, WorkoutSchema),
+    finish: (id, body) => api.patch(`/v1/workouts/${seg(id)}`, body, UpdatedWorkoutSchema),
     deleteWorkout: async (id) => {
       await api.delete(`/v1/workouts/${seg(id)}`);
     },

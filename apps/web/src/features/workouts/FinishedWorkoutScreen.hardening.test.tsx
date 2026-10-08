@@ -41,7 +41,7 @@ describe("06.4 AC1 — the summary screen clears the active entry only for its o
     expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBeUndefined();
   });
 
-  it("leaves a different in-progress workout alone (history detail, Spec 08)", async () => {
+  it("leaves a different in-progress workout alone (history detail, Spec 08.0)", async () => {
     const workout = finishedWorkout();
     const other = makeWorkoutDetail();
     const fake = createWorkoutFake({ finished: [workout], active: other });

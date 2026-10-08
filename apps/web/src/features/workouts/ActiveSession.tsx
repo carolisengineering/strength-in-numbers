@@ -5,6 +5,7 @@ import type { Exercise, WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
+import { applyFinishedCaches } from "../records/cache";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -282,6 +283,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       }
       // As in `useFinishWorkout`: seed only; the summary screen clears the active entry.
       queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workout.id), fresh);
+      // The lost response carried `newRecords`; the summary refetches them by workoutId (Spec 08.0 AC7, D7).
+      applyFinishedCaches(queryClient, workout.id, null);
       track("workout_finished", {
         exerciseCount: fresh.exercises.length,
         setCount: fresh.exercises.reduce((n, e) => n + e.sets.length, 0),

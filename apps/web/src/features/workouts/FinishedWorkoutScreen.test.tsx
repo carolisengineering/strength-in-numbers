@@ -18,7 +18,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
-import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
@@ -164,5 +164,62 @@ describe("AC30 — finished workout summary", () => {
 
     expect(await screen.findByTestId("not-found")).toBeInTheDocument();
     expect(screen.getByTestId("app-shell")).toContainElement(screen.getByTestId("not-found"));
+  });
+});
+
+describe("08.0 AC19 — the summary never waits on records", () => {
+  it("renders the exercises while records are pending, and keeps everything usable when they fail", async () => {
+    const workout = finished();
+    const fake = createWorkoutFake({ finished: [workout] });
+    fake.failNext({ method: "GET", path: /^\/v1\/personal-records$/ }, () => problemResponse(500, "internal"));
+    prepareApp({ auth, fake });
+    renderApp(`/app/workouts/${workout.id}`);
+
+    expect(await screen.findByRole("region", { name: "Barbell bench press" })).toBeInTheDocument();
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByRole("alert")).toHaveTextContent("Couldn't load records");
+    expect(screen.getByRole("button", { name: "Delete workout" })).toBeEnabled();
+    expect(screen.getByRole("link", { name: "Back to Workouts" })).toHaveAttribute("href", "/app/workouts");
+  });
+
+  it("shows the records the workout holds, in the profile's unit", async () => {
+    const workout = finished();
+    const fake = createWorkoutFake({
+      finished: [workout],
+      records: [makePersonalRecord({ workoutId: workout.id, exerciseName: "Barbell bench press" })],
+    });
+    prepareApp({ auth, fake, unitPreference: "lb" });
+    renderApp(`/app/workouts/${workout.id}`);
+
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByText("Barbell bench press — Heaviest weight 226 lb (was 220.5 lb)")).toBeInTheDocument();
+    // Set rows keep the unit they were entered in (Review Focus 5).
+    expect(within(screen.getByRole("region", { name: "Barbell bench press" })).getByText("60 kg × 8")).toBeInTheDocument();
+  });
+});
+
+describe("08.0 AC20 — the section prop", () => {
+  it("from History: Back to History, and a delete lands on History", async () => {
+    const { fake, workout, user, router } = setup();
+    await screen.findByRole("heading", { name: "Workout summary" });
+    await router.navigate(`/app/history/${workout.id}`);
+
+    const back = await screen.findByRole("link", { name: "Back to History" });
+    expect(back).toHaveAttribute("href", "/app/history");
+    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/history"));
+    expect(fake.state.finished.has(workout.id)).toBe(false);
+    // Review Focus 3: History refetches, so the deleted workout's row is gone.
+    expect(await screen.findByText("No finished workouts yet")).toBeInTheDocument();
+  });
+
+  it("from Workouts: Back to Workouts, and a delete lands on Workouts (unchanged)", async () => {
+    const { user, router } = setup();
+    expect(await screen.findByRole("link", { name: "Back to Workouts" })).toHaveAttribute("href", "/app/workouts");
+    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });
 });

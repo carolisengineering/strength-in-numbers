@@ -17,7 +17,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
@@ -153,6 +153,68 @@ describe("AC33 — tap targets", () => {
   it("no raw interactive element in the feature is left unstyled (it would have no tap-target class)", () => {
     const unstyled: string[] = [];
     for (const [path, source] of Object.entries(tsx)) {
+      for (const [tag] of stripComments(source).matchAll(/<(?:button|select|input|summary|Link|a)\b(?:=>|[^>])*>/g)) {
+        if (!/className=/.test(tag)) unstyled.push(`${path}: ${tag.slice(0, 60)}`);
+      }
+    }
+    expect(unstyled).toEqual([]);
+  });
+});
+
+describe("08.0 AC23 — History and the records block, accessibly", () => {
+  it("History has one h1, a named list of named links, and a named Load more", async () => {
+    const workouts = Array.from({ length: 21 }, (_, i) => {
+      const day = String(i + 1).padStart(2, "0");
+      return makeWorkoutDetail({
+        startedAt: `2026-08-${day}T10:00:00.000Z`,
+        endedAt: `2026-08-${day}T11:00:00.000Z`,
+        localDate: `2026-08-${day}`,
+        exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }],
+      });
+    });
+    const fake = createWorkoutFake({ finished: workouts, records: [makePersonalRecord({ workoutId: workouts[20]!.id })] });
+    prepareApp({ auth, fake });
+    renderApp("/app/history");
+
+    const list = await screen.findByRole("list", { name: "Finished workouts" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    const links = within(list).getAllByRole("link");
+    for (const link of links) expect(link).toHaveAccessibleName();
+    expect(links[0]).toHaveAccessibleName(/1 personal record/);
+    expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
+  });
+
+  it("the empty state is not an alert", async () => {
+    prepareApp({ auth, fake: createWorkoutFake() });
+    renderApp("/app/history");
+    await screen.findByText("No finished workouts yet");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("the records block is a named region with a list", async () => {
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet()] }] });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [workout], records: [makePersonalRecord({ workoutId: workout.id })] }) });
+    renderApp(`/app/history/${workout.id}`);
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByRole("heading", { level: 2, name: "Personal records" })).toBeInTheDocument();
+    expect(within(block).getByRole("list")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["../history/HistoryScreen.module.css", ".row"],
+    ["../history/HistoryScreen.module.css", ".emptyLink"],
+  ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
+    expect(hasTapTarget(file, selector)).toBe(true);
+  });
+
+  it("no raw interactive element in history/ or records/ is left unstyled", () => {
+    const sources = import.meta.glob(
+      ["../history/*.tsx", "../records/*.tsx", "!../history/*.test.tsx", "!../records/*.test.tsx"],
+      { query: "?raw", import: "default", eager: true },
+    ) as Record<string, string>;
+    expect(Object.keys(sources).length).toBeGreaterThan(0);
+    const unstyled: string[] = [];
+    for (const [path, source] of Object.entries(sources)) {
       for (const [tag] of stripComments(source).matchAll(/<(?:button|select|input|summary|Link|a)\b(?:=>|[^>])*>/g)) {
         if (!/className=/.test(tag)) unstyled.push(`${path}: ${tag.slice(0, 60)}`);
       }

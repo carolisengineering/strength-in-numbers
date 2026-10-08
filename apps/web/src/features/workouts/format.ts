@@ -3,6 +3,14 @@ import type { Modality, SetEntry, SetType } from "@sin/core";
 // One pinned formatter so tests and CI are locale-independent (06.0 AC6's reasoning).
 const NUMBER = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 
+// Pinned locale + UTC so a date is the one the server stored (`localDate`), whatever the device says.
+const LOCAL_DATE = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+
+/** `"2026-10-06"` → `"Tue 6 Oct"`. Shared by the summary and the History rows (Spec 08.0 AC11). */
+export function formatLocalDate(localDate: string): string {
+  return LOCAL_DATE.format(new Date(`${localDate}T00:00:00Z`));
+}
+
 /** Labels for the Set-type select and the tag on a logged row. */
 export const SET_TYPE_LABELS: Record<SetType, string> = {
   working: "Working",
