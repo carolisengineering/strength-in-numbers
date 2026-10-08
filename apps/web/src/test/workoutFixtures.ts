@@ -1,9 +1,13 @@
 import {
+  PersonalRecordSchema,
   SetEntrySchema,
   WorkoutDetailSchema,
+  WorkoutSummarySchema,
   type Modality,
+  type PersonalRecord,
   type SetEntry,
   type WorkoutDetail,
+  type WorkoutSummary,
 } from "@sin/core";
 
 let counter = 0;
@@ -47,6 +51,8 @@ export interface WorkoutDetailOptions {
   id?: string;
   startedAt?: string;
   endedAt?: string | null;
+  /** History rows show the date, so tests need distinct days (Spec 08.0). */
+  localDate?: string;
   exercises?: ExerciseSpec[];
 }
 
@@ -59,7 +65,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     notes: null,
     startedAt: opts.startedAt ?? T0,
     endedAt: opts.endedAt ?? null,
-    localDate: "2026-10-02",
+    localDate: opts.localDate ?? "2026-10-02",
     tzOffsetMinutes: 0,
     clientGeneratedId: nextId(),
     source: "manual",
@@ -80,5 +86,47 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
+  });
+}
+
+/** A `WorkoutSummary` (a History row, Spec 07.1) parsed through the core schema. */
+export function makeWorkoutSummary(overrides: Record<string, unknown> = {}): WorkoutSummary {
+  return WorkoutSummarySchema.parse({
+    id: nextId(),
+    title: null,
+    notes: null,
+    startedAt: T0,
+    endedAt: "2026-10-02T11:00:00.000Z",
+    localDate: "2026-10-02",
+    tzOffsetMinutes: 0,
+    clientGeneratedId: nextId(),
+    source: "manual",
+    createdAt: T0,
+    updatedAt: T0,
+    exerciseCount: 1,
+    exerciseNames: ["Bench Press"],
+    workingSetCount: 3,
+    totalVolume: 1500,
+    recordCount: 0,
+    ...overrides,
+  });
+}
+
+/** A `PersonalRecord` (Spec 07.0) parsed through the core schema: Bench Press heaviest weight 102.5 kg, was 100. */
+export function makePersonalRecord(overrides: Record<string, unknown> = {}): PersonalRecord {
+  const exerciseId = nextId();
+  return PersonalRecordSchema.parse({
+    exerciseId,
+    sourceExerciseId: exerciseId,
+    exerciseName: "Bench Press",
+    recordType: "heaviest_weight",
+    value: 102.5,
+    unit: "kg",
+    previousValue: 100,
+    sourceSetId: nextId(),
+    workoutId: nextId(),
+    achievedAt: T0,
+    localDate: "2026-10-02",
+    ...overrides,
   });
 }

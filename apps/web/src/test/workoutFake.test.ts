@@ -3,7 +3,7 @@ import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
-import { makeWorkoutDetail } from "./workoutFixtures";
+import { makePersonalRecord, makeSet, makeWorkoutDetail } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
@@ -162,5 +162,77 @@ describe("06.2 — the fake's offline switch and lost responses", () => {
       }),
     ).rejects.toThrow();
     expect(fake.state.active!.exercises[0]!.sets).toHaveLength(1);
+  });
+});
+
+describe("Spec 08.0 — history and records endpoints", () => {
+  const done = (id: string, startedAt: string) =>
+    makeWorkoutDetail({
+      id,
+      startedAt,
+      endedAt: new Date(Date.parse(startedAt) + 3_600_000).toISOString(),
+      exercises: [
+        { modality: "weight_reps", name: "Bench Press", sets: [makeSet({ weight: 100, weightKg: 100, reps: 5 })] },
+        { modality: "weight_reps", name: "Squat" },
+        { modality: "bodyweight_reps", name: "Pull-up" },
+        { modality: "bodyweight_reps", name: "Dip" },
+      ],
+    });
+
+  it("GET /workouts pages finished workouts newest first with an opaque next", async () => {
+    const ids = Array.from({ length: 3 }, (_, i) => `30000000-0000-4000-8000-00000000000${i + 1}`);
+    const fake = createWorkoutFake({
+      finished: [done(ids[0]!, "2026-10-01T10:00:00.000Z"), done(ids[1]!, "2026-10-03T10:00:00.000Z"), done(ids[2]!, "2026-10-02T10:00:00.000Z")],
+      records: [makePersonalRecord({ workoutId: ids[1] }), makePersonalRecord({ workoutId: ids[1], recordType: "best_est_1rm" })],
+    });
+    server.use(...fake.handlers);
+
+    const page1 = await call("GET", "/workouts?limit=2");
+    expect(page1.status).toBe(200);
+    const items = page1.json!["items"] as Record<string, unknown>[];
+    expect(items.map((i) => i["id"])).toEqual([ids[1], ids[2]]);
+    expect(items[0]).toMatchObject({ exerciseCount: 4, exerciseNames: ["Bench Press", "Squat", "Pull-up"], workingSetCount: 1, totalVolume: 500, recordCount: 2 });
+    expect(typeof page1.json!["next"]).toBe("string");
+
+    const page2 = await call("GET", `/workouts?limit=2&cursor=${encodeURIComponent(String(page1.json!["next"]))}`);
+    expect((page2.json!["items"] as Record<string, unknown>[]).map((i) => i["id"])).toEqual([ids[0]]);
+    expect(page2.json!["next"]).toBeNull();
+    expect(fake.requests.at(-1)).toMatchObject({ method: "GET", path: "/v1/workouts", search: expect.stringContaining("cursor=") });
+  });
+
+  it("GET /personal-records filters by workoutId and exerciseId", async () => {
+    const a = makePersonalRecord({ workoutId: "30000000-0000-4000-8000-00000000000a" });
+    const b = makePersonalRecord({ workoutId: "30000000-0000-4000-8000-00000000000b" });
+    const fake = createWorkoutFake({ records: [a, b] });
+    server.use(...fake.handlers);
+
+    const byWorkout = await call("GET", `/personal-records?workoutId=${a.workoutId}`);
+    expect((byWorkout.json!["records"] as unknown[]).length).toBe(1);
+    const byExercise = await call("GET", `/personal-records?exerciseId=${b.exerciseId}`);
+    expect((byExercise.json!["records"] as Record<string, unknown>[])[0]!["workoutId"]).toBe(b.workoutId);
+    const all = await call("GET", "/personal-records");
+    expect((all.json!["records"] as unknown[]).length).toBe(2);
+  });
+
+  it("PATCH finish returns newRecords for the finished workout and stores them", async () => {
+    const active = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
+    const fake = createWorkoutFake({ active, newRecordsOnFinish: [makePersonalRecord()] });
+    server.use(...fake.handlers);
+
+    const res = await call("PATCH", `/workouts/${active.id}`, { endedAt: new Date(Date.parse(active.startedAt) + 60_000).toISOString() });
+    expect(res.status).toBe(200);
+    const records = res.json!["newRecords"] as Record<string, unknown>[];
+    expect(records).toHaveLength(1);
+    expect(records[0]!["workoutId"]).toBe(active.id);
+    expect(fake.state.records.map((r) => r.workoutId)).toEqual([active.id]);
+  });
+
+  it("a non-finish PATCH returns newRecords: []", async () => {
+    const active = makeWorkoutDetail();
+    const fake = createWorkoutFake({ active });
+    server.use(...fake.handlers);
+
+    const res = await call("PATCH", `/workouts/${active.id}`, { title: "Push" });
+    expect(res.json!["newRecords"]).toEqual([]);
   });
 });

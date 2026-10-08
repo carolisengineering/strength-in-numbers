@@ -3,18 +3,23 @@ import {
   AddWorkoutExerciseSchema,
   CreateSetSchema,
   CreateWorkoutSchema,
+  PersonalRecordsResponseSchema,
   SetEntrySchema,
+  UpdatedWorkoutSchema,
   UpdateSetSchema,
   UpdateWorkoutExerciseSchema,
   UpdateWorkoutSchema,
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
+  WorkoutHistoryResponseSchema,
   WorkoutSchema,
+  WORKOUT_SUMMARY_NAMES_MAX,
   forbiddenMeasuresFor,
   requiredMeasuresFor,
   toCanonicalMeters,
   type Exercise,
   type MeasureName,
+  type PersonalRecord,
   type SetEntry,
   type WorkoutDetail,
 } from "@sin/core";
@@ -36,6 +41,8 @@ const PROBLEM_BASE = "https://strengthinnumbers.app/problems/";
 export interface RecordedRequest {
   method: string;
   path: string;
+  /** The query string, `?`-prefixed (`""` when none). */
+  search: string;
   body: unknown;
 }
 
@@ -46,7 +53,7 @@ export interface FailMatch {
 
 export interface WorkoutFake {
   handlers: RequestHandler[];
-  state: { active: WorkoutDetail | null; finished: Map<string, WorkoutDetail> };
+  state: { active: WorkoutDetail | null; finished: Map<string, WorkoutDetail>; records: PersonalRecord[] };
   /** Every request seen, in order (including ones answered by `failNext`). */
   requests: RecordedRequest[];
   /** Answer the next `times` requests matching `match` with `response()` instead of the normal handler. */
@@ -62,6 +69,10 @@ export interface WorkoutFakeOptions {
   finished?: WorkoutDetail[];
   /** The catalog the add-exercise endpoint resolves ids against. */
   catalog?: Exercise[];
+  /** Records `GET /v1/personal-records` serves (and History rows count). */
+  records?: PersonalRecord[];
+  /** Returned by the finishing PATCH (`workoutId` rewritten to the finished id) and stored (Spec 08.0). */
+  newRecordsOnFinish?: PersonalRecord[];
 }
 
 export function problemResponse(
@@ -92,10 +103,44 @@ const uuid = () => crypto.randomUUID();
 // The core response schemas are non-strict objects, so parsing a detail as a `Workout` strips `exercises`.
 const workoutOf = (detail: WorkoutDetail) => WorkoutSchema.parse(detail);
 
+const LOAD_MODALITIES = new Set(["weight_reps", "weighted_bodyweight"]);
+
+/** 07.1's row: the same volume rule as `setVolumeMilli` (working, load modality, reps ≥ 1, weightKg > 0). */
+function summaryOf(detail: WorkoutDetail, records: readonly PersonalRecord[]) {
+  let volume = 0;
+  let qualifying = false;
+  let workingSetCount = 0;
+  for (const e of detail.exercises) {
+    for (const s of e.sets) {
+      if (s.setType !== "working") continue;
+      workingSetCount += 1;
+      if (LOAD_MODALITIES.has(e.modalitySnapshot) && (s.reps ?? 0) >= 1 && (s.weightKg ?? 0) > 0) {
+        volume += (s.weightKg ?? 0) * (s.reps ?? 0);
+        qualifying = true;
+      }
+    }
+  }
+  return {
+    ...workoutOf(detail),
+    exerciseCount: detail.exercises.length,
+    exerciseNames: [...detail.exercises]
+      .sort((a, b) => a.position - b.position)
+      .slice(0, WORKOUT_SUMMARY_NAMES_MAX)
+      .map((e) => e.exerciseNameSnapshot),
+    workingSetCount,
+    totalVolume: qualifying ? volume : null,
+    recordCount: records.filter((r) => r.workoutId === detail.id).length,
+  };
+}
+
+/** The fake's own history cursor: opaque to the app, read only here. */
+const FAKE_CURSOR = /^fake\.(\d+)$/;
+
 export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake {
   const state = {
     active: options.active ?? null,
     finished: new Map<string, WorkoutDetail>((options.finished ?? []).map((w) => [w.id, w])),
+    records: [...(options.records ?? [])],
   };
   const catalog = options.catalog ?? [];
   const requests: RecordedRequest[] = [];
@@ -132,14 +177,14 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   function handle(
     method: "get" | "post" | "patch" | "delete",
     path: string,
-    resolve: (ctx: { params: Record<string, string>; body: unknown }) => Response | Promise<Response>,
+    resolve: (ctx: { params: Record<string, string>; body: unknown; query: URLSearchParams }) => Response | Promise<Response>,
   ): RequestHandler {
     return http[method](`${BASE}${path}`, async ({ request, params }) => {
       if (offline) return HttpResponse.error();
       const url = new URL(request.url);
       const text = await request.clone().text();
       const body: unknown = text === "" ? undefined : JSON.parse(text);
-      requests.push({ method: request.method, path: url.pathname, body });
+      requests.push({ method: request.method, path: url.pathname, search: url.search, body });
       const failure = failures.find(
         (f) => f.remaining > 0 && f.match.method === request.method && f.match.path.test(url.pathname),
       );
@@ -147,7 +192,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         failure.remaining -= 1;
         return failure.response();
       }
-      const response = await resolve({ params: params as Record<string, string>, body });
+      const response = await resolve({ params: params as Record<string, string>, body, query: url.searchParams });
       const loss = losses.findIndex((m) => m.method === request.method && m.path.test(url.pathname));
       if (loss >= 0) {
         losses.splice(loss, 1);
@@ -241,6 +286,31 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("get", "/workouts/active", () =>
       state.active ? HttpResponse.json(WorkoutDetailSchema.parse(state.active)) : notFound(),
     ),
+    // Spec 07.1: finished workouts, newest first, keyset-like paging with an opaque cursor.
+    handle("get", "/workouts", ({ query }) => {
+      const limit = Number(query.get("limit") ?? "20");
+      const cursor = query.get("cursor");
+      const match = cursor === null ? null : FAKE_CURSOR.exec(cursor);
+      if (cursor !== null && match === null) return validation([{ path: "cursor", message: "Invalid cursor" }]);
+      const offset = match ? Number(match[1]) : 0;
+      const rows = [...state.finished.values()].sort(
+        (a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt) || (a.id < b.id ? 1 : -1),
+      );
+      const page = rows.slice(offset, offset + limit);
+      const next = offset + limit < rows.length ? `fake.${offset + limit}` : null;
+      return HttpResponse.json(
+        WorkoutHistoryResponseSchema.parse({ items: page.map((d) => summaryOf(d, state.records)), next }),
+      );
+    }),
+    // Spec 07.0: the caller's records, optionally filtered.
+    handle("get", "/personal-records", ({ query }) => {
+      const workoutId = query.get("workoutId");
+      const exerciseId = query.get("exerciseId");
+      const records = state.records.filter(
+        (r) => (workoutId === null || r.workoutId === workoutId) && (exerciseId === null || r.exerciseId === exerciseId),
+      );
+      return HttpResponse.json(PersonalRecordsResponseSchema.parse({ records }));
+    }),
     handle("get", "/workouts/:id", ({ params }) => {
       const found = locateWorkout(params["id"]!);
       return found ? HttpResponse.json(WorkoutDetailSchema.parse(found.detail)) : notFound();
@@ -273,7 +343,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       } else {
         state.active = next;
       }
-      return HttpResponse.json(workoutOf(next));
+      let newRecords: PersonalRecord[] = [];
+      if (next.endedAt !== null && detail.endedAt === null) {
+        newRecords = (options.newRecordsOnFinish ?? []).map((r) => ({ ...r, workoutId: next.id }));
+        state.records = [...state.records.filter((r) => r.workoutId !== next.id), ...newRecords];
+      }
+      // Spec 07.0 D12: every PATCH carries `newRecords` (`[]` unless this request finished the workout).
+      return HttpResponse.json(UpdatedWorkoutSchema.parse({ ...workoutOf(next), newRecords }));
     }),
     handle("delete", "/workouts/:id", ({ params }) => {
       const id = params["id"]!;
