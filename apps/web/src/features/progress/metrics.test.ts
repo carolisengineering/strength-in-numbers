@@ -30,7 +30,7 @@ describe("08.1 AC2 — metrics are data-derived and null-safe", () => {
   it("converts weight to lb before scaling, keeping the canonical value", () => {
     const [p] = pointsFor(series([c]), "est1rm", "lb");
     expect(p!.canonical).toBe(122.5);
-    expect(p!.y).toBeCloseTo(270.06, 2);
+    expect(p!.y).toBeCloseTo(270.066, 3); // 122.5 / 0.45359237
   });
 
   it("never converts reps", () => {
