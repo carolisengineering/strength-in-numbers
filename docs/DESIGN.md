@@ -760,7 +760,8 @@ DELETE /account                   → 202, soft-delete + purge scheduled
   pick → log → reload (resume) → finish → summary → delete. The "see PR" step
   joins when a clean test account makes it assertable (Spec 08.0 D12); the smoke
   gains a History step in Spec 08.0 (open the finished workout from History, delete
-  from there).
+  from there), and Spec 08.1 has it open the Progress chart for the bench press
+  before that — still asserting no values.
 
 ---
 

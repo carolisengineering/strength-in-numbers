@@ -154,20 +154,30 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await expect(run).toHaveCount(0);
   });
 
+  let workoutId = "";
   await test.step("finish through the confirm dialog and read the summary", async () => {
     await finishButton.click();
     await openDialog(page, NAMES.finishDialog).getByRole("button", { name: NAMES.finish, exact: true }).click();
     await expect(page.getByRole("heading", { name: NAMES.summaryHeading })).toBeVisible();
+    workoutId = new URL(page.url()).pathname.split("/").pop() ?? "";
     for (const exercise of EXERCISES.slice(0, 4)) {
       await expect(page.getByText(exercise.name, { exact: true }).first()).toBeVisible();
     }
     await expect(page.getByText(EXERCISES[4].name, { exact: true })).toHaveCount(0);
   });
 
+  // Spec 08.1 AC28 — no value is asserted (08.0 D12): the row exists whenever any finished workout trained the lift.
+  await test.step("Spec 08.1 — Progress lists the bench press and opens its chart", async () => {
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.progress }).click();
+    const row = page.getByRole("link", { name: NAMES.benchRow });
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByRole("img", { name: NAMES.chartSummary })).toBeVisible();
+    await expect(page.getByRole("group", { name: NAMES.metricGroup })).toBeVisible();
+  });
+
   // Spec 08.0 AC26 — no PR content is asserted: whether a run sets a record depends on the account's history (D12).
-  let workoutId = "";
   await test.step("Spec 08.0 — the finished workout is in History and opens from there", async () => {
-    workoutId = new URL(page.url()).pathname.split("/").pop() ?? "";
     await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.history }).click();
     const row = page.locator(`a[href="/app/history/${workoutId}"]`);
     await expect(row).toBeVisible();
