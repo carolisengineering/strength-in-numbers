@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { onlineManager } from "@tanstack/react-query";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +31,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  onlineManager.setOnline(true);
   observability.reportError.mockReset();
   cleanupApp();
 });
@@ -265,6 +267,21 @@ describe("08.1 AC21 — series failure", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't load 1 year");
     expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await screen.findByRole("img", { name: /1 year/ });
+  });
+
+  it("offline, a new range is a network failure, never the old chart under the new chip (final review I1)", async () => {
+    const { fake, user } = setup();
+    await screen.findByRole("img", { name: /3 months/ });
+    fake.setOffline(true);
+    onlineManager.setOnline(false);
+    await user.click(within(rangeGroup()).getByRole("button", { name: "1Y" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load 1 year");
+    expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    fake.setOffline(false);
+    onlineManager.setOnline(true);
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
     await screen.findByRole("img", { name: /1 year/ });
   });

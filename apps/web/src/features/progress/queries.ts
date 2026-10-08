@@ -25,6 +25,8 @@ export const ProgressClockContext = createContext<() => string>(() => todayLocal
 /**
  * One exercise's series for one range. `from` is computed inside `queryFn` (fetch time), so the date is
  * not in the key; `keepPreviousData` keeps the last range on screen while a new one loads (D8).
+ * `networkMode: "always"`: offline must fail as a `network` error (D11) — TanStack's default pauses
+ * instead, which would leave the last range's chart under the new range's chip with no notice.
  */
 export function useSeries(exerciseId: string, range: Range): UseQueryResult<ProgressSeries> {
   const client = useProgressClient();
@@ -37,5 +39,6 @@ export function useSeries(exerciseId: string, range: Range): UseQueryResult<Prog
     },
     placeholderData: keepPreviousData,
     retry: false,
+    networkMode: "always",
   });
 }

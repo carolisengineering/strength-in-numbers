@@ -73,7 +73,8 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
   const metric = resolveMetric(chosen, available);
   const points = pointsFor(view?.series, metric, pref);
   const selected = points.find((p) => p.id === selectedId) ?? points.at(-1);
-  const busy = view !== null && view.range !== range && series.isFetching;
+  // A shown range that differs from the chosen one is always announced: a status while it loads, the notice once it fails.
+  const busy = view !== null && view.range !== range && !failure;
   const retry = () => void series.refetch();
 
   let chartArea;
