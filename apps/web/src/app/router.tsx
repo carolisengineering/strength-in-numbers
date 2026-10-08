@@ -3,9 +3,10 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { Callback } from "../auth/Callback";
 import { HistoryScreen } from "../features/history/HistoryScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
+import { ExerciseProgressRoute } from "../features/progress/ExerciseProgressScreen";
+import { ProgressScreen } from "../features/progress/ProgressScreen";
 import { FinishedWorkoutScreen } from "../features/workouts/FinishedWorkoutScreen";
 import { WorkoutsScreen } from "../features/workouts/WorkoutsScreen";
-import { ComingSoon } from "../screens/ComingSoon";
 import { NotFound } from "../screens/NotFound";
 import { BootstrapGate } from "./BootstrapGate";
 import { ProtectedLayout } from "./ProtectedLayout";
@@ -25,7 +26,8 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
  *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
  *   /app/history                                                      > HistoryScreen  protected (Spec 08.0)
- *   /app/progress                                                     > ComingSoon     protected (Spec 08.1)
+ *   /app/progress                                                     > ProgressScreen protected (Spec 08.1)
+ *   /app/progress/:exerciseId                                         > ExerciseProgressScreen (Spec 08.1)
  *   /app/*       …                                                    > NotFound       protected catch-all
  *   *            NotFound                                                              public catch-all
  *
@@ -56,7 +58,8 @@ export const routes: RouteObject[] = [
               { path: "workouts/:id", element: <FinishedWorkoutScreen section="workouts" /> },
               { path: "history", element: <HistoryScreen /> },
               { path: "history/:id", element: <FinishedWorkoutScreen section="history" /> },
-              { path: "progress", element: <ComingSoon /> },
+              { path: "progress", element: <ProgressScreen /> },
+              { path: "progress/:exerciseId", element: <ExerciseProgressRoute /> },
               { path: "*", element: <NotFound /> },
             ],
           },

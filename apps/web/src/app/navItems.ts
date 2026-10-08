@@ -25,7 +25,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/app/workouts", label: "Workouts", icon: DumbbellIcon },
   { to: "/app/history", label: "History", icon: ClockIcon },
-  { to: "/app/progress", label: "Progress", icon: ChartIcon, comingSoon: true },
+  { to: "/app/progress", label: "Progress", icon: ChartIcon },
   { to: "/app/profile", label: "Profile", icon: PersonIcon },
 ];
 
