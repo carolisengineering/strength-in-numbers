@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
+import { reportError } from "../../observability/reportError";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
@@ -8,26 +10,39 @@ import { useMe } from "../me/useMe";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import { HistoryRow } from "./HistoryRow";
-import { flattenHistory, useHistoryList } from "./queries";
+import { HISTORY_KEYS, flattenHistory, isStaleCursor, useHistoryList } from "./queries";
 import styles from "./HistoryScreen.module.css";
 
 /** Finished workouts, newest first, a page at a time (Spec 08.0 §5.2). "Load more", never infinite scroll (D3). */
 export function HistoryScreen() {
   const query = useHistoryList();
+  const queryClient = useQueryClient();
   const { data: me } = useMe();
   const unitPreference = me?.unitPreference ?? "kg";
+  // One silent reset per mount: a server that keeps answering 422 cannot become a request loop (AC17).
+  const resetUsed = useRef(false);
+  const resetting = isStaleCursor(query.error) && !resetUsed.current;
 
   useEffect(() => {
-    if (query.error) reportUnexpected("load-history", query.error);
-  }, [query.error]);
+    if (!query.error) return;
+    if (isStaleCursor(query.error) && !resetUsed.current) {
+      resetUsed.current = true;
+      // `validation` is an expected kind, so `reportUnexpected` would drop it: report directly (§5.4).
+      reportError(query.error, { source: "history", op: "stale-cursor" });
+      void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+      return;
+    }
+    reportUnexpected("load-history", query.error);
+  }, [query.error, queryClient]);
 
-  if (query.isPending) return <Spinner label="Loading your history…" />;
+  if (query.isPending || resetting) return <Spinner label="Loading your history…" />;
+
+  const failure = query.error ? classifyWorkoutError(query.error, { op: "load-history" }) : null;
 
   if (query.data === undefined) {
-    const failure = classifyWorkoutError(query.error, { op: "load-history" });
     return (
       <Screen title="History">
-        <InlineNotice tone="error" requestId={failure.requestId} actionLabel="Try again" onAction={() => void query.refetch()}>
+        <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
           Couldn't load your history
         </InlineNotice>
       </Screen>
@@ -38,6 +53,11 @@ export function HistoryScreen() {
 
   return (
     <Screen title="History">
+      {query.isRefetchError ? (
+        <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
+          Couldn't refresh your history
+        </InlineNotice>
+      ) : null}
       {rows.length === 0 ? (
         <div className={styles.empty}>
           <p>No finished workouts yet</p>
@@ -54,7 +74,16 @@ export function HistoryScreen() {
           ))}
         </ul>
       )}
-      {query.hasNextPage ? (
+      {query.isFetchNextPageError ? (
+        <InlineNotice
+          tone="error"
+          requestId={failure?.requestId ?? null}
+          actionLabel="Try again"
+          onAction={() => void query.fetchNextPage()}
+        >
+          Couldn't load more
+        </InlineNotice>
+      ) : query.hasNextPage ? (
         <div className={styles.more}>
           <Button variant="secondary" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
             {query.isFetchingNextPage ? "Loading…" : "Load more"}

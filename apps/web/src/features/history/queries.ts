@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { WorkoutHistoryResponse, WorkoutSummary } from "@sin/core";
+import { ApiError } from "../../api";
 import type { HistoryClient } from "./historyClient";
 
 /** `["history"]` prefixes every history query, so one invalidation covers them (Spec 08.0 §6.1). */
@@ -40,4 +41,12 @@ export function flattenHistory(pages: readonly WorkoutHistoryResponse[]): Workou
   const rows = new Map<string, WorkoutSummary>();
   for (const page of pages) for (const row of page.items) if (!rows.has(row.id)) rows.set(row.id, row);
   return [...rows.values()];
+}
+
+/**
+ * A `422` on `cursor` can only mean a cursor format older than the deployed API (the client never
+ * builds one): the lifter cannot fix it by retrying, so the list restarts from page 1 (Spec 08.0 D13).
+ */
+export function isStaleCursor(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 422 && error.errors.some((e) => e.path === "cursor");
 }

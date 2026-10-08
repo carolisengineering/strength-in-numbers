@@ -25,7 +25,7 @@ import { makePersonalRecord, makeSet, makeWorkoutDetail, type WorkoutDetailOptio
 import { http, HttpResponse } from "msw";
 import { API_BASE_URL } from "../../test/catalogHarness";
 import { server } from "../../test/msw/server";
-import { createWorkoutFake } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { flattenHistory } from "./queries";
 
@@ -113,6 +113,7 @@ describe("08.0 AC10 — routes and navigation", () => {
     prepareApp({ auth, fake });
     const { router } = renderApp(`/app/history/${active.id}`);
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    expect(await screen.findByRole("heading", { name: "Workout" })).toBeInTheDocument();
   });
 });
 
@@ -233,6 +234,131 @@ describe("08.0 AC14 — empty and loading states", () => {
     expect(await screen.findByText("Loading your history…")).toBeInTheDocument();
     gate.resolve();
     expect(await screen.findByText("No finished workouts yet")).toBeInTheDocument();
+  });
+});
+
+const LIST = { method: "GET", path: /^\/v1\/workouts$/ };
+
+/** Register the failure before the first request: the screen fetches page 1 on mount. */
+function setupFailing(finished: WorkoutDetail[], response: () => Response, times = 1) {
+  const fake = createWorkoutFake({ finished });
+  fake.failNext(LIST, response, times);
+  prepareApp({ auth, fake });
+  return { fake, ...renderApp("/app/history") };
+}
+
+describe("08.0 AC15 — the first page fails", () => {
+  it.each([
+    ["a 500", () => problemResponse(500, "internal")],
+    ["a network failure", () => HttpResponse.error()],
+    ["an unknown 4xx", () => problemResponse(418, "teapot")],
+  ])("%s → full notice with Try again; no rows", async (_label, response) => {
+    const { user } = setupFailing(finishedWorkouts(1), response);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load your history");
+    expect(screen.queryByRole("list", { name: "Finished workouts" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("list", { name: "Finished workouts" })).toBeInTheDocument();
+  });
+
+  it("shows the request id and reports only the unknown kind", async () => {
+    setupFailing([], () => problemResponse(418, "teapot"));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/Request ID: /);
+    await waitFor(() =>
+      expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), { source: "workouts", op: "load-history" }),
+    );
+  });
+
+  it("does not report an expected failure (a 500)", async () => {
+    setupFailing([], () => problemResponse(500, "internal"));
+    await screen.findByRole("alert");
+    expect(observability.reportError).not.toHaveBeenCalled();
+  });
+});
+
+describe("08.0 AC16 — a later page, or a background refresh, fails", () => {
+  it("Load more failing keeps the rows; Try again re-requests the same cursor", async () => {
+    const { fake, user } = setup(finishedWorkouts(25));
+    await screen.findByRole("list", { name: "Finished workouts" });
+    fake.failNext(LIST, () => problemResponse(500, "internal"));
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load more");
+    expect(rows()).toHaveLength(20);
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(rows()).toHaveLength(25));
+    expect(historyGets(fake).slice(1).map((r) => r.search)).toEqual([
+      "?limit=20&cursor=fake.20",
+      "?limit=20&cursor=fake.20",
+    ]);
+  });
+
+  it("a failed background refresh keeps the cached rows", async () => {
+    const { fake, user, queryClient } = setup(finishedWorkouts(2));
+    await screen.findByRole("list", { name: "Finished workouts" });
+    fake.failNext(LIST, () => problemResponse(500, "internal"));
+
+    await queryClient.invalidateQueries({ queryKey: ["history"] });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't refresh your history");
+    expect(rows()).toHaveLength(2);
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(rows()).toHaveLength(2);
+  });
+});
+
+describe("08.0 AC17 — a stale cursor resets the list", () => {
+  const staleCursor = () =>
+    problemResponse(422, "validation-error", { errors: [{ path: "cursor", message: "Invalid cursor" }] });
+
+  it("422 on cursor → page 1 again, no notice, reported once with static tags", async () => {
+    const { fake, user } = setup(finishedWorkouts(25));
+    await screen.findByRole("list", { name: "Finished workouts" });
+    fake.failNext(LIST, staleCursor);
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    await waitFor(() => expect(historyGets(fake)).toHaveLength(3));
+    expect(historyGets(fake)[2]!.search).toBe("?limit=20");
+    expect(await screen.findByRole("list", { name: "Finished workouts" })).toBeInTheDocument();
+    await waitFor(() => expect(rows()).toHaveLength(20));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(observability.reportError).toHaveBeenCalledTimes(1);
+    expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), { source: "history", op: "stale-cursor" });
+  });
+
+  it("a 422 on another field is not a reset", async () => {
+    const { fake, user } = setup(finishedWorkouts(25));
+    await screen.findByRole("list", { name: "Finished workouts" });
+    fake.failNext(LIST, () =>
+      problemResponse(422, "validation-error", { errors: [{ path: "limit", message: "Too big" }] }),
+    );
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more");
+    expect(historyGets(fake)).toHaveLength(2);
+  });
+
+  it("a second stale cursor in the same mount shows the notice instead of looping", async () => {
+    const { fake, user } = setup(finishedWorkouts(25));
+    await screen.findByRole("list", { name: "Finished workouts" });
+    fake.failNext(LIST, staleCursor);
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(historyGets(fake)).toHaveLength(3));
+    await waitFor(() => expect(rows()).toHaveLength(20));
+
+    fake.failNext(LIST, staleCursor);
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more");
+    expect(historyGets(fake)).toHaveLength(4);
   });
 });
 
