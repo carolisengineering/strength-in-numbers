@@ -1,8 +1,8 @@
-import { WorkoutHistoryResponseSchema, type WorkoutHistoryResponse } from "@sin/core";
+import { WORKOUT_HISTORY_LIMIT_DEFAULT, WorkoutHistoryResponseSchema, type WorkoutHistoryResponse } from "@sin/core";
 import type { ApiClient } from "../../api";
 
-/** 07.1's default page size, sent explicitly so the client's paging does not depend on a server default. */
-export const HISTORY_PAGE_SIZE = 20;
+/** 07.1's default page size (D2), sent explicitly so the client's paging does not depend on a server default. */
+export const HISTORY_PAGE_SIZE = WORKOUT_HISTORY_LIMIT_DEFAULT;
 
 /**
  * `GET /v1/workouts` (Spec 07.1), React-free. The cursor is opaque (07.1 §6.2 rule 3): passed

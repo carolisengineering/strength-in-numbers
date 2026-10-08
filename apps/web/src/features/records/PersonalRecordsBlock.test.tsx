@@ -78,6 +78,21 @@ describe("08.0 AC19 — the block's states", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  it("a failed background refetch keeps the records it already shows, with the notice (code review)", async () => {
+    const listRecords = vi
+      .fn<RecordsClient["listRecords"]>()
+      .mockResolvedValueOnce([records[2]!])
+      .mockRejectedValueOnce(new ApiError({ status: 500, type: "about:blank", title: "Server Error", requestId: "req-2" }));
+    const { qc } = renderBlock(listRecords);
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByText(/Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+
+    await qc.invalidateQueries({ queryKey: ["records"] });
+
+    expect(await within(block).findByRole("alert")).toHaveTextContent("Couldn't load records");
+    expect(within(block).getByText(/Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+  });
+
   it("shows a block-local notice on failure, and Try again refetches", async () => {
     const listRecords = vi
       .fn<RecordsClient["listRecords"]>()

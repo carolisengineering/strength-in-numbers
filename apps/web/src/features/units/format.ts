@@ -1,4 +1,4 @@
-import type { RecordUnit, UnitPreference } from "@sin/core";
+import { kgToLb, type RecordUnit, type UnitPreference } from "@sin/core";
 
 /**
  * Canonical kg → the lifter's unit (Spec 08.0 §6.4, D8). Pure and React-free so Spec 08.1's chart
@@ -8,13 +8,13 @@ import type { RecordUnit, UnitPreference } from "@sin/core";
  * lb is rounded to 1 decimal: the conversion is irrational, so more digits are noise — and 225 lb
  * stored as 102.058 kg comes back as 224.9998…, which rounds to 225. `Intl` drops trailing zeros.
  */
-const KG_PER_LB = 0.45359237; // the exact definition of the pound (DESIGN §4.8)
-const KG = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
+// The conversion itself is `@sin/core`'s `kgToLb` — one copy of the pound's definition (DESIGN §4.8, R4).
+const KG =new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 const LB = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 const COUNT = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 
 function inUnit(kg: number, pref: UnitPreference): string {
-  return pref === "lb" ? `${LB.format(kg / KG_PER_LB)} lb` : `${KG.format(kg)} kg`;
+  return pref === "lb" ? `${LB.format(kgToLb(kg))} lb` : `${KG.format(kg)} kg`;
 }
 
 export function formatWeightKg(kg: number, pref: UnitPreference): string {

@@ -21,7 +21,9 @@ export function PersonalRecordsBlock({ workoutId, unitPreference }: { workoutId:
   }, [query.error]);
 
   if (query.isPending) return null;
-  if (!query.isError && query.data.length === 0) return null;
+  // A failed refresh keeps the records already shown; the notice sits beside them.
+  const records = query.data ?? [];
+  if (!query.isError && records.length === 0) return null;
 
   return (
     <section className={styles.block} aria-labelledby={headingId}>
@@ -37,13 +39,14 @@ export function PersonalRecordsBlock({ workoutId, unitPreference }: { workoutId:
         >
           Couldn't load records
         </InlineNotice>
-      ) : (
+      ) : null}
+      {records.length > 0 ? (
         <ul className={styles.list}>
-          {sortRecords(query.data).map((record) => (
+          {sortRecords(records).map((record) => (
             <li key={`${record.exerciseId}:${record.recordType}`}>{recordLine(record, unitPreference)}</li>
           ))}
         </ul>
-      )}
+      ) : null}
     </section>
   );
 }

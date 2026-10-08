@@ -25,15 +25,21 @@ export function HistoryScreen() {
 
   useEffect(() => {
     if (!query.error) return;
-    if (isStaleCursor(query.error) && !resetUsed.current) {
-      resetUsed.current = true;
-      // `validation` is an expected kind, so `reportUnexpected` would drop it: report directly (§5.4).
+    if (isStaleCursor(query.error)) {
+      // `validation` is an expected kind, so `reportUnexpected` would drop it: report every time (§5.4).
       reportError(query.error, { source: "history", op: "stale-cursor" });
-      void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+      if (!resetUsed.current) {
+        resetUsed.current = true;
+        void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+      }
       return;
     }
     reportUnexpected("load-history", query.error);
   }, [query.error, queryClient]);
+
+  // Retrying a dead cursor can only fail again: a stale-cursor error restarts from page 1 instead.
+  const retryNextPage = () =>
+    void (isStaleCursor(query.error) ? queryClient.resetQueries({ queryKey: HISTORY_KEYS.list }) : query.fetchNextPage());
 
   if (query.isPending || resetting) return <Spinner label="Loading your history…" />;
 
@@ -79,7 +85,7 @@ export function HistoryScreen() {
           tone="error"
           requestId={failure?.requestId ?? null}
           actionLabel="Try again"
-          onAction={() => void query.fetchNextPage()}
+          onAction={retryNextPage}
         >
           Couldn't load more
         </InlineNotice>

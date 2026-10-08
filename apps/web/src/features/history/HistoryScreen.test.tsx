@@ -385,8 +385,16 @@ describe("08.0 AC17 — a stale cursor resets the list", () => {
     fake.failNext(LIST, staleCursor);
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load more");
     expect(historyGets(fake)).toHaveLength(4);
+    // Reported every time (§5.4 "always"), and Try again restarts from page 1 instead of resending the dead cursor.
+    expect(observability.reportError).toHaveBeenCalledTimes(2);
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(historyGets(fake)).toHaveLength(5));
+    expect(historyGets(fake)[4]!.search).toBe("?limit=20");
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(rows()).toHaveLength(20);
   });
 });
 
