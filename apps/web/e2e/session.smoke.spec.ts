@@ -164,9 +164,24 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await expect(page.getByText(EXERCISES[4].name, { exact: true })).toHaveCount(0);
   });
 
-  await test.step("delete the workout from the summary and land on Start", async () => {
+  // Spec 08.0 AC26 — no PR content is asserted: whether a run sets a record depends on the account's history (D12).
+  let workoutId = "";
+  await test.step("Spec 08.0 — the finished workout is in History and opens from there", async () => {
+    workoutId = new URL(page.url()).pathname.split("/").pop() ?? "";
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.history }).click();
+    const row = page.locator(`a[href="/app/history/${workoutId}"]`);
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page.getByRole("heading", { name: NAMES.summaryHeading })).toBeVisible();
+    await expect(page.getByRole("link", { name: NAMES.backToHistory })).toBeVisible();
+  });
+
+  await test.step("delete the workout from the History summary, land on History, then Start", async () => {
     await page.getByRole("button", { name: NAMES.deleteWorkout }).click();
     await openDialog(page, NAMES.deleteDialog).getByRole("button", { name: NAMES.delete, exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/history$/);
+    await expect(page.locator(`a[href="/app/history/${workoutId}"]`)).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.workouts }).click();
     await expect(page.getByRole("button", { name: NAMES.startWorkout })).toBeVisible();
   });
 
