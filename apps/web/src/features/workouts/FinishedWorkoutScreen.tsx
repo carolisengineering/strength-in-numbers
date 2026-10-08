@@ -10,15 +10,12 @@ import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
 import { classifyWorkoutError } from "./errors";
-import { formatSet } from "./format";
+import { formatLocalDate, formatSet } from "./format";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
-
-// Pinned locale + UTC so the date is the one the server stored (`localDate`), whatever the device says.
-const DATE = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -74,7 +71,7 @@ export function FinishedWorkoutScreen() {
 
 function Summary({ workout, endedAt }: { workout: WorkoutDetail; endedAt: string }) {
   const minutes = Math.round((Date.parse(endedAt) - Date.parse(workout.startedAt)) / 60_000);
-  const date = DATE.format(new Date(`${workout.localDate}T00:00:00Z`));
+  const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
 
   return (
