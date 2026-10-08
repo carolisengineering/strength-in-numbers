@@ -3,7 +3,7 @@ import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
-import { makePersonalRecord, makeSet, makeWorkoutDetail } from "./workoutFixtures";
+import { makePersonalRecord, makeProgressPoint, makeSet, makeWorkoutDetail } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
@@ -162,6 +162,31 @@ describe("06.2 — the fake's offline switch and lost responses", () => {
       }),
     ).rejects.toThrow();
     expect(fake.state.active!.exercises[0]!.sets).toHaveLength(1);
+  });
+});
+
+describe("Spec 08.1 — progress endpoint", () => {
+  const ID = "10000000-0000-4000-8000-0000000000e1";
+
+  it("serves a lineage's points, honours from/to inclusively, 404 unseen, 422 malformed", async () => {
+    const fake = createWorkoutFake({
+      progress: {
+        [ID]: [
+          makeProgressPoint({ localDate: "2026-07-01" }),
+          makeProgressPoint({ localDate: "2026-07-08" }),
+          makeProgressPoint({ localDate: "2026-09-01" }),
+        ],
+      },
+    });
+    server.use(...fake.handlers);
+
+    const all = await call("GET", `/progress/exercises/${ID}`);
+    expect((all.json!["points"] as unknown[]).length).toBe(3);
+    const ranged = await call("GET", `/progress/exercises/${ID}?from=2026-07-08`);
+    expect((ranged.json!["points"] as { localDate: string }[]).map((p) => p.localDate)).toEqual(["2026-07-08", "2026-09-01"]);
+    expect((await call("GET", "/progress/exercises/10000000-0000-4000-8000-0000000000ff")).status).toBe(404);
+    expect((await call("GET", "/progress/exercises/not-a-uuid")).status).toBe(422);
+    expect(fake.requests.at(-1)).toMatchObject({ path: "/v1/progress/exercises/not-a-uuid" });
   });
 });
 
