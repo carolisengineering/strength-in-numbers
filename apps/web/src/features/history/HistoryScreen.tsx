@@ -85,7 +85,8 @@ export function HistoryScreen() {
         </InlineNotice>
       ) : query.hasNextPage ? (
         <div className={styles.more}>
-          <Button variant="secondary" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+          {/* Disabled during any fetch: `fetchNextPage` would cancel an in-flight refresh and keep stale rows. */}
+          <Button variant="secondary" disabled={query.isFetching} onClick={() => void query.fetchNextPage()}>
             {query.isFetchingNextPage ? "Loading…" : "Load more"}
           </Button>
         </div>

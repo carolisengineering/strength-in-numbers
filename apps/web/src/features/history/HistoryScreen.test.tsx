@@ -315,6 +315,34 @@ describe("08.0 AC16 — a later page, or a background refresh, fails", () => {
   });
 });
 
+describe("08.0 AC13/AC16 — Load more never cancels a refresh in flight (final review I1)", () => {
+  it("while an invalidation refetch runs, Load more is disabled and the refreshed rows still land", async () => {
+    const ws = finishedWorkouts(25);
+    const { fake, user, queryClient } = setup(ws);
+    await screen.findByRole("list", { name: "Finished workouts" });
+    // The newest workout is deleted elsewhere (e.g. from its summary), and History refetches.
+    fake.state.finished.delete(ws[24]!.id);
+    const gate = deferred<void>();
+    server.use(
+      // Returning nothing falls through to the fake's handler once the gate opens.
+      http.get(`${API_BASE_URL}/v1/workouts`, async () => {
+        await gate.promise;
+      }, { once: true }),
+    );
+    void queryClient.invalidateQueries({ queryKey: ["history"] });
+    await waitFor(() => expect(queryClient.isFetching({ queryKey: ["history"] })).toBe(1));
+
+    const loadMore = screen.getByRole("button", { name: /Load more|Loading/ });
+    expect(loadMore).toBeDisabled();
+    await user.click(loadMore);
+    gate.resolve();
+
+    expect(rows()[0]).toHaveTextContent(/^Fri 25 Sept?/); // still the cached rows until the gate opens
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Fri 25 Sept?/ })).toBeNull());
+    expect(rows()[0]).toHaveTextContent(/^Thu 24 Sept?/);
+  });
+});
+
 describe("08.0 AC17 — a stale cursor resets the list", () => {
   const staleCursor = () =>
     problemResponse(422, "validation-error", { errors: [{ path: "cursor", message: "Invalid cursor" }] });
