@@ -73,11 +73,41 @@ export function layoutChart(points: readonly ChartPoint[], { integer = false }: 
   };
 }
 
-/** 28 units (≥ 44 CSS px at 320 px wide); half the nearest x-gap when denser, floor 8 (§6.3). */
-export function hitRadius(layout: ChartLayout): number {
-  let gap = Infinity;
-  for (let i = 1; i < layout.points.length; i++) gap = Math.min(gap, layout.points[i]!.x - layout.points[i - 1]!.x);
-  return gap >= 56 ? 28 : Math.max(8, gap / 2);
+export interface HitArea {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * One tap rect per point, in point order, tiling the whole viewBox (§6.3, final review I2): each x
+ * column runs between the midpoints to its neighbouring columns (outer columns reach the edges), and
+ * same-date points split their column at the y midpoints, higher value on top. Areas never overlap,
+ * so a tap always selects the point whose area it lands in, and a dense stretch never shrinks a
+ * sparse point's area.
+ */
+export function hitAreas(layout: ChartLayout): HitArea[] {
+  const columns: PlottedPoint[][] = [];
+  for (const p of layout.points) {
+    const last = columns.at(-1);
+    if (last && last[0]!.x === p.x) last.push(p);
+    else columns.push([p]);
+  }
+  const byId = new Map<string, HitArea>();
+  columns.forEach((column, i) => {
+    const x = column[0]!.x;
+    const left = i === 0 ? 0 : (columns[i - 1]![0]!.x + x) / 2;
+    const right = i === columns.length - 1 ? VIEW.width : (x + columns[i + 1]![0]!.x) / 2;
+    const byY = [...column].sort((a, b) => a.py - b.py);
+    byY.forEach((p, j) => {
+      const top = j === 0 ? 0 : (byY[j - 1]!.py + p.py) / 2;
+      const bottom = j === byY.length - 1 ? VIEW.height : (p.py + byY[j + 1]!.py) / 2;
+      byId.set(p.id, { id: p.id, x: left, y: top, width: right - left, height: bottom - top });
+    });
+  });
+  return layout.points.map((p) => byId.get(p.id)!);
 }
 
 /** 3–4 month-start labels inside the span, else first/last day-month; a two-digit year only across a year boundary (D9). */

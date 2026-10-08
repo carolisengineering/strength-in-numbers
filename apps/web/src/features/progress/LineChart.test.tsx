@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LineChart } from "./LineChart";
 import type { ChartPoint } from "./metrics";
-import { hitRadius, layoutChart } from "./scale";
+import { hitAreas, layoutChart } from "./scale";
 
 const pts: ChartPoint[] = [
   { id: "w1", localDate: "2026-08-01", canonical: 105, y: 105 },
@@ -17,7 +17,7 @@ function renderChart(points = pts, selectedId: string | null = "w3") {
 }
 
 describe("08.1 AC16 — the chart", () => {
-  it("one svg role=img named by the summary; a polyline; a dot and a hit circle per point", () => {
+  it("one svg role=img named by the summary; a polyline; a dot and a hit area per point", () => {
     const { container } = renderChart();
     const svg = screen.getByRole("img", { name: "Est. 1RM, 3 months: …" });
     expect(svg.tagName.toLowerCase()).toBe("svg");
@@ -40,7 +40,7 @@ describe("08.1 AC16 — the chart", () => {
     expect(screen.getAllByTestId("chart-dot")).toHaveLength(1);
   });
 
-  it("the selected dot is marked; clicking a hit circle selects its point", () => {
+  it("the selected dot is marked; clicking a hit area selects its point", () => {
     const { onSelect } = renderChart();
     const dots = screen.getAllByTestId("chart-dot");
     expect(dots.filter((d) => d.getAttribute("data-selected") === "true")).toHaveLength(1);
@@ -49,10 +49,13 @@ describe("08.1 AC16 — the chart", () => {
     expect(onSelect).toHaveBeenCalledWith("w1");
   });
 
-  it("hit circles use hitRadius; nothing inside the svg is focusable", () => {
+  it("hit areas are the rects from hitAreas; nothing inside the svg is focusable", () => {
     const { container } = renderChart();
-    const r = String(hitRadius(layoutChart(pts)));
-    for (const hit of screen.getAllByTestId("chart-hit")) expect(hit.getAttribute("r")).toBe(r);
+    const hits = screen.getAllByTestId("chart-hit");
+    expect(hits.map((h) => h.tagName.toLowerCase())).toEqual(["rect", "rect", "rect"]);
+    hitAreas(layoutChart(pts)).forEach((a, i) => {
+      for (const k of ["x", "y", "width", "height"] as const) expect(hits[i]!.getAttribute(k)).toBe(String(a[k]));
+    });
     expect(container.querySelectorAll("svg [tabindex], svg a, svg button")).toHaveLength(0);
   });
 });

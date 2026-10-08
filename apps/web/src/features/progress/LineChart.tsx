@@ -1,5 +1,5 @@
 import type { ChartPoint } from "./metrics";
-import { VIEW, hitRadius, layoutChart, xLabels } from "./scale";
+import { VIEW, hitAreas, layoutChart, xLabels } from "./scale";
 import styles from "./LineChart.module.css";
 
 const TICK = new Intl.NumberFormat("en", { maximumFractionDigits: 2 });
@@ -17,7 +17,6 @@ export interface LineChartProps {
 /** One series, drawn in a fixed 360 × 220 viewBox that scales with its container (Spec 08.1 AC16, D1/D2). */
 export function LineChart({ points, integer = false, selectedId, onSelect, summary }: LineChartProps) {
   const layout = layoutChart(points, { integer });
-  const r = hitRadius(layout);
   const right = VIEW.width - VIEW.right;
   return (
     <svg className={styles.chart} viewBox={`0 0 ${VIEW.width} ${VIEW.height}`} width="100%" role="img" aria-label={summary}>
@@ -51,15 +50,16 @@ export function LineChart({ points, integer = false, selectedId, onSelect, summa
           />
         );
       })}
-      {layout.points.map((p) => (
-        <circle
-          key={`hit:${p.id}`}
+      {hitAreas(layout).map((a) => (
+        <rect
+          key={`hit:${a.id}`}
           data-testid="chart-hit"
           className={styles.hit}
-          cx={p.x}
-          cy={p.py}
-          r={r}
-          onClick={() => onSelect(p.id)}
+          x={a.x}
+          y={a.y}
+          width={a.width}
+          height={a.height}
+          onClick={() => onSelect(a.id)}
         />
       ))}
     </svg>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChartPoint } from "./metrics";
-import { VIEW, hitRadius, layoutChart, niceTicks, xLabels } from "./scale";
+import { VIEW, hitAreas, layoutChart, niceTicks, xLabels } from "./scale";
 
 const pt = (id: string, localDate: string, y: number): ChartPoint => ({ id, localDate, canonical: y, y });
 
@@ -65,12 +65,60 @@ describe("08.1 AC4 — chart geometry", () => {
     expect(same.points.map((p) => p.x)).toEqual([centre, centre]);
   });
 
-  it("hitRadius: 28 when sparse, half the gap when dense, floor 8 (same date ⇒ 8)", () => {
-    expect(hitRadius(layoutChart([pt("a", "2026-09-01", 1)]))).toBe(28);
-    expect(hitRadius(layoutChart([pt("a", "2026-01-01", 1), pt("b", "2026-12-31", 1)]))).toBe(28);
-    const dense = layoutChart(Array.from({ length: 10 }, (_, i) => pt(String(i), `2026-09-${String(i + 1).padStart(2, "0")}`, 1)));
-    expect(hitRadius(dense)).toBeCloseTo(296 / 9 / 2, 5);
-    expect(hitRadius(layoutChart([pt("a", "2026-09-01", 1), pt("b", "2026-09-01", 2)]))).toBe(8);
+  describe("hitAreas: one rect per point, tiling the viewBox (final review I2)", () => {
+    type Rect = { id: string; x: number; y: number; width: number; height: number };
+    const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+    const strictlyInside = (r: Rect, x: number, y: number) => x > r.x && x < r.x + r.width && y > r.y && y < r.y + r.height;
+    const overlap = (a: Rect, b: Rect) =>
+      Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+
+    it("one point owns the whole viewBox", () => {
+      expect(hitAreas(layoutChart([pt("a", "2026-09-01", 1)]))).toEqual([{ id: "a", x: 0, y: 0, width: VIEW.width, height: VIEW.height }]);
+    });
+
+    it("weekly sessions a year long with near-equal values: each dot lies in its own area only; areas tile the viewBox", () => {
+      const start = Date.UTC(2025, 9, 9);
+      const weekly = Array.from({ length: 52 }, (_, i) =>
+        pt(`w${i}`, new Date(start + i * 7 * 86_400_000).toISOString().slice(0, 10), 100 + (i % 2) * 0.5),
+      );
+      const layout = layoutChart(weekly);
+      const areas = hitAreas(layout);
+      expect(areas.map((a) => a.id)).toEqual(weekly.map((p) => p.id));
+      layout.points.forEach((p, i) => {
+        expect(inside(areas[i]!, p.x, p.py)).toBe(true);
+        areas.forEach((a, j) => {
+          if (j !== i) expect(strictlyInside(a, p.x, p.py)).toBe(false);
+        });
+      });
+      for (let i = 0; i < areas.length; i++) for (let j = i + 1; j < areas.length; j++) expect(overlap(areas[i]!, areas[j]!)).toBe(false);
+      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(VIEW.width * VIEW.height, 6);
+    });
+
+    it("the boundary between neighbours is their x midpoint", () => {
+      const layout = layoutChart([pt("a", "2026-09-01", 1), pt("b", "2026-09-11", 2), pt("c", "2026-10-01", 3)]);
+      const [a, b, c] = hitAreas(layout);
+      const [pa, pb, pc] = layout.points;
+      expect(a!.x).toBe(0);
+      expect(a!.x + a!.width).toBeCloseTo((pa!.x + pb!.x) / 2, 9);
+      expect(b!.x).toBeCloseTo((pa!.x + pb!.x) / 2, 9);
+      expect(b!.x + b!.width).toBeCloseTo((pb!.x + pc!.x) / 2, 9);
+      expect(c!.x + c!.width).toBe(VIEW.width);
+      for (const r of [a!, b!, c!]) expect([r.y, r.height]).toEqual([0, VIEW.height]);
+    });
+
+    it("same-date sessions split their column at the y midpoint, higher value on top; other points keep full-width areas", () => {
+      const layout = layoutChart([pt("a", "2026-07-01", 100), pt("b", "2026-09-01", 100), pt("c", "2026-09-01", 120)]);
+      const [a, b, c] = hitAreas(layout);
+      const [, pb, pc] = layout.points;
+      const mid = (pb!.py + pc!.py) / 2;
+      expect(c!.y).toBe(0);
+      expect(c!.y + c!.height).toBeCloseTo(mid, 9);
+      expect(b!.y).toBeCloseTo(mid, 9);
+      expect(b!.y + b!.height).toBe(VIEW.height);
+      expect([b!.x, b!.width]).toEqual([c!.x, c!.width]);
+      // a's area is not shrunk by the same-date pair: ≥ 56 units (44 CSS px at a 288 px chart) wide.
+      expect(a!.width).toBeGreaterThanOrEqual(56);
+    });
   });
 
   it("xLabels: month starts inside the span, thinned to ≤ 4", () => {
