@@ -18,7 +18,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
-import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
+import { makePersonalRecord, makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { WORKOUT_KEYS } from "./queries";
@@ -344,5 +344,28 @@ describe("AC29 — discard and the gone path", () => {
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     expect(finishButton()).toBeDisabled();
     expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+  });
+});
+
+describe("08.0 AC7 — the 409 recovery path gets the cache effects", () => {
+  it("removes the records entry so the summary fetches its records once by workoutId", async () => {
+    const active = makeWorkoutDetail({ exercises: oneSet });
+    const record = makePersonalRecord({ workoutId: active.id, exerciseName: "X" });
+    const fake = createWorkoutFake({ active, records: [record] });
+    prepareApp({ auth, fake });
+    const { user, router } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
+    fake.state.finished.set(active.id, { ...fake.state.active!, endedAt: new Date().toISOString() });
+    fake.state.active = null;
+
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByText(/X — Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+    const gets = fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/personal-records");
+    expect(gets).toEqual([expect.objectContaining({ search: `?workoutId=${active.id}` })]);
   });
 });

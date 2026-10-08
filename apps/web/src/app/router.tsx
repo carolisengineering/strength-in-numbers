@@ -21,7 +21,8 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > redirect (replace) to /app/workouts (Spec 06.1 D20)
  *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
  *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
- *   /app/workouts/:id                                                 > FinishedWorkoutScreen protected (Spec 06.1; reused by Spec 08)
+ *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
+ *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
  *   /app/history | progress                                           > ComingSoon     protected (Specs 08 / 10)
  *   /app/*       …                                                    > NotFound       protected catch-all
  *   *            NotFound                                                              public catch-all
@@ -50,8 +51,9 @@ export const routes: RouteObject[] = [
               { index: true, element: <Navigate to="/app/workouts" replace /> },
               { path: "profile", element: <ProfileScreen /> },
               { path: "workouts", element: <WorkoutsScreen /> },
-              { path: "workouts/:id", element: <FinishedWorkoutScreen /> },
+              { path: "workouts/:id", element: <FinishedWorkoutScreen section="workouts" /> },
               { path: "history", element: <ComingSoon /> },
+              { path: "history/:id", element: <FinishedWorkoutScreen section="history" /> },
               { path: "progress", element: <ComingSoon /> },
               { path: "*", element: <NotFound /> },
             ],

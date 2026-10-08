@@ -9,6 +9,8 @@ import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
+import { useMe } from "../me/useMe";
+import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { classifyWorkoutError } from "./errors";
 import { formatLocalDate, formatSet } from "./format";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
@@ -19,12 +21,20 @@ import styles from "./FinishedWorkoutScreen.module.css";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+/** Which nav section the summary was opened from (Spec 08.0 AC20): only the back link and the post-delete redirect differ. */
+export type SummarySection = "workouts" | "history";
+
+const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
+  workouts: { to: "/app/workouts", label: "Back to Workouts" },
+  history: { to: "/app/history", label: "Back to History" },
+};
+
 /**
- * A finished workout, read-only (Spec 06.1 §5.7, D18): the one place a finished workout can be reached
- * until Spec 08 ships history, and the only way to undo a mistaken Finish (delete it — Spec 05.0 §6.5's
- * one exemption from immutability). Spec 08 reuses this route.
+ * A finished workout, read-only (Spec 06.1 §5.7, D18), and the only way to undo a mistaken Finish
+ * (delete it — Spec 05.0 §6.5's one exemption from immutability). Spec 08.0 reuses this screen as
+ * `/app/history/:id` (`section="history"`) and adds the records the workout holds.
  */
-export function FinishedWorkoutScreen() {
+export function FinishedWorkoutScreen({ section = "workouts" }: { section?: SummarySection }) {
   const { id = "" } = useParams();
   const detail = useWorkoutDetail(id);
   const queryClient = useQueryClient();
@@ -36,7 +46,7 @@ export function FinishedWorkoutScreen() {
 
   // The finish flow leaves the active entry in place so the Workouts screen keeps its session until
   // the route changes (Spec 06.4 D1). Here no observer of it is mounted, so it can go. Only if it is
-  // this workout: Spec 08 opens this screen from history while another workout may be in progress.
+  // this workout: Spec 08.0 opens this screen from History while another workout may be in progress.
   useEffect(() => {
     if (!finished) return;
     if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === id) {
@@ -66,10 +76,12 @@ export function FinishedWorkoutScreen() {
   // An in-progress workout belongs on the session screen.
   if (detail.data.endedAt === null) return <Navigate to="/app/workouts" replace />;
 
-  return <Summary workout={detail.data} endedAt={detail.data.endedAt} />;
+  return <Summary workout={detail.data} endedAt={detail.data.endedAt} section={section} />;
 }
 
-function Summary({ workout, endedAt }: { workout: WorkoutDetail; endedAt: string }) {
+function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {
+  const { data: me } = useMe();
+  const home = SECTION_HOME[section];
   const minutes = Math.round((Date.parse(endedAt) - Date.parse(workout.startedAt)) / 60_000);
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
@@ -79,6 +91,7 @@ function Summary({ workout, endedAt }: { workout: WorkoutDetail; endedAt: string
       <p className={styles.meta}>
         {date} · {minutes} min
       </p>
+      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} />
       <div className={styles.exercises}>
         {[...workout.exercises]
           .sort((a, b) => a.position - b.position)
@@ -87,9 +100,9 @@ function Summary({ workout, endedAt }: { workout: WorkoutDetail; endedAt: string
           ))}
       </div>
       <div className={styles.actions}>
-        <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} />
-        <Link className={styles.back} to="/app/workouts">
-          Back to Workouts
+        <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
+        <Link className={styles.back} to={home.to}>
+          {home.label}
         </Link>
       </div>
     </Screen>
@@ -120,7 +133,16 @@ function SummaryExercise({ exercise }: { exercise: WorkoutExerciseDetail }) {
  * component that also observes that query would rebuild it and refetch (a 404 flash) before the
  * navigation lands. Here the mutation's state changes re-render only this control.
  */
-function DeleteWorkoutControl({ workoutId, setCount }: { workoutId: string; setCount: number }) {
+function DeleteWorkoutControl({
+  workoutId,
+  setCount,
+  afterDelete,
+}: {
+  workoutId: string;
+  setCount: number;
+  /** Where a successful delete lands: the section the summary was opened from (Spec 08.0 AC20). */
+  afterDelete: string;
+}) {
   const navigate = useNavigate();
   const del = useDeleteWorkout();
   const [open, setOpen] = useState(false);
@@ -134,7 +156,7 @@ function DeleteWorkoutControl({ workoutId, setCount }: { workoutId: string; setC
     try {
       await del.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setOpen(false);
-      void navigate("/app/workouts");
+      void navigate(afterDelete);
     } catch (caught) {
       setOpen(false);
       reportUnexpected("discard", caught);

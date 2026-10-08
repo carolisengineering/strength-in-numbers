@@ -444,6 +444,8 @@ describe("AC13 — protected routes capture returnTo in router state", () => {
       expect(router.state.location.pathname).toBe("/app/history/123"),
     );
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
+    // Spec 08.0: /app/history/:id is the workout summary; "123" is no workout, so let its 404 settle.
+    expect(await screen.findByTestId("not-found")).toBeInTheDocument();
   });
 });
 

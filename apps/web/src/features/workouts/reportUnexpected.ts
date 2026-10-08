@@ -2,8 +2,8 @@ import { reportError } from "../../observability/reportError";
 import { classifyWorkoutError } from "./errors";
 import type { Operation } from "./sessionErrors";
 
-/** The write operations of §5.8 plus the three reads and the start, all static names. */
-export type ReportOp = Operation | "start-workout" | "load-active" | "load-workout";
+/** The write operations of §5.8 plus the reads (including Spec 08.0's history and records) and the start, all static names. */
+export type ReportOp = Operation | "start-workout" | "load-active" | "load-workout" | "load-history" | "load-records";
 
 /**
  * Report a failure the lifter cannot act on and we did not predict (Spec 06.1 §9): an unrecognised
