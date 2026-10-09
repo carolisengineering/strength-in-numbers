@@ -148,6 +148,30 @@ const EXPECTED = [
   "WorkoutSummarySchema",
   "WorkoutHistoryQuerySchema",
   "WorkoutHistoryResponseSchema",
+  // ids (Spec 09)
+  "RoutineIdSchema",
+  "parseRoutineId",
+  "isRoutineId",
+  "RoutineItemIdSchema",
+  "parseRoutineItemId",
+  "isRoutineItemId",
+  // dto — routines (Spec 09 §5)
+  "ROUTINE_NAME_MAX",
+  "ROUTINE_NOTES_MAX",
+  "ROUTINE_ITEM_NOTES_MAX",
+  "ROUTINES_PER_USER_MAX",
+  "ROUTINE_ITEMS_MAX",
+  "SUPERSET_GROUP_MEMBERS_MAX",
+  "SUPERSET_GROUP_VALUE_MAX",
+  "RoutineItemInputSchema",
+  "RoutineWriteSchema",
+  "RoutineItemSchema",
+  "RoutineSchema",
+  "RoutineListResponseSchema",
+  // routines.ts (Spec 09 §5)
+  "normalizeSupersetGroups",
+  "rpeToTenths",
+  "tenthsToRpe",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

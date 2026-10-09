@@ -71,3 +71,17 @@ export const SetEntryIdSchema = setEntryId.schema;
 export type SetEntryId = z.infer<typeof SetEntryIdSchema>;
 export const parseSetEntryId = setEntryId.parse;
 export const isSetEntryId = setEntryId.is;
+
+const routineId = brandId("RoutineId");
+
+export const RoutineIdSchema = routineId.schema;
+export type RoutineId = z.infer<typeof RoutineIdSchema>;
+export const parseRoutineId = routineId.parse;
+export const isRoutineId = routineId.is;
+
+const routineItemId = brandId("RoutineItemId");
+
+export const RoutineItemIdSchema = routineItemId.schema;
+export type RoutineItemId = z.infer<typeof RoutineItemIdSchema>;
+export const parseRoutineItemId = routineItemId.parse;
+export const isRoutineItemId = routineItemId.is;
