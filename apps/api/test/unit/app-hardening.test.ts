@@ -4,6 +4,7 @@ import { buildApp } from "../../src/app.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
 import {
   FakePersonalRecordRepository,
+  FakeRoutineRepository,
   authContext,
   fakeVerifier,
   FakeExerciseRepository,
@@ -22,6 +23,7 @@ describe("buildApp logger wiring", () => {
       exerciseRepository: new FakeExerciseRepository(),
       workoutRepository: new FakeWorkoutRepository(),
       personalRecordRepository: new FakePersonalRecordRepository(),
+      routineRepository: new FakeRoutineRepository(),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);

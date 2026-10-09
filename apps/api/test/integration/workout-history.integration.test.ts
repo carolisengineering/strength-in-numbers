@@ -11,6 +11,7 @@ import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 
@@ -246,6 +247,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
         exerciseRepository: createExerciseRepository(db.prisma),
         workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
         personalRecordRepository: createPersonalRecordRepository(db.prisma),
+        routineRepository: createRoutineRepository(db.prisma),
         rateLimits: GENEROUS_LIMITS,
       });
       try {

@@ -96,6 +96,15 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
+  // Spec 09 §5
+  "GET /v1/routines": withCentral("none"),
+  "GET /v1/routines/{id}": withCentral("input", { 404: ["not-found"] }),
+  "POST /v1/routines": withCentral("body", { 409: ["routine-name-taken", "routine-limit", "exercise-retired"] }),
+  "PUT /v1/routines/{id}": withCentral("body", {
+    404: ["not-found"],
+    409: ["routine-name-taken", "exercise-retired"],
+  }),
+  "DELETE /v1/routines/{id}": withCentral("body", { 404: ["not-found"] }),
 };
 
 const BASE = "https://strengthinnumbers.app/problems/";

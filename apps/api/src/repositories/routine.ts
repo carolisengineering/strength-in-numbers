@@ -38,7 +38,7 @@ export interface RoutineRecord {
  * the array index. */
 export interface RoutineWriteFields {
   name: string;
-  notes: string | null | undefined;
+  notes?: string | null | undefined;
   items: {
     exerciseId: string;
     targetSets?: number | null | undefined;
