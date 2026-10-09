@@ -3,12 +3,14 @@ import type { UserRepository } from "../repositories/user.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import type { PersonalRecordRepository } from "../repositories/personal-record.js";
+import type { RoutineRepository } from "../repositories/routine.js";
 import { registerAuthcheckRoute } from "./authcheck.js";
 import { registerMeRoutes } from "./me.js";
 import { registerPersonalRecordRoutes } from "./personal-records.js";
 import { registerProgressRoutes } from "./progress.js";
 import { registerExerciseRoutes } from "./exercises.js";
 import { registerReferenceRoutes } from "./reference.js";
+import { registerRoutineRoutes } from "./routines.js";
 import { registerSetRoutes } from "./sets.js";
 import { registerWorkoutRoutes } from "./workouts.js";
 
@@ -17,6 +19,7 @@ export interface V1RouteDeps {
   exerciseRepository: ExerciseRepository;
   workoutRepository: WorkoutRepository;
   personalRecordRepository: PersonalRecordRepository;
+  routineRepository: RoutineRepository;
 }
 
 export function registerV1Routes(
@@ -28,6 +31,7 @@ export function registerV1Routes(
   registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerWorkoutRoutes(app, { workoutRepository: deps.workoutRepository });
+  registerRoutineRoutes(app, { routineRepository: deps.routineRepository });
   registerSetRoutes(app, { workoutRepository: deps.workoutRepository });
   registerPersonalRecordRoutes(app, { personalRecordRepository: deps.personalRecordRepository });
   registerProgressRoutes(app, { personalRecordRepository: deps.personalRecordRepository });

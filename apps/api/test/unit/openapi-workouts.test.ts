@@ -94,6 +94,7 @@ describe("AC20 — the nine workout operations are in the published OpenAPI cont
         "clientGeneratedId",
         "createdAt",
         "updatedAt",
+        "routineName", // Spec 09 AC24
       ]),
     );
     expect(workoutFields.every(isCamelCase)).toBe(true);
@@ -107,7 +108,7 @@ describe("AC20 — the nine workout operations are in the published OpenAPI cont
     expect(exercisesSchema?.items).toBeDefined();
     const exerciseFields = Object.keys(exercisesSchema!.items!.properties);
     expect(exerciseFields).toEqual(
-      expect.arrayContaining(["id", "workoutId", "position", "exerciseId"]),
+      expect.arrayContaining(["id", "workoutId", "position", "exerciseId", "targetSets", "targetRpe", "supersetGroup"]), // Spec 09 AC24
     );
     expect(exerciseFields.every(isCamelCase)).toBe(true);
   });

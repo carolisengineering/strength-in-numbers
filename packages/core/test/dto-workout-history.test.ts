@@ -20,6 +20,7 @@ const workout = {
   source: "manual",
   createdAt: "2026-09-01T10:00:00.000Z",
   updatedAt: "2026-09-01T11:00:00.000Z",
+  routineName: null,
 };
 const summary = {
   ...workout,

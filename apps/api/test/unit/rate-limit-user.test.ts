@@ -11,7 +11,7 @@ const verifier = fakeVerifier((t) => authContext({ authSub: `auth0|${t}`, email:
 const ID = "00000000-0000-7000-8000-000000000001";
 
 /** Spec 05.2 §6.2 — every /v1 write route and its group. */
-const ROUTES: [WriteGroup, "POST" | "PATCH" | "DELETE", string][] = [
+const ROUTES: [WriteGroup, "POST" | "PUT" | "PATCH" | "DELETE", string][] = [
   ["sets", "POST", `/v1/workout-exercises/${ID}/sets`],
   ["sets", "PATCH", `/v1/sets/${ID}`],
   ["sets", "DELETE", `/v1/sets/${ID}`],
@@ -25,6 +25,9 @@ const ROUTES: [WriteGroup, "POST" | "PATCH" | "DELETE", string][] = [
   ["exercises", "PATCH", `/v1/exercises/${ID}`],
   ["exercises", "POST", `/v1/exercises/${ID}/fork`],
   ["exercises", "DELETE", `/v1/exercises/${ID}`],
+  ["routines", "POST", "/v1/routines"],
+  ["routines", "PUT", `/v1/routines/${ID}`],
+  ["routines", "DELETE", `/v1/routines/${ID}`],
   ["me", "PATCH", "/v1/me"],
 ];
 const call = (method: string, url: string, headers: Record<string, string> = A) => ({
@@ -129,5 +132,16 @@ describe("AC16 — L2 rejection log names the user and group", () => {
     expect(hit).toMatchObject({ level: 40, layer: "user-rate", group: "me" });
     expect(typeof hit?.userId).toBe("string");
     expect(hit).not.toHaveProperty("ip");
+  });
+});
+
+describe("Spec 09 AC25 — routines group at 30", () => {
+  it("the 31st routine write in a window is 429; a GET is not counted", async () => {
+    const { app } = await buildTestApp({ tokenVerifier: verifier, rateLimits: limitsWith({ groups: { routines: 30 } }) });
+    for (let i = 0; i < 30; i += 1) {
+      expect((await app.inject(call("POST", "/v1/routines"))).statusCode, `write ${i + 1}`).toBe(422);
+    }
+    expect((await app.inject(call("POST", "/v1/routines"))).statusCode).toBe(429);
+    expect((await app.inject({ method: "GET", url: "/v1/routines", headers: A })).statusCode).toBe(200);
   });
 });

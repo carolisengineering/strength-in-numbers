@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { RECORD_UNIT_BY_TYPE } from "@sin/core";
@@ -19,7 +17,7 @@ const MIGRATIONS = [
  * Spec 07.0 AC1/AC2 — 0008 on top of 0001..0007. The whole-schema no-drift
  * check lives in the NEWEST migration's test (it diffs against the full
  * schema.prisma, so it can only pass once every migration is applied); it
- * moved here from set-entry-migration.integration.test.ts.
+ * moved on to routine-migration.integration.test.ts (0009, Spec 09 AC27).
  */
 describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0008_create_personal_record (real Postgres)", () => {
   let db: IntegrationDb;
@@ -132,29 +130,6 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0008_create_personal_recor
     await expect(insertRecord("best_set_volume", "kg_reps", "327666967.233")).resolves.toBeUndefined();
   });
 
-  it("AC1 — prisma migrate diff (migrated DB → schema.prisma) reports no difference beyond the two generated columns", () => {
-    // spawnSync, not execFileSync + try/catch: a CLI that fails to run at all
-    // must FAIL this test, not look like "no diff" (05.0 D49's pattern).
-    //
-    // Prisma has no generated-column DSL: it introspects `weight_kg` /
-    // `distance_m` as columns whose default is `dbgenerated(<expression>)`,
-    // while the model declares none, and reports that as a changed default
-    // (Spec 05.1 §4). Any other reported change is real drift.
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2); // 2 = "diff found"; anything else means the CLI itself failed
-    const changeLines = r.stdout
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
-  });
+  // The whole-schema `prisma migrate diff` no-drift check moved to the newest
+  // migration's test (routine-migration.integration.test.ts, Spec 09 AC27).
 });

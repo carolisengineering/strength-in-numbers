@@ -73,6 +73,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     source: "manual",
     createdAt: T0,
     updatedAt: T0,
+    routineName: null,
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -85,6 +86,12 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         notes: null,
         createdAt: T0,
         updatedAt: T0,
+        targetSets: null,
+        targetRepsLow: null,
+        targetRepsHigh: null,
+        targetRpe: null,
+        restSeconds: null,
+        supersetGroup: null,
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
@@ -105,6 +112,7 @@ export function makeWorkoutSummary(overrides: Record<string, unknown> = {}): Wor
     source: "manual",
     createdAt: T0,
     updatedAt: T0,
+    routineName: null,
     exerciseCount: 1,
     exerciseNames: ["Bench Press"],
     workingSetCount: 3,

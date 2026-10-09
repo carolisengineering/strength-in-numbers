@@ -6,6 +6,7 @@ import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { testConfig } from "../helpers/build-test-app.js";
@@ -73,6 +74,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
       exerciseRepository: createExerciseRepository(db.prisma),
       workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
       personalRecordRepository: createPersonalRecordRepository(db.prisma),
+      routineRepository: createRoutineRepository(db.prisma),
     });
   }
 

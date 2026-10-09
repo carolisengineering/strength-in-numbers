@@ -9,8 +9,8 @@ import { RateLimitedError, type RateLimitSource } from "../errors/app-error.js";
  * used (D11) and why L3 releases on `onSend` (D13).
  */
 
-export type WriteGroup = "sets" | "workouts" | "exercises" | "me";
-export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercises", "me"];
+export type WriteGroup = "sets" | "workouts" | "exercises" | "routines" | "me";
+export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercises", "routines", "me"];
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -41,7 +41,7 @@ export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   ip: 600,
   // ~250 KB per response: 30/min caps one IP at ~7.5 MB/min (L1 alone allows ~150).
   docs: 30,
-  groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, me: 10 }),
+  groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10 }),
   inflight: 4,
 });
 

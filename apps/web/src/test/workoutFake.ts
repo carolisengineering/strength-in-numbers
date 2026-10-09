@@ -282,6 +282,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         source: "manual",
         createdAt: now(),
         updatedAt: now(),
+        routineName: null,
         exercises: [],
       });
       return HttpResponse.json(workoutOf(state.active), { status: 201 });
@@ -394,6 +395,12 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         notes: null,
         createdAt: now(),
         updatedAt: now(),
+        targetSets: null,
+        targetRepsLow: null,
+        targetRepsHigh: null,
+        targetRpe: null,
+        restSeconds: null,
+        supersetGroup: null,
       };
       state.active = WorkoutDetailSchema.parse({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
       return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });

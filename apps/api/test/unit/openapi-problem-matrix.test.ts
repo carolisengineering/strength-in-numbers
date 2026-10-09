@@ -58,7 +58,11 @@ const MATRIX: Record<string, Slugs> = {
     403: ["exercise-immutable"],
     404: ["not-found"],
   }),
-  "POST /v1/workouts": withCentral("body", { 409: ["workout-in-progress-exists"] }),
+  // Spec 09 §5: + 404 (routineId absent/foreign) and 409 exercise-retired (an item retired since).
+  "POST /v1/workouts": withCentral("body", {
+    404: ["not-found"],
+    409: ["workout-in-progress-exists", "exercise-retired"],
+  }),
   "GET /v1/workouts/active": withCentral("none", { 404: ["not-found"] }),
   // Spec 07.1 §5: limit / cursor are querystring 422s; no domain problems.
   "GET /v1/workouts": withCentral("input"),
@@ -96,6 +100,15 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["workout-finished"],
   }),
+  // Spec 09 §5
+  "GET /v1/routines": withCentral("none"),
+  "GET /v1/routines/{id}": withCentral("input", { 404: ["not-found"] }),
+  "POST /v1/routines": withCentral("body", { 409: ["routine-name-taken", "routine-limit", "exercise-retired"] }),
+  "PUT /v1/routines/{id}": withCentral("body", {
+    404: ["not-found"],
+    409: ["routine-name-taken", "exercise-retired"],
+  }),
+  "DELETE /v1/routines/{id}": withCentral("body", { 404: ["not-found"] }),
 };
 
 const BASE = "https://strengthinnumbers.app/problems/";

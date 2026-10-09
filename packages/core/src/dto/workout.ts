@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "../enums.js";
-import { ExerciseIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
+import { ExerciseIdSchema, RoutineIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { PersonalRecordSchema } from "./personal-record.js";
 import { SetEntrySchema } from "./set-entry.js";
@@ -57,6 +57,8 @@ export const WorkoutSchema = z.object({
   source: z.enum(WORKOUT_SOURCE_VALUES),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  /** Spec 09 D15/D20: the routine's name as it was at start; `null` for a manual start. */
+  routineName: z.string().nullable(),
 });
 export type Workout = z.infer<typeof WorkoutSchema>;
 
@@ -71,6 +73,15 @@ export const WorkoutExerciseSchema = z.object({
   notes: z.string().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  // Spec 09 AC24: target snapshots copied at start-from-routine (null when added
+  // by hand) and the live superset group (D10).
+  targetSets: z.number().int().nullable(),
+  targetRepsLow: z.number().int().nullable(),
+  targetRepsHigh: z.number().int().nullable(),
+  /** Decimal (8.5); stored as tenths (Spec 09 D5). */
+  targetRpe: z.number().nullable(),
+  restSeconds: z.number().int().nullable(),
+  supersetGroup: z.number().int().nullable(),
 });
 export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
 
@@ -95,6 +106,8 @@ export const CreateWorkoutSchema = z.strictObject({
   tzOffsetMinutes: TzOffsetMinutes.optional(),
   title: WorkoutTitle.nullable().optional(),
   notes: WorkoutNotes.nullable().optional(),
+  /** Spec 09 D11: start from a routine. Ignored on an idempotent replay (05.0 D39). */
+  routineId: RoutineIdSchema.optional(),
 });
 export type CreateWorkout = z.infer<typeof CreateWorkoutSchema>;
 
@@ -118,6 +131,8 @@ export type AddWorkoutExercise = z.infer<typeof AddWorkoutExerciseSchema>;
 export const UpdateWorkoutExerciseSchema = z.strictObject({
   position: z.number().int().min(0).optional(),
   notes: WorkoutNotes.nullable().optional(),
+  /** Spec 09 D10: any 1..99, `null` clears; no density or adjacency rule on a workout. */
+  supersetGroup: z.number().int().min(1).max(99).nullable().optional(),
 });
 export type UpdateWorkoutExercise = z.infer<typeof UpdateWorkoutExerciseSchema>;
 

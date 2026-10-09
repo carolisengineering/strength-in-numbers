@@ -167,8 +167,12 @@ export class ExerciseRetiredError extends AppError {
   readonly publicDetail =
     "This exercise has been retired and can no longer be modified.";
 
-  constructor(internal = "target exercise is_active=false") {
-    super(internal);
+  /** Spec 09: a routine write / start names the offending item through `fieldErrors`. */
+  constructor(
+    internal = "target exercise is_active=false",
+    options?: { fieldErrors?: readonly FieldError[] },
+  ) {
+    super(internal, options);
   }
 }
 
@@ -267,6 +271,31 @@ export class IncompleteWorkingSetsError extends AppError {
     "One or more working sets are missing required data and must be completed or removed before finishing this workout.";
 
   constructor(internal = "a working set is missing a required measure") {
+    super(internal);
+  }
+}
+
+/** Spec 09 §5 — the caller already has a routine with this name (case-insensitive,
+ * `routine_user_name_key`). Decided by the unique index, never a read-then-write. */
+export class RoutineNameTakenError extends AppError {
+  readonly status = 409;
+  readonly slug = "routine-name-taken";
+  readonly title = "Routine name taken";
+  readonly publicDetail = "A routine with this name already exists.";
+
+  constructor(internal = "routine_user_name_key: caller already has a routine with this name") {
+    super(internal);
+  }
+}
+
+/** Spec 09 §5 / D6 — the caller has ROUTINES_PER_USER_MAX routines. */
+export class RoutineLimitError extends AppError {
+  readonly status = 409;
+  readonly slug = "routine-limit";
+  readonly title = "Routine limit reached";
+  readonly publicDetail = "You have reached the maximum number of routines.";
+
+  constructor(internal = "per-user routine cap exceeded") {
     super(internal);
   }
 }

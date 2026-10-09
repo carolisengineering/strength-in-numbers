@@ -12,6 +12,7 @@ import {
   WorkoutHistoryQuerySchema,
   WorkoutHistoryResponseSchema,
   milliToDecimalString,
+  tenthsToRpe,
   type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
@@ -65,6 +66,7 @@ function toWorkoutDto(r: WorkoutRecord): Workout {
     source: r.source as Workout["source"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    routineName: r.routineName,
   };
 }
 
@@ -92,6 +94,13 @@ function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise {
     notes: r.notes,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    targetSets: r.targetSets,
+    targetRepsLow: r.targetRepsLow,
+    targetRepsHigh: r.targetRepsHigh,
+    // Spec 09 D5: the one tenths → decimal conversion on the read side.
+    targetRpe: r.targetRpeTenths === null ? null : tenthsToRpe(r.targetRpeTenths),
+    restSeconds: r.restSeconds,
+    supersetGroup: r.supersetGroup,
   };
 }
 
@@ -120,14 +129,18 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workouts",
     {
       schema: { body: CreateWorkoutSchema, response: { 201: WorkoutSchema, 200: WorkoutSchema } },
-      config: { published: true, problems: [WorkoutInProgressExistsError], writeGroup: "workouts" },
+      config: {
+        published: true,
+        problems: [WorkoutInProgressExistsError, NotFoundError, ExerciseRetiredError],
+        writeGroup: "workouts",
+      },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
       const startedAt = new Date(request.body.startedAt);
       assertStartedAtInBounds(startedAt, new Date());
 
-      const { workout, created } = await deps.workoutRepository.createWorkout(
+      const { workout, created, copiedCount } = await deps.workoutRepository.createWorkout(
         actingUserId,
         {
           clientGeneratedId: request.body.clientGeneratedId,
@@ -135,12 +148,20 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
           tzOffsetMinutes: request.body.tzOffsetMinutes,
           title: request.body.title,
           notes: request.body.notes,
+          routineId: request.body.routineId,
         },
         request.user!.timezone,
       );
 
       if (created) {
         request.log.info({ workout_id: workout.id, user_id: actingUserId }, "workout_started");
+        if (request.body.routineId !== undefined) {
+          // Spec 09 §9: ids and counts only.
+          request.log.info(
+            { workout_id: workout.id, routine_id: request.body.routineId, user_id: actingUserId, item_count: copiedCount },
+            "workout_started_from_routine",
+          );
+        }
         reply.code(201).header("location", `/v1/workouts/${workout.id}`);
       } else {
         reply.code(200);

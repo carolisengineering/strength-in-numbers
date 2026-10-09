@@ -5,10 +5,12 @@ import type { TokenVerifier } from "../../src/auth/verify.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../../src/repositories/workout.js";
 import type { PersonalRecordRepository } from "../../src/repositories/personal-record.js";
+import type { RoutineRepository } from "../../src/repositories/routine.js";
 import { RATE_LIMITS, type RateLimitConfig, type WriteGroup } from "../../src/plugins/rate-limit.js";
 import {
   FakeExerciseRepository,
   FakePersonalRecordRepository,
+  FakeRoutineRepository,
   FakeUserRepository,
   FakeWorkoutRepository,
   authContext,
@@ -40,6 +42,8 @@ export interface TestAppOptions<
   workoutRepository?: W;
   /** Spec 07.0 — defaults to an in-memory fake. */
   personalRecordRepository?: PersonalRecordRepository;
+  /** Spec 09 — defaults to an in-memory fake over `exerciseRepository`. */
+  routineRepository?: RoutineRepository;
   logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
@@ -52,7 +56,7 @@ export const GENEROUS_LIMITS: RateLimitConfig = {
   windowMs: 60_000,
   ip: 1_000_000,
   docs: 1_000_000,
-  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, me: 1_000_000 },
+  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, routines: 1_000_000, me: 1_000_000 },
   inflight: 1_000_000,
 };
 
@@ -75,12 +79,14 @@ export async function buildTestApp<
   repo: FakeUserRepository;
   exerciseRepo: R;
   workoutRepo: W;
+  routineRepo: RoutineRepository;
 }> {
   const repo = opts.userRepository ?? new FakeUserRepository();
   const exerciseRepo = (opts.exerciseRepository ??
     new FakeExerciseRepository()) as R;
+  const routineRepo = opts.routineRepository ?? new FakeRoutineRepository(exerciseRepo);
   const workoutRepo = (opts.workoutRepository ??
-    new FakeWorkoutRepository(exerciseRepo)) as W;
+    new FakeWorkoutRepository(exerciseRepo, routineRepo instanceof FakeRoutineRepository ? routineRepo : undefined)) as W;
   const deps: BuildAppDeps = {
     config: opts.config ?? testConfig(),
     logger: opts.logger ?? false,
@@ -91,8 +97,9 @@ export async function buildTestApp<
     exerciseRepository: exerciseRepo,
     workoutRepository: workoutRepo,
     personalRecordRepository: opts.personalRecordRepository ?? new FakePersonalRecordRepository(),
+    routineRepository: routineRepo,
     rateLimits: opts.rateLimits,
   };
   const app = await buildApp(deps);
-  return { app, repo, exerciseRepo, workoutRepo };
+  return { app, repo, exerciseRepo, workoutRepo, routineRepo };
 }

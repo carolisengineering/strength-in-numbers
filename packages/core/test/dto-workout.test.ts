@@ -26,6 +26,7 @@ const validWorkout = {
   source: "manual",
   createdAt: "2026-09-01T10:00:00.000Z",
   updatedAt: "2026-09-01T10:00:00.000Z",
+  routineName: null,
 };
 
 describe("AC19 — dto/workout.ts code constants", () => {
@@ -136,6 +137,12 @@ describe("AC19 — WorkoutExerciseSchema / WorkoutDetailSchema", () => {
     notes: null,
     createdAt: validWorkout.createdAt,
     updatedAt: validWorkout.updatedAt,
+    targetSets: null,
+    targetRepsLow: null,
+    targetRepsHigh: null,
+    targetRpe: null,
+    restSeconds: null,
+    supersetGroup: null,
   };
   it("WorkoutExerciseSchema parses a valid row", () => {
     expect(() => WorkoutExerciseSchema.parse(validWe)).not.toThrow();
@@ -144,5 +151,47 @@ describe("AC19 — WorkoutExerciseSchema / WorkoutDetailSchema", () => {
     expect(() =>
       WorkoutDetailSchema.parse({ ...validWorkout, exercises: [{ ...validWe, sets: [] }] }),
     ).not.toThrow();
+  });
+});
+
+describe("Spec 09 AC24 — additive read fields", () => {
+  it("WorkoutSchema requires routineName (nullable); WorkoutExerciseSchema requires the six target fields", () => {
+    const { routineName: _omitted, ...withoutRoutineName } = validWorkout;
+    void _omitted;
+    expect(WorkoutSchema.safeParse(withoutRoutineName).success).toBe(false);
+    expect(WorkoutSchema.safeParse({ ...withoutRoutineName, routineName: null }).success).toBe(true);
+    expect(WorkoutSchema.safeParse({ ...withoutRoutineName, routineName: "Push A" }).success).toBe(true);
+    const we = {
+      id: "018fcb3e-3b8a-7d6e-9c1a-000000000003",
+      workoutId: validWorkout.id,
+      position: 0,
+      exerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000004",
+      exerciseNameSnapshot: "Bench",
+      modalitySnapshot: "weight_reps",
+      notes: null,
+      createdAt: validWorkout.createdAt,
+      updatedAt: validWorkout.updatedAt,
+    };
+    expect(WorkoutExerciseSchema.safeParse(we).success).toBe(false);
+    const full = {
+      ...we,
+      targetSets: null,
+      targetRepsLow: null,
+      targetRepsHigh: null,
+      targetRpe: 8.5,
+      restSeconds: null,
+      supersetGroup: null,
+    };
+    expect(WorkoutExerciseSchema.safeParse(full).success).toBe(true);
+  });
+  it("CreateWorkoutSchema takes an optional routineId (uuid); UpdateWorkoutExerciseSchema takes supersetGroup 1..99 | null", () => {
+    const base = { clientGeneratedId: validWorkout.clientGeneratedId, startedAt: validWorkout.startedAt };
+    expect(CreateWorkoutSchema.safeParse({ ...base, routineId: validWorkout.id }).success).toBe(true);
+    expect(CreateWorkoutSchema.safeParse({ ...base, routineId: "not-a-uuid" }).success).toBe(false);
+    expect(UpdateWorkoutExerciseSchema.safeParse({ supersetGroup: null }).success).toBe(true);
+    expect(UpdateWorkoutExerciseSchema.safeParse({ supersetGroup: 99, position: 1 }).success).toBe(true);
+    for (const bad of [0, 100, 2.5, "1"]) {
+      expect(UpdateWorkoutExerciseSchema.safeParse({ supersetGroup: bad }).success, String(bad)).toBe(false);
+    }
   });
 });

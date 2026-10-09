@@ -22,7 +22,7 @@ async function setup(opts: { logger?: FastifyBaseLogger; rateLimits?: ReturnType
       workoutRepo.workouts.set(id, {
         id, userId, title, notes: null, startedAt, endedAt: new Date(startedAt.getTime() + 3_600_000),
         localDate: startedAt.toISOString().slice(0, 10), tzOffsetMinutes: 0, clientGeneratedId: uuidv7(),
-        source: "manual", createdAt: startedAt, updatedAt: startedAt,
+        source: "manual", createdAt: startedAt, updatedAt: startedAt, routineName: null,
       });
     }
   };

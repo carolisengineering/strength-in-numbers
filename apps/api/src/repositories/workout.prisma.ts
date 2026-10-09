@@ -1,5 +1,5 @@
 // apps/api/src/repositories/workout.prisma.ts
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { isWorkoutExerciseId, isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
@@ -10,6 +10,7 @@ import {
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
 import type { ExerciseRepository } from "./exercise.js";
+import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
@@ -32,7 +33,12 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
 } from "./workout-writes.js";
-import { assertWorkingSetsComplete, createSetEntryMethods, loadSetsForWorkout } from "./set-entry.prisma.js";
+import {
+  assertWorkingSetsComplete,
+  createSetEntryMethods,
+  loadSetsForWorkout,
+  type RawClient,
+} from "./set-entry.prisma.js";
 import type { PersonalRecordRecord } from "./personal-record.js";
 import { lockUserRecords, recomputeRecordsForRoots, rootsForWorkout } from "./personal-record.prisma.js";
 import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-history.prisma.js";
@@ -57,6 +63,7 @@ interface WorkoutDbRow {
   source: string;
   created_at: Date;
   updated_at: Date;
+  routine_name_snapshot: string | null;
 }
 
 function toRecord(r: WorkoutDbRow): WorkoutRecord {
@@ -73,6 +80,7 @@ function toRecord(r: WorkoutDbRow): WorkoutRecord {
     source: r.source,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    routineName: r.routine_name_snapshot,
   };
 }
 
@@ -86,6 +94,12 @@ interface WorkoutExerciseDbRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  target_sets: number | null;
+  target_reps_low: number | null;
+  target_reps_high: number | null;
+  target_rpe: number | null;
+  rest_seconds: number | null;
+  superset_group: number | null;
 }
 
 function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
@@ -99,41 +113,13 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
     notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    targetSets: r.target_sets,
+    targetRepsLow: r.target_reps_low,
+    targetRepsHigh: r.target_reps_high,
+    targetRpeTenths: r.target_rpe,
+    restSeconds: r.rest_seconds,
+    supersetGroup: r.superset_group,
   };
-}
-
-interface RawPrismaError extends Error {
-  code?: string;
-  meta?: { code?: string; message?: string };
-}
-
-/** True for a raw-query unique-violation surfaced through `$queryRaw`
- * (`P2010` + driver SQLSTATE `23505` in `meta` — distinct from the typed
- * client's `P2002` + `meta.target`; Spec 05.0 D40 pins this shape). */
-function isRawUniqueViolation(err: unknown): err is RawPrismaError {
-  return (
-    err instanceof Error &&
-    (err as RawPrismaError).code === "P2010" &&
-    (err as RawPrismaError).meta?.code === "23505"
-  );
-}
-
-/**
- * Against a real driver, `meta.message` on this error path is only the
- * DETAIL line (`Key (col[, col...])=(val[, val...]) already exists.`) — the
- * primary message that names the constraint (`duplicate key value violates
- * unique constraint "…"`) is not surfaced through `$queryRaw`'s error
- * mapping, so the constraint can't be identified by name here. It's
- * identified by column list instead: the INSERT's `ON CONFLICT (user_id,
- * client_generated_id) DO NOTHING` already suppresses `workout_user_client_id_key`
- * violations without raising, so the only unique index left that can throw
- * from this statement is the single-column partial index
- * `workout_user_active_key` (on `user_id`, `WHERE ended_at IS NULL`) — its
- * violation's DETAIL always lists exactly `user_id`.
- */
-function violatedConstraintColumns(err: RawPrismaError): string | null {
-  const match = /^Key \(([^)]+)\)=/.exec(err.meta?.message ?? "");
-  return match?.[1]?.trim() ?? null;
 }
 
 /** §6.5: validates a caller-supplied `endedAt` string against the finish
@@ -146,15 +132,40 @@ function parseEndedAt(startedAt: Date, endedAtIso: string, now: Date): Date {
 }
 
 type InsertOutcome =
-  | { kind: "inserted"; row: WorkoutDbRow }
+  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number }
   | { kind: "no-row" }
   | { kind: "active-conflict" };
+
+/** Carries a non-`inserted` outcome out of the routine-start transaction so
+ * Prisma rolls it back (a 23505 has already poisoned it) instead of
+ * committing — the outer code then runs 05.0's re-read / retry rules
+ * unchanged (Spec 09 §6.5 step 1). */
+class StartOutcomeSignal extends Error {
+  constructor(readonly outcome: InsertOutcome) {
+    super("start outcome");
+  }
+}
+
+interface RoutineItemCopyRow {
+  position: number;
+  exercise_id: string;
+  name: string;
+  modality: string;
+  is_active: boolean;
+  target_sets: number | null;
+  target_reps_low: number | null;
+  target_reps_high: number | null;
+  target_rpe: number | null;
+  rest_seconds: number | null;
+  superset_group: number | null;
+}
 
 export function createWorkoutRepository(
   prisma: PrismaClient,
   exerciseRepository: ExerciseRepository,
 ): WorkoutRepository {
   async function tryInsert(
+    client: RawClient,
     id: string,
     actingUserId: string,
     fields: CreateWorkoutFields,
@@ -162,7 +173,7 @@ export function createWorkoutRepository(
     localDate: string,
   ): Promise<InsertOutcome> {
     try {
-      const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
+      const rows = await client.$queryRaw<WorkoutDbRow[]>`
         INSERT INTO "workout"
           (id, user_id, title, notes, started_at, local_date, tz_offset_minutes,
            client_generated_id, source, created_at, updated_at)
@@ -172,10 +183,10 @@ export function createWorkoutRepository(
            ${fields.clientGeneratedId}::uuid, 'manual', now(), now())
         ON CONFLICT (user_id, client_generated_id) DO NOTHING
         RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                  tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                  tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
       `;
       const insertedRow = rows[0];
-      return insertedRow ? { kind: "inserted", row: insertedRow } : { kind: "no-row" };
+      return insertedRow ? { kind: "inserted", row: insertedRow, copiedCount: 0 } : { kind: "no-row" };
     } catch (err) {
       if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
         return { kind: "active-conflict" };
@@ -184,10 +195,82 @@ export function createWorkoutRepository(
     }
   }
 
+  /**
+   * Spec 09 §6.5: the three-outcome insert, then — only when inserted — the
+   * copy, all in one transaction. The one-active check (step 1) decides before
+   * any routine work; a replay does nothing else (AC18); the routine row is
+   * read `FOR SHARE` so a concurrent PUT/DELETE cannot tear the copy (D12).
+   * `NotFoundError` / `ExerciseRetiredError` roll the workout back (AC17).
+   */
+  async function insertFromRoutine(
+    id: string,
+    actingUserId: string,
+    fields: CreateWorkoutFields & { routineId: string },
+    tzOffsetMinutes: number,
+    localDate: string,
+  ): Promise<InsertOutcome> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const outcome = await tryInsert(tx, id, actingUserId, fields, tzOffsetMinutes, localDate);
+        if (outcome.kind !== "inserted") throw new StartOutcomeSignal(outcome);
+
+        const routineRows = await tx.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id, name FROM "routine"
+          WHERE id = ${fields.routineId}::uuid AND user_id = ${actingUserId}::uuid
+          FOR SHARE
+        `;
+        const routine = routineRows[0];
+        if (!routine) throw new NotFoundError("routine not found or not owned by the acting user");
+
+        const items = await tx.$queryRaw<RoutineItemCopyRow[]>`
+          SELECT ri.position, ri.exercise_id, e.name, e.modality, e.is_active, ri.target_sets,
+                 ri.target_reps_low, ri.target_reps_high, ri.target_rpe, ri.rest_seconds, ri.superset_group
+          FROM "routine_item" ri JOIN "exercise" e ON e.id = ri.exercise_id
+          WHERE ri.routine_id = ${routine.id}::uuid
+          ORDER BY ri.position
+        `;
+        const retired = items.find((it) => !it.is_active);
+        if (retired) {
+          // A silently shorter workout is worse than a refusal the lifter can fix (D12).
+          throw new ExerciseRetiredError(`routine item ${retired.position} is retired`, {
+            fieldErrors: [
+              { path: "routineId", message: `item at position ${retired.position} refers to a retired exercise` },
+            ],
+          });
+        }
+        if (items.length > 0) {
+          const values = items.map(
+            (it) => Prisma.sql`(
+              ${uuidv7()}::uuid, ${id}::uuid, ${it.position}, ${it.exercise_id}::uuid, ${it.name}, ${it.modality}, NULL,
+              ${it.target_sets}, ${it.target_reps_low}, ${it.target_reps_high}, ${it.target_rpe},
+              ${it.rest_seconds}, ${it.superset_group}, now(), now())`,
+          );
+          await tx.$executeRaw`
+            INSERT INTO "workout_exercise"
+              (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, notes,
+               target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+               created_at, updated_at)
+            VALUES ${Prisma.join(values)}
+          `;
+        }
+        const updated = await tx.$queryRaw<WorkoutDbRow[]>`
+          UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name}
+          WHERE id = ${id}::uuid
+          RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+        `;
+        return { kind: "inserted", row: updated[0]!, copiedCount: items.length } as InsertOutcome;
+      });
+    } catch (err) {
+      if (err instanceof StartOutcomeSignal) return err.outcome;
+      throw err; // NotFoundError / ExerciseRetiredError: rolled back, no workout row remains (AC17)
+    }
+  }
+
   async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
     const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
       SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at
+             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
       FROM "workout_exercise"
       WHERE workout_id = ${workoutId}::uuid
       ORDER BY position ASC
@@ -217,7 +300,7 @@ export function createWorkoutRepository(
   ): Promise<WorkoutDbRow | undefined> {
     const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
       SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-             tz_offset_minutes, client_generated_id, source, created_at, updated_at
+             tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
       FROM "workout"
       WHERE user_id = ${actingUserId}::uuid AND client_generated_id = ${clientGeneratedId}::uuid
     `;
@@ -238,44 +321,44 @@ export function createWorkoutRepository(
         fields.tzOffsetMinutes ?? offsetMinutesForZone(startedAtIso, userTimezone);
       const localDate = localDateFor(startedAtIso, tzOffsetMinutes);
 
-      const attempt1 = await tryInsert(
-        uuidv7(),
-        actingUserId,
-        fields,
-        tzOffsetMinutes,
-        localDate,
-      );
+      // Spec 09 D11: with no `routineId` the path below is byte-for-byte 05.0's.
+      const attempt = (): Promise<InsertOutcome> =>
+        fields.routineId !== undefined
+          ? insertFromRoutine(
+              uuidv7(),
+              actingUserId,
+              { ...fields, routineId: fields.routineId },
+              tzOffsetMinutes,
+              localDate,
+            )
+          : tryInsert(prisma, uuidv7(), actingUserId, fields, tzOffsetMinutes, localDate);
+
+      const attempt1 = await attempt();
 
       if (attempt1.kind === "inserted") {
-        return { workout: toRecord(attempt1.row), created: true };
+        return { workout: toRecord(attempt1.row), created: true, copiedCount: attempt1.copiedCount };
       }
 
       if (attempt1.kind === "active-conflict") {
         const stored = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-        if (stored) return { workout: toRecord(stored), created: false };
+        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0 };
         throw new WorkoutInProgressExistsError();
       }
 
       // attempt1.kind === "no-row": the idempotency key already existed *or*
       // its row was concurrently deleted between the insert and this re-read.
       const stored1 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored1) return { workout: toRecord(stored1), created: false };
+      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0 };
 
       // Delete race: retry the insert exactly once (§6.2 step 3, D40).
-      const attempt2 = await tryInsert(
-        uuidv7(),
-        actingUserId,
-        fields,
-        tzOffsetMinutes,
-        localDate,
-      );
+      const attempt2 = await attempt();
 
       if (attempt2.kind === "inserted") {
-        return { workout: toRecord(attempt2.row), created: true };
+        return { workout: toRecord(attempt2.row), created: true, copiedCount: attempt2.copiedCount };
       }
 
       const stored2 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored2) return { workout: toRecord(stored2), created: false };
+      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0 };
 
       if (attempt2.kind === "active-conflict") {
         // The retry raced a *different* in-progress workout: a genuine
@@ -293,7 +376,7 @@ export function createWorkoutRepository(
     async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         FROM "workout"
         WHERE user_id = ${actingUserId}::uuid AND ended_at IS NULL
       `;
@@ -308,7 +391,7 @@ export function createWorkoutRepository(
       }
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         FROM "workout"
         WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
       `;
@@ -344,7 +427,7 @@ export function createWorkoutRepository(
         // this lock and the write with no restructuring.
         const rows = await tx.$queryRaw<WorkoutDbRow[]>`
           SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-                 tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
           FROM "workout"
           WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           FOR UPDATE
@@ -386,7 +469,7 @@ export function createWorkoutRepository(
               updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                    tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         `;
         // §9: `exercise_count` for the `workout_finished` log line comes from
         // this transaction (the lock above already holds the row), not a
@@ -526,7 +609,7 @@ export function createWorkoutRepository(
             (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
              ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
         `;
         return toExerciseRecord(insertedRows[0]!);
       });
@@ -590,9 +673,9 @@ export function createWorkoutRepository(
         }
 
         const targetRows = await tx.$queryRaw<
-          { id: string; position: number; notes: string | null }[]
+          { id: string; position: number; notes: string | null; superset_group: number | null }[]
         >`
-          SELECT id, position, notes FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT id, position, notes, superset_group FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
         `;
         const target = targetRows[0];
         if (!target) {
@@ -636,12 +719,15 @@ export function createWorkoutRepository(
         // other row is touched.
 
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : target.notes;
+        // Spec 09 D10: key present with `null` clears; absent leaves the group.
+        // No density, adjacency or size rule on a workout.
+        const nextGroup = "supersetGroup" in patch ? (patch.supersetGroup ?? null) : target.superset_group;
         const updatedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
           UPDATE "workout_exercise"
-          SET position = ${nextPosition}, notes = ${nextNotes}, updated_at = now()
+          SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup}, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
         `;
         return toExerciseRecord(updatedRows[0]!);
       });
