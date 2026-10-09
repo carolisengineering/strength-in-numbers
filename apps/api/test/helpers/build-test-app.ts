@@ -84,9 +84,9 @@ export async function buildTestApp<
   const repo = opts.userRepository ?? new FakeUserRepository();
   const exerciseRepo = (opts.exerciseRepository ??
     new FakeExerciseRepository()) as R;
-  const workoutRepo = (opts.workoutRepository ??
-    new FakeWorkoutRepository(exerciseRepo)) as W;
   const routineRepo = opts.routineRepository ?? new FakeRoutineRepository(exerciseRepo);
+  const workoutRepo = (opts.workoutRepository ??
+    new FakeWorkoutRepository(exerciseRepo, routineRepo instanceof FakeRoutineRepository ? routineRepo : undefined)) as W;
   const deps: BuildAppDeps = {
     config: opts.config ?? testConfig(),
     logger: opts.logger ?? false,

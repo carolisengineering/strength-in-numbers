@@ -404,7 +404,11 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   sets = new Map<string, SetEntryRecord>();
   private byClientKey = new Map<string, string>();
 
-  constructor(private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository()) {}
+  constructor(
+    private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository(),
+    /** Spec 09: the routine source for `createWorkout({ routineId })`. */
+    private readonly routineRepository?: FakeRoutineRepository,
+  ) {}
 
   private ownedWorkoutOrThrow(actingUserId: string, id: string): WorkoutRecord {
     const w = isWorkoutId(id) ? this.workouts.get(id) : undefined;
@@ -450,7 +454,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const key = `${actingUserId}:${fields.clientGeneratedId}`;
     const existingId = this.byClientKey.get(key);
     if (existingId) {
-      return { workout: this.workouts.get(existingId)!, created: false };
+      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0 };
     }
     const hasActive = [...this.workouts.values()].some(
       (w) => w.userId === actingUserId && w.endedAt === null,
@@ -477,9 +481,44 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       updatedAt: now,
       routineName: null,
     };
+    const copied: WorkoutExerciseRecord[] = [];
+    if (fields.routineId !== undefined) {
+      // Spec 09 §6.5 in miniature: 404 for an absent/foreign routine, 409 on a
+      // retired item (nothing persisted), else copy every item in order.
+      const routine = await this.routineRepository!.getById(actingUserId, fields.routineId);
+      for (const item of routine.items) {
+        const exercise = await this.exerciseRepository.findVisibleById(actingUserId, item.exerciseId);
+        if (!exercise.isActive) {
+          throw new ExerciseRetiredError(`routine item ${item.position} is retired`, {
+            fieldErrors: [
+              { path: "routineId", message: `item at position ${item.position} refers to a retired exercise` },
+            ],
+          });
+        }
+        copied.push({
+          id: uuidv7(),
+          workoutId: workout.id,
+          position: item.position,
+          exerciseId: exercise.id,
+          exerciseNameSnapshot: exercise.name,
+          modalitySnapshot: exercise.modality,
+          notes: null,
+          createdAt: now,
+          updatedAt: now,
+          targetSets: item.targetSets,
+          targetRepsLow: item.targetRepsLow,
+          targetRepsHigh: item.targetRepsHigh,
+          targetRpeTenths: item.targetRpeTenths,
+          restSeconds: item.restSeconds,
+          supersetGroup: item.supersetGroup,
+        });
+      }
+      workout.routineName = routine.name;
+    }
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
-    return { workout, created: true };
+    for (const e of copied) this.exercises.set(e.id, e);
+    return { workout, created: true, copiedCount: copied.length };
   }
 
   async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {

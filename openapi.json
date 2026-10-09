@@ -2909,8 +2909,8 @@
               }
             }
           },
-          "409": {
-            "description": "Workout already in progress",
+          "404": {
+            "description": "Not found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2922,7 +2922,31 @@
                       "properties": {
                         "type": {
                           "enum": [
-                            "https://strengthinnumbers.app/problems/workout-in-progress-exists"
+                            "https://strengthinnumbers.app/problems/not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workout already in progress / Exercise retired",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/workout-in-progress-exists",
+                            "https://strengthinnumbers.app/problems/exercise-retired"
                           ]
                         }
                       }

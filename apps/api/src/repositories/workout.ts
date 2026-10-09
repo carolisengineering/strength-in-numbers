@@ -173,6 +173,9 @@ export interface CreateSetResult {
 export interface CreateWorkoutResult {
   workout: WorkoutRecord;
   created: boolean;
+  /** Spec 09 §9: `workout_exercise` rows copied from the routine — 0 for a
+   * manual start and for a replay (nothing is copied twice, AC18). */
+  copiedCount: number;
 }
 
 /**

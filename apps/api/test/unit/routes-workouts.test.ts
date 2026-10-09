@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { buildTestApp } from "../helpers/build-test-app.js";
-import { FakeExerciseRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
+import { FakeExerciseRepository, FakeRoutineRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 
@@ -378,5 +378,97 @@ describe("AC20 — every route requires auth", () => {
     const { app } = await buildTestApp();
     const res = await app.inject({ method, url });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("Spec 09 AC16–AC18 — POST /v1/workouts with routineId", () => {
+  it("201 with routineName and the copied exercises on the detail; non-UUID routineId is 422 on routineId; unknown is 404; a replay ignores routineId", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord({ name: "Bench" });
+    exerciseRepo.byId.set(ex.id, ex);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo, routineRepo),
+    });
+    const r = await app.inject({
+      method: "POST",
+      url: "/v1/routines",
+      headers: BEARER,
+      payload: { name: "Push A", items: [{ exerciseId: ex.id, targetRpe: 8.5 }, { exerciseId: ex.id }] },
+    });
+    expect(r.statusCode).toBe(201);
+
+    const bad = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT, routineId: "nope" },
+    });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().errors[0].path).toBe("routineId");
+
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT, routineId: uuidv7() },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const key = uuidv7();
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: key, startedAt: STARTED_AT, routineId: r.json().id },
+    });
+    expect(started.statusCode).toBe(201);
+    expect(started.json().routineName).toBe("Push A");
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${started.json().id}`, headers: BEARER });
+    expect(
+      detail.json().exercises.map((e: { position: number; targetRpe: number | null }) => [e.position, e.targetRpe]),
+    ).toEqual([
+      [0, 8.5],
+      [1, null],
+    ]);
+
+    const replay = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: key, startedAt: STARTED_AT, routineId: uuidv7() },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().id).toBe(started.json().id);
+  });
+
+  it("AC17 — a retired item is 409 exercise-retired with errors[0].path = routineId", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord({ name: "Bench" });
+    exerciseRepo.byId.set(ex.id, ex);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo, routineRepo),
+    });
+    const r = await app.inject({
+      method: "POST",
+      url: "/v1/routines",
+      headers: BEARER,
+      payload: { name: "Push A", items: [{ exerciseId: ex.id }] },
+    });
+    exerciseRepo.byId.set(ex.id, { ...ex, isActive: false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT, routineId: r.json().id },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-retired");
+    expect(res.json().errors[0].path).toBe("routineId");
   });
 });
