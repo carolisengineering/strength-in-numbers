@@ -169,6 +169,26 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     expect(await repo().list(await insertUser(db))).toEqual([]);
   });
 
+  it("§6.4 — list and getById are each ONE statement, so a concurrent replace can never tear a read (code review)", async () => {
+    const u = await insertUser(db);
+    const ex = await insertExercise(db);
+    const a = await repo().create(u, routineFixture([ex, ex], { name: "A" }));
+    await repo().create(u, routineFixture([ex], { name: "B" }));
+    const statements: string[] = [];
+    // The test client logs query events (helpers.ts); count the SELECTs each read issues.
+    // `IntegrationDb.prisma` is typed without the log generic, hence the cast.
+    (db.prisma.$on as (event: "query", cb: (e: { query: string }) => void) => void)("query", (e) =>
+      statements.push(e.query),
+    );
+    const one = await repo().getById(u, a.id);
+    expect(one.items).toHaveLength(2);
+    const afterGet = statements.length;
+    const all = await repo().list(u);
+    expect(all.map((r) => r.items.length)).toEqual([2, 1]);
+    expect(statements.slice(0, afterGet), statements.join("\n")).toHaveLength(1);
+    expect(statements.slice(afterGet), statements.join("\n")).toHaveLength(1);
+  });
+
   it("AC3 / AC28 — getById: absent, non-UUID and another user's routine all throw NotFoundError", async () => {
     const u = await insertUser(db);
     const v = await insertUser(db);
