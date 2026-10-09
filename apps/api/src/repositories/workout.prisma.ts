@@ -10,6 +10,7 @@ import {
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
 import type { ExerciseRepository } from "./exercise.js";
+import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
@@ -114,40 +115,6 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
     restSeconds: r.rest_seconds,
     supersetGroup: r.superset_group,
   };
-}
-
-interface RawPrismaError extends Error {
-  code?: string;
-  meta?: { code?: string; message?: string };
-}
-
-/** True for a raw-query unique-violation surfaced through `$queryRaw`
- * (`P2010` + driver SQLSTATE `23505` in `meta` — distinct from the typed
- * client's `P2002` + `meta.target`; Spec 05.0 D40 pins this shape). */
-function isRawUniqueViolation(err: unknown): err is RawPrismaError {
-  return (
-    err instanceof Error &&
-    (err as RawPrismaError).code === "P2010" &&
-    (err as RawPrismaError).meta?.code === "23505"
-  );
-}
-
-/**
- * Against a real driver, `meta.message` on this error path is only the
- * DETAIL line (`Key (col[, col...])=(val[, val...]) already exists.`) — the
- * primary message that names the constraint (`duplicate key value violates
- * unique constraint "…"`) is not surfaced through `$queryRaw`'s error
- * mapping, so the constraint can't be identified by name here. It's
- * identified by column list instead: the INSERT's `ON CONFLICT (user_id,
- * client_generated_id) DO NOTHING` already suppresses `workout_user_client_id_key`
- * violations without raising, so the only unique index left that can throw
- * from this statement is the single-column partial index
- * `workout_user_active_key` (on `user_id`, `WHERE ended_at IS NULL`) — its
- * violation's DETAIL always lists exactly `user_id`.
- */
-function violatedConstraintColumns(err: RawPrismaError): string | null {
-  const match = /^Key \(([^)]+)\)=/.exec(err.meta?.message ?? "");
-  return match?.[1]?.trim() ?? null;
 }
 
 /** §6.5: validates a caller-supplied `endedAt` string against the finish
