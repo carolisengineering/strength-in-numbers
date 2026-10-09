@@ -1,9 +1,13 @@
 import {
   isExerciseId,
+  isRoutineId,
   isWorkoutExerciseId,
   isSetEntryId,
   isWorkoutId,
   localDateFor,
+  normalizeSupersetGroups,
+  ROUTINES_PER_USER_MAX,
+  rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
   offsetMinutesForZone,
   parseWeightKgMilli,
@@ -38,11 +42,19 @@ import {
   ExerciseRetiredError,
   IncompleteWorkingSetsError,
   NotFoundError,
+  RoutineLimitError,
+  RoutineNameTakenError,
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
+import type {
+  RoutineItemRecord,
+  RoutineRecord,
+  RoutineRepository,
+  RoutineWriteFields,
+} from "../../src/repositories/routine.js";
 import {
   assertAddPositionInRange,
   assertEndedAtInBounds,
@@ -802,5 +814,111 @@ export class FakePersonalRecordRepository implements PersonalRecordRepository {
         delete record.userId;
         return record as PersonalRecordRecord;
       });
+  }
+}
+
+/**
+ * In-memory RoutineRepository for route/unit tests (Spec 09). It mirrors the
+ * repository's error contract (cap, name clash, item exercise check, 404 for a
+ * foreign/malformed id) but not the SQL-level concurrency guarantees — those
+ * are covered by the Testcontainers suites.
+ */
+export class FakeRoutineRepository implements RoutineRepository {
+  routines = new Map<string, RoutineRecord>();
+
+  constructor(private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository()) {}
+
+  private owned(actingUserId: string, id: string): RoutineRecord {
+    const r = isRoutineId(id) ? this.routines.get(id) : undefined;
+    if (!r || r.userId !== actingUserId) throw new NotFoundError("routine not found");
+    return r;
+  }
+
+  private async checkExercises(actingUserId: string, ids: string[]): Promise<void> {
+    for (const [i, id] of ids.entries()) {
+      let ex: ExerciseRecord;
+      try {
+        ex = await this.exerciseRepository.findVisibleById(actingUserId, id);
+      } catch {
+        throw new ValidationError([{ path: `items.${i}.exerciseId`, message: "must reference a visible exercise" }]);
+      }
+      if (!ex.isActive) {
+        throw new ExerciseRetiredError(`item ${i} retired`, {
+          fieldErrors: [{ path: `items.${i}.exerciseId`, message: "exercise is retired" }],
+        });
+      }
+    }
+  }
+
+  private buildItems(routineId: string, items: RoutineWriteFields["items"]): RoutineItemRecord[] {
+    const groups = normalizeSupersetGroups(items.map((i) => i.supersetGroup ?? null));
+    return items.map((it, i) => ({
+      id: uuidv7(),
+      routineId,
+      position: i,
+      exerciseId: it.exerciseId,
+      targetSets: it.targetSets ?? null,
+      targetRepsLow: it.targetRepsLow ?? null,
+      targetRepsHigh: it.targetRepsHigh ?? null,
+      targetRpeTenths: it.targetRpe == null ? null : rpeToTenths(it.targetRpe),
+      restSeconds: it.restSeconds ?? null,
+      supersetGroup: groups[i] ?? null,
+      notes: it.notes ?? null,
+    }));
+  }
+
+  private nameClash(actingUserId: string, name: string, exceptId: string | null): boolean {
+    return [...this.routines.values()].some(
+      (r) => r.userId === actingUserId && r.id !== exceptId && r.name.toLowerCase() === name.toLowerCase(),
+    );
+  }
+
+  async list(actingUserId: string): Promise<RoutineRecord[]> {
+    return [...this.routines.values()]
+      .filter((r) => r.userId === actingUserId)
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id));
+  }
+
+  async getById(actingUserId: string, id: string): Promise<RoutineRecord> {
+    return this.owned(actingUserId, id);
+  }
+
+  async create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
+    if ((await this.list(actingUserId)).length >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
+    if (this.nameClash(actingUserId, fields.name, null)) throw new RoutineNameTakenError();
+    await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    const now = new Date();
+    const id = uuidv7();
+    const r: RoutineRecord = {
+      id,
+      userId: actingUserId,
+      name: fields.name,
+      notes: fields.notes ?? null,
+      items: this.buildItems(id, fields.items),
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.routines.set(id, r);
+    return r;
+  }
+
+  async replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
+    const current = this.owned(actingUserId, id);
+    if (this.nameClash(actingUserId, fields.name, id)) throw new RoutineNameTakenError();
+    await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    const next: RoutineRecord = {
+      ...current,
+      name: fields.name,
+      notes: fields.notes ?? null,
+      items: this.buildItems(id, fields.items),
+      updatedAt: new Date(current.updatedAt.getTime() + 1000),
+    };
+    this.routines.set(id, next);
+    return next;
+  }
+
+  async delete(actingUserId: string, id: string): Promise<void> {
+    this.owned(actingUserId, id);
+    this.routines.delete(id);
   }
 }
