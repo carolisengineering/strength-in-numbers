@@ -169,8 +169,9 @@ CREATE UNIQUE INDEX "routine_item_routine_position_key" ON "routine_item" ("rout
 CREATE INDEX "routine_item_exercise_idx" ON "routine_item" ("exercise_id");
 
 ALTER TABLE "workout"
-    ADD COLUMN "routine_id" UUID REFERENCES "routine"("id") ON DELETE SET NULL,
-    ADD COLUMN "routine_name_snapshot" TEXT;
+    ADD COLUMN "routine_id" UUID,
+    ADD COLUMN "routine_name_snapshot" TEXT,
+    ADD CONSTRAINT "workout_routine_id_fkey" FOREIGN KEY ("routine_id") REFERENCES "routine"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 CREATE INDEX "workout_routine_idx" ON "workout" ("routine_id") WHERE "routine_id" IS NOT NULL;
 
 ALTER TABLE "workout_exercise"

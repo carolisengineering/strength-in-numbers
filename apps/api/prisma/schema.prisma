@@ -31,6 +31,8 @@ model User {
   workouts Workout[]
   // Spec 07.0: back-reference for `personal_record.user_id`.
   personalRecords PersonalRecord[]
+  // Spec 09: back-reference for `routine.user_id`.
+  routines Routine[]
 
   @@index([email], map: "user_email_idx")
   @@map("user")
@@ -63,6 +65,8 @@ model Exercise {
   workoutExercises   WorkoutExercise[]
   // Spec 07.0: back-reference for `personal_record.exercise_id` (a lineage root).
   personalRecords    PersonalRecord[]
+  // Spec 09: back-reference for `routine_item.exercise_id`.
+  routineItems       RoutineItem[]
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
   // Spec 03.3 §4 — commit-ordered sync stamp, set by the exercise_change_xid trigger.
@@ -115,6 +119,10 @@ model Workout {
   tzOffsetMinutes    Int       @map("tz_offset_minutes") @db.SmallInt
   clientGeneratedId  String    @map("client_generated_id") @db.Uuid
   source             String    @default("manual")
+  // Spec 09 §4: set at start-from-routine; the FK is ON DELETE SET NULL, the snapshot survives.
+  routineId           String?   @map("routine_id") @db.Uuid
+  routine             Routine?  @relation(fields: [routineId], references: [id], onDelete: SetNull)
+  routineNameSnapshot String?   @map("routine_name_snapshot")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises          WorkoutExercise[]
@@ -136,6 +144,13 @@ model WorkoutExercise {
   exerciseNameSnapshot String   @map("exercise_name_snapshot")
   modalitySnapshot     String   @map("modality_snapshot")
   notes                String?
+  // Spec 09 §4: target snapshots copied from the routine item (D1) and the live superset group (D10).
+  supersetGroup        Int?     @map("superset_group") @db.SmallInt
+  targetSets           Int?     @map("target_sets") @db.SmallInt
+  targetRepsLow        Int?     @map("target_reps_low") @db.SmallInt
+  targetRepsHigh       Int?     @map("target_reps_high") @db.SmallInt
+  targetRpe            Int?     @map("target_rpe") @db.SmallInt
+  restSeconds          Int?     @map("rest_seconds") @db.SmallInt
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   sets                 SetEntry[]
@@ -143,6 +158,45 @@ model WorkoutExercise {
   @@unique([workoutId, position], map: "workout_exercise_position_key")
   @@index([exerciseId], map: "workout_exercise_exercise_idx")
   @@map("workout_exercise")
+}
+
+// Spec 09 §4 — hand-authored migration 0009 carries the CHECKs, the
+// (user_id, lower(name)) expression index and ON DELETE SET NULL; these
+// models are the client shape only (every repository write is raw SQL).
+model Routine {
+  id        String   @id @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  items     RoutineItem[]
+  workouts  Workout[]
+
+  @@map("routine")
+}
+
+model RoutineItem {
+  id             String   @id @db.Uuid
+  routineId      String   @map("routine_id") @db.Uuid
+  routine        Routine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  position       Int      @db.SmallInt
+  exerciseId     String   @map("exercise_id") @db.Uuid
+  exercise       Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  targetSets     Int?     @map("target_sets") @db.SmallInt
+  targetRepsLow  Int?     @map("target_reps_low") @db.SmallInt
+  targetRepsHigh Int?     @map("target_reps_high") @db.SmallInt
+  targetRpe      Int?     @map("target_rpe") @db.SmallInt // tenths (D5)
+  restSeconds    Int?     @map("rest_seconds") @db.SmallInt
+  supersetGroup  Int?     @map("superset_group") @db.SmallInt
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([routineId, position], map: "routine_item_routine_position_key")
+  @@index([exerciseId], map: "routine_item_exercise_idx")
+  @@map("routine_item")
 }
 
 model SetEntry {
