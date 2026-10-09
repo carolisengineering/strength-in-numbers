@@ -1,7 +1,7 @@
 # Spec 09 — Routines & Supersets (API)
 
-**Status:** Draft (2026-10-08, branch `docs/spec-09-routines-api`). Design approved by the owner in a brainstorm the same day (§12 D1–D17; O1–O4 resolved the same day as D18–D21).
-**Last updated:** 2026-10-08
+**Status:** Implemented (2026-10-09, branch `feat/spec-09-routines-api`). Design approved by the owner in a brainstorm on 2026-10-08 (§12 D1–D17; O1–O4 resolved the same day as D18–D21).
+**Last updated:** 2026-10-09
 **Design refs:** DESIGN.md §4.3 (routines — rewritten by this spec: hard delete, name snapshot, limits), §4.4 (`workout` / `workout_exercise` — gain the routine and superset columns), §4.9 (deletion matrix — `routine` row), §2 item 3 and item 8 (routines, supersets Tier B), §6 (idempotency, `/v1` conventions, conditional GET), §10 Q5 (supersets — unchanged) and Q18 (this spec's log entry), M3 roadmap row.
 Spec 05.0 (`workout` / `workout_exercise`, the idempotent start, D36 whose deferred columns this spec adds, D41 dense positions, D39 replay ignores the body), Spec 05.1 (set shapes — untouched), Spec 03.2 (`exercise-retired`, `is_active`), Spec 03.1 (the catalog's `strongEtag` / conditional-GET pattern), Spec 05.2 (write groups), Spec 07.1 (history row shape gains `routineName`), Spec 07.0 (the PR engine, which must stay indifferent to routines).
 
