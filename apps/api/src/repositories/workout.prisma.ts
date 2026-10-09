@@ -673,9 +673,9 @@ export function createWorkoutRepository(
         }
 
         const targetRows = await tx.$queryRaw<
-          { id: string; position: number; notes: string | null }[]
+          { id: string; position: number; notes: string | null; superset_group: number | null }[]
         >`
-          SELECT id, position, notes FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT id, position, notes, superset_group FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
         `;
         const target = targetRows[0];
         if (!target) {
@@ -719,9 +719,12 @@ export function createWorkoutRepository(
         // other row is touched.
 
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : target.notes;
+        // Spec 09 D10: key present with `null` clears; absent leaves the group.
+        // No density, adjacency or size rule on a workout.
+        const nextGroup = "supersetGroup" in patch ? (patch.supersetGroup ?? null) : target.superset_group;
         const updatedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
           UPDATE "workout_exercise"
-          SET position = ${nextPosition}, notes = ${nextNotes}, updated_at = now()
+          SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup}, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
                     modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group

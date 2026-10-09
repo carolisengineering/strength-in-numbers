@@ -472,3 +472,52 @@ describe("Spec 09 AC16–AC18 — POST /v1/workouts with routineId", () => {
     expect(res.json().errors[0].path).toBe("routineId");
   });
 });
+
+describe("Spec 09 AC23 — PATCH /v1/workout-exercises/{id} supersetGroup", () => {
+  it("200 sets and clears; 0 / 100 / 2.5 / \"1\" are 422", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord();
+    exerciseRepo.byId.set(ex.id, ex);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo),
+    });
+    const w = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
+    });
+    const we = await app.inject({
+      method: "POST",
+      url: `/v1/workouts/${w.json().id}/exercises`,
+      headers: BEARER,
+      payload: { exerciseId: ex.id },
+    });
+    expect(we.json().supersetGroup).toBeNull();
+    const set = await app.inject({
+      method: "PATCH",
+      url: `/v1/workout-exercises/${we.json().id}`,
+      headers: BEARER,
+      payload: { supersetGroup: 3 },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().supersetGroup).toBe(3);
+    const clear = await app.inject({
+      method: "PATCH",
+      url: `/v1/workout-exercises/${we.json().id}`,
+      headers: BEARER,
+      payload: { supersetGroup: null },
+    });
+    expect(clear.json().supersetGroup).toBeNull();
+    for (const bad of [0, 100, 2.5, "1"]) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/v1/workout-exercises/${we.json().id}`,
+        headers: BEARER,
+        payload: { supersetGroup: bad },
+      });
+      expect(res.statusCode, String(bad)).toBe(422);
+    }
+  });
+});

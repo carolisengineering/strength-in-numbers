@@ -716,6 +716,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       ...we,
       position: nextPosition,
       notes: "notes" in patch ? patch.notes ?? null : we.notes,
+      supersetGroup: "supersetGroup" in patch ? (patch.supersetGroup ?? null) : we.supersetGroup,
       updatedAt: new Date(we.updatedAt.getTime() + 1000),
     };
     this.exercises.set(id, updated);
