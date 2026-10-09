@@ -57,6 +57,7 @@ interface WorkoutDbRow {
   source: string;
   created_at: Date;
   updated_at: Date;
+  routine_name_snapshot: string | null;
 }
 
 function toRecord(r: WorkoutDbRow): WorkoutRecord {
@@ -73,6 +74,7 @@ function toRecord(r: WorkoutDbRow): WorkoutRecord {
     source: r.source,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    routineName: r.routine_name_snapshot,
   };
 }
 
@@ -86,6 +88,12 @@ interface WorkoutExerciseDbRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  target_sets: number | null;
+  target_reps_low: number | null;
+  target_reps_high: number | null;
+  target_rpe: number | null;
+  rest_seconds: number | null;
+  superset_group: number | null;
 }
 
 function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
@@ -99,6 +107,12 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
     notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    targetSets: r.target_sets,
+    targetRepsLow: r.target_reps_low,
+    targetRepsHigh: r.target_reps_high,
+    targetRpeTenths: r.target_rpe,
+    restSeconds: r.rest_seconds,
+    supersetGroup: r.superset_group,
   };
 }
 
@@ -172,7 +186,7 @@ export function createWorkoutRepository(
            ${fields.clientGeneratedId}::uuid, 'manual', now(), now())
         ON CONFLICT (user_id, client_generated_id) DO NOTHING
         RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                  tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                  tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
       `;
       const insertedRow = rows[0];
       return insertedRow ? { kind: "inserted", row: insertedRow } : { kind: "no-row" };
@@ -187,7 +201,7 @@ export function createWorkoutRepository(
   async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
     const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
       SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at
+             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
       FROM "workout_exercise"
       WHERE workout_id = ${workoutId}::uuid
       ORDER BY position ASC
@@ -217,7 +231,7 @@ export function createWorkoutRepository(
   ): Promise<WorkoutDbRow | undefined> {
     const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
       SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-             tz_offset_minutes, client_generated_id, source, created_at, updated_at
+             tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
       FROM "workout"
       WHERE user_id = ${actingUserId}::uuid AND client_generated_id = ${clientGeneratedId}::uuid
     `;
@@ -293,7 +307,7 @@ export function createWorkoutRepository(
     async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         FROM "workout"
         WHERE user_id = ${actingUserId}::uuid AND ended_at IS NULL
       `;
@@ -308,7 +322,7 @@ export function createWorkoutRepository(
       }
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         FROM "workout"
         WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
       `;
@@ -344,7 +358,7 @@ export function createWorkoutRepository(
         // this lock and the write with no restructuring.
         const rows = await tx.$queryRaw<WorkoutDbRow[]>`
           SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-                 tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
           FROM "workout"
           WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           FOR UPDATE
@@ -386,7 +400,7 @@ export function createWorkoutRepository(
               updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                    tz_offset_minutes, client_generated_id, source, created_at, updated_at
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         `;
         // §9: `exercise_count` for the `workout_finished` log line comes from
         // this transaction (the lock above already holds the row), not a
@@ -526,7 +540,7 @@ export function createWorkoutRepository(
             (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
              ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
         `;
         return toExerciseRecord(insertedRows[0]!);
       });
@@ -641,7 +655,7 @@ export function createWorkoutRepository(
           SET position = ${nextPosition}, notes = ${nextNotes}, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
         `;
         return toExerciseRecord(updatedRows[0]!);
       });

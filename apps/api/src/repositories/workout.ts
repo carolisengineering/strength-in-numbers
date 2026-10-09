@@ -23,6 +23,8 @@ export interface WorkoutRecord {
   source: string;
   createdAt: Date;
   updatedAt: Date;
+  /** Spec 09: `routine_name_snapshot` — set at start-from-routine, never updated. */
+  routineName: string | null;
 }
 
 /** One history row (Spec 07.1 §6.4): the workout plus its summary. Volume stays
@@ -57,6 +59,14 @@ export interface WorkoutExerciseRecord {
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  // Spec 09 §4: target snapshots (RPE in tenths — the route converts with
+  // `tenthsToRpe`) and the live superset group.
+  targetSets: number | null;
+  targetRepsLow: number | null;
+  targetRepsHigh: number | null;
+  targetRpeTenths: number | null;
+  restSeconds: number | null;
+  supersetGroup: number | null;
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
@@ -72,6 +82,8 @@ export interface CreateWorkoutFields {
   tzOffsetMinutes: number | undefined;
   title: string | null | undefined;
   notes: string | null | undefined;
+  /** Spec 09 D11: copy this routine's items into the new workout (§6.5). */
+  routineId?: string | undefined;
 }
 
 /** `PATCH /v1/workouts/{id}` body, already schema-validated (§5, §6.5). */
@@ -92,6 +104,8 @@ export interface AddWorkoutExerciseFields {
 export interface UpdateWorkoutExerciseFields {
   position?: number;
   notes?: string | null;
+  /** Spec 09 D10. Key present with `null` clears the group. */
+  supersetGroup?: number | null;
 }
 
 /** One `set_entry` row (Spec 05.1 §4). `weightKg` / `distanceM` are the

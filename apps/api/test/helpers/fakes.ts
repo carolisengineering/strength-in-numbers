@@ -372,6 +372,7 @@ export function makeWorkoutRecord(overrides: Partial<WorkoutRecord> = {}): Worko
     source: "manual",
     createdAt: now,
     updatedAt: now,
+    routineName: null,
     ...overrides,
   };
 }
@@ -462,6 +463,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       source: "manual",
       createdAt: now,
       updatedAt: now,
+      routineName: null,
     };
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
@@ -613,6 +615,12 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       notes: fields.notes ?? null,
       createdAt: now,
       updatedAt: now,
+      targetSets: null,
+      targetRepsLow: null,
+      targetRepsHigh: null,
+      targetRpeTenths: null,
+      restSeconds: null,
+      supersetGroup: null,
     };
     this.exercises.set(record.id, record);
     return record;

@@ -61,6 +61,7 @@ describe("AC25 — UpdatedWorkoutSchema = Workout + newRecords", () => {
       source: "manual",
       createdAt: "2026-09-01T10:00:00.000Z",
       updatedAt: "2026-09-01T11:00:00.000Z",
+      routineName: null,
     };
     expect(UpdatedWorkoutSchema.safeParse(workout).success).toBe(false);
     expect(UpdatedWorkoutSchema.parse({ ...workout, newRecords: [validRecord] }).newRecords).toHaveLength(1);

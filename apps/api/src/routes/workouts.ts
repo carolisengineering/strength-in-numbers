@@ -12,6 +12,7 @@ import {
   WorkoutHistoryQuerySchema,
   WorkoutHistoryResponseSchema,
   milliToDecimalString,
+  tenthsToRpe,
   type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
@@ -65,6 +66,7 @@ function toWorkoutDto(r: WorkoutRecord): Workout {
     source: r.source as Workout["source"],
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    routineName: r.routineName,
   };
 }
 
@@ -92,6 +94,13 @@ function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise {
     notes: r.notes,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    targetSets: r.targetSets,
+    targetRepsLow: r.targetRepsLow,
+    targetRepsHigh: r.targetRepsHigh,
+    // Spec 09 D5: the one tenths → decimal conversion on the read side.
+    targetRpe: r.targetRpeTenths === null ? null : tenthsToRpe(r.targetRpeTenths),
+    restSeconds: r.restSeconds,
+    supersetGroup: r.supersetGroup,
   };
 }
 
