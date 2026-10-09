@@ -210,11 +210,46 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
       });
     },
 
-    async replace() {
-      throw new Error("Task 6");
+    async replace(actingUserId, id, fields) {
+      if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
+      return prisma.$transaction(async (tx) => {
+        // Row lock first: serialises concurrent PUTs on one routine (AC14, D8)
+        // and doubles as the 404.
+        const locked = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid FOR UPDATE
+        `;
+        if (!locked[0]) throw new NotFoundError(NOT_FOUND);
+        await assertItemExercisesUsable(
+          tx,
+          actingUserId,
+          fields.items.map((i) => i.exerciseId),
+        );
+        let row: RoutineDbRow;
+        try {
+          const rows = await tx.$queryRaw<RoutineDbRow[]>`
+            UPDATE "routine" SET name = ${fields.name}, notes = ${fields.notes ?? null}, updated_at = now()
+            WHERE id = ${id}::uuid
+            RETURNING ${ROUTINE_COLS}
+          `;
+          row = rows[0]!;
+        } catch (err) {
+          if (nameTaken(err)) throw new RoutineNameTakenError();
+          throw err;
+        }
+        // Delete then reinsert with fresh ids (D2): no transient duplicate
+        // position, so `routine_item_routine_position_key` needs no DEFERRABLE.
+        await tx.$executeRaw`DELETE FROM "routine_item" WHERE routine_id = ${id}::uuid`;
+        await insertItems(tx, id, fields.items);
+        return assemble([row], await loadItems(tx, [id]))[0]!;
+      });
     },
-    async delete() {
-      throw new Error("Task 6");
+
+    async delete(actingUserId, id) {
+      if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        DELETE FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid RETURNING id
+      `;
+      if (!rows[0]) throw new NotFoundError(NOT_FOUND);
     },
   };
 }
