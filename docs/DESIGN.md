@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q17 resolved; consistency pass done
-**Last updated:** 2026-10-08 (§2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q18 resolved; consistency pass done
+**Last updated:** 2026-10-08 (§4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -272,19 +272,29 @@ Rules:
 
 ### 4.3 Routines (templates)
 
-- **routine** — `user_id`, `name`, `notes`, `archived_at` (soft; keeps history of
-  workouts started from it readable).
+- **routine** — `user_id`, `name` (1–80, trimmed, unique per user
+  case-insensitively), `notes`, `created_at`, `updated_at`. **Hard delete only**
+  (Spec 09 D4): past workouts are self-contained, and `workout.routine_name_snapshot`
+  keeps History able to name a deleted routine. Limits: ≤50 routines per user,
+  ≤30 items per routine, ≤8 members per superset group. Routines are private to
+  their user.
 - **routine_item** — `routine_id`, `position`, `exercise_id`, `target_sets`,
-  `target_reps_low`, `target_reps_high`, `target_rpe` (nullable), `rest_seconds`,
+  `target_reps_low`, `target_reps_high` (both or neither, low ≤ high), `target_rpe`
+  (nullable; stored as tenths, half steps), `rest_seconds`, `notes`,
   `superset_group SMALLINT NULL` — items in the same routine sharing a non-null
   value are performed together; `position` gives order, so interleave sequence is
   derivable. Circuits (3+ exercises) are the same construct with N members. UX is
-  Tier B (§2 item 8, Q5 resolved).
+  Tier B (§2 item 8, Q5 resolved). A routine has at least one item and may list the
+  same exercise more than once. Groups are normalised by the server to a dense 1, 2, 3 … by first
+  appearance and each has 2–8 members. A routine is edited by **whole replace**
+  (`PUT` with the full ordered item list); item ids are not stable across edits.
 
 Starting a workout from a routine **snapshots** it: the routine's items are copied
-into `workout_exercise` rows at that moment. Later edits to the routine do not
-change past workouts; deleting the routine does not damage them (`workout.routine_id`
-is `ON DELETE SET NULL`).
+into `workout_exercise` rows at that moment — including the five targets and
+`superset_group` — and `workout.routine_id` / `routine_name_snapshot` are set. Later
+edits to the routine do not change past workouts; deleting the routine does not
+damage them (`workout.routine_id` is `ON DELETE SET NULL`; the name snapshot
+survives). See Spec 09.
 
 ### 4.4 Workouts (performed sessions) — the hot path
 
@@ -295,15 +305,19 @@ is `ON DELETE SET NULL`).
   admits only `'manual'` in v1 — `healthkit` / `google_fit` / … reserved
   values are added by the migration that adds their importer, since widening
   a `CHECK` literal list is additive while shipping values nothing can write
-  is not). `routine_id` is omitted until Spec 09 adds `routine` (one additive
-  column then, per Spec 05.0 D36).
+  is not). `routine_id uuid NULL REFERENCES routine(id) ON DELETE SET NULL` and
+  `routine_name_snapshot text NULL` are set when the workout is started from a
+  routine (Spec 09; closes Spec 05.0 D36).
 - **At most one in-progress workout per user** is a database invariant: a
   partial unique index on `user_id WHERE ended_at IS NULL` (Spec 05.0 D38).
 - **workout_exercise** — `workout_id`, `position`, `exercise_id`,
   `exercise_name_snapshot`, `modality_snapshot`, `notes`. The snapshots make a
   past session render correctly forever, independent of later catalog changes
-  or a deleted custom exercise. `superset_group` is omitted until Spec 09
-  (Spec 05.0 D36).
+  or a deleted custom exercise. Spec 09 adds `superset_group SMALLINT NULL`
+  (any 1–99; a group of one is allowed on a workout) and the routine-target
+  snapshots `target_sets`, `target_reps_low`, `target_reps_high`, `target_rpe`
+  (tenths), `rest_seconds` — all NULL for a manually added exercise. The same
+  exercise may appear more than once in a workout (already so: Spec 05.0 AC10).
 - **A workout's exercise `position`s are the dense zero-based sequence
   `0 … n-1`**, unique per workout (Spec 05.0 D41).
 - **set_entry** — `workout_exercise_id`, `set_number`, `set_type`
@@ -431,7 +445,7 @@ dedup without touching the v1 schema.
 | `user` | soft (`deleted_at`), tokens revoked | hard purge after 30-day grace |
 | `workout`, `workout_exercise`, `set_entry` | hard delete (cascade) | hard purge |
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
-| `routine` | soft (`archived_at`) | hard purge |
+| `routine` (+ `routine_item`) | hard delete (cascade); `workout.routine_id` nulls, name snapshot kept — Spec 09 | hard purge |
 | custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; `workout_exercise.exercise_id` is also `ON DELETE CASCADE` — Spec 05.0 D37 — so no purge-ordering step is needed) |
 | `personal_record` | never user-deleted; recomputed | hard purge |
 | `body_metric` | hard delete | hard purge |
@@ -662,7 +676,7 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
 All paths are under `/v1`.
 
 ```
-POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinutes?, title?, notes? }
+POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinutes?, title?, notes?, routineId? }   # routineId copies the routine into the workout (Spec 09)
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
 GET    /workouts?limit=&cursor=   → { items: WorkoutSummary[], next } history list (Spec 07.1)
@@ -670,7 +684,7 @@ GET    /workouts/{id}
 PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
 DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exerciseId, position? }
-PATCH  /workout-exercises/{id}    { position?, notes? }
+PATCH  /workout-exercises/{id}    { position?, notes?, supersetGroup? }   # supersetGroup: 1–99 | null (Spec 09)
 DELETE /workout-exercises/{id}
 POST   /workout-exercises/{id}/sets   { clientGeneratedId?, setType?, reps?, weight?, weightUnit?, ... }
 PATCH  /sets/{id}                     { same fields minus clientGeneratedId, all optional }
@@ -681,6 +695,11 @@ GET    /progress/exercises/{id}?from=&to=   → { exerciseId, points[] }, un-pag
                                    # one point per finished workout: topSetWeight, bestE1rm, totalVolume, maxReps (each nullable);
                                    # {id} resolves through fork lineage (exerciseId = root); 404 if not visible; from/to inclusive on local_date
 GET    /personal-records?exerciseId=&workoutId=   → { records[] }, un-paginated (Spec 07.0)
+GET    /routines                  → { routines[] } with items inlined, ETag (Spec 09)
+GET    /routines/{id}             → Routine, ETag
+POST   /routines                  { name, notes?, items[] }   → 201 + Location
+PUT    /routines/{id}             { name, notes?, items[] }   # whole replace, last write wins
+DELETE /routines/{id}             # hard delete; workouts keep routineName
 POST   /account/export            → 202, async job
 DELETE /account                   → 202, soft-delete + purge scheduled
 ```
@@ -989,6 +1008,23 @@ with rationale so the "why" survives.
   zoom, pan or animation; dense windows degrade to precise tapping and the list. Open:
   the catalog retire-and-replace seam (07.0 O2 / 07.2 O5) stays the owner's call. See
   Spec 08.1 §12 (D1–D13).
+
+- **Q18 — Routines & supersets API.** ✅ **Resolved (Spec 09, 2026-10-08): routines are
+  private, hard-deleted, whole-replaced documents; starting a workout copies them.**
+  `routine` + `routine_item` (targets nullable, RPE stored as tenths) are edited by
+  `PUT` with the full ordered item list in one transaction (item ids unstable, last
+  write wins, `If-Match` reserved as the upgrade); `POST /v1/workouts` gains an
+  optional `routineId` and, in the existing idempotent start transaction after the
+  one-active check, copies each item into `workout_exercise` with its five target
+  snapshots and `superset_group`, setting `workout.routine_id` +
+  `routine_name_snapshot`; live supersets are a nullable `supersetGroup` on the
+  existing `PATCH /workout-exercises/{id}` (no adjacency rule). Rationale: the
+  workout must stay self-contained forever (as with `exercise_name_snapshot`), so
+  nothing reads a routine after the start; that also makes archive unnecessary — a
+  name snapshot is all History needs after a delete (`archived_at` dropped). Rejected:
+  live-read targets, a JSON snapshot, item-level routine routes, a separate start
+  route, a dedicated supersets endpoint, archive. Limits: 50 routines / 30 items / 8
+  per group. Q5 is unchanged. See Spec 09 §12 (D1–D21).
 
 ---
 
