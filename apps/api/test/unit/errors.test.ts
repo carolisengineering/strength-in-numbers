@@ -15,6 +15,8 @@ import {
   ExerciseImmutableUseForkError,
   ExerciseAlreadyOwnedError,
   SyncTokenExpiredError,
+  RoutineNameTakenError,
+  RoutineLimitError,
 } from "../../src/errors/app-error.js";
 import { toProblem, PROBLEM_BASE_URL } from "../../src/errors/problem.js";
 
@@ -41,6 +43,8 @@ describe("AppError hierarchy", () => {
       [new ExerciseImmutableUseForkError(), 409, "exercise-immutable-use-fork"],
       [new ExerciseAlreadyOwnedError(), 409, "exercise-already-owned"],
       [new SyncTokenExpiredError(), 410, "sync-token-expired"],
+      [new RoutineNameTakenError(), 409, "routine-name-taken"],
+      [new RoutineLimitError(), 409, "routine-limit"],
     ];
     for (const [err, status, slug] of cases) {
       expect(err, slug).toBeInstanceOf(AppError);

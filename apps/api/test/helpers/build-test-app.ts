@@ -52,7 +52,7 @@ export const GENEROUS_LIMITS: RateLimitConfig = {
   windowMs: 60_000,
   ip: 1_000_000,
   docs: 1_000_000,
-  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, me: 1_000_000 },
+  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, routines: 1_000_000, me: 1_000_000 },
   inflight: 1_000_000,
 };
 
