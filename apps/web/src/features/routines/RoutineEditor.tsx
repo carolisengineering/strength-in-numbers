@@ -155,7 +155,8 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   ];
   const duplicateWarning =
     routines.data !== undefined && nameTaken(draft.name, routines.data, routine?.id) ? NAME_TAKEN : null;
-  const saving = create.isPending || replace.isPending;
+  const [saved, setSaved] = useState(false);
+  const saving = create.isPending || replace.isPending || saved;
   const [focusName, setFocusName] = useState(false);
   useEffect(() => {
     if (!focusName || saving) return;
@@ -176,10 +177,13 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     try {
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
       leaving.current = true; // disarm the leave guard before navigating (AC34)
+      // The latch stays closed: until the editor unmounts, a late second tap must not send a second write.
+      setSaved(true);
       if (!mounted.current) return;
       if (routine && back) navigate(-1); // the preview behind us reads the saved copy from the cache
       else navigate(routinePath(saved.id), { replace: true });
     } catch (caught) {
+      inFlight.current = false; // only a failure reopens Save
       reportRoutineUnexpected("save-routine", caught);
       const failure = classifyRoutineError(caught);
       switch (failure.kind) {
@@ -219,8 +223,6 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         default:
           setFormError({ text: SAVE_FAILED, requestId: failure.requestId });
       }
-    } finally {
-      inFlight.current = false;
     }
   }
 
