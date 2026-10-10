@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import type { Routine } from "@sin/core";
 import { ROUTINE_ITEMS_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Field } from "../../ui/Field";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
@@ -114,6 +115,21 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
       reportRoutineUnexpected("validate-draft", new Error("superset invariant broken"));
     }
   }, [validation.groupBug]);
+
+  // AC34 / D17: in-app navigation (Cancel, nav links, Back) through the data router's blocker; reload and
+  // tab close through the browser's own prompt. A save sets `leaving` before it navigates.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => draft.dirty && !leaving.current && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (!draft.dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [draft.dirty]);
 
   const showErrors = draft.dirty || attempted;
   const issues: DraftIssue[] = [
@@ -318,6 +334,15 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           onClose={() => setSheet((s) => s && { ...s, open: false })}
         />
       ) : null}
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        title="Discard changes?"
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="danger"
+        onConfirm={() => blocker.proceed?.()}
+        onCancel={() => blocker.reset?.()}
+      />
     </Screen>
   );
 }
