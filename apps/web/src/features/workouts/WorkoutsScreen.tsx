@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router";
 
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
@@ -8,12 +9,34 @@ import { ActiveSession } from "./ActiveSession";
 import { classifyWorkoutError } from "./errors";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
+import { RoutinesSection } from "../routines/RoutinesSection";
 import { StartWorkout } from "./StartWorkout";
 
 export const GONE_NOTICE = "That workout was already finished or removed.";
 export const REFRESH_FAILED_NOTICE = "Couldn't refresh your workout — showing the last copy we have.";
 export const STALE_NOTICE = "Your workout was out of date, so it has been reloaded.";
 export const RESUMED_NOTICE = "You already had a workout in progress — resumed it.";
+
+export const ROUTINE_GONE_NOTICE = "That routine no longer exists";
+export const ROUTINE_NOT_APPLIED_NOTICE = "You already had a workout in progress — resumed it. The routine wasn't applied.";
+
+/** Spec 10.0 AC23 / D16: the preview hands a one-time notice to this screen through router state. */
+export interface WorkoutsLocationState {
+  readonly notice: "routine-gone" | "routine-not-applied";
+}
+
+const LOCATION_NOTICES: Record<WorkoutsLocationState["notice"], string> = {
+  "routine-gone": ROUTINE_GONE_NOTICE,
+  "routine-not-applied": ROUTINE_NOT_APPLIED_NOTICE,
+};
+
+function noticeFromLocation(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  const notice = (state as Record<string, unknown>)["notice"];
+  return typeof notice === "string" && Object.hasOwn(LOCATION_NOTICES, notice)
+    ? LOCATION_NOTICES[notice as WorkoutsLocationState["notice"]]
+    : null;
+}
 
 /**
  * `/app/workouts` (Spec 06.1 §5.1): asks the server for the in-progress workout on every mount and
@@ -23,7 +46,8 @@ export const RESUMED_NOTICE = "You already had a workout in progress — resumed
 export function WorkoutsScreen() {
   const active = useActiveWorkout();
   const queryClient = useQueryClient();
-  const [notice, setNotice] = useState<string | null>(null);
+  const location = useLocation();
+  const [notice, setNotice] = useState<string | null>(() => noticeFromLocation(location.state));
   // The workout a write reported gone (§5.8). What to say about it is derived from what the refetch
   // finds, not decided up front: the API answers 404 for a set or exercise that vanished while the
   // workout itself is fine, and "already finished or removed" would then be false.
@@ -76,7 +100,9 @@ export function WorkoutsScreen() {
           setGoneId(null);
           setNotice(resumed ? RESUMED_NOTICE : null);
         }}
-      />
+      >
+        <RoutinesSection />
+      </StartWorkout>
     );
   }
 

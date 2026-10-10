@@ -45,16 +45,14 @@ describe("10.0 AC13 — useBeginWorkout keeps the idempotent start", () => {
     expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false, fromRoutine: true });
   });
 
-  it("retries reuse the key; success discards it", async () => {
+  it("retries reuse the key", async () => {
     const start = vi.fn().mockRejectedValueOnce(ApiError.network("n", null)).mockResolvedValue(workout);
     const { result } = setup(start);
     await act(async () => expect((await result.current.begin())?.kind).toBe("failed"));
     expect(result.current.failure?.kind).toBe("network");
     await act(() => result.current.begin());
-    await act(() => result.current.begin());
     const keys = start.mock.calls.map((c) => c[0].clientGeneratedId);
     expect(keys[0]).toBe(keys[1]);
-    expect(keys[2]).not.toBe(keys[1]);
   });
 
   it("a second call while in flight sends nothing", async () => {
@@ -77,6 +75,15 @@ describe("10.0 AC13 — useBeginWorkout keeps the idempotent start", () => {
     const { result } = setup(start, { routineId: routineId(1) });
     await act(async () => expect(await result.current.begin()).toEqual({ kind: "resumed" }));
     expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true, fromRoutine: true });
+  });
+
+  it("a late second tap after success replays the same key (no new workout, no false resume)", async () => {
+    const start = vi.fn().mockResolvedValue(workout);
+    const { result } = setup(start);
+    await act(async () => expect(await result.current.begin()).toEqual({ kind: "started" }));
+    await act(async () => expect(await result.current.begin()).toEqual({ kind: "started" }));
+    const [first, second] = start.mock.calls.map((c) => c[0].clientGeneratedId);
+    expect(second).toBe(first);
   });
 
   it("other failures come back classified", async () => {

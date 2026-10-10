@@ -16,8 +16,8 @@ export type BeginOutcome = { kind: "started" } | { kind: "resumed" } | { kind: "
 
 /**
  * The idempotent start (Spec 06.1 §6.5, extracted by Spec 10.0 AC13 / D13). The key is minted on the
- * first call, held in a ref, reused by every retry and discarded on success, so a retry after a lost
- * response cannot create a second workout. One key per mounted surface. `409 workout-in-progress-exists`
+ * first call, held in a ref and reused by every retry and by a late tap after success, so neither a
+ * retry after a lost response nor a double tap can create a second workout. One key per mounted surface. `409 workout-in-progress-exists`
  * adopts the running workout. The caller decides what each outcome means (navigation, messages).
  */
 export function useBeginWorkout(options: { routineId?: string } = {}) {
@@ -44,7 +44,8 @@ export function useBeginWorkout(options: { routineId?: string } = {}) {
           ...(routineId === undefined ? {} : { routineId: routineId as RoutineId }),
         },
       });
-      keyRef.current = null;
+      // The key is kept: a late second tap — after the start landed but before this surface unmounts —
+      // replays it and gets the same workout back (200), never a second start or a false "resumed".
       track("workout_started", { resumed: false, fromRoutine });
       return { kind: "started" };
     } catch (caught) {

@@ -54,13 +54,15 @@ describe("AC16 — Start", () => {
     expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false, fromRoutine: false });
   });
 
-  it("a double tap sends one request", async () => {
+  it("a double tap creates one workout (a late second tap replays the same key)", async () => {
     const { fake, start, user } = await setup();
 
     await user.dblClick(start);
 
     await screen.findByRole("heading", { name: "Workout" });
-    expect(startPosts(fake)).toHaveLength(1);
+    const keys = new Set(startPosts(fake).map((p) => (p.body as { clientGeneratedId: string }).clientGeneratedId));
+    expect(keys.size).toBe(1);
+    expect(screen.queryByText(/resumed it/)).toBeNull();
   });
 
   it("while the request is in flight the button is busy and disabled", async () => {
