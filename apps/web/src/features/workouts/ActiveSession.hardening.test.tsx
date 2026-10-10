@@ -265,7 +265,7 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });
     const { user } = renderApp("/app/workouts");
-    const start = await screen.findByRole("button", { name: "Start workout" });
+    const start = await screen.findByRole("button", { name: "Start empty workout" });
     // Started on another device after this one loaded: the start answers 409 and we resume it.
     fake.state.active = makeWorkoutDetail({ exercises: twoExercises });
     await user.click(start);

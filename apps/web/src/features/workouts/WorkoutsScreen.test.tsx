@@ -1,5 +1,5 @@
 import { focusManager } from "@tanstack/react-query";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -46,7 +46,7 @@ describe("AC15 — /app/workouts states", () => {
 
     expect(await screen.findByText("Loading your workout…")).toBeInTheDocument();
     gate.resolve();
-    expect(await screen.findByRole("button", { name: "Start workout" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start empty workout" })).toBeInTheDocument();
   });
 
   it("404 from /active is not an error: it shows the Start screen", async () => {
@@ -56,7 +56,7 @@ describe("AC15 — /app/workouts states", () => {
     renderApp("/app/workouts");
 
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start workout" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start empty workout" })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -67,7 +67,7 @@ describe("AC15 — /app/workouts states", () => {
     renderApp("/app/workouts");
 
     expect(await screen.findByRole("heading", { name: "Workout" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start workout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start empty workout" })).not.toBeInTheDocument();
   });
 
   it("any other failure shows an in-shell notice with the request id and a Try again that refetches", async () => {
@@ -84,7 +84,7 @@ describe("AC15 — /app/workouts states", () => {
 
     await user.click(screen.getByRole("button", { name: "Try again" }));
 
-    expect(await screen.findByRole("button", { name: "Start workout" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start empty workout" })).toBeInTheDocument();
     expect(activeReads(fake)).toBe(2);
   });
 
@@ -112,7 +112,7 @@ describe("AC15 — /app/workouts states", () => {
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });
     renderApp("/app/workouts");
-    await screen.findByRole("button", { name: "Start workout" });
+    await screen.findByRole("button", { name: "Start empty workout" });
     expect(activeReads(fake)).toBe(1);
 
     // TanStack Query v5 learns about focus from `visibilitychange`; drive its focus manager directly.
@@ -126,7 +126,7 @@ describe("AC15 — /app/workouts states", () => {
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });
     const { router } = renderApp("/app/workouts");
-    await screen.findByRole("button", { name: "Start workout" });
+    await screen.findByRole("button", { name: "Start empty workout" });
 
     await router.navigate("/app/profile");
     await screen.findByRole("heading", { name: "Profile" });
@@ -135,5 +135,28 @@ describe("AC15 — /app/workouts states", () => {
 
     expect(await screen.findByRole("heading", { name: "Workout" })).toBeInTheDocument();
     expect(activeReads(fake)).toBe(2);
+  });
+});
+
+describe("10.0 AC23 — one-time notices from router state", () => {
+  it.each([
+    ["routine-gone", "That routine no longer exists"],
+    ["routine-not-applied", "You already had a workout in progress — resumed it. The routine wasn't applied."],
+  ])("%s shows once, dismissibly", async (notice, text) => {
+    prepareApp({ auth, fake: createWorkoutFake() });
+    // Start elsewhere so the navigation mounts WorkoutsScreen fresh, as the preview's navigate does.
+    const { router, user } = renderApp("/app/history");
+    await act(() => router.navigate("/app/workouts", { state: { notice } }));
+    const status = await screen.findByText(text);
+    await user.click(within(status.closest("[role=status]")!).getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(text)).toBeNull();
+  });
+
+  it("ignores an unknown value", async () => {
+    prepareApp({ auth, fake: createWorkoutFake() });
+    const { router } = renderApp("/app/history");
+    await act(() => router.navigate("/app/workouts", { state: { notice: "bogus" } }));
+    await screen.findByRole("button", { name: "Start empty workout" });
+    expect(screen.queryByRole("status", { name: /./ })).toBeNull();
   });
 });

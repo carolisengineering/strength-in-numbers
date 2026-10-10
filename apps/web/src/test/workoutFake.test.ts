@@ -3,7 +3,8 @@ import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
-import { makePersonalRecord, makeProgressPoint, makeSet, makeWorkoutDetail } from "./workoutFixtures";
+import { RoutineSchema } from "@sin/core";
+import { makePersonalRecord, makeProgressPoint, makeRoutine, makeSet, makeWorkoutDetail, routineId } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
@@ -259,5 +260,62 @@ describe("Spec 08.0 — history and records endpoints", () => {
 
     const res = await call("PATCH", `/workouts/${active.id}`, { title: "Push" });
     expect(res.json!["newRecords"]).toEqual([]);
+  });
+});
+
+describe("workoutFake — routines (Spec 10.0 test infra)", () => {
+  const BASE = "https://api.example.test/v1";
+  const json = (method: string, path: string, body?: unknown) =>
+    fetch(`${BASE}${path}`, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+  it("CRUD with normalised groups, case-insensitive names, the cap, retired, and start-from-routine", async () => {
+    const bench = makeExercise({ id: exerciseId(1), name: "Bench Press" });
+    const row = makeExercise({ id: exerciseId(2), name: "Barbell Row" });
+    const old = makeExercise({ id: exerciseId(3), name: "Old Press", isActive: false });
+    const fake = createWorkoutFake({ catalog: [bench, row, old] });
+    server.use(...fake.handlers);
+
+    const created = await json("POST", "/routines", {
+      name: " Push A ",
+      items: [
+        { exerciseId: exerciseId(1), supersetGroup: 7, targetSets: 3 },
+        { exerciseId: exerciseId(2), supersetGroup: 7 },
+      ],
+    });
+    expect(created.status).toBe(201);
+    const routine = RoutineSchema.parse(await created.json());
+    expect(routine.name).toBe("Push A");
+    expect(routine.items.map((i) => i.supersetGroup)).toEqual([1, 1]);
+
+    expect((await json("POST", "/routines", { name: "push a", items: [{ exerciseId: exerciseId(1) }] })).status).toBe(409);
+    const retired = await json("POST", "/routines", { name: "X", items: [{ exerciseId: exerciseId(1) }, { exerciseId: exerciseId(3) }] });
+    expect(retired.status).toBe(409);
+    expect((await retired.json()).errors).toEqual([{ path: "items.1.exerciseId", message: expect.any(String) }]);
+
+    const renamed = await json("PUT", `/routines/${routine.id}`, { name: "PUSH A", items: [{ exerciseId: exerciseId(2) }] });
+    expect(renamed.status).toBe(200);
+
+    const started = await json("POST", "/workouts", {
+      clientGeneratedId: crypto.randomUUID(),
+      startedAt: new Date().toISOString(),
+      tzOffsetMinutes: 0,
+      routineId: routine.id,
+    });
+    expect(started.status).toBe(201);
+    expect(fake.state.active?.routineName).toBe("PUSH A");
+    expect(fake.state.active?.exercises.map((e) => e.exerciseNameSnapshot)).toEqual(["Barbell Row"]);
+
+    expect((await json("DELETE", `/routines/${routine.id}`)).status).toBe(204);
+    expect((await json("GET", `/routines/${routine.id}`)).status).toBe(404);
+    expect(((await (await json("GET", "/routines")).json()) as { routines: unknown[] }).routines).toEqual([]);
+  });
+
+  it("refuses the 51st routine", async () => {
+    const routines = Array.from({ length: 50 }, (_, i) => makeRoutine({ id: routineId(i + 1), name: `R${i}` }));
+    const fake = createWorkoutFake({ routines, catalog: [makeExercise()] });
+    server.use(...fake.handlers);
+    const res = await json("POST", "/routines", { name: "One more", items: [{ exerciseId: exerciseId(1) }] });
+    expect(res.status).toBe(409);
+    expect((await res.json()).type).toMatch(/routine-limit$/);
   });
 });

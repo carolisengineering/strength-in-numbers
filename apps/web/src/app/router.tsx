@@ -5,6 +5,8 @@ import { HistoryScreen } from "../features/history/HistoryScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
 import { ExerciseProgressRoute } from "../features/progress/ExerciseProgressScreen";
 import { ProgressScreen } from "../features/progress/ProgressScreen";
+import { RoutineEditorRoute } from "../features/routines/RoutineEditor";
+import { RoutinePreviewRoute } from "../features/routines/RoutinePreview";
 import { FinishedWorkoutScreen } from "../features/workouts/FinishedWorkoutScreen";
 import { WorkoutsScreen } from "../features/workouts/WorkoutsScreen";
 import { NotFound } from "../screens/NotFound";
@@ -24,6 +26,10 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
  *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
  *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
+ *   /app/workouts/routines                                            > redirect (replace) to /app/workouts (Spec 10.0)
+ *   /app/workouts/routines/new                                        > RoutineEditor, create (Spec 10.0)
+ *   /app/workouts/routines/:id                                        > RoutinePreview (Spec 10.0)
+ *   /app/workouts/routines/:id/edit                                   > RoutineEditor, edit (Spec 10.0)
  *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
  *   /app/history                                                      > HistoryScreen  protected (Spec 08.0)
  *   /app/progress                                                     > ProgressScreen protected (Spec 08.1)
@@ -56,6 +62,11 @@ export const routes: RouteObject[] = [
               { path: "profile", element: <ProfileScreen /> },
               { path: "workouts", element: <WorkoutsScreen /> },
               { path: "workouts/:id", element: <FinishedWorkoutScreen section="workouts" /> },
+              // Spec 10.0 §6.1: the bare path would otherwise match `workouts/:id` with id "routines".
+              { path: "workouts/routines", element: <Navigate to="/app/workouts" replace /> },
+              { path: "workouts/routines/new", element: <RoutineEditorRoute mode="create" /> },
+              { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },
+              { path: "workouts/routines/:id/edit", element: <RoutineEditorRoute mode="edit" /> },
               { path: "history", element: <HistoryScreen /> },
               { path: "history/:id", element: <FinishedWorkoutScreen section="history" /> },
               { path: "progress", element: <ProgressScreen /> },

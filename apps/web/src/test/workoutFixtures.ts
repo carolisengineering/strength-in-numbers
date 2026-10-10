@@ -1,12 +1,16 @@
 import {
   PersonalRecordSchema,
   ProgressPointSchema,
+  RoutineItemSchema,
+  RoutineSchema,
   SetEntrySchema,
   WorkoutDetailSchema,
   WorkoutSummarySchema,
   type Modality,
   type PersonalRecord,
   type ProgressPoint,
+  type Routine,
+  type RoutineItem,
   type SetEntry,
   type WorkoutDetail,
   type WorkoutSummary,
@@ -151,6 +155,38 @@ export function makeProgressPoint(overrides: Record<string, unknown> = {}): Prog
     bestE1rm: 116.667,
     totalVolume: 500,
     maxReps: null,
+    ...overrides,
+  });
+}
+
+/** A deterministic routine id: `…-000000000003` for `n = 3`. */
+export const routineId = (n: number): string => `20000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+export function makeRoutineItem(overrides: Record<string, unknown> = {}): RoutineItem {
+  return RoutineItemSchema.parse({
+    id: crypto.randomUUID(),
+    position: 0,
+    exerciseId: "00000000-0000-4000-8000-000000000001",
+    targetSets: null,
+    targetRepsLow: null,
+    targetRepsHigh: null,
+    targetRpe: null,
+    restSeconds: null,
+    supersetGroup: null,
+    notes: null,
+    ...overrides,
+  });
+}
+
+/** A schema-valid routine; `items` defaults to one ungrouped item (exercise 1). */
+export function makeRoutine(overrides: Record<string, unknown> = {}): Routine {
+  return RoutineSchema.parse({
+    id: routineId(1),
+    name: "Push A",
+    notes: null,
+    items: [makeRoutineItem()],
+    createdAt: "2026-10-01T10:00:00.000Z",
+    updatedAt: "2026-10-01T10:00:00.000Z",
     ...overrides,
   });
 }

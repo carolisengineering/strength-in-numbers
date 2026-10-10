@@ -17,7 +17,8 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { makePersonalRecord, makeProgressPoint, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { exerciseId, makeExercise } from "../../test/catalogFixtures";
+import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, makeSet, makeWorkoutDetail, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
@@ -276,5 +277,47 @@ describe("08.1 AC25 — Progress screens, accessibly", () => {
       }
     }
     expect(unstyled).toEqual([]);
+  });
+});
+
+describe("10.0 AC36 — routine screens, accessibly", () => {
+  const catalog = [makeExercise({ id: exerciseId(1), name: "Bench Press" }), makeExercise({ id: exerciseId(2), name: "Barbell Row" })];
+  const routine = makeRoutine({
+    id: routineId(1),
+    name: "Push A",
+    items: [
+      makeRoutineItem({ position: 0, exerciseId: exerciseId(1), supersetGroup: 1 }),
+      makeRoutineItem({ position: 1, exerciseId: exerciseId(2), supersetGroup: 1 }),
+    ],
+  });
+
+  it("Start screen: one h1 (Start a workout), a named list of links", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [routine] }) });
+    renderApp("/app/workouts");
+    const list = await screen.findByRole("list", { name: "Routines" });
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Start a workout"]);
+    for (const link of within(list).getAllByRole("link")) expect(link).toHaveAccessibleName();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("preview: one h1, a list whose rows name their group", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [routine] }) });
+    renderApp(`/app/workouts/routines/${routineId(1)}`);
+    const list = await screen.findByRole("list", { name: "Exercises" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    for (const row of within(list).getAllByRole("listitem")) expect(row.getAttribute("aria-label")).toMatch(/superset 1/);
+  });
+
+  it("editor: one h1, pressed toggles naming both exercises, edge moves disabled not hidden", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [routine] }) });
+    const { user } = renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    const list = await screen.findByRole("list", { name: "Exercises" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    const toggle = within(list).getByRole("button", { name: "Superset Bench Press with Barbell Row" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    const first = within(list).getAllByRole("listitem")[0]!;
+    await user.click(within(first).getByRole("button", { name: "Options" }));
+    expect(within(first).getByRole("button", { name: "Move up" })).toBeDisabled();
+    expect(within(list).getByRole("button", { name: "Bench Press, superset 1" })).toBeInTheDocument();
   });
 });

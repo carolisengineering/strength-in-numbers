@@ -35,7 +35,7 @@ async function setup(options: { active?: ReturnType<typeof makeWorkoutDetail> | 
   const fake = createWorkoutFake({ active: options.active ?? null });
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
-  const start = await screen.findByRole("button", { name: "Start workout" });
+  const start = await screen.findByRole("button", { name: "Start empty workout" });
   return { fake, start, ...app };
 }
 
@@ -51,16 +51,18 @@ describe("AC16 — Start", () => {
     const body = posts[0]!.body as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(["clientGeneratedId", "startedAt", "tzOffsetMinutes"]);
     expect(body["clientGeneratedId"]).toMatch(/^[0-9a-f-]{36}$/);
-    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false });
+    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false, fromRoutine: false });
   });
 
-  it("a double tap sends one request", async () => {
+  it("a double tap creates one workout (a late second tap replays the same key)", async () => {
     const { fake, start, user } = await setup();
 
     await user.dblClick(start);
 
     await screen.findByRole("heading", { name: "Workout" });
-    expect(startPosts(fake)).toHaveLength(1);
+    const keys = new Set(startPosts(fake).map((p) => (p.body as { clientGeneratedId: string }).clientGeneratedId));
+    expect(keys.size).toBe(1);
+    expect(screen.queryByText(/resumed it/)).toBeNull();
   });
 
   it("while the request is in flight the button is busy and disabled", async () => {
@@ -79,7 +81,7 @@ describe("AC16 — Start", () => {
     expect(start).toHaveAttribute("aria-busy", "true");
     gate.resolve();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start workout" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Start empty workout" })).toBeEnabled();
   });
 
   it("a network or 5xx failure shows an error, and the retry reuses the same clientGeneratedId", async () => {
@@ -107,7 +109,7 @@ describe("AC16 — Start", () => {
 
     expect(await screen.findByRole("heading", { name: "Workout" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("You already had a workout in progress — resumed it.");
-    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true });
+    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true, fromRoutine: false });
   });
 
   it("422 says the device clock looks wrong", async () => {
@@ -121,6 +123,6 @@ describe("AC16 — Start", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Your device clock looks wrong — check the date and time, then try again.",
     );
-    await waitFor(() => expect(screen.getByRole("button", { name: "Start workout" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start empty workout" })).toBeEnabled());
   });
 });

@@ -33,7 +33,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 type Kind = "string" | "number" | "boolean";
 /** Spec 06.1 §9, plus the 06.0 picker's own event: the only events and properties that may appear. */
 const SHAPES: Record<string, Record<string, Kind>> = {
-  workout_started: { resumed: "boolean" },
+  workout_started: { resumed: "boolean", fromRoutine: "boolean" },
   exercise_added: { modality: "string" },
   exercise_moved: { direction: "string" },
   exercise_removed: { setCount: "number" },
@@ -117,20 +117,20 @@ describe("AC35 — observability hygiene across the flows", () => {
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });
     const { user } = renderApp("/app/workouts");
-    await user.click(await screen.findByRole("button", { name: "Start workout" }));
+    await user.click(await screen.findByRole("button", { name: "Start empty workout" }));
     await screen.findByRole("heading", { name: "Workout" });
-    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false });
+    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: false, fromRoutine: false });
   });
 
   it("start when one is already in progress", async () => {
     const fake = createWorkoutFake();
     prepareApp({ auth, fake });
     const { user } = renderApp("/app/workouts");
-    const start = await screen.findByRole("button", { name: "Start workout" });
+    const start = await screen.findByRole("button", { name: "Start empty workout" });
     fake.state.active = makeWorkoutDetail();
     await user.click(start);
     await screen.findByRole("heading", { name: "Workout" });
-    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true });
+    expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true, fromRoutine: false });
   });
 
   it("add, log, edit, delete a set, move, remove, finish", async () => {

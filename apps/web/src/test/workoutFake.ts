@@ -15,6 +15,11 @@ import {
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
   WorkoutSchema,
+  normalizeSupersetGroups,
+  ROUTINES_PER_USER_MAX,
+  RoutineSchema,
+  RoutineWriteSchema,
+  type Routine,
   WORKOUT_SUMMARY_NAMES_MAX,
   forbiddenMeasuresFor,
   requiredMeasuresFor,
@@ -56,7 +61,7 @@ export interface FailMatch {
 
 export interface WorkoutFake {
   handlers: RequestHandler[];
-  state: { active: WorkoutDetail | null; finished: Map<string, WorkoutDetail>; records: PersonalRecord[] };
+  state: { active: WorkoutDetail | null; finished: Map<string, WorkoutDetail>; records: PersonalRecord[]; routines: Map<string, Routine> };
   /** Every request seen, in order (including ones answered by `failNext`). */
   requests: RecordedRequest[];
   /** Answer the next `times` requests matching `match` with `response()` instead of the normal handler. */
@@ -78,6 +83,8 @@ export interface WorkoutFakeOptions {
   newRecordsOnFinish?: PersonalRecord[];
   /** Series served by `GET /v1/progress/exercises/:id`, keyed by lineage root (Spec 08.1). */
   progress?: Record<string, ProgressPoint[]>;
+  /** Routines served by /v1/routines (Spec 10.0). */
+  routines?: Routine[];
 }
 
 export function problemResponse(
@@ -146,6 +153,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     active: options.active ?? null,
     finished: new Map<string, WorkoutDetail>((options.finished ?? []).map((w) => [w.id, w])),
     records: [...(options.records ?? [])],
+    routines: new Map((options.routines ?? []).map((r) => [r.id as string, r])),
   };
   const catalog = options.catalog ?? [];
   const requests: RecordedRequest[] = [];
@@ -180,7 +188,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   };
 
   function handle(
-    method: "get" | "post" | "patch" | "delete",
+    method: "get" | "post" | "put" | "patch" | "delete",
     path: string,
     resolve: (ctx: { params: Record<string, string>; body: unknown; query: URLSearchParams }) => Response | Promise<Response>,
   ): RequestHandler {
@@ -258,6 +266,54 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     });
   }
 
+  const sortedRoutines = () =>
+    [...state.routines.values()].sort((x, y) => {
+      const a = x.name.toLowerCase();
+      const b = y.name.toLowerCase();
+      return a !== b ? (a < b ? -1 : 1) : x.id < y.id ? -1 : 1;
+    });
+
+  /** Spec 09 §6.2 order: schema 422 → visibility 422 → retired 409 (first offending index) → name 409. */
+  function routineWrite(body: unknown, selfId: string | null): { ok: true; routine: Routine } | { ok: false; response: Response } {
+    const parsed = parseBody(RoutineWriteSchema, body);
+    if (!parsed.ok) return parsed;
+    const input = parsed.data;
+    for (const [i, item] of input.items.entries()) {
+      const exercise = catalog.find((e) => e.id === item.exerciseId);
+      if (!exercise) return { ok: false, response: validation([{ path: `items.${i}.exerciseId`, message: "Unknown exercise" }]) };
+    }
+    const retiredAt = input.items.findIndex((item) => catalog.find((e) => e.id === item.exerciseId)?.isActive === false);
+    if (retiredAt >= 0) {
+      return { ok: false, response: problemResponse(409, "exercise-retired", { errors: [{ path: `items.${retiredAt}.exerciseId`, message: "Exercise retired" }] }) };
+    }
+    const lower = input.name.toLowerCase();
+    if ([...state.routines.values()].some((r) => r.id !== selfId && r.name.toLowerCase() === lower)) {
+      return { ok: false, response: problemResponse(409, "routine-name-taken") };
+    }
+    const groups = normalizeSupersetGroups(input.items.map((i) => i.supersetGroup ?? null));
+    const existing = selfId === null ? undefined : state.routines.get(selfId);
+    const routine = RoutineSchema.parse({
+      id: selfId ?? uuid(),
+      name: input.name,
+      notes: input.notes ?? null,
+      items: input.items.map((item, position) => ({
+        id: uuid(),
+        position,
+        exerciseId: item.exerciseId,
+        targetSets: item.targetSets ?? null,
+        targetRepsLow: item.targetRepsLow ?? null,
+        targetRepsHigh: item.targetRepsHigh ?? null,
+        targetRpe: item.targetRpe ?? null,
+        restSeconds: item.restSeconds ?? null,
+        supersetGroup: groups[position] ?? null,
+        notes: item.notes ?? null,
+      })),
+      createdAt: existing?.createdAt ?? now(),
+      updatedAt: now(),
+    });
+    return { ok: true, routine };
+  }
+
   const handlers: RequestHandler[] = [
     handle("post", "/workouts", ({ body }) => {
       const parsed = parseBody(CreateWorkoutSchema, body);
@@ -270,8 +326,16 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       const startedAt = input.startedAt;
       const skew = Date.parse(startedAt) - Date.now();
       if (skew > 300_000 || skew < -604_800_000) return validation([{ path: "startedAt", message: "Out of range" }]);
+      let routine: Routine | undefined;
+      if (input.routineId !== undefined) {
+        routine = state.routines.get(input.routineId);
+        if (!routine) return notFound();
+        const retired = routine.items.some((item) => catalog.find((e) => e.id === item.exerciseId)?.isActive === false);
+        if (retired) return problemResponse(409, "exercise-retired", { errors: [{ path: "routineId", message: "Exercise retired" }] });
+      }
+      const workoutIdForStart = uuid();
       state.active = WorkoutDetailSchema.parse({
-        id: uuid(),
+        id: workoutIdForStart,
         title: input.title ?? null,
         notes: input.notes ?? null,
         startedAt,
@@ -282,8 +346,28 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         source: "manual",
         createdAt: now(),
         updatedAt: now(),
-        routineName: null,
-        exercises: [],
+        routineName: routine?.name ?? null,
+        exercises: (routine?.items ?? []).map((item, position) => {
+          const exercise = catalog.find((e) => e.id === item.exerciseId);
+          return {
+            id: uuid(),
+            workoutId: workoutIdForStart,
+            position,
+            exerciseId: item.exerciseId,
+            exerciseNameSnapshot: exercise?.name ?? "Exercise",
+            modalitySnapshot: exercise?.modality ?? "weight_reps",
+            notes: item.notes,
+            createdAt: now(),
+            updatedAt: now(),
+            targetSets: item.targetSets,
+            targetRepsLow: item.targetRepsLow,
+            targetRepsHigh: item.targetRepsHigh,
+            targetRpe: item.targetRpe,
+            restSeconds: item.restSeconds,
+            supersetGroup: item.supersetGroup,
+            sets: [],
+          };
+        }),
       });
       return HttpResponse.json(workoutOf(state.active), { status: 201 });
     }),
@@ -318,6 +402,30 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       return HttpResponse.json(PersonalRecordsResponseSchema.parse({ records }));
     }),
     // Spec 07.2: one lineage's series; from/to inclusive on localDate; 422 malformed id, 404 unseen.
+    // Spec 09 routines (Spec 10.0's screens).
+    handle("get", "/routines", () => HttpResponse.json({ routines: sortedRoutines() })),
+    handle("post", "/routines", ({ body }) => {
+      if (state.routines.size >= ROUTINES_PER_USER_MAX) return problemResponse(409, "routine-limit");
+      const result = routineWrite(body, null);
+      if (!result.ok) return result.response;
+      state.routines.set(result.routine.id, result.routine);
+      return HttpResponse.json(result.routine, { status: 201 });
+    }),
+    handle("get", "/routines/:id", ({ params }) => {
+      const routine = state.routines.get(params["id"]!);
+      return routine ? HttpResponse.json(routine) : notFound();
+    }),
+    handle("put", "/routines/:id", ({ params, body }) => {
+      if (!state.routines.has(params["id"]!)) return notFound();
+      const result = routineWrite(body, params["id"]!);
+      if (!result.ok) return result.response;
+      state.routines.set(result.routine.id, result.routine);
+      return HttpResponse.json(result.routine);
+    }),
+    handle("delete", "/routines/:id", ({ params }) =>
+      state.routines.delete(params["id"]!) ? new HttpResponse(null, { status: 204 }) : notFound(),
+    ),
+
     handle("get", "/progress/exercises/:id", ({ params, query }) => {
       const id = params["id"]!;
       if (!ExerciseIdSchema.safeParse(id).success) return validation([{ path: "id", message: "Invalid id" }]);
