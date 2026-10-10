@@ -250,3 +250,11 @@ describe("10.0 AC18 — runPosition draws the bracket", () => {
     expect(groups.map((_, i) => runPosition(groups, i))).toEqual(["first", "middle", "last", "none", "none", "none"]);
   });
 });
+
+describe("10.0 AC1 — setTargets with unchanged values is a no-op", () => {
+  it("returns the same reference and leaves dirty alone", () => {
+    const d = draftOf("a b");
+    const same = { targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null };
+    expect(reduce(d, actions.setTargets("a", same, null))).toBe(d);
+  });
+});

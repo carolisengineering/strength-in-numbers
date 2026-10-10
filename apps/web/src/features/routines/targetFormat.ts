@@ -65,7 +65,8 @@ export function parseRest(text: string): Parsed<number | null> {
 export function parseNotes(text: string): Parsed<string | null> {
   const t = text.trim();
   if (t === "") return ok(null);
-  return t.length > ROUTINE_ITEM_NOTES_MAX ? bad(NOTES_MESSAGE) : ok(t);
+  // Code points, as the server's Zod `.max()` counts them (emoji count once).
+  return Array.from(t).length > ROUTINE_ITEM_NOTES_MAX ? bad(NOTES_MESSAGE) : ok(t);
 }
 
 export function formatRest(seconds: number): string {

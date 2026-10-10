@@ -12,7 +12,7 @@ import type { WorkoutsLocationState } from "../workouts/WorkoutsScreen";
 import { useExerciseLookup } from "./exerciseLookup";
 import { ItemLine } from "./ItemLine";
 import { ACTIVE_BLOCKS_START, DELETE_FAILED, LOAD_ONE_FAILED, OFFLINE_DELETE, RATE_LIMITED, ROUTINE_GONE, START_RETIRED } from "./messages";
-import { routineEditPath, WORKOUTS_PATH } from "./paths";
+import { EDITOR_FROM_BACK, routineEditPath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { runPosition } from "./routineDraft";
@@ -157,7 +157,7 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
           tone="error"
           requestId={failure?.requestId ?? null}
           actionLabel={startFailure.action === "edit" ? "Edit" : "Try again"}
-          onAction={() => (startFailure.action === "edit" ? navigate(routineEditPath(routine.id)) : void onStart())}
+          onAction={() => (startFailure.action === "edit" ? navigate(routineEditPath(routine.id), { state: EDITOR_FROM_BACK }) : void onStart())}
         >
           {startFailure.text}
         </InlineNotice>
@@ -180,7 +180,7 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
             Start this routine
           </Button>
         )}
-        <Link className={styles.secondary} to={routineEditPath(routine.id)}>
+        <Link className={styles.secondary} to={routineEditPath(routine.id)} state={EDITOR_FROM_BACK}>
           Edit
         </Link>
         <Button variant="danger" onClick={() => setConfirmOpen(true)}>

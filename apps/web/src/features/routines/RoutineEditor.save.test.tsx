@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -224,5 +224,60 @@ describe("10.0 AC32 — a save in flight", () => {
     await created;
     await new Promise((r) => setTimeout(r, 50));
     expect(router.state.location.pathname).toBe("/app/workouts");
+  });
+});
+
+describe("10.0 AC32 / AC34 — history after leaving the editor", () => {
+  async function fromWorkoutsToEditor() {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    prepareApp({ auth, catalog, fake });
+    const app = renderApp("/app/workouts");
+    await app.user.click(await screen.findByRole("link", { name: /Push A/ }));
+    await app.user.click(await screen.findByRole("link", { name: "Edit" }));
+    await app.user.type(await screen.findByLabelText("Notes"), "!");
+    return app;
+  }
+
+  it("Save from an edit opened on the preview returns to it; Back then reaches Workouts", async () => {
+    const { router, user } = await fromWorkoutsToEditor();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/routines/${routineId(1)}`));
+    await act(() => router.navigate(-1));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+  });
+
+  it("Cancel (discarding) returns to the preview; Back then reaches Workouts, not the editor", async () => {
+    const { router, user } = await fromWorkoutsToEditor();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/routines/${routineId(1)}`));
+    await act(() => router.navigate(-1));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+  });
+});
+
+describe("10.0 AC33 — a 404 on save forgets the routine", () => {
+  it("the deleted routine leaves the cached list", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    prepareApp({ auth, catalog, fake });
+    const { router, user } = renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    await user.type(await screen.findByLabelText("Notes"), "!");
+    fake.state.routines.clear();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("That routine no longer exists");
+    await user.click(screen.getByRole("link", { name: "Back to Workouts" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    await screen.findByRole("heading", { level: 2, name: "Routines" });
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Push A/ })).toBeNull());
+  });
+});
+
+describe("10.0 AC31 — the empty-list reason is referenced", () => {
+  it("Add exercise is described by 'Add at least one exercise'", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog }) });
+    const { user } = renderApp("/app/workouts/routines/new");
+    await user.type(await screen.findByLabelText("Name"), "Legs");
+    expect(screen.getByRole("button", { name: "Add exercise" })).toHaveAccessibleDescription(/Add at least one exercise/);
   });
 });

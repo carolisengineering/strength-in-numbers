@@ -127,3 +127,10 @@ describe("10.0 AC9 — row accessible names carry group and targets", () => {
     expect(itemAccessibleName("Old row", null, "3 sets", true)).toBe("Old row, 3 sets, no longer available");
   });
 });
+
+describe("10.0 AC9 — notes count code points, as the server does", () => {
+  it("300 emoji fit; 501 code points do not", () => {
+    expect(parseNotes("💪".repeat(300)).ok).toBe(true);
+    expect(parseNotes("💪".repeat(ROUTINE_ITEM_NOTES_MAX + 1)).ok).toBe(false);
+  });
+});

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../ui/Button";
 import { ItemLine } from "./ItemLine";
+import { UNAVAILABLE } from "./validateDraft";
 import styles from "./RoutineEditor.module.css";
 
 export interface EditorRowProps {
@@ -25,6 +26,8 @@ export interface EditorRowProps {
 /** One editor row (Spec 10.0 AC27): main control → item sheet; Options → Move up / Move down / Remove (06.1 pattern). */
 export function EditorRow(props: EditorRowProps) {
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // An unavailable row already shows its marker; any other error on it still needs its own line.
+  const shownError = props.error !== null && !(props.unavailable && props.error === UNAVAILABLE) ? props.error : null;
   return (
     <div className={styles.row}>
       <button
@@ -32,14 +35,14 @@ export function EditorRow(props: EditorRowProps) {
         ref={props.registerMain}
         className={styles.main}
         aria-label={props.accessibleName}
-        {...(props.error ? { "aria-describedby": props.errorId } : {})}
+        {...(shownError ? { "aria-describedby": props.errorId } : {})}
         onClick={props.onOpen}
       >
         <ItemLine name={props.name} line={props.line} notes={props.notes} position={props.position} unavailable={props.unavailable} />
       </button>
-      {props.error && !props.unavailable ? (
+      {shownError ? (
         <p id={props.errorId} className={styles.reason}>
-          {props.error}
+          {shownError}
         </p>
       ) : null}
       <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>

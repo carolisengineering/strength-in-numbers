@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
 import { ROUTINE_ITEMS_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
@@ -22,8 +23,8 @@ import {
   ROUTINE_GONE,
   SAVE_FAILED,
 } from "./messages";
-import { routinePath, WORKOUTS_PATH } from "./paths";
-import { useRoutine, useRoutines } from "./queries";
+import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
+import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError } from "./routineErrors";
@@ -84,6 +85,9 @@ function issueFor(issues: readonly DraftIssue[], scope: DraftIssue["scope"], ite
 export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : initialDraft()));
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  /** Opened from a screen one Back away: leave by going Back, so history stays [..., that screen]. */
+  const back = cameFromBack(useLocation().state);
   const lookupExercise = useExerciseLookup();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sheet, setSheet] = useState<{ key: string; session: number; open: boolean } | null>(null);
@@ -108,10 +112,14 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const leaving = useRef(false);
   /** False once the editor unmounts: a save that lands after the lifter left must not move them. */
   const mounted = useRef(true);
+  /** Cache cleanup for a routine the server says is gone — run on unmount, so this editor's own lookup
+   * does not refetch and replace the draft (and its notice) while the lifter is still reading it. */
+  const gonePending = useRef<(() => void) | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      gonePending.current?.();
     };
   }, []);
   const nameInput = useRef<HTMLInputElement | null>(null);
@@ -168,7 +176,9 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     try {
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
       leaving.current = true; // disarm the leave guard before navigating (AC34)
-      if (mounted.current) navigate(routinePath(saved.id), { replace: true });
+      if (!mounted.current) return;
+      if (routine && back) navigate(-1); // the preview behind us reads the saved copy from the cache
+      else navigate(routinePath(saved.id), { replace: true });
     } catch (caught) {
       reportRoutineUnexpected("save-routine", caught);
       const failure = classifyRoutineError(caught);
@@ -191,6 +201,14 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         }
         case "not-found":
           setGone(true);
+          // Deleted elsewhere: forget it, so no list or preview offers it again (the editor shows the notice).
+          if (routine) {
+            const goneId = routine.id;
+            gonePending.current = () => {
+              queryClient.removeQueries({ queryKey: ROUTINE_KEYS.detail(goneId), exact: true });
+              queryClient.setQueryData<Routine[]>(ROUTINE_KEYS.list, (old) => old?.filter((r) => r.id !== goneId));
+            };
+          }
           break;
         case "rate-limited":
           setFormError({ text: RATE_LIMITED, requestId: null });
@@ -214,6 +232,11 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     else mainControls.current.get(target)?.focus();
   });
 
+  const itemsError = issueFor(issues, "items");
+  const addDescribedBy =
+    [itemsError ? "routine-items-error" : null, draft.items.length >= ROUTINE_ITEMS_MAX ? "routine-items-cap" : null]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const cancelTo = routine ? routinePath(routine.id) : WORKOUTS_PATH;
   const sheetItem = sheet ? draft.items.find((i) => i.key === sheet.key) : undefined;
   const groups = draft.items.map((i) => i.supersetGroup);
@@ -221,7 +244,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   return (
     <Screen title={routine ? "Edit routine" : "New routine"}>
       <div className={styles.header}>
-        <Button variant="secondary" onClick={() => navigate(cancelTo)}>
+        <Button variant="secondary" onClick={() => (back ? navigate(-1) : navigate(cancelTo, { replace: true }))}>
           Cancel
         </Button>
         <Button busy={saving} disabled={!canSave} onClick={() => void save()}>
@@ -319,7 +342,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         id="routine-add-exercise"
         variant="secondary"
         disabled={draft.items.length >= ROUTINE_ITEMS_MAX}
-        {...(draft.items.length >= ROUTINE_ITEMS_MAX ? { "aria-describedby": "routine-items-cap" } : {})}
+        {...(addDescribedBy ? { "aria-describedby": addDescribedBy } : {})}
         onClick={() => setPickerOpen(true)}
       >
         Add exercise

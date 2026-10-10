@@ -197,6 +197,11 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     case "setTargets": {
       const index = state.items.findIndex((i) => i.key === action.key);
       if (index < 0) return state;
+      const current = state.items[index]!;
+      const unchanged =
+        current.notes === action.notes &&
+        (Object.keys(action.targets) as (keyof Targets)[]).every((k) => current[k] === action.targets[k]);
+      if (unchanged) return state; // Done on an untouched sheet must not arm the leave guard (AC1)
       const items = state.items.map((item, k) => (k === index ? { ...item, ...action.targets, notes: action.notes } : item));
       return withItems(state, items);
     }

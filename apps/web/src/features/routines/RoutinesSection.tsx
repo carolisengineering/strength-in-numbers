@@ -4,7 +4,7 @@ import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, REFRESH_LIST_FAILED } from "./messages";
-import { NEW_ROUTINE_PATH, routinePath } from "./paths";
+import { EDITOR_FROM_BACK, NEW_ROUTINE_PATH, routinePath } from "./paths";
 import { useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { classifyRoutineError } from "./routineErrors";
@@ -66,7 +66,7 @@ export function RoutinesSection() {
           </p>
         </div>
       ) : (
-        <Link className={styles.newLink} to={NEW_ROUTINE_PATH}>
+        <Link className={styles.newLink} to={NEW_ROUTINE_PATH} state={EDITOR_FROM_BACK}>
           New routine
         </Link>
       )}
