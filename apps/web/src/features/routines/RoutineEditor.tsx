@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { Routine } from "@sin/core";
 import { ROUTINE_ITEMS_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
@@ -11,16 +11,35 @@ import { EditorRow } from "./EditorRow";
 import { useExerciseLookup } from "./exerciseLookup";
 import { ItemSheet } from "./ItemSheet";
 import { LinkToggle } from "./LinkToggle";
-import { ADJUSTED_NOTICE, ITEMS_CAP_MESSAGE, LOAD_ONE_FAILED } from "./messages";
+import {
+  ADJUSTED_NOTICE,
+  ITEMS_CAP_MESSAGE,
+  LIMIT_MESSAGE,
+  LOAD_ONE_FAILED,
+  OFFLINE_SAVE,
+  RATE_LIMITED,
+  ROUTINE_GONE,
+  SAVE_FAILED,
+} from "./messages";
 import { routinePath, WORKOUTS_PATH } from "./paths";
-import { useRoutine } from "./queries";
+import { useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError } from "./routineErrors";
 import { RoutineGone } from "./RoutinePreview";
 import styles from "./RoutineEditor.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
-import { validateDraft, type DraftIssue } from "./validateDraft";
+import { useCreateRoutine, useReplaceRoutine } from "./useRoutineMutations";
+import {
+  FORM_INVALID,
+  issueForPath,
+  NAME_TAKEN,
+  nameTaken,
+  splitPath,
+  toRoutineInput,
+  validateDraft,
+  type DraftIssue,
+} from "./validateDraft";
 
 export function RoutineEditorRoute({ mode }: { mode: "create" | "edit" }) {
   const { id = "" } = useParams();
@@ -74,8 +93,88 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     () => validateDraft(draft, { exerciseState: (id) => lookupExercise(id).state }),
     [draft, lookupExercise],
   );
-  const showErrors = draft.dirty; // Task 13 widens this to "dirty or Save attempted"
-  const issues = showErrors ? validation.issues : [];
+  const routines = useRoutines();
+  const create = useCreateRoutine();
+  const replace = useReplaceRoutine();
+  const [attempted, setAttempted] = useState(false);
+  const [gone, setGone] = useState(false);
+  const [formError, setFormError] = useState<{ text: string; requestId: string | null } | null>(null);
+  /** Server-side name conflict, kept while the name is unchanged. */
+  const [takenName, setTakenName] = useState<string | null>(null);
+  /** Field issues from a 422, valid only for the exact draft that was sent (they vanish on the next edit). */
+  const [serverIssues, setServerIssues] = useState<{ draft: typeof draft; issues: DraftIssue[] } | null>(null);
+  const inFlight = useRef(false);
+  const leaving = useRef(false);
+  const nameInput = useRef<HTMLInputElement | null>(null);
+  const reportedBug = useRef(false);
+
+  useEffect(() => {
+    if (validation.groupBug && !reportedBug.current) {
+      reportedBug.current = true;
+      reportRoutineUnexpected("validate-draft", new Error("superset invariant broken"));
+    }
+  }, [validation.groupBug]);
+
+  const showErrors = draft.dirty || attempted;
+  const issues: DraftIssue[] = [
+    ...(showErrors ? validation.issues : []),
+    ...(serverIssues?.draft === draft ? serverIssues.issues : []),
+    ...(takenName !== null && takenName === draft.name ? [{ scope: "name" as const, message: NAME_TAKEN }] : []),
+  ];
+  const duplicateWarning =
+    routines.data !== undefined && nameTaken(draft.name, routines.data, routine?.id) ? NAME_TAKEN : null;
+  const saving = create.isPending || replace.isPending;
+  const canSave = validation.ok && !saving && !gone;
+
+  async function save() {
+    setAttempted(true);
+    if (!validation.ok || gone || inFlight.current) return;
+    inFlight.current = true;
+    const sent = draft;
+    const body = toRoutineInput(sent);
+    const keys = sent.items.map((i) => i.key);
+    setFormError(null);
+    setServerIssues(null);
+    try {
+      const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
+      leaving.current = true; // disarm the leave guard before navigating (AC34)
+      navigate(routinePath(saved.id), { replace: true });
+    } catch (caught) {
+      reportRoutineUnexpected("save-routine", caught);
+      const failure = classifyRoutineError(caught);
+      switch (failure.kind) {
+        case "name-taken":
+          setTakenName(sent.name);
+          nameInput.current?.focus();
+          break;
+        case "limit":
+          setFormError({ text: LIMIT_MESSAGE, requestId: null });
+          break;
+        case "retired":
+          dispatch(actions.markRetired(failure.retiredIndexes.flatMap((i) => (keys[i] === undefined ? [] : [keys[i]!]))));
+          break;
+        case "validation": {
+          const mapped = failure.fieldErrors.map((e) => issueForPath(splitPath(e.path), keys));
+          setServerIssues({ draft: sent, issues: mapped.filter((i): i is DraftIssue => i !== null) });
+          if (mapped.some((i) => i === null)) setFormError({ text: FORM_INVALID, requestId: failure.requestId });
+          break;
+        }
+        case "not-found":
+          setGone(true);
+          break;
+        case "rate-limited":
+          setFormError({ text: RATE_LIMITED, requestId: null });
+          break;
+        case "network":
+          setFormError({ text: OFFLINE_SAVE, requestId: null });
+          break;
+        default:
+          setFormError({ text: SAVE_FAILED, requestId: failure.requestId });
+      }
+    } finally {
+      inFlight.current = false;
+    }
+  }
 
   useLayoutEffect(() => {
     const target = pendingFocus.current;
@@ -95,11 +194,29 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         <Button variant="secondary" onClick={() => navigate(cancelTo)}>
           Cancel
         </Button>
+        <Button busy={saving} disabled={!canSave} onClick={() => void save()}>
+          Save
+        </Button>
       </div>
+      {gone ? (
+        <InlineNotice tone="error">
+          {ROUTINE_GONE}{" "}
+          <Link to={WORKOUTS_PATH}>Back to Workouts</Link>
+        </InlineNotice>
+      ) : null}
+      {formError ? (
+        <InlineNotice tone="error" requestId={formError.requestId}>
+          {formError.text}
+        </InlineNotice>
+      ) : null}
       {draft.adjusted ? <InlineNotice onDismiss={() => dispatch(actions.dismissAdjusted())}>{ADJUSTED_NOTICE}</InlineNotice> : null}
-      <Field id="routine-name" label="Name" {...(issueFor(issues, "name") ? { error: issueFor(issues, "name")! } : {})}>
+      <Field
+        id="routine-name"
+        label="Name"
+        {...(issueFor(issues, "name") ? { error: issueFor(issues, "name")! } : duplicateWarning ? { hint: duplicateWarning } : {})}
+      >
         {(control) => (
-          <input {...control} className={styles.input} value={draft.name} onChange={(e) => dispatch(actions.rename(e.target.value))} />
+          <input {...control} ref={nameInput} className={styles.input} value={draft.name} onChange={(e) => dispatch(actions.rename(e.target.value))} />
         )}
       </Field>
       <Field id="routine-notes" label="Notes" hint="Optional" {...(issueFor(issues, "notes") ? { error: issueFor(issues, "notes")! } : {})}>
@@ -162,7 +279,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         })}
       </ul>
       {issueFor(issues, "items") ? (
-        <p id="routine-items-error" className={styles.reason} role="alert">
+        <p id="routine-items-error" className={styles.reason} role={attempted ? "alert" : undefined}>
           {issueFor(issues, "items")}
         </p>
       ) : null}
