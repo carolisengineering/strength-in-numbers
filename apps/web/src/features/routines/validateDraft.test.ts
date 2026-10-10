@@ -112,6 +112,10 @@ describe("10.0 AC7 — validation", () => {
     expect(validateDraft(draft(), { exerciseState: () => "unknown" }).ok).toBe(true);
   });
 
+  it("a missing exercise does not block — the store may be stale; the server's 409 decides", () => {
+    expect(validateDraft(draft(), { exerciseState: () => "missing" }).ok).toBe(true);
+  });
+
   it("maps a schema issue on an item field to that row, in app wording", () => {
     const result = validateDraft(draft({ items: [item("a", { targetRepsLow: 10, targetRepsHigh: 8 })] }), allActive);
     expect(result.issues).toEqual([{ scope: "item", itemKey: "a", field: "targetRepsLow", message: expect.stringMatching(/reps/i) }]);
