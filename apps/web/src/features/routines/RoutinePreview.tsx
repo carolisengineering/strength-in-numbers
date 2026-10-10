@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
@@ -112,6 +112,8 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
   const { begin, busy, failure } = useBeginWorkout({ routineId: routine.id });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<ClassifiedRoutineError | null>(null);
+  const forgetOnUnmount = useRef<(() => void) | null>(null);
+  useEffect(() => () => forgetOnUnmount.current?.(), []);
 
   const goToWorkouts = (state?: WorkoutsLocationState) =>
     navigate(WORKOUTS_PATH, state === undefined ? { replace: true } : { replace: true, state });
@@ -122,8 +124,13 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
     if (outcome.kind === "started") goToWorkouts();
     else if (outcome.kind === "resumed") goToWorkouts({ notice: "routine-not-applied" });
     else if (outcome.failure.kind === "not-found") {
-      queryClient.removeQueries({ queryKey: ROUTINE_KEYS.detail(routine.id), exact: true });
-      void queryClient.invalidateQueries({ queryKey: ROUTINE_KEYS.list });
+      // Forget the routine only once this preview unmounts: cleared earlier, a list refetch could land
+      // first and flash this screen's own "gone" state before the navigation renders.
+      const goneId = routine.id;
+      forgetOnUnmount.current = () => {
+        queryClient.removeQueries({ queryKey: ROUTINE_KEYS.detail(goneId), exact: true });
+        void queryClient.invalidateQueries({ queryKey: ROUTINE_KEYS.list });
+      };
       goToWorkouts({ notice: "routine-gone" });
     }
   }

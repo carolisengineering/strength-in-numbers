@@ -133,8 +133,11 @@ describe("10.0 AC22 — start failures", () => {
     const start = await screen.findByRole("button", { name: "Start this routine" });
     fake.state.routines.clear();
     await user.click(start);
-    expect(await screen.findByText("That routine no longer exists")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/app/workouts");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    // The Start screen's notice (a status line), not the preview's own "gone" screen.
+    await waitFor(() =>
+      expect(screen.getAllByText("That routine no longer exists").some((el) => el.closest("[role=status]") !== null)).toBe(true),
+    );
     await waitFor(() => expect(screen.queryByRole("link", { name: /Push A/ })).toBeNull());
   });
 
