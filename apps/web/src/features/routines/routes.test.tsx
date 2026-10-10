@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -44,5 +44,14 @@ describe("10.0 AC14 — routes and navigation", () => {
     renderApp("/app/workouts/30000000-0000-4000-8000-000000000001");
     await screen.findByRole("heading", { level: 1, name: "Page not found" });
     expect(fake.requests.some((r) => r.path === "/v1/workouts/30000000-0000-4000-8000-000000000001")).toBe(true);
+  });
+  it("new and edit routes render the editor under the Workouts nav item", async () => {
+    prepareApp({ auth, fake: createWorkoutFake({ routines: [makeRoutine({ id: routineId(1) })] }) });
+    const { router } = renderApp("/app/workouts/routines/new");
+    expect(await screen.findByRole("heading", { level: 1, name: "New routine" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Workouts" })).toHaveAttribute("aria-current", "page");
+    await act(() => router.navigate(`/app/workouts/routines/${routineId(1)}/edit`));
+    expect(await screen.findByLabelText("Name")).toHaveValue("Push A");
+    expect(screen.getByRole("heading", { level: 1, name: "Edit routine" })).toBeInTheDocument();
   });
 });
