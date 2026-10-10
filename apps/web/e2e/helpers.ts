@@ -5,7 +5,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
  * renames one of these updates this table in the same PR.
  */
 export const NAMES = {
-  startWorkout: "Start workout",
+  startWorkout: "Start empty workout",
   addExercise: "Add exercise",
   searchExercises: "Search exercises",
   close: "Close",
