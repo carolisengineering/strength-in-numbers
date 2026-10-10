@@ -48,7 +48,7 @@ function invariantHolds(d: Draft): boolean {
   if (JSON.stringify(normalizeSupersetGroups(groups)) !== JSON.stringify(groups)) return false;
   const seen = new Set<number>();
   for (let i = 0; i < groups.length; ) {
-    const g = groups[i];
+    const g = groups[i] ?? null;
     if (g === null) { i += 1; continue; }
     if (seen.has(g)) return false; // the group appears in two separate runs
     seen.add(g);
