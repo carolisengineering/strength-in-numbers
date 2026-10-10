@@ -18,7 +18,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 
 import { HttpResponse } from "msw";
 import { exerciseId } from "../../test/catalogFixtures";
-import { makeRoutine, routineId } from "../../test/workoutFixtures";
+import { routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { addFromPicker } from "../../test/routineHarness";

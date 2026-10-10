@@ -355,3 +355,18 @@ to matter.
   pattern from AC16, written before 06.2 changes `createCustom`.
 - Anything one of them turns up is fixed in the store, or recorded here as its
   own BL.
+
+## BL-13
+
+**"Save as routine" from a past workout.**
+
+**Status: Open.** Out of scope for [Spec 10.0](specs/10.0-routines-ui.md) (D6): a second
+entry into the editor that needs a workout → draft mapping and a decision on what to
+carry (targets from the logged sets?).
+
+## BL-14
+
+**Duplicate a routine.**
+
+**Status: Open.** A [Spec 10.0](specs/10.0-routines-ui.md) non-goal; today a copy means
+building the routine again by hand.

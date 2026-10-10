@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { ROUTINE_ITEMS_MAX } from "@sin/core";
-import { exerciseId, makeExercise } from "../../test/catalogFixtures";
+import { exerciseId } from "../../test/catalogFixtures";
 import { makeRoutine, makeRoutineItem, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { addFromPicker } from "../../test/routineHarness";
