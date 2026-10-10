@@ -18,7 +18,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 
 import { HttpResponse } from "msw";
 import { exerciseId } from "../../test/catalogFixtures";
-import { routineId } from "../../test/workoutFixtures";
+import { makeRoutine, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { addFromPicker } from "../../test/routineHarness";
@@ -181,5 +181,48 @@ describe("10.0 AC33 / AC17 — save failures keep the draft", () => {
     expect(await screen.findByText("That routine no longer exists")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to Workouts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+});
+
+describe("10.0 AC32 — a save in flight", () => {
+  it("locks the form, so nothing typed during a slow save can be lost", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    fake.failNext({ method: "PUT", path: /^\/v1\/routines\// }, (() => gate.then(() => problemResponse(500, "internal"))) as unknown as () => Response);
+    prepareApp({ auth, catalog, fake });
+    const { user } = renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    await user.type(await screen.findByLabelText("Notes"), "!");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByLabelText("Name")).toBeDisabled());
+    expect(screen.getByLabelText("Notes")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add exercise" })).toBeDisabled();
+    for (const button of within(screen.getByRole("list", { name: "Exercises" })).getAllByRole("button")) expect(button).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.getByLabelText("Name")).toBeEnabled());
+  });
+
+  it("a save that lands after the lifter discarded and left does not move them", async () => {
+    const fake = createWorkoutFake({ catalog });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const created = new Promise<void>((resolve) => {
+      fake.failNext({ method: "POST", path: /^\/v1\/routines$/ }, (() =>
+        gate.then(() => {
+          resolve();
+          return HttpResponse.json(makeRoutine({ id: routineId(7), name: "Legs" }), { status: 201 });
+        })) as unknown as () => Response);
+    });
+    prepareApp({ auth, catalog, fake });
+    const { router, user } = renderApp("/app/workouts/routines/new");
+    await newRoutine(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    release();
+    await created;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(router.state.location.pathname).toBe("/app/workouts");
   });
 });

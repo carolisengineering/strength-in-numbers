@@ -106,6 +106,14 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const [serverIssues, setServerIssues] = useState<{ draft: typeof draft; issues: DraftIssue[] } | null>(null);
   const inFlight = useRef(false);
   const leaving = useRef(false);
+  /** False once the editor unmounts: a save that lands after the lifter left must not move them. */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const nameInput = useRef<HTMLInputElement | null>(null);
   const reportedBug = useRef(false);
 
@@ -140,6 +148,12 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const duplicateWarning =
     routines.data !== undefined && nameTaken(draft.name, routines.data, routine?.id) ? NAME_TAKEN : null;
   const saving = create.isPending || replace.isPending;
+  const [focusName, setFocusName] = useState(false);
+  useEffect(() => {
+    if (!focusName || saving) return;
+    setFocusName(false);
+    nameInput.current?.focus();
+  }, [focusName, saving]);
   const canSave = validation.ok && !saving && !gone;
 
   async function save() {
@@ -154,14 +168,14 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     try {
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
       leaving.current = true; // disarm the leave guard before navigating (AC34)
-      navigate(routinePath(saved.id), { replace: true });
+      if (mounted.current) navigate(routinePath(saved.id), { replace: true });
     } catch (caught) {
       reportRoutineUnexpected("save-routine", caught);
       const failure = classifyRoutineError(caught);
       switch (failure.kind) {
         case "name-taken":
           setTakenName(sent.name);
-          nameInput.current?.focus();
+          setFocusName(true); // after the form unlocks: a disabled input cannot take focus
           break;
         case "limit":
           setFormError({ text: LIMIT_MESSAGE, requestId: null });
@@ -225,6 +239,8 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           {formError.text}
         </InlineNotice>
       ) : null}
+      {/* Locked while a save is in flight: an edit made then would be lost when the save lands. */}
+      <fieldset className={styles.form} disabled={saving}>
       {draft.adjusted ? <InlineNotice onDismiss={() => dispatch(actions.dismissAdjusted())}>{ADJUSTED_NOTICE}</InlineNotice> : null}
       <Field
         id="routine-name"
@@ -313,6 +329,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           {ITEMS_CAP_MESSAGE}
         </p>
       ) : null}
+      </fieldset>
       <ExercisePicker
         open={pickerOpen}
         onPick={(exercise) => {
