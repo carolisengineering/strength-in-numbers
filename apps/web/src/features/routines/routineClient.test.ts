@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineClient.test.ts
 import { describe, expect, it, vi } from "vitest";
 import { RoutineSchema } from "@sin/core";
 import { exerciseId } from "../../test/catalogFixtures";

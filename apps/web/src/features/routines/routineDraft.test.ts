@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineDraft.test.ts
 import { describe, expect, it } from "vitest";
 import { normalizeSupersetGroups, ROUTINE_ITEMS_MAX, type Routine } from "@sin/core";
 import { exerciseId } from "../../test/catalogFixtures";

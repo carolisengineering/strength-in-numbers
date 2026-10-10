@@ -1,4 +1,3 @@
-// apps/web/src/test/routineFixtures.ts
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { makeRoutine, makeRoutineItem, routineId } from "./workoutFixtures";
 

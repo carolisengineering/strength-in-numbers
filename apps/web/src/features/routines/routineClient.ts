@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineClient.ts
 import { RoutineListResponseSchema, RoutineSchema, type Routine } from "@sin/core";
 import type { ApiClient } from "../../api";
 import type { RoutineWriteInput } from "./validateDraft";

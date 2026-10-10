@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/exerciseLookup.test.ts
 import { describe, expect, it } from "vitest";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { lookupIn, REMOVED_EXERCISE_NAME, UNKNOWN_EXERCISE_NAME } from "./exerciseLookup";

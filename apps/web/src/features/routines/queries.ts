@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/queries.ts
 import { createContext, useContext } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";

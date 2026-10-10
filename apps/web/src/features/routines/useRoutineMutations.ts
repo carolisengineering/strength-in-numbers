@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/useRoutineMutations.ts
 import { useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
 import { ApiError } from "../../api";

@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/validateDraft.ts
 import {
   ROUTINE_ITEM_NOTES_MAX,
   ROUTINE_NAME_MAX,

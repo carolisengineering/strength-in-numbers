@@ -1,4 +1,3 @@
-// apps/web/src/features/workouts/useBeginWorkout.ts
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { RoutineId } from "@sin/core";

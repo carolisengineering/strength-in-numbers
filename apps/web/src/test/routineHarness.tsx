@@ -1,4 +1,3 @@
-// apps/web/src/test/routineHarness.tsx
 import type { ReactNode } from "react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { RoutineClientContext } from "../features/routines/queries";

@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/targetFormat.ts
 import { ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema } from "@sin/core";
 
 /**

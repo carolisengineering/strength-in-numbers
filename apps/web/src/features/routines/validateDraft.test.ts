@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/validateDraft.test.ts
 import { describe, expect, it } from "vitest";
 import { ROUTINE_NAME_MAX, RoutineWriteSchema } from "@sin/core";
 import { exerciseId } from "../../test/catalogFixtures";

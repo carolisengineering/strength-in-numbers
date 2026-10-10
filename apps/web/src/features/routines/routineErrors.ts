@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineErrors.ts
 import { ApiError, type ProblemFieldError } from "../../api";
 
 export type RoutineErrorKind =

@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/RoutinesSection.tsx
 import { useEffect } from "react";
 import { Link } from "react-router";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";

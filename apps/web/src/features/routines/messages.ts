@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/messages.ts
 import { ROUTINE_ITEMS_MAX, ROUTINES_PER_USER_MAX } from "@sin/core";
 
 /** Spec 10.0 copy shared by more than one routine screen. */

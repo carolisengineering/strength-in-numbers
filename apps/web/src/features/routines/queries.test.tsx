@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/queries.test.tsx
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api";

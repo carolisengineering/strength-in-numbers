@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/targetFormat.test.ts
 import { describe, expect, it } from "vitest";
 import { ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema } from "@sin/core";
 import {

@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineDraft.ts
 import { normalizeSupersetGroups, ROUTINE_ITEMS_MAX, SUPERSET_GROUP_MEMBERS_MAX, type Routine } from "@sin/core";
 import type { Targets } from "./targetFormat";
 

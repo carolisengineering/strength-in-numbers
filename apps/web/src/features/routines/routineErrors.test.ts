@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/routineErrors.test.ts
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const observability = vi.hoisted(() => ({ reportError: vi.fn() }));

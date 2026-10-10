@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/reportRoutine.ts
 import { reportError } from "../../observability/reportError";
 import { classifyRoutineError } from "./routineErrors";
 

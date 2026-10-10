@@ -1,4 +1,3 @@
-// apps/web/src/features/workouts/useBeginWorkout.test.tsx
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

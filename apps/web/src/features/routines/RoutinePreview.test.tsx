@@ -1,4 +1,3 @@
-// apps/web/src/features/routines/RoutinePreview.test.tsx
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
