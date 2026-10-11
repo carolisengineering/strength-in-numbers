@@ -198,4 +198,62 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     await rebuildRecords(db.prisma, pino({ level: "silent" }), { userId: u });
     expect(shape(await recordsOf(db, u))).toEqual(shape(live));
   });
+
+  it("AC32 — start snapshots each item's notes by position (set, null, multi-line, 500 chars); a manual add stays null; later routine edits and deletes leave them alone", async () => {
+    const u = await insertUser(db);
+    const ex = await insertExercise(db);
+    const long = "x".repeat(500);
+    const r = await routines().create(
+      u,
+      routineFixture([], {
+        items: [
+          { exerciseId: ex, notes: "Pause at the bottom" },
+          { exerciseId: ex, notes: null },
+          { exerciseId: ex, notes: "Line one\nLine two" },
+          { exerciseId: ex, notes: long },
+        ],
+      }),
+    );
+    const { workout } = await start(u, r.id);
+    const notesOf = async () =>
+      (await workouts().getWorkoutById(u, workout.id)).exercises.map((e) => [e.position, e.notes]);
+    const expected = [
+      [0, "Pause at the bottom"],
+      [1, null],
+      [2, "Line one\nLine two"],
+      [3, long],
+    ];
+    expect(await notesOf()).toEqual(expected);
+
+    const added = await workouts().addWorkoutExercise(u, workout.id, { exerciseId: ex });
+    expect(added.notes).toBeNull();
+
+    await routines().replace(u, r.id, routineFixture([], { items: [{ exerciseId: ex, notes: "Changed" }] }));
+    await routines().delete(u, r.id);
+    expect((await notesOf()).slice(0, 4)).toEqual(expected);
+  });
+
+  it("AC33 — a replay returns the notes copied at the original start (routine edited since, never re-read); a failed start with notes leaves no rows", async () => {
+    const u = await insertUser(db);
+    const ex = await insertExercise(db);
+    const r = await routines().create(u, routineFixture([], { items: [{ exerciseId: ex, notes: "Original" }] }));
+    const key = uuidv7();
+    const first = await start(u, r.id, key);
+    await routines().replace(u, r.id, routineFixture([], { items: [{ exerciseId: ex, notes: "Edited" }] }));
+    const replay = await start(u, r.id, key);
+    expect(replay.created).toBe(false);
+    const detail = await workouts().getWorkoutById(u, first.workout.id);
+    expect(detail.exercises.map((e) => e.notes)).toEqual(["Original"]);
+    await workouts().updateWorkout(u, first.workout.id, { endedAt: endedSoon() });
+
+    const retired = await insertExercise(db);
+    const bad = await routines().create(
+      u,
+      routineFixture([], { name: "Bad", items: [{ exerciseId: ex, notes: "Kept?" }, { exerciseId: retired, notes: "No" }] }),
+    );
+    await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, retired);
+    await expect(start(u, bad.id)).rejects.toBeInstanceOf(ExerciseRetiredError);
+    expect(await count("workout", `WHERE ended_at IS NULL`)).toBe(0);
+    expect(await count("workout_exercise", `WHERE notes = $1`, "Kept?")).toBe(0);
+  });
 });
