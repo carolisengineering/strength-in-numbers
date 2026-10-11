@@ -1,7 +1,7 @@
 # Spec 09 — Routines & Supersets (API)
 
-**Status:** Implemented (2026-10-09, branch `feat/spec-09-routines-api`). Design approved by the owner in a brainstorm on 2026-10-08 (§12 D1–D17; O1–O4 resolved the same day as D18–D21).
-**Last updated:** 2026-10-09
+**Status:** Implemented (2026-10-09, branch `feat/spec-09-routines-api`). Design approved by the owner in a brainstorm on 2026-10-08 (§12 D1–D17; O1–O4 resolved the same day as D18–D21). **Amended 2026-10-11** (owner ruling during the Spec 10.1 draft): the start copy also snapshots `routine_item.notes` → `workout_exercise.notes` (D22, AC32–AC33); not yet implemented — lands as its own API PR before Spec 10.1 is implemented.
+**Last updated:** 2026-10-11
 **Design refs:** DESIGN.md §4.3 (routines — rewritten by this spec: hard delete, name snapshot, limits), §4.4 (`workout` / `workout_exercise` — gain the routine and superset columns), §4.9 (deletion matrix — `routine` row), §2 item 3 and item 8 (routines, supersets Tier B), §6 (idempotency, `/v1` conventions, conditional GET), §10 Q5 (supersets — unchanged) and Q18 (this spec's log entry), M3 roadmap row.
 Spec 05.0 (`workout` / `workout_exercise`, the idempotent start, D36 whose deferred columns this spec adds, D41 dense positions, D39 replay ignores the body), Spec 05.1 (set shapes — untouched), Spec 03.2 (`exercise-retired`, `is_active`), Spec 03.1 (the catalog's `strongEtag` / conditional-GET pattern), Spec 05.2 (write groups), Spec 07.1 (history row shape gains `routineName`), Spec 07.0 (the PR engine, which must stay indifferent to routines).
 
@@ -84,6 +84,8 @@ Every behavioral criterion gets ≥1 test naming its number (`describe("AC7 — 
 29. **Account purge.** Deleting a user row (hard purge) cascades their routines and items in one statement without an FK-ordering failure, including when an item references that user's own custom exercise (§4, D13).
 30. **Logging hygiene.** `routine_created` / `routine_updated` / `routine_deleted` / `workout_started_from_routine` lines carry ids and counts only — never `name`, `notes`, or item notes — and no token appears in any captured line.
 31. **Docs consistent.** DESIGN.md §4.3, §4.4, §4.9, Q18 and the README row/paragraph match this spec (§11 list), and 05.0's D36 and §6.6 carry a one-line "closed / relied on by Spec 09" note.
+32. **Item notes are snapshotted on start (2026-10-11 amendment, D22).** `POST /v1/workouts { routineId }` copies each routine item's `notes` into the matching `workout_exercise.notes` in the same statement as the targets (`null` → `null`; text verbatim, including newlines); `GET /v1/workouts/active`, `/{id}` and the `WorkoutExercise` shape are unchanged (the `notes` field already exists). A manual add still yields `notes: null`. Later edits or deletion of the routine do not change the copied notes; workouts started **before** the amendment are unaffected (no backfill — their `notes` stay `null`).
+33. **Replay and atomicity unchanged (2026-10-11 amendment).** An idempotent replay of the start returns the stored workout and **never re-reads the routine** (AC18 still holds, now also asserting no `routine_item` read happens); a start that fails (`404`, `409 exercise-retired`) leaves no `workout` row and so no copied notes. No migration, no new route, no response-shape change, no log line carrying the notes (AC30 extends to them).
 
 ---
 
@@ -374,6 +376,7 @@ With no `routineId` the code path is **byte-for-byte today's** (AC20). With one,
 2. Inserted: `SELECT id, name FROM routine WHERE id = $routineId AND user_id = $user FOR SHARE` (also stops a concurrent routine `DELETE`/`PUT` from tearing the copy; it blocks until this transaction ends). No row → `404 not-found` (rollback removes the workout).
 3. Load the routine's items joined to `exercise` (`position`, `exercise_id`, `name`, `modality`, `is_active`, targets, `superset_group`) ordered by `position`. Any `is_active = false` → `409 exercise-retired`, `errors[{ path: "routineId", message: "item at position N refers to a retired exercise" }]`, first offender; rollback.
 4. `INSERT INTO workout_exercise … SELECT` the items (new uuidv7 ids generated in the statement from `unnest`ed ids, positions copied — already dense), snapshots from the joined exercise row, the five targets and `superset_group` verbatim.
+**Amended 2026-10-11 (D22):** step 4 also copies `routine_item.notes` into `workout_exercise.notes` (same `INSERT … SELECT`, one more column; `NULL` stays `NULL`; item notes are 1–500 characters so they satisfy any workout-exercise notes bound). A replay (step 1, no row inserted) still never reads the routine.
 5. `UPDATE workout SET routine_id = $routineId, routine_name_snapshot = $name` and return the row.
 
 The ordering matches the brief: the one-active check (step 1) decides before any routine work, so a user with an active workout gets `409 workout-in-progress-exists` regardless of the routine, and two concurrent starts cannot both reach step 2. Every routine has at least one item (D18), so a routine-started workout always has at least one exercise.
@@ -465,6 +468,8 @@ Test-first per criterion, Vitest. Order of attack: core `routines.ts` + schemas 
 | AC29 | Integration: user with a custom exercise used in own routine and a routine-started workout → `DELETE FROM "user"` succeeds, no routine/item/workout rows remain |
 | AC30 | Unit, log-capture pattern (07.0 AC24): create/replace/delete/start with distinctive name/notes strings; none appears in any captured line; no token |
 | AC31 | Review of the DESIGN.md / README / 05.0 diff against §11's list |
+| AC32 | Integration (Testcontainers; the amendment's test): routine with item notes (set, null, multi-line, 500 chars) → started workout's `workout_exercise.notes` equal them by position; manual add → `null`; edit/delete the routine afterwards → copied notes unchanged; a workout inserted before the amendment keeps `null` |
+| AC33 | Integration + log-capture: replay with a deleted/edited routine returns the stored workout with no routine query (query spy/`pg_stat` or repository seam); failed start leaves no row; AC30's capture includes a distinctive item-note string |
 
 **Coverage.** `routine.prisma.ts`, the start-from-routine branch of `workout.prisma.ts`, and `@sin/core` `routines.ts` near 100% line coverage (a wrong target or group on the entry row is a visible wrong number); the existing `plugins/auth` / `repositories/user` ≥90% gates untouched.
 
@@ -532,3 +537,7 @@ Applied with this spec (verified by AC31):
 ### Open questions
 
 None. O1–O4 were resolved by the owner on 2026-10-08 (D19, D18, D20, D21).
+
+**Note (2026-10-11):** the question of whether the web client should tolerate an older API by defaulting the new required-nullable response fields (`routineName` and the six `WorkoutExercise` routine fields, AC24) is resolved **strict** by Spec 10.1 D4 — no `.default(null)` in the client or in `@sin/core`; DESIGN §6 records the response-field rollout convention (API one release ahead; rolling the API back past such a field also rolls the client back). No change to this spec's behaviour.
+
+- ✅ **D22 — The start copy also snapshots `routine_item.notes` into `workout_exercise.notes` (owner decision, 2026-10-11; raised while drafting Spec 10.1, which displays item notes under the exercise name).** Rejected: leaving notes out of the snapshot (a note the lifter wrote in the editor would never reach the session, History or the finished workout); a new `routine_item_notes_snapshot` column (no need — `workout_exercise.notes` exists, is nullable and is otherwise unwritten by any UI). **Rationale:** the snapshot principle of D15 (past workouts do not change when the routine does) applies equally to notes; the change is one more column in the existing `INSERT … SELECT`, no migration, no route, no response-shape change. It lands as **its own API PR before Spec 10.1 is implemented**, following the response-field rollout convention in spirit (API first, then the client that displays it). **Cost:** `workout_exercise.notes` now has two potential writers (the start copy and a future lifter edit of an exercise's note); no UI edits it today, and a future one must treat the copied text as the starting value, not overwrite it silently. Not backfilled: workouts started before the amendment keep `notes: null`.
