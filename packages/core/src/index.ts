@@ -23,3 +23,4 @@ export * from "./dto/routine.js";
 export * from "./time.js";
 export * from "./records.js";
 export * from "./routines.js";
+export * from "./supersets.js";
