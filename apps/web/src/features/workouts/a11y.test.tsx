@@ -321,3 +321,32 @@ describe("10.0 AC36 — routine screens, accessibly", () => {
     expect(within(list).getByRole("button", { name: "Bench Press, superset 1" })).toBeInTheDocument();
   });
 });
+
+describe("10.1 AC27 — session supersets, accessibly", () => {
+  it("grouped card name, real toggle buttons with aria-pressed and both names, cap reason described, bracket hidden, tap-target buttons", async () => {
+    const names = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    const groups = [1, 1, 1, 1, 2, 2, 2, 2, 2, null];
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        exercises: names.map((name, i) => ({ modality: "weight_reps" as const, name, supersetGroup: groups[i] ?? null, targetSets: i === 0 ? 3 : null })),
+      }),
+    });
+    prepareApp({ auth, fake });
+    renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+
+    expect(screen.getByRole("article", { name: "A, superset 1, 3 sets" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "E, superset 2" })).toBeInTheDocument();
+    const linked = screen.getByRole("button", { name: "Superset A with B" });
+    expect(linked.tagName).toBe("BUTTON");
+    expect(linked).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Superset I with J" })).toHaveAttribute("aria-pressed", "false");
+    const capped = screen.getByRole("button", { name: "Superset D with E" });
+    expect(capped).toBeDisabled();
+    expect(document.getElementById(capped.getAttribute("aria-describedby")!)).toHaveTextContent("A superset can have up to 8 exercises");
+    const brackets = document.querySelectorAll("[data-bracket]");
+    expect(brackets.length).toBeGreaterThan(0);
+    for (const el of brackets) expect(el).toHaveAttribute("aria-hidden", "true");
+    for (const button of screen.getAllByRole("button", { name: /^Superset / })) expect(button.className).toMatch(/_button_/);
+  });
+});
