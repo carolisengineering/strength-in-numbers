@@ -100,7 +100,6 @@ interface WorkoutExerciseDbRow {
   target_rpe: number | null;
   rest_seconds: number | null;
   superset_group: number | null;
-  notes: string | null;
 }
 
 function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
@@ -159,6 +158,7 @@ interface RoutineItemCopyRow {
   target_rpe: number | null;
   rest_seconds: number | null;
   superset_group: number | null;
+  notes: string | null;
 }
 
 export function createWorkoutRepository(
