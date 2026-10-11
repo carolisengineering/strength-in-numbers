@@ -70,6 +70,8 @@ export const WorkoutExerciseSchema = z.object({
   exerciseId: ExerciseIdSchema,
   exerciseNameSnapshot: z.string(),
   modalitySnapshot: z.enum(MODALITY_VALUES),
+  // Spec 09 D22: pre-filled from the routine item's notes at start-from-routine
+  // (null when added by hand); the add / PATCH routes may also set it.
   notes: z.string().nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
