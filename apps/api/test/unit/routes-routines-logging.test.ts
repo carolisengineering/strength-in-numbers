@@ -1,8 +1,9 @@
 import type { FastifyBaseLogger } from "fastify";
 import { pino } from "pino";
 import { describe, expect, it } from "vitest";
+import { uuidv7 } from "uuidv7";
 import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
-import { FakeExerciseRepository, FakeRoutineRepository, makeExerciseRecord } from "../helpers/fakes.js";
+import { FakeExerciseRepository, FakeRoutineRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 const EX = makeExerciseRecord({ name: "Bench" });
@@ -69,5 +70,37 @@ describe("AC30 — routine log lines carry ids and counts only", () => {
     expect(hits).toHaveLength(1);
     expect(hits[0]!.level).toBe(30); // pino info
     expect(typeof hits[0]!.user_id).toBe("string");
+  });
+});
+
+describe("AC33 — workout_started_from_routine never carries item-note text", () => {
+  it("the start logs ids and counts only", async () => {
+    const { logger, lines } = capturingLogger();
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      logger,
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo, routineRepo),
+      rateLimits: GENEROUS_LIMITS,
+    });
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/routines",
+      headers: BEARER,
+      payload: { name: "R", items: [{ exerciseId: EX.id, notes: "distinctive-item-note-kpm" }] },
+    });
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: new Date().toISOString(), routineId: created.json().id },
+    });
+    expect(started.statusCode).toBe(201);
+    const startLine = lines.find((l) => l.msg === "workout_started_from_routine");
+    expect(startLine).toMatchObject({ routine_id: created.json().id, item_count: 1 });
+    expect(JSON.stringify(lines)).not.toMatch(/distinctive-|test-token/);
   });
 });

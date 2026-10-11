@@ -444,6 +444,33 @@ describe("Spec 09 AC16–AC18 — POST /v1/workouts with routineId", () => {
     expect(replay.json().id).toBe(started.json().id);
   });
 
+  it("AC32 — the started workout's detail carries each item's notes by position", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord({ name: "Bench" });
+    exerciseRepo.byId.set(ex.id, ex);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo, routineRepo),
+    });
+    const r = await app.inject({
+      method: "POST",
+      url: "/v1/routines",
+      headers: BEARER,
+      payload: { name: "Push A", items: [{ exerciseId: ex.id, notes: "Pause\nat the bottom" }, { exerciseId: ex.id }] },
+    });
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT, routineId: r.json().id },
+    });
+    expect(started.statusCode).toBe(201);
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${started.json().id}`, headers: BEARER });
+    expect(detail.json().exercises.map((e: { notes: string | null }) => e.notes)).toEqual(["Pause\nat the bottom", null]);
+  });
+
   it("AC17 — a retired item is 409 exercise-retired with errors[0].path = routineId", async () => {
     const exerciseRepo = new FakeExerciseRepository();
     const ex = makeExerciseRecord({ name: "Bench" });
