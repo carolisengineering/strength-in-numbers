@@ -147,7 +147,7 @@ import { applyPatches, contiguous } from "./helpers/supersets.js";
 
 const toggle = (index: number): SessionOp => ({ type: "toggleLink", index });
 const move = (id: string, direction: "up" | "down"): SessionOp => ({ type: "move", id, direction });
-const okPlan = (current: SessionSlot[], op: SessionOp) => {
+const okPlan = (current: readonly SessionSlot[], op: SessionOp) => {
   const plan = planSessionChange(current, op);
   if (!plan.ok) throw new Error(plan.reason);
   return plan;
@@ -184,6 +184,11 @@ describe("10.1 AC8 — numbering", () => {
     const plan = okPlan(s(40, 40, null, null, 77, 77), toggle(2));
     expect(plan.patches).toEqual([{ id: "c", supersetGroup: 1 }, { id: "d", supersetGroup: 1 }]);
     expect(groupsOf(plan.next)).toEqual([40, 40, 1, 1, 77, 77]);
+  });
+  it("an untouched stray (a group of one) keeps its stored number: no patch", () => {
+    const plan = okPlan(s(40, null, null), toggle(1));
+    expect(plan.patches).toEqual([{ id: "b", supersetGroup: 1 }, { id: "c", supersetGroup: 1 }]);
+    expect(groupsOf(plan.next)).toEqual([40, 1, 1]);
   });
   it("a stray carrying a touched run's number forces a fresh number", () => {
     const plan = okPlan(s(2, 2, null, 2), toggle(1));
