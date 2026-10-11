@@ -17,6 +17,7 @@ const OPERATIONS: [keyof WorkoutClient, (c: WorkoutClient, id: string) => Promis
   ["deleteWorkout", (c, id) => c.deleteWorkout(id), (s) => `/v1/workouts/${s}`],
   ["addExercise", (c, id) => c.addExercise(id, { exerciseId: "e1" }), (s) => `/v1/workouts/${s}/exercises`],
   ["moveExercise", (c, id) => c.moveExercise(id, 1), (s) => `/v1/workout-exercises/${s}`],
+  ["updateWorkoutExercise", (c, id) => c.updateWorkoutExercise(id, { position: 1 }), (s) => `/v1/workout-exercises/${s}`],
   ["removeExercise", (c, id) => c.removeExercise(id), (s) => `/v1/workout-exercises/${s}`],
   [
     "createSet",

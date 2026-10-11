@@ -29,8 +29,8 @@ import {
   useDeleteWorkout,
   useFinishWorkout,
   useIsSetWritePending,
-  useMoveExercise,
   useRemoveExercise,
+  useUpdateWorkoutExercise,
 } from "./useWorkoutMutations";
 import styles from "./ActiveSession.module.css";
 
@@ -74,7 +74,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { user } = useSession();
   const catalog = useCatalog();
   const add = useAddExercise();
-  const move = useMoveExercise();
+  const move = useUpdateWorkoutExercise();
   const remove = useRemoveExercise();
   const finish = useFinishWorkout();
   const discard = useDeleteWorkout();
@@ -230,9 +230,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     try {
       await move.mutateAsync({
         id: exercise.id,
-        position: exercise.position + (direction === "up" ? -1 : 1),
-        direction,
+        body: { position: exercise.position + (direction === "up" ? -1 : 1) },
       });
+      track("exercise_moved", { direction });
+      await refetchActive();
     } catch (error) {
       await handleFailure("move-exercise", error, () => void moveExercise(exercise, direction));
     } finally {

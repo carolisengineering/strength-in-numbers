@@ -37,7 +37,8 @@ import { API_BASE_URL } from "./catalogHarness";
  * A stateful, in-memory stand-in for the Spec 05.0 / 05.1 workout API, just rich enough to be a real
  * conversation partner for component tests (Spec 06.1 §10): one active workout, dense positions,
  * appended set numbers, the strict `isComplete` gate (05.1 D14), `clientGeneratedId` replay (D15) and
- * the finish rule. Every response is built through the `@sin/core` schemas and every request body is
+ * the finish rule. `PATCH /workout-exercises/:id` applies `position` (any in-range index, others shift),
+ * `supersetGroup` (1–99 / null, stored as sent) and `notes` (Spec 10.1). Every response is built through the `@sin/core` schemas and every request body is
  * parsed with the core request schemas, so the fake cannot drift into accepting a shape the real API
  * rejects. **Risk, stated:** a hand-written fake can still drift on behaviour; Spec 06.3 runs the main
  * flows against the real API.
@@ -65,7 +66,8 @@ export interface WorkoutFake {
   /** Every request seen, in order (including ones answered by `failNext`). */
   requests: RecordedRequest[];
   /** Answer the next `times` requests matching `match` with `response()` instead of the normal handler. */
-  failNext(match: FailMatch, response: () => Response, times?: number): void;
+  /** …and with `skip`, let the first `skip` matching requests through first (Spec 10.1: fail the k-th PATCH of a plan). */
+  failNext(match: FailMatch, response: () => Response, times?: number, skip?: number): void;
   /** While true, every workout request fails at the network (`HttpResponse.error()`) and is not recorded (Spec 06.2). */
   setOffline(offline: boolean): void;
   /** Apply the next request matching `match` normally, then fail its response at the network: a lost response. */
@@ -157,7 +159,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   };
   const catalog = options.catalog ?? [];
   const requests: RecordedRequest[] = [];
-  const failures: { match: FailMatch; response: () => Response; remaining: number }[] = [];
+  const failures: { match: FailMatch; response: () => Response; remaining: number; skip: number }[] = [];
   const losses: FailMatch[] = [];
   let offline = false;
 
@@ -202,8 +204,12 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         (f) => f.remaining > 0 && f.match.method === request.method && f.match.path.test(url.pathname),
       );
       if (failure) {
-        failure.remaining -= 1;
-        return failure.response();
+        if (failure.skip > 0) {
+          failure.skip -= 1;
+        } else {
+          failure.remaining -= 1;
+          return failure.response();
+        }
       }
       const response = await resolve({ params: params as Record<string, string>, body, query: url.searchParams });
       const loss = losses.findIndex((m) => m.method === request.method && m.path.test(url.pathname));
@@ -527,6 +533,18 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         without.splice(target, 0, exercise);
         state.active = WorkoutDetailSchema.parse({ ...detail, exercises: without.map((e, i) => ({ ...e, position: i })) });
       }
+      const { supersetGroup, notes } = parsed.data;
+      if (supersetGroup !== undefined || notes !== undefined) {
+        const current = state.active!;
+        state.active = WorkoutDetailSchema.parse({
+          ...current,
+          exercises: current.exercises.map((e) =>
+            e.id === exercise.id
+              ? { ...e, ...(supersetGroup !== undefined ? { supersetGroup } : {}), ...(notes !== undefined ? { notes } : {}) }
+              : e,
+          ),
+        });
+      }
       const moved = state.active!.exercises.find((e) => e.id === exercise.id)!;
       return HttpResponse.json(WorkoutExerciseSchema.parse(moved)); // strips `sets`
     }),
@@ -597,8 +615,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handlers,
     state,
     requests,
-    failNext(match, response, times = 1) {
-      failures.push({ match, response, remaining: times });
+    failNext(match, response, times = 1, skip = 0) {
+      failures.push({ match, response, remaining: times, skip });
     },
     setOffline(value) {
       offline = value;

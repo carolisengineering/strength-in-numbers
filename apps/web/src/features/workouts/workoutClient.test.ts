@@ -143,3 +143,31 @@ describe("AC1 — createWorkoutClient maps each operation to its exact request",
     });
   });
 });
+
+describe("10.1 AC11 — updateWorkoutExercise", () => {
+  it("sends exactly the keys passed; null supersetGroup is sent as null; the path is encoded", async () => {
+    const { api, calls } = recordingApi();
+    const client = createWorkoutClient(api);
+    await client.updateWorkoutExercise("a/b?c#d", { supersetGroup: 3 });
+    await client.updateWorkoutExercise("we1", { supersetGroup: null });
+    await client.updateWorkoutExercise("we1", { position: 2 });
+    await client.updateWorkoutExercise("we1", { position: 0, supersetGroup: 1 });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toStrictEqual([
+      ["patch", "/v1/workout-exercises/a%2Fb%3Fc%23d", { supersetGroup: 3 }],
+      ["patch", "/v1/workout-exercises/we1", { supersetGroup: null }],
+      ["patch", "/v1/workout-exercises/we1", { position: 2 }],
+      ["patch", "/v1/workout-exercises/we1", { position: 0, supersetGroup: 1 }],
+    ]);
+    for (const call of calls) expect(call.schema).toBe(WorkoutExerciseSchema);
+  });
+  it("moveExercise issues the byte-identical { position } request", async () => {
+    const { api, calls } = recordingApi();
+    await createWorkoutClient(api).moveExercise("we1", 2);
+    expect(JSON.stringify(calls[0]!.body)).toBe('{"position":2}');
+  });
+  it("the method has no notes parameter (Spec 09 D22)", async () => {
+    const { api } = recordingApi();
+    // @ts-expect-error — notes is not part of WorkoutExercisePatch
+    await createWorkoutClient(api).updateWorkoutExercise("we1", { notes: "x" });
+  });
+});

@@ -319,3 +319,35 @@ describe("workoutFake — routines (Spec 10.0 test infra)", () => {
     expect((await res.json()).type).toMatch(/routine-limit$/);
   });
 });
+
+describe("10.1 — PATCH supersetGroup / notes, and failNext skip", () => {
+  async function three() {
+    const fake = boot();
+    await start(fake);
+    const wid = fake.state.active!.id;
+    const ids: string[] = [];
+    for (const ex of [bench, squat, bench]) ids.push(String((await call("POST", `/workouts/${wid}/exercises`, { exerciseId: ex.id })).json!["id"]));
+    return { fake, ids: ids as [string, string, string] };
+  }
+  it("applies supersetGroup (1–99 or null) and notes; a non-adjacent position shifts the rest", async () => {
+    const { fake, ids: [a, b, c] } = await three();
+    const row = (id: string) => fake.state.active!.exercises.find((e) => e.id === id)!;
+    expect((await call("PATCH", `/workout-exercises/${a}`, { supersetGroup: 41 })).status).toBe(200);
+    expect(row(a).supersetGroup).toBe(41);
+    expect((await call("PATCH", `/workout-exercises/${a}`, { notes: "Pause" })).status).toBe(200);
+    expect(row(a).notes).toBe("Pause");
+    expect(row(a).supersetGroup).toBe(41);
+    expect((await call("PATCH", `/workout-exercises/${a}`, { supersetGroup: null })).status).toBe(200);
+    expect(row(a).supersetGroup).toBeNull();
+    expect((await call("PATCH", `/workout-exercises/${a}`, { position: 2 })).status).toBe(200);
+    expect(fake.state.active!.exercises.map((e) => [e.id, e.position])).toEqual([[b, 0], [c, 1], [a, 2]]);
+    expect((await call("PATCH", `/workout-exercises/${a}`, { supersetGroup: 100 })).status).toBe(422);
+  });
+  it("failNext(…, times, skip) lets the first `skip` matches through", async () => {
+    const { fake, ids: [a, b, c] } = await three();
+    fake.failNext({ method: "PATCH", path: /workout-exercises/ }, () => problemResponse(500, "about:blank"), 1, 1);
+    expect((await call("PATCH", `/workout-exercises/${a}`, { supersetGroup: 1 })).status).toBe(200);
+    expect((await call("PATCH", `/workout-exercises/${b}`, { supersetGroup: 1 })).status).toBe(500);
+    expect((await call("PATCH", `/workout-exercises/${c}`, { supersetGroup: 1 })).status).toBe(200);
+  });
+});
