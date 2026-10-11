@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
-import type { WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
+import type { WorkoutDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -11,11 +11,13 @@ import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
 import { useMe } from "../me/useMe";
 import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
+import { SupersetBracket } from "../routines/SupersetBracket";
 import { classifyWorkoutError } from "./errors";
 import { formatLocalDate, formatSet } from "./format";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
+import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
 
@@ -91,13 +93,19 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       <p className={styles.meta}>
         {date} · {minutes} min
       </p>
+      {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} />
       <div className={styles.exercises}>
-        {[...workout.exercises]
-          .sort((a, b) => a.position - b.position)
-          .map((exercise) => (
-            <SummaryExercise key={exercise.id} exercise={exercise} />
-          ))}
+        {supersetRows(workout.exercises).map((row, index, rows) => (
+          <Fragment key={row.exercise.id}>
+            <SummaryExercise row={row} />
+            {index < rows.length - 1 ? (
+              <div className={styles.joint}>
+                <SupersetBracket position={row.linkedBelow ? "middle" : "none"} />
+              </div>
+            ) : null}
+          </Fragment>
+        ))}
       </div>
       <div className={styles.actions}>
         <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
@@ -109,22 +117,28 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   );
 }
 
-function SummaryExercise({ exercise }: { exercise: WorkoutExerciseDetail }) {
+/** One exercise, read-only, with the routine's target line, notes and superset bracket (Spec 10.1 AC24). */
+function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: SupersetRow }) {
   const headingId = useId();
   return (
-    <section className={styles.exercise} aria-labelledby={headingId}>
-      <h2 className={styles.name} id={headingId}>
-        {exercise.exerciseNameSnapshot}
-      </h2>
-      <ol className={styles.sets}>
-        {exercise.sets.map((set) => (
-          <li key={set.id} className={styles.set}>
-            <span className={styles.setNumber}>{set.setNumber}</span>
-            <span>{formatSet(set, exercise.modalitySnapshot)}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
+    <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
+      <SupersetBracket position={bracket} />
+      <section className={styles.exercise} {...(label ? { "aria-label": label } : { "aria-labelledby": headingId })}>
+        <h2 className={styles.name} id={headingId}>
+          {exercise.exerciseNameSnapshot}
+        </h2>
+        {line === "" ? null : <p className={styles.target}>{line}</p>}
+        {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
+        <ol className={styles.sets}>
+          {exercise.sets.map((set) => (
+            <li key={set.id} className={styles.set}>
+              <span className={styles.setNumber}>{set.setNumber}</span>
+              <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </div>
   );
 }
 

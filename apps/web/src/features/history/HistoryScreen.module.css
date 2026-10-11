@@ -55,3 +55,15 @@
   min-height: var(--tap-target-min);
   color: var(--color-accent);
 }
+
+/* Spec 10.1 AC25: a long routine name truncates on one line; the record badge keeps its box. */
+.date {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex-shrink: 0;
+}

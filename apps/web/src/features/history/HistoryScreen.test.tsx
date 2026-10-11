@@ -405,3 +405,17 @@ describe("08.0 AC22 — units follow the profile", () => {
     expect(rows()[0]).toHaveTextContent("1 set · 1,102.3 lb");
   });
 });
+
+describe("10.1 AC25 — the History row shows the routine name", () => {
+  it("appends ' · {routineName}' to the date; unchanged when null; the badge keeps its own box", async () => {
+    const [a, b] = finishedWorkouts(2, (i) => ({ routineName: i === 0 ? "Push A — a very long routine name that must not wrap" : null }));
+    setup([a!, b!], { records: [makePersonalRecord({ workoutId: a!.id })] });
+    await screen.findByRole("list", { name: "Finished workouts" });
+    const [newest, older] = rows();
+    expect(older).toHaveTextContent(/^Tue 1 Sept? · Push A — a very long routine name that must not wrap/);
+    expect(newest!.firstElementChild!.firstElementChild!.textContent).toMatch(/^Wed 2 Sept?$/);
+    const date = older!.querySelector("span > span")!;
+    expect(date.className).toMatch(/date/);
+    expect(within(older!).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
+  });
+});

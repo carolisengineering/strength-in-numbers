@@ -5,7 +5,7 @@
 .exercises {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .exercise {
@@ -54,4 +54,29 @@
   align-items: center;
   min-height: var(--tap-target-min);
   color: var(--color-accent);
+}
+
+/* Spec 10.1 AC24: the same bracket, target line and notes as the active screen, read-only. */
+.slot {
+  position: relative;
+}
+
+.grouped {
+  padding-left: var(--space-3);
+}
+
+.joint {
+  position: relative;
+  height: var(--space-3);
+}
+
+.target,
+.notes {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.notes {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
 }
