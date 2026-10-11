@@ -1,4 +1,5 @@
 import styles from "./ItemLine.module.css";
+import { SupersetBracket } from "./SupersetBracket";
 import { UNAVAILABLE } from "./validateDraft";
 
 export interface ItemLineProps {
@@ -13,7 +14,7 @@ export interface ItemLineProps {
 export function ItemLine({ name, line, notes, position, unavailable }: ItemLineProps) {
   return (
     <>
-      {position === "none" ? null : <span className={`${styles.bracket} ${styles[position]}`} aria-hidden="true" />}
+      <SupersetBracket position={position} />
       <span className={styles.text}>
         <span className={styles.name}>{name}</span>
         {line === "" ? null : <span className={styles.line}>{line}</span>}

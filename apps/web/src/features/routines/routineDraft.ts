@@ -1,4 +1,14 @@
-import { normalizeSupersetGroups, ROUTINE_ITEMS_MAX, SUPERSET_GROUP_MEMBERS_MAX, type Routine } from "@sin/core";
+import {
+  canLinkRule,
+  isLinked as isLinkedRule,
+  linkRule,
+  moveRule,
+  normalizeSupersetGroups,
+  ROUTINE_ITEMS_MAX,
+  unlinkRule,
+  type Routine,
+  type SessionSlot,
+} from "@sin/core";
 import type { Targets } from "./targetFormat";
 
 /**
@@ -9,6 +19,8 @@ import type { Targets } from "./targetFormat";
  * Invariant after every action: each non-null `supersetGroup` is one contiguous run of 2–8 items,
  * numbered 1, 2, 3 … by first appearance — exactly what the server will store. `settle` enforces it
  * once, at the end of every changing branch, so no single action can forget a rule (D8).
+ *
+ * Spec 10.1: the link / split / block-move rules are `@sin/core` `supersets.ts`; this module keeps `settle` on top.
  */
 
 export interface DraftItem extends Targets {
@@ -42,7 +54,8 @@ export type DraftAction =
   | { readonly type: "markRetired"; readonly keys: readonly string[] }
   | { readonly type: "dismissAdjusted" };
 
-export const LINK_CAP_MESSAGE = `A superset can have up to ${SUPERSET_GROUP_MEMBERS_MAX} exercises`;
+/** Spec 10.1 AC5: the link / unlink / block-move rules and `runPosition` live in `@sin/core` `supersets.ts`. */
+export { LINK_CAP_MESSAGE, runPosition } from "@sin/core";
 
 const newKey = (): string => crypto.randomUUID();
 
@@ -88,77 +101,38 @@ function settle(items: readonly DraftItem[]): DraftItem[] {
   return items.map((item, i) => (item.supersetGroup === dense[i] ? item : { ...item, supersetGroup: dense[i]! }));
 }
 
-function runBounds(items: readonly DraftItem[], index: number): [number, number] {
-  const g = items[index]!.supersetGroup;
-  if (g === null) return [index, index];
-  let start = index;
-  while (start > 0 && items[start - 1]!.supersetGroup === g) start -= 1;
-  let end = index;
-  while (end < items.length - 1 && items[end + 1]!.supersetGroup === g) end += 1;
-  return [start, end];
+const slotsOf = (items: readonly DraftItem[]): SessionSlot[] => items.map((i) => ({ id: i.key, group: i.supersetGroup }));
+
+/** Map a core rule result (slot ids are item keys) back onto the items; `settle` renumbers afterwards. */
+function fromSlots(items: readonly DraftItem[], slots: readonly SessionSlot[]): DraftItem[] {
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  return slots.map((s) => {
+    const item = byKey.get(s.id)!;
+    return item.supersetGroup === s.group ? item : { ...item, supersetGroup: s.group };
+  });
 }
 
-const maxGroup = (items: readonly DraftItem[]): number =>
-  items.reduce((max, item) => Math.max(max, item.supersetGroup ?? 0), 0);
-
 export function isLinked(items: readonly DraftItem[], index: number): boolean {
-  const a = items[index];
-  const b = items[index + 1];
-  return a !== undefined && b !== undefined && a.supersetGroup !== null && a.supersetGroup === b.supersetGroup;
+  return isLinkedRule(slotsOf(items), index);
 }
 
 export function canLink(state: Draft, index: number): { ok: true } | { ok: false; reason: string } {
-  const { items } = state;
-  if (index < 0 || index >= items.length - 1) return { ok: false, reason: "No exercise to link with" };
-  if (isLinked(items, index)) return { ok: true };
-  const [start] = runBounds(items, index);
-  const [, end] = runBounds(items, index + 1);
-  return end - start + 1 > SUPERSET_GROUP_MEMBERS_MAX ? { ok: false, reason: LINK_CAP_MESSAGE } : { ok: true };
+  return canLinkRule(slotsOf(state.items), index);
 }
 
 function toggleLink(state: Draft, index: number): DraftItem[] | null {
   const { items } = state;
   if (index < 0 || index >= items.length - 1) return null;
-  if (isLinked(items, index)) {
-    // Split: everything after the boundary in this run gets a fresh label; `settle` ungroups a side of one.
-    const [, end] = runBounds(items, index);
-    const fresh = maxGroup(items) + 1;
-    return items.map((item, k) => (k > index && k <= end ? { ...item, supersetGroup: fresh } : item));
-  }
-  if (!canLink(state, index).ok) return null;
-  const [start] = runBounds(items, index);
-  const [, end] = runBounds(items, index + 1);
-  const label = items[index]!.supersetGroup ?? items[index + 1]!.supersetGroup ?? maxGroup(items) + 1;
-  return items.map((item, k) => (k >= start && k <= end ? { ...item, supersetGroup: label } : item));
+  const slots = slotsOf(items);
+  if (isLinkedRule(slots, index)) return fromSlots(items, unlinkRule(slots, index));
+  const linked = linkRule(slots, index);
+  return linked.ok ? fromSlots(items, linked.slots) : null;
 }
 
-function swap(items: readonly DraftItem[], i: number, j: number): DraftItem[] {
-  const out = [...items];
-  [out[i], out[j]] = [out[j]!, out[i]!];
-  return out;
-}
-
-/**
- * Block moves (D8). Within a run: swap. A grouped item at its run's edge moving outward leaves the group
- * first, then moves like an ungrouped item. An ungrouped item swaps with an ungrouped neighbour, or jumps
- * the neighbour's whole run — it never lands inside a group.
- */
+/** Block moves (D8): see `moveRule`. */
 function move(items: readonly DraftItem[], index: number, dir: -1 | 1): DraftItem[] | null {
-  const j = index + dir;
-  if (index < 0 || j < 0 || j >= items.length) return null;
-  const me = items[index]!;
-  const next = items[j]!;
-  if (me.supersetGroup !== null && next.supersetGroup === me.supersetGroup) return swap(items, index, j);
-  const free: DraftItem = me.supersetGroup === null ? me : { ...me, supersetGroup: null };
-  if (next.supersetGroup === null) {
-    const out = swap(items, index, j);
-    out[j] = free;
-    return out;
-  }
-  const [start, end] = runBounds(items, j);
-  const rest = items.filter((_, k) => k !== index);
-  rest.splice(dir === -1 ? start : end, 0, free);
-  return rest;
+  const out = moveRule(slotsOf(items), index, dir);
+  return out ? fromSlots(items, out) : null;
 }
 
 const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items), dirty: true });
@@ -235,16 +209,4 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       return { name: action.routine.name, notes: action.routine.notes ?? "", items, dirty: adjusted, adjusted };
     }
   }
-}
-
-/** Where row `index` sits in its bracket. A group of one draws no bracket (Spec 09 D10). */
-export function runPosition(groups: readonly (number | null)[], index: number): "none" | "first" | "middle" | "last" {
-  const g = groups[index];
-  if (g === null || g === undefined) return "none";
-  const prev = index > 0 && groups[index - 1] === g;
-  const next = groups[index + 1] === g;
-  if (prev && next) return "middle";
-  if (next) return "first";
-  if (prev) return "last";
-  return "none";
 }
