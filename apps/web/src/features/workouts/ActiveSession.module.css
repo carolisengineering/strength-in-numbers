@@ -13,7 +13,7 @@
 .cards {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
 }
 
 .hint {
@@ -23,6 +23,7 @@
 }
 
 .placeholder {
+  margin-top: var(--space-3);
   padding: var(--space-4);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-md);
@@ -53,4 +54,20 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
   text-align: center;
+}
+
+/* Spec 10.1: one exercise card, bracketed when it sits in a superset run. The bracket spans the card and,
+   on a linked boundary, the joint below it, so it reads as one line down the run. */
+.slot {
+  position: relative;
+}
+
+.grouped {
+  padding-left: var(--space-3);
+}
+
+/* The gap between two cards: the "Superset with next" toggle. */
+.joint {
+  position: relative;
+  padding: var(--space-2) 0;
 }
