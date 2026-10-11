@@ -382,7 +382,12 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         confirmLabel="Discard"
         cancelLabel="Keep editing"
         variant="danger"
-        onConfirm={() => blocker.proceed?.()}
+        onConfirm={() => {
+          // Disarm like a save does: the router reaches the next screen before this editor unmounts, and a
+          // Back in that gap must not be blocked by a draft the lifter already discarded (AC34).
+          leaving.current = true;
+          blocker.proceed?.();
+        }}
         onCancel={() => blocker.reset?.()}
       />
     </Screen>

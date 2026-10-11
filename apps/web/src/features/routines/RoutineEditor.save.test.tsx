@@ -254,6 +254,23 @@ describe("10.0 AC32 / AC34 — history after leaving the editor", () => {
     await act(() => router.navigate(-1));
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });
+
+  it("a Back taken before the editor unmounts is not swallowed by its discarded guard", async () => {
+    const { router, user } = await fromWorkoutsToEditor();
+    const preview = `/app/workouts/routines/${routineId(1)}`;
+    let editorStillMounted: boolean | null = null;
+    // Fires synchronously when the router reaches the preview — before React commits the editor's unmount.
+    const unsubscribe = router.subscribe((state) => {
+      if (editorStillMounted !== null || state.location.pathname !== preview) return;
+      editorStillMounted = screen.queryByRole("heading", { level: 1, name: "Edit routine" }) !== null;
+      void router.navigate(-1);
+    });
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Discard changes?" })).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    unsubscribe();
+    expect(editorStillMounted).toBe(true); // the race this test exists for actually happened
+  });
 });
 
 describe("10.0 AC33 — a 404 on save forgets the routine", () => {
