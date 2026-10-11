@@ -1,4 +1,4 @@
-import { SUPERSET_GROUP_MEMBERS_MAX } from "./dto/routine.js";
+import { SUPERSET_GROUP_MEMBERS_MAX, SUPERSET_GROUP_VALUE_MAX } from "./dto/routine.js";
 
 /**
  * Spec 10.1 §6.2 — the superset rules shared by the routine editor and the live session. Pure: no
@@ -133,4 +133,182 @@ export function moveRule(slots: readonly SessionSlot[], index: number, dir: -1 |
   const rest = c.filter((_, k) => k !== index);
   rest.splice(dir === -1 ? start : end, 0, free);
   return canonical(rest);
+}
+
+export type SessionOp =
+  | { readonly type: "toggleLink"; readonly index: number }
+  | { readonly type: "move"; readonly id: string; readonly direction: "up" | "down" };
+
+export type SessionPatch =
+  | { readonly id: string; readonly supersetGroup: number | null }
+  | { readonly id: string; readonly position: number };
+
+export type SessionPlan =
+  | { readonly ok: true; readonly patches: SessionPatch[]; readonly next: SessionSlot[] }
+  | { readonly ok: false; readonly reason: "cap"; readonly message: string }
+  | { readonly ok: false; readonly reason: "no-free-group" };
+
+type Applied = { result: SessionSlot[]; movedId: string | null } | { cap: string } | null;
+
+function applyRule(current: readonly SessionSlot[], op: SessionOp): Applied {
+  if (op.type === "toggleLink") {
+    if (isLinked(current, op.index)) return { result: unlinkRule(current, op.index), movedId: null };
+    const linked = linkRule(current, op.index);
+    if (linked.ok) return { result: linked.slots, movedId: null };
+    return linked.reason === LINK_CAP_MESSAGE ? { cap: linked.reason } : null;
+  }
+  const index = current.findIndex((x) => x.id === op.id);
+  const result = moveRule(current, index, op.direction === "up" ? -1 : 1);
+  return result ? { result, movedId: op.id } : null;
+}
+
+/** Label → member ids, in list order (labels iterate top to bottom: they are canonical). */
+function members(slots: readonly SessionSlot[]): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  for (const x of slots) if (x.group !== null) out.set(x.group, [...(out.get(x.group) ?? []), x.id]);
+  return out;
+}
+
+function smallestFree(taken: ReadonlySet<number>): number | null {
+  for (let n = 1; n <= SUPERSET_GROUP_VALUE_MAX; n++) if (!taken.has(n)) return n;
+  return null;
+}
+
+function isContiguous(groups: readonly (number | null)[]): boolean {
+  const seen = new Set<number>();
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i]!;
+    if (g === null || (i > 0 && groups[i - 1] === g)) continue;
+    if (seen.has(g)) return false;
+    seen.add(g);
+  }
+  return true;
+}
+
+/** Order group patches so every prefix keeps each group contiguous where that is possible (AC9). */
+function orderForContiguity(
+  current: readonly SessionSlot[],
+  patches: { id: string; supersetGroup: number | null }[],
+): { id: string; supersetGroup: number | null }[] {
+  const groups = current.map((x) => x.group);
+  const at = new Map(current.map((x, i) => [x.id, i]));
+  const remaining = [...patches].sort((a, b) => at.get(a.id)! - at.get(b.id)!);
+  const out: { id: string; supersetGroup: number | null }[] = [];
+  while (remaining.length > 0) {
+    let pick = remaining.findIndex((p) => {
+      const trial = [...groups];
+      trial[at.get(p.id)!] = p.supersetGroup;
+      return isContiguous(trial);
+    });
+    if (pick < 0) pick = 0; // a tolerant input that is already non-contiguous: any order
+    const [p] = remaining.splice(pick, 1);
+    groups[at.get(p!.id)!] = p!.supersetGroup;
+    out.push(p!);
+  }
+  return out;
+}
+
+/**
+ * Spec 10.1 AC7–AC9: apply the shared rule, then diff against the stored numbers. Untouched runs keep
+ * their numbers; a touched run keeps the number of the stored run it shares most members with (tie:
+ * the upper) when no slot outside that run carries it; anything else takes the smallest number in
+ * 1–99 carried by no slot. Group patches come first, ordered for contiguity; a move's position patch
+ * is last. `current` is in position order (dense positions, Spec 05.0 D41).
+ */
+export function planSessionChange(current: readonly SessionSlot[], op: SessionOp): SessionPlan {
+  const applied = applyRule(current, op);
+  if (applied === null) return { ok: true, patches: [], next: [...current] };
+  if ("cap" in applied) return { ok: false, reason: "cap", message: applied.cap };
+  const { result, movedId } = applied;
+
+  const stored = new Map(current.map((x) => [x.id, x.group]));
+  const before = canonical(current);
+  const runOf = new Map(before.map((x) => [x.id, x.group]));
+  const runNumber = new Map<number, number>();
+  before.forEach((x, i) => {
+    if (x.group !== null) runNumber.set(x.group, current[i]!.group!);
+  });
+  const runMembers = members(before);
+  const classes = members(result);
+  const taken = new Set(current.flatMap((x) => (x.group === null ? [] : [x.group])));
+  const final = new Map<string, number | null>();
+  const resultIndex = new Map(result.map((x, i) => [x.id, i]));
+
+  // 1. A class whose members are exactly one stored run is untouched: it keeps its number.
+  const touched: number[] = [];
+  for (const [label, ids] of classes) {
+    const source = runOf.get(ids[0]!) ?? null;
+    const run = source === null ? undefined : runMembers.get(source);
+    if (run !== undefined && run.length === ids.length && ids.every((id) => run.includes(id))) {
+      for (const id of ids) final.set(id, runNumber.get(source!)!);
+    } else {
+      touched.push(label);
+    }
+  }
+
+  // 2. Each touched class claims the stored run it shares most members with (tie: the upper run);
+  //    per run, the claimant with most members wins (tie: the upper class) if the number is exclusive.
+  const claims = new Map<number, { cls: number; count: number; first: number }[]>();
+  for (const cls of touched) {
+    const ids = classes.get(cls)!;
+    let best: { run: number; count: number } | null = null;
+    for (const [run, runIds] of runMembers) {
+      const count = ids.filter((id) => runIds.includes(id)).length;
+      if (count > 0 && (best === null || count > best.count)) best = { run, count };
+    }
+    if (best) claims.set(best.run, [...(claims.get(best.run) ?? []), { cls, count: best.count, first: resultIndex.get(ids[0]!)! }]);
+  }
+  const keeps = new Map<number, number>();
+  for (const [run, claimants] of claims) {
+    claimants.sort((a, b) => b.count - a.count || a.first - b.first);
+    const n = runNumber.get(run)!;
+    const runIds = runMembers.get(run)!;
+    if (current.every((x) => x.group !== n || runIds.includes(x.id))) keeps.set(claimants[0]!.cls, n);
+  }
+
+  // 3. Every other touched class takes the smallest free number.
+  for (const cls of touched) {
+    let n = keeps.get(cls);
+    if (n === undefined) {
+      const free = smallestFree(taken);
+      if (free === null) return { ok: false, reason: "no-free-group" };
+      taken.add(free);
+      n = free;
+    }
+    for (const id of classes.get(cls)!) final.set(id, n);
+  }
+
+  // 4. Ungrouped in the result: a former run member leaves with null; any other slot keeps its value.
+  for (const x of result) {
+    if (x.group === null) final.set(x.id, runOf.get(x.id) !== null ? null : (stored.get(x.id) ?? null));
+  }
+
+  // 5. Tolerant inputs: two different units must never end up adjacent with one number.
+  const unit = (x: SessionSlot) => (x.group === null ? `slot:${x.id}` : `run:${x.group}`);
+  for (let i = 0; i + 1 < result.length; i++) {
+    const upper = result[i]!;
+    const lower = result[i + 1]!;
+    const n = final.get(upper.id) ?? null;
+    if (n === null || n !== final.get(lower.id) || unit(upper) === unit(lower)) continue;
+    if (lower.group === null) {
+      final.set(lower.id, null);
+    } else {
+      const free = smallestFree(taken);
+      if (free === null) return { ok: false, reason: "no-free-group" };
+      taken.add(free);
+      for (const id of classes.get(lower.group)!) final.set(id, free);
+    }
+  }
+
+  const next = result.map((x) => ({ id: x.id, group: final.get(x.id) ?? null }));
+  const groupPatches = next
+    .filter((x) => x.group !== (stored.get(x.id) ?? null))
+    .map((x) => ({ id: x.id, supersetGroup: x.group }));
+  const patches: SessionPatch[] = orderForContiguity(current, groupPatches);
+  if (movedId !== null) {
+    const from = current.findIndex((x) => x.id === movedId);
+    const to = next.findIndex((x) => x.id === movedId);
+    if (from !== to) patches.push({ id: movedId, position: to });
+  }
+  return { ok: true, patches, next };
 }

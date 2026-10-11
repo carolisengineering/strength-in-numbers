@@ -142,3 +142,116 @@ describe("10.1 AC6 — runPosition and runOrdinals", () => {
     expect(runOrdinals([])).toEqual([]);
   });
 });
+import { planSessionChange, type SessionOp } from "../src/supersets.js";
+import { applyPatches, contiguous } from "./helpers/supersets.js";
+
+const toggle = (index: number): SessionOp => ({ type: "toggleLink", index });
+const move = (id: string, direction: "up" | "down"): SessionOp => ({ type: "move", id, direction });
+const okPlan = (current: SessionSlot[], op: SessionOp) => {
+  const plan = planSessionChange(current, op);
+  if (!plan.ok) throw new Error(plan.reason);
+  return plan;
+};
+
+describe("10.1 AC7 — planSessionChange contract", () => {
+  it("a rule no-op (last-slot toggle, edge move, unknown id) is ok with no patches and next = current", () => {
+    const current = s(null, null);
+    expect(planSessionChange(current, toggle(1))).toEqual({ ok: true, patches: [], next: current });
+    expect(planSessionChange(current, move("a", "up"))).toEqual({ ok: true, patches: [], next: current });
+    expect(planSessionChange(current, move("zz", "down"))).toEqual({ ok: true, patches: [], next: current });
+  });
+  it("a cap refusal is reported, not planned", () => {
+    expect(planSessionChange(s(1, 1, 1, 1, 2, 2, 2, 2, 2), toggle(3))).toEqual({ ok: false, reason: "cap", message: LINK_CAP_MESSAGE });
+  });
+  it("next is what the patches produce, and the input is never mutated", () => {
+    const current = Object.freeze(s(1, 1, null, 2, 2).map((x) => Object.freeze(x)));
+    for (const op of [toggle(1), toggle(2), move("c", "up"), move("b", "down")]) {
+      const plan = okPlan(current, op);
+      expect(applyPatches(current, plan.patches)).toEqual(plan.next);
+    }
+    expect(groupsOf(current)).toEqual([1, 1, null, 2, 2]);
+  });
+});
+
+describe("10.1 AC8 — numbering", () => {
+  it("a new run takes the smallest number not carried by any slot (gaps are reused)", () => {
+    const plan = okPlan(s(1, 1, null, 3, 3, null, null), toggle(5));
+    expect(plan.patches).toEqual([{ id: "f", supersetGroup: 2 }, { id: "g", supersetGroup: 2 }]);
+    expect(groupsOf(plan.next)).toEqual([1, 1, null, 3, 3, 2, 2]);
+    expect(okPlan(s(null, null), toggle(0)).patches).toEqual([{ id: "a", supersetGroup: 1 }, { id: "b", supersetGroup: 1 }]);
+  });
+  it("untouched groups keep their sparse / high numbers", () => {
+    const plan = okPlan(s(40, 40, null, null, 77, 77), toggle(2));
+    expect(plan.patches).toEqual([{ id: "c", supersetGroup: 1 }, { id: "d", supersetGroup: 1 }]);
+    expect(groupsOf(plan.next)).toEqual([40, 40, 1, 1, 77, 77]);
+  });
+  it("a stray carrying a touched run's number forces a fresh number", () => {
+    const plan = okPlan(s(2, 2, null, 2), toggle(1));
+    expect(plan.patches).toEqual([
+      { id: "a", supersetGroup: 1 },
+      { id: "b", supersetGroup: 1 },
+      { id: "c", supersetGroup: 1 },
+    ]);
+    expect(groupsOf(plan.next)).toEqual([1, 1, 1, 2]);
+  });
+  it("99 is the ceiling; with every number carried the plan is no-free-group", () => {
+    const strays98 = Array.from({ length: 98 }, (_, i) => ({ id: `x${i}`, group: i + 1 }));
+    expect(okPlan(strays98, toggle(0)).patches).toEqual([{ id: "x0", supersetGroup: 99 }, { id: "x1", supersetGroup: 99 }]);
+    const strays99 = Array.from({ length: 99 }, (_, i) => ({ id: `x${i}`, group: i + 1 }));
+    expect(planSessionChange(strays99, toggle(0))).toEqual({ ok: false, reason: "no-free-group" });
+  });
+});
+
+describe("10.1 AC9 — minimality and order", () => {
+  it("merging two 4-runs renumbers the lower (tie: the upper keeps), nearest member first", () => {
+    const plan = okPlan(s(1, 1, 1, 1, 2, 2, 2, 2), toggle(3));
+    expect(plan.patches).toEqual(["e", "f", "g", "h"].map((id) => ({ id, supersetGroup: 1 })));
+  });
+  it("merging into a larger run renumbers the smaller side, nearest member first", () => {
+    const plan = okPlan(s(5, 5, 7, 7, 7), toggle(1));
+    expect(plan.patches).toEqual([{ id: "b", supersetGroup: 7 }, { id: "a", supersetGroup: 7 }]);
+  });
+  it("unlinking 4|4 gives the lower side a fresh number, far end first", () => {
+    const plan = okPlan(s(1, 1, 1, 1, 1, 1, 1, 1), toggle(3));
+    expect(plan.patches).toEqual(["h", "g", "f", "e"].map((id) => ({ id, supersetGroup: 2 })));
+  });
+  it("joining an ungrouped slot to a run is one patch", () => {
+    expect(okPlan(s(null, 4, 4), toggle(0)).patches).toEqual([{ id: "a", supersetGroup: 4 }]);
+  });
+  it("unlink leaving a side of one: one patch; both sides of one: two", () => {
+    const one = okPlan(s(3, 3, 3), toggle(0));
+    expect(one.patches).toEqual([{ id: "a", supersetGroup: null }]);
+    expect(groupsOf(one.next)).toEqual([null, 3, 3]);
+    expect(okPlan(s(3, 3), toggle(0)).patches).toEqual([{ id: "a", supersetGroup: null }, { id: "b", supersetGroup: null }]);
+  });
+  it("moves: group patches first, the one position patch last", () => {
+    expect(okPlan(s(6, 6, null), move("b", "down")).patches).toEqual([
+      { id: "a", supersetGroup: null },
+      { id: "b", supersetGroup: null },
+      { id: "b", position: 2 },
+    ]);
+    expect(okPlan(s(2, 2, 2, null), move("c", "down")).patches).toEqual([{ id: "c", supersetGroup: null }, { id: "c", position: 3 }]);
+  });
+  it("an ungrouped slot jumping a run, a swap inside a run, and a plain move are one position patch each", () => {
+    const jump = okPlan(s(null, 2, 2, 2), move("a", "down"));
+    expect(jump.patches).toEqual([{ id: "a", position: 3 }]);
+    expect(idsOf(jump.next)).toBe("bcda");
+    expect(okPlan(s(2, 2), move("a", "down")).patches).toEqual([{ id: "a", position: 1 }]);
+    expect(okPlan(s(null, null, null), move("b", "up")).patches).toEqual([{ id: "b", position: 0 }]);
+  });
+  it("every prefix of the patch list leaves each group contiguous", () => {
+    const cases: [SessionSlot[], SessionOp][] = [
+      [s(1, 1, 1, 1, 2, 2, 2, 2), toggle(3)],
+      [s(1, 1, 1, 1, 1, 1, 1, 1), toggle(3)],
+      [s(5, 5, 7, 7, 7), toggle(1)],
+      [s(1, 1, 1, 1, 1), toggle(1)],
+      [s(6, 6, null), move("b", "down")],
+    ];
+    for (const [current, op] of cases) {
+      const { patches } = okPlan(current, op);
+      for (let k = 0; k <= patches.length; k++) {
+        expect(contiguous(groupsOf(applyPatches(current, patches.slice(0, k)))), `${groupsOf(current)} prefix ${k}`).toBe(true);
+      }
+    }
+  });
+});
