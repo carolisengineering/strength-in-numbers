@@ -257,3 +257,17 @@ describe("10.1 AC29 — regroup failures carry static tags only", () => {
     expect(observability.reportError.mock.calls.map(([, ctx]) => ctx)).toContainEqual({ source: "workouts", op: "regroup" });
   });
 });
+
+describe("10.1 AC13 — a plain move's Try again re-sends the same position (R1, code review)", () => {
+  it("a lost response, then Try again: the same { position } body, and the card moves once", async () => {
+    const { fake, user } = await setup([ex("A"), ex("B"), ex("C"), ex("D")]);
+    fake.loseNextResponse({ method: "PATCH", path: /workout-exercises/ });
+    await openOptions(user, "B");
+    await user.click(within(card("B")).getByRole("button", { name: "Move down" }));
+    const alert = await screen.findByRole("alert");
+    await user.click(within(alert).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(patches(fake)).toHaveLength(2));
+    expect(patches(fake).map(([, body]) => body)).toEqual([{ position: 2 }, { position: 2 }]);
+    await waitFor(() => expect(names()).toEqual(["A", "C", "B", "D"]));
+  });
+});

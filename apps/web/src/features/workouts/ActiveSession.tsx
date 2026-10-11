@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { canLinkRule, type Exercise, type SessionOp, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
+import { canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
@@ -108,9 +108,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
   const slots = useMemo<SessionSlot[]>(() => rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), [rows]);
-  // A Try again plans from the newest list on screen, not the one it was created with.
+  // A tap plans from the list last committed to the screen (set after commit, never during render).
   const slotsRef = useRef(slots);
-  slotsRef.current = slots;
+  useLayoutEffect(() => {
+    slotsRef.current = slots;
+  }, [slots]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
   const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
 
@@ -234,19 +236,21 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   /**
    * Link / unlink / block move (Spec 10.1 §6.3): one plan at a time, sharing the structure lock with add
    * and remove. `useRegroup` already re-read the workout on failure. A failed plain move (one position
-   * PATCH) keeps 06.1's copy and Try again; any other failed plan offers none (D7).
+   * PATCH) keeps 06.1's copy and Try again, which re-sends that same absolute position; any other
+   * failed plan offers none (D7).
    */
-  async function runRegroup(op: SessionOp) {
+  async function runRegroup(op: SessionOp, resend?: SessionPatch) {
     if (structureLock.current) return;
     structureLock.current = true;
     setBanner(null);
     try {
-      const outcome = await regroup.run(slotsRef.current, op);
+      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(slotsRef.current, op);
       if (outcome.status === "refused") {
         setBanner({ tone: "warning", text: outcome.message });
       } else if (outcome.status === "failed") {
-        if (outcome.single && op.type === "move") {
-          await handleFailure("move-exercise", outcome.error, () => void runRegroup(op), { refetched: true });
+        const { retry } = outcome;
+        if (retry !== null) {
+          await handleFailure("move-exercise", outcome.error, () => void runRegroup(op, retry), { refetched: true });
         } else {
           await handleFailure("regroup", outcome.error, undefined, { refetched: true });
         }

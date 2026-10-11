@@ -98,16 +98,16 @@ describe("10.1 AC13 — the first failure stops the plan", () => {
     });
     expect(update).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(outcome).toMatchObject({ status: "failed", single: false });
+    expect(outcome).toMatchObject({ status: "failed", retry: null });
     expect(tracked.track).not.toHaveBeenCalled();
   });
-  it("a one-position-PATCH move failure is marked single (06.1's Try again applies, R1)", async () => {
+  it("a one-position-PATCH move failure carries that patch to re-send (06.1's Try again applies, R1)", async () => {
     const update = vi.fn(async () => {
       throw boom();
     }) as unknown as WorkoutClient["updateWorkoutExercise"];
     const { result } = setup(update);
     await act(async () =>
-      expect(await result.current.run(slots(null, null), { type: "move", id: "we1", direction: "up" })).toMatchObject({ status: "failed", single: true }),
+      expect(await result.current.run(slots(null, null), { type: "move", id: "we1", direction: "up" })).toMatchObject({ status: "failed", retry: { id: "we1", position: 0 } }),
     );
   });
 });

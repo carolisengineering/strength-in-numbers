@@ -13,8 +13,8 @@ export type RegroupOutcome =
   | { readonly status: "done" }
   | { readonly status: "busy" }
   | { readonly status: "refused"; readonly message: string }
-  /** `single`: the plan was one `position` PATCH — a plain 06.1 move, safe to offer Try again (D7). */
-  | { readonly status: "failed"; readonly error: unknown; readonly single: boolean };
+  /** `retry`: the plan was one `{ position }` PATCH — a plain 06.1 move, safe to re-send as-is (D7); otherwise null. */
+  | { readonly status: "failed"; readonly error: unknown; readonly retry: SessionPatch | null };
 
 const bodyOf = (patch: SessionPatch): WorkoutExercisePatch =>
   "position" in patch ? { position: patch.position } : { supersetGroup: patch.supersetGroup };
@@ -25,27 +25,30 @@ const bodyOf = (patch: SessionPatch): WorkoutExercisePatch =>
  * active workout once: after the last PATCH, or after the first failure (later PATCHes are not sent).
  * The cards render from the cache, so they redraw once, from that refetch.
  */
-export function useRegroup(): { run: (slots: readonly SessionSlot[], op: SessionOp) => Promise<RegroupOutcome>; busy: boolean } {
+export interface Regroup {
+  run: (slots: readonly SessionSlot[], op: SessionOp) => Promise<RegroupOutcome>;
+  /** Re-send a failed plain move's own `{ position }` PATCH — absolute, so a lost response cannot move the card twice (D7, R1). */
+  resend: (patch: SessionPatch, op: SessionOp) => Promise<RegroupOutcome>;
+  busy: boolean;
+}
+
+export function useRegroup(): Regroup {
   const queryClient = useQueryClient();
   const { mutateAsync } = useUpdateWorkoutExercise();
   const inFlight = useRef(false); // synchronous: React state would not have updated before a second tap lands
   const [busy, setBusy] = useState(false);
 
-  const run = useCallback(
-    async (slots: readonly SessionSlot[], op: SessionOp): Promise<RegroupOutcome> => {
-      if (inFlight.current) return { status: "busy" };
-      const plan = planSessionChange(slots, op);
-      if (!plan.ok) return { status: "refused", message: plan.reason === "cap" ? plan.message : NO_FREE_GROUP_MESSAGE };
-      if (plan.patches.length === 0) return { status: "done" };
+  const execute = useCallback(
+    async (patches: readonly SessionPatch[], op: SessionOp): Promise<RegroupOutcome> => {
       inFlight.current = true;
       setBusy(true);
       try {
         try {
-          for (const patch of plan.patches) await mutateAsync({ id: patch.id, body: bodyOf(patch) });
+          for (const patch of patches) await mutateAsync({ id: patch.id, body: bodyOf(patch) });
         } catch (error) {
           await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
-          const single = plan.patches.length === 1 && "position" in plan.patches[0]!;
-          return { status: "failed", error, single };
+          const only = patches.length === 1 ? patches[0]! : null;
+          return { status: "failed", error, retry: only !== null && "position" in only ? only : null };
         }
         await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
         if (op.type === "move") track("exercise_moved", { direction: op.direction });
@@ -58,5 +61,21 @@ export function useRegroup(): { run: (slots: readonly SessionSlot[], op: Session
     [mutateAsync, queryClient],
   );
 
-  return { run, busy };
+  const run = useCallback(
+    async (slots: readonly SessionSlot[], op: SessionOp): Promise<RegroupOutcome> => {
+      if (inFlight.current) return { status: "busy" };
+      const plan = planSessionChange(slots, op);
+      if (!plan.ok) return { status: "refused", message: plan.reason === "cap" ? plan.message : NO_FREE_GROUP_MESSAGE };
+      if (plan.patches.length === 0) return { status: "done" };
+      return execute(plan.patches, op);
+    },
+    [execute],
+  );
+
+  const resend = useCallback(
+    async (patch: SessionPatch, op: SessionOp): Promise<RegroupOutcome> => (inFlight.current ? { status: "busy" } : execute([patch], op)),
+    [execute],
+  );
+
+  return { run, resend, busy };
 }
