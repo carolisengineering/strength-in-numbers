@@ -51,6 +51,14 @@ export interface ExerciseSpec {
   modality: Modality;
   name?: string;
   sets?: SetEntry[];
+  /** Spec 10.1: routine-derived fields; each defaults to null. */
+  supersetGroup?: number | null;
+  notes?: string | null;
+  targetSets?: number | null;
+  targetRepsLow?: number | null;
+  targetRepsHigh?: number | null;
+  targetRpe?: number | null;
+  restSeconds?: number | null;
 }
 
 export interface WorkoutDetailOptions {
@@ -60,6 +68,7 @@ export interface WorkoutDetailOptions {
   /** History rows show the date, so tests need distinct days (Spec 08.0). */
   localDate?: string;
   exercises?: ExerciseSpec[];
+  routineName?: string | null;
 }
 
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
@@ -77,7 +86,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     source: "manual",
     createdAt: T0,
     updatedAt: T0,
-    routineName: null,
+    routineName: opts.routineName ?? null,
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -87,15 +96,15 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         exerciseId: nextId(),
         exerciseNameSnapshot: spec.name ?? `Exercise ${position + 1}`,
         modalitySnapshot: spec.modality,
-        notes: null,
+        notes: spec.notes ?? null,
         createdAt: T0,
         updatedAt: T0,
-        targetSets: null,
-        targetRepsLow: null,
-        targetRepsHigh: null,
-        targetRpe: null,
-        restSeconds: null,
-        supersetGroup: null,
+        targetSets: spec.targetSets ?? null,
+        targetRepsLow: spec.targetRepsLow ?? null,
+        targetRepsHigh: spec.targetRepsHigh ?? null,
+        targetRpe: spec.targetRpe ?? null,
+        restSeconds: spec.restSeconds ?? null,
+        supersetGroup: spec.supersetGroup ?? null,
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),

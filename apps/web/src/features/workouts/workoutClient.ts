@@ -15,6 +15,12 @@ import {
 } from "@sin/core";
 import { ApiError, type ApiClient } from "../../api";
 
+/** The keys `updateWorkoutExercise` may send (Spec 10.1 AC11). Deliberately no `notes` (Spec 09 D22). */
+export interface WorkoutExercisePatch {
+  readonly position?: number;
+  readonly supersetGroup?: number | null;
+}
+
 /**
  * The REST seam for the workout screen (Spec 06.1 §6.1). React-free. Every write the screen makes
  * goes through this object so Spec 06.2 can replace it with a queue-backed one; the mutation hooks
@@ -29,6 +35,8 @@ export interface WorkoutClient {
   finish(id: string, body: { endedAt: string }): Promise<UpdatedWorkout>;
   deleteWorkout(id: string): Promise<void>;
   addExercise(workoutId: string, body: { exerciseId: string }): Promise<WorkoutExercise>;
+  /** Spec 10.1 AC11: exactly the keys given go on the wire. No `notes` — a regroup must never overwrite a note copied from the routine (Spec 09 D22). */
+  updateWorkoutExercise(id: string, body: WorkoutExercisePatch): Promise<WorkoutExercise>;
   moveExercise(id: string, position: number): Promise<WorkoutExercise>;
   removeExercise(id: string): Promise<void>;
   createSet(workoutExerciseId: string, body: CreateSet): Promise<SetEntry>;
@@ -42,7 +50,7 @@ const seg = encodeURIComponent;
 export function createWorkoutClient(
   api: Pick<ApiClient, "get" | "post" | "patch" | "delete">,
 ): WorkoutClient {
-  return {
+  const client: WorkoutClient = {
     async getActive() {
       try {
         return await api.get("/v1/workouts/active", WorkoutDetailSchema);
@@ -58,7 +66,13 @@ export function createWorkoutClient(
       await api.delete(`/v1/workouts/${seg(id)}`);
     },
     addExercise: (workoutId, body) => api.post(`/v1/workouts/${seg(workoutId)}/exercises`, body, WorkoutExerciseSchema),
-    moveExercise: (id, position) => api.patch(`/v1/workout-exercises/${seg(id)}`, { position }, WorkoutExerciseSchema),
+    updateWorkoutExercise: (id, body) => {
+      const wire: { position?: number; supersetGroup?: number | null } = {};
+      if (body.position !== undefined) wire.position = body.position;
+      if (body.supersetGroup !== undefined) wire.supersetGroup = body.supersetGroup;
+      return api.patch(`/v1/workout-exercises/${seg(id)}`, wire, WorkoutExerciseSchema);
+    },
+    moveExercise: (id, position) => client.updateWorkoutExercise(id, { position }),
     removeExercise: async (id) => {
       await api.delete(`/v1/workout-exercises/${seg(id)}`);
     },
@@ -69,4 +83,5 @@ export function createWorkoutClient(
       await api.delete(`/v1/sets/${seg(id)}`);
     },
   };
+  return client;
 }

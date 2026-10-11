@@ -102,3 +102,21 @@ describe("§5.8 — resolveFailure encodes the error matrix", () => {
     expect(resolveFailure("create-set", api(409, "something-new")).type).toBe("retry");
   });
 });
+
+describe("10.1 AC13 — regroup resolves exactly as move-exercise", () => {
+  const REGROUP: [string, unknown, FailureAction["type"]][] = [
+    ["404", api(404, "not-found"), "refetch"],
+    ["409 workout-finished", api(409, "workout-finished"), "gone"],
+    ["422 stale position", api(422, "validation-error"), "refetch"],
+    ["429", api(429), "retry"],
+    ["500", api(500), "retry"],
+    ["network", network(), "retry"],
+  ];
+  it.each(REGROUP)("regroup · %s → %s", (_label, error, expected) => {
+    expect(resolveFailure("regroup", error).type).toBe(expected);
+    expect(resolveFailure("move-exercise", error).type).toBe(expected);
+  });
+  it("the generic failure text names the superset and keeps the request id", () => {
+    expect(resolveFailure("regroup", api(500))).toEqual({ type: "retry", text: "Couldn't change the superset — try again", requestId: "req-9" });
+  });
+});

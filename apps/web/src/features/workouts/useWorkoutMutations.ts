@@ -21,6 +21,7 @@ import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
+import type { WorkoutExercisePatch } from "./workoutClient";
 
 /**
  * Cache writes live in the hook-level `onSuccess`, never in a `mutate(vars, { onSuccess })` call:
@@ -152,20 +153,12 @@ export function useAddExercise(): UseMutationResult<
   });
 }
 
-export function useMoveExercise(): UseMutationResult<
-  WorkoutExercise,
-  Error,
-  { id: string; position: number; direction: "up" | "down" }
-> {
+/** One `PATCH /v1/workout-exercises/{id}` (Spec 10.1 AC12). Side-effect free: `useRegroup` sequences, refetches and tracks. */
+export function useUpdateWorkoutExercise(): UseMutationResult<WorkoutExercise, Error, { id: string; body: WorkoutExercisePatch }> {
   const client = useWorkoutClient();
-  const queryClient = useQueryClient();
   return useMutation({
     networkMode: "always",
-    mutationFn: ({ id, position }) => client.moveExercise(id, position),
-    onSuccess: (_row, { direction }) => {
-      track("exercise_moved", { direction });
-      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
-    },
+    mutationFn: ({ id, body }) => client.updateWorkoutExercise(id, body),
   });
 }
 

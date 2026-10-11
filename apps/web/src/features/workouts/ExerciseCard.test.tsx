@@ -360,3 +360,43 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
     expect(screen.getByText("1 set couldn't be saved")).toBeInTheDocument();
   });
 });
+
+const normalizeIds = (html: string) => html.replace(/(«|:|_)r_?[0-9a-z]+(»|:|_)/g, "ID");
+
+describe("10.1 AC16 — an exercise with no targets or notes renders exactly today's markup", () => {
+  it("snapshot of the pre-10.1 card", async () => {
+    await setup([{ modality: "weight_reps", name: "Plain" }]);
+    expect(normalizeIds(screen.getByRole("article", { name: "Plain" }).outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div><details class="_more_affedb"><summary class="_summary_affedb">More</summary><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-rpe">RPE</label><input id="ID-rpe" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div></details></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
+  });
+});
+
+describe("10.1 AC16 — target line and notes under the name", () => {
+  it("shows the target line, then the notes as plain text, multi-line kept", async () => {
+    await setup([
+      {
+        modality: "weight_reps",
+        name: "Bench",
+        targetSets: 4,
+        targetRepsLow: 6,
+        targetRepsHigh: 8,
+        targetRpe: 8.5,
+        restSeconds: 120,
+        notes: "Pause the last rep\nElbows in",
+      },
+    ]);
+    const bench = card("Bench");
+    expect(within(bench).getByText("4 × 6–8 · RPE 8.5 · 2:00")).toBeInTheDocument();
+    const notes = within(bench).getByText(/Pause the last rep/);
+    expect(notes.textContent).toBe("Pause the last rep\nElbows in");
+    expect(notes.innerHTML).not.toContain("<");
+    expect(notes.className).toMatch(/notes/);
+  });
+  it("omits empty notes; no set is prefilled and no progress count is shown", async () => {
+    await setup([{ modality: "weight_reps", name: "Row", targetSets: 3, notes: "" }]);
+    const row = card("Row");
+    expect(within(row).getByText("3 sets")).toBeInTheDocument();
+    expect(within(row).queryByText(/of 3/)).not.toBeInTheDocument();
+    expect(row.querySelector("ol")).toBeNull();
+    expect(within(row).getByLabelText("Reps")).toHaveValue("");
+  });
+});

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import type { Exercise, WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
+import { canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
@@ -11,6 +11,8 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
 import { ExercisePicker } from "../catalog/ExercisePicker";
+import { LinkToggle } from "../routines/LinkToggle";
+import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
 import { ExerciseCard } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
@@ -23,13 +25,14 @@ import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
+import { supersetRows } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
+import { useRegroup } from "./useRegroup";
 import {
   useAddExercise,
   useDeleteWorkout,
   useFinishWorkout,
   useIsSetWritePending,
-  useMoveExercise,
   useRemoveExercise,
 } from "./useWorkoutMutations";
 import styles from "./ActiveSession.module.css";
@@ -63,7 +66,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /**
  * The in-progress workout (Spec 06.1 §5.3): exercise cards, a sticky action bar, the exercise picker,
- * Finish and Discard. Exercise-structure writes (add / move / remove) are serialised: each changes
+ * Finish and Discard. Exercise-structure writes (add / move / regroup / remove, Spec 10.1) are serialised: each changes
  * sibling `position`s, and the next move's arithmetic comes from the list on screen, so one write plus
  * its refetch at a time (§6.3).
  */
@@ -74,7 +77,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { user } = useSession();
   const catalog = useCatalog();
   const add = useAddExercise();
-  const move = useMoveExercise();
+  const regroup = useRegroup();
   const remove = useRemoveExercise();
   const finish = useFinishWorkout();
   const discard = useDeleteWorkout();
@@ -103,8 +106,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     () => [...workout.exercises].sort((a, b) => a.position - b.position),
     [workout.exercises],
   );
+  const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
+  const slots = useMemo<SessionSlot[]>(() => rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), [rows]);
+  // A tap plans from the list last committed to the screen (set after commit, never during render).
+  const slotsRef = useRef(slots);
+  useLayoutEffect(() => {
+    slotsRef.current = slots;
+  }, [slots]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
-  const structureBusy = add.isPending || move.isPending || remove.isPending || pending !== null;
+  const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
 
   // A flag lasts only while the set is still incomplete: fixing or deleting it clears the marker.
   const flagged = useMemo(() => {
@@ -162,7 +172,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   };
 
   /** Resolve a failed exercise-structure write per §5.8. */
-  async function handleFailure(op: Operation, error: unknown, retry?: () => void) {
+  async function handleFailure(op: Operation, error: unknown, retry?: () => void, options: { refetched?: boolean } = {}) {
     reportUnexpected(op, error);
     const action = resolveFailure(op, error);
     switch (action.type) {
@@ -171,7 +181,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         return;
       case "refetch":
         track("workout_conflict", { kind: "stale-position" });
-        await refetchActive();
+        if (!options.refetched) await refetchActive();
         return;
       case "unavailable": {
         // The API answers 404 both for "workout gone" and "exercise not visible": refetch to tell.
@@ -223,18 +233,28 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
-  async function moveExercise(exercise: WorkoutExerciseDetail, direction: "up" | "down") {
+  /**
+   * Link / unlink / block move (Spec 10.1 §6.3): one plan at a time, sharing the structure lock with add
+   * and remove. `useRegroup` already re-read the workout on failure. A failed plain move (one position
+   * PATCH) keeps 06.1's copy and Try again, which re-sends that same absolute position; any other
+   * failed plan offers none (D7).
+   */
+  async function runRegroup(op: SessionOp, resend?: SessionPatch) {
     if (structureLock.current) return;
     structureLock.current = true;
     setBanner(null);
     try {
-      await move.mutateAsync({
-        id: exercise.id,
-        position: exercise.position + (direction === "up" ? -1 : 1),
-        direction,
-      });
-    } catch (error) {
-      await handleFailure("move-exercise", error, () => void moveExercise(exercise, direction));
+      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(slotsRef.current, op);
+      if (outcome.status === "refused") {
+        setBanner({ tone: "warning", text: outcome.message });
+      } else if (outcome.status === "failed") {
+        const { retry } = outcome;
+        if (retry !== null) {
+          await handleFailure("move-exercise", outcome.error, () => void runRegroup(op, retry), { refetched: true });
+        } else {
+          await handleFailure("regroup", outcome.error, undefined, { refetched: true });
+        }
+      }
     } finally {
       structureLock.current = false;
     }
@@ -425,30 +445,54 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </InlineNotice>
       ) : null}
 
-      <div className={styles.cards}>
+      <div className={styles.cards} aria-busy={regroup.busy || undefined}>
         {exercises.length === 0 && pending === null ? (
           <p className={styles.hint}>Add your first exercise</p>
         ) : null}
-        {exercises.map((exercise, index) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            isFirst={index === 0}
-            isLast={index === exercises.length - 1}
-            structureBusy={structureBusy}
-            flaggedIds={flagged}
-            firstFlaggedId={firstFlaggedId}
-            firstFlaggedRef={setFirstFlaggedRef}
-            onMove={(direction) => void moveExercise(exercise, direction)}
-            onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
-            unitPreference={user?.unitPreference ?? "kg"}
-            onGone={gone}
-            sync={sync}
-            onDiscardOp={(opId) => outbox?.discard(opId)}
-            firstFailedId={firstFailedId}
-            failedRowRef={setFailedRowRef}
-          />
-        ))}
+        {rows.map(({ exercise, bracket, line, label, linkedBelow }, index) => {
+          const below = rows[index + 1]?.exercise;
+          const refusal = canLinkRule(slots, index);
+          return (
+            <Fragment key={exercise.id}>
+              <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
+                <SupersetBracket position={bracket} />
+                <ExerciseCard
+                  exercise={exercise}
+                  targetLine={line}
+                  accessibleName={label}
+                  isFirst={index === 0}
+                  isLast={index === rows.length - 1}
+                  structureBusy={structureBusy}
+                  flaggedIds={flagged}
+                  firstFlaggedId={firstFlaggedId}
+                  firstFlaggedRef={setFirstFlaggedRef}
+                  onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+                  onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+                  unitPreference={user?.unitPreference ?? "kg"}
+                  onGone={gone}
+                  sync={sync}
+                  onDiscardOp={(opId) => outbox?.discard(opId)}
+                  firstFailedId={firstFailedId}
+                  failedRowRef={setFailedRowRef}
+                />
+              </div>
+              {below ? (
+                <div className={styles.joint}>
+                  <SupersetBracket position={linkedBelow ? "middle" : "none"} />
+                  <LinkToggle
+                    id={`link-${exercise.id}`}
+                    above={exercise.exerciseNameSnapshot}
+                    below={below.exerciseNameSnapshot}
+                    linked={linkedBelow}
+                    refusal={refusal.ok ? null : refusal.reason}
+                    disabled={structureBusy}
+                    onToggle={() => void runRegroup({ type: "toggleLink", index })}
+                  />
+                </div>
+              ) : null}
+            </Fragment>
+          );
+        })}
         {pending ? (
           <div className={styles.placeholder} aria-busy="true">
             <p>Adding {pending.name}…</p>

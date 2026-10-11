@@ -223,3 +223,74 @@ describe("08.0 AC20 — the section prop", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });
 });
+
+const routineWorkout = (routineName: string | null) =>
+  makeWorkoutDetail({
+    startedAt: "2026-10-02T18:02:00.000Z",
+    endedAt: "2026-10-02T19:00:00.000Z",
+    routineName,
+    exercises: [
+      { modality: "weight_reps", name: "Bench", supersetGroup: 4, targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, notes: "Pause the last rep", sets: [makeSet({ setNumber: 1 })] },
+      { modality: "weight_reps", name: "Row", supersetGroup: 4, sets: [makeSet({ setNumber: 1 })] },
+      { modality: "weight_reps", name: "Curl", supersetGroup: 9, sets: [makeSet({ setNumber: 1 })] },
+    ],
+  });
+
+function setupWith(workout: ReturnType<typeof makeWorkoutDetail>, path: string) {
+  const fake = createWorkoutFake({ finished: [workout] });
+  prepareApp({ auth, fake });
+  return renderApp(path.replace(":id", workout.id));
+}
+
+describe("10.1 AC24 — finished workout and History detail", () => {
+  it.each(["/app/workouts/:id", "/app/history/:id"])("%s: target line, notes, bracket, names and From routine", async (path) => {
+    setupWith(routineWorkout("Push A"), path);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(screen.getByText("From routine: Push A")).toBeInTheDocument();
+    const bench = screen.getByRole("region", { name: "Bench, superset 1, 4 × 6–8" });
+    expect(within(bench).getByText("4 × 6–8")).toBeInTheDocument();
+    expect(within(bench).getByText("Pause the last rep")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Row, superset 1" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Curl" })).toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll("[data-bracket]")).map((e) => e.getAttribute("data-bracket"))).toEqual(["first", "middle", "last"]);
+    expect(screen.queryByRole("button", { name: /^Superset / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Move (up|down)/ })).not.toBeInTheDocument();
+  });
+  it("no From routine line when routineName is null", async () => {
+    setupWith(routineWorkout(null), "/app/workouts/:id");
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(screen.queryByText(/From routine/)).not.toBeInTheDocument();
+  });
+  it("a deleted routine still shows: the name is the snapshot", async () => {
+    // The fake holds no routine at all; the workout's routineName is all there is.
+    setupWith(routineWorkout("Deleted routine"), "/app/history/:id");
+    expect(await screen.findByText("From routine: Deleted routine")).toBeInTheDocument();
+  });
+});
+
+describe("10.1 AC18 — tolerant shapes on the finished screen", () => {
+  it("a group of one and two stretches sharing a number draw no stray bracket", async () => {
+    const w = makeWorkoutDetail({
+      startedAt: "2026-10-02T18:02:00.000Z",
+      endedAt: "2026-10-02T19:00:00.000Z",
+      exercises: [
+        { modality: "weight_reps", name: "A", supersetGroup: 5 },
+        { modality: "weight_reps", name: "B", supersetGroup: 3 },
+        { modality: "weight_reps", name: "C", supersetGroup: 3 },
+        { modality: "weight_reps", name: "D" },
+        { modality: "weight_reps", name: "E", supersetGroup: 3 },
+        { modality: "weight_reps", name: "F", supersetGroup: 3 },
+      ],
+    });
+    setupWith(w, "/app/workouts/:id");
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label") ?? r.textContent?.split("\n")[0])).toEqual(
+      expect.arrayContaining(["B, superset 1", "C, superset 1", "E, superset 2", "F, superset 2"]),
+    );
+    expect(screen.getByRole("region", { name: "A" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "D" })).toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll("[data-bracket]")).map((e) => e.getAttribute("data-bracket"))).toEqual([
+      "first", "middle", "last", "first", "middle", "last",
+    ]);
+  });
+});

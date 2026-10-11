@@ -8,7 +8,9 @@ export type Operation =
   | "update-set"
   | "delete-set"
   | "finish"
-  | "discard";
+  | "discard"
+  /** Spec 10.1: link / unlink / block move — one or more PATCHes from `planSessionChange`. */
+  | "regroup";
 
 /** What the screen should do about a failed write. One variant per way the matrix can resolve. */
 export type FailureAction =
@@ -40,6 +42,7 @@ const RETRY_TEXT: Record<Operation, string> = {
   "delete-set": "Couldn't delete the set — try again",
   finish: "Couldn't finish — try again",
   discard: "Couldn't discard the workout — try again",
+  regroup: "Couldn't change the superset — try again",
 };
 
 const UNCONFIRMED_TEXT =
@@ -69,6 +72,7 @@ export function resolveFailure(op: Operation, error: unknown): FailureAction {
           return { type: "unconfirmed", text: UNCONFIRMED_TEXT, requestId };
       }
     case "move-exercise":
+    case "regroup":
       if (kind === "not-found" || kind === "validation") return { type: "refetch" };
       return kind === "workout-finished" ? finished : retry;
     case "remove-exercise":

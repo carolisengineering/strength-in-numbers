@@ -32,13 +32,18 @@ export interface ExerciseCardProps {
   /** The session's first failed row gets `failedRowRef` (the status line's "Show"). */
   firstFailedId?: string | null;
   failedRowRef?: (node: HTMLLIElement | null) => void;
+  /** Spec 10.1 AC16: the routine's targets for this exercise; `""` when none. */
+  targetLine?: string;
+  /** Spec 10.1 AC17: the card's name when it sits in a superset run; `null` names it by its heading. */
+  accessibleName?: string | null;
 }
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();
 
 /**
  * One exercise in the session (Spec 06.1 §5.4): its name and modality, an Options row (Move up / Move
- * down / Remove exercise — buttons, not drag-and-drop, D16), and its logged sets.
+ * down / Remove exercise — buttons, not drag-and-drop, D16), and its logged sets. Spec 10.1 adds the
+ * routine's target line and notes under the name, display only.
  */
 export function ExerciseCard({
   exercise,
@@ -56,19 +61,23 @@ export function ExerciseCard({
   onDiscardOp,
   firstFailedId = null,
   failedRowRef,
+  targetLine = "",
+  accessibleName = null,
 }: ExerciseCardProps) {
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
 
   return (
-    <article className={styles.card} aria-labelledby={headingId}>
+    <article className={styles.card} {...(accessibleName ? { "aria-label": accessibleName } : { "aria-labelledby": headingId })}>
       <header className={styles.header}>
         <div className={styles.titles}>
           <h2 className={styles.name} id={headingId}>
             {exercise.exerciseNameSnapshot}
           </h2>
           <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
+          {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
+          {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
         </div>
         <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
           Options

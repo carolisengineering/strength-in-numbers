@@ -195,3 +195,35 @@ describe("Spec 09 AC24 — additive read fields", () => {
     }
   });
 });
+
+describe("10.1 AC26 — routine-derived response fields stay required-nullable", () => {
+  const full = {
+    id: "018fcb3e-3b8a-7d6e-9c1a-000000000007",
+    workoutId: validWorkout.id,
+    position: 0,
+    exerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000008",
+    exerciseNameSnapshot: "Bench",
+    modalitySnapshot: "weight_reps",
+    notes: null,
+    createdAt: validWorkout.createdAt,
+    updatedAt: validWorkout.updatedAt,
+    targetSets: null,
+    targetRepsLow: null,
+    targetRepsHigh: null,
+    targetRpe: null,
+    restSeconds: null,
+    supersetGroup: null,
+  };
+  const SIX = ["targetSets", "targetRepsLow", "targetRepsHigh", "targetRpe", "restSeconds", "supersetGroup"] as const;
+  it("a Workout without routineName fails", () => {
+    const { routineName: _omitted, ...without } = validWorkout;
+    void _omitted;
+    expect(WorkoutSchema.safeParse(without).success).toBe(false);
+  });
+  it.each(SIX)("a WorkoutExercise without %s fails; null passes", (field) => {
+    expect(WorkoutExerciseSchema.safeParse(full).success).toBe(true);
+    const without: Record<string, unknown> = { ...full };
+    delete without[field];
+    expect(WorkoutExerciseSchema.safeParse(without).success).toBe(false);
+  });
+});
