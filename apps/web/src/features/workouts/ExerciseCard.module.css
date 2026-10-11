@@ -102,3 +102,15 @@
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Spec 10.1 AC16: the routine's targets and notes, display only. */
+.target,
+.notes {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.notes {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}

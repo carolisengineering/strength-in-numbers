@@ -23,6 +23,7 @@ import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
+import { supersetRows } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
 import {
   useAddExercise,
@@ -103,6 +104,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     () => [...workout.exercises].sort((a, b) => a.position - b.position),
     [workout.exercises],
   );
+  const targetLines = useMemo(() => new Map(supersetRows(workout.exercises).map((r) => [r.exercise.id, r.line])), [workout.exercises]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
   const structureBusy = add.isPending || move.isPending || remove.isPending || pending !== null;
 
@@ -434,6 +436,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           <ExerciseCard
             key={exercise.id}
             exercise={exercise}
+            targetLine={targetLines.get(exercise.id) ?? ""}
             isFirst={index === 0}
             isLast={index === exercises.length - 1}
             structureBusy={structureBusy}
