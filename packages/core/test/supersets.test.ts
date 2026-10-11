@@ -190,6 +190,11 @@ describe("10.1 AC8 — numbering", () => {
     expect(plan.patches).toEqual([{ id: "b", supersetGroup: 1 }, { id: "c", supersetGroup: 1 }]);
     expect(groupsOf(plan.next)).toEqual([40, 1, 1]);
   });
+  it("a stray above an untouched run with the same number is cleared; the run keeps its number", () => {
+    const plan = okPlan(s(5, null, 5, 5), move("b", "up"));
+    expect(plan.patches).toEqual([{ id: "a", supersetGroup: null }, { id: "b", position: 0 }]);
+    expect(groupsOf(plan.next)).toEqual([null, null, 5, 5]);
+  });
   it("a stray carrying a touched run's number forces a fresh number", () => {
     const plan = okPlan(s(2, 2, null, 2), toggle(1));
     expect(plan.patches).toEqual([

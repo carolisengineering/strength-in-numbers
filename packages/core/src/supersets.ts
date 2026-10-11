@@ -290,7 +290,10 @@ export function planSessionChange(current: readonly SessionSlot[], op: SessionOp
     const lower = result[i + 1]!;
     const n = final.get(upper.id) ?? null;
     if (n === null || n !== final.get(lower.id) || unit(upper) === unit(lower)) continue;
-    if (lower.group === null) {
+    // Clear an ungrouped side first (it is already ungrouped on screen); renumber a run only when both sides are runs.
+    if (upper.group === null) {
+      final.set(upper.id, null);
+    } else if (lower.group === null) {
       final.set(lower.id, null);
     } else {
       const free = smallestFree(taken);
