@@ -502,7 +502,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           exerciseId: exercise.id,
           exerciseNameSnapshot: exercise.name,
           modalitySnapshot: exercise.modality,
-          notes: null,
+          notes: item.notes,
           createdAt: now,
           updatedAt: now,
           targetSets: item.targetSets,

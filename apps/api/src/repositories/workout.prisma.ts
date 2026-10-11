@@ -158,6 +158,7 @@ interface RoutineItemCopyRow {
   target_rpe: number | null;
   rest_seconds: number | null;
   superset_group: number | null;
+  notes: string | null;
 }
 
 export function createWorkoutRepository(
@@ -224,7 +225,8 @@ export function createWorkoutRepository(
 
         const items = await tx.$queryRaw<RoutineItemCopyRow[]>`
           SELECT ri.position, ri.exercise_id, e.name, e.modality, e.is_active, ri.target_sets,
-                 ri.target_reps_low, ri.target_reps_high, ri.target_rpe, ri.rest_seconds, ri.superset_group
+                 ri.target_reps_low, ri.target_reps_high, ri.target_rpe, ri.rest_seconds, ri.superset_group,
+                 ri.notes
           FROM "routine_item" ri JOIN "exercise" e ON e.id = ri.exercise_id
           WHERE ri.routine_id = ${routine.id}::uuid
           ORDER BY ri.position
@@ -241,7 +243,7 @@ export function createWorkoutRepository(
         if (items.length > 0) {
           const values = items.map(
             (it) => Prisma.sql`(
-              ${uuidv7()}::uuid, ${id}::uuid, ${it.position}, ${it.exercise_id}::uuid, ${it.name}, ${it.modality}, NULL,
+              ${uuidv7()}::uuid, ${id}::uuid, ${it.position}, ${it.exercise_id}::uuid, ${it.name}, ${it.modality}, ${it.notes},
               ${it.target_sets}, ${it.target_reps_low}, ${it.target_reps_high}, ${it.target_rpe},
               ${it.rest_seconds}, ${it.superset_group}, now(), now())`,
           );

@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
 **Status:** Draft v0.5 — decisions Q1–Q18 resolved; consistency pass done
-**Last updated:** 2026-10-10 (§2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Last updated:** 2026-10-11 (§2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -95,7 +95,9 @@ resolved) and Risk R6.
    desktop for planning and review.
 8. **Supersets / circuits (Tier B)** — group exercises, bracketed display, grid-style
    logging (no forced interleave). Grouping, bracketed display and grid logging land in
-   M3 alongside routines (Specs 09, 10.0, 10.1); the **one rest timer per group** after
+   M3 alongside routines (Specs 09, 10.0, 10.1); "grid logging" means the grouped cards
+   are joined by one bracket and **each keeps its own Log set row** — there is no
+   combined superset card in M3 (Spec 10.1 D3); the **one rest timer per group** after
    its last exercise lands with the rest timer in M4 (§9). See §4.3 and Q5.
 
 **Explicitly deferred:** guided interleaved superset logging (Tier C — A1→B1→A2→B2
@@ -295,8 +297,8 @@ Rules:
   (`PUT` with the full ordered item list); item ids are not stable across edits.
 
 Starting a workout from a routine **snapshots** it: the routine's items are copied
-into `workout_exercise` rows at that moment — including the five targets and
-`superset_group` — and `workout.routine_id` / `routine_name_snapshot` are set. Later
+into `workout_exercise` rows at that moment — including the five targets,
+`superset_group` and the item's notes (Spec 09 D22, amended 2026-10-11) — and `workout.routine_id` / `routine_name_snapshot` are set. Later
 edits to the routine do not change past workouts; deleting the routine does not
 damage them (`workout.routine_id` is `ON DELETE SET NULL`; the name snapshot
 survives). See Spec 09.
@@ -672,6 +674,14 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   live for the SPA's reference-table queries, which use the browser HTTP cache.
   (The SPA's catalog bypasses the HTTP cache: its own store + `since` /
   `syncToken`, fetched `no-store` — Spec 06.0 AC15, §5.2.)
+- **Response-field rollout:** a **new response field ships in the API one release
+  before any client that reads it; rolling the API back past such a field also rolls
+  the client back.** Response schemas stay strict (required-nullable, no
+  `.default(null)` / `.catch` shim on the client or in `@sin/core`): a tolerant default
+  would hide a contract break behind a target-less, ungrouped-looking workout, and the
+  deploy order — API first, static web second, rolled back together — is what we
+  control (Spec 10.1 D4; first users: `routineName` and the six `WorkoutExercise`
+  routine fields from Spec 09).
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.
@@ -816,7 +826,7 @@ Planning implications:
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
 | **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (est-1RM, top set, volume, reps — hand-written SVG, Q17) and the per-exercise records list (08.1). | Progress numbers reconciled by hand for 10 sessions (records and history: 08.0 AC27; charts: 08.1 AC29). |
-| **M3 — Routines + supersets** (Specs 09 routines API, 10.0 routines UI, 10.1 session side) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor, bracketed display and grid logging in the session. The rest timer, including the per-group timer, is M4. | — |
+| **M3 — Routines + supersets** (Specs 09 routines API, 10.0 routines UI, 10.1 session side) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor; in the session (10.1) target lines and notes on the exercise cards, the bracket, live link/unlink via the editor's rules, and `routineName` on History; "grid logging" = bracket + per-card logging. The rest timer, including the per-group timer, is M4. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
 | **Phase 2 — AWS migration** (can start once M2 is stable; independent of M3+) | `infra/` in CDK or Terraform: ECS Fargate, RDS Postgres, S3, CloudFront, EventBridge; GitHub Actions build→ECR→deploy. Lean: no NAT, no ALB, single-AZ. Cut over staging first, then production; keep Render as rollback until stable. | Both envs running on AWS from IaC; documented as a case study. |
@@ -861,7 +871,8 @@ with rationale so the "why" survives.
   swap not a rewrite. See §3.2, §3.3, §7, §9.
 - **Q5 — Supersets.** ✅ **Resolved: schema unchanged** (`superset_group SMALLINT`
   on `routine_item` + `workout_exercise`, covers circuits too); ship **Tier B UX**
-  (grouping + bracketed display + grid logging) in **M3**, with the
+  (grouping + bracketed display + grid logging — bracket + per-card logging, no combined
+  superset card) in **M3**, with the
   per-group rest timer arriving with the rest timer in **M4**; guided interleaved logging (Tier C) to post-v1 backlog. See §2 item 8,
   §4.3.
 - **Q6 — Social phase.** ✅ **Resolved: yes, a social/community phase is intended
@@ -1021,7 +1032,7 @@ with rationale so the "why" survives.
   write wins, `If-Match` reserved as the upgrade); `POST /v1/workouts` gains an
   optional `routineId` and, in the existing idempotent start transaction after the
   one-active check, copies each item into `workout_exercise` with its five target
-  snapshots and `superset_group`, setting `workout.routine_id` +
+  snapshots, `superset_group` and item notes, setting `workout.routine_id` +
   `routine_name_snapshot`; live supersets are a nullable `supersetGroup` on the
   existing `PATCH /workout-exercises/{id}` (no adjacency rule). Rationale: the
   workout must stay self-contained forever (as with `exercise_name_snapshot`), so
