@@ -233,15 +233,18 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     expect((await notesOf()).slice(0, 4)).toEqual(expected);
   });
 
-  it("AC33 — a replay returns the notes copied at the original start (routine edited since, never re-read); a failed start with notes leaves no rows", async () => {
+  it("AC33 — a replay after the routine was edited and then deleted returns the original copy without reading the routine; a failed start leaves no rows", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
     const r = await routines().create(u, routineFixture([], { items: [{ exerciseId: ex, notes: "Original" }] }));
     const key = uuidv7();
     const first = await start(u, r.id, key);
     await routines().replace(u, r.id, routineFixture([], { items: [{ exerciseId: ex, notes: "Edited" }] }));
+    await routines().delete(u, r.id);
+    // A replay that read the routine would now be a NotFoundError (the routine is gone).
     const replay = await start(u, r.id, key);
     expect(replay.created).toBe(false);
+    expect(replay.workout.id).toBe(first.workout.id);
     const detail = await workouts().getWorkoutById(u, first.workout.id);
     expect(detail.exercises.map((e) => e.notes)).toEqual(["Original"]);
     await workouts().updateWorkout(u, first.workout.id, { endedAt: endedSoon() });
@@ -249,11 +252,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const retired = await insertExercise(db);
     const bad = await routines().create(
       u,
-      routineFixture([], { name: "Bad", items: [{ exerciseId: ex, notes: "Kept?" }, { exerciseId: retired, notes: "No" }] }),
+      routineFixture([], { name: "Bad", items: [{ exerciseId: ex, notes: "Note" }, { exerciseId: retired, notes: "Note" }] }),
     );
     await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, retired);
+    const [workoutsBefore, exercisesBefore] = [await count("workout"), await count("workout_exercise")];
     await expect(start(u, bad.id)).rejects.toBeInstanceOf(ExerciseRetiredError);
-    expect(await count("workout", `WHERE ended_at IS NULL`)).toBe(0);
-    expect(await count("workout_exercise", `WHERE notes = $1`, "Kept?")).toBe(0);
+    expect([await count("workout"), await count("workout_exercise")]).toEqual([workoutsBefore, exercisesBefore]);
   });
 });
