@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { CORS_METHODS, assertCorsAllowsMethod } from "../../src/plugins/cors-methods.js";
+import { buildTestApp } from "../helpers/build-test-app.js";
+
+describe("buildApp wires assertCorsAllowsMethod into the root onRoute hook", () => {
+  it("a route registered with a non-CORS-allowed method fails assembly", async () => {
+    const { app } = await buildTestApp();
+    // `hide` exempts the route from the response-schema check, so only the CORS
+    // check can reject it.
+    expect(() =>
+      app.route({
+        method: "TRACE",
+        url: "/__cors-wiring",
+        schema: { hide: true },
+        handler: async () => ({}),
+      }),
+    ).toThrow(/TRACE \/__cors-wiring.*CORS/);
+  });
+});
 
 describe("assertCorsAllowsMethod — every route method is CORS-allowed (2026-10-11 PUT bug)", () => {
   it("accepts every method in CORS_METHODS", () => {
