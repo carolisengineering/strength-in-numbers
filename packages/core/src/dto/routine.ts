@@ -7,6 +7,8 @@ import { z } from "zod";
 import { ExerciseIdSchema, RoutineIdSchema, RoutineItemIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { noControlCharsExceptWhitespace } from "./workout.js";
+import { PLANNED_SETS_PER_ITEM_MAX, PlannedSetInputSchema } from "./planned-set.js";
+import { QUICK_LINE_KEYS } from "../plannedSets.js";
 
 export const ROUTINE_NAME_MAX = 80;
 export const ROUTINE_NOTES_MAX = 2000;
@@ -36,6 +38,8 @@ export const RoutineItemInputSchema = z.strictObject({
     .refine(noControlCharsExceptWhitespace, "control characters not allowed")
     .nullable()
     .optional(),
+  /** Spec 09.1 — the row form. Send this OR the quick-line fields, never both (AC7, by key presence). */
+  sets: z.array(PlannedSetInputSchema).max(PLANNED_SETS_PER_ITEM_MAX).optional(),
 });
 export type RoutineItemInput = z.infer<typeof RoutineItemInputSchema>;
 
@@ -81,6 +85,35 @@ export const RoutineWriteSchema = z
           message: "must be at most targetRepsHigh",
         });
       }
+    });
+    // Spec 09.1 AC7 / AC4: one form per item; per-row pair rules.
+    doc.items.forEach((it, i) => {
+      if (it.sets === undefined) return;
+      if (QUICK_LINE_KEYS.some((k) => Object.hasOwn(it, k))) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["items", i, "sets"],
+          message: "send either sets or the quick-line fields (targetSets, targetRepsLow, targetRepsHigh), not both",
+        });
+      }
+      it.sets.forEach((row, j) => {
+        const lo = row.repsLow ?? null;
+        const hi = row.repsHigh ?? null;
+        if (lo !== null && hi === null) {
+          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsHigh"], message: "required when repsLow is set" });
+        } else if (lo === null && hi !== null) {
+          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "required when repsHigh is set" });
+        } else if (lo !== null && hi !== null && lo > hi) {
+          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "must be at most repsHigh" });
+        }
+        const w = row.weight ?? null;
+        const u = row.weightUnit ?? null;
+        if (w !== null && u === null) {
+          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weightUnit"], message: "required when weight is set" });
+        } else if (w === null && u !== null) {
+          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weight"], message: "required when weightUnit is set" });
+        }
+      });
     });
     // Across items: every distinct group has 2..8 members (D9).
     const members = new Map<number, number[]>();
