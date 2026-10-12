@@ -350,3 +350,13 @@ describe("10.1 AC27 — session supersets, accessibly", () => {
     for (const button of screen.getAllByRole("button", { name: /^Superset / })) expect(button.className).toMatch(/_button_/);
   });
 });
+
+describe("10.2 AC34 — the entry-row label", () => {
+  it("is plain text in the form; the form keeps its accessible name", async () => {
+    await setup();
+    const form = screen.getByRole("form", { name: "Log a set of X" });
+    const label = within(form).getByText(/^Set \d+/);
+    expect(label.tagName).toBe("P");
+    expect(label).not.toHaveAttribute("role");
+  });
+});
