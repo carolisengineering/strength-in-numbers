@@ -1,4 +1,4 @@
-import { ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema } from "@sin/core";
+import { PlannedSetInputSchema, ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema, type WeightUnit } from "@sin/core";
 
 /**
  * Routine target parsing and display (Spec 10.0 AC9). Pure — no React, no DOM. Every bound is checked
@@ -20,6 +20,7 @@ export const SETS_MESSAGE = "Enter sets as a whole number from 1 to 20";
 export const REPS_MESSAGE = "Enter reps like 8 or 8-10 (1 to 100, low first)";
 export const REST_MESSAGE = "Enter rest as m:ss, like 1:30 (up to 15:00)";
 export const NOTES_MESSAGE = `Keep notes to ${ROUTINE_ITEM_NOTES_MAX} characters`;
+export const WEIGHT_MESSAGE = "Enter a weight like 62.5 (up to 3 decimals, not negative)";
 
 const shape = RoutineItemInputSchema.shape;
 
@@ -69,6 +70,42 @@ export function parseNotes(text: string): Parsed<string | null> {
   return Array.from(t).length > ROUTINE_ITEM_NOTES_MAX ? bad(NOTES_MESSAGE) : ok(t);
 }
 
+const weightShape = PlannedSetInputSchema.shape.weight;
+
+/** Blank → `null` (no weight planned). `.` or `,`, up to 3 decimals, through the core field's bounds. */
+export function parseWeight(text: string): Parsed<number | null> {
+  const t = text.trim().replace(",", ".");
+  if (t === "") return ok(null);
+  if (!/^\d+(\.\d+)?$/.test(t)) return bad(WEIGHT_MESSAGE);
+  if ((t.split(".")[1]?.length ?? 0) > 3) return bad(WEIGHT_MESSAGE); // the column is numeric(7,3)
+  const value = Number(t);
+  return weightShape.safeParse(value).success ? ok(value) : bad(WEIGHT_MESSAGE);
+}
+
+/** 62.5 → "62.5", 100 → "100": no trailing zeros, no thousands separator. */
+export function formatWeight(weight: number): string {
+  return String(weight);
+}
+
+export interface WeightedRow {
+  readonly weight: number | null;
+  readonly weightUnit: WeightUnit | null;
+}
+
+/**
+ * "@ 100 kg" or "@ 60–100 kg" (Spec 10.2 AC2). Only rows with a weight count; one unit across them or
+ * nothing at all — a figure in mixed units would need a conversion, and the plan's unit is data (D3).
+ */
+export function plannedWeightText(rows: readonly WeightedRow[]): string {
+  const weighted = rows.filter((r) => r.weight !== null);
+  const unit = weighted[0]?.weightUnit ?? null;
+  if (unit === null || weighted.some((r) => r.weightUnit !== unit)) return "";
+  const values = weighted.map((r) => r.weight as number);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  return low === high ? `@ ${formatWeight(low)} ${unit}` : `@ ${formatWeight(low)}–${formatWeight(high)} ${unit}`;
+}
+
 export function formatRest(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -89,13 +126,17 @@ function repsText(t: Targets): string | null {
   return t.targetRepsLow === t.targetRepsHigh ? `${t.targetRepsLow}` : `${t.targetRepsLow}–${t.targetRepsHigh}`;
 }
 
-/** "3 × 8–10 · RPE 8 · 2:00" — only what is set; `""` when nothing is. */
-export function targetLine(t: Targets): string {
+/** "3 × 8–10 @ 60–100 kg · RPE 8 · 2:00" — only what is set; `""` when nothing is. Without `sets` the weight is omitted. */
+export function targetLine(t: Targets, sets?: readonly WeightedRow[]): string {
   const parts: string[] = [];
   const reps = repsText(t);
-  if (t.targetSets !== null && reps !== null) parts.push(`${t.targetSets} × ${reps}`);
-  else if (t.targetSets !== null) parts.push(t.targetSets === 1 ? "1 set" : `${t.targetSets} sets`);
-  else if (reps !== null) parts.push(reps === "1" ? "1 rep" : `${reps} reps`);
+  let main: string | null = null;
+  if (t.targetSets !== null && reps !== null) main = `${t.targetSets} × ${reps}`;
+  else if (t.targetSets !== null) main = t.targetSets === 1 ? "1 set" : `${t.targetSets} sets`;
+  else if (reps !== null) main = reps === "1" ? "1 rep" : `${reps} reps`;
+  const weight = sets === undefined ? "" : plannedWeightText(sets);
+  const head = [main, weight === "" ? null : weight].filter((p): p is string => p !== null).join(" ");
+  if (head !== "") parts.push(head);
   if (t.targetRpe !== null) parts.push(`RPE ${t.targetRpe}`);
   if (t.restSeconds !== null) parts.push(formatRest(t.restSeconds));
   return parts.join(" · ");
