@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSupersetGroups, ROUTINE_ITEMS_MAX, type Routine } from "@sin/core";
+import { deriveTargets, normalizeSupersetGroups, ROUTINE_ITEMS_MAX, type Routine } from "@sin/core";
 import { exerciseId } from "../../test/catalogFixtures";
 import { makeRoutine, makeRoutineItem } from "../../test/workoutFixtures";
 import {
@@ -14,6 +14,7 @@ import {
   type Draft,
   type DraftAction,
   type DraftItem,
+  type DraftSet,
 } from "./routineDraft";
 
 const TOKEN = /^([a-z]+)(\d*)$/;
@@ -35,6 +36,9 @@ function draftOf(spec: string, overrides: Partial<Draft> = {}): Draft {
         restSeconds: null,
         notes: null,
         supersetGroup: m[2] === "" ? null : Number(m[2]),
+        weight: null,
+        weightUnit: null,
+        plan: null,
       };
     });
   return { name: "Push A", notes: "", items, dirty: false, adjusted: false, ...overrides };
@@ -256,5 +260,125 @@ describe("10.0 AC1 — setTargets with unchanged values is a no-op", () => {
     const d = draftOf("a b");
     const same = { targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null };
     expect(reduce(d, actions.setTargets("a", same, null))).toBe(d);
+  });
+});
+
+const withoutKey = (r: DraftSet) => ({ setType: r.setType, repsLow: r.repsLow, repsHigh: r.repsHigh, weight: r.weight, weightUnit: r.weightUnit });
+const planned = (o: Record<string, unknown>) => ({ setType: "working", repsLow: 8, repsHigh: 8, weight: 100, weightUnit: "kg", ...o });
+const loaded = (item: Record<string, unknown>) =>
+  draftFromRoutine(makeRoutine({ items: [makeRoutineItem({ exerciseId: exerciseId(1), position: 0, ...item })] })).items[0]!;
+
+describe("10.2 AC4 — load: quick mode or plan mode", () => {
+  it("uniform working rows → quick mode: count, reps and weight from the first row", () => {
+    const item = loaded({ sets: [planned({}), planned({}), planned({}), planned({})], targetSets: 4, targetRepsLow: 8, targetRepsHigh: 8 });
+    expect(item).toMatchObject({ plan: null, targetSets: 4, targetRepsLow: 8, targetRepsHigh: 8, weight: 100, weightUnit: "kg" });
+  });
+  it.each([
+    ["a ramp", [planned({ repsLow: 10, repsHigh: 10, weight: 60 }), planned({ repsLow: 8, repsHigh: 8, weight: 80 }), planned({ repsLow: 6, repsHigh: 6, weight: 100 })]],
+    ["a warm-up", [planned({ setType: "warmup", weight: 40 }), planned({})]],
+    ["mixed reps", [planned({ repsLow: 5, repsHigh: 5 }), planned({})]],
+    ["mixed units", [planned({}), planned({ weightUnit: "lb" })]],
+  ])("%s → plan mode with the rows and derived targets", (_name, sets) => {
+    const item = loaded({ sets });
+    expect(item.plan).toHaveLength(sets.length);
+    expect(item.plan!.map(withoutKey)).toEqual(sets);
+    expect(item).toMatchObject({ weight: null, weightUnit: null, ...deriveTargets(sets as never) });
+    expect(new Set(item.plan!.map((r) => r.key)).size).toBe(sets.length);
+  });
+  it("no rows → quick mode with the item's own columns (a reps-only item keeps its range, O1)", () => {
+    expect(loaded({ sets: [], targetSets: null, targetRepsLow: 8, targetRepsHigh: 10 })).toMatchObject({
+      plan: null, targetSets: null, targetRepsLow: 8, targetRepsHigh: 10, weight: null, weightUnit: null,
+    });
+    expect(loaded({ sets: [] })).toMatchObject({ plan: null, targetSets: null, weight: null });
+  });
+  it("loading never marks the draft dirty", () => {
+    const d = draftFromRoutine(makeRoutine({ items: [makeRoutineItem({ exerciseId: exerciseId(1), sets: [planned({ setType: "warmup" }), planned({})] })] }));
+    expect(d.dirty).toBe(false);
+  });
+});
+
+describe("10.2 AC5 — setPlanned commits and derives the targets", () => {
+  const rows = (...r: Partial<DraftSet>[]): DraftSet[] =>
+    r.map((o, i) => ({ key: `r${i}`, setType: "working", repsLow: 8, repsHigh: 8, weight: 100, weightUnit: "kg", ...o }));
+
+  it("rows mode derives targetSets and the rep range, clears the quick weight, marks dirty", () => {
+    const next = reduce(draftOf("a"), actions.setPlanned("a", { mode: "rows", rows: rows({ repsLow: 10, repsHigh: 10, weight: 60 }, { repsLow: 6, repsHigh: 6 }) }));
+    expect(next.items[0]).toMatchObject({ targetSets: 2, targetRepsLow: 6, targetRepsHigh: 10, weight: null, weightUnit: null });
+    expect(next.items[0]!.plan).toHaveLength(2);
+    expect(next.dirty).toBe(true);
+  });
+  it("an identical commit returns the same state and leaves dirty alone (Done on an untouched sheet, AC1/AC10)", () => {
+    const first = reduce(draftOf("a"), actions.setPlanned("a", { mode: "rows", rows: rows({}, {}) }));
+    const clean = { ...first, dirty: false };
+    expect(reduce(clean, actions.setPlanned("a", { mode: "rows", rows: rows({}, {}) }))).toBe(clean);
+    const quick = reduce(draftOf("a"), actions.setPlanned("a", { mode: "quick", weight: 100, weightUnit: "kg" }));
+    const cleanQuick = { ...quick, dirty: false };
+    expect(reduce(cleanQuick, actions.setPlanned("a", { mode: "quick", weight: 100, weightUnit: "kg" }))).toBe(cleanQuick);
+    expect(reduce(draftOf("a"), actions.setPlanned("a", { mode: "quick", weight: null, weightUnit: null }))).toEqual(draftOf("a"));
+  });
+  it("quick mode clears a plan and nulls the unit when there is no weight", () => {
+    const inPlan = reduce(draftOf("a"), actions.setPlanned("a", { mode: "rows", rows: rows({}, {}) }));
+    const back = reduce(inPlan, actions.setPlanned("a", { mode: "quick", weight: null, weightUnit: "kg" }));
+    expect(back.items[0]).toMatchObject({ plan: null, weight: null, weightUnit: null });
+  });
+  it("refuses zero rows and more than 20 (the reducer is the last line)", () => {
+    const d = draftOf("a");
+    expect(reduce(d, actions.setPlanned("a", { mode: "rows", rows: [] }))).toBe(d);
+    expect(reduce(d, actions.setPlanned("a", { mode: "rows", rows: rows(...Array.from({ length: 21 }, () => ({}))) }))).toBe(d);
+  });
+  it("an unknown item key changes nothing", () => {
+    const d = draftOf("a");
+    expect(reduce(d, actions.setPlanned("zzz", { mode: "quick", weight: 5, weightUnit: "kg" }))).toBe(d);
+  });
+});
+
+describe("10.2 AC5 — property: plan commits mixed with link and move keep the superset invariant", () => {
+  function mulberry32(seed: number) {
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  it("400 random steps", () => {
+    const rand = mulberry32(102);
+    let draft = draftOf("a b c d e");
+    for (let step = 0; step < 400; step++) {
+      const item = draft.items[Math.floor(rand() * draft.items.length)]!;
+      switch (Math.floor(rand() * 5)) {
+        case 0:
+          draft = reduce(draft, actions.toggleLink(Math.floor(rand() * (draft.items.length - 1))));
+          break;
+        case 1:
+          draft = reduce(draft, actions.moveUp(item.key));
+          break;
+        case 2:
+          draft = reduce(draft, actions.moveDown(item.key));
+          break;
+        case 3: {
+          const n = 1 + Math.floor(rand() * 20);
+          const rowsOut: DraftSet[] = Array.from({ length: n }, (_, i) => {
+            const hasReps = rand() < 0.8;
+            return {
+              key: `p${step}-${i}`,
+              setType: rand() < 0.2 ? "warmup" : "working",
+              repsLow: hasReps ? 5 : null,
+              repsHigh: hasReps ? 8 : null,
+              weight: null,
+              weightUnit: null,
+            };
+          });
+          draft = reduce(draft, actions.setPlanned(item.key, { mode: "rows", rows: rowsOut }));
+          break;
+        }
+        default:
+          draft = reduce(draft, actions.setPlanned(item.key, { mode: "quick", weight: rand() < 0.5 ? null : 20, weightUnit: "kg" }));
+      }
+      expect(invariantHolds(draft), `step ${step}`).toBe(true);
+      for (const it of draft.items) {
+        if (it.plan !== null) expect({ targetSets: it.targetSets, targetRepsLow: it.targetRepsLow, targetRepsHigh: it.targetRepsHigh }).toEqual(deriveTargets(it.plan));
+      }
+    }
   });
 });

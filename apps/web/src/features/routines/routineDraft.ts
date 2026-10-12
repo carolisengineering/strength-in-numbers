@@ -1,15 +1,20 @@
 import {
   canLinkRule,
+  deriveTargets,
   isLinked as isLinkedRule,
+  isUniformWorking,
   linkRule,
   moveRule,
   normalizeSupersetGroups,
+  PLANNED_SETS_PER_ITEM_MAX,
   ROUTINE_ITEMS_MAX,
   unlinkRule,
   type Routine,
   type SessionSlot,
+  type SetType,
+  type WeightUnit,
 } from "@sin/core";
-import type { Targets } from "./targetFormat";
+import type { Targets, WeightedRow } from "./targetFormat";
 
 /**
  * The routine editor's draft (Spec 10.0 §6.2, AC1–AC5). Pure — no React. Private to the editor: `key`s
@@ -28,9 +33,29 @@ export interface DraftItem extends Targets {
   readonly exerciseId: string;
   readonly notes: string | null;
   readonly supersetGroup: number | null;
+  /** Quick mode (`plan === null`): the weight typed on the quick line; a unit only ever travels with a weight. */
+  readonly weight: number | null;
+  readonly weightUnit: WeightUnit | null;
+  /** Plan mode: one row per set (1–20). In plan mode `targetSets` / reps are derived from the rows. */
+  readonly plan: readonly DraftSet[] | null;
   /** Set when the server answered `409 exercise-retired` for this row (AC33). */
   readonly retired?: true;
 }
+
+/** One planned set while the item is in plan mode (Spec 10.2 AC4). `key` is client-only and never sent. */
+export interface DraftSet {
+  readonly key: string;
+  readonly setType: SetType;
+  readonly repsLow: number | null;
+  readonly repsHigh: number | null;
+  readonly weight: number | null;
+  readonly weightUnit: WeightUnit | null;
+}
+
+/** What the item sheet commits on Done (the sheet keeps its own local state until then, P1). */
+export type PlannedEdit =
+  | { readonly mode: "quick"; readonly weight: number | null; readonly weightUnit: WeightUnit | null }
+  | { readonly mode: "rows"; readonly rows: readonly DraftSet[] };
 
 export interface Draft {
   readonly name: string;
@@ -49,8 +74,9 @@ export type DraftAction =
   | { readonly type: "moveUp"; readonly key: string }
   | { readonly type: "moveDown"; readonly key: string }
   | { readonly type: "setTargets"; readonly key: string; readonly targets: Targets; readonly notes: string | null }
+  | { readonly type: "setPlanned"; readonly key: string; readonly planned: PlannedEdit }
   | { readonly type: "toggleLink"; readonly index: number }
-  | { readonly type: "load"; readonly routine: Routine; readonly keys: readonly string[] }
+  | { readonly type: "load"; readonly routine: Routine; readonly keys: readonly string[]; readonly rowKeys: readonly (readonly string[])[] }
   | { readonly type: "markRetired"; readonly keys: readonly string[] }
   | { readonly type: "dismissAdjusted" };
 
@@ -68,8 +94,14 @@ export const actions = {
   moveUp: (key: string): DraftAction => ({ type: "moveUp", key }),
   moveDown: (key: string): DraftAction => ({ type: "moveDown", key }),
   setTargets: (key: string, targets: Targets, notes: string | null): DraftAction => ({ type: "setTargets", key, targets, notes }),
+  setPlanned: (key: string, planned: PlannedEdit): DraftAction => ({ type: "setPlanned", key, planned }),
   toggleLink: (index: number): DraftAction => ({ type: "toggleLink", index }),
-  load: (routine: Routine): DraftAction => ({ type: "load", routine, keys: routine.items.map(() => newKey()) }),
+  load: (routine: Routine): DraftAction => ({
+    type: "load",
+    routine,
+    keys: routine.items.map(() => newKey()),
+    rowKeys: routine.items.map((item) => item.sets.map(() => newKey())),
+  }),
   markRetired: (keys: readonly string[]): DraftAction => ({ type: "markRetired", keys }),
   dismissAdjusted: (): DraftAction => ({ type: "dismissAdjusted" }),
 };
@@ -102,6 +134,26 @@ function settle(items: readonly DraftItem[]): DraftItem[] {
 }
 
 const slotsOf = (items: readonly DraftItem[]): SessionSlot[] => items.map((i) => ({ id: i.key, group: i.supersetGroup }));
+
+/** The rows an item's target line and accessible name are built from (Spec 10.2 AC15). */
+export function plannedRowsOf(item: DraftItem): readonly WeightedRow[] {
+  if (item.plan !== null) return item.plan;
+  return item.weight === null ? [] : [{ weight: item.weight, weightUnit: item.weightUnit }];
+}
+
+const sameRows = (a: readonly DraftSet[], b: readonly DraftSet[]): boolean =>
+  a.length === b.length &&
+  a.every((r, i) => {
+    const o = b[i]!;
+    return (
+      r.key === o.key &&
+      r.setType === o.setType &&
+      r.repsLow === o.repsLow &&
+      r.repsHigh === o.repsHigh &&
+      r.weight === o.weight &&
+      r.weightUnit === o.weightUnit
+    );
+  });
 
 /** Map a core rule result (slot ids are item keys) back onto the items; `settle` renumbers afterwards. */
 function fromSlots(items: readonly DraftItem[], slots: readonly SessionSlot[]): DraftItem[] {
@@ -155,6 +207,9 @@ export function reduce(state: Draft, action: DraftAction): Draft {
         restSeconds: null,
         notes: null,
         supersetGroup: null,
+        weight: null,
+        weightUnit: null,
+        plan: null,
       };
       return withItems(state, [...state.items, item]);
     }
@@ -179,6 +234,24 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const items = state.items.map((item, k) => (k === index ? { ...item, ...action.targets, notes: action.notes } : item));
       return withItems(state, items);
     }
+    case "setPlanned": {
+      const index = state.items.findIndex((i) => i.key === action.key);
+      if (index < 0) return state;
+      const current = state.items[index]!;
+      const planned = action.planned;
+      let next: DraftItem;
+      if (planned.mode === "quick") {
+        const unit = planned.weight === null ? null : planned.weightUnit;
+        if (current.plan === null && current.weight === planned.weight && current.weightUnit === unit) return state;
+        next = { ...current, plan: null, weight: planned.weight, weightUnit: unit };
+      } else {
+        // Never zero rows (D11) and never more than 20: the sheet cannot produce either, but the reducer is the last line.
+        if (planned.rows.length < 1 || planned.rows.length > PLANNED_SETS_PER_ITEM_MAX) return state;
+        if (current.plan !== null && sameRows(current.plan, planned.rows)) return state;
+        next = { ...current, ...deriveTargets(planned.rows), weight: null, weightUnit: null, plan: planned.rows };
+      }
+      return withItems(state, state.items.map((item, k) => (k === index ? next : item)));
+    }
     case "toggleLink": {
       const out = toggleLink(state, action.index);
       return out ? withItems(state, out) : state;
@@ -193,17 +266,27 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     case "load": {
       const raw: DraftItem[] = [...action.routine.items]
         .sort((a, b) => a.position - b.position)
-        .map((item, k) => ({
-          key: action.keys[k] ?? newKey(),
-          exerciseId: item.exerciseId,
-          targetSets: item.targetSets,
-          targetRepsLow: item.targetRepsLow,
-          targetRepsHigh: item.targetRepsHigh,
-          targetRpe: item.targetRpe,
-          restSeconds: item.restSeconds,
-          notes: item.notes,
-          supersetGroup: item.supersetGroup,
-        }));
+        .map((item, k): DraftItem => {
+          const base = {
+            key: action.keys[k] ?? newKey(),
+            exerciseId: item.exerciseId,
+            targetRpe: item.targetRpe,
+            restSeconds: item.restSeconds,
+            notes: item.notes,
+            supersetGroup: item.supersetGroup,
+          };
+          const rows = item.sets;
+          if (rows.length === 0) {
+            // No rows: the item's own columns (a reps-only item keeps its range, Spec 09.1 O1).
+            return { ...base, targetSets: item.targetSets, targetRepsLow: item.targetRepsLow, targetRepsHigh: item.targetRepsHigh, weight: null, weightUnit: null, plan: null };
+          }
+          if (isUniformWorking(rows)) {
+            const first = rows[0]!;
+            return { ...base, targetSets: rows.length, targetRepsLow: first.repsLow, targetRepsHigh: first.repsHigh, weight: first.weight, weightUnit: first.weightUnit, plan: null };
+          }
+          const plan: DraftSet[] = rows.map((r, j) => ({ key: action.rowKeys[k]?.[j] ?? newKey(), ...r }));
+          return { ...base, ...deriveTargets(rows), weight: null, weightUnit: null, plan };
+        });
       const items = settle(raw);
       const adjusted = items.some((item, k) => item.supersetGroup !== raw[k]!.supersetGroup);
       return { name: action.routine.name, notes: action.routine.notes ?? "", items, dirty: adjusted, adjusted };

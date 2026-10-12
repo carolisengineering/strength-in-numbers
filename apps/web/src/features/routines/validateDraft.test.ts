@@ -26,6 +26,9 @@ const item = (key: string, overrides: Partial<DraftItem> = {}): DraftItem => ({
   restSeconds: null,
   notes: null,
   supersetGroup: null,
+  weight: null,
+  weightUnit: null,
+  plan: null,
   ...overrides,
 });
 const draft = (overrides: Partial<Draft> = {}): Draft => ({
@@ -50,13 +53,14 @@ describe("10.0 AC6 — the payload", () => {
           item("c", { exerciseId: exerciseId(1) }),
         ],
       }),
+      { modalityOf: () => null },
     );
     expect(body).toEqual({
       name: "Push A",
       items: [
-        { exerciseId: exerciseId(1), targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8.5, restSeconds: 0, supersetGroup: 1, notes: "slow" },
-        { exerciseId: exerciseId(2), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
-        { exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: null },
+        { exerciseId: exerciseId(1), targetRpe: 8.5, restSeconds: 0, supersetGroup: 1, notes: "slow", sets: Array(3).fill({ setType: "working", repsLow: 8, repsHigh: 10 }) },
+        { exerciseId: exerciseId(2), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
+        { exerciseId: exerciseId(1), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: null },
       ],
     });
     const parsed = RoutineWriteSchema.safeParse(body);
@@ -65,7 +69,7 @@ describe("10.0 AC6 — the payload", () => {
   });
 
   it("keeps routine notes when present", () => {
-    expect(toRoutineInput(draft({ notes: " Heavy " })).notes).toBe("Heavy");
+    expect(toRoutineInput(draft({ notes: " Heavy " }), { modalityOf: () => null }).notes).toBe("Heavy");
   });
 });
 

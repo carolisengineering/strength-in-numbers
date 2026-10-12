@@ -1,4 +1,17 @@
 import { ApiError, type ProblemFieldError } from "../../api";
+import type { Draft } from "./routineDraft";
+import { issueForPath, splitPath, type DraftIssue, type PlanKeys } from "./validateDraft";
+
+/** A 422's `errors[]` mapped onto the draft that was sent (Spec 10.2 AC8): item fields, plan rows, or unmatched. */
+export function serverIssuesFor(
+  fieldErrors: readonly ProblemFieldError[],
+  draft: Draft,
+): { issues: DraftIssue[]; unmatched: boolean } {
+  const keys = draft.items.map((i) => i.key);
+  const planKeys: PlanKeys = draft.items.map((i) => (i.plan === null ? null : i.plan.map((r) => r.key)));
+  const mapped = fieldErrors.map((e) => issueForPath(splitPath(e.path), keys, planKeys));
+  return { issues: mapped.filter((i): i is DraftIssue => i !== null), unmatched: mapped.some((i) => i === null) };
+}
 
 export type RoutineErrorKind =
   | "name-taken"

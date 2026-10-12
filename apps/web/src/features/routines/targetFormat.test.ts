@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema } from "@sin/core";
+import { PlannedSetInputSchema, ROUTINE_ITEM_NOTES_MAX, RoutineItemInputSchema, SET_WEIGHT_MAX } from "@sin/core";
 import {
   formatReps,
   formatRest,
+  formatWeight,
   itemAccessibleName,
   parseNotes,
   parseReps,
   parseRest,
   parseSets,
+  parseWeight,
+  plannedWeightText,
   REST_MESSAGE,
   RPE_CHOICES,
   routineSummary,
   targetLine,
+  WEIGHT_MESSAGE,
   type Targets,
 } from "./targetFormat";
 
@@ -132,5 +136,103 @@ describe("10.0 AC9 — notes count code points, as the server does", () => {
   it("300 emoji fit; 501 code points do not", () => {
     expect(parseNotes("💪".repeat(300)).ok).toBe(true);
     expect(parseNotes("💪".repeat(ROUTINE_ITEM_NOTES_MAX + 1)).ok).toBe(false);
+  });
+});
+
+describe("10.2 AC1 — parseWeight / formatWeight", () => {
+  it.each([
+    ["", null],
+    ["   ", null],
+    ["0", 0],
+    ["62.5", 62.5],
+    ["62,5", 62.5],
+    [" 100 ", 100],
+    ["0.001", 0.001],
+    [String(SET_WEIGHT_MAX), SET_WEIGHT_MAX],
+  ])("%j → %j", (text, value) => {
+    expect(parseWeight(text)).toEqual({ ok: true, value });
+  });
+
+  it.each(["-1", "-0.5", "abc", "1.2.3", "1e3", "62.5kg", "1.2345", ".5", "5.", "10000", String(SET_WEIGHT_MAX + 0.001)])(
+    "%j → the static message",
+    (text) => {
+      expect(parseWeight(text)).toEqual({ ok: false, message: WEIGHT_MESSAGE });
+    },
+  );
+
+  it("never echoes the input", () => {
+    expect(JSON.stringify(parseWeight("secret-abc"))).not.toContain("secret");
+  });
+
+  // The schema field is a plain number, so >3 decimals is an extra client rule (the column is numeric(7,3));
+  // the parity table covers only values the schema itself decides.
+  it("accepts and rejects exactly what the core weight field does, for every tested value", () => {
+    const schema = PlannedSetInputSchema.shape.weight;
+    for (const value of [0, 0.001, 62.5, 100, SET_WEIGHT_MAX, SET_WEIGHT_MAX + 0.001, 10_000, -0.001, -1]) {
+      expect(parseWeight(String(value)).ok, String(value)).toBe(schema.safeParse(value).success);
+    }
+  });
+
+  it("formatWeight prints no trailing zeros and no thousands separator", () => {
+    expect(formatWeight(62.5)).toBe("62.5");
+    expect(formatWeight(100)).toBe("100");
+    expect(formatWeight(0.001)).toBe("0.001");
+    expect(formatWeight(SET_WEIGHT_MAX)).toBe("9999.999");
+  });
+});
+
+const kg = (weight: number | null) => ({ weight, weightUnit: weight === null ? null : ("kg" as const) });
+const lb = (weight: number) => ({ weight, weightUnit: "lb" as const });
+
+describe("10.2 AC2 — plannedWeightText", () => {
+  it.each([
+    ["no rows", [], ""],
+    ["rows without a weight", [kg(null), kg(null)], ""],
+    ["one weight", [kg(100)], "@ 100 kg"],
+    ["the same weight and unit", [kg(100), kg(100), kg(100)], "@ 100 kg"],
+    ["a ramp in one unit", [kg(60), kg(80), kg(100)], "@ 60–100 kg"],
+    ["a ramp listed high to low", [kg(100), kg(60)], "@ 60–100 kg"],
+    ["decimals", [kg(62.5), kg(65)], "@ 62.5–65 kg"],
+    ["weightless rows are ignored", [kg(null), kg(60), kg(null), kg(100)], "@ 60–100 kg"],
+    ["a warm-up row counts like any other", [kg(20), kg(100), kg(100)], "@ 20–100 kg"],
+    ["pounds", [lb(135), lb(225)], "@ 135–225 lb"],
+    ["mixed units are never converted or mixed", [kg(60), lb(135)], ""],
+  ])("%s", (_name, rows, expected) => {
+    expect(plannedWeightText(rows)).toBe(expected);
+  });
+});
+
+describe("10.2 AC3 — targetLine with a plan", () => {
+  const T = (o: Partial<Targets> = {}): Targets => ({ ...none, ...o });
+
+  it("is byte-identical to today with no second argument, an empty plan, or a weightless plan", () => {
+    const targets = [
+      T(),
+      T({ targetSets: 4 }),
+      T({ targetSets: 1 }),
+      T({ targetRepsLow: 8, targetRepsHigh: 8 }),
+      T({ targetRepsLow: 1, targetRepsHigh: 1 }),
+      T({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 }),
+      T({ targetRpe: 9.5 }),
+      T({ restSeconds: 0 }),
+    ];
+    for (const t of targets) {
+      expect(targetLine(t, [])).toBe(targetLine(t));
+      expect(targetLine(t, [kg(null), kg(null)])).toBe(targetLine(t));
+    }
+  });
+
+  it.each([
+    [T({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8.5, restSeconds: 120 }), [kg(100), kg(100), kg(100), kg(100)], "4 × 6–8 @ 100 kg · RPE 8.5 · 2:00"],
+    [T({ targetSets: 3, targetRepsLow: 6, targetRepsHigh: 10 }), [kg(60), kg(80), kg(100)], "3 × 6–10 @ 60–100 kg"],
+    [T({ targetSets: 3 }), [kg(60), kg(80), kg(100)], "3 sets @ 60–100 kg"],
+    [T({ targetSets: 1 }), [kg(40)], "1 set @ 40 kg"],
+    [T({ targetRepsLow: 8, targetRepsHigh: 10 }), [kg(20)], "8–10 reps @ 20 kg"],
+    [T({ targetRepsLow: 1, targetRepsHigh: 1 }), [kg(20)], "1 rep @ 20 kg"],
+    [T(), [kg(100)], "@ 100 kg"],
+    [T({ targetRpe: 8 }), [kg(100)], "@ 100 kg · RPE 8"],
+    [T({ targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5 }), [kg(60), lb(135)], "2 × 5"],
+  ])("%j with %j → %s", (targets, sets, expected) => {
+    expect(targetLine(targets, sets)).toBe(expected);
   });
 });

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
@@ -317,6 +320,81 @@ describe("workoutFake — routines (Spec 10.0 test infra)", () => {
     const res = await json("POST", "/routines", { name: "One more", items: [{ exerciseId: exerciseId(1) }] });
     expect(res.status).toBe(409);
     expect((await res.json()).type).toMatch(/routine-limit$/);
+  });
+});
+
+describe("10.2 AC31 — the routine fake applies the API's plan rules", () => {
+  const BASE = "https://api.example.test/v1";
+  const send = (method: string, path: string, body?: unknown) =>
+    fetch(`${BASE}${path}`, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
+  const pushup = makeExercise({ id: exerciseId(2), name: "Push-up", modality: "bodyweight_reps" });
+  const plank = makeExercise({ id: exerciseId(3), name: "Plank", modality: "duration" });
+  const boot = () => {
+    const fake = createWorkoutFake({ catalog: [bench, pushup, plank] });
+    server.use(...fake.handlers);
+    return fake;
+  };
+  const create = async (items: unknown[]) => {
+    const res = await send("POST", "/routines", { name: `R${Math.random()}`, items });
+    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+  };
+
+  it("the row form is stored in order with the derived targets", async () => {
+    boot();
+    const { status, json } = await create([
+      { exerciseId: exerciseId(1), sets: [{ setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60, weightUnit: "kg" }, { repsLow: 6, repsHigh: 8, weight: 100, weightUnit: "kg" }] },
+    ]);
+    expect(status).toBe(201);
+    const item = RoutineSchema.parse(json).items[0]!;
+    expect(item.sets).toEqual([
+      { setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60, weightUnit: "kg" },
+      { setType: "working", repsLow: 6, repsHigh: 8, weight: 100, weightUnit: "kg" },
+    ]);
+    expect([item.targetSets, item.targetRepsLow, item.targetRepsHigh]).toEqual([2, 6, 10]);
+  });
+
+  it.each([
+    [{ targetSets: 3, targetRepsLow: 6, targetRepsHigh: 8 }, 3, [3, 6, 8]],
+    [{ targetSets: 2 }, 2, [2, null, null]],
+    [{ targetRepsLow: 8, targetRepsHigh: 10 }, 0, [null, 8, 10]], // O1: a rep range with no set count stays rowless
+    [{}, 0, [null, null, null]],
+  ])("the legacy form %j expands to %i identical working rows", async (legacy, count, targets) => {
+    boot();
+    const { json } = await create([{ exerciseId: exerciseId(1), ...legacy }]);
+    const item = RoutineSchema.parse(json).items[0]!;
+    expect(item.sets).toHaveLength(count);
+    expect(item.sets.every((s) => s.setType === "working" && s.weight === null)).toBe(true);
+    expect([item.targetSets, item.targetRepsLow, item.targetRepsHigh]).toEqual(targets);
+  });
+
+  it("422 at the row field for a measure the modality cannot carry; legacy input is exempt", async () => {
+    boot();
+    const bad = await create([{ exerciseId: exerciseId(2), sets: [{ repsLow: 5, repsHigh: 5, weight: 10, weightUnit: "kg" }] }, { exerciseId: exerciseId(3), sets: [{ setType: "warmup" }, { repsLow: 5, repsHigh: 5 }] }]);
+    expect(bad.status).toBe(422);
+    expect((bad.json["errors"] as { path: string }[]).map((e) => e.path)).toEqual(["items.0.sets.0.weight", "items.0.sets.0.weightUnit", "items.1.sets.1.repsLow", "items.1.sets.1.repsHigh"]);
+    expect((await create([{ exerciseId: exerciseId(3), targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5 }])).status).toBe(201);
+  });
+
+  it("starting from a routine copies each item's rows onto the workout exercise created from it", async () => {
+    const fake = boot();
+    const { json } = await create([
+      { exerciseId: exerciseId(1), sets: [{ repsLow: 15, repsHigh: 15, weight: 20, weightUnit: "kg" }] },
+      { exerciseId: exerciseId(1), sets: [{ setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60, weightUnit: "kg" }, { repsLow: 5, repsHigh: 5, weight: 100, weightUnit: "kg" }] },
+      { exerciseId: exerciseId(1) },
+    ]);
+    const started = await send("POST", "/workouts", { clientGeneratedId: crypto.randomUUID(), startedAt: new Date().toISOString(), tzOffsetMinutes: 0, routineId: json["id"] });
+    expect(started.status).toBe(201);
+    // The start response is the summary shape; the exercises live in the fake's active workout.
+    expect(fake.state.active?.exercises.map((e) => e.plannedSets.length)).toEqual([1, 2, 0]);
+  });
+
+  it("the fake imports its expansion rules from @sin/core and adds no tolerant defaults", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "workoutFake.ts"), "utf8");
+    expect(source).toMatch(/expandQuickLine[\s\S]*from "@sin\/core"|from "@sin\/core"[\s\S]*expandQuickLine/);
+    expect(source).toMatch(/deriveTargets/);
+    expect(source).not.toMatch(/\b(sets|plannedSets)\s*:\s*z\.[^,;\n]*\.(default|catch)\(/);
+    expect(source).not.toMatch(/\.default\(\[\]\)|\.catch\(/);
   });
 });
 

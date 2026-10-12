@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MODALITY_VALUES, SET_REPS_MAX, SetEntrySchema, type SetEntry } from "@sin/core";
+import { MODALITY_VALUES, SET_REPS_MAX, SetEntrySchema, type PlannedSet, type SetEntry } from "@sin/core";
 import {
   createDraftReducer,
   diffForPatch,
   draftFieldForPath,
   draftFromSet,
   parseDraft,
+  seedDraft,
   unitDefaultsFor,
   type SetBody,
   type SetDraft,
@@ -275,5 +276,78 @@ describe("draftFromSet / unit defaults", () => {
       weight: "",
       reps: "0",
     });
+  });
+});
+
+const planRow = (o: Partial<PlannedSet> = {}): PlannedSet => ({ setType: "working", repsLow: 8, repsHigh: 8, weight: 80, weightUnit: "kg", ...o });
+const KG = unitDefaultsFor("kg");
+const seed = (plannedSets: PlannedSet[], sets: SetEntry[], defaults = KG) => seedDraft({ plannedSets, sets, defaults, attemptKey: "k1" });
+
+describe("10.2 AC22 — seedDraft overlays the next planned row on today's copy-forward", () => {
+  it("the first set, nothing logged: a fully specified row fills type, reps, weight and unit; RPE blank", () => {
+    expect(seed([planRow({ setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60 })], [])).toEqual(
+      base({ setType: "warmup", reps: "10", weight: "60", weightUnit: "kg", attemptKey: "k1" }),
+    );
+  });
+  it("a reps-only row keeps the copy-forward weight and unit", () => {
+    const logged = set({ weight: 60, weightUnit: "kg", reps: 8 });
+    const draft = seed([planRow(), planRow({ repsLow: 5, repsHigh: 5, weight: null, weightUnit: null })], [logged]);
+    expect(draft).toEqual({ ...draftFromSet(logged, KG, "k1"), reps: "5", setType: "working", rpe: "" });
+    expect(draft.weight).toBe("60");
+  });
+  it("a weight-only row keeps the copy-forward reps", () => {
+    const logged = set({ weight: 60, reps: 8 });
+    const draft = seed([planRow(), planRow({ repsLow: null, repsHigh: null, weight: 82.5 })], [logged]);
+    expect(draft).toMatchObject({ reps: "8", weight: "82.5", weightUnit: "kg" });
+  });
+  it("the plan's unit wins over the profile default, and over the last set's", () => {
+    expect(seed([planRow({ weight: 135, weightUnit: "lb" })], [], KG)).toMatchObject({ weight: "135", weightUnit: "lb" });
+    const loggedKg = set({ weight: 60, weightUnit: "kg" });
+    expect(seed([planRow(), planRow({ weight: 135, weightUnit: "lb" })], [loggedKg])).toMatchObject({ weightUnit: "lb" });
+  });
+  it("a row without a weight leaves the unit to the copy-forward / the default", () => {
+    expect(seed([planRow({ weight: null, weightUnit: null })], [], unitDefaultsFor("lb"))).toMatchObject({ weight: "", weightUnit: "lb" });
+  });
+  it("setType always comes from the row; RPE is blank even when the last set had one", () => {
+    const logged = set({ rpe: 8 });
+    expect(seed([planRow(), planRow({ setType: "drop" })], [logged])).toMatchObject({ setType: "drop", rpe: "" });
+  });
+  it("after the plan (extra) and with no plan (none) the result is exactly draftFromSet", () => {
+    const logged = set({ weight: 60, reps: 8, rpe: 8 });
+    expect(seed([planRow()], [logged])).toEqual(draftFromSet(logged, KG, "k1"));
+    expect(seed([], [logged])).toEqual(draftFromSet(logged, KG, "k1"));
+    expect(seed([], [])).toEqual(draftFromSet(null, KG, "k1"));
+  });
+  it("a null field is '' — never '0'", () => {
+    const draft = seed([planRow({ repsLow: null, repsHigh: null, weight: null, weightUnit: null })], []);
+    expect(draft).toMatchObject({ reps: "", weight: "" });
+  });
+});
+
+describe("10.2 AC24 — the reducer reseeds from the plan", () => {
+  const reduceDraft = createDraftReducer(() => "fresh");
+  const PLAN = [planRow({ setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60 }), planRow(), planRow({ repsLow: 6, repsHigh: 6, weight: 100 })];
+  it("logged: the next draft is the next planned row (the set just logged counts)", () => {
+    const first = set({ setType: "warmup", reps: 10, weight: 60 });
+    expect(reduceDraft(base({ attemptKey: "old" }), { type: "logged", set: first, plannedSets: PLAN, sets: [] })).toEqual(
+      base({ reps: "8", weight: "80", weightUnit: "kg", setType: "working", attemptKey: "fresh" }),
+    );
+  });
+  it("logged after the last planned row: Extra set with today's copy-forward of the set just logged, RPE cleared", () => {
+    const last = set({ reps: 6, weight: 100, rpe: 9 });
+    const out = reduceDraft(base({ attemptKey: "old" }), { type: "logged", set: last, plannedSets: PLAN, sets: [set(), set()] });
+    expect(out).toEqual({ ...draftFromSet(last, KG, "fresh"), rpe: "" });
+  });
+  it("logged without a plan is unchanged from 06.1", () => {
+    const logged = set({ reps: 5, weight: 70, rpe: 7 });
+    expect(reduceDraft(base({ attemptKey: "old", weightUnit: "lb" }), { type: "logged", set: logged })).toEqual({
+      ...draftFromSet(logged, { weightUnit: "lb", distanceUnit: "km" }, "fresh"),
+      rpe: "",
+    });
+  });
+  it("seed: rebuilds the draft for the given list with a fresh key", () => {
+    expect(reduceDraft(base({ reps: "typed", attemptKey: "old" }), { type: "seed", plannedSets: PLAN, sets: [set()], defaults: KG })).toEqual(
+      base({ reps: "8", weight: "80", weightUnit: "kg", setType: "working", attemptKey: "fresh" }),
+    );
   });
 });

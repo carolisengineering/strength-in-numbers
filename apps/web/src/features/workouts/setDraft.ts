@@ -7,11 +7,14 @@ import {
   type CreateSet,
   type DistanceUnit,
   type Modality,
+  type PlannedSet,
   type SetEntry,
   type SetType,
   type WeightUnit,
 } from "@sin/core";
+import { formatWeight } from "../routines/targetFormat";
 import { visibleMeasures } from "./measures";
+import { nextPlanned } from "./plannedSets";
 
 export type DraftField = "weight" | "reps" | "distance" | "minutes" | "seconds" | "rpe";
 
@@ -202,10 +205,37 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
   };
 }
 
+/**
+ * The one place a draft is built from a card's list (Spec 10.2 AC22): today's copy-forward of the last logged
+ * set, then — only when a planned row is next — the row overlaid. A field the row leaves null keeps the
+ * copy-forward value (D4); RPE is blank (per set); after the plan or with none it is exactly `draftFromSet`.
+ */
+export function seedDraft(args: {
+  plannedSets: readonly PlannedSet[];
+  sets: readonly SetEntry[];
+  defaults: UnitDefaults;
+  attemptKey: string;
+}): SetDraft {
+  const base = draftFromSet(args.sets.at(-1) ?? null, args.defaults, args.attemptKey);
+  const next = nextPlanned(args.plannedSets, args.sets.length);
+  if (next.kind !== "planned") return base;
+  const { row } = next;
+  return {
+    ...base,
+    setType: row.setType,
+    rpe: "",
+    ...(row.repsLow !== null ? { reps: String(row.repsLow) } : {}),
+    ...(row.weight !== null && row.weightUnit !== null ? { weight: formatWeight(row.weight), weightUnit: row.weightUnit } : {}),
+  };
+}
+
 export type DraftAction =
   | { type: "edit"; field: keyof Omit<SetDraft, "attemptKey">; value: string }
   | { type: "reset"; from: SetEntry | null; defaults: UnitDefaults }
-  | { type: "logged"; set: SetEntry }
+  /** Spec 10.2 AC25: rebuild the draft for `sets` (an untouched draft following a count change). */
+  | { type: "seed"; plannedSets: readonly PlannedSet[]; sets: readonly SetEntry[]; defaults: UnitDefaults }
+  /** `plannedSets` / `sets` (the list BEFORE this set) let the next draft be the next planned row (AC24). */
+  | { type: "logged"; set: SetEntry; plannedSets?: readonly PlannedSet[]; sets?: readonly SetEntry[] }
   /** A set was logged but the lifter has typed since the tap: keep their values, only re-mint the key. */
   | { type: "rekey" };
 
@@ -219,12 +249,15 @@ export function createDraftReducer(newKey: () => string) {
         return draftFromSet(action.from, action.defaults, newKey());
       case "rekey":
         return { ...state, attemptKey: newKey() };
+      case "seed":
+        return seedDraft({ plannedSets: action.plannedSets, sets: action.sets, defaults: action.defaults, attemptKey: newKey() });
       case "logged": {
-        const next = draftFromSet(
-          action.set,
-          { weightUnit: state.weightUnit, distanceUnit: state.distanceUnit },
-          newKey(),
-        );
+        const next = seedDraft({
+          plannedSets: action.plannedSets ?? [],
+          sets: [...(action.sets ?? []), action.set],
+          defaults: { weightUnit: state.weightUnit, distanceUnit: state.distanceUnit },
+          attemptKey: newKey(),
+        });
         return { ...next, rpe: "" }; // RPE is per set: not copied forward
       }
     }

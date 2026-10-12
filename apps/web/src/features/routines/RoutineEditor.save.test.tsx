@@ -105,9 +105,9 @@ describe("10.0 AC32 — save success and navigation", () => {
     expect(writes(fake)[0]!.body).toEqual({
       name: "Legs",
       items: [
-        { exerciseId: exerciseId(1), targetSets: 3, targetRepsLow: null, targetRepsHigh: null, targetRpe: 8.5, restSeconds: null, supersetGroup: null },
-        { exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
-        { exerciseId: exerciseId(2), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
+        { exerciseId: exerciseId(1), targetRpe: 8.5, restSeconds: null, supersetGroup: null, sets: [{ setType: "working" }, { setType: "working" }, { setType: "working" }] },
+        { exerciseId: exerciseId(1), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
+        { exerciseId: exerciseId(2), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
       ],
     });
     expect(await screen.findByRole("heading", { level: 1, name: "Legs" })).toBeInTheDocument();
