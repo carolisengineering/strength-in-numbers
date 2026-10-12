@@ -87,7 +87,7 @@ export function RoutineItems({ routine }: { routine: Routine }) {
         const exercise = lookupExercise(item.exerciseId);
         const position = runPosition(groups, index);
         const group = position === "none" ? null : item.supersetGroup;
-        const line = targetLine(item);
+        const line = targetLine(item, item.sets);
         const unavailable = exercise.state === "retired" || exercise.state === "missing";
         return (
           <li key={item.id} className={styles.item} aria-label={itemAccessibleName(exercise.name, group, line, unavailable)}>

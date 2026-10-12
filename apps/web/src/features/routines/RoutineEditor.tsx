@@ -27,7 +27,7 @@ import {
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
-import { actions, canLink, initialDraft, isLinked, reduce, runPosition, draftFromRoutine } from "./routineDraft";
+import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { RoutineGone } from "./RoutinePreview";
 import { fieldMessagesFor, itemMessage, rowMessagesFor } from "./sheetIssues";
@@ -287,7 +287,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           const exercise = lookupExercise(item.exerciseId);
           const position = runPosition(groups, index);
           const group = position === "none" ? null : item.supersetGroup;
-          const line = targetLine(item);
+          const line = targetLine(item, plannedRowsOf(item));
           const unavailable = item.retired === true || exercise.state === "retired" || exercise.state === "missing";
           const next = draft.items[index + 1];
           const refusal = canLink(draft, index);
