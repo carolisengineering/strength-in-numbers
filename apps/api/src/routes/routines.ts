@@ -26,6 +26,11 @@ import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
  * lines carry ids and counts only (§9) — never `name` or `notes`.
  */
 
+/** Spec 09.1 §6.6 / D9: a legal maximum routine (30 items × 20 planned sets,
+ * full notes) is ~74 KB, over the global BODY_LIMIT_BYTES (64 KiB, app.ts).
+ * Only the two routine writes get more; every other route keeps 64 KiB. */
+export const ROUTINE_BODY_LIMIT_BYTES = 128 * 1024;
+
 export interface RoutineRouteDeps {
   routineRepository: RoutineRepository;
 }
@@ -106,6 +111,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
   r.post(
     "/routines",
     {
+      bodyLimit: ROUTINE_BODY_LIMIT_BYTES,
       schema: { body: RoutineWriteSchema, response: { 201: RoutineSchema } },
       config: {
         published: true,
@@ -139,6 +145,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
   r.put(
     "/routines/:id",
     {
+      bodyLimit: ROUTINE_BODY_LIMIT_BYTES,
       schema: { params: idParams, body: RoutineWriteSchema, response: { 200: RoutineSchema } },
       config: {
         published: true,
