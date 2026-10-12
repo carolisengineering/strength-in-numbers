@@ -43,8 +43,12 @@ function toItemDto(r: RoutineItemRecord): RoutineItem {
     restSeconds: r.restSeconds,
     supersetGroup: r.supersetGroup,
     notes: r.notes,
+    // Spec 09.1: key order matches `PlannedSetSchema` (it is the ETag's wire bytes).
+    sets: r.sets.map((s) => ({ ...s })),
   };
 }
+
+const plannedSetCount = (r: RoutineRecord): number => r.items.reduce((n, it) => n + it.sets.length, 0);
 
 /** Keys in `RoutineSchema` order: `JSON.stringify` of this IS the wire bytes
  * the ETag hashes (the Zod serializer has no transforms on this shape). */
@@ -114,7 +118,12 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
       try {
         const created = await deps.routineRepository.create(actingUserId, request.body);
         request.log.info(
-          { routine_id: created.id, user_id: actingUserId, item_count: created.items.length },
+          {
+            routine_id: created.id,
+            user_id: actingUserId,
+            item_count: created.items.length,
+            planned_set_count: plannedSetCount(created),
+          },
           "routine_created",
         );
         reply.code(201).header("location", `/v1/routines/${created.id}`);
@@ -141,7 +150,12 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
       const actingUserId = request.user!.id;
       const updated = await deps.routineRepository.replace(actingUserId, request.params.id, request.body);
       request.log.info(
-        { routine_id: updated.id, user_id: actingUserId, item_count: updated.items.length },
+        {
+          routine_id: updated.id,
+          user_id: actingUserId,
+          item_count: updated.items.length,
+          planned_set_count: plannedSetCount(updated),
+        },
         "routine_updated",
       );
       return toRoutineDto(updated);

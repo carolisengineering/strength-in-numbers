@@ -7,7 +7,7 @@ import { z } from "zod";
 import { ExerciseIdSchema, RoutineIdSchema, RoutineItemIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { noControlCharsExceptWhitespace } from "./workout.js";
-import { PLANNED_SETS_PER_ITEM_MAX, PlannedSetInputSchema } from "./planned-set.js";
+import { PLANNED_SETS_PER_ITEM_MAX, PlannedSetInputSchema, PlannedSetSchema } from "./planned-set.js";
 import { QUICK_LINE_KEYS } from "../plannedSets.js";
 
 export const ROUTINE_NAME_MAX = 80;
@@ -156,8 +156,10 @@ export const RoutineItemSchema = z.object({
   /** Dense 1, 2, 3 … on a routine (D9). */
   supersetGroup: z.number().int().nullable(),
   notes: z.string().nullable(),
+  /** Spec 09.1 — the planned sets, ordered by position. Always an array; `[]` = no plan. */
+  sets: z.array(PlannedSetSchema),
 });
-export type RoutineItem = z.infer<typeof RoutineItemSchema>;
+export type RoutineItem =z.infer<typeof RoutineItemSchema>;
 
 export const RoutineSchema = z.object({
   id: RoutineIdSchema,

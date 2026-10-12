@@ -15,6 +15,7 @@ import {
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
   WorkoutSchema,
+  expandQuickLine,
   normalizeSupersetGroups,
   ROUTINES_PER_USER_MAX,
   RoutineSchema,
@@ -313,6 +314,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         restSeconds: item.restSeconds ?? null,
         supersetGroup: groups[position] ?? null,
         notes: item.notes ?? null,
+        // Spec 09.1: today's web client sends the quick line only; the server expands it to rows.
+        sets: expandQuickLine(item),
       })),
       createdAt: existing?.createdAt ?? now(),
       updatedAt: now(),

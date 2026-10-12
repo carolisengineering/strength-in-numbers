@@ -6,6 +6,8 @@
  * any query (`isRoutineId`), as `workout.ts` does with `isWorkoutId`.
  */
 
+import type { PlannedSet, PlannedSetInput } from "@sin/core";
+
 export interface RoutineItemRecord {
   id: string;
   routineId: string;
@@ -20,6 +22,8 @@ export interface RoutineItemRecord {
   /** Dense 1, 2, 3 … by first appearance (D9), as stored. */
   supersetGroup: number | null;
   notes: string | null;
+  /** Spec 09.1 — ordered by position; the source of the target columns. */
+  sets: PlannedSet[];
 }
 
 export interface RoutineRecord {
@@ -48,6 +52,8 @@ export interface RoutineWriteFields {
     restSeconds?: number | null | undefined;
     supersetGroup?: number | null | undefined;
     notes?: string | null | undefined;
+    /** Spec 09.1 — the row form; mutually exclusive with the quick-line fields (AC7). */
+    sets?: PlannedSetInput[] | undefined;
   }[];
 }
 

@@ -1,6 +1,12 @@
 // apps/api/src/repositories/routine.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { ROUTINES_PER_USER_MAX, isRoutineId, normalizeSupersetGroups, rpeToTenths } from "@sin/core";
+import {
+  ROUTINES_PER_USER_MAX,
+  isRoutineId,
+  normalizeSupersetGroups,
+  rpeToTenths,
+  type Modality,
+} from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   ExerciseRetiredError,
@@ -13,6 +19,13 @@ import {
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
+import {
+  assertPlannedSetsFitModalities,
+  plannedSetsJson,
+  resolveItemPlan,
+  toPlannedSet,
+  type PlannedSetDbRow,
+} from "./planned-sets.js";
 
 /**
  * Prisma-backed RoutineRepository (Spec 09 §6.1). Raw SQL throughout, the
@@ -34,6 +47,7 @@ interface ItemDbRow {
   rest_seconds: number | null;
   superset_group: number | null;
   notes: string | null;
+  sets: PlannedSetDbRow[];
 }
 
 /** One routine with its items aggregated in the SAME statement (§6.4): a
@@ -63,7 +77,8 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
                     'exercise_id', ri.exercise_id, 'target_sets', ri.target_sets,
                     'target_reps_low', ri.target_reps_low, 'target_reps_high', ri.target_reps_high,
                     'target_rpe', ri.target_rpe, 'rest_seconds', ri.rest_seconds,
-                    'superset_group', ri.superset_group, 'notes', ri.notes)
+                    'superset_group', ri.superset_group, 'notes', ri.notes,
+                    'sets', ${plannedSetsJson("routine_item_set", "routine_item_id", "ri.id")})
                   ORDER BY ri.position)
            FROM "routine_item" ri WHERE ri.routine_id = r.id
          ), '[]'::json) AS items
@@ -87,6 +102,7 @@ function toItem(r: ItemDbRow): RoutineItemRecord {
     restSeconds: r.rest_seconds,
     supersetGroup: r.superset_group,
     notes: r.notes,
+    sets: r.sets.map(toPlannedSet),
   };
 }
 
@@ -112,10 +128,10 @@ export async function assertItemExercisesUsable(
   tx: RawClient,
   actingUserId: string,
   exerciseIds: string[],
-): Promise<void> {
+): Promise<Map<string, Modality>> {
   const unique = [...new Set(exerciseIds)];
-  const rows = await tx.$queryRaw<{ id: string; is_active: boolean }[]>`
-    SELECT id, is_active FROM "exercise"
+  const rows = await tx.$queryRaw<{ id: string; is_active: boolean; modality: string }[]>`
+    SELECT id, is_active, modality FROM "exercise"
     WHERE id = ANY(${unique}::uuid[])
       AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
   `;
@@ -133,16 +149,19 @@ export async function assertItemExercisesUsable(
       fieldErrors: [{ path: `items.${retired}.exerciseId`, message: "exercise is retired" }],
     });
   }
+  return new Map(rows.map((r) => [r.id, r.modality as Modality]));
 }
 
-/** §6.2 step 4 + §6.3: normalise groups, convert RPE to tenths (the one
- * write-side conversion, D5), bulk insert with `position` = array index. */
-async function insertItems(tx: RawClient, routineId: string, items: RoutineWriteFields["items"]): Promise<void> {
+/** §6.2 step 4 + §6.3, extended by Spec 09.1 §6.3: rows and derived targets from
+ * `resolveItemPlan`; items, then ONE bulk insert of every row. Returns the row count. */
+async function insertItems(tx: RawClient, routineId: string, items: RoutineWriteFields["items"]): Promise<number> {
   const groups = normalizeSupersetGroups(items.map((i) => i.supersetGroup ?? null));
+  const plans = items.map(resolveItemPlan);
+  const itemIds = items.map(() => uuidv7());
   const values = items.map(
     (it, i) => Prisma.sql`(
-      ${uuidv7()}::uuid, ${routineId}::uuid, ${i}, ${it.exerciseId}::uuid,
-      ${it.targetSets ?? null}, ${it.targetRepsLow ?? null}, ${it.targetRepsHigh ?? null},
+      ${itemIds[i]}::uuid, ${routineId}::uuid, ${i}, ${it.exerciseId}::uuid,
+      ${plans[i]!.targetSets}, ${plans[i]!.targetRepsLow}, ${plans[i]!.targetRepsHigh},
       ${it.targetRpe == null ? null : rpeToTenths(it.targetRpe)}, ${it.restSeconds ?? null}, ${groups[i] ?? null},
       ${it.notes ?? null}, now(), now())`,
   );
@@ -150,6 +169,22 @@ async function insertItems(tx: RawClient, routineId: string, items: RoutineWrite
     INSERT INTO "routine_item" (${ITEM_COLS}, created_at, updated_at)
     VALUES ${Prisma.join(values)}
   `;
+  const rowValues = plans.flatMap((p, i) =>
+    p.rows.map(
+      (r, j) => Prisma.sql`(
+        ${uuidv7()}::uuid, ${itemIds[i]}::uuid, ${j}, ${r.setType}, ${r.repsLow}, ${r.repsHigh},
+        ${r.weight}, ${r.weightUnit}, now(), now())`,
+    ),
+  );
+  if (rowValues.length > 0) {
+    // ≤ 600 rows × 8 parameters — far under Postgres' 32 767 (§6.3).
+    await tx.$executeRaw`
+      INSERT INTO "routine_item_set"
+        (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit, created_at, updated_at)
+      VALUES ${Prisma.join(rowValues)}
+    `;
+  }
+  return rowValues.length;
 }
 
 /** The DETAIL line of a `routine_user_name_key` violation lists the index's
@@ -202,11 +237,12 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
           if (nameTaken(err)) throw new RoutineNameTakenError();
           throw err;
         }
-        await assertItemExercisesUsable(
+        const modalities = await assertItemExercisesUsable(
           tx,
           actingUserId,
           fields.items.map((i) => i.exerciseId),
         );
+        assertPlannedSetsFitModalities(fields.items, modalities);
         await insertItems(tx, id, fields.items);
         return loadOne(tx, actingUserId, id);
       });
@@ -221,11 +257,12 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
           SELECT id FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid FOR UPDATE
         `;
         if (!locked[0]) throw new NotFoundError(NOT_FOUND);
-        await assertItemExercisesUsable(
+        const modalities = await assertItemExercisesUsable(
           tx,
           actingUserId,
           fields.items.map((i) => i.exerciseId),
         );
+        assertPlannedSetsFitModalities(fields.items, modalities);
         try {
           await tx.$executeRaw`
             UPDATE "routine" SET name = ${fields.name}, notes = ${fields.notes ?? null}, updated_at = now()

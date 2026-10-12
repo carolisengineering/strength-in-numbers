@@ -49,6 +49,7 @@ import {
   WorkoutInProgressExistsError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
+import { assertPlannedSetsFitModalities, resolveItemPlan } from "../../src/repositories/planned-sets.js";
 import type {
   RoutineItemRecord,
   RoutineRecord,
@@ -874,7 +875,8 @@ export class FakeRoutineRepository implements RoutineRepository {
     return r;
   }
 
-  private async checkExercises(actingUserId: string, ids: string[]): Promise<void> {
+  private async checkExercises(actingUserId: string, ids: string[]): Promise<Map<string, Modality>> {
+    const modalities = new Map<string, Modality>();
     for (const [i, id] of ids.entries()) {
       let ex: ExerciseRecord;
       try {
@@ -887,24 +889,30 @@ export class FakeRoutineRepository implements RoutineRepository {
           fieldErrors: [{ path: `items.${i}.exerciseId`, message: "exercise is retired" }],
         });
       }
+      modalities.set(id, ex.modality as Modality);
     }
+    return modalities;
   }
 
   private buildItems(routineId: string, items: RoutineWriteFields["items"]): RoutineItemRecord[] {
     const groups = normalizeSupersetGroups(items.map((i) => i.supersetGroup ?? null));
-    return items.map((it, i) => ({
-      id: uuidv7(),
-      routineId,
-      position: i,
-      exerciseId: it.exerciseId,
-      targetSets: it.targetSets ?? null,
-      targetRepsLow: it.targetRepsLow ?? null,
-      targetRepsHigh: it.targetRepsHigh ?? null,
-      targetRpeTenths: it.targetRpe == null ? null : rpeToTenths(it.targetRpe),
-      restSeconds: it.restSeconds ?? null,
-      supersetGroup: groups[i] ?? null,
-      notes: it.notes ?? null,
-    }));
+    return items.map((it, i) => {
+      const plan = resolveItemPlan(it);
+      return {
+        id: uuidv7(),
+        routineId,
+        position: i,
+        exerciseId: it.exerciseId,
+        targetSets: plan.targetSets,
+        targetRepsLow: plan.targetRepsLow,
+        targetRepsHigh: plan.targetRepsHigh,
+        targetRpeTenths: it.targetRpe == null ? null : rpeToTenths(it.targetRpe),
+        restSeconds: it.restSeconds ?? null,
+        supersetGroup: groups[i] ?? null,
+        notes: it.notes ?? null,
+        sets: plan.rows,
+      };
+    });
   }
 
   private nameClash(actingUserId: string, name: string, exceptId: string | null): boolean {
@@ -926,7 +934,8 @@ export class FakeRoutineRepository implements RoutineRepository {
   async create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
     if ((await this.list(actingUserId)).length >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
     if (this.nameClash(actingUserId, fields.name, null)) throw new RoutineNameTakenError();
-    await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    const modalities = await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    assertPlannedSetsFitModalities(fields.items, modalities);
     const now = new Date();
     const id = uuidv7();
     const r: RoutineRecord = {
@@ -945,7 +954,8 @@ export class FakeRoutineRepository implements RoutineRepository {
   async replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
     const current = this.owned(actingUserId, id);
     if (this.nameClash(actingUserId, fields.name, id)) throw new RoutineNameTakenError();
-    await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    const modalities = await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
+    assertPlannedSetsFitModalities(fields.items, modalities);
     const next: RoutineRecord = {
       ...current,
       name: fields.name,

@@ -183,6 +183,7 @@ export function makeRoutineItem(overrides: Record<string, unknown> = {}): Routin
     restSeconds: null,
     supersetGroup: null,
     notes: null,
+    sets: [],
     ...overrides,
   });
 }
