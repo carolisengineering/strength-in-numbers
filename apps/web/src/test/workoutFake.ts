@@ -15,8 +15,11 @@ import {
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
   WorkoutSchema,
+  deriveTargets,
   expandQuickLine,
+  normalizePlannedSet,
   normalizeSupersetGroups,
+  plannedSetViolations,
   ROUTINES_PER_USER_MAX,
   RoutineSchema,
   RoutineWriteSchema,
@@ -27,7 +30,10 @@ import {
   toCanonicalMeters,
   type Exercise,
   type MeasureName,
+  type Modality,
   type PersonalRecord,
+  type PlannedSet,
+  type PlannedSetInput,
   type ProgressPoint,
   type SetEntry,
   type WorkoutDetail,
@@ -280,6 +286,22 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       return a !== b ? (a < b ? -1 : 1) : x.id < y.id ? -1 : 1;
     });
 
+  /** Spec 09.1's `resolveItemPlan`, rebuilt from the same core helpers: rows win; the legacy quick line expands; a rep range with no set count stays rowless (O1). */
+  function resolveItem(item: { sets?: readonly PlannedSetInput[] | undefined; targetSets?: number | null | undefined; targetRepsLow?: number | null | undefined; targetRepsHigh?: number | null | undefined }): {
+    sets: PlannedSet[];
+    targetSets: number | null;
+    targetRepsLow: number | null;
+    targetRepsHigh: number | null;
+  } {
+    if (item.sets !== undefined) {
+      const rows = item.sets.map(normalizePlannedSet);
+      return { sets: rows, ...deriveTargets(rows) };
+    }
+    const rows = expandQuickLine(item);
+    if (rows.length > 0) return { sets: rows, ...deriveTargets(rows) };
+    return { sets: [], targetSets: null, targetRepsLow: item.targetRepsLow ?? null, targetRepsHigh: item.targetRepsHigh ?? null };
+  }
+
   /** Spec 09 §6.2 order: schema 422 → visibility 422 → retired 409 (first offending index) → name 409. */
   function routineWrite(body: unknown, selfId: string | null): { ok: true; routine: Routine } | { ok: false; response: Response } {
     const parsed = parseBody(RoutineWriteSchema, body);
@@ -293,6 +315,12 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     if (retiredAt >= 0) {
       return { ok: false, response: problemResponse(409, "exercise-retired", { errors: [{ path: `items.${retiredAt}.exerciseId`, message: "Exercise retired" }] }) };
     }
+    const violations = input.items.flatMap((item, i) => {
+      const modality = catalog.find((e) => e.id === item.exerciseId)?.modality as Modality | undefined;
+      if (item.sets === undefined || modality === undefined) return [];
+      return plannedSetViolations(modality, item.sets).map((v) => ({ path: `items.${i}.sets.${v.row}.${v.field}`, message: v.message }));
+    });
+    if (violations.length > 0) return { ok: false, response: validation(violations) };
     const lower = input.name.toLowerCase();
     if ([...state.routines.values()].some((r) => r.id !== selfId && r.name.toLowerCase() === lower)) {
       return { ok: false, response: problemResponse(409, "routine-name-taken") };
@@ -303,20 +331,22 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       id: selfId ?? uuid(),
       name: input.name,
       notes: input.notes ?? null,
-      items: input.items.map((item, position) => ({
-        id: uuid(),
-        position,
-        exerciseId: item.exerciseId,
-        targetSets: item.targetSets ?? null,
-        targetRepsLow: item.targetRepsLow ?? null,
-        targetRepsHigh: item.targetRepsHigh ?? null,
-        targetRpe: item.targetRpe ?? null,
-        restSeconds: item.restSeconds ?? null,
-        supersetGroup: groups[position] ?? null,
-        notes: item.notes ?? null,
-        // Spec 09.1: today's web client sends the quick line only; the server expands it to rows.
-        sets: expandQuickLine(item),
-      })),
+      items: input.items.map((item, position) => {
+        const plan = resolveItem(item);
+        return {
+          id: uuid(),
+          position,
+          exerciseId: item.exerciseId,
+          targetSets: plan.targetSets,
+          targetRepsLow: plan.targetRepsLow,
+          targetRepsHigh: plan.targetRepsHigh,
+          targetRpe: item.targetRpe ?? null,
+          restSeconds: item.restSeconds ?? null,
+          supersetGroup: groups[position] ?? null,
+          notes: item.notes ?? null,
+          sets: plan.sets,
+        };
+      }),
       createdAt: existing?.createdAt ?? now(),
       updatedAt: now(),
     });
