@@ -83,3 +83,16 @@ describe("AC7 / AC25 — the two-forms conflict is a 422 validation-error at ite
     expect(JSON.stringify(res.json().errors)).toContain("items.0.sets");
   });
 });
+
+describe("AC26 — workout_started_from_routine carries planned_set_count only", () => {
+  it("counts the copied rows; no weights in any line", async () => {
+    const lines: Record<string, unknown>[] = [];
+    const logger: FastifyBaseLogger = pino({ level: "debug" }, { write: (s: string) => lines.push(JSON.parse(s)) });
+    const app = await setup(logger);
+    const r = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "R", items: [{ exerciseId: EX.id, sets: [{ weight: 4321.5, weightUnit: "kg" }, {}, {}] }] } })).json();
+    const started = await app.inject({ method: "POST", url: "/v1/workouts", headers: BEARER, payload: { clientGeneratedId: crypto.randomUUID(), startedAt: new Date().toISOString(), routineId: r.id } });
+    expect(started.statusCode).toBe(201);
+    expect(lines.find((l) => l.msg === "workout_started_from_routine")).toMatchObject({ planned_set_count: 3, item_count: 1 });
+    expect(JSON.stringify(lines)).not.toMatch(/4321/);
+  });
+});

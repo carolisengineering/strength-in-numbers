@@ -46,6 +46,7 @@ const weRow = (workoutId: string, position: number) => ({
   notes: null,
   created_at: new Date("2026-09-15T10:05:00.000Z"),
   updated_at: new Date("2026-09-15T10:05:00.000Z"),
+  planned_sets: [],
 });
 
 describe("AC15 — getWorkoutById", () => {

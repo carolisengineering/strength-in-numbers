@@ -142,6 +142,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
         notes: null,
         created_at: new Date(),
         updated_at: new Date(),
+        planned_sets: [],
       },
     ]); // INSERT ... RETURNING
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
@@ -175,6 +176,7 @@ describe("AC13 — statement order: the advisory lock is the first statement oth
         notes: null,
         created_at: new Date(),
         updated_at: new Date(),
+        planned_sets: [],
       },
     ]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);

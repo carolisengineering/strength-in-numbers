@@ -6,7 +6,7 @@
  * (`isWorkoutId` / `isWorkoutExerciseId`), exactly as `exercise.prisma.ts`
  * does with `isExerciseId`.
  */
-import type { DistanceUnit, SetType, WeightUnit } from "@sin/core";
+import type { DistanceUnit, PlannedSet, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
@@ -67,6 +67,8 @@ export interface WorkoutExerciseRecord {
   targetRpeTenths: number | null;
   restSeconds: number | null;
   supersetGroup: number | null;
+  /** Spec 09.1 — snapshotted from the routine item at start, ordered by position; `[]` otherwise. */
+  plannedSets: PlannedSet[];
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
@@ -176,6 +178,8 @@ export interface CreateWorkoutResult {
   /** Spec 09 §9: `workout_exercise` rows copied from the routine — 0 for a
    * manual start and for a replay (nothing is copied twice, AC18). */
   copiedCount: number;
+  /** Spec 09.1 §9: `workout_planned_set` rows copied — 0 for a manual start and for a replay. */
+  plannedSetCount: number;
 }
 
 /**

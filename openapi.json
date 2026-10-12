@@ -3615,6 +3615,75 @@
                               }
                             ]
                           },
+                          "plannedSets": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "setType": {
+                                  "type": "string",
+                                  "enum": [
+                                    "warmup",
+                                    "working",
+                                    "drop",
+                                    "failure"
+                                  ]
+                                },
+                                "repsLow": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "repsHigh": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "weight": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "weightUnit": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "kg",
+                                        "lb"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "setType",
+                                "repsLow",
+                                "repsHigh",
+                                "weight",
+                                "weightUnit"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "sets": {
                             "type": "array",
                             "items": {
@@ -3825,6 +3894,7 @@
                           "targetRpe",
                           "restSeconds",
                           "supersetGroup",
+                          "plannedSets",
                           "sets"
                         ],
                         "additionalProperties": false
@@ -4204,6 +4274,75 @@
                               }
                             ]
                           },
+                          "plannedSets": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "setType": {
+                                  "type": "string",
+                                  "enum": [
+                                    "warmup",
+                                    "working",
+                                    "drop",
+                                    "failure"
+                                  ]
+                                },
+                                "repsLow": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "repsHigh": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "weight": {
+                                  "type": [
+                                    "number",
+                                    "null"
+                                  ]
+                                },
+                                "weightUnit": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "kg",
+                                        "lb"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "setType",
+                                "repsLow",
+                                "repsHigh",
+                                "weight",
+                                "weightUnit"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "sets": {
                             "type": "array",
                             "items": {
@@ -4414,6 +4553,7 @@
                           "targetRpe",
                           "restSeconds",
                           "supersetGroup",
+                          "plannedSets",
                           "sets"
                         ],
                         "additionalProperties": false
@@ -5483,6 +5623,75 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "plannedSets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "setType": {
+                            "type": "string",
+                            "enum": [
+                              "warmup",
+                              "working",
+                              "drop",
+                              "failure"
+                            ]
+                          },
+                          "repsLow": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repsHigh": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weight": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "weightUnit": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "kg",
+                                  "lb"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "setType",
+                          "repsLow",
+                          "repsHigh",
+                          "weight",
+                          "weightUnit"
+                        ],
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "required": [
@@ -5500,7 +5709,8 @@
                     "targetRepsHigh",
                     "targetRpe",
                     "restSeconds",
-                    "supersetGroup"
+                    "supersetGroup",
+                    "plannedSets"
                   ],
                   "additionalProperties": false
                 }
@@ -5918,6 +6128,75 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "plannedSets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "setType": {
+                            "type": "string",
+                            "enum": [
+                              "warmup",
+                              "working",
+                              "drop",
+                              "failure"
+                            ]
+                          },
+                          "repsLow": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "repsHigh": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weight": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "weightUnit": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "kg",
+                                  "lb"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "setType",
+                          "repsLow",
+                          "repsHigh",
+                          "weight",
+                          "weightUnit"
+                        ],
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "required": [
@@ -5935,7 +6214,8 @@
                     "targetRepsHigh",
                     "targetRpe",
                     "restSeconds",
-                    "supersetGroup"
+                    "supersetGroup",
+                    "plannedSets"
                   ],
                   "additionalProperties": false
                 }

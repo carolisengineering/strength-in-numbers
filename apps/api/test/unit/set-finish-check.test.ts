@@ -115,6 +115,7 @@ describe("AC12 — detail reads attach each exercise's sets, ordered", () => {
       notes: null,
       created_at: w.created_at,
       updated_at: w.updated_at,
+      planned_sets: [],
     });
     const set = (weId: string, n: number) => ({
       id: uuidv7(),

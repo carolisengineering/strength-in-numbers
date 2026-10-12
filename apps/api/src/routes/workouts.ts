@@ -101,6 +101,8 @@ function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise {
     targetRpe: r.targetRpeTenths === null ? null : tenthsToRpe(r.targetRpeTenths),
     restSeconds: r.restSeconds,
     supersetGroup: r.supersetGroup,
+    // Spec 09.1: key order matches `PlannedSetSchema`.
+    plannedSets: r.plannedSets.map((s) => ({ ...s })),
   };
 }
 
@@ -140,7 +142,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
       const startedAt = new Date(request.body.startedAt);
       assertStartedAtInBounds(startedAt, new Date());
 
-      const { workout, created, copiedCount } = await deps.workoutRepository.createWorkout(
+      const { workout, created, copiedCount, plannedSetCount } = await deps.workoutRepository.createWorkout(
         actingUserId,
         {
           clientGeneratedId: request.body.clientGeneratedId,
@@ -158,7 +160,13 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         if (request.body.routineId !== undefined) {
           // Spec 09 §9: ids and counts only.
           request.log.info(
-            { workout_id: workout.id, routine_id: request.body.routineId, user_id: actingUserId, item_count: copiedCount },
+            {
+              workout_id: workout.id,
+              routine_id: request.body.routineId,
+              user_id: actingUserId,
+              item_count: copiedCount,
+              planned_set_count: plannedSetCount,
+            },
             "workout_started_from_routine",
           );
         }

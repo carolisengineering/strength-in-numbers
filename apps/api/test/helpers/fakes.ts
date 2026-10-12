@@ -455,7 +455,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const key = `${actingUserId}:${fields.clientGeneratedId}`;
     const existingId = this.byClientKey.get(key);
     if (existingId) {
-      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0 };
+      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0, plannedSetCount: 0 };
     }
     const hasActive = [...this.workouts.values()].some(
       (w) => w.userId === actingUserId && w.endedAt === null,
@@ -512,6 +512,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           targetRpeTenths: item.targetRpeTenths,
           restSeconds: item.restSeconds,
           supersetGroup: item.supersetGroup,
+          plannedSets: item.sets.map((s) => ({ ...s })),
         });
       }
       workout.routineName = routine.name;
@@ -519,7 +520,12 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
     for (const e of copied) this.exercises.set(e.id, e);
-    return { workout, created: true, copiedCount: copied.length };
+    return {
+      workout,
+      created: true,
+      copiedCount: copied.length,
+      plannedSetCount: copied.reduce((n, e) => n + e.plannedSets.length, 0),
+    };
   }
 
   async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
@@ -673,6 +679,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       targetRpeTenths: null,
       restSeconds: null,
       supersetGroup: null,
+      plannedSets: [],
     };
     this.exercises.set(record.id, record);
     return record;

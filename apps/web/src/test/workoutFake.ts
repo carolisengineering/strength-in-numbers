@@ -374,6 +374,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
             targetRpe: item.targetRpe,
             restSeconds: item.restSeconds,
             supersetGroup: item.supersetGroup,
+            // Spec 09.1: the start copies the item's planned rows.
+            plannedSets: item.sets.map((s) => ({ ...s })),
             sets: [],
           };
         }),
@@ -518,6 +520,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         targetRpe: null,
         restSeconds: null,
         supersetGroup: null,
+        plannedSets: [],
       };
       state.active = WorkoutDetailSchema.parse({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
       return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });

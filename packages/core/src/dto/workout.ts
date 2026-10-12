@@ -9,6 +9,7 @@ import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "../enums.js";
 import { ExerciseIdSchema, RoutineIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { PersonalRecordSchema } from "./personal-record.js";
+import { PlannedSetSchema } from "./planned-set.js";
 import { SetEntrySchema } from "./set-entry.js";
 
 export const WORKOUT_TITLE_MAX = 120;
@@ -84,8 +85,11 @@ export const WorkoutExerciseSchema = z.object({
   targetRpe: z.number().nullable(),
   restSeconds: z.number().int().nullable(),
   supersetGroup: z.number().int().nullable(),
+  /** Spec 09.1 — the routine item's planned sets, snapshotted at start; `[]` for a
+   * manual add and for workouts started before 0010. Read-only (no write route). */
+  plannedSets: z.array(PlannedSetSchema),
 });
-export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
+export type WorkoutExercise =z.infer<typeof WorkoutExerciseSchema>;
 
 /** One exercise within a workout, with its sets ordered by `setNumber`
  * (Spec 05.1 §4, AC12). Defined here, not in `dto/set-entry.ts`, to keep the
