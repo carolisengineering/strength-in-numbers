@@ -15,7 +15,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { ifNoneMatchHits, strongEtag } from "./routes/http-cache.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1CachePolicy } from "./plugins/cache-policy.js";
-import { CORS_METHODS } from "./plugins/cors-methods.js";
+import { CORS_METHODS, assertCorsAllowsMethod } from "./plugins/cors-methods.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
@@ -148,8 +148,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.setSerializerCompiler(serializerCompiler);
 
   // Structural egress allowlist: fail assembly if any non-hidden route ships
-  // without a `response` schema (see `assertRouteHasResponseSchema`); and the
-  // OpenAPI publication invariant (#10, `assertPublication`). Added on the root
+  // without a `response` schema (see `assertRouteHasResponseSchema`); the
+  // OpenAPI publication invariant (#10, `assertPublication`); and every route
+  // method must be CORS-allowed (`assertCorsAllowsMethod`). Added on the root
   // instance before any route registers so it sees all of them.
   app.addHook("onRoute", (routeOptions) => {
     assertRouteHasResponseSchema({
@@ -158,6 +159,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       schema: routeOptions.schema,
     });
     assertPublication(routeOptions);
+    assertCorsAllowsMethod(routeOptions);
   });
 
   await app.register(requestContextPlugin);
