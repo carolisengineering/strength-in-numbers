@@ -419,6 +419,21 @@ through the API: `GET $BASE/v1/personal-records` with a bearer (as in B5) return
 the test user's records, `[]` only if that user has no finished workouts with
 eligible sets.
 
+### 0010 — planned sets (Spec 09.1)
+
+1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.1; confirm with `db:migrate:status`.
+2. Merge 09.1 (Render deploys the API).
+3. Consistency check — expected `0`:
+
+   ```sql
+   SELECT count(*) FROM "routine_item" ri
+   WHERE ri.target_sets IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM "routine_item_set" s WHERE s.routine_item_id = ri.id);
+   ```
+
+   Non-zero means an old-code routine save ran between steps 1 and 2. Re-run the guarded backfill (the `INSERT … SELECT` between `BACKFILL-BEGIN` / `BACKFILL-END` in `apps/api/prisma/migrations/0010_create_planned_sets/migration.sql`); it only fills items that have no rows.
+4. Spec 10.2 (the UI) merges only after step 3 is clean.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q18 resolved; consistency pass done
-**Last updated:** 2026-10-11 (§2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Status:** Draft v0.5 — decisions Q1–Q20 resolved; consistency pass done
+**Last updated:** 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -78,7 +78,8 @@ resolved) and Risk R6.
    (UI: Spec 10.0 — routines live inside the **Workouts** tab, not a fifth tab: the
    Start screen lists them, a tap opens a **preview** with Start / Edit / Delete — never a
    one-tap start — and the editor is a routed screen under `/app/workouts/routines/…`.
-   Session-side display of targets and supersets: Spec 10.1.)
+   Session-side display of targets and supersets: Spec 10.1. A routine item can also plan
+   each set — type, rep range, weight — and the session prefills from it: Specs 09.1 / 10.2.)
 4. **Workout logging** — start a session (optionally from a routine), add
    exercises, log sets (reps, weight, RPE, set type: warmup/working/drop/failure),
    check them off, session notes, finish. Rest timer lands in M4 (§9).
@@ -97,7 +98,7 @@ resolved) and Risk R6.
    logging (no forced interleave). Grouping, bracketed display and grid logging land in
    M3 alongside routines (Specs 09, 10.0, 10.1); "grid logging" means the grouped cards
    are joined by one bracket and **each keeps its own Log set row** — there is no
-   combined superset card in M3 (Spec 10.1 D3); the **one rest timer per group** after
+   combined superset card in M3 (Spec 10.1 D3 — whose "no set prefill / no progress count" half Spec 10.2 reverses, Q20); the **one rest timer per group** after
    its last exercise lands with the rest timer in M4 (§9). See §4.3 and Q5.
 
 **Explicitly deferred:** guided interleaved superset logging (Tier C — A1→B1→A2→B2
@@ -127,9 +128,13 @@ flow), editing individual sets of a finished workout, plate calculator, standalo
                 ┌────────────▼──┐   ┌──▼───────────┐   ┌──────────────┐
                 │  PostgreSQL   │   │ Object store │   │   Auth0      │
                 │  (managed)    │   │ (S3-compat): │   │   (OIDC)     │
-                │               │   │ export files │   │              │
+                │               │   │ GA: exports  │   │              │
                 └───────────────┘   └──────────────┘   └──────────────┘
 ```
+
+*Beta (M4): there is no object store yet. Data export is a synchronous JSON response from the
+API and the account purge is a manually run CLI (Spec 11, Q19); the bucket and async export
+return at GA.*
 
 ### 3.2 Component choices and rationale
 
@@ -141,18 +146,18 @@ flow), editing individual sets of a finished workout, plate calculator, standalo
 | Backend | **Single stateless API service**, Node + TypeScript, **Fastify**, containerised. | Same language as both clients → domain math in `packages/core` is written and tested once. One toolchain for a solo developer. Fastify keeps Node fundamentals visible rather than hiding them behind framework abstractions. Also a deliberate learning/portfolio goal (§1.4). | **Go** (developer's existing language) — rejected because it forces the e1RM/PR math into a second implementation and adds a language context-switch for a solo dev. **NestJS** — more job-description keyword coverage and enforced structure, but adds DI/decorator/module concepts to learn on top of Node/TS itself; revisit only if the project sprawls. **Rails / Elixir** — no prior experience, no code-share. |
 | ORM & migrations | **Prisma** | Type-safe queries, migrations in the box, widely used in target roles. Raw SQL for the progress aggregates (§4.5) where Prisma's query API gets awkward. | Kysely (lighter, less magic, no migration tooling); TypeORM (rougher DX). |
 | Primary datastore | **PostgreSQL**, managed. | Data is relational (users → workouts → exercises → sets), needs transactions and aggregate queries for progress views. JSONB where schema is genuinely fluid. | DynamoDB / Mongo — aggregation and evolving query patterns are painful. |
-| Object storage | **S3-compatible bucket** (Cloudflare R2 in v1) | v1 use: async data-export archives only. Reserved for post-v1 exercise images and form-check media. | Storing blobs in Postgres (don't). |
+| Object storage | **S3-compatible bucket** (Cloudflare R2) — **deferred to GA** | Not used in the beta: export is a synchronous JSON response and the purge is a manual CLI (Spec 11, Q19). When added at GA: async data-export archives; reserved for post-v1 exercise images and form-check media. | Storing blobs in Postgres (don't). |
 | Auth | **Auth0** (managed OIDC provider) | Health-adjacent PII; do not want to own password storage, MFA, social login, or breach surface in v1. Standards-first (OIDC / PKCE / JWKS) so the integration is transferable knowledge, and the strongest resume signal of the options (portfolio goal, §1.4). API verifies JWTs against Auth0's JWKS; a `user` row is provisioned on first login keyed by the `sub`. | **Clerk** — better React DX, faster to integrate, but more frontend lock-in and a weaker "I know OIDC" story. **Cognito** — only competitive if hosting were AWS (Q4 → not AWS). Rolling our own — wrong risk solo, on health PII. |
-| Hosting (v1) | **Render** — API web service + managed Postgres (backups/PITR) + cron + static SPA site, all native primitives, described in a checked-in `render.yaml` blueprint. **Cloudflare R2** for S3-compatible object storage. | Every component maps to a native primitive; predictable low cost (~$14–21/mo, near-zero on free tier); no VPC learning curve blocking app work. `render.yaml` is itself a portfolio artifact. | **Fly.io + Tigris** (more container depth, less battle-tested managed PG); **VPS/Coolify** (trades build time for ops time); **AWS** — see phase 2. |
+| Hosting (v1) | **Render** — API web service + managed Postgres (backups/PITR) + static SPA site, all native primitives, described in a checked-in `render.yaml` blueprint. A Render cron job (scheduled account purge) and **Cloudflare R2** (S3-compatible object storage, async export) join at GA — the beta needs neither (Spec 11, Q19). | Every component maps to a native primitive; predictable low cost (~$14–21/mo, near-zero on free tier); no VPC learning curve blocking app work. `render.yaml` is itself a portfolio artifact. | **Fly.io + Tigris** (more container depth, less battle-tested managed PG); **VPS/Coolify** (trades build time for ops time); **AWS** — see phase 2. |
 | Hosting (phase 2, post-M2) | **Migrate to AWS** as a deliberate, self-contained DevOps portfolio project: ECS Fargate + RDS Postgres + S3 + CloudFront + EventBridge, defined in **AWS CDK or Terraform**, deployed by a GitHub Actions pipeline. Lean setup: **no NAT Gateway** (public subnet + tight SG), **no ALB** (CloudFront → service, or API Gateway HTTP API), single-AZ RDS. | DevOps roles are a career target (§1.4); the IaC repo + CI pipeline is the artifact. The app is 12-factor / container / Postgres / S3-compatible precisely so this is a swap, not a rewrite. ~free for 6–12 months on the AWS free tier, then ~$20–30/mo. | Staying on Render (fine functionally; weaker DevOps signal). |
 
 ### 3.3 Environments
 
-`local` (docker-compose: API + Postgres + MinIO as the S3-compatible stand-in) →
+`local` (docker-compose: API + Postgres; a MinIO S3 stand-in joins when GA's async export needs it) →
 `staging` (Render, prod-like, seeded, auto-deploy from `main`) → `production`
-(Render, promote by tag). Each environment has its own Render Postgres, R2 bucket,
-and Auth0 tenant. The MinIO → R2 → (later) S3 progression is transparent to the
-app because storage access is S3-API only.
+(Render, promote by tag). Each environment has its own Render Postgres and Auth0 tenant (and, from GA, its own
+R2 bucket — none in the beta, Spec 11). The MinIO → R2 → (later) S3 progression is
+transparent to the app because storage access will be S3-API only.
 
 ### 3.4 Extensibility principles
 
@@ -212,7 +217,7 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   (informational; from a namespaced Auth0 access-token claim — see Spec 01),
   `display_name`, `unit_preference` (`kg` | `lb` — a *display* default, not how
   data is stored), `timezone` (IANA name, e.g. `America/Chicago`), `created_at`,
-  `deleted_at` (soft-delete for grace period, then hard purge job).
+  `deleted_at` (soft-delete for the 30-day grace period, then a hard purge — a manual operator CLI in the beta, a scheduled job at GA; Spec 11).
 - **body_metric** — `user_id`, `measured_at timestamptz`, `local_date DATE`,
   `tz_offset_minutes SMALLINT`, `metric_type` (`weight` only in v1;
   `body_fat_pct`, `waist`, … reserved), `value NUMERIC`, `unit`. Same
@@ -295,10 +300,28 @@ Rules:
   same exercise more than once. Groups are normalised by the server to a dense 1, 2, 3 … by first
   appearance and each has 2–8 members. A routine is edited by **whole replace**
   (`PUT` with the full ordered item list); item ids are not stable across edits.
+  `target_sets`, `target_reps_low` and `target_reps_high` are **derived by the server**
+  from the item's planned sets on every write (below) — the one exception is an item with
+  no planned sets, which keeps a rep range exactly as a legacy-form write sent it
+  (Spec 09.1 §6.2, O1).
+- **routine_item_set** — *planned sets* (Spec 09.1): `routine_item_id` (cascade),
+  `position` (0–19, unique per item), `set_type` (`warmup` | `working` | `drop` |
+  `failure`, default `working`), `reps_low` / `reps_high` (both or neither, 1–100,
+  low ≤ high), `weight NUMERIC(7,3)` + `weight_unit` (`kg` | `lb`, present together;
+  stored as typed, §4.8; never converted when the profile unit changes). ≤ 20 rows per
+  item. **Rows are the single source of truth**: `routine_item.target_sets` = the row
+  count, `target_reps_low` / `high` = the lowest / highest rep bound across the rows.
+  By exercise type: weight+reps and weighted-bodyweight rows plan reps and weight;
+  bodyweight rows plan reps only (weight is a `422`); duration and distance rows carry a
+  set type only in v1 (planned duration / distance is FI-11). No per-set RPE — the item's
+  `target_rpe` stays. A routine write sends either `sets` (rows) or the legacy
+  quick-line fields, which the server expands into N identical `working` rows, so a client
+  that predates planned sets keeps working. Migration `0010` backfills existing items.
 
 Starting a workout from a routine **snapshots** it: the routine's items are copied
 into `workout_exercise` rows at that moment — including the five targets,
-`superset_group` and the item's notes (Spec 09 D22, amended 2026-10-11) — and `workout.routine_id` / `routine_name_snapshot` are set. Later
+`superset_group`, the item's notes (Spec 09 D22, amended 2026-10-11) and its planned
+sets (`workout_planned_set`, Spec 09.1) — and `workout.routine_id` / `routine_name_snapshot` are set. Later
 edits to the routine do not change past workouts; deleting the routine does not
 damage them (`workout.routine_id` is `ON DELETE SET NULL`; the name snapshot
 survives). See Spec 09.
@@ -325,6 +348,16 @@ survives). See Spec 09.
   snapshots `target_sets`, `target_reps_low`, `target_reps_high`, `target_rpe`
   (tenths), `rest_seconds` — all NULL for a manually added exercise. The same
   exercise may appear more than once in a workout (already so: Spec 05.0 AC10).
+- **workout_planned_set** — the snapshot of a routine item's planned sets (Spec 09.1):
+  `workout_exercise_id` (cascade), `position`, `set_type`, `reps_low` / `reps_high`,
+  `weight` + `weight_unit`, the same columns and CHECKs as `routine_item_set`. Written
+  **only** by the start copy, never edited (later routine edits never change a past
+  workout); none for a manually added exercise or a workout started before migration
+  `0010`. Returned as `plannedSets` on each `WorkoutExercise`. It is a plan, not data:
+  no `set_entry` is created from it, the finish rule and the PR engine never read it,
+  and in the session (Spec 10.2) the n-th logged set simply consumes the n-th row — the
+  entry-row draft is prefilled from it ("Set 3 of 4"), and only a lifter's Log tap makes
+  a set.
 - **A workout's exercise `position`s are the dense zero-based sequence
   `0 … n-1`**, unique per workout (Spec 05.0 D41).
 - **set_entry** — `workout_exercise_id`, `set_number`, `set_type`
@@ -442,6 +475,9 @@ dedup without touching the v1 schema.
   defined once in `packages/core` (Spec 02); the `weight_kg` / `distance_m`
   generated columns (Spec 05.1) must use the identical constants — drift between
   them silently corrupts PRs and charts (R4).
+- A **planned** weight (`routine_item_set`, `workout_planned_set`) is stored the same way —
+  value plus unit, as typed, with no generated canonical column (nothing compares or
+  aggregates plans; PRs and volume read `set_entry` only).
 - `user.unit_preference` only chooses the default unit for *new* input and the
   unit for rendering aggregate/derived numbers; it never rewrites stored rows.
 
@@ -449,18 +485,30 @@ dedup without touching the v1 schema.
 
 | Entity | On user action | On account deletion |
 |---|---|---|
-| `user` | soft (`deleted_at`), tokens revoked | hard purge after 30-day grace |
+| `user` | soft (`deleted_at`), tokens revoked (every `/v1` call → `403 account-deleted`) | hard purge after 30-day grace (manual `account:purge` CLI in the beta) |
 | `workout`, `workout_exercise`, `set_entry` | hard delete (cascade) | hard purge |
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
-| `routine` (+ `routine_item`) | hard delete (cascade); `workout.routine_id` nulls, name snapshot kept — Spec 09 | hard purge |
+| `routine` (+ `routine_item`, `routine_item_set`) | hard delete (cascade); `workout.routine_id` nulls, name snapshot kept — Spec 09 / 09.1 | hard purge |
+| `workout_planned_set` | follows its `workout_exercise` / `workout` (cascade); never user-edited | hard purge |
 | custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; `workout_exercise.exercise_id` is also `ON DELETE CASCADE` — Spec 05.0 D37 — so no purge-ordering step is needed) |
 | `personal_record` | never user-deleted; recomputed | hard purge |
 | `body_metric` | hard delete | hard purge |
 
-Account deletion: immediate soft-delete + token revocation; a scheduled job hard-
-purges all user-owned rows and bucket objects after the grace window. Data export:
-async job writes a JSON/CSV archive to the bucket; user gets a time-limited signed
-URL.
+Account deletion (Spec 11, Q19): `DELETE /v1/account` immediately sets
+`user.deleted_at`, which is the whole of "token revocation" — `resolveUser` then
+answers `403 account-deleted` on every `/v1` call from every device, and the response is
+`202 { deletedAt, purgeEligibleAt }`. There is no self-service undo; the owner can clear
+`deleted_at` by hand before the purge. For the beta the hard purge is a **manual CLI**
+(`account:purge`, dry run by default, run by the operator; `--confirm` deletes accounts
+soft-deleted more than 30 days ago in one transaction each, taking the per-user PR lock
+first): one `DELETE FROM "user"` cascades every user-owned row. There are no bucket
+objects yet. The scheduled purge job (a Render cron) and bucket cleanup return at GA.
+Data export: `GET /v1/account/export` returns **one synchronous JSON document** (profile,
+custom exercises including soft-deleted, routines, and every workout with its sets — the
+same shapes the read routes return, from one consistent database snapshot; not
+`personal_record`, which is a rebuildable cache, and not the global catalog). Because a
+deleted account is locked out, the UI offers the download before the delete. The async
+archive to a bucket with a signed URL, and a CSV format, are deferred to GA.
 
 ---
 
@@ -681,7 +729,9 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   would hide a contract break behind a target-less, ungrouped-looking workout, and the
   deploy order — API first, static web second, rolled back together — is what we
   control (Spec 10.1 D4; first users: `routineName` and the six `WorkoutExercise`
-  routine fields from Spec 09).
+  routine fields from Spec 09; then `RoutineItem.sets` and `WorkoutExercise.plannedSets`
+  from Spec 09.1, whose UI, Spec 10.2, merges only after the API is deployed and
+  verified).
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.
@@ -695,7 +745,7 @@ POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinute
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
 GET    /workouts?limit=&cursor=   → { items: WorkoutSummary[], next } history list (Spec 07.1)
-GET    /workouts/{id}
+GET    /workouts/{id}            # exercises[] carry plannedSets[] (Spec 09.1; [] for a manual add / pre-0010 workout)
 PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
 DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exerciseId, position? }
@@ -710,13 +760,13 @@ GET    /progress/exercises/{id}?from=&to=   → { exerciseId, points[] }, un-pag
                                    # one point per finished workout: topSetWeight, bestE1rm, totalVolume, maxReps (each nullable);
                                    # {id} resolves through fork lineage (exerciseId = root); 404 if not visible; from/to inclusive on local_date
 GET    /personal-records?exerciseId=&workoutId=   → { records[] }, un-paginated (Spec 07.0)
-GET    /routines                  → { routines[] } with items inlined, ETag (Spec 09)
+GET    /routines                  → { routines[] } with items inlined (each item with its planned `sets[]`, Spec 09.1), ETag (Spec 09)
 GET    /routines/{id}             → Routine, ETag
-POST   /routines                  { name, notes?, items[] }   → 201 + Location
+POST   /routines                  { name, notes?, items[] }   → 201 + Location   # item = { exerciseId, sets[] | legacy targetSets/targetReps*, targetRpe?, restSeconds?, supersetGroup?, notes? } (Spec 09.1)
 PUT    /routines/{id}             { name, notes?, items[] }   # whole replace, last write wins
 DELETE /routines/{id}             # hard delete; workouts keep routineName
-POST   /account/export            → 202, async job
-DELETE /account                   → 202, soft-delete + purge scheduled
+GET    /account/export            → 200, one synchronous JSON document (Spec 11; Content-Disposition attachment; async bucket export deferred to GA)
+DELETE /account                   → 202 { deletedAt, purgeEligibleAt }, soft-delete; purge is a manual CLI ≥ 30 days later (Spec 11)
 ```
 
 ---
@@ -753,7 +803,7 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 ### 8.2 Privacy, security, compliance
 
 - Training logs + body weight are **sensitive personal data**. GDPR / CCPA apply:
-  export and delete are product features (§4.7), not manual ops tickets.
+  export and delete are product features (§4.9, Spec 11), not manual ops tickets.
 - **Do not** use training or body-weight data for advertising, and do not share it
   with third parties. No HIPAA exposure in v1 (no covered entities, no providers).
   When the native app ships, Apple/Google health-data disclosure rules apply — a
@@ -819,7 +869,7 @@ Planning implications:
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
   M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
-  M3 = 09, 10.0, 10.1 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
+  M3 = 09, 09.1, 10.0, 10.1, 10.2 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
@@ -827,8 +877,8 @@ Planning implications:
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
 | **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (est-1RM, top set, volume, reps — hand-written SVG, Q17) and the per-exercise records list (08.1). | Progress numbers reconciled by hand for 10 sessions (records and history: 08.0 AC27; charts: 08.1 AC29). |
-| **M3 — Routines + supersets** (Specs 09 routines API, 10.0 routines UI, 10.1 session side) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor; in the session (10.1) target lines and notes on the exercise cards, the bracket, live link/unlink via the editor's rules, and `routineName` on History; "grid logging" = bracket + per-card logging. The rest timer, including the per-group timer, is M4. | — |
-| **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete, empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
+| **M3 — Routines + supersets** (Specs 09 routines API, 09.1 planned sets API, 10.0 routines UI, 10.1 session side, 10.2 planned sets UI) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor; in the session (10.1) target lines and notes on the exercise cards, the bracket, live link/unlink via the editor's rules, and `routineName` on History; "grid logging" = bracket + per-card logging; **planned sets** (09.1 / 10.2) — a routine item can program each set (type, reps, weight), the editor offers a weight field and "Plan each set", and in the session the entry-row draft arrives prefilled and labeled "Set 3 of 4" / "Extra set". The rest timer, including the per-group timer, is M4. | — |
+| **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete (Spec 11 API + Spec 12 UI — beta minimum: synchronous JSON export and a manual purge CLI; R2 bucket, async export and the scheduled purge job are GA), empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
 | **Phase 2 — AWS migration** (can start once M2 is stable; independent of M3+) | `infra/` in CDK or Terraform: ECS Fargate, RDS Postgres, S3, CloudFront, EventBridge; GitHub Actions build→ECR→deploy. Lean: no NAT, no ALB, single-AZ. Cut over staging first, then production; keep Render as rollback until stable. | Both envs running on AWS from IaC; documented as a case study. |
 | **Post-v1 (backlog)** | React Native app (`apps/mobile`) on the same API; PWA/offline; guided interleaved superset logging (Tier C); wearable read-only import; **social phase** (planned — follow graph, shared workouts, challenges; requires the authz layer per §3.4 / R8). | Each is additive per §3.4 — no server rewrite. |
@@ -865,7 +915,7 @@ with rationale so the "why" survives.
   vendor-neutral architecture already assumed in §5.1. Clerk was the faster
   integration; Cognito only relevant if Q4 → AWS. See §3.2, §5.1.
 - **Q3 — API versioning.** ✅ **Resolved: `/v1` path prefix.** See §6.
-- **Q4 — Hosting.** ✅ **Resolved: Render + Cloudflare R2 for v1; migrate to AWS
+- **Q4 — Hosting.** ✅ **Resolved: Render + Cloudflare R2 for v1 (R2 arrives at GA — Q19); migrate to AWS
   (CDK/Terraform + Fargate + RDS + S3 + CloudFront) as a phase-2 DevOps portfolio
   project after M2.** Render unblocks app work now; the AWS migration is a
   self-contained artifact and, because the app is 12-factor / S3-compatible, a
@@ -1042,6 +1092,49 @@ with rationale so the "why" survives.
   live-read targets, a JSON snapshot, item-level routine routes, a separate start
   route, a dedicated supersets endpoint, archive. Limits: 50 routines / 30 items / 8
   per group. Q5 is unchanged. See Spec 09 §12 (D1–D21).
+- **Q19 — Account lifecycle: beta-minimum export, soft delete, manual purge.**
+  ✅ **Resolved (Spec 11, 2026-10-11): synchronous JSON export, soft delete with no
+  self-service undo, and a hand-run purge CLI; R2, async export and the purge cron are
+  deferred to GA.** `GET /v1/account/export` returns one JSON document composed of the
+  existing read DTOs (profile, custom exercises incl. soft-deleted, routines, workouts
+  with sets) from one `REPEATABLE READ` read-only transaction and a fixed handful of bulk
+  queries, rate-limited per user (3/min); `DELETE /v1/account` sets `deleted_at` and
+  returns `202 { deletedAt, purgeEligibleAt }` (a repeat is `403 account-deleted`, like
+  every other call, so the client treats that as done); `account:purge` (shaped like
+  `records:rebuild`) lists by default, `--confirm` deletes accounts past the 30-day grace
+  in one transaction each (PR lock first, grace check inside the `DELETE`), and a live
+  account can never be purged. Auth0 is untouched (no Management API credential); a
+  later login after the purge re-provisions an empty account. Rationale: the beta is a
+  handful of known testers — a bucket, signed URLs and a scheduled job are infrastructure
+  for a population that does not exist yet, while an SPA-assembled export would be N+1
+  requests with no consistent snapshot and a raw-SQL purge would have no dry run, grace
+  check or test. No migration (`user.deleted_at` exists). Open: purge cadence vs. the
+  user-facing promise and backup/Auth0 retention wording (Spec 11 O1/O2). See Spec 11 §12
+  (D1–D18).
+- **Q20 — Planned sets: per-set routine plans, rows as the source of truth, prefilled in the
+  session.** ✅ **Resolved (Specs 09.1 / 10.2, 2026-10-11): a routine item owns an ordered
+  list of planned sets (`routine_item_set`: type, rep range, weight + unit); starting a
+  workout snapshots them to `workout_planned_set`; the session prefills its draft from the
+  next one.** The rows are the single source of truth and the item's `target_sets` /
+  `target_reps_*` become columns the server derives on every write (kept, not dropped,
+  because expand-only migrations forbid dropping in the release that stops writing them and
+  Spec 10.1's target line and every started workout's snapshot read them); a routine write
+  sends `sets` or the legacy quick-line fields, which the server expands into identical
+  working rows, so today's client keeps working and the API ships a release ahead of the
+  UI. In the session the n-th logged set consumes the n-th planned row (progress is
+  positional, never matched by value), the draft arrives filled with the row's type, reps
+  (low bound), weight and unit, the label reads "Set k of N" then "Extra set", and nothing
+  is stored until the lifter taps Log — the entry row is a draft, not a server row (Spec
+  06.1 D13). This **reverses both halves of Spec 10.1 D3** ("no set prefill, no '2 of 4'
+  count"). Rationale: in the gym the lifter wants the screen to say what to lift and when to
+  stop, including ramps and warm-ups; a planned warm-up must log as a warm-up so personal
+  records and volume stay correct. Rejected: a `jsonb` column on the item (no
+  database-enforced rules; contradicts Q18's rejection of a JSON snapshot); a quick-line-only
+  target weight (no ramps); display-only plans (a second tap-and-type per set); matching
+  logged sets to rows by type or value; per-set RPE and planned duration / distance (FI-11)
+  for v1. Owner rulings 2026-10-11: a rep range with no set count keeps no rows and its
+  range as sent (Spec 09.1 O1); the planned weight shows on the finished-workout and History
+  target line too (Spec 10.2 O2, D8). See Spec 09.1 §12 (D1–D14) and Spec 10.2 §12 (D1–D12).
 
 ---
 

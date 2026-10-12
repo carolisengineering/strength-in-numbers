@@ -11,6 +11,7 @@ import {
 } from "../errors/app-error.js";
 import type { ExerciseRepository } from "./exercise.js";
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
+import { plannedSetsJson, toPlannedSet, type PlannedSetDbRow } from "./planned-sets.js";
 import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
@@ -100,7 +101,12 @@ interface WorkoutExerciseDbRow {
   target_rpe: number | null;
   rest_seconds: number | null;
   superset_group: number | null;
+  /** Spec 09.1 — `json_agg` of the exercise's planned rows, `[]` when none. */
+  planned_sets: PlannedSetDbRow[];
 }
+
+/** A correlated sub-select over `"workout_exercise"` (Spec 09.1 §6.5). */
+const WE_PLANNED_SETS = plannedSetsJson("workout_planned_set", "workout_exercise_id", '"workout_exercise".id');
 
 function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
   return {
@@ -119,6 +125,7 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
     targetRpeTenths: r.target_rpe,
     restSeconds: r.rest_seconds,
     supersetGroup: r.superset_group,
+    plannedSets: r.planned_sets.map(toPlannedSet),
   };
 }
 
@@ -132,7 +139,7 @@ function parseEndedAt(startedAt: Date, endedAtIso: string, now: Date): Date {
 }
 
 type InsertOutcome =
-  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number }
+  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number; plannedSetCount: number }
   | { kind: "no-row" }
   | { kind: "active-conflict" };
 
@@ -187,7 +194,9 @@ export function createWorkoutRepository(
                   tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
       `;
       const insertedRow = rows[0];
-      return insertedRow ? { kind: "inserted", row: insertedRow, copiedCount: 0 } : { kind: "no-row" };
+      return insertedRow
+        ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0 }
+        : { kind: "no-row" };
     } catch (err) {
       if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
         return { kind: "active-conflict" };
@@ -240,6 +249,7 @@ export function createWorkoutRepository(
             ],
           });
         }
+        let plannedSetCount = 0;
         if (items.length > 0) {
           const values = items.map(
             (it) => Prisma.sql`(
@@ -254,6 +264,18 @@ export function createWorkoutRepository(
                created_at, updated_at)
             VALUES ${Prisma.join(values)}
           `;
+          // Spec 09.1 §6.4: copy each item's rows to the exercise created from it
+          // (positions are copied verbatim above, so the join is exact — even for a
+          // repeated exercise). Same transaction, same FOR SHARE (D6: gen_random_uuid).
+          plannedSetCount = await tx.$executeRaw`
+            INSERT INTO "workout_planned_set"
+              (id, workout_exercise_id, position, set_type, reps_low, reps_high, weight, weight_unit, created_at, updated_at)
+            SELECT gen_random_uuid(), we.id, s.position, s.set_type, s.reps_low, s.reps_high, s.weight, s.weight_unit, now(), now()
+            FROM "routine_item" ri
+            JOIN "routine_item_set" s  ON s.routine_item_id = ri.id
+            JOIN "workout_exercise" we ON we.workout_id = ${id}::uuid AND we.position = ri.position
+            WHERE ri.routine_id = ${routine.id}::uuid
+          `;
         }
         const updated = await tx.$queryRaw<WorkoutDbRow[]>`
           UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name}
@@ -261,7 +283,7 @@ export function createWorkoutRepository(
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         `;
-        return { kind: "inserted", row: updated[0]!, copiedCount: items.length } as InsertOutcome;
+        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount } as InsertOutcome;
       });
     } catch (err) {
       if (err instanceof StartOutcomeSignal) return err.outcome;
@@ -272,7 +294,8 @@ export function createWorkoutRepository(
   async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
     const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
       SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
+             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+             ${WE_PLANNED_SETS} AS planned_sets
       FROM "workout_exercise"
       WHERE workout_id = ${workoutId}::uuid
       ORDER BY position ASC
@@ -338,29 +361,39 @@ export function createWorkoutRepository(
       const attempt1 = await attempt();
 
       if (attempt1.kind === "inserted") {
-        return { workout: toRecord(attempt1.row), created: true, copiedCount: attempt1.copiedCount };
+        return {
+          workout: toRecord(attempt1.row),
+          created: true,
+          copiedCount: attempt1.copiedCount,
+          plannedSetCount: attempt1.plannedSetCount,
+        };
       }
 
       if (attempt1.kind === "active-conflict") {
         const stored = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0 };
+        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0 };
         throw new WorkoutInProgressExistsError();
       }
 
       // attempt1.kind === "no-row": the idempotency key already existed *or*
       // its row was concurrently deleted between the insert and this re-read.
       const stored1 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0 };
+      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0 };
 
       // Delete race: retry the insert exactly once (§6.2 step 3, D40).
       const attempt2 = await attempt();
 
       if (attempt2.kind === "inserted") {
-        return { workout: toRecord(attempt2.row), created: true, copiedCount: attempt2.copiedCount };
+        return {
+          workout: toRecord(attempt2.row),
+          created: true,
+          copiedCount: attempt2.copiedCount,
+          plannedSetCount: attempt2.plannedSetCount,
+        };
       }
 
       const stored2 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0 };
+      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0 };
 
       if (attempt2.kind === "active-conflict") {
         // The retry raced a *different* in-progress workout: a genuine
@@ -611,7 +644,8 @@ export function createWorkoutRepository(
             (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
              ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+                    '[]'::json AS planned_sets
         `;
         return toExerciseRecord(insertedRows[0]!);
       });
@@ -729,7 +763,8 @@ export function createWorkoutRepository(
           SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup}, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+                    ${WE_PLANNED_SETS} AS planned_sets
         `;
         return toExerciseRecord(updatedRows[0]!);
       });

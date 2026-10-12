@@ -148,6 +148,7 @@ describe("AC24-adjacent — RoutineSchema response shape", () => {
             restSeconds: 120,
             supersetGroup: 1,
             notes: null,
+            sets: [],
           },
         ],
       }),

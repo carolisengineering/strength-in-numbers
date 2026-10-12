@@ -15,6 +15,7 @@ import {
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
   WorkoutSchema,
+  expandQuickLine,
   normalizeSupersetGroups,
   ROUTINES_PER_USER_MAX,
   RoutineSchema,
@@ -313,6 +314,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         restSeconds: item.restSeconds ?? null,
         supersetGroup: groups[position] ?? null,
         notes: item.notes ?? null,
+        // Spec 09.1: today's web client sends the quick line only; the server expands it to rows.
+        sets: expandQuickLine(item),
       })),
       createdAt: existing?.createdAt ?? now(),
       updatedAt: now(),
@@ -371,6 +374,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
             targetRpe: item.targetRpe,
             restSeconds: item.restSeconds,
             supersetGroup: item.supersetGroup,
+            // Spec 09.1: the start copies the item's planned rows.
+            plannedSets: item.sets.map((s) => ({ ...s })),
             sets: [],
           };
         }),
@@ -515,6 +520,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         targetRpe: null,
         restSeconds: null,
         supersetGroup: null,
+        plannedSets: [],
       };
       state.active = WorkoutDetailSchema.parse({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
       return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });

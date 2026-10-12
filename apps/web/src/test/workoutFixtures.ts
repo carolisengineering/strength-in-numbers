@@ -105,6 +105,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         targetRpe: spec.targetRpe ?? null,
         restSeconds: spec.restSeconds ?? null,
         supersetGroup: spec.supersetGroup ?? null,
+        plannedSets: [],
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
@@ -183,6 +184,7 @@ export function makeRoutineItem(overrides: Record<string, unknown> = {}): Routin
     restSeconds: null,
     supersetGroup: null,
     notes: null,
+    sets: [],
     ...overrides,
   });
 }
