@@ -26,6 +26,9 @@ const item = (key: string, overrides: Partial<DraftItem> = {}): DraftItem => ({
   restSeconds: null,
   notes: null,
   supersetGroup: null,
+  weight: null,
+  weightUnit: null,
+  plan: null,
   ...overrides,
 });
 const draft = (overrides: Partial<Draft> = {}): Draft => ({
