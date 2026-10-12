@@ -15,6 +15,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { ifNoneMatchHits, strongEtag } from "./routes/http-cache.js";
 import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1CachePolicy } from "./plugins/cache-policy.js";
+import { CORS_METHODS } from "./plugins/cors-methods.js";
 import { registerV1Routes } from "./routes/v1.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
@@ -177,7 +178,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     origin: (origin, cb) => {
       cb(null, !origin || config.webOrigins.includes(origin));
     },
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: [...CORS_METHODS],
     allowedHeaders: ["Authorization", "Content-Type", "X-Request-Id"],
     // Retry-After: the SPA's outbox waits it out on a 429 (Spec 05.2 AC12, AC14).
     exposedHeaders: ["X-Request-Id", "Retry-After"],
