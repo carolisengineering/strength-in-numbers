@@ -13,7 +13,10 @@ export interface SupersetRow {
   readonly linkedBelow: boolean;
 }
 
-/** The one place the session screens derive superset display (Spec 10.1 AC17, AC24). */
+/**
+ * The one place the session screens derive superset display (Spec 10.1 AC17, AC24). The target line carries the
+ * planned weight on every screen, through this one path and with no option (Spec 10.2 D8, AC29, AC30).
+ */
 export function supersetRows(exercises: readonly WorkoutExerciseDetail[]): SupersetRow[] {
   const sorted = [...exercises].sort((a, b) => a.position - b.position);
   const groups = sorted.map((e) => e.supersetGroup);
@@ -21,7 +24,7 @@ export function supersetRows(exercises: readonly WorkoutExerciseDetail[]): Super
   const slots = sorted.map((e) => ({ id: e.id, group: e.supersetGroup }));
   return sorted.map((exercise, i) => {
     const ordinal = ordinals[i] ?? null;
-    const line = targetLine(exercise);
+    const line = targetLine(exercise, exercise.plannedSets);
     return {
       exercise,
       bracket: runPosition(groups, i),
