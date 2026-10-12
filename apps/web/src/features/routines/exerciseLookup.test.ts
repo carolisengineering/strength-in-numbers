@@ -11,13 +11,13 @@ describe("10.0 AC30 — exercise lookup reads raw catalog rows", () => {
   ];
   it("active, retired, fork origin; an absent id is unknown before a sync", () => {
     const lookup = lookupIn(rows, { synced: false });
-    expect(lookup(exerciseId(1))).toEqual({ name: "Bench Press", state: "active" });
-    expect(lookup(exerciseId(2))).toEqual({ name: "Old Row", state: "retired" });
-    expect(lookup(exerciseId(3))).toEqual({ name: "Curated Squat", state: "active" });
-    expect(lookup(exerciseId(99))).toEqual({ name: UNKNOWN_EXERCISE_NAME, state: "unknown" });
+    expect(lookup(exerciseId(1))).toEqual({ name: "Bench Press", state: "active", modality: "weight_reps" });
+    expect(lookup(exerciseId(2))).toEqual({ name: "Old Row", state: "retired", modality: "weight_reps" });
+    expect(lookup(exerciseId(3))).toEqual({ name: "Curated Squat", state: "active", modality: "weight_reps" });
+    expect(lookup(exerciseId(99))).toEqual({ name: UNKNOWN_EXERCISE_NAME, state: "unknown", modality: null });
   });
 
   it("after a sync an absent id is missing: sync drops retired and deleted rows", () => {
-    expect(lookupIn(rows, { synced: true })(exerciseId(99))).toEqual({ name: REMOVED_EXERCISE_NAME, state: "missing" });
+    expect(lookupIn(rows, { synced: true })(exerciseId(99))).toEqual({ name: REMOVED_EXERCISE_NAME, state: "missing", modality: null });
   });
 });

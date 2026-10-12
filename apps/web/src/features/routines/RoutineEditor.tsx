@@ -27,17 +27,15 @@ import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, reduce, runPosition, draftFromRoutine } from "./routineDraft";
-import { classifyRoutineError } from "./routineErrors";
+import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { RoutineGone } from "./RoutinePreview";
 import styles from "./RoutineEditor.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
 import { useCreateRoutine, useReplaceRoutine } from "./useRoutineMutations";
 import {
   FORM_INVALID,
-  issueForPath,
   NAME_TAKEN,
   nameTaken,
-  splitPath,
   toRoutineInput,
   validateDraft,
   type DraftIssue,
@@ -95,7 +93,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const pendingFocus = useRef<string | "add" | null>(null);
 
   const validation = useMemo(
-    () => validateDraft(draft, { exerciseState: (id) => lookupExercise(id).state }),
+    () => validateDraft(draft, { exerciseState: (id) => lookupExercise(id).state, modalityOf: (id) => lookupExercise(id).modality }),
     [draft, lookupExercise],
   );
   const routines = useRoutines();
@@ -170,7 +168,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     if (!validation.ok || gone || inFlight.current) return;
     inFlight.current = true;
     const sent = draft;
-    const body = toRoutineInput(sent);
+    const body = toRoutineInput(sent, { modalityOf: (id) => lookupExercise(id).modality });
     const keys = sent.items.map((i) => i.key);
     setFormError(null);
     setServerIssues(null);
@@ -198,9 +196,9 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           dispatch(actions.markRetired(failure.retiredIndexes.flatMap((i) => (keys[i] === undefined ? [] : [keys[i]!]))));
           break;
         case "validation": {
-          const mapped = failure.fieldErrors.map((e) => issueForPath(splitPath(e.path), keys));
-          setServerIssues({ draft: sent, issues: mapped.filter((i): i is DraftIssue => i !== null) });
-          if (mapped.some((i) => i === null)) setFormError({ text: FORM_INVALID, requestId: failure.requestId });
+          const { issues: mapped, unmatched } = serverIssuesFor(failure.fieldErrors, sent);
+          setServerIssues({ draft: sent, issues: mapped });
+          if (unmatched) setFormError({ text: FORM_INVALID, requestId: failure.requestId });
           break;
         }
         case "not-found":

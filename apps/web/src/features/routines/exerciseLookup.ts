@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Exercise } from "@sin/core";
+import type { Exercise, Modality } from "@sin/core";
 import { useCatalog } from "../catalog/useCatalog";
 
 /**
@@ -12,6 +12,8 @@ export type ExerciseState = "active" | "retired" | "missing" | "unknown";
 export interface ExerciseInfo {
   readonly name: string;
   readonly state: ExerciseState;
+  /** Spec 10.2 AC9: what the plan may carry; `null` when the catalog does not hold the exercise. */
+  readonly modality: Modality | null;
 }
 
 export const UNKNOWN_EXERCISE_NAME = "Exercise";
@@ -27,10 +29,10 @@ export function lookupIn(rows: readonly Exercise[], options: { synced: boolean }
     const row = byId.get(id);
     if (!row) {
       return options.synced
-        ? { name: REMOVED_EXERCISE_NAME, state: "missing" }
-        : { name: UNKNOWN_EXERCISE_NAME, state: "unknown" };
+        ? { name: REMOVED_EXERCISE_NAME, state: "missing", modality: null }
+        : { name: UNKNOWN_EXERCISE_NAME, state: "unknown", modality: null };
     }
-    return { name: row.name, state: row.isActive ? "active" : "retired" };
+    return { name: row.name, state: row.isActive ? "active" : "retired", modality: row.modality };
   };
 }
 
