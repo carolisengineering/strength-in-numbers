@@ -154,6 +154,7 @@ model WorkoutExercise {
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   sets                 SetEntry[]
+  plannedSets          WorkoutPlannedSet[]
 
   @@unique([workoutId, position], map: "workout_exercise_position_key")
   @@index([exerciseId], map: "workout_exercise_exercise_idx")
@@ -193,10 +194,46 @@ model RoutineItem {
   notes          String?
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  sets           RoutineItemSet[]
 
   @@unique([routineId, position], map: "routine_item_routine_position_key")
   @@index([exerciseId], map: "routine_item_exercise_idx")
   @@map("routine_item")
+}
+
+// Spec 09.1 §4 — hand-authored migration 0010 carries the CHECKs.
+model RoutineItemSet {
+  id            String      @id @db.Uuid
+  routineItemId String      @map("routine_item_id") @db.Uuid
+  routineItem   RoutineItem @relation(fields: [routineItemId], references: [id], onDelete: Cascade, map: "routine_item_set_item_fkey")
+  position      Int         @db.SmallInt
+  setType       String      @default("working") @map("set_type")
+  repsLow       Int?        @map("reps_low") @db.SmallInt
+  repsHigh      Int?        @map("reps_high") @db.SmallInt
+  weight        Decimal?    @db.Decimal(7, 3)
+  weightUnit    String?     @map("weight_unit")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([routineItemId, position], map: "routine_item_set_item_position_key")
+  @@map("routine_item_set")
+}
+
+model WorkoutPlannedSet {
+  id                String          @id @db.Uuid
+  workoutExerciseId String          @map("workout_exercise_id") @db.Uuid
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade, map: "workout_planned_set_exercise_fkey")
+  position          Int             @db.SmallInt
+  setType           String          @default("working") @map("set_type")
+  repsLow           Int?            @map("reps_low") @db.SmallInt
+  repsHigh          Int?            @map("reps_high") @db.SmallInt
+  weight            Decimal?        @db.Decimal(7, 3)
+  weightUnit        String?         @map("weight_unit")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workoutExerciseId, position], map: "workout_planned_set_exercise_position_key")
+  @@map("workout_planned_set")
 }
 
 model SetEntry {
