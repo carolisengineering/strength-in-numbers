@@ -277,7 +277,7 @@ export function createWorkoutRepository(
             WHERE ri.routine_id = ${routine.id}::uuid
           `;
         }
-        const updated =await tx.$queryRaw<WorkoutDbRow[]>`
+        const updated = await tx.$queryRaw<WorkoutDbRow[]>`
           UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name}
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,

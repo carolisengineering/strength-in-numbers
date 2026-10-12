@@ -89,7 +89,7 @@ export const WorkoutExerciseSchema = z.object({
    * manual add and for workouts started before 0010. Read-only (no write route). */
   plannedSets: z.array(PlannedSetSchema),
 });
-export type WorkoutExercise =z.infer<typeof WorkoutExerciseSchema>;
+export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
 
 /** One exercise within a workout, with its sets ordered by `setNumber`
  * (Spec 05.1 §4, AC12). Defined here, not in `dto/set-entry.ts`, to keep the

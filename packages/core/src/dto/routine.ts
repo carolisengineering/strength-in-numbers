@@ -159,7 +159,7 @@ export const RoutineItemSchema = z.object({
   /** Spec 09.1 — the planned sets, ordered by position. Always an array; `[]` = no plan. */
   sets: z.array(PlannedSetSchema),
 });
-export type RoutineItem =z.infer<typeof RoutineItemSchema>;
+export type RoutineItem = z.infer<typeof RoutineItemSchema>;
 
 export const RoutineSchema = z.object({
   id: RoutineIdSchema,
