@@ -143,6 +143,7 @@ describe("AC19 — WorkoutExerciseSchema / WorkoutDetailSchema", () => {
     targetRpe: null,
     restSeconds: null,
     supersetGroup: null,
+    plannedSets: [],
   };
   it("WorkoutExerciseSchema parses a valid row", () => {
     expect(() => WorkoutExerciseSchema.parse(validWe)).not.toThrow();
@@ -181,6 +182,7 @@ describe("Spec 09 AC24 — additive read fields", () => {
       targetRpe: 8.5,
       restSeconds: null,
       supersetGroup: null,
+      plannedSets: [],
     };
     expect(WorkoutExerciseSchema.safeParse(full).success).toBe(true);
   });
@@ -213,8 +215,9 @@ describe("10.1 AC26 — routine-derived response fields stay required-nullable",
     targetRpe: null,
     restSeconds: null,
     supersetGroup: null,
+    plannedSets: [],
   };
-  const SIX = ["targetSets", "targetRepsLow", "targetRepsHigh", "targetRpe", "restSeconds", "supersetGroup"] as const;
+  const SIX =["targetSets", "targetRepsLow", "targetRepsHigh", "targetRpe", "restSeconds", "supersetGroup"] as const;
   it("a Workout without routineName fails", () => {
     const { routineName: _omitted, ...without } = validWorkout;
     void _omitted;
