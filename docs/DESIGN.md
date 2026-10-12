@@ -769,7 +769,8 @@ DELETE /account                   → 202, soft-delete + purge scheduled
 - CORS is an exact-match origin allowlist (the SPA origin per environment), never
   a wildcard or reflected `Origin`; tokens travel in the `Authorization` header,
   not cookies, so credentialed CORS stays off. Configured in the API from M0
-  (Spec 01 §5.5).
+  (Spec 01 §5.5). The allowed methods are one list (`CORS_METHODS`), and app
+  assembly fails if any route uses a method outside it.
 - The SPA is served with a strict `Content-Security-Policy` (`default-src 'self'`;
   `script-src 'self'` with no `unsafe-eval` / `unsafe-inline` / `blob:`;
   `connect-src` limited to the API and Auth0 origins; `frame-src` the Auth0 origin;

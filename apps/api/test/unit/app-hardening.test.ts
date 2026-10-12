@@ -172,6 +172,47 @@ describe("CORS (Criterion 15)", () => {
     });
     expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
+
+  // Phone check 2026-10-11: routine edit (`PUT /v1/routines/{id}`, Spec 09) was
+  // refused by the browser because the preflight did not allow PUT, and the
+  // editor reported it as "You're offline".
+  it("preflight for the SPA's routine-save PUT allows the method and its headers", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/routines/00000000-0000-4000-8000-000000000001",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "PUT",
+        "access-control-request-headers": "authorization,content-type,x-request-id",
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    const methods = String(res.headers["access-control-allow-methods"] ?? "")
+      .split(",")
+      .map((m) => m.trim());
+    expect(methods).toContain("PUT");
+    const allowedHeaders = String(res.headers["access-control-allow-headers"] ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase());
+    expect(allowedHeaders).toEqual(
+      expect.arrayContaining(["authorization", "content-type", "x-request-id"]),
+    );
+  });
+
+  it("a PUT preflight from an unlisted origin still gets no allow-origin header", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/routines/00000000-0000-4000-8000-000000000001",
+      headers: {
+        origin: "https://evil.example.com",
+        "access-control-request-method": "PUT",
+      },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
 });
 
 describe("app hardening (Criterion 17)", () => {
