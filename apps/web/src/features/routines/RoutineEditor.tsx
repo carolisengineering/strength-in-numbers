@@ -8,6 +8,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Field } from "../../ui/Field";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
+import { useSession } from "../../auth/useSession";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { EditorRow } from "./EditorRow";
 import { useExerciseLookup } from "./exerciseLookup";
@@ -29,6 +30,7 @@ import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { RoutineGone } from "./RoutinePreview";
+import { fieldMessagesFor, itemMessage, rowMessagesFor } from "./sheetIssues";
 import styles from "./RoutineEditor.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
 import { useCreateRoutine, useReplaceRoutine } from "./useRoutineMutations";
@@ -83,6 +85,7 @@ function issueFor(issues: readonly DraftIssue[], scope: DraftIssue["scope"], ite
 export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : initialDraft()));
   const navigate = useNavigate();
+  const { user } = useSession();
   const queryClient = useQueryClient();
   /** Opened from a screen one Back away: leave by going Back, so history stays [..., that screen]. */
   const back = cameFromBack(useLocation().state);
@@ -297,7 +300,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
                 position={position}
                 accessibleName={itemAccessibleName(exercise.name, group, line, unavailable)}
                 unavailable={unavailable}
-                error={issueFor(issues, "item", item.key)}
+                error={itemMessage(issues, item.key)}
                 errorId={`row-${item.key}-error`}
                 isFirst={index === 0}
                 isLast={index === draft.items.length - 1}
@@ -367,6 +370,11 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           open={sheet.open}
           title={lookupExercise(sheetItem.exerciseId).name}
           item={sheetItem}
+          modality={lookupExercise(sheetItem.exerciseId).modality}
+          defaultUnit={user?.unitPreference ?? "kg"}
+          fieldMessages={fieldMessagesFor(issues, sheetItem.key)}
+          rowMessages={rowMessagesFor(issues, sheetItem.key)}
+          onPlanned={(planned) => dispatch(actions.setPlanned(sheetItem.key, planned))}
           onDone={(targets, notes) => {
             dispatch(actions.setTargets(sheetItem.key, targets, notes));
             setSheet((s) => s && { ...s, open: false });
