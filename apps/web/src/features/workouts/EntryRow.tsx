@@ -3,13 +3,14 @@ import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { reportUnexpected } from "./reportUnexpected";
+import { setLabel } from "./plannedSets";
 import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
 import {
   createDraftReducer,
   draftFieldForPath,
-  draftFromSet,
   parseDraft,
+  seedDraft,
   unitDefaultsFor,
   type DraftField,
 } from "./setDraft";
@@ -40,9 +41,22 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
   const defaults = unitDefaultsFor(unitPreference);
+  const count = exercise.sets.length;
+  const plannedSets = exercise.plannedSets;
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
-    draftFromSet(exercise.sets.at(-1) ?? null, defaults, crypto.randomUUID()),
+    seedDraft({ plannedSets, sets: exercise.sets, defaults, attemptKey: crypto.randomUUID() }),
   );
+  // Spec 10.2 AC25. `seededFor` is the logged count the draft was last built for. If the count changes by any
+  // route other than this row's own log (a delete from the edit sheet, another device logging), an UNTOUCHED
+  // draft follows it and an edited one is never overwritten. Adjusting state while rendering is React's pattern
+  // for "state derived from a changed prop"; this row's own log sets `seededFor` ahead of the prop, so it
+  // never re-seeds itself.
+  const [seededFor, setSeededFor] = useState(count);
+  const [untouched, setUntouched] = useState(true);
+  if (seededFor !== count) {
+    setSeededFor(count);
+    if (untouched) dispatch({ type: "seed", plannedSets, sets: exercise.sets, defaults });
+  }
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<{ text: string } | null>(null);
@@ -70,6 +84,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   function onChange(field: DraftEditField, value: string) {
     firstTouchAt.current ??= Date.now();
     edited.current = true;
+    setUntouched(false);
     editedSinceTap.current = true;
     setServerErrors({});
     setFormError(null);
@@ -109,11 +124,13 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         // The next set is already being entered: keep it, and give it a fresh attempt key.
         dispatch({ type: "rekey" });
       } else {
-        dispatch({ type: "logged", set });
+        dispatch({ type: "logged", set, plannedSets, sets: exercise.sets });
         setTouched(new Set());
         firstTouchAt.current = null;
         edited.current = false;
+        setUntouched(true);
       }
+      setSeededFor(count + 1); // this row's own log: the prop will catch up, and must not re-seed
     } catch (error) {
       reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);
@@ -141,7 +158,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
 
   return (
     <form className={styles.row} onSubmit={(event) => void log(event)} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
-      <p className={styles.setNumber}>Set {exercise.sets.length + 1}</p>
+      <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
       <SetFields
         modality={exercise.modalitySnapshot}
         draft={draft}
