@@ -139,6 +139,19 @@ describe("10.2 AC16 — Done in plan mode", () => {
   });
 });
 
+describe("10.2 AC13 — a weight typed into a weightless row takes the unit the toggle shows", () => {
+  it("rows in lb, profile kg: a weight typed on the weightless row is saved in lb", async () => {
+    const { onPlanned, user } = setup(
+      item({ plan: [set("a", { weight: null, weightUnit: null }), set("b", { weight: 100, weightUnit: "lb" }), set("c", { weight: 110, weightUnit: "lb" })] }),
+      { defaultUnit: "kg" },
+    );
+    expect(within(screen.getByRole("group", { name: "Weight unit" })).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "true");
+    await user.type(screen.getByLabelText("Set 1 weight"), "45");
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onPlanned.mock.calls[0]![0].rows.map((r: DraftSet) => [r.weight, r.weightUnit])).toEqual([[45, "lb"], [100, "lb"], [110, "lb"]]);
+  });
+});
+
 describe("10.2 AC18 — a plan on an exercise that cannot carry weight shows and sends none", () => {
   it("bodyweight: no weight column; stored weights are cleaned on Done", async () => {
     const { onPlanned, user } = setup(item({ plan: [set("a"), set("b")] }), { modality: "bodyweight_reps" });

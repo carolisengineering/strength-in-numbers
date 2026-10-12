@@ -92,7 +92,9 @@ export function ItemSheet({
   const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, RowErrors>>(rowMessages);
 
   const planUnit: WeightUnit | "mixed" = plan === null ? unit : (unitOfRows(plan) ?? unit);
-  const quickLine = plan === null ? null : quickFromRows(plan, unit);
+  // A weight typed into a row that has no unit takes the unit the toggle shows (never silently the profile's).
+  const rowFallbackUnit: WeightUnit = planUnit === "mixed" ? unit : planUnit;
+  const quickLine = plan === null ? null : quickFromRows(plan, rowFallbackUnit);
 
   function enter() {
     const parsed = parseSets(sets);
@@ -126,7 +128,7 @@ export function ItemSheet({
     if (!notesParsed.ok) next.notes = notesParsed.message;
 
     if (plan !== null) {
-      const parsedRows = parseRows(plan, unit);
+      const parsedRows = parseRows(plan, rowFallbackUnit);
       setErrors(next);
       setRowErrors(parsedRows.ok ? new Map() : parsedRows.errors);
       if (!parsedRows.ok || !restParsed.ok || !notesParsed.ok) return;
