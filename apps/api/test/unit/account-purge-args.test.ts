@@ -46,6 +46,18 @@ describe("AC28 — main exits 1 before touching a database", () => {
     expect(makePrisma).not.toHaveBeenCalled();
   });
 
+  it("never prints a malformed DATABASE_URL (its password) when rejecting it", async () => {
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
+    const makePrisma = vi.fn();
+    const env = { LOG_LEVEL: "info", DATABASE_URL: "postgresql://u:hunter2-secret@host:notaport/sin" };
+    await expect(main([], env, { makePrisma })).resolves.toBe(1);
+    write.mockRestore();
+    expect(out.join("")).toContain("DATABASE_URL rejected");
+    expect(out.join("")).not.toMatch(/hunter2|secret/);
+    expect(makePrisma).not.toHaveBeenCalled();
+  });
+
   it("when resolveDatabaseUrl rejects the URL", async () => {
     const makePrisma = vi.fn();
     const env = { ...QUIET, DATABASE_URL: `${URL_OK}?sslmode=verify-full` };

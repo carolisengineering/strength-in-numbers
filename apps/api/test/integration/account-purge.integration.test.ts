@@ -128,15 +128,26 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
     await fullAccount(victim, global);
     await fullAccount(bystander, global);
     await softDelete(victim, GRACE_S + 60);
-    const hashes = async () => ({
-      exercise: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(e)::text, ',' ORDER BY e.id)) h FROM "exercise" e WHERE owner_user_id = $1::uuid OR owner_user_id IS NULL`, bystander),
-      workout: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(w)::text, ',' ORDER BY w.id)) h FROM "workout" w WHERE user_id = $1::uuid`, bystander),
-      sets: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(s)::text, ',' ORDER BY s.id)) h FROM "set_entry" s JOIN "workout_exercise" we ON we.id = s.workout_exercise_id JOIN "workout" w ON w.id = we.workout_id WHERE w.user_id = $1::uuid`, bystander),
-      routines: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(ri)::text, ',' ORDER BY ri.id)) h FROM "routine_item" ri JOIN "routine" r ON r.id = ri.routine_id WHERE r.user_id = $1::uuid`, bystander),
-      records: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(p)::text, ',' ORDER BY p.id)) h FROM "personal_record" p WHERE user_id = $1::uuid`, bystander),
-      muscle: await tableHash(db, "muscle_group"),
-      equipment: await tableHash(db, "equipment"),
-    });
+    // Discovered, not hand-listed: every table reachable from the bystander (as AC23 does for the
+    // victim), each row set hashed by content, so a future table is covered too.
+    const edges = await fkEdges();
+    const bystanderRows = await victimRows(edges, bystander);
+    const hashes = async () => {
+      const perTable: Record<string, unknown> = {};
+      for (const [table, set] of bystanderRows) {
+        expect(set.size, `fixture has no bystander ${table} rows (vacuous)`).toBeGreaterThan(0);
+        perTable[table] = await db.prisma.$queryRawUnsafe(
+          `SELECT count(*)::int AS n, md5(string_agg(to_jsonb(t)::text, ',' ORDER BY t.id::text)) AS h FROM "${table}" t WHERE t.id::text = ANY($1::text[])`,
+          [...set],
+        );
+      }
+      return {
+        perTable,
+        globalExercises: await db.prisma.$queryRawUnsafe(`SELECT md5(string_agg(to_jsonb(e)::text, ',' ORDER BY e.id)) h FROM "exercise" e WHERE owner_user_id IS NULL`),
+        muscle: await tableHash(db, "muscle_group"),
+        equipment: await tableHash(db, "equipment"),
+      };
+    };
     const before = await hashes();
     await runPurge(db.prisma, silent, { confirm: true, skipGrace: false });
     expect(await hashes()).toEqual(before);

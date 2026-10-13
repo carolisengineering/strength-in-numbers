@@ -71,7 +71,9 @@ export async function main(
   try {
     url = resolveDatabaseUrl(databaseUrl);
   } catch (err) {
-    log.error({ err }, "DATABASE_URL rejected");
+    // Not `{ err }`: a malformed URL's TypeError carries the raw string (password
+    // included) in an enumerable `input` property that pino would print.
+    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "DATABASE_URL rejected");
     return 1;
   }
 
