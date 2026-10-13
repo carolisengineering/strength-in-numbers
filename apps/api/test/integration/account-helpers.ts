@@ -6,6 +6,7 @@ import { createWorkoutRepository } from "../../src/repositories/workout.prisma.j
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import type { RateLimitConfig } from "../../src/plugins/rate-limit.js";
@@ -31,6 +32,7 @@ export function makeAccountApp(
     workoutRepository: createWorkoutRepository(db.prisma, exerciseRepository),
     personalRecordRepository: createPersonalRecordRepository(db.prisma),
     routineRepository: createRoutineRepository(db.prisma),
+    accountExportRepository: createAccountExportRepository(db.prisma),
     rateLimits: opts.rateLimits ?? GENEROUS_LIMITS,
   });
 }

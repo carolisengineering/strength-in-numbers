@@ -90,6 +90,7 @@ import type {
   UpdateSetFields,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
+import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
 import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
@@ -989,5 +990,26 @@ export class FakeRoutineRepository implements RoutineRepository {
   async delete(actingUserId: string, id: string): Promise<void> {
     this.owned(actingUserId, id);
     this.routines.delete(id);
+  }
+}
+
+/** Spec 11 — returns the caller's fake user plus whatever the test set in `next`. */
+export class FakeAccountExportRepository implements AccountExportRepository {
+  calls = 0;
+  constructor(
+    private readonly users: FakeUserRepository,
+    public next: Partial<Omit<AccountSnapshot, "user">> = {},
+  ) {}
+
+  async snapshot(userId: string): Promise<AccountSnapshot> {
+    this.calls += 1;
+    return {
+      exportedAt: new Date("2026-10-11T18:00:00.000Z"),
+      exercises: [],
+      routines: [],
+      workouts: [],
+      ...this.next,
+      user: this.users.getById(userId),
+    };
   }
 }

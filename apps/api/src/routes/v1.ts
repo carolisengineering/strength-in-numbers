@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { UserRepository } from "../repositories/user.js";
+import type { AccountExportRepository } from "../repositories/account-export.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import type { PersonalRecordRepository } from "../repositories/personal-record.js";
@@ -21,6 +22,7 @@ export interface V1RouteDeps {
   workoutRepository: WorkoutRepository;
   personalRecordRepository: PersonalRecordRepository;
   routineRepository: RoutineRepository;
+  accountExportRepository: AccountExportRepository;
 }
 
 export function registerV1Routes(
@@ -29,7 +31,10 @@ export function registerV1Routes(
 ): void {
   registerAuthcheckRoute(app);
   registerMeRoutes(app, { userRepository: deps.userRepository });
-  registerAccountRoutes(app, { userRepository: deps.userRepository });
+  registerAccountRoutes(app, {
+    userRepository: deps.userRepository,
+    accountExportRepository: deps.accountExportRepository,
+  });
   registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerWorkoutRoutes(app, { workoutRepository: deps.workoutRepository });

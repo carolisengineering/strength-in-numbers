@@ -21,6 +21,9 @@ declare module "fastify" {
     ipBudget?: "docs";
     /** Spec 05.2 §6.1 — required on every /v1 write route. */
     writeGroup?: WriteGroup;
+    /** Spec 11 D8 — also charge this read route to a per-user budget, after
+     * auth. `"export"`: `GET /v1/account/export`, the heaviest read. */
+    userBudget?: "export";
   }
 }
 
@@ -29,6 +32,8 @@ export interface RateLimitConfig {
   readonly ip: number;
   /** AC17 — per IP, for routes with `config.ipBudget: "docs"`. */
   readonly docs: number;
+  /** Spec 11 D8 — per user, for routes with config.userBudget: "export". */
+  readonly exportPerUser: number;
   readonly groups: Readonly<Record<WriteGroup, number>>;
   readonly inflight: number;
   /** Tests only (AC10): replaces the plugin's in-memory LRU store. */
@@ -41,6 +46,8 @@ export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   ip: 600,
   // ~250 KB per response: 30/min caps one IP at ~7.5 MB/min (L1 alone allows ~150).
   docs: 30,
+  // Spec 11 D8: a retry or two after a failed download; caps a few MB/min/user.
+  exportPerUser: 3,
   groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10 }),
   inflight: 4,
 });
@@ -190,6 +197,13 @@ export async function registerRateLimits(
       }),
     ]),
   ) as Record<WriteGroup, Limiter>;
+  // Spec 11 D8: per user, keyed like the write groups. No user (impossible on
+  // /v1 after auth) → keyGenerator throws → enforce fails open (AC10, 05.2 D8).
+  const exportLimiter = app.createRateLimit({
+    max: config.exportPerUser,
+    timeWindow: config.windowMs,
+    keyGenerator: (req) => req.user!.id,
+  });
   const inflight = new InflightCounter(config.inflight);
 
   return {
@@ -197,6 +211,15 @@ export async function registerRateLimits(
       // Structural, like Spec 03.0's response-schema check: a /v1 write route
       // that names no group fails app assembly instead of shipping unlimited.
       v1.addHook("onRoute", (route) => {
+        if (route.config?.userBudget === "export") {
+          // preParsing: after the auth onRequest hook, before any handler work.
+          const budget = async (request: FastifyRequest, _reply: unknown, payload: unknown) => {
+            await enforce(exportLimiter, request, { layer: "user-export" });
+            return payload;
+          };
+          const existingBudget = route.preParsing === undefined ? [] : [route.preParsing].flat();
+          route.preParsing = [...existingBudget, budget] as typeof route.preParsing;
+        }
         const methods = [route.method].flat();
         const group = route.config?.writeGroup;
         if (methods.every((m) => READ_METHODS.has(m))) {

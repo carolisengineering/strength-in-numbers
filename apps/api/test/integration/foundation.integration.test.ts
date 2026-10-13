@@ -14,6 +14,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import {
@@ -55,6 +56,7 @@ describe.skipIf(!shouldRunIntegration())(
         workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
         personalRecordRepository: createPersonalRecordRepository(db.prisma),
         routineRepository: createRoutineRepository(db.prisma),
+        accountExportRepository: createAccountExportRepository(db.prisma),
       });
 
     it("first GET /v1/me inserts exactly one row; isNewUser true then false (Criterion 7)", async () => {
@@ -145,6 +147,7 @@ describe.skipIf(!shouldRunIntegration())(
         workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
         personalRecordRepository: createPersonalRecordRepository(db.prisma),
         routineRepository: createRoutineRepository(db.prisma),
+        accountExportRepository: createAccountExportRepository(db.prisma),
       });
       const up = await app.inject({ method: "GET", url: "/readyz" });
       expect(up.statusCode).toBe(200);

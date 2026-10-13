@@ -9,6 +9,7 @@ import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
@@ -37,6 +38,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.2 AC15 — a real session neve
       workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
       personalRecordRepository: createPersonalRecordRepository(db.prisma),
       routineRepository: createRoutineRepository(db.prisma),
+      accountExportRepository: createAccountExportRepository(db.prisma),
       rateLimits: RATE_LIMITS, // production values, on purpose
     });
   }, 180_000);

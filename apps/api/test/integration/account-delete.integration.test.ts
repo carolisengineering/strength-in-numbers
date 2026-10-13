@@ -68,6 +68,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — DELETE /v1/account (real P
       ["del-a", "GET", "/v1/me"],
       ["del-a", "GET", "/v1/workouts/active"],
       ["del-a", "DELETE", "/v1/account"],
+      ["del-a", "GET", "/v1/account/export"],
       ["del-a-phone", "GET", "/v1/me"],
     ] as const) {
       const res = await app.inject({ method, url, headers: bearer(token) });

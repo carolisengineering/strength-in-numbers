@@ -109,7 +109,8 @@ const MATRIX: Record<string, Slugs> = {
     409: ["routine-name-taken", "exercise-retired"],
   }),
   "DELETE /v1/routines/{id}": withCentral("body", { 404: ["not-found"] }),
-  // Spec 11 §5 (the export row joins in Task 5)
+  // Spec 11 §5
+  "GET /v1/account/export": withCentral("none"),
   "DELETE /v1/account": withCentral("body"),
 };
 
