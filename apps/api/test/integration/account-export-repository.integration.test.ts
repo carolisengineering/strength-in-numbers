@@ -125,6 +125,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     const nSmall = await count(small);
     const nBig = await count(big);
     expect(nBig).toBe(nSmall);
+    expect(nSmall).toBeGreaterThanOrEqual(7); // not vacuous: the listener really saw the statements
     expect(nSmall).toBeLessThanOrEqual(8);
   });
 });
