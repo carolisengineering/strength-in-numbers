@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { CreateSetSchema, SetEntrySchema, UpdateSetSchema, type SetEntry } from "@sin/core";
+import { CreateSetSchema, SetEntrySchema, UpdateSetSchema } from "@sin/core";
 import { NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
-import type { SetEntryRecord, WorkoutRepository } from "../repositories/workout.js";
+import type { WorkoutRepository } from "../repositories/workout.js";
+import { toSetEntryDto } from "./mappers.js";
 
 /**
  * `routes/sets.ts` — the three set-logging endpoints (Spec 05.1 §5, §6). Auth
@@ -14,30 +15,6 @@ import type { SetEntryRecord, WorkoutRepository } from "../repositories/workout.
 
 export interface SetRouteDeps {
   workoutRepository: WorkoutRepository;
-}
-
-/** DB record -> wire DTO, keys in `SetEntrySchema` field order. */
-export function toSetEntryDto(r: SetEntryRecord): SetEntry {
-  return {
-    id: r.id as SetEntry["id"],
-    workoutExerciseId: r.workoutExerciseId as SetEntry["workoutExerciseId"],
-    clientGeneratedId: r.clientGeneratedId,
-    setNumber: r.setNumber,
-    setType: r.setType as SetEntry["setType"],
-    reps: r.reps,
-    weight: r.weight,
-    weightUnit: r.weightUnit as SetEntry["weightUnit"],
-    weightKg: r.weightKg,
-    distance: r.distance,
-    distanceUnit: r.distanceUnit as SetEntry["distanceUnit"],
-    distanceM: r.distanceM,
-    durationS: r.durationS,
-    rpe: r.rpe,
-    isComplete: r.isComplete,
-    completedAt: r.completedAt?.toISOString() ?? null,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  };
 }
 
 export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): void {

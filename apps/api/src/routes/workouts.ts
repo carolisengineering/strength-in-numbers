@@ -12,14 +12,9 @@ import {
   WorkoutHistoryQuerySchema,
   WorkoutHistoryResponseSchema,
   milliToDecimalString,
-  tenthsToRpe,
   type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
-  type Workout,
-  type WorkoutDetail,
-  type WorkoutExercise,
-  type WorkoutExerciseDetail,
 } from "@sin/core";
 import {
   ExerciseRetiredError,
@@ -28,13 +23,10 @@ import {
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
-import { toSetEntryDto } from "./sets.js";
+import { toWorkoutDetailDto, toWorkoutDto, toWorkoutExerciseDto } from "./mappers.js";
 import { toPersonalRecordDto } from "./personal-records.js";
 import { assertStartedAtInBounds } from "../repositories/workout-writes.js";
 import type {
-  WorkoutDetailRecord,
-  WorkoutExerciseRecord,
-  WorkoutRecord,
   WorkoutRepository,
   WorkoutSummaryRecord,
 } from "../repositories/workout.js";
@@ -52,24 +44,6 @@ export interface WorkoutRouteDeps {
   workoutRepository: WorkoutRepository;
 }
 
-/** DB record -> wire DTO, keys in `WorkoutSchema` field order (§5). */
-function toWorkoutDto(r: WorkoutRecord): Workout {
-  return {
-    id: r.id as Workout["id"],
-    title: r.title,
-    notes: r.notes,
-    startedAt: r.startedAt.toISOString(),
-    endedAt: r.endedAt?.toISOString() ?? null,
-    localDate: r.localDate,
-    tzOffsetMinutes: r.tzOffsetMinutes,
-    clientGeneratedId: r.clientGeneratedId,
-    source: r.source as Workout["source"],
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    routineName: r.routineName,
-  };
-}
-
 /** History row -> wire DTO (Spec 07.1 §5). Volume via the decimal string, no
  * division (D5). */
 function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
@@ -80,38 +54,6 @@ function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
     workingSetCount: r.workingSetCount,
     totalVolume: r.totalVolumeMilli === null ? null : Number(milliToDecimalString(r.totalVolumeMilli)),
     recordCount: r.recordCount,
-  };
-}
-
-function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise {
-  return {
-    id: r.id as WorkoutExercise["id"],
-    workoutId: r.workoutId as WorkoutExercise["workoutId"],
-    position: r.position,
-    exerciseId: r.exerciseId as WorkoutExercise["exerciseId"],
-    exerciseNameSnapshot: r.exerciseNameSnapshot,
-    modalitySnapshot: r.modalitySnapshot as WorkoutExercise["modalitySnapshot"],
-    notes: r.notes,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    targetSets: r.targetSets,
-    targetRepsLow: r.targetRepsLow,
-    targetRepsHigh: r.targetRepsHigh,
-    // Spec 09 D5: the one tenths → decimal conversion on the read side.
-    targetRpe: r.targetRpeTenths === null ? null : tenthsToRpe(r.targetRpeTenths),
-    restSeconds: r.restSeconds,
-    supersetGroup: r.supersetGroup,
-    // Spec 09.1: key order matches `PlannedSetSchema`.
-    plannedSets: r.plannedSets.map((s) => ({ ...s })),
-  };
-}
-
-function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
-  return {
-    ...toWorkoutDto(r),
-    exercises: r.exercises.map(
-      (e): WorkoutExerciseDetail => ({ ...toWorkoutExerciseDto(e), sets: e.sets.map(toSetEntryDto) }),
-    ),
   };
 }
 

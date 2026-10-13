@@ -1,11 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { MeSchema, UpdateMeSchema, type Me } from "@sin/core";
+import { MeSchema, UpdateMeSchema } from "@sin/core";
 import type {
   ProfilePatch,
-  UserRecord,
   UserRepository,
 } from "../repositories/user.js";
+import { toMeDto } from "./mappers.js";
 
 /**
  * `GET /v1/me` and `PATCH /v1/me` (Spec 01 §5, migrated onto the contract
@@ -27,22 +27,6 @@ export interface MeRouteDeps {
   userRepository: UserRepository;
 }
 
-/**
- * DB row → wire DTO. `id` is a plain string on the row and a branded `UserId` on
- * `MeSchema`; the value is the same UUID, so the brand is asserted here rather
- * than re-parsed.
- */
-function view(u: UserRecord): Me {
-  return {
-    id: u.id as Me["id"],
-    email: u.email,
-    displayName: u.displayName,
-    unitPreference: u.unitPreference,
-    timezone: u.timezone,
-    createdAt: u.createdAt.toISOString(),
-  };
-}
-
 export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
@@ -50,7 +34,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
     "/me",
     { schema: { response: { 200: MeSchema } }, config: { published: true, problems: [] } },
     async (request) => ({
-      ...view(request.user!),
+      ...toMeDto(request.user!),
       isNewUser: request.isNewUser === true,
     }),
   );
@@ -76,7 +60,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeRouteDeps): void 
         request.user!.id,
         patch,
       );
-      return view(updated);
+      return toMeDto(updated);
     },
   );
 }

@@ -5,9 +5,6 @@ import {
   RoutineListResponseSchema,
   RoutineSchema,
   RoutineWriteSchema,
-  tenthsToRpe,
-  type Routine,
-  type RoutineItem,
 } from "@sin/core";
 import {
   ExerciseRetiredError,
@@ -15,8 +12,9 @@ import {
   RoutineLimitError,
   RoutineNameTakenError,
 } from "../errors/app-error.js";
-import type { RoutineItemRecord, RoutineRecord, RoutineRepository } from "../repositories/routine.js";
+import type { RoutineRecord, RoutineRepository } from "../repositories/routine.js";
 import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { toRoutineDto } from "./mappers.js";
 
 /**
  * `routes/routines.ts` — the five routine endpoints (Spec 09 §5). Reads serve
@@ -35,38 +33,7 @@ export interface RoutineRouteDeps {
   routineRepository: RoutineRepository;
 }
 
-function toItemDto(r: RoutineItemRecord): RoutineItem {
-  return {
-    id: r.id as RoutineItem["id"],
-    position: r.position,
-    exerciseId: r.exerciseId as RoutineItem["exerciseId"],
-    targetSets: r.targetSets,
-    targetRepsLow: r.targetRepsLow,
-    targetRepsHigh: r.targetRepsHigh,
-    // Spec 09 D5: the one tenths → decimal conversion on this read path.
-    targetRpe: r.targetRpeTenths === null ? null : tenthsToRpe(r.targetRpeTenths),
-    restSeconds: r.restSeconds,
-    supersetGroup: r.supersetGroup,
-    notes: r.notes,
-    // Spec 09.1: key order matches `PlannedSetSchema` (it is the ETag's wire bytes).
-    sets: r.sets.map((s) => ({ ...s })),
-  };
-}
-
 const plannedSetCount = (r: RoutineRecord): number => r.items.reduce((n, it) => n + it.sets.length, 0);
-
-/** Keys in `RoutineSchema` order: `JSON.stringify` of this IS the wire bytes
- * the ETag hashes (the Zod serializer has no transforms on this shape). */
-function toRoutineDto(r: RoutineRecord): Routine {
-  return {
-    id: r.id as Routine["id"],
-    name: r.name,
-    notes: r.notes,
-    items: r.items.map(toItemDto),
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  };
-}
 
 export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDeps): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
