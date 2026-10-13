@@ -51,7 +51,7 @@ import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-his
  * Prisma's query builder.
  */
 
-interface WorkoutDbRow {
+export interface WorkoutDbRow {
   id: string;
   user_id: string;
   title: string | null;
@@ -85,7 +85,7 @@ function toRecord(r: WorkoutDbRow): WorkoutRecord {
   };
 }
 
-interface WorkoutExerciseDbRow {
+export interface WorkoutExerciseDbRow {
   id: string;
   workout_id: string;
   position: number;
@@ -826,3 +826,6 @@ export function createWorkoutRepository(
     },
   };
 }
+
+// Spec 11: the account export reuses these row mappers (no logic change).
+export { toRecord as toWorkoutRecord, toExerciseRecord as toWorkoutExerciseRecord, WE_PLANNED_SETS };

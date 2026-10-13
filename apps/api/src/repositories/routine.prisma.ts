@@ -35,7 +35,7 @@ import {
  * batched query with `findVisibleById`'s predicate (§6.2 step 3).
  */
 
-interface ItemDbRow {
+export interface ItemDbRow {
   id: string;
   routine_id: string;
   position: number;
@@ -54,7 +54,7 @@ interface ItemDbRow {
  * concurrent replace commits atomically, so a read can never see the old
  * header with the new items or vice versa — and the ETag never hashes a
  * document that never existed (code review). */
-interface RoutineDbRow {
+export interface RoutineDbRow {
   id: string;
   user_id: string;
   name: string;
@@ -289,3 +289,6 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
     },
   };
 }
+
+// Spec 11: the account export reuses these.
+export { ROUTINE_WITH_ITEMS, toRoutine };

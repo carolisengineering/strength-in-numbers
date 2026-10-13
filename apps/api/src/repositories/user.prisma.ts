@@ -98,3 +98,6 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     },
   };
 }
+
+// Spec 11: the account export reuses this row mapper.
+export { toRecord as toUserRecord };

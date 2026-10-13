@@ -32,7 +32,7 @@ import type {
  * interpolation (`$1`, `$2`, …); uuid comparands are cast in-query.
  */
 
-interface ExerciseDbRow {
+export interface ExerciseDbRow {
   id: string;
   catalog_key: string | null;
   owner_user_id: string | null;
@@ -381,3 +381,6 @@ export function createExerciseRepository(
     },
   };
 }
+
+// Spec 11: the account export reuses this row mapper.
+export { toRecord as toExerciseRecord };
