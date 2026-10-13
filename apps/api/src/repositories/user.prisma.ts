@@ -87,5 +87,14 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
       });
       return toRecord(row);
     },
+
+    async markDeleted(id: string): Promise<Date | null> {
+      const rows = await prisma.$queryRaw<{ deleted_at: Date }[]>`
+        UPDATE "user" SET deleted_at = now()
+        WHERE id = ${id}::uuid AND deleted_at IS NULL
+        RETURNING deleted_at
+      `;
+      return rows[0]?.deleted_at ?? null;
+    },
   };
 }

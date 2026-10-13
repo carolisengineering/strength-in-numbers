@@ -136,6 +136,18 @@ export class FakeUserRepository implements UserRepository {
     return u;
   }
 
+  getById(id: string): UserRecord {
+    return this.byId(id);
+  }
+
+  async markDeleted(id: string): Promise<Date | null> {
+    const u = this.byId(id);
+    if (u.deletedAt !== null) return null;
+    const updated: UserRecord = { ...u, deletedAt: new Date() };
+    this.bySub.set(updated.authSub, updated);
+    return updated.deletedAt;
+  }
+
   async findByAuthSub(authSub: string): Promise<UserRecord | null> {
     return this.bySub.get(authSub) ?? null;
   }
