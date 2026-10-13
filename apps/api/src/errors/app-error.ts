@@ -300,7 +300,7 @@ export class RoutineLimitError extends AppError {
   }
 }
 
-export type RateLimitLayer = "ip" | "ip-docs" | "user-rate" | "user-inflight";
+export type RateLimitLayer = "ip" | "ip-docs" | "user-rate" | "user-inflight" | "user-export";
 
 /** Spec 05.2 §5 — which limit fired. Internal only: logged, never rendered. */
 export interface RateLimitSource {

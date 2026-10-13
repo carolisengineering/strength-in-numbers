@@ -90,6 +90,7 @@ import type {
   UpdateSetFields,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
+import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
 import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
@@ -134,6 +135,18 @@ export class FakeUserRepository implements UserRepository {
     const u = [...this.bySub.values()].find((x) => x.id === id);
     if (!u) throw new Error(`FakeUserRepository: no user ${id}`);
     return u;
+  }
+
+  getById(id: string): UserRecord {
+    return this.byId(id);
+  }
+
+  async markDeleted(id: string): Promise<Date | null> {
+    const u = this.byId(id);
+    if (u.deletedAt !== null) return null;
+    const updated: UserRecord = { ...u, deletedAt: new Date() };
+    this.bySub.set(updated.authSub, updated);
+    return updated.deletedAt;
   }
 
   async findByAuthSub(authSub: string): Promise<UserRecord | null> {
@@ -977,5 +990,26 @@ export class FakeRoutineRepository implements RoutineRepository {
   async delete(actingUserId: string, id: string): Promise<void> {
     this.owned(actingUserId, id);
     this.routines.delete(id);
+  }
+}
+
+/** Spec 11 — returns the caller's fake user plus whatever the test set in `next`. */
+export class FakeAccountExportRepository implements AccountExportRepository {
+  calls = 0;
+  constructor(
+    private readonly users: FakeUserRepository,
+    public next: Partial<Omit<AccountSnapshot, "user">> = {},
+  ) {}
+
+  async snapshot(userId: string): Promise<AccountSnapshot> {
+    this.calls += 1;
+    return {
+      exportedAt: new Date("2026-10-11T18:00:00.000Z"),
+      exercises: [],
+      routines: [],
+      workouts: [],
+      ...this.next,
+      user: this.users.getById(userId),
+    };
   }
 }

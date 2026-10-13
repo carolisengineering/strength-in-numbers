@@ -1,7 +1,7 @@
 # Spec 11 — Account Lifecycle (API): data export, account delete, purge CLI
 
-**Status:** Draft (2026-10-11). Design approved by the owner section by section in a brainstorm on 2026-10-11 (`docs/superpowers/specs/2026-10-11-spec-11-design-brief.md`; §12 D1–D5 are the owner decisions, D6–D18 are the architect's choices where the brief left room). Nothing implemented.
-**Last updated:** 2026-10-11
+**Status:** Implemented (2026-10-13, branch feat/spec-11-account-lifecycle). Design approved by the owner section by section in a brainstorm on 2026-10-11 (`docs/superpowers/specs/2026-10-11-spec-11-design-brief.md`; §12 D1–D5 are the owner decisions, D6–D18 are the architect's choices where the brief left room). Implemented as specified; see the AC30 / AC32 wording amended at implementation time.
+**Last updated:** 2026-10-13
 **Design refs:** DESIGN.md §2 item 1 (account deletion + data export), §4.1 (`user.deleted_at`), §4.9 (deletion matrix and its closing paragraph — rewritten by this spec), §6 (`/account/export`, `/account` — rewritten), §8.2 (privacy: export and delete are product features), §3.1 / §3.2 / §3.3 (object storage, cron and the per-environment R2 bucket — deferred to GA by this spec), §9 M4 row, §10 Q19 (this spec's log entry).
 Spec 01 (`resolveUser` → `403 account-deleted`, `UserRepository`, the `/v1` auth plugin), Spec 03.0 (Zod DTOs → OpenAPI, response-schema allowlist), Spec 05.0 / 05.1 / 09 / 03.2 (the read DTOs this export composes), Spec 05.2 (rate-limit mechanisms, write groups), Spec 07.0 (`lockUserRecords`, the `records:rebuild` CLI shape this spec copies), Spec 09 AC29 (a user purge cascades routines).
 
@@ -366,9 +366,9 @@ Test-first per criterion, Vitest. Unit tests use the fakes (`test/helpers/fakes.
 | AC27 | Integration: dry run, clear `deleted_at`, `--confirm` → skipped, row and children intact; a variant with the clear injected between listing and `DELETE` via the recording wrapper |
 | AC28 | Unit (`parsePurgeArgs` table: valid forms, repeated, unknown, bad uuid, `--skip-grace` alone, `--` forwarding → exit `1` with a spy proving no `PrismaClient` was constructed); integration: `--user --skip-grace --confirm` on an in-grace account purges it, without `--skip-grace` skips it, unknown / live target exits `1`, untargeted skip exits `0` |
 | AC29 | Integration with a fault injected into the second of three accounts' transactions: first and third purged, second intact, summary `purged 2, skipped 0, failed 1`, exit `1` |
-| AC30 | Integration, real concurrency (the 07.0 AC18 pattern): `Promise.all` of purge + finish / set create / workout delete; assert results ∈ serial outcomes, no `500`, no `40P01`, user gone, no `personal_record` orphan |
+| AC30 | Integration, real concurrency (the 07.0 AC18 pattern): `Promise.all` of purge + the repository writers (finish, set create, workout delete) — a soft-deleted user's HTTP calls stop at `resolveUser` and never reach a lock, so the race is at the repository level; assert results ∈ serial outcomes (a writer may lose with `NotFound` or `WorkoutFinished`), no `500`, no `40P01`, user gone, no `personal_record` orphan |
 | AC31 | Unit: captured lines for purge, skip and failure contain only the documented fields; the dry-run listing is the same field set |
-| AC32 | Unit: `openapi-problem-matrix` rows; `contract-pipeline` path-set test; OpenAPI drift check (CI) |
+| AC32 | Unit: `openapi-problem-matrix` rows; both paths' inline `200` / `202` response schemas in `/openapi.json` (the document has no named schema components except `Problem`); `contract-pipeline` path-set test; OpenAPI drift check (CI) |
 | AC33 | The whole existing suite, unmodified except import paths (CI) |
 | AC34 | Unit: `AccountExportSchema` accepts a hand-built document, rejects a wrong `formatVersion`, strips an extra key; `isNewUser` absent from the profile shape; `pnpm run core:purity` (CI) |
 | AC35 | CI: the `prisma migrate diff` no-drift check; change audit: no migration/`schema.prisma` hunk |

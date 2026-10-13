@@ -18,7 +18,7 @@ import {
   NotFoundError,
   SyncTokenExpiredError,
 } from "../errors/app-error.js";
-import type { ExerciseRecord } from "../repositories/exercise.js";
+import { toExerciseDto } from "./mappers.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import { parseSyncToken } from "../repositories/sync-token.js";
 import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
@@ -50,32 +50,12 @@ export interface ExerciseRouteDeps {
   exerciseRepository: ExerciseRepository;
 }
 
-/** DB record → wire DTO, keys in `ExerciseSchema` field order (§5). The `id` /
- * `ownerUserId` brands and the `modality` enum are guaranteed by the schema +
- * the DB `CHECK`, so they are asserted here rather than re-parsed. */
-function toDto(r: ExerciseRecord): Exercise {
-  return {
-    id: r.id as Exercise["id"],
-    catalogKey: r.catalogKey,
-    ownerUserId: r.ownerUserId as Exercise["ownerUserId"],
-    name: r.name,
-    modality: r.modality as Exercise["modality"],
-    primaryMuscleId: r.primaryMuscleId,
-    secondaryMuscleIds: r.secondaryMuscleIds,
-    equipmentId: r.equipmentId,
-    isActive: r.isActive,
-    forkedFromExerciseId: r.forkedFromExerciseId as Exercise["forkedFromExerciseId"],
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  };
-}
-
 /** `sha256(<cursor-sentinel> ‖ <exercises wire bytes>)`, first 32 hex, strong.
  * The sentinel is the `since` token on a delta, `"full"` otherwise.
  * `JSON.stringify(exercises)` *is* the wire bytes: the Zod serializer sends
  * `JSON.stringify(safeEncode(ExerciseSchema[], …))`, the schema has no transforms,
- * and `toDto` emits keys in schema order — pinned by the #20 route test, so keep
- * `toDto` in schema order (Spec 03.1 §6.1 step 3). */
+ * and `toExerciseDto` emits keys in schema order — pinned by the #20 route test, so keep
+ * `toExerciseDto` in schema order (Spec 03.1 §6.1 step 3). */
 function catalogEtag(sentinel: string, exercises: Exercise[]): string {
   return strongEtag(sentinel, JSON.stringify(exercises));
 }
@@ -105,7 +85,7 @@ export function registerExerciseRoutes(
         since === undefined ? undefined : parseSyncToken(since),
       );
 
-      const exercises = page.rows.map(toDto);
+      const exercises = page.rows.map(toExerciseDto);
       const etag = catalogEtag(since ?? "full", exercises);
 
       reply.header("etag", etag);
@@ -138,7 +118,7 @@ export function registerExerciseRoutes(
         "custom_exercise_created",
       );
       reply.code(201).header("location", `/v1/exercises/${created.id}`);
-      return toDto(created);
+      return toExerciseDto(created);
     },
   );
 
@@ -163,7 +143,7 @@ export function registerExerciseRoutes(
         { exercise_id: updated.id, owner_user_id: actingUserId },
         "custom_exercise_updated",
       );
-      return toDto(updated);
+      return toExerciseDto(updated);
     },
   );
 
@@ -206,7 +186,7 @@ export function registerExerciseRoutes(
         "custom_exercise_forked",
       );
       reply.code(201).header("location", `/v1/exercises/${forked.id}`);
-      return toDto(forked);
+      return toExerciseDto(forked);
     },
   );
 

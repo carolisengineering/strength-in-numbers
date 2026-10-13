@@ -19,6 +19,7 @@ import type { ExerciseRepository } from "../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../src/repositories/workout.js";
 import type { PersonalRecordRepository } from "../src/repositories/personal-record.js";
 import type { RoutineRepository } from "../src/repositories/routine.js";
+import type { AccountExportRepository } from "../src/repositories/account-export.js";
 
 const OUTPUT_PATH = fileURLToPath(new URL("../../../openapi.json", import.meta.url));
 
@@ -48,6 +49,12 @@ const inertPersonalRecordRepository = new Proxy({} as PersonalRecordRepository, 
     throw new Error("personal-record repository is not used during OpenAPI emit");
   },
 });
+const inertAccountExportRepository = new Proxy({} as AccountExportRepository, {
+  get() {
+    throw new Error("account export repository is not used during OpenAPI emit");
+  },
+});
+
 const inertRoutineRepository = new Proxy({} as RoutineRepository, {
   get() {
     throw new Error("routine repository is not used during OpenAPI emit");
@@ -75,6 +82,7 @@ async function main(): Promise<void> {
     workoutRepository: inertWorkoutRepository,
     personalRecordRepository: inertPersonalRecordRepository,
     routineRepository: inertRoutineRepository,
+    accountExportRepository: inertAccountExportRepository,
   });
   await app.ready();
   const doc = app.swagger();

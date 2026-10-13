@@ -3,6 +3,7 @@ import { pino } from "pino";
 import { buildApp } from "../../src/app.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
 import {
+  FakeAccountExportRepository,
   FakePersonalRecordRepository,
   FakeRoutineRepository,
   authContext,
@@ -24,6 +25,7 @@ describe("buildApp logger wiring", () => {
       workoutRepository: new FakeWorkoutRepository(),
       personalRecordRepository: new FakePersonalRecordRepository(),
       routineRepository: new FakeRoutineRepository(),
+      accountExportRepository: new FakeAccountExportRepository(new FakeUserRepository()),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);
@@ -141,6 +143,16 @@ describe("routing + error contract", () => {
 });
 
 describe("CORS (Criterion 15)", () => {
+  it("AC9 / D16 — exposes Content-Disposition so the SPA can read the export filename", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/account/export",
+      headers: { origin: "http://localhost:5173", "access-control-request-method": "GET" },
+    });
+    expect(String(res.headers["access-control-expose-headers"] ?? "")).toContain("Content-Disposition");
+  });
+
   it("preflight from a listed origin → 204 + allow + expose headers", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({

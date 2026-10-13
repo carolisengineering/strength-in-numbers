@@ -51,6 +51,10 @@ export interface UserRepository {
     emailVerified: boolean,
   ): Promise<UserRecord>;
   updateProfile(id: string, patch: ProfilePatch): Promise<UserRecord>;
+  /** Spec 11 §6.3 — soft delete. Sets `deleted_at = now()` only if it is still
+   * NULL and returns the stored value; `null` when no row changed (a concurrent
+   * delete won, D9). Touches no other column (AC15). */
+  markDeleted(id: string): Promise<Date | null>;
 }
 
 export function assertOwned<T extends { userId: string }>(

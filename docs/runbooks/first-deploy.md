@@ -690,6 +690,33 @@ only (Spec 05.2 D12).
 
 ---
 
+## Account deletion requests (Spec 11)
+
+An ongoing operator task, not a release step. `DELETE /v1/account` only marks an
+account deleted; its data stays until you purge it, at least 30 days later.
+
+**Monthly, or when a tester asks:**
+
+1. Export the direct-host `DATABASE_URL` (same as B4).
+2. Dry run — lists eligible accounts (user id, deleted date, workout and set counts; never email):
+   `pnpm --filter @sin/api run account:purge`
+3. If the list is right: `pnpm --filter @sin/api run account:purge --confirm`
+4. The last line reads `purged N, skipped M, failed K`. Exit code 1 means something failed or a `--user` target was not purged — read the `account_purge_*` lines.
+
+**Immediate erase** (a tester asks for it now, after deleting in the app):
+`pnpm --filter @sin/api run account:purge --user <id> --skip-grace --confirm`.
+A live (not deleted) account can never be purged by any flag.
+
+**Restore a mistaken delete** (only before the purge — afterwards the data is gone):
+
+```sql
+UPDATE "user" SET deleted_at = NULL WHERE id = '<id>';
+```
+
+**Full erasure request:** the purge doesn't touch Auth0. Delete the user in the
+Auth0 dashboard (User Management → Users) by hand. Database backups age out on
+the host's retention window.
+
 ## Part E — Production (deferred)
 
 Not part of this deploy. The full gated staging→prod pipeline is
@@ -749,3 +776,4 @@ Production comes later, via Spec 01.1.
 | Smoke: grant returns 401 `Unauthorized` | Bad/stale `AUTH0_STAGING_M2M_CLIENT_ID`/`SECRET` (e.g. from an old Test App after recreating the API). |
 | Smoke: grant returns 403 `access_denied: Service not enabled within domain: <aud>` | No API in the tenant has that exact Identifier — typo, trailing slash, or wrong subdomain. The Identifier is immutable; recreate the API to match `AUTH0_AUDIENCE`. |
 | Smoke: grant returns 403 `Client is not authorized to access …` | The M2M app isn't authorized for the API — API → **Application Access** tab, toggle the app on. |
+| A tester's login shows "account deleted" | The account is inside the grace window. Restore it (the `UPDATE` above) or wait for the purge, after which the same login starts a fresh account. |

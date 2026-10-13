@@ -1,0 +1,91 @@
+import type { FastifyInstance } from "fastify";
+import type { ZodTypeProvider } from "fastify-type-provider-zod";
+import {
+  ACCOUNT_EXPORT_FORMAT_VERSION,
+  ACCOUNT_PURGE_GRACE_DAYS,
+  AccountDeletedResponseSchema,
+  AccountExportSchema,
+  type AccountExport,
+} from "@sin/core";
+import { AccountDeletedError } from "../errors/app-error.js";
+import type { AccountExportRepository } from "../repositories/account-export.js";
+import type { UserRepository } from "../repositories/user.js";
+import { toExerciseDto, toMeDto, toRoutineDto, toWorkoutDetailDto } from "./mappers.js";
+
+/**
+ * `routes/account.ts` — Spec 11 §5. The account acted on is always
+ * `request.user`, never client input (§7). Log lines carry `user_id` and
+ * counts only.
+ */
+
+export interface AccountRouteDeps {
+  userRepository: UserRepository;
+  accountExportRepository: AccountExportRepository;
+}
+
+const DAY_MS = 86_400_000;
+
+export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDeps): void {
+  const r = app.withTypeProvider<ZodTypeProvider>();
+
+  // §6.2: one snapshot through the shared mappers (D6, D7). No ETag (D4);
+  // Cache-Control comes from the /v1 policy's no-store default.
+  r.get(
+    "/account/export",
+    {
+      schema: { response: { 200: AccountExportSchema } },
+      config: { published: true, problems: [], userBudget: "export" },
+    },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const s = await deps.accountExportRepository.snapshot(userId);
+      const body: AccountExport = {
+        formatVersion: ACCOUNT_EXPORT_FORMAT_VERSION,
+        exportedAt: s.exportedAt.toISOString(),
+        profile: toMeDto(s.user),
+        exercises: s.exercises.map(toExerciseDto),
+        routines: s.routines.map(toRoutineDto),
+        workouts: s.workouts.map(toWorkoutDetailDto),
+      };
+      const setCount = s.workouts.reduce((n, w) => n + w.exercises.reduce((m, e) => m + e.sets.length, 0), 0);
+      request.log.info(
+        {
+          user_id: userId,
+          exercise_count: body.exercises.length,
+          routine_count: body.routines.length,
+          workout_count: body.workouts.length,
+          set_count: setCount,
+        },
+        "account_exported",
+      );
+      reply.header(
+        "content-disposition",
+        `attachment; filename="strength-in-numbers-export-${body.exportedAt.slice(0, 10)}.json"`,
+      );
+      return body;
+    },
+  );
+
+  // §6.3: one guarded UPDATE. resolveUser has already 403'd a deleted account;
+  // a delete that loses a race matches zero rows and gets the same 403 (D9).
+  r.delete(
+    "/account",
+    {
+      schema: { response: { 202: AccountDeletedResponseSchema } },
+      config: { published: true, problems: [], writeGroup: "me" },
+    },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const deletedAt = await deps.userRepository.markDeleted(userId);
+      if (deletedAt === null) throw new AccountDeletedError("account deleted by a concurrent request");
+      // D17: the one durable record of when the delete happened.
+      request.log.info({ user_id: userId }, "account_deleted");
+      reply.code(202);
+      return {
+        deletedAt: deletedAt.toISOString(),
+        // D10: exact milliseconds, no calendar arithmetic.
+        purgeEligibleAt: new Date(deletedAt.getTime() + ACCOUNT_PURGE_GRACE_DAYS * DAY_MS).toISOString(),
+      };
+    },
+  );
+}

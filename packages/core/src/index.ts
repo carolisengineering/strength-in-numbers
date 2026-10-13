@@ -20,6 +20,7 @@ export * from "./dto/set-entry.js";
 export * from "./dto/personal-record.js";
 export * from "./dto/progress.js";
 export * from "./dto/routine.js";
+export * from "./dto/account.js";
 export * from "./dto/planned-set.js";
 export * from "./time.js";
 export * from "./records.js";
