@@ -18,6 +18,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "records:rebuild": "tsx --env-file-if-exists=.env scripts/rebuild-records.ts",
+    "account:purge": "tsx --env-file-if-exists=.env scripts/purge-accounts.ts",
     "bench:finish": "tsx scripts/bench-finish.ts",
     "bench:history": "tsx scripts/bench-history.ts",
     "bench:progress": "tsx scripts/bench-progress.ts",

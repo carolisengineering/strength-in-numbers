@@ -250,6 +250,27 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
     expect([await exists(a), await exists(b), await exists(c)]).toEqual([false, true, false]);
   });
 
+  it("AC28 / AC31 — main: exit codes and PII-free output", async () => {
+    const { main } = await import("../../src/account/purge-cli.js");
+    const lines: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => { lines.push(String(s)); return true; });
+    const u = await insertUser(db); // email u@ex.com
+    await softDelete(u, GRACE_S + 60);
+    // Testcontainers Postgres has no TLS, so reuse the test client via the seam.
+    const env = { DATABASE_URL: db.url, LOG_LEVEL: "info" };
+    const seam = { makePrisma: () => db.prisma };
+    expect(await main([], env, seam)).toBe(0); // dry run
+    expect(await main(["--confirm", "--user", uuidv7()], env, seam)).toBe(1); // unknown target
+    expect(await main(["--confirm"], env, seam)).toBe(0);
+    expect(await exists(u)).toBe(false);
+    write.mockRestore();
+    const out = lines.join("");
+    expect(out).toContain("account_purge_eligible");
+    expect(out).toContain("account_purged");
+    expect(out).toMatch(/purged 1, skipped 0, failed 0/);
+    expect(out).not.toMatch(/u@ex\.com|auth0\|/);
+  });
+
   it("AC30 — no deadlock against live writers on the same user (repository level, ×10)", async () => {
     for (let i = 0; i < 10; i++) {
       const u = await insertUser(db);
