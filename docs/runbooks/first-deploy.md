@@ -775,5 +775,5 @@ Production comes later, via Spec 01.1.
 | Smoke: `/v1/me` → 200 instead of 401 | The Action is putting `email` on **M2M** tokens too (it should only run on the Login flow, not client-credentials), or the namespace differs between the Action and `AUTH0_CLAIM_NAMESPACE`. |
 | Smoke: grant returns 401 `Unauthorized` | Bad/stale `AUTH0_STAGING_M2M_CLIENT_ID`/`SECRET` (e.g. from an old Test App after recreating the API). |
 | Smoke: grant returns 403 `access_denied: Service not enabled within domain: <aud>` | No API in the tenant has that exact Identifier — typo, trailing slash, or wrong subdomain. The Identifier is immutable; recreate the API to match `AUTH0_AUDIENCE`. |
-| A tester's login shows "account deleted" | The account is inside the grace window. Restore it (the `UPDATE` above) or wait for the purge, after which the same login starts a fresh account. |
 | Smoke: grant returns 403 `Client is not authorized to access …` | The M2M app isn't authorized for the API — API → **Application Access** tab, toggle the app on. |
+| A tester's login shows "account deleted" | The account is inside the grace window. Restore it (the `UPDATE` above) or wait for the purge, after which the same login starts a fresh account. |

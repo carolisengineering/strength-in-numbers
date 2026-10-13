@@ -1,7 +1,7 @@
 # Spec 11 — Account Lifecycle (API): data export, account delete, purge CLI
 
 **Status:** Implemented (2026-10-13, branch feat/spec-11-account-lifecycle). Design approved by the owner section by section in a brainstorm on 2026-10-11 (`docs/superpowers/specs/2026-10-11-spec-11-design-brief.md`; §12 D1–D5 are the owner decisions, D6–D18 are the architect's choices where the brief left room). Implemented as specified; see the AC30 / AC32 wording amended at implementation time.
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-13
 **Design refs:** DESIGN.md §2 item 1 (account deletion + data export), §4.1 (`user.deleted_at`), §4.9 (deletion matrix and its closing paragraph — rewritten by this spec), §6 (`/account/export`, `/account` — rewritten), §8.2 (privacy: export and delete are product features), §3.1 / §3.2 / §3.3 (object storage, cron and the per-environment R2 bucket — deferred to GA by this spec), §9 M4 row, §10 Q19 (this spec's log entry).
 Spec 01 (`resolveUser` → `403 account-deleted`, `UserRepository`, the `/v1` auth plugin), Spec 03.0 (Zod DTOs → OpenAPI, response-schema allowlist), Spec 05.0 / 05.1 / 09 / 03.2 (the read DTOs this export composes), Spec 05.2 (rate-limit mechanisms, write groups), Spec 07.0 (`lockUserRecords`, the `records:rebuild` CLI shape this spec copies), Spec 09 AC29 (a user purge cascades routines).
 
