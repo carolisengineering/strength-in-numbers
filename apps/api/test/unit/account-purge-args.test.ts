@@ -58,6 +58,17 @@ describe("AC28 — main exits 1 before touching a database", () => {
     expect(makePrisma).not.toHaveBeenCalled();
   });
 
+  it("a database failure logs the error class, never the error object (its message can echo credentials)", async () => {
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
+    const failing = { $queryRaw: async () => { throw new Error("auth failed for user svc-hunter2@db.internal"); } };
+    const env = { LOG_LEVEL: "info", DATABASE_URL: URL_OK };
+    await expect(main([], env, { makePrisma: () => failing as never })).resolves.toBe(1);
+    write.mockRestore();
+    expect(out.join("")).toContain("account purge failed");
+    expect(out.join("")).not.toMatch(/hunter2|db\.internal/);
+  });
+
   it("when resolveDatabaseUrl rejects the URL", async () => {
     const makePrisma = vi.fn();
     const env = { ...QUIET, DATABASE_URL: `${URL_OK}?sslmode=verify-full` };

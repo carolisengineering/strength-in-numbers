@@ -83,7 +83,8 @@ export async function main(
     const summary = await runPurge(prisma, log, args.options);
     return summary.failed > 0 || summary.targetMissed ? 1 : 0;
   } catch (err) {
-    log.error({ err }, "account purge failed");
+    // The class only: a Prisma connect/auth message can name the DB user and host.
+    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err }, "account purge failed");
     return 1;
   } finally {
     if (owned) await prisma.$disconnect();
