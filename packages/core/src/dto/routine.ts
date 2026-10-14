@@ -9,6 +9,8 @@ import { noControlChars } from "./exercise.js";
 import { noControlCharsExceptWhitespace } from "./workout.js";
 import { PLANNED_SETS_PER_ITEM_MAX, PlannedSetInputSchema, PlannedSetSchema } from "./planned-set.js";
 import { QUICK_LINE_KEYS } from "../plannedSets.js";
+import { RoutineSectionInputSchema, ROUTINE_SECTIONS_MAX, SECTION_KEY_PATTERN } from "./routine-section.js";
+import { sectionOrderViolations, sectionSpanViolations } from "../sections.js";
 
 export const ROUTINE_NAME_MAX = 80;
 export const ROUTINE_NOTES_MAX = 2000;
@@ -40,6 +42,8 @@ export const RoutineItemInputSchema = z.strictObject({
     .optional(),
   /** Spec 09.1 — the row form. Send this OR the quick-line fields, never both (AC7, by key presence). */
   sets: z.array(PlannedSetInputSchema).max(PLANNED_SETS_PER_ITEM_MAX).optional(),
+  /** Spec 09.2 — names a declared `sections[*].key`; `null` / absent = loose. Request-local, never stored. */
+  sectionKey: z.string().regex(SECTION_KEY_PATTERN).nullable().optional(),
 });
 export type RoutineItemInput = z.infer<typeof RoutineItemInputSchema>;
 
@@ -59,6 +63,8 @@ export const RoutineWriteSchema = z
       .refine(noControlCharsExceptWhitespace, "control characters not allowed")
       .nullable()
       .optional(),
+    /** Spec 09.2 — the routine's whole section list (D6). NOT nullable; absent = none. */
+    sections: z.array(RoutineSectionInputSchema).max(ROUTINE_SECTIONS_MAX).optional(),
     items: z.array(RoutineItemInputSchema).min(1).max(ROUTINE_ITEMS_MAX),
   })
   .superRefine((doc, ctx) => {
@@ -139,6 +145,47 @@ export const RoutineWriteSchema = z
           message: `a superset group has at most ${SUPERSET_GROUP_MEMBERS_MAX} members`,
         });
       }
+    }
+    // Spec 09.2 AC5–AC8. Keys resolve through a Map: `constructor` / `__proto__` match the key pattern.
+    const keyIndex = new Map<string, number>();
+    (doc.sections ?? []).forEach((s, j) => {
+      if (keyIndex.has(s.key)) {
+        ctx.addIssue({ code: "custom", path: ["sections", j, "key"], message: "must be unique within the routine" });
+      } else {
+        keyIndex.set(s.key, j);
+      }
+    });
+    // refs[i]: section index, null (loose), or undefined (unresolved — already reported once).
+    const refs: (number | null | undefined)[] = doc.items.map((it, i) => {
+      const key = it.sectionKey ?? null;
+      if (key === null) return null;
+      const j = keyIndex.get(key);
+      // A key that fails the pattern was already reported by the field schema; don't report it twice.
+      if (j === undefined && SECTION_KEY_PATTERN.test(key)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["items", i, "sectionKey"],
+          message: "must name a section declared in sections",
+        });
+      }
+      return j;
+    });
+    const resolved = doc.items.flatMap((_, i) => (refs[i] === undefined ? [] : [i]));
+    const resolvedRefs = resolved.map((i) => refs[i] as number | null);
+    for (const k of sectionOrderViolations(resolvedRefs)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", resolved[k]!, "sectionKey"],
+        message: "list loose exercises first, then each section in order",
+      });
+    }
+    const resolvedGroups = resolved.map((i) => doc.items[i]!.supersetGroup ?? null);
+    for (const k of sectionSpanViolations(resolvedGroups, resolvedRefs)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", resolved[k]!, "supersetGroup"],
+        message: "a superset can't span sections",
+      });
     }
   });
 export type RoutineWrite = z.infer<typeof RoutineWriteSchema>;

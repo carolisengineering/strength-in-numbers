@@ -85,3 +85,17 @@ export const RoutineItemIdSchema = routineItemId.schema;
 export type RoutineItemId = z.infer<typeof RoutineItemIdSchema>;
 export const parseRoutineItemId = routineItemId.parse;
 export const isRoutineItemId = routineItemId.is;
+
+const routineSectionId = brandId("RoutineSectionId");
+
+export const RoutineSectionIdSchema = routineSectionId.schema;
+export type RoutineSectionId = z.infer<typeof RoutineSectionIdSchema>;
+export const parseRoutineSectionId = routineSectionId.parse;
+export const isRoutineSectionId = routineSectionId.is;
+
+const workoutSectionId = brandId("WorkoutSectionId");
+
+export const WorkoutSectionIdSchema = workoutSectionId.schema;
+export type WorkoutSectionId = z.infer<typeof WorkoutSectionIdSchema>;
+export const parseWorkoutSectionId = workoutSectionId.parse;
+export const isWorkoutSectionId = workoutSectionId.is;
