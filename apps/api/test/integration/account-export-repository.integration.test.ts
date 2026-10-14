@@ -122,6 +122,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     const big = await insertUser(db);
     await nWorkouts(small, 5);
     await nWorkouts(big, 60);
+    for (const user of [small, big]) {
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "workout_section" (id, workout_id, position, name) SELECT gen_random_uuid(), id, 0, 'S' FROM "workout" WHERE user_id = $1::uuid`, user);
+    }
     const nSmall = await count(small);
     const nBig = await count(big);
     expect(nBig).toBe(nSmall);

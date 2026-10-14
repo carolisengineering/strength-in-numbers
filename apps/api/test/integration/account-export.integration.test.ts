@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { AccountExportSchema, ExerciseSchema, MeSchema, RoutineItemSchema, RoutineSchema, SetEntrySchema, WorkoutExerciseSchema, WorkoutSchema } from "@sin/core";
+import { AccountExportSchema, ExerciseSchema, MeSchema, RoutineItemSchema, RoutineSchema, RoutineSectionSchema, SetEntrySchema, WorkoutExerciseSchema, WorkoutSchema, WorkoutSectionSchema } from "@sin/core";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
@@ -39,7 +39,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     const { id } = await me(token);
     const global = await insertExercise(db);
     const custom = await insertExercise(db, { ownerUserId: id, name: "Custom" });
-    const routine = await createRoutineRepository(db.prisma).create(id, routineFixture([custom, global]));
+    const routine = await createRoutineRepository(db.prisma).create(
+      id,
+      routineFixture([custom, global], {
+        notes: "Routine note\r\nsecond line",
+        sections: [{ key: "main", name: "Main", notes: "Heavy singles" }],
+        sectionKeys: ["main", "main"],
+      }),
+    );
     const w1 = await logWorkout(db, id, { startedAt: daysAgo(3), exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 225, weightUnit: "lb" }] }] });
     await db.prisma.$executeRawUnsafe(`UPDATE "set_entry" SET rpe = 8.5 WHERE id = $1::uuid`, w1.setIds[0]![0]);
     const started = await app!.inject({
@@ -73,9 +80,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     for (const r of body.routines) {
       expect(keys(r)).toEqual(shape(RoutineSchema));
       for (const i of r.items) expect(keys(i)).toEqual(shape(RoutineItemSchema));
+      for (const s of r.sections) expect(keys(s)).toEqual(shape(RoutineSectionSchema));
     }
     for (const w of body.workouts) {
-      expect(keys(w)).toEqual([...shape(WorkoutSchema), "exercises"].sort());
+      expect(keys(w)).toEqual([...shape(WorkoutSchema), "exercises", "routineNotes", "sections"].sort());
+      for (const s of w.sections) expect(keys(s)).toEqual(shape(WorkoutSectionSchema));
       for (const e of w.exercises) {
         expect(keys(e)).toEqual([...shape(WorkoutExerciseSchema), "sets"].sort());
         for (const x of e.sets) expect(keys(x)).toEqual(shape(SetEntrySchema));
@@ -84,6 +93,21 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     const text = JSON.stringify(body);
     expect(text).not.toMatch(/authSub|deletedAt|emailVerified/);
     expect(body.exercises.map((e: { id: string }) => e.id)).toEqual([s.custom]);
+  });
+
+  it("AC24 — the export carries sections, sectionId and routineNotes on both sides, equal to the read routes", async () => {
+    app = await makeAccountApp(db);
+    const s = await seed("exp-a");
+    const body = AccountExportSchema.parse((await exportOf("exp-a")).json());
+    const routine = body.routines.find((r) => r.id === s.routine.id)!;
+    expect(routine.sections.map((x) => x.name)).toEqual(["Main"]);
+    expect(routine.items.every((i) => i.sectionId === routine.sections[0]!.id)).toBe(true);
+    const active = body.workouts.find((w) => w.id === s.activeId)!;
+    expect(active.routineNotes).toBe("Routine note\r\nsecond line");
+    expect(active.sections.map((x) => [x.name, x.notes])).toEqual([["Main", "Heavy singles"]]);
+    expect(active.exercises.every((e) => e.sectionId === active.sections[0]!.id)).toBe(true);
+    const read = await app.inject({ method: "GET", url: `/v1/workouts/${s.activeId}`, headers: bearer("exp-a") });
+    expect(active).toEqual(read.json()); // Spec 11 AC6 parity, with section rows present
   });
 
   it("AC6 — parity: each workout, routine and exercise deep-equals its read route", async () => {

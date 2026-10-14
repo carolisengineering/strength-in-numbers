@@ -52,7 +52,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
   async function fullAccount(userId: string, sharedGlobal: string) {
     const custom = await insertExercise(db, { ownerUserId: userId });
     await insertExercise(db, { ownerUserId: userId, forkedFrom: sharedGlobal });
-    const routine = await createRoutineRepository(db.prisma).create(userId, routineFixture([custom, sharedGlobal]));
+    const routine = await createRoutineRepository(db.prisma).create(
+      userId,
+      routineFixture([custom, sharedGlobal], { notes: "note", sections: [{ key: "k", name: "Main", notes: "n" }], sectionKeys: ["k", "k"] }),
+    );
     const { workoutId } = await logWorkout(db, userId, { startedAt: daysAgo(2), finish: "none", exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 100 }] }, { exerciseId: sharedGlobal, sets: [{ reps: 3, weight: 60 }] }] });
     await workouts().updateWorkout(userId, workoutId, { endedAt: new Date(daysAgo(2).getTime() + 3_600_000).toISOString() }); // creates personal_record rows
     // The in-progress workout is started from the routine, so workout_planned_set has

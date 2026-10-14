@@ -59,4 +59,20 @@ describe.skipIf(!shouldRunIntegration())("AC29 — account purge cascades routin
       `SELECT (SELECT count(*) FROM "routine_item_set") + (SELECT count(*) FROM "workout_planned_set") AS n`))[0]!.n;
     expect(Number(n)).toBe(0);
   });
+
+  it("AC23 (09.2) — DELETE FROM user cascades routine_section and workout_section in one statement", async () => {
+    const u = await insertUser(db);
+    const ex = await insertExercise(db, { ownerUserId: u });
+    const routine = await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { sections: [{ key: "k", name: "Main", notes: "n" }], sectionKeys: ["k"] }));
+    const started = await createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)).createWorkout(
+      u,
+      { clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id },
+      "UTC",
+    );
+    expect(started.sectionCount).toBe(1);
+    await expect(db.prisma.$executeRawUnsafe(`DELETE FROM "user" WHERE id = $1::uuid`, u)).resolves.toBe(1);
+    const n = (await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT (SELECT count(*) FROM "routine_section") + (SELECT count(*) FROM "workout_section") AS n`))[0]!.n;
+    expect(Number(n)).toBe(0);
+  });
 });
