@@ -4,12 +4,12 @@
  * superRefine (D16) so a client gets every problem in one 422.
  */
 import { z } from "zod";
-import { ExerciseIdSchema, RoutineIdSchema, RoutineItemIdSchema } from "../ids.js";
+import { ExerciseIdSchema, RoutineIdSchema, RoutineItemIdSchema, RoutineSectionIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { noControlCharsExceptWhitespace } from "./workout.js";
 import { PLANNED_SETS_PER_ITEM_MAX, PlannedSetInputSchema, PlannedSetSchema } from "./planned-set.js";
 import { QUICK_LINE_KEYS } from "../plannedSets.js";
-import { RoutineSectionInputSchema, ROUTINE_SECTIONS_MAX, SECTION_KEY_PATTERN } from "./routine-section.js";
+import { RoutineSectionInputSchema, RoutineSectionSchema, ROUTINE_SECTIONS_MAX, SECTION_KEY_PATTERN } from "./routine-section.js";
 import { sectionOrderViolations, sectionSpanViolations } from "../sections.js";
 
 export const ROUTINE_NAME_MAX = 80;
@@ -205,6 +205,8 @@ export const RoutineItemSchema = z.object({
   notes: z.string().nullable(),
   /** Spec 09.1 — the planned sets, ordered by position. Always an array; `[]` = no plan. */
   sets: z.array(PlannedSetSchema),
+  /** Spec 09.2 — the section this item belongs to, `null` = loose. Required-nullable, always last. */
+  sectionId: RoutineSectionIdSchema.nullable(),
 });
 export type RoutineItem = z.infer<typeof RoutineItemSchema>;
 
@@ -212,6 +214,8 @@ export const RoutineSchema = z.object({
   id: RoutineIdSchema,
   name: z.string(),
   notes: z.string().nullable(),
+  /** Spec 09.2 — ordered by position; `[]` for a routine without sections. */
+  sections: z.array(RoutineSectionSchema),
   items: z.array(RoutineItemSchema),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),

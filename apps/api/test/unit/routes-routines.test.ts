@@ -50,7 +50,7 @@ describe("AC5 / AC11 / AC12 — POST /v1/routines", () => {
       [1, null, 1],
     ]);
     expect(res.json().notes).toBeNull();
-    expect(Object.keys(res.json())).toEqual(["id", "name", "notes", "items", "createdAt", "updatedAt"]);
+    expect(Object.keys(res.json())).toEqual(["id", "name", "notes", "sections", "items", "createdAt", "updatedAt"]);
   });
   it("AC11 — a position key on an item is a 422 naming the item", async () => {
     const { app } = await appWithExercise();

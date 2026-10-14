@@ -188,6 +188,7 @@ export function makeRoutineItem(overrides: Record<string, unknown> = {}): Routin
     supersetGroup: null,
     notes: null,
     sets: [],
+    sectionId: null,
     ...overrides,
   });
 }
@@ -198,6 +199,7 @@ export function makeRoutine(overrides: Record<string, unknown> = {}): Routine {
     id: routineId(1),
     name: "Push A",
     notes: null,
+    sections: [],
     items: [makeRoutineItem()],
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",

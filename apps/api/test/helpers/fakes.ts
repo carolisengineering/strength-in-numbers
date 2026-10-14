@@ -54,6 +54,7 @@ import type {
   RoutineItemRecord,
   RoutineRecord,
   RoutineRepository,
+  RoutineSectionRecord,
   RoutineWriteFields,
 } from "../../src/repositories/routine.js";
 import {
@@ -914,7 +915,21 @@ export class FakeRoutineRepository implements RoutineRepository {
     return modalities;
   }
 
-  private buildItems(routineId: string, items: RoutineWriteFields["items"]): RoutineItemRecord[] {
+  private sectionsOf(fields: RoutineWriteFields): { sections: RoutineSectionRecord[]; idByKey: Map<string, string> } {
+    const idByKey = new Map<string, string>();
+    const sections = (fields.sections ?? []).map((s, j) => {
+      const id = uuidv7();
+      idByKey.set(s.key, id);
+      return { id, position: j, name: s.name, notes: s.notes ?? null };
+    });
+    return { sections, idByKey };
+  }
+
+  private buildItems(
+    routineId: string,
+    items: RoutineWriteFields["items"],
+    idByKey: ReadonlyMap<string, string>,
+  ): RoutineItemRecord[] {
     const groups = normalizeSupersetGroups(items.map((i) => i.supersetGroup ?? null));
     return items.map((it, i) => {
       const plan = resolveItemPlan(it);
@@ -931,6 +946,7 @@ export class FakeRoutineRepository implements RoutineRepository {
         supersetGroup: groups[i] ?? null,
         notes: it.notes ?? null,
         sets: plan.rows,
+        sectionId: it.sectionKey == null ? null : (idByKey.get(it.sectionKey) ?? null),
       };
     });
   }
@@ -958,12 +974,14 @@ export class FakeRoutineRepository implements RoutineRepository {
     assertPlannedSetsFitModalities(fields.items, modalities);
     const now = new Date();
     const id = uuidv7();
+    const { sections, idByKey } = this.sectionsOf(fields);
     const r: RoutineRecord = {
       id,
       userId: actingUserId,
       name: fields.name,
       notes: fields.notes ?? null,
-      items: this.buildItems(id, fields.items),
+      sections,
+      items: this.buildItems(id, fields.items, idByKey),
       createdAt: now,
       updatedAt: now,
     };
@@ -976,11 +994,13 @@ export class FakeRoutineRepository implements RoutineRepository {
     if (this.nameClash(actingUserId, fields.name, id)) throw new RoutineNameTakenError();
     const modalities = await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
     assertPlannedSetsFitModalities(fields.items, modalities);
+    const { sections, idByKey } = this.sectionsOf(fields);
     const next: RoutineRecord = {
       ...current,
       name: fields.name,
       notes: fields.notes ?? null,
-      items: this.buildItems(id, fields.items),
+      sections,
+      items: this.buildItems(id, fields.items, idByKey),
       updatedAt: new Date(current.updatedAt.getTime() + 1000),
     };
     this.routines.set(id, next);

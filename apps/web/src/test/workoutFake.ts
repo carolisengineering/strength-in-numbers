@@ -331,6 +331,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       id: selfId ?? uuid(),
       name: input.name,
       notes: input.notes ?? null,
+      sections: [],
       items: input.items.map((item, position) => {
         const plan = resolveItem(item);
         return {
@@ -345,6 +346,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
           supersetGroup: groups[position] ?? null,
           notes: item.notes ?? null,
           sets: plan.sets,
+          sectionId: null,
         };
       }),
       createdAt: existing?.createdAt ?? now(),
