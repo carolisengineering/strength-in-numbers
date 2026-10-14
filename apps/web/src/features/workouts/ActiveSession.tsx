@@ -19,7 +19,7 @@ import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { unsavedSets } from "./outbox/ops";
+import { unsavedNotes, unsavedSets } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
@@ -152,8 +152,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { sync } = useMemo(() => project(workout, outboxState), [workout, outboxState]);
   // Counted in sets, not queued writes: a set with an appended edit is still one set.
   const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
+  const { pending: notePending, failed: noteFailed } = unsavedNotes(outboxState.ops, workout.id);
+  const unsavedNoteCount = notePending + noteFailed;
   const firstFailedId = useMemo(() => {
     for (const exercise of exercises) {
+      if (sync.get(exercise.id)?.state === "failed") return exercise.id; // a failed note sits above its exercise's sets
       const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
       if (set) return set.id;
     }
@@ -470,8 +473,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
-  // Spec 06.2 AC16: Finish waits for every queued or failed set write of this workout.
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0;
+  // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
+  // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
 
   return (
     <Screen title="Workout">
@@ -535,6 +539,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       <SyncStatus
         pending={pendingCount}
         failed={failedCount}
+        pendingNotes={notePending}
+        failedNotes={noteFailed}
         online={outboxState.online}
         onRetry={() => outbox?.retryNow()}
         onDiscardFailed={() => outbox?.discardFailed(workout.id)}
@@ -550,6 +556,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </Button>
         {totalSets === 0 ? <p className={styles.barHint}>Log at least one set to finish</p> : null}
         {unsaved > 0 ? <p className={styles.barHint}>{plural(unsaved, "set", "sets")} not saved yet</p> : null}
+        {unsavedNoteCount > 0 ? <p className={styles.barHint}>{plural(unsavedNoteCount, "note", "notes")} not saved yet</p> : null}
       </div>
 
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
