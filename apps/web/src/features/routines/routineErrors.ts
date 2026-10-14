@@ -9,7 +9,7 @@ export function serverIssuesFor(
 ): { issues: DraftIssue[]; unmatched: boolean } {
   const keys = draft.items.map((i) => i.key);
   const planKeys: PlanKeys = draft.items.map((i) => (i.plan === null ? null : i.plan.map((r) => r.key)));
-  const mapped = fieldErrors.map((e) => issueForPath(splitPath(e.path), keys, planKeys));
+  const mapped = fieldErrors.map((e) => issueForPath(splitPath(e.path), keys, planKeys, draft.sections.map((s) => s.key)));
   return { issues: mapped.filter((i): i is DraftIssue => i !== null), unmatched: mapped.some((i) => i === null) };
 }
 
