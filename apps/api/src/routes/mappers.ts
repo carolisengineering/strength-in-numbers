@@ -10,20 +10,23 @@ import {
   type Me,
   type Routine,
   type RoutineItem,
+  type RoutineSection,
   type SetEntry,
   type Workout,
   type WorkoutDetail,
   type WorkoutExercise,
   type WorkoutExerciseDetail,
+  type WorkoutSection,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
-import type { RoutineItemRecord, RoutineRecord } from "../repositories/routine.js";
+import type { RoutineItemRecord, RoutineRecord, RoutineSectionRecord } from "../repositories/routine.js";
 import type { UserRecord } from "../repositories/user.js";
 import type {
   SetEntryRecord,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
+  WorkoutSectionRecord,
 } from "../repositories/workout.js";
 
 /**
@@ -77,7 +80,13 @@ export function toRoutineItemDto(r: RoutineItemRecord): RoutineItem {
     notes: r.notes,
     // Spec 09.1: key order matches `PlannedSetSchema` (it is the ETag's wire bytes).
     sets: r.sets.map((s) => ({ ...s })),
+    // Spec 09.2: last key, like the schema.
+    sectionId: r.sectionId as RoutineItem["sectionId"],
   };
+}
+
+export function toRoutineSectionDto(r: RoutineSectionRecord): RoutineSection {
+  return { id: r.id as RoutineSection["id"], position: r.position, name: r.name, notes: r.notes };
 }
 
 /** Keys in `RoutineSchema` order: `JSON.stringify` of this IS the wire bytes
@@ -87,6 +96,7 @@ export function toRoutineDto(r: RoutineRecord): Routine {
     id: r.id as Routine["id"],
     name: r.name,
     notes: r.notes,
+    sections: r.sections.map(toRoutineSectionDto),
     items: r.items.map(toRoutineItemDto),
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
@@ -131,7 +141,13 @@ export function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise 
     supersetGroup: r.supersetGroup,
     // Spec 09.1: key order matches `PlannedSetSchema`.
     plannedSets: r.plannedSets.map((s) => ({ ...s })),
+    // Spec 09.2: last key, after plannedSets.
+    sectionId: r.sectionId as WorkoutExercise["sectionId"],
   };
+}
+
+export function toWorkoutSectionDto(r: WorkoutSectionRecord): WorkoutSection {
+  return { id: r.id as WorkoutSection["id"], position: r.position, name: r.name, notes: r.notes };
 }
 
 /** DB record -> wire DTO, keys in `SetEntrySchema` field order. */
@@ -164,5 +180,7 @@ export function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
     exercises: r.exercises.map(
       (e): WorkoutExerciseDetail => ({ ...toWorkoutExerciseDto(e), sets: e.sets.map(toSetEntryDto) }),
     ),
+    routineNotes: r.routineNotes,
+    sections: r.sections.map(toWorkoutSectionDto),
   };
 }

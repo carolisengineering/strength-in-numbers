@@ -46,6 +46,7 @@ const exerciseRow = (overrides: Record<string, unknown> = {}) => ({
   created_at: new Date(),
   updated_at: new Date(),
   planned_sets: [],
+  section_id: null,
   ...overrides,
 });
 

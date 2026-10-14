@@ -136,6 +136,7 @@ describe("AC24-adjacent — RoutineSchema response shape", () => {
         notes: null,
         createdAt: now,
         updatedAt: now,
+        sections: [],
         items: [
           {
             id: "018fcb3e-3b8a-7d6e-9c1a-000000000002",
@@ -149,6 +150,7 @@ describe("AC24-adjacent — RoutineSchema response shape", () => {
             supersetGroup: 1,
             notes: null,
             sets: [],
+            sectionId: null,
           },
         ],
       }),

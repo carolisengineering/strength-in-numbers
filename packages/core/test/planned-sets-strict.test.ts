@@ -14,7 +14,7 @@ function files(dir: string): string[] {
 
 describe("AC24 — sets / plannedSets are required, never defaulted", () => {
   it("a RoutineItem without sets and a WorkoutExercise without plannedSets fail safeParse", () => {
-    const item = { id: "018fcb3e-3b8a-7d6e-9c1a-000000000001", position: 0, exerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000002", targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: null, notes: null };
+    const item = { id: "018fcb3e-3b8a-7d6e-9c1a-000000000001", position: 0, exerciseId: "018fcb3e-3b8a-7d6e-9c1a-000000000002", targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: null, notes: null, sectionId: null };
     expect(RoutineItemSchema.safeParse(item).success).toBe(false);
     expect(RoutineItemSchema.safeParse({ ...item, sets: [] }).success).toBe(true);
     expect(Object.keys(WorkoutExerciseSchema.shape)).toContain("plannedSets");

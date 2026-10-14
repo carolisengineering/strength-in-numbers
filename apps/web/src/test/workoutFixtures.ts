@@ -90,6 +90,8 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     createdAt: T0,
     updatedAt: T0,
     routineName: opts.routineName ?? null,
+    routineNotes: null,
+    sections: [],
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -109,6 +111,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         restSeconds: spec.restSeconds ?? null,
         supersetGroup: spec.supersetGroup ?? null,
         plannedSets: spec.plannedSets ?? [],
+        sectionId: null,
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
@@ -188,6 +191,7 @@ export function makeRoutineItem(overrides: Record<string, unknown> = {}): Routin
     supersetGroup: null,
     notes: null,
     sets: [],
+    sectionId: null,
     ...overrides,
   });
 }
@@ -198,6 +202,7 @@ export function makeRoutine(overrides: Record<string, unknown> = {}): Routine {
     id: routineId(1),
     name: "Push A",
     notes: null,
+    sections: [],
     items: [makeRoutineItem()],
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",

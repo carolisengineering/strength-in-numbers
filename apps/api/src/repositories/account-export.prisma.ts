@@ -8,8 +8,11 @@ import {
   WE_PLANNED_SETS,
   toWorkoutExerciseRecord,
   toWorkoutRecord,
+  toWorkoutSectionRecord,
+  workoutSectionsJson,
   type WorkoutDbRow,
   type WorkoutExerciseDbRow,
+  type WorkoutSectionDbRow,
 } from "./workout.prisma.js";
 import type { SetEntryRecord, WorkoutDetailRecord, WorkoutExerciseDetailRecord } from "./workout.js";
 
@@ -19,6 +22,12 @@ import type { SetEntryRecord, WorkoutDetailRecord, WorkoutExerciseDetailRecord }
  * snapshot taken by the first, so a set logged or a workout deleted mid-export
  * is wholly in or wholly out (AC7). No per-workout queries (AC8).
  */
+
+/** The export's workout row: the shared columns plus Spec 09.2's note snapshot and sections aggregate. */
+interface WorkoutExportDbRow extends WorkoutDbRow {
+  routine_notes_snapshot: string | null;
+  sections: WorkoutSectionDbRow[];
+}
 
 export interface AccountExportHooks {
   /** Tests only (AC7): runs inside the transaction after statement 3. */
@@ -59,15 +68,16 @@ export function createAccountExportRepository(
           const routineRows = await tx.$queryRaw<RoutineDbRow[]>(
             ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${userId}::uuid`, Prisma.sql`ORDER BY lower(r.name), r.id`),
           );
-          const workoutRows = await tx.$queryRaw<WorkoutDbRow[]>`
+          const workoutRows = await tx.$queryRaw<WorkoutExportDbRow[]>`
             SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-                   tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                   tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot,
+                   routine_notes_snapshot, ${workoutSectionsJson('"workout".id')} AS sections
             FROM "workout" WHERE user_id = ${userId}::uuid
             ORDER BY started_at, id`;
           const exerciseOfWorkoutRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
             SELECT id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, notes,
                    created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe,
-                   rest_seconds, superset_group, ${WE_PLANNED_SETS} AS planned_sets
+                   rest_seconds, superset_group, section_id, ${WE_PLANNED_SETS} AS planned_sets
             FROM "workout_exercise"
             WHERE workout_id IN (SELECT id FROM "workout" WHERE user_id = ${userId}::uuid)
             ORDER BY workout_id, position`;
@@ -85,6 +95,8 @@ export function createAccountExportRepository(
             exercises: (exercisesByWorkout.get(w.id) ?? []).map(
               (e): WorkoutExerciseDetailRecord => ({ ...e, sets: setsByExercise.get(e.id) ?? [] }),
             ),
+            routineNotes: w.routine_notes_snapshot,
+            sections: w.sections.map(toWorkoutSectionRecord),
           }));
           return {
             exportedAt: clock!.exported_at,

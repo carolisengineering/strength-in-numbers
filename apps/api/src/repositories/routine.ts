@@ -24,6 +24,15 @@ export interface RoutineItemRecord {
   notes: string | null;
   /** Spec 09.1 — ordered by position; the source of the target columns. */
   sets: PlannedSet[];
+  /** Spec 09.2 — null = loose. */
+  sectionId: string | null;
+}
+
+export interface RoutineSectionRecord {
+  id: string;
+  position: number;
+  name: string;
+  notes: string | null;
 }
 
 export interface RoutineRecord {
@@ -31,6 +40,8 @@ export interface RoutineRecord {
   userId: string;
   name: string;
   notes: string | null;
+  /** Spec 09.2 — ordered by position ascending. */
+  sections: RoutineSectionRecord[];
   /** Ordered by `position` ascending. */
   items: RoutineItemRecord[];
   createdAt: Date;
@@ -43,6 +54,8 @@ export interface RoutineRecord {
 export interface RoutineWriteFields {
   name: string;
   notes?: string | null | undefined;
+  /** Spec 09.2 — the routine's whole section list; `key` is request-local and never stored (D6). */
+  sections?: { key: string; name: string; notes?: string | null | undefined }[] | undefined;
   items: {
     exerciseId: string;
     targetSets?: number | null | undefined;
@@ -54,6 +67,8 @@ export interface RoutineWriteFields {
     notes?: string | null | undefined;
     /** Spec 09.1 — the row form; mutually exclusive with the quick-line fields (AC7). */
     sets?: PlannedSetInput[] | undefined;
+    /** Spec 09.2 — a declared sections[*].key; null / absent = loose. */
+    sectionKey?: string | null | undefined;
   }[];
 }
 

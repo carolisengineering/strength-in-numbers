@@ -10,6 +10,7 @@ import {
 import { uuidv7 } from "uuidv7";
 import {
   ExerciseRetiredError,
+  InternalError,
   NotFoundError,
   RoutineLimitError,
   RoutineNameTakenError,
@@ -48,6 +49,14 @@ export interface ItemDbRow {
   superset_group: number | null;
   notes: string | null;
   sets: PlannedSetDbRow[];
+  section_id: string | null;
+}
+
+export interface SectionDbRow {
+  id: string;
+  position: number;
+  name: string;
+  notes: string | null;
 }
 
 /** One routine with its items aggregated in the SAME statement (§6.4): a
@@ -63,10 +72,12 @@ export interface RoutineDbRow {
   updated_at: Date;
   /** `json_agg(json_build_object(…) ORDER BY position)`, `[]` when empty. */
   items: ItemDbRow[];
+  /** Spec 09.2 — ordered by position, `[]` when none. */
+  sections: SectionDbRow[];
 }
 
 const ITEM_COLS = Prisma.sql`id, routine_id, position, exercise_id, target_sets, target_reps_low,
-                             target_reps_high, target_rpe, rest_seconds, superset_group, notes`;
+                             target_reps_high, target_rpe, rest_seconds, superset_group, notes, section_id`;
 /** The routine header plus its items in one statement; `ORDER BY` and the
  * `WHERE` are the caller's (`${where}` is a bound-parameter fragment). */
 const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sql`
@@ -77,11 +88,16 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
                     'exercise_id', ri.exercise_id, 'target_sets', ri.target_sets,
                     'target_reps_low', ri.target_reps_low, 'target_reps_high', ri.target_reps_high,
                     'target_rpe', ri.target_rpe, 'rest_seconds', ri.rest_seconds,
-                    'superset_group', ri.superset_group, 'notes', ri.notes,
+                    'superset_group', ri.superset_group, 'notes', ri.notes, 'section_id', ri.section_id,
                     'sets', ${plannedSetsJson("routine_item_set", "routine_item_id", "ri.id")})
                   ORDER BY ri.position)
            FROM "routine_item" ri WHERE ri.routine_id = r.id
-         ), '[]'::json) AS items
+         ), '[]'::json) AS items,
+         COALESCE((
+           SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes)
+                           ORDER BY s.position)
+           FROM "routine_section" s WHERE s.routine_id = r.id
+         ), '[]'::json) AS sections
   FROM "routine" r
   WHERE ${where}
   ${orderBy}
@@ -103,6 +119,7 @@ function toItem(r: ItemDbRow): RoutineItemRecord {
     supersetGroup: r.superset_group,
     notes: r.notes,
     sets: r.sets.map(toPlannedSet),
+    sectionId: r.section_id,
   };
 }
 
@@ -114,6 +131,7 @@ function toRoutine(r: RoutineDbRow): RoutineRecord {
     notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes })),
     items: r.items.map(toItem),
   };
 }
@@ -152,18 +170,50 @@ export async function assertItemExercisesUsable(
   return new Map(rows.map((r) => [r.id, r.modality as Modality]));
 }
 
+/** Spec 09.2 §6.2 — ONE bulk insert of the document's sections (≤ 8 rows); returns request key → new row id. */
+async function insertSections(
+  tx: RawClient,
+  routineId: string,
+  sections: NonNullable<RoutineWriteFields["sections"]>,
+): Promise<ReadonlyMap<string, string>> {
+  const idByKey = new Map<string, string>();
+  if (sections.length === 0) return idByKey;
+  const values = sections.map((s, j) => {
+    const id = uuidv7();
+    idByKey.set(s.key, id);
+    return Prisma.sql`(${id}::uuid, ${routineId}::uuid, ${j}, ${s.name}, ${s.notes ?? null}, now(), now())`;
+  });
+  await tx.$executeRaw`
+    INSERT INTO "routine_section" (id, routine_id, position, name, notes, created_at, updated_at)
+    VALUES ${Prisma.join(values)}
+  `;
+  return idByKey;
+}
+
 /** §6.2 step 4 + §6.3, extended by Spec 09.1 §6.3: rows and derived targets from
  * `resolveItemPlan`; items, then ONE bulk insert of every row. Returns the row count. */
-async function insertItems(tx: RawClient, routineId: string, items: RoutineWriteFields["items"]): Promise<number> {
+async function insertItems(
+  tx: RawClient,
+  routineId: string,
+  items: RoutineWriteFields["items"],
+  sectionIdByKey: ReadonlyMap<string, string>,
+): Promise<number> {
   const groups = normalizeSupersetGroups(items.map((i) => i.supersetGroup ?? null));
   const plans = items.map(resolveItemPlan);
   const itemIds = items.map(() => uuidv7());
+  const sectionIds = items.map((it) => {
+    if (it.sectionKey == null) return null;
+    const id = sectionIdByKey.get(it.sectionKey);
+    // The request schema rejects an undeclared key (AC6); reaching here is a bug, and throwing rolls the PUT back.
+    if (id === undefined) throw new InternalError(`routine item references undeclared section key at insert`);
+    return id;
+  });
   const values = items.map(
     (it, i) => Prisma.sql`(
       ${itemIds[i]}::uuid, ${routineId}::uuid, ${i}, ${it.exerciseId}::uuid,
       ${plans[i]!.targetSets}, ${plans[i]!.targetRepsLow}, ${plans[i]!.targetRepsHigh},
       ${it.targetRpe == null ? null : rpeToTenths(it.targetRpe)}, ${it.restSeconds ?? null}, ${groups[i] ?? null},
-      ${it.notes ?? null}, now(), now())`,
+      ${it.notes ?? null}, ${sectionIds[i]}::uuid, now(), now())`,
   );
   await tx.$executeRaw`
     INSERT INTO "routine_item" (${ITEM_COLS}, created_at, updated_at)
@@ -243,7 +293,8 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
           fields.items.map((i) => i.exerciseId),
         );
         assertPlannedSetsFitModalities(fields.items, modalities);
-        await insertItems(tx, id, fields.items);
+        const sectionIds = await insertSections(tx, id, fields.sections ?? []);
+        await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
     },
@@ -275,7 +326,11 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         // Delete then reinsert with fresh ids (D2): no transient duplicate
         // position, so `routine_item_routine_position_key` needs no DEFERRABLE.
         await tx.$executeRaw`DELETE FROM "routine_item" WHERE routine_id = ${id}::uuid`;
-        await insertItems(tx, id, fields.items);
+        // Items first, so the SET NULL on routine_item.section_id has nothing to do; deleting before
+        // re-inserting is also what lets the section position index stay non-deferrable.
+        await tx.$executeRaw`DELETE FROM "routine_section" WHERE routine_id = ${id}::uuid`;
+        const sectionIds = await insertSections(tx, id, fields.sections ?? []);
+        await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
     },

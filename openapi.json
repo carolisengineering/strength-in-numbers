@@ -727,6 +727,40 @@
                               "null"
                             ]
                           },
+                          "sections": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                },
+                                "position": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "notes": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "position",
+                                "name",
+                                "notes"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "items": {
                             "type": "array",
                             "items": {
@@ -887,6 +921,18 @@
                                     ],
                                     "additionalProperties": false
                                   }
+                                },
+                                "sectionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [
@@ -900,7 +946,8 @@
                                 "restSeconds",
                                 "supersetGroup",
                                 "notes",
-                                "sets"
+                                "sets",
+                                "sectionId"
                               ],
                               "additionalProperties": false
                             }
@@ -920,6 +967,7 @@
                           "id",
                           "name",
                           "notes",
+                          "sections",
                           "items",
                           "createdAt",
                           "updatedAt"
@@ -1192,6 +1240,18 @@
                                     "additionalProperties": false
                                   }
                                 },
+                                "sectionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "sets": {
                                   "type": "array",
                                   "items": {
@@ -1403,7 +1463,48 @@
                                 "restSeconds",
                                 "supersetGroup",
                                 "plannedSets",
+                                "sectionId",
                                 "sets"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "routineNotes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "sections": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                },
+                                "position": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "notes": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "position",
+                                "name",
+                                "notes"
                               ],
                               "additionalProperties": false
                             }
@@ -1422,7 +1523,9 @@
                           "createdAt",
                           "updatedAt",
                           "routineName",
-                          "exercises"
+                          "exercises",
+                          "routineNotes",
+                          "sections"
                         ],
                         "additionalProperties": false
                       }
@@ -4933,6 +5036,18 @@
                               "additionalProperties": false
                             }
                           },
+                          "sectionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "sets": {
                             "type": "array",
                             "items": {
@@ -5144,7 +5259,48 @@
                           "restSeconds",
                           "supersetGroup",
                           "plannedSets",
+                          "sectionId",
                           "sets"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "routineNotes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "position",
+                          "name",
+                          "notes"
                         ],
                         "additionalProperties": false
                       }
@@ -5163,7 +5319,9 @@
                     "createdAt",
                     "updatedAt",
                     "routineName",
-                    "exercises"
+                    "exercises",
+                    "routineNotes",
+                    "sections"
                   ],
                   "additionalProperties": false
                 }
@@ -5592,6 +5750,18 @@
                               "additionalProperties": false
                             }
                           },
+                          "sectionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "sets": {
                             "type": "array",
                             "items": {
@@ -5803,7 +5973,48 @@
                           "restSeconds",
                           "supersetGroup",
                           "plannedSets",
+                          "sectionId",
                           "sets"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "routineNotes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "position",
+                          "name",
+                          "notes"
                         ],
                         "additionalProperties": false
                       }
@@ -5822,7 +6033,9 @@
                     "createdAt",
                     "updatedAt",
                     "routineName",
-                    "exercises"
+                    "exercises",
+                    "routineNotes",
+                    "sections"
                   ],
                   "additionalProperties": false
                 }
@@ -6941,6 +7154,18 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "sectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -6959,7 +7184,8 @@
                     "targetRpe",
                     "restSeconds",
                     "supersetGroup",
-                    "plannedSets"
+                    "plannedSets",
+                    "sectionId"
                   ],
                   "additionalProperties": false
                 }
@@ -7446,6 +7672,18 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "sectionId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -7464,7 +7702,8 @@
                     "targetRpe",
                     "restSeconds",
                     "supersetGroup",
-                    "plannedSets"
+                    "plannedSets",
+                    "sectionId"
                   ],
                   "additionalProperties": false
                 }
@@ -7982,6 +8221,40 @@
                               "null"
                             ]
                           },
+                          "sections": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                },
+                                "position": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "notes": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "position",
+                                "name",
+                                "notes"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
                           "items": {
                             "type": "array",
                             "items": {
@@ -8142,6 +8415,18 @@
                                     ],
                                     "additionalProperties": false
                                   }
+                                },
+                                "sectionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [
@@ -8155,7 +8440,8 @@
                                 "restSeconds",
                                 "supersetGroup",
                                 "notes",
-                                "sets"
+                                "sets",
+                                "sectionId"
                               ],
                               "additionalProperties": false
                             }
@@ -8175,6 +8461,7 @@
                           "id",
                           "name",
                           "notes",
+                          "sections",
                           "items",
                           "createdAt",
                           "updatedAt"
@@ -8336,6 +8623,41 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "sections": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "notes": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
                   },
                   "items": {
                     "minItems": 1,
@@ -8502,6 +8824,17 @@
                             },
                             "additionalProperties": false
                           }
+                        },
+                        "sectionKey": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -8541,6 +8874,40 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "position",
+                          "name",
+                          "notes"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "items": {
                       "type": "array",
@@ -8702,6 +9069,18 @@
                               ],
                               "additionalProperties": false
                             }
+                          },
+                          "sectionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -8715,7 +9094,8 @@
                           "restSeconds",
                           "supersetGroup",
                           "notes",
-                          "sets"
+                          "sets",
+                          "sectionId"
                         ],
                         "additionalProperties": false
                       }
@@ -8735,6 +9115,7 @@
                     "id",
                     "name",
                     "notes",
+                    "sections",
                     "items",
                     "createdAt",
                     "updatedAt"
@@ -8991,6 +9372,40 @@
                         "null"
                       ]
                     },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "position",
+                          "name",
+                          "notes"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -9151,6 +9566,18 @@
                               ],
                               "additionalProperties": false
                             }
+                          },
+                          "sectionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -9164,7 +9591,8 @@
                           "restSeconds",
                           "supersetGroup",
                           "notes",
-                          "sets"
+                          "sets",
+                          "sectionId"
                         ],
                         "additionalProperties": false
                       }
@@ -9184,6 +9612,7 @@
                     "id",
                     "name",
                     "notes",
+                    "sections",
                     "items",
                     "createdAt",
                     "updatedAt"
@@ -9385,6 +9814,41 @@
                       }
                     ]
                   },
+                  "sections": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "notes": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 2000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
                   "items": {
                     "minItems": 1,
                     "maxItems": 30,
@@ -9550,6 +10014,17 @@
                             },
                             "additionalProperties": false
                           }
+                        },
+                        "sectionKey": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9_-]{1,32}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -9599,6 +10074,40 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                          },
+                          "position": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "position",
+                          "name",
+                          "notes"
+                        ],
+                        "additionalProperties": false
+                      }
                     },
                     "items": {
                       "type": "array",
@@ -9760,6 +10269,18 @@
                               ],
                               "additionalProperties": false
                             }
+                          },
+                          "sectionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -9773,7 +10294,8 @@
                           "restSeconds",
                           "supersetGroup",
                           "notes",
-                          "sets"
+                          "sets",
+                          "sectionId"
                         ],
                         "additionalProperties": false
                       }
@@ -9793,6 +10315,7 @@
                     "id",
                     "name",
                     "notes",
+                    "sections",
                     "items",
                     "createdAt",
                     "updatedAt"

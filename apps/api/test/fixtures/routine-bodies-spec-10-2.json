@@ -1,0 +1,27 @@
+[
+  {
+    "label": "quick line, RPE and rest",
+    "body": { "name": "Quick", "notes": null, "items": [
+      { "exerciseId": "$EX", "targetSets": 4, "targetRepsLow": 6, "targetRepsHigh": 8, "targetRpe": 8.5, "restSeconds": 120, "supersetGroup": null, "notes": "pause" } ] },
+    "expect": { "status": 201, "items": [ { "targetSets": 4, "targetRepsLow": 6, "targetRepsHigh": 8, "setCount": 4, "supersetGroup": null } ] }
+  },
+  {
+    "label": "plan mode with a warm-up and a fractional weight",
+    "body": { "name": "Plan", "notes": "heavy day", "items": [
+      { "exerciseId": "$EX", "targetRpe": null, "restSeconds": null, "supersetGroup": null, "notes": null,
+        "sets": [ { "setType": "warmup", "repsLow": 10, "repsHigh": 10, "weight": 60, "weightUnit": "kg" },
+                  { "setType": "working", "repsLow": 5, "repsHigh": 5, "weight": 62.5, "weightUnit": "lb" } ] } ] },
+    "expect": { "status": 201, "items": [ { "targetSets": 2, "targetRepsLow": 5, "targetRepsHigh": 10, "setCount": 2, "supersetGroup": null } ] }
+  },
+  {
+    "label": "supersets with sparse labels",
+    "body": { "name": "Supers", "notes": null, "items": [
+      { "exerciseId": "$EX", "supersetGroup": 7 }, { "exerciseId": "$EX", "supersetGroup": 3 },
+      { "exerciseId": "$EX", "supersetGroup": 7 }, { "exerciseId": "$EX", "supersetGroup": 3 } ] },
+    "expect": { "status": 201, "items": [
+      { "targetSets": null, "targetRepsLow": null, "targetRepsHigh": null, "setCount": 0, "supersetGroup": 1 },
+      { "targetSets": null, "targetRepsLow": null, "targetRepsHigh": null, "setCount": 0, "supersetGroup": 2 },
+      { "targetSets": null, "targetRepsLow": null, "targetRepsHigh": null, "setCount": 0, "supersetGroup": 1 },
+      { "targetSets": null, "targetRepsLow": null, "targetRepsHigh": null, "setCount": 0, "supersetGroup": 2 } ] }
+  }
+]

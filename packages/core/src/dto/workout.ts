@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "../enums.js";
-import { ExerciseIdSchema, RoutineIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema } from "../ids.js";
+import { ExerciseIdSchema, RoutineIdSchema, WorkoutExerciseIdSchema, WorkoutIdSchema, WorkoutSectionIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { PersonalRecordSchema } from "./personal-record.js";
 import { PlannedSetSchema } from "./planned-set.js";
@@ -88,8 +88,19 @@ export const WorkoutExerciseSchema = z.object({
   /** Spec 09.1 — the routine item's planned sets, snapshotted at start; `[]` for a
    * manual add and for workouts started before 0010. Read-only (no write route). */
   plannedSets: z.array(PlannedSetSchema),
+  /** Spec 09.2 — the snapshotted section this exercise sits in; `null` = loose, manually added, or started before 0011. No write route (D9). */
+  sectionId: WorkoutSectionIdSchema.nullable(),
 });
 export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
+
+/** Spec 09.2 — a workout's section, snapshotted from the routine at start (immutable; no write route). */
+export const WorkoutSectionSchema = z.object({
+  id: WorkoutSectionIdSchema,
+  position: z.number().int().min(0),
+  name: z.string(),
+  notes: z.string().nullable(),
+});
+export type WorkoutSection = z.infer<typeof WorkoutSectionSchema>;
 
 /** One exercise within a workout, with its sets ordered by `setNumber`
  * (Spec 05.1 §4, AC12). Defined here, not in `dto/set-entry.ts`, to keep the
@@ -102,6 +113,10 @@ export type WorkoutExerciseDetail = z.infer<typeof WorkoutExerciseDetailSchema>;
 /** GET /v1/workouts/active and GET /v1/workouts/{id}. */
 export const WorkoutDetailSchema = WorkoutSchema.extend({
   exercises: z.array(WorkoutExerciseDetailSchema),
+  /** Spec 09.2 — the routine's own note as it was at start; `null` for a manual start. Detail only (D14). */
+  routineNotes: z.string().nullable(),
+  /** Spec 09.2 — ordered by position; `[]` for a manual start, a routine without sections, and pre-0011 workouts. */
+  sections: z.array(WorkoutSectionSchema),
 });
 export type WorkoutDetail = z.infer<typeof WorkoutDetailSchema>;
 

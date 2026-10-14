@@ -25,6 +25,7 @@ import type {
   WorkoutExerciseDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
+  WorkoutSectionRecord,
   WorkoutRepository,
 } from "./workout.js";
 import {
@@ -103,6 +104,29 @@ export interface WorkoutExerciseDbRow {
   superset_group: number | null;
   /** Spec 09.1 — `json_agg` of the exercise's planned rows, `[]` when none. */
   planned_sets: PlannedSetDbRow[];
+  section_id: string | null;
+}
+
+export interface WorkoutSectionDbRow {
+  id: string;
+  position: number;
+  name: string;
+  notes: string | null;
+}
+
+export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRecord {
+  return { id: r.id, position: r.position, name: r.name, notes: r.notes };
+}
+
+/** Spec 09.2 §6.3 — a workout's sections as one scalar subquery (the `plannedSetsJson` idiom), so a
+ * statement that already selects the workout stays one statement. `parentRef` is a SQL column
+ * reference (`'w.id'`, `'"workout".id'`), never user input. */
+export function workoutSectionsJson(parentRef: string): Prisma.Sql {
+  return Prisma.raw(`COALESCE((
+    SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes)
+                    ORDER BY s.position)
+    FROM "workout_section" s WHERE s.workout_id = ${parentRef}
+  ), '[]'::json)`);
 }
 
 /** A correlated sub-select over `"workout_exercise"` (Spec 09.1 §6.5). */
@@ -126,6 +150,7 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
     restSeconds: r.rest_seconds,
     supersetGroup: r.superset_group,
     plannedSets: r.planned_sets.map(toPlannedSet),
+    sectionId: r.section_id,
   };
 }
 
@@ -139,7 +164,7 @@ function parseEndedAt(startedAt: Date, endedAtIso: string, now: Date): Date {
 }
 
 type InsertOutcome =
-  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number; plannedSetCount: number }
+  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number; plannedSetCount: number; sectionCount: number }
   | { kind: "no-row" }
   | { kind: "active-conflict" };
 
@@ -166,6 +191,7 @@ interface RoutineItemCopyRow {
   rest_seconds: number | null;
   superset_group: number | null;
   notes: string | null;
+  section_id: string | null;
 }
 
 export function createWorkoutRepository(
@@ -195,7 +221,7 @@ export function createWorkoutRepository(
       `;
       const insertedRow = rows[0];
       return insertedRow
-        ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0 }
+        ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 }
         : { kind: "no-row" };
     } catch (err) {
       if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
@@ -224,19 +250,31 @@ export function createWorkoutRepository(
         const outcome = await tryInsert(tx, id, actingUserId, fields, tzOffsetMinutes, localDate);
         if (outcome.kind !== "inserted") throw new StartOutcomeSignal(outcome);
 
-        const routineRows = await tx.$queryRaw<{ id: string; name: string }[]>`
-          SELECT id, name FROM "routine"
+        const routineRows = await tx.$queryRaw<{ id: string; name: string; notes: string | null }[]>`
+          SELECT id, name, notes FROM "routine"
           WHERE id = ${fields.routineId}::uuid AND user_id = ${actingUserId}::uuid
           FOR SHARE
         `;
         const routine = routineRows[0];
         if (!routine) throw new NotFoundError("routine not found or not owned by the acting user");
 
+        // Spec 09.2 §6.4: sections first, so the item read can join to them. Same transaction, same
+        // FOR SHARE (D6: gen_random_uuid — Postgres 16 has no uuidv7()). Fresh ids; position, name,
+        // notes verbatim.
+        const sectionCount = await tx.$executeRaw`
+          INSERT INTO "workout_section" (id, workout_id, position, name, notes, created_at, updated_at)
+          SELECT gen_random_uuid(), ${id}::uuid, rs.position, rs.name, rs.notes, now(), now()
+          FROM "routine_section" rs
+          WHERE rs.routine_id = ${routine.id}::uuid
+        `;
+
         const items = await tx.$queryRaw<RoutineItemCopyRow[]>`
           SELECT ri.position, ri.exercise_id, e.name, e.modality, e.is_active, ri.target_sets,
                  ri.target_reps_low, ri.target_reps_high, ri.target_rpe, ri.rest_seconds, ri.superset_group,
-                 ri.notes
+                 ri.notes, ws.id AS section_id
           FROM "routine_item" ri JOIN "exercise" e ON e.id = ri.exercise_id
+          LEFT JOIN "routine_section" rs ON rs.id = ri.section_id
+          LEFT JOIN "workout_section" ws ON ws.workout_id = ${id}::uuid AND ws.position = rs.position
           WHERE ri.routine_id = ${routine.id}::uuid
           ORDER BY ri.position
         `;
@@ -255,12 +293,12 @@ export function createWorkoutRepository(
             (it) => Prisma.sql`(
               ${uuidv7()}::uuid, ${id}::uuid, ${it.position}, ${it.exercise_id}::uuid, ${it.name}, ${it.modality}, ${it.notes},
               ${it.target_sets}, ${it.target_reps_low}, ${it.target_reps_high}, ${it.target_rpe},
-              ${it.rest_seconds}, ${it.superset_group}, now(), now())`,
+              ${it.rest_seconds}, ${it.superset_group}, ${it.section_id}::uuid, now(), now())`,
           );
           await tx.$executeRaw`
             INSERT INTO "workout_exercise"
               (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, notes,
-               target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+               target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                created_at, updated_at)
             VALUES ${Prisma.join(values)}
           `;
@@ -278,12 +316,13 @@ export function createWorkoutRepository(
           `;
         }
         const updated = await tx.$queryRaw<WorkoutDbRow[]>`
-          UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name}
+          UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name},
+                 routine_notes_snapshot = ${routine.notes}
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         `;
-        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount } as InsertOutcome;
+        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount } as InsertOutcome;
       });
     } catch (err) {
       if (err instanceof StartOutcomeSignal) return err.outcome;
@@ -294,13 +333,24 @@ export function createWorkoutRepository(
   async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
     const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
       SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
              ${WE_PLANNED_SETS} AS planned_sets
       FROM "workout_exercise"
       WHERE workout_id = ${workoutId}::uuid
       ORDER BY position ASC
     `;
     return rows.map(toExerciseRecord);
+  }
+
+  /** One statement: the routine's note snapshot and the workout's sections. Only the detail path reads
+   * `routine_notes_snapshot`; every other `workout` SELECT is untouched (AC1, D14). */
+  async function loadSectionSnapshot(workoutId: string) {
+    const rows = await prisma.$queryRaw<{ routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[] }[]>`
+      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections
+      FROM "workout" w WHERE w.id = ${workoutId}::uuid
+    `;
+    const row = rows[0];
+    return { routineNotes: row?.routine_notes_snapshot ?? null, sections: (row?.sections ?? []).map(toWorkoutSectionRecord) };
   }
 
   async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
@@ -316,7 +366,8 @@ export function createWorkoutRepository(
       ...e,
       sets: byExercise.get(e.id) ?? [],
     }));
-    return { ...toRecord(w), exercises: withSets };
+    const snapshot = await loadSectionSnapshot(w.id);
+    return { ...toRecord(w), exercises: withSets, ...snapshot };
   }
 
   async function findByClientGeneratedId(
@@ -366,19 +417,20 @@ export function createWorkoutRepository(
           created: true,
           copiedCount: attempt1.copiedCount,
           plannedSetCount: attempt1.plannedSetCount,
+          sectionCount: attempt1.sectionCount,
         };
       }
 
       if (attempt1.kind === "active-conflict") {
         const stored = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0 };
+        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
         throw new WorkoutInProgressExistsError();
       }
 
       // attempt1.kind === "no-row": the idempotency key already existed *or*
       // its row was concurrently deleted between the insert and this re-read.
       const stored1 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0 };
+      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
 
       // Delete race: retry the insert exactly once (§6.2 step 3, D40).
       const attempt2 = await attempt();
@@ -389,11 +441,12 @@ export function createWorkoutRepository(
           created: true,
           copiedCount: attempt2.copiedCount,
           plannedSetCount: attempt2.plannedSetCount,
+          sectionCount: attempt2.sectionCount,
         };
       }
 
       const stored2 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0 };
+      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
 
       if (attempt2.kind === "active-conflict") {
         // The retry raced a *different* in-progress workout: a genuine
@@ -644,7 +697,7 @@ export function createWorkoutRepository(
             (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
              ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                     '[]'::json AS planned_sets
         `;
         return toExerciseRecord(insertedRows[0]!);
@@ -763,7 +816,7 @@ export function createWorkoutRepository(
           SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup}, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
-                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+                    modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                     ${WE_PLANNED_SETS} AS planned_sets
         `;
         return toExerciseRecord(updatedRows[0]!);

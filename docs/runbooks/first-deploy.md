@@ -434,6 +434,20 @@ eligible sets.
    Non-zero means an old-code routine save ran between steps 1 and 2. Re-run the guarded backfill (the `INSERT … SELECT` between `BACKFILL-BEGIN` / `BACKFILL-END` in `apps/api/prisma/migrations/0010_create_planned_sets/migration.sql`); it only fills items that have no rows.
 4. Spec 10.2 (the UI) merges only after step 3 is clean.
 
+### 0011 — routine sections (Spec 09.2)
+
+1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.2; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code ignores the new tables and columns, so the migration safely precedes it.
+2. Merge 09.2 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require fields the old API does not send — accepted on staging, as in 0010).
+3. Verify: `GET $BASE/v1/routines` shows `sections: []` and `sectionId: null` everywhere; `GET $BASE/v1/workouts/active` (or any `GET /v1/workouts/{id}`) shows `sections: []`, `routineNotes: null`. Consistency queries — both expected `0`:
+
+   ```sql
+   SELECT count(*) FROM "routine_item" ri JOIN "routine_section" s ON s.id = ri.section_id WHERE s.routine_id <> ri.routine_id;
+   SELECT count(*) FROM "workout_exercise" we JOIN "workout_section" s ON s.id = we.section_id WHERE s.workout_id <> we.workout_id;
+   ```
+
+   There is no backfill and no rollout-window hazard: old code never writes the new columns, and no client creates sections until Spec 10.3.
+4. Spec 10.3 (the UI) merges only after step 3 is clean.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

@@ -84,7 +84,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
       const startedAt = new Date(request.body.startedAt);
       assertStartedAtInBounds(startedAt, new Date());
 
-      const { workout, created, copiedCount, plannedSetCount } = await deps.workoutRepository.createWorkout(
+      const { workout, created, copiedCount, plannedSetCount, sectionCount } = await deps.workoutRepository.createWorkout(
         actingUserId,
         {
           clientGeneratedId: request.body.clientGeneratedId,
@@ -108,6 +108,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
               user_id: actingUserId,
               item_count: copiedCount,
               planned_set_count: plannedSetCount,
+              section_count: sectionCount,
             },
             "workout_started_from_routine",
           );

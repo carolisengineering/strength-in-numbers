@@ -69,11 +69,24 @@ export interface WorkoutExerciseRecord {
   supersetGroup: number | null;
   /** Spec 09.1 — snapshotted from the routine item at start, ordered by position; `[]` otherwise. */
   plannedSets: PlannedSet[];
+  /** Spec 09.2 */
+  sectionId: string | null;
+}
+
+export interface WorkoutSectionRecord {
+  id: string;
+  position: number;
+  name: string;
+  notes: string | null;
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
   /** Ordered by `position` ascending (§6.7). */
   exercises: WorkoutExerciseDetailRecord[];
+  /** Spec 09.2 — the routine's own note as it was at start; null for a manual start. */
+  routineNotes: string | null;
+  /** Spec 09.2 — ordered by position ascending. */
+  sections: WorkoutSectionRecord[];
 }
 
 /** The fields a caller supplies on create (Spec 05.0 §5, §6.1, §6.3). */
@@ -180,6 +193,8 @@ export interface CreateWorkoutResult {
   copiedCount: number;
   /** Spec 09.1 §9: `workout_planned_set` rows copied — 0 for a manual start and for a replay. */
   plannedSetCount: number;
+  /** Spec 09.2 §9: `workout_section` rows copied — 0 for a manual start and for a replay. */
+  sectionCount: number;
 }
 
 /**

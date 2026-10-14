@@ -40,7 +40,7 @@ export function makeAccountApp(
 export const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 export const TRUNCATE_ACCOUNTS =
-  'TRUNCATE "personal_record", "set_entry", "workout_exercise", "workout", "routine_item", "routine", "exercise", "user" CASCADE';
+  'TRUNCATE "personal_record", "set_entry", "workout_exercise", "workout_section", "workout", "routine_item", "routine_section", "routine", "exercise", "user" CASCADE';
 
 /** md5 of every row of `table` (as JSON, minus `omit` keys), ordered by id. */
 export async function tableHash(db: IntegrationDb, table: string, omit: string[] = []): Promise<string> {
@@ -54,4 +54,5 @@ export async function tableHash(db: IntegrationDb, table: string, omit: string[]
 export const USER_TABLES = [
   "user", "exercise", "workout", "workout_exercise", "set_entry", "routine", "routine_item", "personal_record",
   "routine_item_set", "workout_planned_set", // Spec 09.1
+  "routine_section", "workout_section", // Spec 09.2
 ] as const;
