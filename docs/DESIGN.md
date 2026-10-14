@@ -323,7 +323,7 @@ Rules:
 - **routine_section** — *sections* (Spec 09.2): `routine_id` (cascade), `position` (0–7,
   unique per routine), `name` (1–40 characters, trimmed, free text, duplicates allowed — the
   UI's one-tap starters are Warm-up, Main, Accessory, Finisher, Cooldown but the stored value
-  is plain text), `notes` (1–500, nullable). ≤ 8 per routine. `routine_item.section_id`
+  is plain text), `notes` (1–2 000, nullable). ≤ 8 per routine. `routine_item.section_id`
   (nullable, `ON DELETE SET NULL`) places an item in a section. **Optional everywhere**: a
   routine may have no sections, an item may be loose, a section may be empty. **Invariants**
   (enforced on every routine write, shared with the editor in `@sin/core` `sections.ts`): loose
@@ -1177,7 +1177,7 @@ with rationale so the "why" survives.
   eight named, noted sections its items can belong to; starting a workout snapshots them, each
   exercise's section and the routine's own note; the session and History show them, and the
   lifter can edit each exercise's note during the workout.** `routine_section` rows (name 1–40
-  free text, note ≤ 500) and a nullable `section_id` on items are written by the whole-document
+  free text, note ≤ 2 000) and a nullable `section_id` on items are written by the whole-document
   routine `PUT` (sections carry request-local keys that items reference; a body with no
   `sections` has none); the server rejects an item list that is not loose-first with each
   section one contiguous run, and a superset spanning sections. The start copy (inside the
@@ -1196,9 +1196,9 @@ with rationale so the "why" survives.
   JSON column (not queryable, no CHECKs; Q18 rejected a JSON snapshot); copying the routine
   note into `workout.notes` (mixes the routine's text with the lifter's); an advisory lock for
   the section cap (the cap is a property of one whole-document write that already holds the
-  routine row lock); online-only session notes remain open as Spec 10.3 O1. Open: section-note
-  length 500 vs 2 000 (Spec 09.2 O1); outbox vs online-only (Spec 10.3 O1); one spec or two
-  (Spec 10.3 O2). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
+  routine row lock); online-only session notes (owner ruled for the outbox, 2026-10-13). Section-note
+  length is 2 000, the routine note's (owner ruling, 2026-10-13). Open: one spec or two
+  (Spec 10.3 O2) and a per-section Add exercise (Spec 10.3 O3). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
 
 ---
 
