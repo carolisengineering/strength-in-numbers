@@ -63,6 +63,13 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       return rowIn(view(workout), (s) => s.id === id || matches(s, target, outbox.getState().idMap));
     },
 
+    async setExerciseNote(id, notes) {
+      const workout = cached();
+      if (!workout?.exercises.some((e) => e.id === id)) return rest.setExerciseNote(id, notes);
+      outbox.enqueueNote({ workoutId: workout.id, workoutExerciseId: id, body: { notes } });
+      return view(workout).exercises.find((e) => e.id === id)!;
+    },
+
     async deleteSet(id) {
       const workout = cached();
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;

@@ -120,3 +120,11 @@
   color: var(--color-muted);
   font-size: var(--font-size-sm);
 }
+
+.noteRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { SetEntry, WorkoutDetail } from "@sin/core";
+import type { SetEntry, WorkoutDetail, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
 import { localStorageAdapter, type StorageAdapter } from "../../storage/storage";
-import { withSetRemoved, withSetUpserted } from "./cache";
+import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { createOutbox, type Outbox } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/OutboxContext";
-import type { OutboxOp } from "./outbox/ops";
+import type { NoteOp, OutboxOp } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
 import { WORKOUT_KEYS, WorkoutClientContext } from "./queries";
@@ -32,6 +32,18 @@ function applySynced(queryClient: QueryClient, outbox: Outbox, op: OutboxOp, row
       return project(next, outbox.getState()).workout;
     });
     if (interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+  });
+}
+
+/** A synced note: write the server's copy over the optimistic one, then re-overlay what is still queued. `null` = a 404 "done": refetch. */
+function applyNoteSynced(queryClient: QueryClient, outbox: Outbox, op: NoteOp, exercise: WorkoutExercise | null): void {
+  const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;
+  void queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active }).then(() => {
+    queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => {
+      if (!d || d.id !== op.workoutId) return d;
+      return project(exercise ? withExerciseNotes(d, exercise) : d, outbox.getState()).workout;
+    });
+    if (interrupted || exercise === null) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
   });
 }
 
@@ -65,6 +77,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       rest,
       userId,
       onSynced: (op, row) => applySynced(queryClient, outbox, op, row),
+      onNoteSynced: (op, exercise) => applyNoteSynced(queryClient, outbox, op, exercise),
       onFailed: (op, error) => {
         reportUnexpected(REPORT_OP[op.kind], error);
         if (error instanceof ApiError && error.status === 404) {

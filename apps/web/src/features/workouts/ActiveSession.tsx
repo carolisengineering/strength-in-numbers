@@ -159,8 +159,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
     return null;
   }, [exercises, sync]);
-  const failedRowRef = useRef<HTMLLIElement | null>(null);
-  const setFailedRowRef = useCallback((node: HTMLLIElement | null) => {
+  const failedRowRef = useRef<HTMLElement | null>(null);
+  const setFailedRowRef = useCallback((node: HTMLElement | null) => {
     failedRowRef.current = node;
   }, []);
 
