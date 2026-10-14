@@ -98,6 +98,7 @@ export type DraftAction =
   | { readonly type: "moveSectionUp"; readonly key: string }
   | { readonly type: "moveSectionDown"; readonly key: string }
   | { readonly type: "deleteSection"; readonly key: string }
+  | { readonly type: "moveItemToSection"; readonly itemKey: string; readonly sectionKey: string | null }
   | { readonly type: "dismissUnlinkNotice" }
   | {
       readonly type: "load";
@@ -131,6 +132,7 @@ export const actions = {
   moveSectionUp: (key: string): DraftAction => ({ type: "moveSectionUp", key }),
   moveSectionDown: (key: string): DraftAction => ({ type: "moveSectionDown", key }),
   deleteSection: (key: string): DraftAction => ({ type: "deleteSection", key }),
+  moveItemToSection: (itemKey: string, sectionKey: string | null): DraftAction => ({ type: "moveItemToSection", itemKey, sectionKey }),
   dismissUnlinkNotice: (): DraftAction => ({ type: "dismissUnlinkNotice" }),
   load: (routine: Routine): DraftAction => ({
     type: "load",
@@ -218,23 +220,49 @@ export function isLinked(items: readonly DraftItem[], index: number): boolean {
   return isLinkedRule(slotsOf(items), index);
 }
 
+/** The contiguous slice [start, end) of items sharing `items[index].sectionKey` — contiguous because the draft is canonical (AC6). */
+function sliceOf(items: readonly DraftItem[], index: number): [number, number] {
+  const key = items[index]!.sectionKey;
+  let start = index;
+  while (start > 0 && items[start - 1]!.sectionKey === key) start -= 1;
+  let end = index + 1;
+  while (end < items.length && items[end]!.sectionKey === key) end += 1;
+  return [start, end];
+}
+
 export function canLink(state: Draft, index: number): { ok: true } | { ok: false; reason: string } {
-  return canLinkRule(slotsOf(state.items), index);
+  const here = state.items[index];
+  const below = state.items[index + 1];
+  if (here && below && here.sectionKey !== below.sectionKey) return { ok: false, reason: SECTION_LINK_REFUSAL };
+  if (!here) return canLinkRule(slotsOf(state.items), index);
+  const [start, end] = sliceOf(state.items, index);
+  return canLinkRule(slotsOf(state.items.slice(start, end)), index - start);
 }
 
 function toggleLink(state: Draft, index: number): DraftItem[] | null {
   const { items } = state;
   if (index < 0 || index >= items.length - 1) return null;
-  const slots = slotsOf(items);
-  if (isLinkedRule(slots, index)) return fromSlots(items, unlinkRule(slots, index));
-  const linked = linkRule(slots, index);
-  return linked.ok ? fromSlots(items, linked.slots) : null;
+  if (items[index]!.sectionKey !== items[index + 1]!.sectionKey) return null; // a superset never crosses a heading (AC5)
+  const [start, end] = sliceOf(items, index);
+  const part = items.slice(start, end);
+  const slots = slotsOf(part);
+  const local = index - start;
+  const changed = isLinkedRule(slots, local)
+    ? fromSlots(part, unlinkRule(slots, local))
+    : (() => {
+        const linked = linkRule(slots, local);
+        return linked.ok ? fromSlots(part, linked.slots) : null;
+      })();
+  return changed ? [...items.slice(0, start), ...changed, ...items.slice(end)] : null;
 }
 
-/** Block moves (D8): see `moveRule`. */
+/** Block moves (D8) on the item's own section run only: see `moveRule`. */
 function move(items: readonly DraftItem[], index: number, dir: -1 | 1): DraftItem[] | null {
-  const out = moveRule(slotsOf(items), index, dir);
-  return out ? fromSlots(items, out) : null;
+  if (index < 0) return null;
+  const [start, end] = sliceOf(items, index);
+  const part = items.slice(start, end);
+  const out = moveRule(slotsOf(part), index - start, dir);
+  return out ? [...items.slice(0, start), ...fromSlots(part, out), ...items.slice(end)] : null;
 }
 
 const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items, state.sections), dirty: true });
@@ -267,7 +295,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
         weight: null,
         weightUnit: null,
         plan: null,
-        sectionKey: null,
+        sectionKey: state.sections[state.sections.length - 1]?.key ?? null,
       };
       return withItems(state, [...state.items, item]);
     }
@@ -343,6 +371,16 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       if (!state.sections.some((s) => s.key === action.key)) return state;
       const items = state.items.map((i) => (i.sectionKey === action.key ? { ...i, sectionKey: null } : i));
       return withSections(state, state.sections.filter((s) => s.key !== action.key), items);
+    }
+    case "moveItemToSection": {
+      const item = state.items.find((i) => i.key === action.itemKey);
+      if (!item) return state;
+      if (action.sectionKey !== null && !state.sections.some((s) => s.key === action.sectionKey)) return state;
+      if (item.sectionKey === action.sectionKey) return state;
+      // Appended at the end of the whole list, then `settle`'s stable sort puts it at the end of its target run.
+      const moved: DraftItem = { ...item, sectionKey: action.sectionKey, supersetGroup: null };
+      const next = withItems(state, [...state.items.filter((i) => i.key !== item.key), moved]);
+      return item.supersetGroup === null ? next : { ...next, unlinkNotice: true };
     }
     case "dismissUnlinkNotice":
       return state.unlinkNotice ? { ...state, unlinkNotice: false } : state;
