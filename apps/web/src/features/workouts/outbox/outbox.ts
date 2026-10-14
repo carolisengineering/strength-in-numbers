@@ -1,11 +1,11 @@
-import type { CreateSet, SetEntry, UpdateSet } from "@sin/core";
+import type { CreateSet, SetEntry, UpdateSet, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
-import { combine, OutboxFileSchema, sameTarget, type IdMap, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
+import { combine, isSetOp, OutboxFileSchema, sameTarget, type CreateOp, type IdMap, type NoteOp, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
 
 export const OUTBOX_KEY = "sin:workout:outbox";
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
@@ -24,13 +24,15 @@ export interface OutboxState {
 
 export interface OutboxDeps {
   storage: StorageAdapter;
-  rest: Pick<WorkoutClient, "createSet" | "updateSet" | "deleteSet">;
+  rest: Pick<WorkoutClient, "createSet" | "updateSet" | "deleteSet" | "setExerciseNote">;
   userId: string;
   isOnline?: () => boolean;
   random?: () => number;
   newId?: () => string;
   /** An op reached the server. `row` is the server's row for a create / update, `null` for a delete. */
   onSynced?: (op: OutboxOp, row: SetEntry | null) => void;
+  /** A note op reached the server: `exercise` is the server's row, `null` for the 404 "done" path (Spec 10.3 AC12). A note never calls `onSynced`. */
+  onNoteSynced?: (op: NoteOp, exercise: WorkoutExercise | null) => void;
   /** An op became `failed` (called once, for the op the server answered; dependents fail with it). */
   onFailed?: (op: OutboxOp, error: unknown) => void;
   /** Ops removed by the lifter (Discard), so the screen can drop what it showed for them. */
@@ -48,6 +50,8 @@ export interface Outbox {
   enqueueCreate(input: SetWriteTarget & { body: CreateSet & { clientGeneratedId: string } }): void;
   enqueueUpdate(input: SetWriteTarget & { target: OpTarget; body: UpdateSet }): void;
   enqueueDelete(input: SetWriteTarget & { target: OpTarget }): void;
+  /** Spec 10.3: queue one exercise's note (`null` clears it). Newer text replaces a never-sent op for the same exercise. */
+  enqueueNote(input: SetWriteTarget & { body: { notes: string | null } }): void;
   /** How an op should name the set the screen shows as `setId` (a client key until its create syncs). */
   targetFor(setId: string): OpTarget;
   discard(opId: string): void;
@@ -190,7 +194,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return state.idMap[target.clientGeneratedId]?.setId ?? null;
   }
 
-  async function call(op: OutboxOp): Promise<SetEntry | null> {
+  async function call(op: OutboxOp): Promise<SetEntry | WorkoutExercise | null> {
+    if (op.kind === "note") return rest.setExerciseNote(op.workoutExerciseId, op.body.notes);
     if (op.kind === "create") return rest.createSet(op.workoutExerciseId, op.body);
     const id = resolveSetId(op.target);
     if (id === null) throw new UnresolvedTarget();
@@ -199,7 +204,14 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return null;
   }
 
-  function succeed(op: OutboxOp, row: SetEntry | null): void {
+  function succeed(op: OutboxOp, result: SetEntry | WorkoutExercise | null): void {
+    if (op.kind === "note") {
+      // A note needs no id mapping and emits no set_* event (D13); the provider writes the server's copy into the cache.
+      set({ ops: state.ops.filter((o) => o.id !== op.id) });
+      deps.onNoteSynced?.(op, result as WorkoutExercise | null);
+      return;
+    }
+    const row = result as SetEntry | null;
     const idMap =
       op.kind === "create" && row
         ? { ...state.idMap, [op.target.clientGeneratedId]: { setId: row.id, workoutId: op.workoutId } }
@@ -222,10 +234,11 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     state.ops.forEach((o, i) => {
       if (i <= index) return;
       if (finished && o.workoutId === op.workoutId) failing.add(o.id);
-      if (key !== null && sameTarget(o.target, key)) failing.add(o.id);
+      if (key !== null && isSetOp(o) && sameTarget(o.target, key)) failing.add(o.id);
     });
     set({ ops: state.ops.map((o) => (failing.has(o.id) ? ({ ...o, status: "failed", failure } as OutboxOp) : o)) });
-    for (let i = 0; i < failing.size; i += 1) track("set_sync_failed", { status: failure.status });
+    const setFailures = state.ops.filter((o) => failing.has(o.id) && o.kind !== "note").length;
+    for (let i = 0; i < setFailures; i += 1) track("set_sync_failed", { status: failure.status });
     deps.onFailed?.(op, error);
   }
 
@@ -285,6 +298,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       enqueue({ ...opBase(input), kind: "create", target: { clientGeneratedId: input.body.clientGeneratedId }, body: input.body }),
     enqueueUpdate: (input) => enqueue({ ...opBase(input), kind: "update", target: input.target, body: input.body }),
     enqueueDelete: (input) => enqueue({ ...opBase(input), kind: "delete", target: input.target, body: null }),
+    enqueueNote: (input) => enqueue({ ...opBase(input), kind: "note", body: input.body }),
     targetFor: (setId) => {
       const mapped = state.idMap[setId];
       if (mapped) return { setId: mapped.setId };
@@ -298,22 +312,22 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       if (!op) return;
       // A follow-up of a create that failed too: discarding it means discarding that set — the create
       // and every follow-up (final review I2), or the row would stay with one "Couldn't save" left.
-      const target = op.target;
-      const root = state.ops.find((o) => o.kind === "create" && o.status === "failed" && sameTarget(o.target, target));
+      const target = op.kind === "note" ? null : op.target;
+      const root = target ? state.ops.find((o) => o.kind === "create" && o.status === "failed" && sameTarget(o.target, target)) : undefined;
       if (op.status === "failed" && root) op = root;
       const chosen = op;
       const key = chosen.kind === "create" ? chosen.target : null;
-      const removed = remove((o) => o.id === chosen.id || (key !== null && sameTarget(o.target, key)));
+      const removed = remove((o) => o.id === chosen.id || (key !== null && isSetOp(o) && sameTarget(o.target, key)));
       deps.onDiscarded?.(removed);
     },
     discardFailed: (workoutId) => {
       // A failed create takes its follow-ups with it, queued or not (code review #2): without the
       // create they can never resolve to a server id.
-      const failedCreates = state.ops.filter((o) => o.workoutId === workoutId && o.kind === "create" && o.status === "failed");
+      const failedCreates = state.ops.filter((o): o is CreateOp => o.workoutId === workoutId && o.kind === "create" && o.status === "failed");
       const removed = remove(
         (o) =>
           (o.workoutId === workoutId && o.status === "failed") ||
-          failedCreates.some((c) => sameTarget(o.target, c.target)),
+          (isSetOp(o) && failedCreates.some((c) => sameTarget(o.target, c.target))),
       );
       if (removed.length > 0) deps.onDiscarded?.(removed);
     },

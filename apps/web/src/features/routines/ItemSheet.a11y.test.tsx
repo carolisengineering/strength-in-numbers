@@ -7,7 +7,7 @@ import type { DraftItem, DraftSet } from "./routineDraft";
 const set = (key: string, o: Partial<DraftSet> = {}): DraftSet => ({ key, setType: "working", repsLow: 8, repsHigh: 8, weight: 100, weightUnit: "kg", ...o });
 const item = (plan: DraftSet[]): DraftItem => ({
   key: "k", exerciseId: exerciseId(1), targetSets: plan.length, targetRepsLow: 8, targetRepsHigh: 8, targetRpe: null, restSeconds: null,
-  notes: null, supersetGroup: null, weight: null, weightUnit: null, plan,
+  notes: null, supersetGroup: null, weight: null, weightUnit: null, plan, sectionKey: null,
 });
 const open = (plan: DraftSet[]) => render(<ItemSheet open title="Bench" item={item(plan)} modality="weight_reps" onDone={vi.fn()} onClose={vi.fn()} />);
 

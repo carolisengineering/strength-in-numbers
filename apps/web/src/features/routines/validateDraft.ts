@@ -13,6 +13,8 @@ import {
 import type { z } from "zod";
 import type { ExerciseState } from "./exerciseLookup";
 import type { Draft, DraftItem, DraftSet } from "./routineDraft";
+import { SECTION_NAME_INVALID, SECTION_NOTES_INVALID } from "./messages";
+import { parseSectionName, parseSectionNotes } from "./sectionText";
 import { WEIGHT_MESSAGE } from "./targetFormat";
 
 /** The POST/PUT body (Spec 09 §5) before Zod's transforms. */
@@ -32,12 +34,13 @@ export type ItemField =
 export type DraftIssue =
   | { readonly scope: "name" | "notes" | "items" | "form"; readonly message: string }
   | { readonly scope: "item"; readonly itemKey: string; readonly field: ItemField; readonly message: string }
+  | { readonly scope: "section"; readonly sectionKey: string; readonly field: "name" | "notes"; readonly message: string }
   | { readonly scope: "row"; readonly itemKey: string; readonly rowKey: string; readonly field: "reps" | "weight"; readonly message: string };
 
 export interface DraftValidation {
   readonly ok: boolean;
   readonly issues: readonly DraftIssue[];
-  /** A superset-size issue reached Zod — impossible if the reducer is right (AC4); the editor reports it. */
+  /** A superset-size, section-span or section-order issue reached Zod — impossible if the reducer is right (AC4); the editor reports it. */
   readonly groupBug: boolean;
 }
 
@@ -113,10 +116,20 @@ function itemInput(item: DraftItem, modality: Modality | null) {
 /** The body the editor sends (AC6): exactly one form per item. Array order is position; keys and server ids never leave. */
 export function toRoutineInput(draft: Draft, options: { modalityOf: ModalityOf }): RoutineWriteInput {
   const notes = draft.notes.trim();
+  // Request-local keys, minted from section order: the draft's own keys never leave (AC7).
+  const requestKey = new Map(draft.sections.map((s, j) => [s.key, `s${j + 1}`]));
+  const sections = draft.sections.map((s) => {
+    const sectionNotes = s.notes.trim();
+    return { key: requestKey.get(s.key)!, name: s.name.trim(), ...(sectionNotes === "" ? {} : { notes: sectionNotes }) };
+  });
   return {
     name: draft.name.trim(),
     ...(notes === "" ? {} : { notes }),
-    items: draft.items.map((item) => itemInput(item, options.modalityOf(item.exerciseId))),
+    ...(sections.length === 0 ? {} : { sections }),
+    items: draft.items.map((item) => {
+      const sectionKey = item.sectionKey === null ? undefined : requestKey.get(item.sectionKey);
+      return { ...itemInput(item, options.modalityOf(item.exerciseId)), ...(sectionKey === undefined ? {} : { sectionKey }) };
+    }),
   };
 }
 
@@ -126,11 +139,23 @@ export function splitPath(path: string): PropertyKey[] {
 }
 
 /** One Zod / API path → where the editor shows it; `null` when it names nothing on screen. */
-export function issueForPath(path: readonly PropertyKey[], keys: readonly string[], planKeys: PlanKeys = []): DraftIssue | null {
+export function issueForPath(
+  path: readonly PropertyKey[],
+  keys: readonly string[],
+  planKeys: PlanKeys = [],
+  sectionKeys: readonly string[] = [],
+): DraftIssue | null {
   const [head, index, field, rowIndex, rowField] = path;
   if (head === "name") return { scope: "name", message: NAME_INVALID };
   if (head === "notes") return { scope: "notes", message: NOTES_INVALID };
   if (head === "items" && path.length === 1) return { scope: "items", message: ITEMS_REQUIRED };
+  if (head === "sections") {
+    const sectionKey = typeof index === "number" ? sectionKeys[index] : undefined;
+    if (sectionKey === undefined || path.length !== 3) return null;
+    if (field === "name") return { scope: "section", sectionKey, field: "name", message: SECTION_NAME_INVALID };
+    if (field === "notes") return { scope: "section", sectionKey, field: "notes", message: SECTION_NOTES_INVALID };
+    return null;
+  }
   if (head !== "items" || typeof index !== "number") return null;
   const itemKey = keys[index];
   if (itemKey === undefined) return null;
@@ -151,6 +176,8 @@ export function issueForPath(path: readonly PropertyKey[], keys: readonly string
     if (rowField === "weight" || rowField === "weightUnit") return { scope: "row", itemKey, rowKey, field: "weight", message: ROW_MESSAGES.weight };
     return null;
   }
+  // A superset or section-order path names nothing the lifter can edit on screen (the reducer cannot build it): form-level.
+  if (field === "supersetGroup" || field === "sectionKey") return null;
   if (typeof field === "string" && ITEM_FIELDS.has(field) && path.length === 3) return item(field as ItemField);
   return null;
 }
@@ -159,7 +186,7 @@ export function issueForPath(path: readonly PropertyKey[], keys: readonly string
 export type PlanKeys = readonly (readonly string[] | null)[];
 
 const issueId = (issue: DraftIssue): string =>
-  issue.scope === "item" ? `item:${issue.itemKey}:${issue.field}` : issue.scope === "row" ? `row:${issue.rowKey}:${issue.field}` : issue.scope;
+  issue.scope === "item" ? `item:${issue.itemKey}:${issue.field}` : issue.scope === "section" ? `section:${issue.sectionKey}:${issue.field}` : issue.scope === "row" ? `row:${issue.rowKey}:${issue.field}` : issue.scope;
 
 /** The same function the API runs (Spec 09.1 AC23) over the rows this body carries; maps to the sheet's places. */
 export function plannedViolationIssues(draft: Draft, body: RoutineWriteInput, modalityOf: ModalityOf): DraftIssue[] {
@@ -216,6 +243,13 @@ export function validateDraft(
     }
   }
 
+  for (const section of draft.sections) {
+    const nameParsed = parseSectionName(section.name);
+    if (!nameParsed.ok) push({ scope: "section", sectionKey: section.key, field: "name", message: nameParsed.message });
+    const notesParsed = parseSectionNotes(section.notes);
+    if (!notesParsed.ok) push({ scope: "section", sectionKey: section.key, field: "notes", message: notesParsed.message });
+  }
+
   let groupBug = false;
   const body = toRoutineInput(draft, { modalityOf });
   const parsed = RoutineWriteSchema.safeParse(body);
@@ -223,12 +257,12 @@ export function validateDraft(
     const keys = draft.items.map((i) => i.key);
     const planKeys: PlanKeys = draft.items.map((i) => (i.plan === null ? null : i.plan.map((r) => r.key)));
     for (const zodIssue of parsed.error.issues) {
-      if (zodIssue.path[0] === "items" && zodIssue.path[2] === "supersetGroup") {
+      if (zodIssue.path[0] === "items" && (zodIssue.path[2] === "supersetGroup" || zodIssue.path[2] === "sectionKey")) {
         groupBug = true;
-        push({ scope: "form", message: GROUP_BUG });
+        push({ scope: "form", message: zodIssue.path[2] === "sectionKey" ? FORM_INVALID : GROUP_BUG });
         continue;
       }
-      push(issueForPath(zodIssue.path, keys, planKeys) ?? { scope: "form", message: FORM_INVALID });
+      push(issueForPath(zodIssue.path, keys, planKeys, draft.sections.map((s) => s.key)) ?? { scope: "form", message: FORM_INVALID });
     }
   }
   for (const issue of plannedViolationIssues(draft, body, modalityOf)) push(issue);

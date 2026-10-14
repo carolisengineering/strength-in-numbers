@@ -8,7 +8,7 @@ import type { DraftItem, DraftSet } from "./routineDraft";
 
 const item = (o: Partial<DraftItem> = {}): DraftItem => ({
   key: "k", exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null,
-  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, ...o,
+  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, sectionKey: null, ...o,
 });
 const set = (key: string, o: Partial<DraftSet> = {}): DraftSet => ({ key, setType: "working", repsLow: 8, repsHigh: 8, weight: 100, weightUnit: "kg", ...o });
 const RAMP = [set("r1", { setType: "warmup", repsLow: 10, repsHigh: 10, weight: 60 }), set("r2", { weight: 80 }), set("r3", { repsLow: 6, repsHigh: 6 })];

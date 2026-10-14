@@ -429,3 +429,73 @@ describe("10.1 — PATCH supersetGroup / notes, and failNext skip", () => {
     expect((await call("PATCH", `/workout-exercises/${c}`, { supersetGroup: 1 })).status).toBe(200);
   });
 });
+
+describe("10.3 AC33 — the fake emits and copies the section fields", () => {
+  const body = {
+    name: "Push B",
+    notes: "Keep it short",
+    sections: [
+      { key: "w", name: "Warm-up", notes: "5 min rower" },
+      { key: "m", name: "Main" },
+    ],
+    items: [{ exerciseId: bench.id }, { exerciseId: squat.id, sectionKey: "m" }, { exerciseId: bench.id, sectionKey: "m" }],
+  };
+
+  it("a routine write stores sections with new ids and resolves each item's sectionKey", async () => {
+    boot();
+    const res = await call("POST", "/routines", body);
+    expect(res.status).toBe(201);
+    const routine = RoutineSchema.parse(res.json);
+    expect(routine.sections.map((s) => [s.position, s.name, s.notes])).toEqual([
+      [0, "Warm-up", "5 min rower"],
+      [1, "Main", null],
+    ]);
+    expect(routine.items.map((i) => i.sectionId)).toEqual([null, routine.sections[1]!.id, routine.sections[1]!.id]);
+  });
+
+  it("an undeclared sectionKey is a 422 on items.<i>.sectionKey (the same RoutineWriteSchema the API runs)", async () => {
+    boot();
+    const res = await call("POST", "/routines", { ...body, items: [{ exerciseId: bench.id, sectionKey: "nope" }] });
+    expect(res.status).toBe(422);
+    expect((res.json!["errors"] as { path: string }[]).map((e) => e.path)).toContain("items.0.sectionKey");
+  });
+
+  it("a body without sections stores none: sections [] and every sectionId null", async () => {
+    boot();
+    const res = await call("POST", "/routines", { name: "Plain", items: [{ exerciseId: bench.id }] });
+    const routine = RoutineSchema.parse(res.json);
+    expect(routine.sections).toEqual([]);
+    expect(routine.items[0]!.sectionId).toBeNull();
+  });
+
+  it("starting from a routine copies sections (new ids, same positions), each exercise's section by position, and the routine note", async () => {
+    const fake = boot();
+    const routine = RoutineSchema.parse((await call("POST", "/routines", body)).json);
+    const started = await call("POST", "/workouts", {
+      clientGeneratedId: crypto.randomUUID(),
+      startedAt: new Date().toISOString(),
+      tzOffsetMinutes: 0,
+      routineId: routine.id,
+    });
+    expect(started.status).toBe(201);
+    const active = fake.state.active!;
+    expect(active.routineNotes).toBe("Keep it short");
+    expect(active.sections.map((s) => [s.position, s.name, s.notes])).toEqual([
+      [0, "Warm-up", "5 min rower"],
+      [1, "Main", null],
+    ]);
+    const main = active.sections[1]!.id;
+    expect(main).not.toBe(routine.sections[1]!.id);
+    expect(active.exercises.map((e) => e.sectionId)).toEqual([null, main, main]);
+    const read = (await call("GET", "/workouts/active")).json!;
+    expect((read["sections"] as unknown[]).length).toBe(2);
+    expect(read["routineNotes"]).toBe("Keep it short");
+  });
+
+  it("a manual start has no sections and no routine note; an added exercise is loose", async () => {
+    const { fake } = await withExercise();
+    expect(fake.state.active!.sections).toEqual([]);
+    expect(fake.state.active!.routineNotes).toBeNull();
+    expect(fake.state.active!.exercises[0]!.sectionId).toBeNull();
+  });
+});

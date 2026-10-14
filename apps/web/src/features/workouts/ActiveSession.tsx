@@ -14,18 +14,21 @@ import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
-import { ExerciseCard } from "./ExerciseCard";
+import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { unsavedSets } from "./outbox/ops";
+import { unsavedNotes, unsavedSets } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
-import { supersetRows } from "./supersetRows";
+import { RoutineNotePanel } from "./RoutineNotePanel";
+import { sectionSegments, type SectionSegment } from "./sectionSegments";
+import { SessionSection } from "./SessionSectionHeading";
+import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
 import { useRegroup } from "./useRegroup";
 import {
@@ -61,6 +64,8 @@ const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time
 /** A structure write, finish or discard that failed at the network (Spec 06.2 AC15). */
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+
+type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -107,12 +112,17 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     [workout.exercises],
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
-  const slots = useMemo<SessionSlot[]>(() => rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), [rows]);
-  // A tap plans from the list last committed to the screen (set after commit, never during render).
-  const slotsRef = useRef(slots);
+  const segments = useMemo(() => sectionSegments(rows, workout.sections), [rows, workout.sections]);
+  // A tap plans from the segment last committed to the screen (set after commit, never during render).
+  const plannerRef = useRef(new Map<string, { slots: SessionSlot[]; start: number }>());
   useLayoutEffect(() => {
-    slotsRef.current = slots;
-  }, [slots]);
+    const next = new Map<string, { slots: SessionSlot[]; start: number }>();
+    for (const segment of segments) {
+      const slots = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
+      for (const row of segment.rows) next.set(row.exercise.id, { slots, start: segment.start });
+    }
+    plannerRef.current = next;
+  }, [segments]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
   const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
 
@@ -142,15 +152,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { sync } = useMemo(() => project(workout, outboxState), [workout, outboxState]);
   // Counted in sets, not queued writes: a set with an appended edit is still one set.
   const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
+  const { pending: notePending, failed: noteFailed } = unsavedNotes(outboxState.ops, workout.id);
+  const unsavedNoteCount = notePending + noteFailed;
   const firstFailedId = useMemo(() => {
     for (const exercise of exercises) {
+      if (sync.get(exercise.id)?.state === "failed") return exercise.id; // a failed note sits above its exercise's sets
       const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
       if (set) return set.id;
     }
     return null;
   }, [exercises, sync]);
-  const failedRowRef = useRef<HTMLLIElement | null>(null);
-  const setFailedRowRef = useCallback((node: HTMLLIElement | null) => {
+  const failedRowRef = useRef<HTMLElement | null>(null);
+  const setFailedRowRef = useCallback((node: HTMLElement | null) => {
     failedRowRef.current = node;
   }, []);
 
@@ -239,18 +252,23 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
    * PATCH) keeps 06.1's copy and Try again, which re-sends that same absolute position; any other
    * failed plan offers none (D7).
    */
-  async function runRegroup(op: SessionOp, resend?: SessionPatch) {
+  async function runRegroup(request: RegroupRequest, resend?: SessionPatch) {
     if (structureLock.current) return;
+    const anchor = request.type === "move" ? request.id : request.upperId;
+    const context = plannerRef.current.get(anchor);
+    if (!context) return;
+    const op: SessionOp =
+      request.type === "move" ? request : { type: "toggleLink", index: context.slots.findIndex((s) => s.id === request.upperId) };
     structureLock.current = true;
     setBanner(null);
     try {
-      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(slotsRef.current, op);
+      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(context.slots, op, { positionOffset: context.start });
       if (outcome.status === "refused") {
         setBanner({ tone: "warning", text: outcome.message });
       } else if (outcome.status === "failed") {
         const { retry } = outcome;
         if (retry !== null) {
-          await handleFailure("move-exercise", outcome.error, () => void runRegroup(op, retry), { refetched: true });
+          await handleFailure("move-exercise", outcome.error, () => void runRegroup(request, retry), { refetched: true });
         } else {
           await handleFailure("regroup", outcome.error, undefined, { refetched: true });
         }
@@ -403,11 +421,61 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
+  function renderRow({ exercise, bracket, line, label, linkedBelow }: SupersetRow, k: number, segment: SectionSegment) {
+    const below = segment.rows[k + 1]?.exercise;
+    const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
+    const refusal = canLinkRule(segmentSlots, k);
+    return (
+      <Fragment key={exercise.id}>
+        <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
+          <SupersetBracket position={bracket} />
+          <ExerciseCard
+            exercise={exercise}
+            targetLine={line}
+            accessibleName={label}
+            isFirst={k === 0}
+            isLast={k === segment.rows.length - 1}
+            structureBusy={structureBusy}
+            flaggedIds={flagged}
+            firstFlaggedId={firstFlaggedId}
+            firstFlaggedRef={setFirstFlaggedRef}
+            onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+            {...(segment.heading !== null
+              ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
+              : {})}
+            onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+            unitPreference={user?.unitPreference ?? "kg"}
+            onGone={gone}
+            sync={sync}
+            onDiscardOp={(opId) => outbox?.discard(opId)}
+            firstFailedId={firstFailedId}
+            failedRowRef={setFailedRowRef}
+          />
+        </div>
+        {below ? (
+          <div className={styles.joint}>
+            <SupersetBracket position={linkedBelow ? "middle" : "none"} />
+            <LinkToggle
+              id={`link-${exercise.id}`}
+              above={exercise.exerciseNameSnapshot}
+              below={below.exerciseNameSnapshot}
+              linked={linkedBelow}
+              refusal={refusal.ok ? null : refusal.reason}
+              disabled={structureBusy}
+              onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
+            />
+          </div>
+        ) : null}
+      </Fragment>
+    );
+  }
+
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
-  // Spec 06.2 AC16: Finish waits for every queued or failed set write of this workout.
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0;
+  // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
+  // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
 
   return (
     <Screen title="Workout">
@@ -445,52 +513,20 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </InlineNotice>
       ) : null}
 
+      {workout.routineNotes !== null ? <RoutineNotePanel name={workout.routineName} notes={workout.routineNotes} /> : null}
+
       <div className={styles.cards} aria-busy={regroup.busy || undefined}>
         {exercises.length === 0 && pending === null ? (
           <p className={styles.hint}>Add your first exercise</p>
         ) : null}
-        {rows.map(({ exercise, bracket, line, label, linkedBelow }, index) => {
-          const below = rows[index + 1]?.exercise;
-          const refusal = canLinkRule(slots, index);
-          return (
-            <Fragment key={exercise.id}>
-              <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
-                <SupersetBracket position={bracket} />
-                <ExerciseCard
-                  exercise={exercise}
-                  targetLine={line}
-                  accessibleName={label}
-                  isFirst={index === 0}
-                  isLast={index === rows.length - 1}
-                  structureBusy={structureBusy}
-                  flaggedIds={flagged}
-                  firstFlaggedId={firstFlaggedId}
-                  firstFlaggedRef={setFirstFlaggedRef}
-                  onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-                  onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
-                  unitPreference={user?.unitPreference ?? "kg"}
-                  onGone={gone}
-                  sync={sync}
-                  onDiscardOp={(opId) => outbox?.discard(opId)}
-                  firstFailedId={firstFailedId}
-                  failedRowRef={setFailedRowRef}
-                />
-              </div>
-              {below ? (
-                <div className={styles.joint}>
-                  <SupersetBracket position={linkedBelow ? "middle" : "none"} />
-                  <LinkToggle
-                    id={`link-${exercise.id}`}
-                    above={exercise.exerciseNameSnapshot}
-                    below={below.exerciseNameSnapshot}
-                    linked={linkedBelow}
-                    refusal={refusal.ok ? null : refusal.reason}
-                    disabled={structureBusy}
-                    onToggle={() => void runRegroup({ type: "toggleLink", index })}
-                  />
-                </div>
-              ) : null}
-            </Fragment>
+        {segments.map((segment) => {
+          const body = segment.rows.map((row, k) => renderRow(row, k, segment));
+          return segment.heading === null ? (
+            <Fragment key={segment.key}>{body}</Fragment>
+          ) : (
+            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+              {body}
+            </SessionSection>
           );
         })}
         {pending ? (
@@ -503,6 +539,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       <SyncStatus
         pending={pendingCount}
         failed={failedCount}
+        pendingNotes={notePending}
+        failedNotes={noteFailed}
         online={outboxState.online}
         onRetry={() => outbox?.retryNow()}
         onDiscardFailed={() => outbox?.discardFailed(workout.id)}
@@ -518,6 +556,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </Button>
         {totalSets === 0 ? <p className={styles.barHint}>Log at least one set to finish</p> : null}
         {unsaved > 0 ? <p className={styles.barHint}>{plural(unsaved, "set", "sets")} not saved yet</p> : null}
+        {unsavedNoteCount > 0 ? <p className={styles.barHint}>{plural(unsavedNoteCount, "note", "notes")} not saved yet</p> : null}
       </div>
 
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />

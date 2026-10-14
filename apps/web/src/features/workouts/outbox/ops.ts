@@ -34,7 +34,11 @@ export type CreateOp = OpBase & {
 };
 export type UpdateOp = OpBase & { kind: "update"; target: OpTarget; body: UpdateSet };
 export type DeleteOp = OpBase & { kind: "delete"; target: OpTarget; body: null };
-export type OutboxOp = CreateOp | UpdateOp | DeleteOp;
+/** Spec 10.3: one exercise's note (a replacement of one string); needs no id mapping and emits no set_* event. */
+export type NoteOp = OpBase & { kind: "note"; body: { notes: string | null } };
+export type SetOp = CreateOp | UpdateOp | DeleteOp;
+export type OutboxOp = SetOp | NoteOp;
+export const isSetOp = (op: OutboxOp): op is SetOp => op.kind !== "note";
 
 export interface IdMapEntry {
   setId: string;
@@ -71,6 +75,7 @@ export const OutboxFileSchema = z.object({
       }),
       z.object({ ...BaseShape, kind: z.literal("update"), target: TargetSchema, body: UpdateSetSchema }),
       z.object({ ...BaseShape, kind: z.literal("delete"), target: TargetSchema, body: z.null() }),
+      z.object({ ...BaseShape, kind: z.literal("note"), body: z.object({ notes: z.string().nullable() }) }),
     ]),
   ),
   idMap: z.record(z.string(), z.object({ setId: z.string(), workoutId: z.string() })),
@@ -82,7 +87,7 @@ export function sameTarget(a: OpTarget, b: OpTarget): boolean {
 }
 
 /** One key per set: a set created here is keyed by its client key even when an op names its server id. */
-function setKeyOf(op: OutboxOp, idMap: IdMap): string {
+function setKeyOf(op: SetOp, idMap: IdMap): string {
   if ("clientGeneratedId" in op.target) return `c:${op.target.clientGeneratedId}`;
   const { setId } = op.target;
   const created = Object.entries(idMap).find(([, entry]) => entry.setId === setId);
@@ -97,10 +102,22 @@ export function unsavedSets(ops: readonly OutboxOp[], workoutId: string, idMap: 
   const failed = new Set<string>();
   const all = new Set<string>();
   for (const op of ops) {
-    if (op.workoutId !== workoutId) continue;
+    if (op.workoutId !== workoutId || !isSetOp(op)) continue;
     const key = setKeyOf(op, idMap);
     all.add(key);
     if (op.status === "failed") failed.add(key);
+  }
+  return { pending: all.size - failed.size, failed: failed.size };
+}
+
+/** How many *exercises* of `workoutId` have a note that is not saved yet (Spec 10.3 AC13): an exercise with several queued edits counts once. */
+export function unsavedNotes(ops: readonly OutboxOp[], workoutId: string): { pending: number; failed: number } {
+  const all = new Set<string>();
+  const failed = new Set<string>();
+  for (const op of ops) {
+    if (op.workoutId !== workoutId || op.kind !== "note") continue;
+    all.add(op.workoutExerciseId);
+    if (op.status === "failed") failed.add(op.workoutExerciseId);
   }
   return { pending: all.size - failed.size, failed: failed.size };
 }
@@ -118,7 +135,7 @@ function dropNeverStoredSet(ops: readonly OutboxOp[], incoming: UpdateOp | Delet
   const key = incoming.target;
   const created = ops.find((o) => o.kind === "create" && sameTarget(o.target, key));
   if (!created || created.status !== "failed") return null;
-  return ops.filter((o) => !sameTarget(o.target, key));
+  return ops.filter((o) => !(isSetOp(o) && sameTarget(o.target, key)));
 }
 
 /**
@@ -133,7 +150,7 @@ function refoldRejectedCreate(ops: readonly OutboxOp[], incoming: UpdateOp | Del
   const index = ops.findIndex((o) => o.kind === "create" && sameTarget(o.target, key));
   const created = ops[index];
   if (!created || created.kind !== "create" || created.status !== "failed" || created.failure?.status !== 422) return null;
-  const followUps = ops.filter((o, i) => i > index && sameTarget(o.target, key));
+  const followUps = ops.filter((o, i) => i > index && isSetOp(o) && sameTarget(o.target, key));
   if (followUps.some((o) => o.kind === "delete")) return null;
   const body = followUps.reduce<CreateOp["body"]>((b, o) => (o.kind === "update" ? { ...b, ...o.body } : b), created.body);
   const fresh: CreateOp = {
@@ -149,11 +166,35 @@ function refoldRejectedCreate(ops: readonly OutboxOp[], incoming: UpdateOp | Del
 }
 
 /**
+ * A note is a replacement of one string on an exercise that already exists (Spec 10.3 AC12, D7): the newest
+ * text wins. It replaces the body of the last note op for the same exercise only while that op was never sent
+ * (a sent op may already have been applied — the 06.2 rule); a 422-failed op is reset (parity with set ops).
+ */
+function combineNote(ops: readonly OutboxOp[], incoming: NoteOp): OutboxOp[] {
+  let index = -1;
+  for (let i = ops.length - 1; i >= 0; i -= 1) {
+    const o = ops[i]!;
+    if (o.kind === "note" && o.workoutExerciseId === incoming.workoutExerciseId) {
+      index = i;
+      break;
+    }
+  }
+  const last = index >= 0 ? (ops[index] as NoteOp) : undefined;
+  if (!last) return [...ops, incoming];
+  if (last.status === "failed" && last.failure?.status === 422) {
+    return replaceAt(ops, index, { ...last, status: "queued", attempted: false, attempts: 0, nextAttemptAt: incoming.enqueuedAt, failure: undefined, body: incoming.body });
+  }
+  if (!last.attempted && last.status === "queued") return replaceAt(ops, index, { ...last, body: incoming.body });
+  return [...ops, incoming];
+}
+
+/**
  * Add `incoming` to the queue, merging it into the last op for the same set when that op was never
  * sent (Spec 06.2 §6.2, AC2, AC3). A `422`-failed op was rejected without being stored, so an edit
  * replaces it with a fresh op (AC14).
  */
 export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[] {
+  if (incoming.kind === "note") return combineNote(ops, incoming);
   if (incoming.kind === "create") return [...ops, incoming];
   const dropped = dropNeverStoredSet(ops, incoming);
   if (dropped) return dropped;
@@ -161,12 +202,13 @@ export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[
   if (refolded) return refolded;
   let index = -1;
   for (let i = ops.length - 1; i >= 0; i -= 1) {
-    if (sameTarget(ops[i]!.target, incoming.target)) {
+    const o = ops[i]!;
+    if (isSetOp(o) && sameTarget(o.target, incoming.target)) {
       index = i;
       break;
     }
   }
-  const last = index >= 0 ? ops[index]! : undefined;
+  const last = index >= 0 ? (ops[index] as SetOp) : undefined;
   if (!last) return [...ops, incoming];
 
   const rejected = last.status === "failed" && last.failure?.status === 422;

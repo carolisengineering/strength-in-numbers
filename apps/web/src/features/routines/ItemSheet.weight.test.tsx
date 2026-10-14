@@ -10,7 +10,7 @@ import { WEIGHT_NEEDS_SETS } from "./validateDraft";
 
 const item = (o: Partial<DraftItem> = {}): DraftItem => ({
   key: "k", exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null,
-  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, ...o,
+  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, sectionKey: null, ...o,
 });
 
 function setup(initial = item(), extra: { modality?: Modality | null; defaultUnit?: WeightUnit } = {}) {

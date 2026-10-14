@@ -4,9 +4,11 @@ import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow } from "./EntryRow";
+import { NoteSheet } from "./NoteSheet";
 import { formatSet } from "./format";
 import type { RowSync } from "./outbox/project";
 import { SetEditSheet } from "./SetEditSheet";
+import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
 
 export interface ExerciseCardProps {
@@ -31,12 +33,18 @@ export interface ExerciseCardProps {
   onDiscardOp?: (opId: string) => void;
   /** The session's first failed row gets `failedRowRef` (the status line's "Show"). */
   firstFailedId?: string | null;
-  failedRowRef?: (node: HTMLLIElement | null) => void;
+  failedRowRef?: (node: HTMLElement | null) => void;
   /** Spec 10.1 AC16: the routine's targets for this exercise; `""` when none. */
   targetLine?: string;
   /** Spec 10.1 AC17: the card's name when it sits in a superset run; `null` names it by its heading. */
   accessibleName?: string | null;
+  /** Spec 10.3: why a Move button is disabled at a section edge; only passed for headed segments. */
+  moveReasons?: { up: string | null; down: string | null };
 }
+
+export const SEGMENT_FIRST_REASON = "First exercise in this section";
+export const SEGMENT_LAST_REASON = "Last exercise in this section";
+const NO_REASONS = { up: null, down: null } as const;
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();
 
@@ -63,10 +71,21 @@ export function ExerciseCard({
   failedRowRef,
   targetLine = "",
   accessibleName = null,
+  moveReasons = NO_REASONS,
 }: ExerciseCardProps) {
+  const reasonId = useId();
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
+  const setNote = useSetExerciseNote();
+  const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
+  const noteSync = sync.get(exercise.id);
+  const hasNote = Boolean(exercise.notes);
+  function saveNote(notes: string | null) {
+    setNoteSheet((s) => s && { ...s, open: false }); // optimistic: the sheet never waits on the network
+    if (notes === (exercise.notes ?? null)) return; // unchanged: just close
+    setNote.mutate({ id: exercise.id, notes });
+  }
 
   return (
     <article className={styles.card} {...(accessibleName ? { "aria-label": accessibleName } : { "aria-labelledby": headingId })}>
@@ -78,6 +97,25 @@ export function ExerciseCard({
           <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
           {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
           {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
+          <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
+            <Button
+              variant="secondary"
+              aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
+              onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
+            >
+              {hasNote ? "Edit note" : "Add note"}
+            </Button>
+            {/* Text, not color alone, marks the state (as for set rows). */}
+            {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+            {noteSync?.state === "failed" ? (
+              <>
+                <span className={styles.failedTag}>Couldn't save</span>
+                <Button variant="secondary" onClick={() => onDiscardOp?.(noteSync.opId)}>
+                  Discard
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
         <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
           Options
@@ -86,12 +124,14 @@ export function ExerciseCard({
 
       {optionsOpen ? (
         <div className={styles.options}>
-          <Button variant="secondary" disabled={isFirst || structureBusy} onClick={() => onMove("up")}>
+          <Button variant="secondary" disabled={isFirst || structureBusy} {...(isFirst && moveReasons.up ? { "aria-describedby": `${reasonId}-up` } : {})} onClick={() => onMove("up")}>
             Move up
           </Button>
-          <Button variant="secondary" disabled={isLast || structureBusy} onClick={() => onMove("down")}>
+          {isFirst && moveReasons.up ? <p id={`${reasonId}-up`} className={styles.reason}>{moveReasons.up}</p> : null}
+          <Button variant="secondary" disabled={isLast || structureBusy} {...(isLast && moveReasons.down ? { "aria-describedby": `${reasonId}-down` } : {})} onClick={() => onMove("down")}>
             Move down
           </Button>
+          {isLast && moveReasons.down ? <p id={`${reasonId}-down`} className={styles.reason}>{moveReasons.down}</p> : null}
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
           </Button>
@@ -118,7 +158,7 @@ export function ExerciseCard({
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
-                  {/* Text, not colour alone, marks the row (AC33). */}
+                  {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
                   {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
                   {rowSync?.state === "failed" ? <span className={styles.failedTag}>Couldn't save</span> : null}
@@ -142,6 +182,17 @@ export function ExerciseCard({
       ) : null}
 
       <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} />
+
+      {noteSheet ? (
+        <NoteSheet
+          key={noteSheet.session}
+          open={noteSheet.open}
+          exerciseName={exercise.exerciseNameSnapshot}
+          initial={exercise.notes}
+          onSave={saveNote}
+          onClose={() => setNoteSheet((s) => s && { ...s, open: false })}
+        />
+      ) : null}
 
       <SetEditSheet
         set={editing}

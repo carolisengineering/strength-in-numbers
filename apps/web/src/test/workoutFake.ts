@@ -327,11 +327,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }
     const groups = normalizeSupersetGroups(input.items.map((i) => i.supersetGroup ?? null));
     const existing = selfId === null ? undefined : state.routines.get(selfId);
+    const sectionRows = (input.sections ?? []).map((s, position) => ({ id: uuid(), position, name: s.name, notes: s.notes ?? null }));
+    const sectionIdOfKey = new Map((input.sections ?? []).map((s, j) => [s.key, sectionRows[j]!.id]));
     const routine = RoutineSchema.parse({
       id: selfId ?? uuid(),
       name: input.name,
       notes: input.notes ?? null,
-      sections: [],
+      sections: sectionRows,
       items: input.items.map((item, position) => {
         const plan = resolveItem(item);
         return {
@@ -346,7 +348,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
           supersetGroup: groups[position] ?? null,
           notes: item.notes ?? null,
           sets: plan.sets,
-          sectionId: null,
+          sectionId: item.sectionKey ? (sectionIdOfKey.get(item.sectionKey) ?? null) : null,
         };
       }),
       createdAt: existing?.createdAt ?? now(),
@@ -375,6 +377,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         if (retired) return problemResponse(409, "exercise-retired", { errors: [{ path: "routineId", message: "Exercise retired" }] });
       }
       const workoutIdForStart = uuid();
+      const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes }));
+      // Spec 09.2 §6.4: the join is on section position (each copy keeps its routine section's position).
+      const startSectionOf = (routineSectionId: string | null): string | null => {
+        if (routineSectionId === null) return null;
+        const position = routine?.sections.find((s) => s.id === routineSectionId)?.position;
+        return startSections.find((s) => s.position === position)?.id ?? null;
+      };
       state.active = WorkoutDetailSchema.parse({
         id: workoutIdForStart,
         title: input.title ?? null,
@@ -388,8 +397,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         createdAt: now(),
         updatedAt: now(),
         routineName: routine?.name ?? null,
-        routineNotes: null,
-        sections: [],
+        routineNotes: routine?.notes ?? null,
+        sections: startSections,
         exercises: (routine?.items ?? []).map((item, position) => {
           const exercise = catalog.find((e) => e.id === item.exerciseId);
           return {
@@ -410,7 +419,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
             supersetGroup: item.supersetGroup,
             // Spec 09.1: the start copies the item's planned rows.
             plannedSets: item.sets.map((s) => ({ ...s })),
-            sectionId: null,
+            sectionId: startSectionOf(item.sectionId),
             sets: [],
           };
         }),

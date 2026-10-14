@@ -40,3 +40,19 @@ export function itemMessage(issues: readonly DraftIssue[], itemKey: string): str
   const found = issues.find((i) => (i.scope === "item" || i.scope === "row") && i.itemKey === itemKey);
   return found ? found.message : null;
 }
+
+/** The section-scope messages for one section's sheet, first per field. */
+export function sectionMessagesFor(issues: readonly DraftIssue[], sectionKey: string): { name?: string; notes?: string } {
+  const out: { name?: string; notes?: string } = {};
+  for (const issue of issues) {
+    if (issue.scope !== "section" || issue.sectionKey !== sectionKey) continue;
+    if (out[issue.field] === undefined) out[issue.field] = issue.message;
+  }
+  return out;
+}
+
+/** What the editor shows under a section header: the first problem on it. */
+export function sectionError(issues: readonly DraftIssue[], sectionKey: string): string | null {
+  const found = issues.find((i) => i.scope === "section" && i.sectionKey === sectionKey);
+  return found ? found.message : null;
+}

@@ -1,4 +1,4 @@
-import { ROUTINE_ITEMS_MAX, ROUTINES_PER_USER_MAX } from "@sin/core";
+import { ROUTINE_ITEMS_MAX, ROUTINE_SECTIONS_MAX, ROUTINES_PER_USER_MAX, SECTION_NAME_MAX, SECTION_NOTES_MAX } from "@sin/core";
 
 /** Spec 10.0 copy shared by more than one routine screen. */
 export const LIMIT_MESSAGE = `You've reached ${ROUTINES_PER_USER_MAX} routines — delete one to add another`;
@@ -16,3 +16,14 @@ export const EMPTY_ROUTINES = "Routines are reusable workouts — build one, the
 export const ADJUSTED_NOTICE = "Supersets were adjusted so grouped exercises sit together";
 export const START_RETIRED = "One of this routine's exercises is no longer available. Edit the routine to replace it.";
 export const ACTIVE_BLOCKS_START = "Finish your current workout first";
+
+/** Spec 10.3 section copy. */
+export const SECTION_STARTERS = ["Warm-up", "Main", "Accessory", "Finisher", "Cooldown"] as const;
+export const SECTIONS_CAP_MESSAGE = `A routine can have up to ${ROUTINE_SECTIONS_MAX} sections`;
+export const SECTION_EMPTY_HINT = "No exercises yet — use Move to section on an exercise";
+export const SECTION_UNLINK_NOTICE = "Supersets stay inside one section, so this exercise was unlinked";
+export const SECTION_NAME_REQUIRED = "Give the section a name";
+export const SECTION_NAME_TOO_LONG = `Keep section names to ${SECTION_NAME_MAX} characters`;
+export const SECTION_NAME_INVALID = "Check the section name — remove unusual characters";
+export const SECTION_NOTES_TOO_LONG = `Keep section notes to ${SECTION_NOTES_MAX} characters`;
+export const SECTION_NOTES_INVALID = `Keep section notes to ${SECTION_NOTES_MAX} characters, without unusual characters`;

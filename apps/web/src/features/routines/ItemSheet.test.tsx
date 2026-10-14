@@ -19,6 +19,7 @@ const item = (overrides: Partial<DraftItem> = {}): DraftItem => ({
   weight: null,
   weightUnit: null,
   plan: null,
+  sectionKey: null,
   ...overrides,
 });
 

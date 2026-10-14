@@ -20,6 +20,8 @@ export interface EditorRowProps {
   onOpen: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  /** Spec 10.3: only when the routine has sections — adds "Move to section…" to Options. */
+  onMoveToSection?: () => void;
   onRemove: () => void;
 }
 
@@ -56,6 +58,11 @@ export function EditorRow(props: EditorRowProps) {
           <Button variant="secondary" disabled={props.isLast} onClick={props.onMoveDown}>
             Move down
           </Button>
+          {props.onMoveToSection ? (
+            <Button variant="secondary" onClick={props.onMoveToSection}>
+              Move to section…
+            </Button>
+          ) : null}
           <Button variant="danger" onClick={props.onRemove}>
             Remove
           </Button>

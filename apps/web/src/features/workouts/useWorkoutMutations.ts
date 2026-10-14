@@ -19,8 +19,9 @@ import type {
 import { ApiError } from "../../api";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
-import { withSetRemoved, withSetUpserted } from "./cache";
+import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
+import { reportUnexpected } from "./reportUnexpected";
 import type { WorkoutExercisePatch } from "./workoutClient";
 
 /**
@@ -235,5 +236,25 @@ export function useDeleteSet(): UseMutationResult<void, Error, { id: string; mod
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetRemoved(d, id) : d));
       track("set_deleted", { modality });
     },
+  });
+}
+
+/**
+ * A note edit (Spec 10.3 AC28). With the queued client it resolves at once with the projected exercise; the
+ * outbox owns delivery and the pending / failed marks, so this hook only writes the optimistic text into the cache
+ * and never gates Finish (the outbox count does).
+ */
+export function useSetExerciseNote(): UseMutationResult<WorkoutExercise, Error, { id: string; notes: string | null }> {
+  const client = useWorkoutClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ({ id, notes }) => client.setExerciseNote(id, notes),
+    onMutate: () => cancelActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
+    onSuccess: (exercise) => {
+      queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withExerciseNotes(d, exercise) : d));
+    },
+    onError: (error) => reportUnexpected("update-note", error),
   });
 }

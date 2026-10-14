@@ -29,14 +29,17 @@ const item = (key: string, overrides: Partial<DraftItem> = {}): DraftItem => ({
   weight: null,
   weightUnit: null,
   plan: null,
+  sectionKey: null,
   ...overrides,
 });
 const draft = (overrides: Partial<Draft> = {}): Draft => ({
   name: "Push A",
   notes: "",
+  sections: [],
   items: [item("a")],
   dirty: true,
   adjusted: false,
+  unlinkNotice: false,
   ...overrides,
 });
 const allActive = { exerciseState: () => "active" as const };

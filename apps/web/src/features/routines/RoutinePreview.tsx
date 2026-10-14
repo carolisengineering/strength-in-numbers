@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Routine } from "@sin/core";
+import type { Routine, RoutineItem } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -16,6 +16,7 @@ import { EDITOR_FROM_BACK, routineEditPath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { runPosition } from "./routineDraft";
+import { routineGroups } from "./routineSections";
 import { classifyRoutineError, type ClassifiedRoutineError } from "./routineErrors";
 import styles from "./RoutinePreview.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
@@ -79,13 +80,20 @@ function BackLink() {
 
 export function RoutineItems({ routine }: { routine: Routine }) {
   const lookupExercise = useExerciseLookup();
-  const items = [...routine.items].sort((a, b) => a.position - b.position);
-  const groups = items.map((i) => i.supersetGroup);
-  return (
-    <ul className={styles.items} aria-label="Exercises">
-      {items.map((item, index) => {
+  const blocks = routineGroups(routine);
+  const ordered = blocks.flatMap((b) => b.items);
+  const groups = ordered.map((i) => i.supersetGroup);
+  let offset = 0;
+  const placed = blocks.map((b) => {
+    const start = offset;
+    offset += b.items.length;
+    return { ...b, start };
+  });
+  const list = (items: readonly RoutineItem[], start: number, label: string) => (
+    <ul className={styles.items} aria-label={label}>
+      {items.map((item, k) => {
         const exercise = lookupExercise(item.exerciseId);
-        const position = runPosition(groups, index);
+        const position = runPosition(groups, start + k);
         const group = position === "none" ? null : item.supersetGroup;
         const line = targetLine(item, item.sets);
         const unavailable = exercise.state === "retired" || exercise.state === "missing";
@@ -96,6 +104,23 @@ export function RoutineItems({ routine }: { routine: Routine }) {
         );
       })}
     </ul>
+  );
+  return (
+    <>
+      {placed.map((block) =>
+        block.section === null ? (
+          <Fragment key="loose">{list(block.items, block.start, "Exercises")}</Fragment>
+        ) : (
+          <section key={block.section.id} className={styles.section} aria-labelledby={`preview-section-${block.section.id}`}>
+            <h2 id={`preview-section-${block.section.id}`} className={styles.sectionName}>
+              {block.section.name}
+            </h2>
+            {block.section.notes ? <p className={styles.sectionNotes}>{block.section.notes}</p> : null}
+            {block.items.length > 0 ? list(block.items, block.start, `Exercises in ${block.section.name}`) : null}
+          </section>
+        ),
+      )}
+    </>
   );
 }
 

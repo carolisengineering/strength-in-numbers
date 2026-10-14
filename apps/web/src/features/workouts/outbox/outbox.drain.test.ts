@@ -28,6 +28,7 @@ function setup(over: Partial<OutboxDeps> = {}) {
     ),
     updateSet: vi.fn(async (id: string, b: { reps?: number | null }): Promise<SetEntry> => makeSet({ id, reps: b.reps ?? 8 })),
     deleteSet: vi.fn(async (): Promise<void> => undefined),
+    setExerciseNote: vi.fn(),
   };
   const onSynced = vi.fn();
   const onFailed = vi.fn();

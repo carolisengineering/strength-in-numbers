@@ -16,6 +16,7 @@ const parkedRest = () => ({
   createSet: vi.fn(() => new Promise<never>(() => {})),
   updateSet: vi.fn(() => new Promise<never>(() => {})),
   deleteSet: vi.fn(() => new Promise<never>(() => {})),
+  setExerciseNote: vi.fn(() => new Promise<never>(() => {})),
 });
 const counter = () => {
   let i = 0;

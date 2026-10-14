@@ -1,0 +1,20 @@
+.section {
+  margin-top: var(--space-4);
+}
+
+.heading {
+  margin-bottom: var(--space-3);
+}
+
+.name {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+/* User text is text: wrapped in full, line breaks kept (AC36). */
+.notes {
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
