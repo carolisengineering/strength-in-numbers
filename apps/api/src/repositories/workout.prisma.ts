@@ -191,6 +191,7 @@ interface RoutineItemCopyRow {
   rest_seconds: number | null;
   superset_group: number | null;
   notes: string | null;
+  section_id: string | null;
 }
 
 export function createWorkoutRepository(
@@ -249,19 +250,31 @@ export function createWorkoutRepository(
         const outcome = await tryInsert(tx, id, actingUserId, fields, tzOffsetMinutes, localDate);
         if (outcome.kind !== "inserted") throw new StartOutcomeSignal(outcome);
 
-        const routineRows = await tx.$queryRaw<{ id: string; name: string }[]>`
-          SELECT id, name FROM "routine"
+        const routineRows = await tx.$queryRaw<{ id: string; name: string; notes: string | null }[]>`
+          SELECT id, name, notes FROM "routine"
           WHERE id = ${fields.routineId}::uuid AND user_id = ${actingUserId}::uuid
           FOR SHARE
         `;
         const routine = routineRows[0];
         if (!routine) throw new NotFoundError("routine not found or not owned by the acting user");
 
+        // Spec 09.2 §6.4: sections first, so the item read can join to them. Same transaction, same
+        // FOR SHARE (D6: gen_random_uuid — Postgres 16 has no uuidv7()). Fresh ids; position, name,
+        // notes verbatim.
+        const sectionCount = await tx.$executeRaw`
+          INSERT INTO "workout_section" (id, workout_id, position, name, notes, created_at, updated_at)
+          SELECT gen_random_uuid(), ${id}::uuid, rs.position, rs.name, rs.notes, now(), now()
+          FROM "routine_section" rs
+          WHERE rs.routine_id = ${routine.id}::uuid
+        `;
+
         const items = await tx.$queryRaw<RoutineItemCopyRow[]>`
           SELECT ri.position, ri.exercise_id, e.name, e.modality, e.is_active, ri.target_sets,
                  ri.target_reps_low, ri.target_reps_high, ri.target_rpe, ri.rest_seconds, ri.superset_group,
-                 ri.notes
+                 ri.notes, ws.id AS section_id
           FROM "routine_item" ri JOIN "exercise" e ON e.id = ri.exercise_id
+          LEFT JOIN "routine_section" rs ON rs.id = ri.section_id
+          LEFT JOIN "workout_section" ws ON ws.workout_id = ${id}::uuid AND ws.position = rs.position
           WHERE ri.routine_id = ${routine.id}::uuid
           ORDER BY ri.position
         `;
@@ -280,12 +293,12 @@ export function createWorkoutRepository(
             (it) => Prisma.sql`(
               ${uuidv7()}::uuid, ${id}::uuid, ${it.position}, ${it.exercise_id}::uuid, ${it.name}, ${it.modality}, ${it.notes},
               ${it.target_sets}, ${it.target_reps_low}, ${it.target_reps_high}, ${it.target_rpe},
-              ${it.rest_seconds}, ${it.superset_group}, now(), now())`,
+              ${it.rest_seconds}, ${it.superset_group}, ${it.section_id}::uuid, now(), now())`,
           );
           await tx.$executeRaw`
             INSERT INTO "workout_exercise"
               (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, notes,
-               target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group,
+               target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                created_at, updated_at)
             VALUES ${Prisma.join(values)}
           `;
@@ -303,12 +316,13 @@ export function createWorkoutRepository(
           `;
         }
         const updated = await tx.$queryRaw<WorkoutDbRow[]>`
-          UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name}
+          UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name},
+                 routine_notes_snapshot = ${routine.notes}
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
         `;
-        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount: 0 } as InsertOutcome;
+        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount } as InsertOutcome;
       });
     } catch (err) {
       if (err instanceof StartOutcomeSignal) return err.outcome;
