@@ -27,6 +27,9 @@ afterEach(() => cleanupApp());
 
 const EDIT_A = `/app/workouts/routines/${routineId(1)}/edit`;
 
+/** The page itself is a labelled `<section>` (the Screen shell); only the routine's own section regions count here. */
+const sectionRegions = () => screen.queryAllByRole("region").filter((r) => !/^(Edit|New) routine$/.test(r.getAttribute("aria-label") ?? r.querySelector("h1")?.textContent ?? ""));
+
 async function open(
   path: string,
   routines = [pushA, pushSectioned],
@@ -43,7 +46,7 @@ describe("10.3 AC14 — a section-free routine looks exactly as in 10.2", () => 
   it("the exercise list markup is unchanged (baseline recorded before Spec 10.3's edits)", async () => {
     await open(EDIT_A);
     expect(markupOf(screen.getByRole("list", { name: "Exercises" }))).toMatchSnapshot();
-    expect(screen.queryAllByRole("region")).toEqual([]);
+    expect(sectionRegions()).toEqual([]);
     expect(screen.queryByText(SECTION_EMPTY_HINT)).toBeNull();
   });
 });
