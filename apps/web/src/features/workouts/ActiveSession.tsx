@@ -25,7 +25,10 @@ import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
-import { supersetRows } from "./supersetRows";
+import { RoutineNotePanel } from "./RoutineNotePanel";
+import { sectionSegments, type SectionSegment } from "./sectionSegments";
+import { SessionSection } from "./SessionSectionHeading";
+import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
 import { useRegroup } from "./useRegroup";
 import {
@@ -107,6 +110,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     [workout.exercises],
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
+  const segments = useMemo(() => sectionSegments(rows, workout.sections), [rows, workout.sections]);
   const slots = useMemo<SessionSlot[]>(() => rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), [rows]);
   // A tap plans from the list last committed to the screen (set after commit, never during render).
   const slotsRef = useRef(slots);
@@ -403,6 +407,53 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
+  function renderRow({ exercise, bracket, line, label, linkedBelow }: SupersetRow, k: number, segment: SectionSegment) {
+    const below = segment.rows[k + 1]?.exercise;
+    const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
+    const refusal = canLinkRule(segmentSlots, k);
+    const index = segment.start + k; // the flat index runRegroup plans from until Task 9
+    return (
+      <Fragment key={exercise.id}>
+        <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
+          <SupersetBracket position={bracket} />
+          <ExerciseCard
+            exercise={exercise}
+            targetLine={line}
+            accessibleName={label}
+            isFirst={k === 0}
+            isLast={k === segment.rows.length - 1}
+            structureBusy={structureBusy}
+            flaggedIds={flagged}
+            firstFlaggedId={firstFlaggedId}
+            firstFlaggedRef={setFirstFlaggedRef}
+            onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+            onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+            unitPreference={user?.unitPreference ?? "kg"}
+            onGone={gone}
+            sync={sync}
+            onDiscardOp={(opId) => outbox?.discard(opId)}
+            firstFailedId={firstFailedId}
+            failedRowRef={setFailedRowRef}
+          />
+        </div>
+        {below ? (
+          <div className={styles.joint}>
+            <SupersetBracket position={linkedBelow ? "middle" : "none"} />
+            <LinkToggle
+              id={`link-${exercise.id}`}
+              above={exercise.exerciseNameSnapshot}
+              below={below.exerciseNameSnapshot}
+              linked={linkedBelow}
+              refusal={refusal.ok ? null : refusal.reason}
+              disabled={structureBusy}
+              onToggle={() => void runRegroup({ type: "toggleLink", index })}
+            />
+          </div>
+        ) : null}
+      </Fragment>
+    );
+  }
+
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
@@ -445,52 +496,20 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </InlineNotice>
       ) : null}
 
+      {workout.routineNotes !== null ? <RoutineNotePanel name={workout.routineName} notes={workout.routineNotes} /> : null}
+
       <div className={styles.cards} aria-busy={regroup.busy || undefined}>
         {exercises.length === 0 && pending === null ? (
           <p className={styles.hint}>Add your first exercise</p>
         ) : null}
-        {rows.map(({ exercise, bracket, line, label, linkedBelow }, index) => {
-          const below = rows[index + 1]?.exercise;
-          const refusal = canLinkRule(slots, index);
-          return (
-            <Fragment key={exercise.id}>
-              <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
-                <SupersetBracket position={bracket} />
-                <ExerciseCard
-                  exercise={exercise}
-                  targetLine={line}
-                  accessibleName={label}
-                  isFirst={index === 0}
-                  isLast={index === rows.length - 1}
-                  structureBusy={structureBusy}
-                  flaggedIds={flagged}
-                  firstFlaggedId={firstFlaggedId}
-                  firstFlaggedRef={setFirstFlaggedRef}
-                  onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-                  onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
-                  unitPreference={user?.unitPreference ?? "kg"}
-                  onGone={gone}
-                  sync={sync}
-                  onDiscardOp={(opId) => outbox?.discard(opId)}
-                  firstFailedId={firstFailedId}
-                  failedRowRef={setFailedRowRef}
-                />
-              </div>
-              {below ? (
-                <div className={styles.joint}>
-                  <SupersetBracket position={linkedBelow ? "middle" : "none"} />
-                  <LinkToggle
-                    id={`link-${exercise.id}`}
-                    above={exercise.exerciseNameSnapshot}
-                    below={below.exerciseNameSnapshot}
-                    linked={linkedBelow}
-                    refusal={refusal.ok ? null : refusal.reason}
-                    disabled={structureBusy}
-                    onToggle={() => void runRegroup({ type: "toggleLink", index })}
-                  />
-                </div>
-              ) : null}
-            </Fragment>
+        {segments.map((segment) => {
+          const body = segment.rows.map((row, k) => renderRow(row, k, segment));
+          return segment.heading === null ? (
+            <Fragment key={segment.key}>{body}</Fragment>
+          ) : (
+            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+              {body}
+            </SessionSection>
           );
         })}
         {pending ? (

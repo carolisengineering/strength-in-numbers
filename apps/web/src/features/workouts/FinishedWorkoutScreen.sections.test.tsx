@@ -46,4 +46,35 @@ describe("10.3 AC32 — no sections, no change (finished screen)", () => {
     expect(markupOf(exercisesBlock())).toMatchSnapshot();
   });
 });
-void within;
+
+describe("10.3 AC31 — finished workout and History", () => {
+  const detail = () =>
+    makeWorkoutDetail({
+      id: "70000000-0000-4000-8000-000000000002",
+      endedAt: FINISHED,
+      routineName: "Push B",
+      routineNotes: "Keep it short",
+      sections: [{ name: "Warm-up", notes: "5 min rower" }, { name: "Main" }],
+      exercises: [ex("Bench", 1, { supersetGroup: 1, notes: "Pause every rep" }), ex("Row", 1, { supersetGroup: 1 }), ex("Cable curl")],
+    });
+
+  it.each([["/app/workouts/"], ["/app/history/"]])("%s<id> shows sections, the routine note, 'Other exercises' and the exercise notes, read-only", async (prefix) => {
+    const d = detail();
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [d] }) });
+    renderApp(`${prefix}${d.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    const names = screen.getAllByRole("region").filter((r) => r.querySelector("h1") === null).flatMap((r) => within(r).queryAllByRole("heading", { level: 2 }).slice(0, 1).map((h) => h.textContent));
+    expect(names).toContain("Warm-up");
+    expect(names).toContain("Main");
+    expect(names).toContain("Other exercises");
+    expect(within(screen.getByRole("region", { name: "Warm-up" })).getByText("5 min rower")).toBeInTheDocument(); // empty section: heading and note
+    const from = screen.getByText("From routine: Push B");
+    expect(from.nextElementSibling?.tagName).toBe("P");
+    expect(from.nextElementSibling).toHaveTextContent("Keep it short"); // plain paragraph, no collapse
+    expect(screen.queryByRole("button", { name: /routine note/i })).toBeNull();
+    expect(screen.getByText("Pause every rep")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /note/i })).toBeNull(); // no Note action on a finished workout
+    const main = screen.getByRole("region", { name: "Main" });
+    expect(Array.from(main.querySelectorAll("[data-bracket]")).map((e) => e.getAttribute("data-bracket"))).toEqual(["first", "middle", "last"]);
+  });
+});

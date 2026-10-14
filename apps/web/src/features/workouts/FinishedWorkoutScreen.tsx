@@ -17,6 +17,8 @@ import { formatLocalDate, formatSet } from "./format";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
+import { sectionSegments } from "./sectionSegments";
+import { SessionSection } from "./SessionSectionHeading";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
@@ -87,6 +89,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   const minutes = Math.round((Date.parse(endedAt) - Date.parse(workout.startedAt)) / 60_000);
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
+  const segments = sectionSegments(supersetRows(workout.exercises), workout.sections);
 
   return (
     <Screen title="Workout summary">
@@ -94,18 +97,28 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
         {date} · {minutes} min
       </p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
+      {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} />
       <div className={styles.exercises}>
-        {supersetRows(workout.exercises).map((row, index, rows) => (
-          <Fragment key={row.exercise.id}>
-            <SummaryExercise row={row} />
-            {index < rows.length - 1 ? (
-              <div className={styles.joint}>
-                <SupersetBracket position={row.linkedBelow ? "middle" : "none"} />
-              </div>
-            ) : null}
-          </Fragment>
-        ))}
+        {segments.map((segment) => {
+          const body = segment.rows.map((row, k) => (
+            <Fragment key={row.exercise.id}>
+              <SummaryExercise row={row} />
+              {k < segment.rows.length - 1 ? (
+                <div className={styles.joint}>
+                  <SupersetBracket position={row.linkedBelow ? "middle" : "none"} />
+                </div>
+              ) : null}
+            </Fragment>
+          ));
+          return segment.heading === null ? (
+            <Fragment key={segment.key}>{body}</Fragment>
+          ) : (
+            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+              {body}
+            </SessionSection>
+          );
+        })}
       </div>
       <div className={styles.actions}>
         <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
