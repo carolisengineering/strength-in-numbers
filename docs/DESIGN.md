@@ -1197,8 +1197,8 @@ with rationale so the "why" survives.
   note into `workout.notes` (mixes the routine's text with the lifter's); an advisory lock for
   the section cap (the cap is a property of one whole-document write that already holds the
   routine row lock); online-only session notes (owner ruled for the outbox, 2026-10-13). Section-note
-  length is 2 000, the routine note's (owner ruling, 2026-10-13). Open: one spec or two
-  (Spec 10.3 O2) and a per-section Add exercise (Spec 10.3 O3). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
+  length is 2 000, the routine note's (owner ruling, 2026-10-13). Decided at implementation: one spec
+  (Spec 10.3 O2) and no per-section Add exercise in v1 (Spec 10.3 O3). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
 
 ---
 

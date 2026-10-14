@@ -20,6 +20,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, makeSet, makeWorkoutDetail, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
+import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
 beforeEach(() => {
@@ -358,5 +359,78 @@ describe("10.2 AC34 — the entry-row label", () => {
     const label = within(form).getByText(/^Set \d+/);
     expect(label.tagName).toBe("P");
     expect(label).not.toHaveAttribute("role");
+  });
+});
+
+async function sessionWithSections() {
+  const fake = createWorkoutFake({
+    active: makeWorkoutDetail({
+      routineName: "Push B",
+      routineNotes: "Keep it short",
+      sections: [{ name: "Warm-up", notes: "5 min rower" }, { name: "Main" }],
+      exercises: [
+        { modality: "weight_reps", name: "Bench press", sectionIndex: 1, supersetGroup: 1 },
+        { modality: "weight_reps", name: "Row", sectionIndex: 1, supersetGroup: 1 },
+      ],
+    }),
+  });
+  prepareApp({ auth, fake });
+  const app = renderApp("/app/workouts");
+  await screen.findByRole("heading", { name: "Workout" });
+  return { fake, ...app };
+}
+
+describe("10.3 AC37 — accessibility (component level): session", () => {
+  it("each section is a region named by its heading; heading, note, then the cards read in that order", async () => {
+    await sessionWithSections();
+    const main = screen.getByRole("region", { name: "Main" });
+    const heading = within(main).getByRole("heading", { level: 2, name: "Main" });
+    const cards = within(main).getAllByRole("article");
+    for (const card of cards) expect(heading.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const warm = screen.getByRole("region", { name: "Warm-up" });
+    expect(within(warm).getByRole("heading", { level: 2 }).compareDocumentPosition(within(warm).getByText("5 min rower")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("the routine-note toggle has aria-expanded and a name that includes its target", async () => {
+    const { user } = await sessionWithSections();
+    const toggle = screen.getByRole("button", { name: "Hide routine note" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(toggle);
+    expect(screen.getByRole("button", { name: "Show routine note" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("controls name their target ('Edit note for Bench press'); a disabled Move says why in text, not a tooltip", async () => {
+    const { user } = await sessionWithSections();
+    expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // present only once Tasks 10-12 exist
+    await user.click(within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Options" }));
+    const up = within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Move up" });
+    expect(up).toBeDisabled();
+    expect(up).toHaveAccessibleDescription("First exercise in this section");
+    expect(up).not.toHaveAttribute("title");
+  });
+
+  it("every input, select and textarea has a programmatic label", async () => {
+    await sessionWithSections();
+    for (const control of document.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
+  });
+});
+
+describe("10.3 AC37 — accessibility (component level): editor", () => {
+  it("regions, starters as a labeled group, targeted control names, disabled reasons in text", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushSectioned] }) });
+    const { user } = renderApp(`/app/workouts/routines/${routineId(2)}/edit`);
+    await screen.findByLabelText("Name");
+    expect(screen.getByRole("region", { name: "Warm-up" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Main" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Options for section Warm-up" }));
+    const up = screen.getByRole("button", { name: "Move Warm-up up" });
+    expect(up).toBeDisabled();
+    expect(up).toHaveAccessibleDescription("This is the first section");
+    expect(up).not.toHaveAttribute("title");
+    expect(screen.getByRole("button", { name: "Delete section Warm-up" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add section" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add section" });
+    expect(within(dialog).getByRole("group", { name: "Section names" })).toBeInTheDocument();
+    for (const control of dialog.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
   });
 });

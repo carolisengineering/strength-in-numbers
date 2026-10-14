@@ -182,3 +182,17 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 });
+
+describe("10.3 AC37 — the note sheet", () => {
+  it("the textarea is labeled, its count is a described hint, and an error is its own text — the count is never the only cue", async () => {
+    const { user } = await setupNotes(null);
+    const sheet = await openSheet(user, "Add note for X");
+    const field = sheet.getByLabelText("Note");
+    expect(field).toHaveAccessibleDescription("0 / 500");
+    await user.click(field);
+    await user.paste("a".repeat(501));
+    await user.click(sheet.getByRole("button", { name: "Save" }));
+    expect(sheet.getByRole("alert")).toHaveTextContent("Keep notes to 500 characters");
+    expect(field).toHaveAccessibleDescription(expect.stringContaining("501 / 500"));
+  });
+});
