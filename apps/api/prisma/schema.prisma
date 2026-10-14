@@ -123,9 +123,11 @@ model Workout {
   routineId           String?   @map("routine_id") @db.Uuid
   routine             Routine?  @relation(fields: [routineId], references: [id], onDelete: SetNull)
   routineNameSnapshot String?   @map("routine_name_snapshot")
+  routineNotesSnapshot String?  @map("routine_notes_snapshot")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises          WorkoutExercise[]
+  sections           WorkoutSection[]
   // Spec 07.0: back-reference for `personal_record.workout_id`.
   personalRecords    PersonalRecord[]
 
@@ -151,6 +153,8 @@ model WorkoutExercise {
   targetRepsHigh       Int?     @map("target_reps_high") @db.SmallInt
   targetRpe            Int?     @map("target_rpe") @db.SmallInt
   restSeconds          Int?     @map("rest_seconds") @db.SmallInt
+  sectionId            String?  @map("section_id") @db.Uuid
+  section              WorkoutSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull, map: "workout_exercise_section_fkey")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   sets                 SetEntry[]
@@ -173,6 +177,7 @@ model Routine {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   items     RoutineItem[]
+  sections  RoutineSection[]
   workouts  Workout[]
 
   @@map("routine")
@@ -192,6 +197,8 @@ model RoutineItem {
   restSeconds    Int?     @map("rest_seconds") @db.SmallInt
   supersetGroup  Int?     @map("superset_group") @db.SmallInt
   notes          String?
+  sectionId      String?  @map("section_id") @db.Uuid
+  section        RoutineSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull, map: "routine_item_section_fkey")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   sets           RoutineItemSet[]
@@ -292,4 +299,36 @@ model PersonalRecord {
   @@index([workoutId], map: "personal_record_workout_idx")
   @@index([sourceSetEntryId], map: "personal_record_source_set_idx")
   @@map("personal_record")
+}
+
+// Spec 09.2 §4 — hand-authored migration 0011 carries the CHECKs and the partial section_id indexes
+// (Prisma ignores partial indexes, like workout_routine_idx); these models are the client shape only.
+model RoutineSection {
+  id        String        @id @db.Uuid
+  routineId String        @map("routine_id") @db.Uuid
+  routine   Routine       @relation(fields: [routineId], references: [id], onDelete: Cascade, map: "routine_section_routine_fkey")
+  position  Int           @db.SmallInt
+  name      String
+  notes     String?
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  items     RoutineItem[]
+
+  @@unique([routineId, position], map: "routine_section_routine_position_key")
+  @@map("routine_section")
+}
+
+model WorkoutSection {
+  id        String            @id @db.Uuid
+  workoutId String            @map("workout_id") @db.Uuid
+  workout   Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade, map: "workout_section_workout_fkey")
+  position  Int               @db.SmallInt
+  name      String
+  notes     String?
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  exercises WorkoutExercise[]
+
+  @@unique([workoutId, position], map: "workout_section_workout_position_key")
+  @@map("workout_section")
 }
