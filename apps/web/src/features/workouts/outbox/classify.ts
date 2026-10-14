@@ -12,7 +12,7 @@ export function classify(kind: OutboxOp["kind"], error: unknown): Verdict {
   if (!(error instanceof ApiError)) return "fail";
   if (error.isNetworkError) return "retry";
   const { status } = error;
-  if (status === 404 && kind === "delete") return "done";
+  if (status === 404 && (kind === "delete" || kind === "note")) return "done";
   if (status >= 500 || status === 408 || status === 429) return "retry";
   return "fail";
 }

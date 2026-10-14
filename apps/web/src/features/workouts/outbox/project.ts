@@ -96,6 +96,15 @@ export function project(
     const index = exercises.findIndex((e) => e.id === op.workoutExerciseId);
     if (index < 0) continue;
     const exercise = exercises[index]!;
+    if (op.kind === "note") {
+      // Spec 10.3 AC13: overlay in queue order (the later edit wins); mark under the EXERCISE id (ids cannot collide with set ids).
+      if (exercise.notes !== op.body.notes) {
+        const updated = { ...exercise, notes: op.body.notes, updatedAt: new Date(op.enqueuedAt).toISOString() };
+        exercises = exercises.map((e, i) => (i === index ? updated : e));
+      }
+      mark(sync, exercise.id, op);
+      continue;
+    }
     let sets = exercise.sets;
     if (op.kind === "create") {
       const key = op.target.clientGeneratedId;

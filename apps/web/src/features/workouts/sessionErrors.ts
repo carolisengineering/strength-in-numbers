@@ -6,6 +6,8 @@ export type Operation =
   | "remove-exercise"
   | "create-set"
   | "update-set"
+  /** Spec 10.3: a queued exercise-note edit. */
+  | "update-note"
   | "delete-set"
   | "finish"
   | "discard"
@@ -39,6 +41,7 @@ const RETRY_TEXT: Record<Operation, string> = {
   "remove-exercise": "Couldn't remove that exercise — try again",
   "create-set": "Couldn't log set — try again",
   "update-set": "Couldn't save the set — try again",
+  "update-note": "Couldn't save the note — try again",
   "delete-set": "Couldn't delete the set — try again",
   finish: "Couldn't finish — try again",
   discard: "Couldn't discard the workout — try again",
@@ -82,6 +85,7 @@ export function resolveFailure(op: Operation, error: unknown): FailureAction {
       return kind === "workout-finished" && op !== "discard" ? finished : retry;
     case "create-set":
     case "update-set":
+    case "update-note":
       if (kind === "not-found") return { type: "gone", reason: "gone" };
       if (kind === "workout-finished") return finished;
       return kind === "validation" ? { type: "fields", fieldErrors, requestId } : retry;

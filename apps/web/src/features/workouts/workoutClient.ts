@@ -42,6 +42,11 @@ export interface WorkoutClient {
   createSet(workoutExerciseId: string, body: CreateSet): Promise<SetEntry>;
   updateSet(id: string, body: UpdateSet): Promise<SetEntry>;
   deleteSet(id: string): Promise<void>;
+  /**
+   * Spec 10.3 AC28: exactly { notes } goes on the wire. A separate method on purpose — WorkoutExercisePatch has no
+   * `notes`, so a regroup can never overwrite a note (Spec 10.1 AC11).
+   */
+  setExerciseNote(id: string, notes: string | null): Promise<WorkoutExercise>;
 }
 
 /** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
@@ -82,6 +87,7 @@ export function createWorkoutClient(
     deleteSet: async (id) => {
       await api.delete(`/v1/sets/${seg(id)}`);
     },
+    setExerciseNote: (id, notes) => api.patch(`/v1/workout-exercises/${seg(id)}`, { notes }, WorkoutExerciseSchema),
   };
   return client;
 }

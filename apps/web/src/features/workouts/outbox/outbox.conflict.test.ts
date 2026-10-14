@@ -9,7 +9,7 @@ describe("06.2 AC19 — two tabs cannot corrupt the outbox", () => {
   it("another tab's write sets conflict, stops sending and stops saving", async () => {
     const storage = memoryStorageAdapter();
     const setSpy = vi.spyOn(storage, "set");
-    const rest = { createSet: vi.fn(), updateSet: vi.fn(), deleteSet: vi.fn() };
+    const rest = { createSet: vi.fn(), updateSet: vi.fn(), deleteSet: vi.fn(), setExerciseNote: vi.fn() };
     const outbox = createOutbox({ storage, rest, userId: "u1", isOnline: () => false });
     const stop = outbox.start();
 
@@ -25,7 +25,7 @@ describe("06.2 AC19 — two tabs cannot corrupt the outbox", () => {
   });
 
   it("after stop() another tab's write is ignored", () => {
-    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: { createSet: vi.fn(), updateSet: vi.fn(), deleteSet: vi.fn() }, userId: "u1" });
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: { createSet: vi.fn(), updateSet: vi.fn(), deleteSet: vi.fn(), setExerciseNote: vi.fn() }, userId: "u1" });
     outbox.start()();
     window.dispatchEvent(new StorageEvent("storage", { key: OUTBOX_KEY, newValue: "{}", storageArea: window.localStorage }));
     expect(outbox.getState().conflict).toBe(false);
