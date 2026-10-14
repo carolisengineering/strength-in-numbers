@@ -109,8 +109,16 @@ describe("AC2 — the ETag covers the new bytes", () => {
 
     // A validator computed from the bytes BEFORE this spec (no `sections`, no `sectionId`).
     const now = (await app.inject({ method: "GET", url: `/v1/routines/${created.id}`, headers: BEARER })).json();
-    const { sections: _s, ...rest } = now;
-    const old = { ...rest, items: now.items.map(({ sectionId: _x, ...i }: Record<string, unknown>) => i) };
+    const rest: Record<string, unknown> = { ...now };
+    delete rest["sections"];
+    const old = {
+      ...rest,
+      items: now.items.map((i: Record<string, unknown>) => {
+        const copy = { ...i };
+        delete copy["sectionId"];
+        return copy;
+      }),
+    };
     const oldEtag = strongEtag(`routine:${created.id}`, JSON.stringify(old));
     const conditional = await app.inject({ method: "GET", url: `/v1/routines/${created.id}`, headers: { ...BEARER, "if-none-match": oldEtag } });
     expect(conditional.statusCode).toBe(200);

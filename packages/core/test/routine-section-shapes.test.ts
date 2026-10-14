@@ -28,9 +28,11 @@ describe("AC1 — routine response shapes", () => {
 
 describe("AC26 — required, never defaulted (routine half)", () => {
   it("a Routine without sections and a RoutineItem without sectionId fail safeParse", () => {
-    const { sections: _s, ...noSections } = routine;
+    const noSections: Record<string, unknown> = { ...routine };
+    delete noSections["sections"];
     expect(RoutineSchema.safeParse(noSections).success).toBe(false);
-    const { sectionId: _i, ...noSectionId } = item;
+    const noSectionId: Record<string, unknown> = { ...item };
+    delete noSectionId["sectionId"];
     expect(RoutineItemSchema.safeParse(noSectionId).success).toBe(false);
     expect(RoutineSchema.safeParse({ ...routine, sections: null }).success).toBe(false);
   });
