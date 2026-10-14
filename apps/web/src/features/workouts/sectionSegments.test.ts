@@ -46,3 +46,22 @@ describe("10.3 AC11 — sectionSegments", () => {
     expect(segments[0]!.rows).toHaveLength(2);
   });
 });
+
+describe("10.3 AC11 — segment keys are stable when an earlier run disappears (final review)", () => {
+  const keys = (exercises: ExerciseSpec[], sections: Sec[]) => {
+    const detail = makeWorkoutDetail({ sections, exercises });
+    return sectionSegments(supersetRows(detail.exercises), detail.sections).map((s) => [s.heading, s.key]);
+  };
+  it("removing the only loose-first exercise does not change the other segments' keys", () => {
+    // One detail, so the section ids are the same on both sides; the second side just drops the loose exercise.
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "B" }], exercises: [ex("x"), ex("a", 0), ex("b", 1)] });
+    const keyed = (exercises: typeof detail.exercises) =>
+      sectionSegments(supersetRows(exercises), detail.sections).filter((s) => s.heading !== null).map((s) => [s.heading, s.key]);
+    const without = detail.exercises.filter((e) => e.exerciseNameSnapshot !== "x");
+    expect(keyed(without)).toEqual(keyed(detail.exercises));
+  });
+  it("keys are unique within one render, including a split section and several loose runs", () => {
+    const all = keys([ex("x"), ex("a", 0), ex("y"), ex("c", 0), ex("z")], [{ name: "A" }]).map(([, k]) => k);
+    expect(new Set(all).size).toBe(all.length);
+  });
+});

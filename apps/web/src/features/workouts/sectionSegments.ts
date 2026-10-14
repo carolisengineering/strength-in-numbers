@@ -28,7 +28,7 @@ interface Draft {
  * or is a trailing loose segment (else last). Pure.
  */
 export function sectionSegments(rows: readonly SupersetRow[], sections: readonly WorkoutSection[]): SectionSegment[] {
-  if (sections.length === 0) return [{ key: "segment-0", heading: null, notes: null, rows, start: 0 }];
+  if (sections.length === 0) return [{ key: "loose-start-0", heading: null, notes: null, rows, start: 0 }];
   const known = new Map(sections.map((s) => [s.id as string, s]));
   const sectionOf = (row: SupersetRow): string | null => (row.sectionId !== null && known.has(row.sectionId) ? row.sectionId : null);
 
@@ -49,13 +49,29 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
     present.add(section.id);
   }
 
-  const noted = new Set<string>();
-  return list.map((d, i): SectionSegment => {
+  // Keys come from content, never from the list index: a run that disappears (the lifter removes the only
+  // loose-first exercise) must not renumber the others, or React remounts their cards and loses typed drafts.
+  const noted = new Map<string, number>();
+  let lastSectionId: string | null = null;
+  let lastOccurrence = 0;
+  let looseRuns = 0;
+  return list.map((d): SectionSegment => {
     if (d.section === null) {
-      return { key: `segment-${i}`, heading: i === 0 ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start };
+      const key = lastSectionId === null ? `loose-start-${looseRuns}` : `loose-after-${lastSectionId}-${lastOccurrence}-${looseRuns}`;
+      looseRuns += 1;
+      return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start };
     }
-    const first = !noted.has(d.section.id);
-    noted.add(d.section.id);
-    return { key: `segment-${i}`, heading: d.section.name, notes: first ? d.section.notes : null, rows: d.rows, start: d.start };
+    looseRuns = 0;
+    const occurrence = noted.get(d.section.id) ?? 0;
+    noted.set(d.section.id, occurrence + 1);
+    lastSectionId = d.section.id;
+    lastOccurrence = occurrence;
+    return {
+      key: `section-${d.section.id}-${occurrence}`,
+      heading: d.section.name,
+      notes: occurrence === 0 ? d.section.notes : null,
+      rows: d.rows,
+      start: d.start,
+    };
   });
 }
