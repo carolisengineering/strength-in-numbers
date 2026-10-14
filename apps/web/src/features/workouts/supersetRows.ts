@@ -11,6 +11,19 @@ export interface SupersetRow {
   readonly label: string | null;
   /** This row and the next share a run: the spacer between them carries the bracket. */
   readonly linkedBelow: boolean;
+  /** Spec 10.3: the exercise's workout section (`null` = loose); `sectionSegments` groups by it, never by hand. */
+  readonly sectionId: string | null;
+}
+
+/** One label per stretch of equal (group, section): a superset never crosses a section heading (Spec 10.3 AC10). */
+function runLabels(sorted: readonly WorkoutExerciseDetail[]): (number | null)[] {
+  let label = 0;
+  return sorted.map((e, i) => {
+    if (e.supersetGroup === null) return null;
+    const prev = sorted[i - 1];
+    if (!prev || prev.supersetGroup !== e.supersetGroup || prev.sectionId !== e.sectionId) label += 1;
+    return label;
+  });
 }
 
 /**
@@ -19,9 +32,9 @@ export interface SupersetRow {
  */
 export function supersetRows(exercises: readonly WorkoutExerciseDetail[]): SupersetRow[] {
   const sorted = [...exercises].sort((a, b) => a.position - b.position);
-  const groups = sorted.map((e) => e.supersetGroup);
+  const groups = runLabels(sorted);
   const ordinals = runOrdinals(groups);
-  const slots = sorted.map((e) => ({ id: e.id, group: e.supersetGroup }));
+  const slots = sorted.map((e, i) => ({ id: e.id, group: groups[i] ?? null }));
   return sorted.map((exercise, i) => {
     const ordinal = ordinals[i] ?? null;
     const line = targetLine(exercise, exercise.plannedSets);
@@ -32,6 +45,7 @@ export function supersetRows(exercises: readonly WorkoutExerciseDetail[]): Super
       line,
       label: ordinal === null ? null : itemAccessibleName(exercise.exerciseNameSnapshot, ordinal, line, false),
       linkedBelow: isLinked(slots, i),
+      sectionId: exercise.sectionId,
     };
   });
 }
