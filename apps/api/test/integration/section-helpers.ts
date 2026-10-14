@@ -1,5 +1,6 @@
 // apps/api/test/integration/section-helpers.ts
 import { expect } from "vitest";
+import { uuidv7 } from "uuidv7";
 import type { IntegrationDb } from "./helpers.js";
 
 /**
@@ -23,4 +24,25 @@ export async function assertSectionsConsistent(db: IntegrationDb): Promise<void>
       `${table} positions not dense from 0`,
     ).toEqual([]);
   }
+}
+
+export async function insertWorkoutSection(
+  db: IntegrationDb, workoutId: string, position: number, name: string, notes: string | null = null,
+): Promise<string> {
+  const id = uuidv7();
+  await db.prisma.$executeRawUnsafe(
+    `INSERT INTO "workout_section" (id, workout_id, position, name, notes) VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
+    id, workoutId, position, name, notes,
+  );
+  return id;
+}
+
+export async function setExerciseSection(db: IntegrationDb, workoutExerciseId: string, sectionId: string | null): Promise<void> {
+  await db.prisma.$executeRawUnsafe(`UPDATE "workout_exercise" SET section_id = $2::uuid WHERE id = $1::uuid`, workoutExerciseId, sectionId);
+}
+
+export async function exerciseIdsOf(db: IntegrationDb, workoutId: string): Promise<string[]> {
+  const rows = await db.prisma.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT id::text FROM "workout_exercise" WHERE workout_id = $1::uuid ORDER BY position`, workoutId);
+  return rows.map((r) => r.id);
 }

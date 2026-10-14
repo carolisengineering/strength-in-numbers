@@ -16,6 +16,7 @@ import {
   type WorkoutDetail,
   type WorkoutExercise,
   type WorkoutExerciseDetail,
+  type WorkoutSection,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineSectionRecord } from "../repositories/routine.js";
@@ -25,6 +26,7 @@ import type {
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
+  WorkoutSectionRecord,
 } from "../repositories/workout.js";
 
 /**
@@ -139,7 +141,13 @@ export function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise 
     supersetGroup: r.supersetGroup,
     // Spec 09.1: key order matches `PlannedSetSchema`.
     plannedSets: r.plannedSets.map((s) => ({ ...s })),
+    // Spec 09.2: last key, after plannedSets.
+    sectionId: r.sectionId as WorkoutExercise["sectionId"],
   };
+}
+
+export function toWorkoutSectionDto(r: WorkoutSectionRecord): WorkoutSection {
+  return { id: r.id as WorkoutSection["id"], position: r.position, name: r.name, notes: r.notes };
 }
 
 /** DB record -> wire DTO, keys in `SetEntrySchema` field order. */
@@ -172,5 +180,7 @@ export function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
     exercises: r.exercises.map(
       (e): WorkoutExerciseDetail => ({ ...toWorkoutExerciseDto(e), sets: e.sets.map(toSetEntryDto) }),
     ),
+    routineNotes: r.routineNotes,
+    sections: r.sections.map(toWorkoutSectionDto),
   };
 }

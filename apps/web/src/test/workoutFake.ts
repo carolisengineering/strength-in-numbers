@@ -388,6 +388,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         createdAt: now(),
         updatedAt: now(),
         routineName: routine?.name ?? null,
+        routineNotes: null,
+        sections: [],
         exercises: (routine?.items ?? []).map((item, position) => {
           const exercise = catalog.find((e) => e.id === item.exerciseId);
           return {
@@ -408,6 +410,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
             supersetGroup: item.supersetGroup,
             // Spec 09.1: the start copies the item's planned rows.
             plannedSets: item.sets.map((s) => ({ ...s })),
+            sectionId: null,
             sets: [],
           };
         }),
@@ -553,6 +556,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         restSeconds: null,
         supersetGroup: null,
         plannedSets: [],
+        sectionId: null,
       };
       state.active = WorkoutDetailSchema.parse({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
       return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });

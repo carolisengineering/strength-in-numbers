@@ -82,6 +82,7 @@ import type {
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
+  WorkoutSectionRecord,
   WorkoutRepository,
   WorkoutHistoryPage,
   ListFinishedWorkoutsOptions,
@@ -418,6 +419,8 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   exercises = new Map<string, WorkoutExerciseRecord>();
   sets = new Map<string, SetEntryRecord>();
   private byClientKey = new Map<string, string>();
+  /** Spec 09.2 — per workout: the routine note snapshot and the copied sections. */
+  sectionsByWorkout = new Map<string, { routineNotes: string | null; sections: WorkoutSectionRecord[] }>();
 
   constructor(
     private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository(),
@@ -441,7 +444,8 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           .filter((s) => s.workoutExerciseId === e.id)
           .sort((a, b) => a.setNumber - b.setNumber),
       }));
-    return { ...w, exercises };
+    const snap = this.sectionsByWorkout.get(w.id);
+    return { ...w, exercises, routineNotes: snap?.routineNotes ?? null, sections: snap?.sections ?? [] };
   }
 
   /** Canonical columns the way Postgres generates them (numeric(…,3) rounding). */
@@ -469,7 +473,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const key = `${actingUserId}:${fields.clientGeneratedId}`;
     const existingId = this.byClientKey.get(key);
     if (existingId) {
-      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0, plannedSetCount: 0 };
+      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
     }
     const hasActive = [...this.workouts.values()].some(
       (w) => w.userId === actingUserId && w.endedAt === null,
@@ -497,10 +501,15 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       routineName: null,
     };
     const copied: WorkoutExerciseRecord[] = [];
+    let sectionRecords: WorkoutSectionRecord[] = [];
+    let routineNotes: string | null = null;
     if (fields.routineId !== undefined) {
       // Spec 09 §6.5 in miniature: 404 for an absent/foreign routine, 409 on a
       // retired item (nothing persisted), else copy every item in order.
       const routine = await this.routineRepository!.getById(actingUserId, fields.routineId);
+      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes }));
+      const wsByRoutineSection = new Map(routine.sections.map((s, j) => [s.id, sectionRecords[j]!.id]));
+      routineNotes = routine.notes;
       for (const item of routine.items) {
         const exercise = await this.exerciseRepository.findVisibleById(actingUserId, item.exerciseId);
         if (!exercise.isActive) {
@@ -527,6 +536,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           restSeconds: item.restSeconds,
           supersetGroup: item.supersetGroup,
           plannedSets: item.sets.map((s) => ({ ...s })),
+          sectionId: item.sectionId === null ? null : (wsByRoutineSection.get(item.sectionId) ?? null),
         });
       }
       workout.routineName = routine.name;
@@ -534,11 +544,13 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
     for (const e of copied) this.exercises.set(e.id, e);
+    this.sectionsByWorkout.set(workout.id, { routineNotes, sections: sectionRecords });
     return {
       workout,
       created: true,
       copiedCount: copied.length,
       plannedSetCount: copied.reduce((n, e) => n + e.plannedSets.length, 0),
+      sectionCount: sectionRecords.length,
     };
   }
 
@@ -694,6 +706,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       restSeconds: null,
       supersetGroup: null,
       plannedSets: [],
+      sectionId: null,
     };
     this.exercises.set(record.id, record);
     return record;

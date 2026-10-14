@@ -12,8 +12,10 @@ class ScriptedPrisma {
   queueRows(rows: unknown[]): void {
     this.queue.push(() => rows);
   }
-  $queryRaw = (strings: TemplateStringsArray): Promise<unknown[]> => {
-    this.calls.push({ sql: strings.join("?") });
+  $queryRaw = (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]> => {
+    // Interpolated Prisma.Sql / Prisma.raw fragments (e.g. workoutSectionsJson) count as statement text.
+    const fragments = values.map((v) => (typeof v === "object" && v !== null && "sql" in v ? String((v as { sql: unknown }).sql) : "?"));
+    this.calls.push({ sql: strings.reduce((acc, part, i) => acc + part + (fragments[i] ?? ""), "") });
     const next = this.queue.shift();
     if (!next) throw new Error("ScriptedPrisma: no queued response");
     return Promise.resolve(next());
@@ -47,6 +49,7 @@ const weRow = (workoutId: string, position: number) => ({
   created_at: new Date("2026-09-15T10:05:00.000Z"),
   updated_at: new Date("2026-09-15T10:05:00.000Z"),
   planned_sets: [],
+  section_id: null,
 });
 
 describe("AC15 — getWorkoutById", () => {
@@ -76,6 +79,7 @@ describe("AC15 — getWorkoutById", () => {
     stub.queueRows([workout]);
     stub.queueRows([weRow(workout.id, 0), weRow(workout.id, 1)]);
     stub.queueRows([]); // Spec 05.1 sets read
+    stub.queueRows([{ routine_notes_snapshot: null, sections: [] }]); // Spec 09.2 snapshot read
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getWorkoutById(workout.user_id, workout.id);
@@ -100,11 +104,42 @@ describe("AC4 — getActiveWorkout", () => {
     stub.queueRows([workout]);
     stub.queueRows([]);
     stub.queueRows([]); // Spec 05.1 sets read
+    stub.queueRows([{ routine_notes_snapshot: null, sections: [] }]); // Spec 09.2 snapshot read
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     const detail = await repo.getActiveWorkout(workout.user_id);
 
     expect(detail.id).toBe(workout.id);
     expect(detail.exercises).toEqual([]);
+  });
+});
+
+describe("AC3 — the detail read issues ONE more statement for the sections and the routine note", () => {
+  it("maps sections and routineNotes; each exercise carries sectionId; exactly four statements", async () => {
+    const stub = new ScriptedPrisma();
+    const workout = wRow();
+    const sectionId = uuidv7();
+    stub.queueRows([workout]); // workout lookup
+    stub.queueRows([{ ...weRow(workout.id, 0), section_id: sectionId }, weRow(workout.id, 1)]); // exercises
+    stub.queueRows([]); // sets
+    stub.queueRows([{ routine_notes_snapshot: "Keep it short", sections: [{ id: sectionId, position: 0, name: "Warm-up", notes: null }] }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    const detail = await repo.getWorkoutById(uuidv7(), workout.id);
+    expect(stub.calls).toHaveLength(4);
+    expect(stub.calls[3]!.sql).toContain('FROM "workout_section"');
+    expect(detail.routineNotes).toBe("Keep it short");
+    expect(detail.sections).toEqual([{ id: sectionId, position: 0, name: "Warm-up", notes: null }]);
+    expect(detail.exercises.map((e) => e.sectionId)).toEqual([sectionId, null]);
+  });
+  it("a workout with no snapshot reads routineNotes null and sections []", async () => {
+    const stub = new ScriptedPrisma();
+    const workout = wRow();
+    stub.queueRows([workout]);
+    stub.queueRows([]);
+    stub.queueRows([]);
+    stub.queueRows([{ routine_notes_snapshot: null, sections: [] }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    const detail = await repo.getWorkoutById(uuidv7(), workout.id);
+    expect([detail.routineNotes, detail.sections]).toEqual([null, []]);
   });
 });

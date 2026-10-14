@@ -90,6 +90,8 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     createdAt: T0,
     updatedAt: T0,
     routineName: opts.routineName ?? null,
+    routineNotes: null,
+    sections: [],
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -109,6 +111,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         restSeconds: spec.restSeconds ?? null,
         supersetGroup: spec.supersetGroup ?? null,
         plannedSets: spec.plannedSets ?? [],
+        sectionId: null,
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),

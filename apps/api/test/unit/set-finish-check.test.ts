@@ -116,6 +116,7 @@ describe("AC12 — detail reads attach each exercise's sets, ordered", () => {
       created_at: w.created_at,
       updated_at: w.updated_at,
       planned_sets: [],
+      section_id: null,
     });
     const set = (weId: string, n: number) => ({
       id: uuidv7(),
@@ -140,7 +141,8 @@ describe("AC12 — detail reads attach each exercise's sets, ordered", () => {
     const stub = new ScriptedPrisma()
       .queue_([w])
       .queue_([we(we1, 0), we(we2, 1)])
-      .queue_([set(we1, 1), set(we1, 3)]);
+      .queue_([set(we1, 1), set(we1, 3)])
+      .queue_([{ routine_notes_snapshot: null, sections: [] }]);
     const detail = await repoOver(stub).getWorkoutById(w.user_id, w.id);
     expect(detail.exercises[0]!.sets.map((s) => s.setNumber)).toEqual([1, 3]);
     expect(detail.exercises[1]!.sets).toEqual([]);

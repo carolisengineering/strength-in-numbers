@@ -160,6 +160,7 @@ describe("AC17 — SetEntrySchema and the WorkoutDetail extension (D12)", () => 
       restSeconds: null,
       supersetGroup: null,
       plannedSets: [],
+      sectionId: null,
     };
     expect(WorkoutExerciseDetailSchema.safeParse({ ...we, sets: [validSet] }).success).toBe(true);
     expect(WorkoutExerciseDetailSchema.safeParse(we).success).toBe(false);

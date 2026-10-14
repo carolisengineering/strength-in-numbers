@@ -67,7 +67,7 @@ export function createAccountExportRepository(
           const exerciseOfWorkoutRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
             SELECT id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, notes,
                    created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe,
-                   rest_seconds, superset_group, ${WE_PLANNED_SETS} AS planned_sets
+                   rest_seconds, superset_group, section_id, ${WE_PLANNED_SETS} AS planned_sets
             FROM "workout_exercise"
             WHERE workout_id IN (SELECT id FROM "workout" WHERE user_id = ${userId}::uuid)
             ORDER BY workout_id, position`;
@@ -85,6 +85,9 @@ export function createAccountExportRepository(
             exercises: (exercisesByWorkout.get(w.id) ?? []).map(
               (e): WorkoutExerciseDetailRecord => ({ ...e, sets: setsByExercise.get(e.id) ?? [] }),
             ),
+            // Interim until Task 7 (Spec 09.2 D13) reads the snapshot columns here.
+            routineNotes: null,
+            sections: [],
           }));
           return {
             exportedAt: clock!.exported_at,
