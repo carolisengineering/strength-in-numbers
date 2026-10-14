@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
 **Status:** Draft v0.5 — decisions Q1–Q20 resolved; consistency pass done
-**Last updated:** 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
+**Last updated:** 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -79,7 +79,10 @@ resolved) and Risk R6.
    Start screen lists them, a tap opens a **preview** with Start / Edit / Delete — never a
    one-tap start — and the editor is a routed screen under `/app/workouts/routines/…`.
    Session-side display of targets and supersets: Spec 10.1. A routine item can also plan
-   each set — type, rep range, weight — and the session prefills from it: Specs 09.1 / 10.2.)
+   each set — type, rep range, weight — and the session prefills from it: Specs 09.1 / 10.2.
+   A routine can also be split into named **sections** (warm-up, main, …), each with a note, and
+   the session shows them with the routine's own note and a per-exercise note the lifter can edit
+   during the workout: Specs 09.2 / 10.3.)
 4. **Workout logging** — start a session (optionally from a routine), add
    exercises, log sets (reps, weight, RPE, set type: warmup/working/drop/failure),
    check them off, session notes, finish. Rest timer lands in M4 (§9).
@@ -317,11 +320,24 @@ Rules:
   `target_rpe` stays. A routine write sends either `sets` (rows) or the legacy
   quick-line fields, which the server expands into N identical `working` rows, so a client
   that predates planned sets keeps working. Migration `0010` backfills existing items.
+- **routine_section** — *sections* (Spec 09.2): `routine_id` (cascade), `position` (0–7,
+  unique per routine), `name` (1–40 characters, trimmed, free text, duplicates allowed — the
+  UI's one-tap starters are Warm-up, Main, Accessory, Finisher, Cooldown but the stored value
+  is plain text), `notes` (1–500, nullable). ≤ 8 per routine. `routine_item.section_id`
+  (nullable, `ON DELETE SET NULL`) places an item in a section. **Optional everywhere**: a
+  routine may have no sections, an item may be loose, a section may be empty. **Invariants**
+  (enforced on every routine write, shared with the editor in `@sin/core` `sections.ts`): loose
+  items come first, then each section as one contiguous run in section order; a superset group
+  never spans a section boundary. Sections travel inside the whole-document `PUT` with
+  request-local keys (items reference a section by `sectionKey`; keys are never stored), so a
+  body with no `sections` has none. Migration `0011`.
 
 Starting a workout from a routine **snapshots** it: the routine's items are copied
 into `workout_exercise` rows at that moment — including the five targets,
-`superset_group`, the item's notes (Spec 09 D22, amended 2026-10-11) and its planned
-sets (`workout_planned_set`, Spec 09.1) — and `workout.routine_id` / `routine_name_snapshot` are set. Later
+`superset_group`, the item's notes (Spec 09 D22, amended 2026-10-11), its planned
+sets (`workout_planned_set`, Spec 09.1) and its section (`workout_section` / `section_id`,
+Spec 09.2) — and `workout.routine_id` / `routine_name_snapshot` / `routine_notes_snapshot`
+(the routine's own note, kept apart from the lifter's `workout.notes`) are set. Later
 edits to the routine do not change past workouts; deleting the routine does not
 damage them (`workout.routine_id` is `ON DELETE SET NULL`; the name snapshot
 survives). See Spec 09.
@@ -337,7 +353,8 @@ survives). See Spec 09.
   a `CHECK` literal list is additive while shipping values nothing can write
   is not). `routine_id uuid NULL REFERENCES routine(id) ON DELETE SET NULL` and
   `routine_name_snapshot text NULL` are set when the workout is started from a
-  routine (Spec 09; closes Spec 05.0 D36).
+  routine (Spec 09; closes Spec 05.0 D36); `routine_notes_snapshot text NULL` (1–2 000)
+  holds the routine's own note at that moment (Spec 09.2).
 - **At most one in-progress workout per user** is a database invariant: a
   partial unique index on `user_id WHERE ended_at IS NULL` (Spec 05.0 D38).
 - **workout_exercise** — `workout_id`, `position`, `exercise_id`,
@@ -348,6 +365,21 @@ survives). See Spec 09.
   snapshots `target_sets`, `target_reps_low`, `target_reps_high`, `target_rpe`
   (tenths), `rest_seconds` — all NULL for a manually added exercise. The same
   exercise may appear more than once in a workout (already so: Spec 05.0 AC10).
+  Spec 09.2 adds `section_id uuid NULL` (`ON DELETE SET NULL`), the exercise's snapshotted
+  section. `notes` is the **session note**: copied from the routine item at start (Spec 09
+  D22) and editable during the workout through `PATCH /workout-exercises/{id}` (Spec 10.3,
+  queued in the offline outbox); an edit stays in that workout and never writes back to the
+  routine.
+- **workout_section** — the snapshot of a routine's sections (Spec 09.2): `workout_id`
+  (cascade), `position`, `name`, `notes`, the same columns and CHECKs as `routine_section`.
+  Written **only** by the start copy (empty sections included — a section note such as
+  "5 min rower" is an instruction without an exercise); none for a manual workout or one
+  started before migration `0011`. Returned as `sections` on the workout detail, with
+  `routineNotes` and `sectionId` per exercise. Exercises added during the workout are loose and
+  appended at the end; there is no route that changes `section_id`. The workout side is stored
+  **as sent** — the contiguity and superset-in-a-section invariants are the routine editor's
+  and routine write API's, not workout-side constraints — so every consumer tolerates a loose
+  tail and groups by maximal runs.
 - **workout_planned_set** — the snapshot of a routine item's planned sets (Spec 09.1):
   `workout_exercise_id` (cascade), `position`, `set_type`, `reps_low` / `reps_high`,
   `weight` + `weight_unit`, the same columns and CHECKs as `routine_item_set`. Written
@@ -490,6 +522,8 @@ dedup without touching the v1 schema.
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
 | `routine` (+ `routine_item`, `routine_item_set`) | hard delete (cascade); `workout.routine_id` nulls, name snapshot kept — Spec 09 / 09.1 | hard purge |
 | `workout_planned_set` | follows its `workout_exercise` / `workout` (cascade); never user-edited | hard purge |
+| `routine_section` | follows its `routine` (cascade); replaced by the routine `PUT`; deleting one leaves its items (`section_id` → NULL) — Spec 09.2 | hard purge |
+| `workout_section` | follows its `workout` (cascade); never user-edited | hard purge |
 | custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; `workout_exercise.exercise_id` is also `ON DELETE CASCADE` — Spec 05.0 D37 — so no purge-ordering step is needed) |
 | `personal_record` | never user-deleted; recomputed | hard purge |
 | `body_metric` | hard delete | hard purge |
@@ -731,7 +765,9 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   control (Spec 10.1 D4; first users: `routineName` and the six `WorkoutExercise`
   routine fields from Spec 09; then `RoutineItem.sets` and `WorkoutExercise.plannedSets`
   from Spec 09.1, whose UI, Spec 10.2, merges only after the API is deployed and
-  verified).
+  verified; then `Routine.sections`, `RoutineItem.sectionId`, `WorkoutDetail.sections` /
+  `routineNotes` and `WorkoutExercise.sectionId` from Spec 09.2, whose UI, Spec 10.3, follows
+  the same rule).
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.
@@ -745,11 +781,11 @@ POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinute
                                    → 201 + Location, or 200 on an idempotent replay
 GET    /workouts/active           → the caller's one in-progress workout, or 404
 GET    /workouts?limit=&cursor=   → { items: WorkoutSummary[], next } history list (Spec 07.1)
-GET    /workouts/{id}            # exercises[] carry plannedSets[] (Spec 09.1; [] for a manual add / pre-0010 workout)
+GET    /workouts/{id}            # exercises[] carry plannedSets[] (Spec 09.1; [] for a manual add / pre-0010 workout) and sectionId; the detail carries sections[] and routineNotes (Spec 09.2; [] / null for a manual or pre-0011 workout)
 PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
 DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exerciseId, position? }
-PATCH  /workout-exercises/{id}    { position?, notes?, supersetGroup? }   # supersetGroup: 1–99 | null (Spec 09)
+PATCH  /workout-exercises/{id}    { position?, notes?, supersetGroup? }   # supersetGroup: 1–99 | null (Spec 09); notes = the session note, key presence decides, null clears (pinned by Spec 09.2, used by 10.3)
 DELETE /workout-exercises/{id}
 POST   /workout-exercises/{id}/sets   { clientGeneratedId?, setType?, reps?, weight?, weightUnit?, ... }
 PATCH  /sets/{id}                     { same fields minus clientGeneratedId, all optional }
@@ -762,7 +798,7 @@ GET    /progress/exercises/{id}?from=&to=   → { exerciseId, points[] }, un-pag
 GET    /personal-records?exerciseId=&workoutId=   → { records[] }, un-paginated (Spec 07.0)
 GET    /routines                  → { routines[] } with items inlined (each item with its planned `sets[]`, Spec 09.1), ETag (Spec 09)
 GET    /routines/{id}             → Routine, ETag
-POST   /routines                  { name, notes?, items[] }   → 201 + Location   # item = { exerciseId, sets[] | legacy targetSets/targetReps*, targetRpe?, restSeconds?, supersetGroup?, notes? } (Spec 09.1)
+POST   /routines                  { name, notes?, items[] }   → 201 + Location   # item = { exerciseId, sets[] | legacy targetSets/targetReps*, targetRpe?, restSeconds?, supersetGroup?, notes?, sectionKey? } (Spec 09.1); body also takes sections[] = { key, name, notes? } (Spec 09.2; none = no sections)
 PUT    /routines/{id}             { name, notes?, items[] }   # whole replace, last write wins
 DELETE /routines/{id}             # hard delete; workouts keep routineName
 GET    /account/export            → 200, one synchronous JSON document (Spec 11; Content-Disposition attachment; async bucket export deferred to GA)
@@ -869,7 +905,7 @@ Planning implications:
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
   M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
-  M3 = 09, 09.1, 10.0, 10.1, 10.2 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
+  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
@@ -877,7 +913,7 @@ Planning implications:
 | **M0 — Skeleton** (Specs 01, 02, 04.0, 04.1) | Monorepo, `render.yaml` blueprint, CI/CD, `packages/core` purity check (Spec 02), Fastify API skeleton + config + DB, `user` migration, Auth0 **API-side** JWT validation + `user` provisioning, health checks (Spec 01). **Spec 04.0:** Vite React SPA shell, browser Auth0 PKCE login (in-memory tokens, self-hosted refresh-token worker), React-free authed API client (problem+json → typed errors), router + protected routes + bootstrap gate, Render static-site deploy with SPA fallback + strict CSP, CI web gate. **Spec 04.1:** CSS-Modules design-token system + primitives, `useSession`/`useMe`, the Profile screen (`GET`/`PATCH /v1/me`), error boundary. | API on Render staging validates a real Auth0 token and provisions a user; post-deploy smoke script gets `200 /v1/me`. A user completes Auth0 Universal Login in a mobile browser and the SPA renders their profile from `GET /v1/me`; the static site is deployed to Render with the SPA rewrite and a strict CSP, and CI gates the web build. |
 | **M1 — Log a workout (API + web)** | Zod→OpenAPI contract pipeline (Spec 03.0); exercise catalog read endpoints + seed data (03.1), custom exercises (03.2); start/empty workout; log sets; finish. No routines, no charts. Mobile-first responsive layout for the logging screen. | Dev logs real gym sessions from a phone browser for 1 week; no data loss. |
 | **M2 — History & progress** (Specs 07.0 PR engine, 07.1 history list, 07.2 progress series, 08.0 history screen + PR display, 08.1 progress screen) | History list + detail (08.0); PR detection + finish-screen summary (07.0 + 08.0); per-exercise charts (est-1RM, top set, volume, reps — hand-written SVG, Q17) and the per-exercise records list (08.1). | Progress numbers reconciled by hand for 10 sessions (records and history: 08.0 AC27; charts: 08.1 AC29). |
-| **M3 — Routines + supersets** (Specs 09 routines API, 09.1 planned sets API, 10.0 routines UI, 10.1 session side, 10.2 planned sets UI) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor; in the session (10.1) target lines and notes on the exercise cards, the bracket, live link/unlink via the editor's rules, and `routineName` on History; "grid logging" = bracket + per-card logging; **planned sets** (09.1 / 10.2) — a routine item can program each set (type, reps, weight), the editor offers a weight field and "Plan each set", and in the session the entry-row draft arrives prefilled and labeled "Set 3 of 4" / "Extra set". The rest timer, including the per-group timer, is M4. | — |
+| **M3 — Routines + supersets** (Specs 09 routines API, 09.1 planned sets API, 09.2 routine sections API, 10.0 routines UI, 10.1 session side, 10.2 planned sets UI, 10.3 routine sections UI) | Build/edit routines; start a workout from a routine; superset/circuit grouping (Tier B) — grouping in the editor; in the session (10.1) target lines and notes on the exercise cards, the bracket, live link/unlink via the editor's rules, and `routineName` on History; "grid logging" = bracket + per-card logging; **planned sets** (09.1 / 10.2) — a routine item can program each set (type, reps, weight), the editor offers a weight field and "Plan each set", and in the session the entry-row draft arrives prefilled and labeled "Set 3 of 4" / "Extra set"; **sections and notes** (09.2 / 10.3) — a routine can be split into named sections with a note each, the session shows them under headings with the routine's own note at the top and a per-exercise **Note** action (queued offline), and History shows the same structure. The rest timer, including the per-group timer, is M4. | — |
 | **M4 — Polish & beta** | Rest timer, body-weight log, data export/delete (Spec 11 API + Spec 12 UI — beta minimum: synchronous JSON export and a manual purge CLI; R2 bucket, async export and the scheduled purge job are GA), empty + error states, `localStorage` write-queue (R1 mitigation), accessibility pass. | Closed beta with a handful of real users; error rate + core metrics instrumented. |
 | **GA** | Public launch of the web app, custom domain, and a small **standalone Next.js marketing/landing site** (static, SEO-friendly; separate deploy from the app — a deliberate, low-stakes first use of Next.js). | Success metrics (§1.3) visible on a dashboard. |
 | **Phase 2 — AWS migration** (can start once M2 is stable; independent of M3+) | `infra/` in CDK or Terraform: ECS Fargate, RDS Postgres, S3, CloudFront, EventBridge; GitHub Actions build→ECR→deploy. Lean: no NAT, no ALB, single-AZ. Cut over staging first, then production; keep Render as rollback until stable. | Both envs running on AWS from IaC; documented as a case study. |
@@ -902,7 +938,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -1135,6 +1171,34 @@ with rationale so the "why" survives.
   for v1. Owner rulings 2026-10-11: a rep range with no set count keeps no rows and its
   range as sent (Spec 09.1 O1); the planned weight shows on the finished-workout and History
   target line too (Spec 10.2 O2, D8). See Spec 09.1 §12 (D1–D14) and Spec 10.2 §12 (D1–D12).
+
+- **Q21 — Routine sections and notes: section rows, a routine-note snapshot, session notes
+  through the outbox.** ✅ **Resolved (Specs 09.2 / 10.3, 2026-10-13): a routine owns up to
+  eight named, noted sections its items can belong to; starting a workout snapshots them, each
+  exercise's section and the routine's own note; the session and History show them, and the
+  lifter can edit each exercise's note during the workout.** `routine_section` rows (name 1–40
+  free text, note ≤ 500) and a nullable `section_id` on items are written by the whole-document
+  routine `PUT` (sections carry request-local keys that items reference; a body with no
+  `sections` has none); the server rejects an item list that is not loose-first with each
+  section one contiguous run, and a superset spanning sections. The start copy (inside the
+  existing `FOR SHARE` transaction, `INSERT … SELECT`) writes `workout_section`, sets each
+  exercise's `section_id` and stores the routine's note in `workout.routine_notes_snapshot` —
+  never in `workout.notes` — so later routine edits never change a past workout; the workout
+  side is stored as sent (added exercises are loose and appended, no route edits `section_id`)
+  and every consumer groups by maximal runs. The session note is the existing
+  `PATCH /workout-exercises/{id}` `notes` key (already accepted; Spec 09.2 pins it), queued in
+  the offline outbox as a new `note` op that coalesces and that Finish waits for; it never
+  writes back to the routine. Rationale: a note belongs next to the exercises it applies to,
+  must be readable mid-set and reappear afterwards, and a workout must stay self-contained
+  forever (as with `exercise_name_snapshot`, Q18). Sections are rows because they are
+  queryable, constrained by the database and flow through the shared read DTOs to the export.
+  Rejected: heading pseudo-rows in the item list (every consumer would filter by row kind); a
+  JSON column (not queryable, no CHECKs; Q18 rejected a JSON snapshot); copying the routine
+  note into `workout.notes` (mixes the routine's text with the lifter's); an advisory lock for
+  the section cap (the cap is a property of one whole-document write that already holds the
+  routine row lock); online-only session notes remain open as Spec 10.3 O1. Open: section-note
+  length 500 vs 2 000 (Spec 09.2 O1); outbox vs online-only (Spec 10.3 O1); one spec or two
+  (Spec 10.3 O2). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
 
 ---
 
