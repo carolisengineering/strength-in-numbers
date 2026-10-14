@@ -5,10 +5,10 @@ import { serverIssuesFor } from "./routineErrors";
 
 const item = (key: string, o: Partial<DraftItem> = {}): DraftItem => ({
   key, exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null,
-  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, ...o,
+  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, sectionKey: null, ...o,
 });
 const rowOf = (key: string): DraftSet => ({ key, setType: "working", repsLow: 6, repsHigh: 8, weight: 100, weightUnit: "kg" });
-const draft: Draft = { name: "x", notes: "", items: [item("a"), item("b", { plan: [rowOf("r1"), rowOf("r2")] })], dirty: true, adjusted: false };
+const draft: Draft = { name: "x", notes: "", sections: [], items: [item("a"), item("b", { plan: [rowOf("r1"), rowOf("r2")] })], dirty: true, adjusted: false, unlinkNotice: false };
 
 describe("10.2 AC8 — a 422 maps onto the saved draft's items and rows", () => {
   it("quick-mode paths → the item's fields; plan-mode paths → the row", () => {

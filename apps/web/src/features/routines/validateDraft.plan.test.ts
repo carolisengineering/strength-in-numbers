@@ -6,9 +6,9 @@ import { issueForPath, plannedViolationIssues, toRoutineInput, validateDraft, WE
 
 const item = (key: string, o: Partial<DraftItem> = {}): DraftItem => ({
   key, exerciseId: exerciseId(1), targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null,
-  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, ...o,
+  restSeconds: null, notes: null, supersetGroup: null, weight: null, weightUnit: null, plan: null, sectionKey: null, ...o,
 });
-const draftOf = (...items: DraftItem[]): Draft => ({ name: "Push A", notes: "", items, dirty: true, adjusted: false });
+const draftOf = (...items: DraftItem[]): Draft => ({ name: "Push A", notes: "", sections: [], items, dirty: true, adjusted: false, unlinkNotice: false });
 const row = (key: string, o: Partial<DraftSet> = {}): DraftSet => ({ key, setType: "working", repsLow: 6, repsHigh: 8, weight: 100, weightUnit: "kg", ...o });
 const as = (m: Modality | null) => ({ modalityOf: () => m });
 const allActive = { exerciseState: () => "active" as const };

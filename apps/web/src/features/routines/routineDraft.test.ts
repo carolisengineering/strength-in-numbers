@@ -36,12 +36,13 @@ function draftOf(spec: string, overrides: Partial<Draft> = {}): Draft {
         restSeconds: null,
         notes: null,
         supersetGroup: m[2] === "" ? null : Number(m[2]),
+        sectionKey: null,
         weight: null,
         weightUnit: null,
         plan: null,
       };
     });
-  return { name: "Push A", notes: "", items, dirty: false, adjusted: false, ...overrides };
+  return { name: "Push A", notes: "", sections: [], items, dirty: false, adjusted: false, unlinkNotice: false, ...overrides };
 }
 
 const shape = (d: Draft) => d.items.map((i) => `${i.key}${i.supersetGroup ?? ""}`).join(" ");
@@ -66,7 +67,7 @@ function invariantHolds(d: Draft): boolean {
 
 describe("10.0 AC1 — draft basics", () => {
   it("starts empty and clean", () => {
-    expect(initialDraft()).toEqual({ name: "", notes: "", items: [], dirty: false, adjusted: false });
+    expect(initialDraft()).toEqual({ name: "", notes: "", sections: [], items: [], dirty: false, adjusted: false, unlinkNotice: false });
   });
 
   it("every change sets dirty; a no-op returns the same reference", () => {

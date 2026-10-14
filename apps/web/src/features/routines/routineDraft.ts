@@ -8,6 +8,7 @@ import {
   normalizeSupersetGroups,
   PLANNED_SETS_PER_ITEM_MAX,
   ROUTINE_ITEMS_MAX,
+  ROUTINE_SECTIONS_MAX,
   unlinkRule,
   type Routine,
   type SessionSlot,
@@ -28,11 +29,23 @@ import type { Targets, WeightedRow } from "./targetFormat";
  * Spec 10.1: the link / split / block-move rules are `@sin/core` `supersets.ts`; this module keeps `settle` on top.
  */
 
+export interface DraftSection {
+  readonly key: string;
+  readonly name: string;
+  /** "" = no note (like `Draft.notes`); trimmed and omitted when blank by `toRoutineInput`. */
+  readonly notes: string;
+}
+
+/** The text on a link toggle the lifter can never see: supersets do not cross a section boundary (Spec 10.3 AC5). */
+export const SECTION_LINK_REFUSAL = "Supersets stay inside one section";
+
 export interface DraftItem extends Targets {
   readonly key: string;
   readonly exerciseId: string;
   readonly notes: string | null;
   readonly supersetGroup: number | null;
+  /** The `key` of the section this item sits in; `null` = loose. Client-only, never sent (the request uses `s1…`, AC7). */
+  readonly sectionKey: string | null;
   /** Quick mode (`plan === null`): the weight typed on the quick line; a unit only ever travels with a weight. */
   readonly weight: number | null;
   readonly weightUnit: WeightUnit | null;
@@ -60,10 +73,13 @@ export type PlannedEdit =
 export interface Draft {
   readonly name: string;
   readonly notes: string;
+  readonly sections: readonly DraftSection[];
   readonly items: readonly DraftItem[];
   readonly dirty: boolean;
   /** `load` had to split a non-contiguous group (AC5); the editor shows a notice until dismissed. */
   readonly adjusted: boolean;
+  /** Spec 10.3 AC5: a link was refused or dissolved at a section boundary; the editor shows a notice until dismissed. */
+  readonly unlinkNotice: boolean;
 }
 
 export type DraftAction =
@@ -76,7 +92,20 @@ export type DraftAction =
   | { readonly type: "setTargets"; readonly key: string; readonly targets: Targets; readonly notes: string | null }
   | { readonly type: "setPlanned"; readonly key: string; readonly planned: PlannedEdit }
   | { readonly type: "toggleLink"; readonly index: number }
-  | { readonly type: "load"; readonly routine: Routine; readonly keys: readonly string[]; readonly rowKeys: readonly (readonly string[])[] }
+  | { readonly type: "addSection"; readonly name: string; readonly key: string }
+  | { readonly type: "renameSection"; readonly key: string; readonly name: string }
+  | { readonly type: "setSectionNotes"; readonly key: string; readonly notes: string }
+  | { readonly type: "moveSectionUp"; readonly key: string }
+  | { readonly type: "moveSectionDown"; readonly key: string }
+  | { readonly type: "deleteSection"; readonly key: string }
+  | { readonly type: "dismissUnlinkNotice" }
+  | {
+      readonly type: "load";
+      readonly routine: Routine;
+      readonly keys: readonly string[];
+      readonly rowKeys: readonly (readonly string[])[];
+      readonly sectionKeys: readonly string[];
+    }
   | { readonly type: "markRetired"; readonly keys: readonly string[] }
   | { readonly type: "dismissAdjusted" };
 
@@ -96,41 +125,62 @@ export const actions = {
   setTargets: (key: string, targets: Targets, notes: string | null): DraftAction => ({ type: "setTargets", key, targets, notes }),
   setPlanned: (key: string, planned: PlannedEdit): DraftAction => ({ type: "setPlanned", key, planned }),
   toggleLink: (index: number): DraftAction => ({ type: "toggleLink", index }),
+  addSection: (name: string): DraftAction => ({ type: "addSection", name, key: newKey() }),
+  renameSection: (key: string, name: string): DraftAction => ({ type: "renameSection", key, name }),
+  setSectionNotes: (key: string, notes: string): DraftAction => ({ type: "setSectionNotes", key, notes }),
+  moveSectionUp: (key: string): DraftAction => ({ type: "moveSectionUp", key }),
+  moveSectionDown: (key: string): DraftAction => ({ type: "moveSectionDown", key }),
+  deleteSection: (key: string): DraftAction => ({ type: "deleteSection", key }),
+  dismissUnlinkNotice: (): DraftAction => ({ type: "dismissUnlinkNotice" }),
   load: (routine: Routine): DraftAction => ({
     type: "load",
     routine,
     keys: routine.items.map(() => newKey()),
     rowKeys: routine.items.map((item) => item.sets.map(() => newKey())),
+    sectionKeys: routine.sections.map(() => newKey()),
   }),
   markRetired: (keys: readonly string[]): DraftAction => ({ type: "markRetired", keys }),
   dismissAdjusted: (): DraftAction => ({ type: "dismissAdjusted" }),
 };
 
 export function initialDraft(): Draft {
-  return { name: "", notes: "", items: [], dirty: false, adjusted: false };
+  return { name: "", notes: "", sections: [], items: [], dirty: false, adjusted: false, unlinkNotice: false };
 }
 
 export function draftFromRoutine(routine: Routine): Draft {
   return reduce(initialDraft(), actions.load(routine));
 }
 
-/** Runs of one become ungrouped; a group seen in two runs becomes two groups; then dense 1, 2, 3 …. */
-function settle(items: readonly DraftItem[]): DraftItem[] {
+/**
+ * (a) Canonical order: loose items first, then each section's items in the sections' order, relative order
+ * kept; an item naming a section that does not exist reads as loose. (b) A superset is one contiguous run of
+ * 2–8 inside ONE section: a run that crosses a section boundary is split there, runs of one become ungrouped.
+ * (c) Groups are numbered 1, 2, 3 … by first appearance. Spec 10.3 AC6 — the one place these rules live (D1).
+ */
+function settle(items: readonly DraftItem[], sections: readonly DraftSection[]): DraftItem[] {
+  const order = new Map(sections.map((s, i) => [s.key, i]));
+  const placed = items.map((item) => (item.sectionKey !== null && !order.has(item.sectionKey) ? { ...item, sectionKey: null } : item));
+  const rank = (item: DraftItem): number => (item.sectionKey === null ? -1 : order.get(item.sectionKey)!);
+  const sorted = placed
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => rank(a.item) - rank(b.item) || a.i - b.i)
+    .map((x) => x.item);
   const labels: (number | null)[] = [];
   let label = 0;
-  items.forEach((item, i) => {
+  sorted.forEach((item, i) => {
     const g = item.supersetGroup;
     if (g === null) {
       labels.push(null);
       return;
     }
-    if (i === 0 || items[i - 1]!.supersetGroup !== g) label += 1;
+    const prev = sorted[i - 1];
+    if (!prev || prev.supersetGroup !== g || prev.sectionKey !== item.sectionKey) label += 1;
     labels.push(label);
   });
   const sizes = new Map<number, number>();
   for (const l of labels) if (l !== null) sizes.set(l, (sizes.get(l) ?? 0) + 1);
   const dense = normalizeSupersetGroups(labels.map((l) => (l !== null && sizes.get(l) === 1 ? null : l)));
-  return items.map((item, i) => (item.supersetGroup === dense[i] ? item : { ...item, supersetGroup: dense[i]! }));
+  return sorted.map((item, i) => (item.supersetGroup === dense[i] ? item : { ...item, supersetGroup: dense[i]! }));
 }
 
 const slotsOf = (items: readonly DraftItem[]): SessionSlot[] => items.map((i) => ({ id: i.key, group: i.supersetGroup }));
@@ -187,7 +237,14 @@ function move(items: readonly DraftItem[], index: number, dir: -1 | 1): DraftIte
   return out ? fromSlots(items, out) : null;
 }
 
-const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items), dirty: true });
+const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items, state.sections), dirty: true });
+
+const withSections = (state: Draft, sections: readonly DraftSection[], items: readonly DraftItem[]): Draft => ({
+  ...state,
+  sections,
+  items: settle(items, sections),
+  dirty: true,
+});
 
 export function reduce(state: Draft, action: DraftAction): Draft {
   switch (action.type) {
@@ -210,6 +267,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
         weight: null,
         weightUnit: null,
         plan: null,
+        sectionKey: null,
       };
       return withItems(state, [...state.items, item]);
     }
@@ -256,6 +314,38 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const out = toggleLink(state, action.index);
       return out ? withItems(state, out) : state;
     }
+    case "addSection": {
+      const name = action.name.trim();
+      if (name === "" || state.sections.length >= ROUTINE_SECTIONS_MAX) return state;
+      return { ...state, sections: [...state.sections, { key: action.key, name, notes: "" }], dirty: true };
+    }
+    case "renameSection": {
+      const name = action.name.trim();
+      const section = state.sections.find((s) => s.key === action.key);
+      if (!section || name === "" || section.name === name) return state;
+      return { ...state, sections: state.sections.map((s) => (s.key === action.key ? { ...s, name } : s)), dirty: true };
+    }
+    case "setSectionNotes": {
+      const section = state.sections.find((s) => s.key === action.key);
+      if (!section || section.notes === action.notes) return state;
+      return { ...state, sections: state.sections.map((s) => (s.key === action.key ? { ...s, notes: action.notes } : s)), dirty: true };
+    }
+    case "moveSectionUp":
+    case "moveSectionDown": {
+      const i = state.sections.findIndex((s) => s.key === action.key);
+      const j = action.type === "moveSectionUp" ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= state.sections.length) return state;
+      const sections = [...state.sections];
+      [sections[i], sections[j]] = [sections[j]!, sections[i]!];
+      return withSections(state, sections, state.items);
+    }
+    case "deleteSection": {
+      if (!state.sections.some((s) => s.key === action.key)) return state;
+      const items = state.items.map((i) => (i.sectionKey === action.key ? { ...i, sectionKey: null } : i));
+      return withSections(state, state.sections.filter((s) => s.key !== action.key), items);
+    }
+    case "dismissUnlinkNotice":
+      return state.unlinkNotice ? { ...state, unlinkNotice: false } : state;
     case "markRetired": {
       const keys = new Set(action.keys);
       if (!state.items.some((i) => keys.has(i.key))) return state;
@@ -264,6 +354,9 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     case "dismissAdjusted":
       return state.adjusted ? { ...state, adjusted: false } : state;
     case "load": {
+      const sortedSections = [...action.routine.sections].sort((a, b) => a.position - b.position);
+      const sections: DraftSection[] = sortedSections.map((s, j) => ({ key: action.sectionKeys[j] ?? newKey(), name: s.name, notes: s.notes ?? "" }));
+      const keyById = new Map(sortedSections.map((s, j) => [s.id as string, sections[j]!.key]));
       const raw: DraftItem[] = [...action.routine.items]
         .sort((a, b) => a.position - b.position)
         .map((item, k): DraftItem => {
@@ -274,6 +367,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
             restSeconds: item.restSeconds,
             notes: item.notes,
             supersetGroup: item.supersetGroup,
+            sectionKey: item.sectionId === null ? null : (keyById.get(item.sectionId) ?? null),
           };
           const rows = item.sets;
           if (rows.length === 0) {
@@ -287,9 +381,11 @@ export function reduce(state: Draft, action: DraftAction): Draft {
           const plan: DraftSet[] = rows.map((r, j) => ({ key: action.rowKeys[k]?.[j] ?? newKey(), ...r }));
           return { ...base, ...deriveTargets(rows), weight: null, weightUnit: null, plan };
         });
-      const items = settle(raw);
-      const adjusted = items.some((item, k) => item.supersetGroup !== raw[k]!.supersetGroup);
-      return { name: action.routine.name, notes: action.routine.notes ?? "", items, dirty: adjusted, adjusted };
+      const items = settle(raw, sections);
+      const adjusted = items.some(
+        (item, k) => item.key !== raw[k]!.key || item.supersetGroup !== raw[k]!.supersetGroup || item.sectionKey !== raw[k]!.sectionKey,
+      );
+      return { name: action.routine.name, notes: action.routine.notes ?? "", sections, items, dirty: adjusted, adjusted, unlinkNotice: false };
     }
   }
 }
