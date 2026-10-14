@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } fro
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
-import { ROUTINE_ITEMS_MAX } from "@sin/core";
+import { ROUTINE_ITEMS_MAX, ROUTINE_SECTIONS_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Field } from "../../ui/Field";
@@ -12,8 +12,12 @@ import { useSession } from "../../auth/useSession";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { EditorRow } from "./EditorRow";
 import { useExerciseLookup } from "./exerciseLookup";
+import { AddSectionSheet } from "./AddSectionSheet";
 import { ItemSheet } from "./ItemSheet";
 import { LinkToggle } from "./LinkToggle";
+import { SectionHeader } from "./SectionHeader";
+import { SectionSheet } from "./SectionSheet";
+import sectionStyles from "./Sections.module.css";
 import {
   ADJUSTED_NOTICE,
   ITEMS_CAP_MESSAGE,
@@ -23,6 +27,8 @@ import {
   RATE_LIMITED,
   ROUTINE_GONE,
   SAVE_FAILED,
+  SECTION_EMPTY_HINT,
+  SECTIONS_CAP_MESSAGE,
 } from "./messages";
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
@@ -30,7 +36,7 @@ import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { RoutineGone } from "./RoutinePreview";
-import { fieldMessagesFor, itemMessage, rowMessagesFor } from "./sheetIssues";
+import { fieldMessagesFor, itemMessage, rowMessagesFor, sectionError, sectionMessagesFor } from "./sheetIssues";
 import styles from "./RoutineEditor.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
 import { useCreateRoutine, useReplaceRoutine } from "./useRoutineMutations";
@@ -92,8 +98,10 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const lookupExercise = useExerciseLookup();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sheet, setSheet] = useState<{ key: string; session: number; open: boolean } | null>(null);
+  const [sectionSheet, setSectionSheet] = useState<{ key: string; session: number; open: boolean } | null>(null);
+  const [addSheet, setAddSheet] = useState<{ session: number; open: boolean } | null>(null);
   const mainControls = useRef(new Map<string, HTMLButtonElement>());
-  const pendingFocus = useRef<string | "add" | null>(null);
+  const pendingFocus = useRef<string | "add" | "add-section" | null>(null);
 
   const validation = useMemo(
     () => validateDraft(draft, { exerciseState: (id) => lookupExercise(id).state, modalityOf: (id) => lookupExercise(id).modality }),
@@ -232,6 +240,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     if (target === null) return;
     pendingFocus.current = null;
     if (target === "add") document.getElementById("routine-add-exercise")?.focus();
+    else if (target === "add-section") document.getElementById("routine-add-section")?.focus();
     else mainControls.current.get(target)?.focus();
   });
 
@@ -243,6 +252,72 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const cancelTo = routine ? routinePath(routine.id) : WORKOUTS_PATH;
   const sheetItem = sheet ? draft.items.find((i) => i.key === sheet.key) : undefined;
   const groups = draft.items.map((i) => i.supersetGroup);
+  const looseCount = draft.items.filter((i) => i.sectionKey === null).length;
+  const sectionBounds = (() => {
+    let from = looseCount;
+    return draft.sections.map((s): [number, number] => {
+      const to = from + draft.items.filter((i) => i.sectionKey === s.key).length;
+      const range: [number, number] = [from, to];
+      from = to;
+      return range;
+    });
+  })();
+  const sheetSection = sectionSheet ? draft.sections.find((s) => s.key === sectionSheet.key) : undefined;
+  const sectionsAtCap = draft.sections.length >= ROUTINE_SECTIONS_MAX;
+
+  function renderRow(index: number, start: number, end: number) {
+    const item = draft.items[index]!;
+    const exercise = lookupExercise(item.exerciseId);
+    const position = runPosition(groups, index);
+    const group = position === "none" ? null : item.supersetGroup;
+    const line = targetLine(item, plannedRowsOf(item));
+    const unavailable = item.retired === true || exercise.state === "retired" || exercise.state === "missing";
+    const next = index + 1 < end ? draft.items[index + 1] : undefined; // a toggle exists only inside one section run
+    const refusal = canLink(draft, index);
+    return (
+      <li key={item.key} className={styles.item} data-name={exercise.name}>
+        <EditorRow
+          name={exercise.name}
+          line={line}
+          notes={item.notes}
+          position={position}
+          accessibleName={itemAccessibleName(exercise.name, group, line, unavailable)}
+          unavailable={unavailable}
+          error={itemMessage(issues, item.key)}
+          errorId={`row-${item.key}-error`}
+          isFirst={index === start}
+          isLast={index === end - 1}
+          registerMain={(el) => {
+            if (el) mainControls.current.set(item.key, el);
+            else mainControls.current.delete(item.key);
+          }}
+          onOpen={() => setSheet((s) => ({ key: item.key, session: (s?.session ?? 0) + 1, open: true }))}
+          onMoveUp={() => {
+            pendingFocus.current = item.key;
+            dispatch(actions.moveUp(item.key));
+          }}
+          onMoveDown={() => {
+            pendingFocus.current = item.key;
+            dispatch(actions.moveDown(item.key));
+          }}
+          onRemove={() => {
+            pendingFocus.current = draft.items[index + 1]?.key ?? "add";
+            dispatch(actions.remove(item.key));
+          }}
+        />
+        {next ? (
+          <LinkToggle
+            id={`link-${item.key}`}
+            above={exercise.name}
+            below={lookupExercise(next.exerciseId).name}
+            linked={isLinked(draft.items, index)}
+            refusal={refusal.ok ? null : refusal.reason}
+            onToggle={() => dispatch(actions.toggleLink(index))}
+          />
+        ) : null}
+      </li>
+    );
+  }
 
   return (
     <Screen title={routine ? "Edit routine" : "New routine"}>
@@ -282,65 +357,81 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           <textarea {...control} className={styles.input} rows={2} value={draft.notes} onChange={(e) => dispatch(actions.setNotes(e.target.value))} />
         )}
       </Field>
-      <ul className={styles.items} aria-label="Exercises">
-        {draft.items.map((item, index) => {
-          const exercise = lookupExercise(item.exerciseId);
-          const position = runPosition(groups, index);
-          const group = position === "none" ? null : item.supersetGroup;
-          const line = targetLine(item, plannedRowsOf(item));
-          const unavailable = item.retired === true || exercise.state === "retired" || exercise.state === "missing";
-          const next = draft.items[index + 1];
-          const refusal = canLink(draft, index);
-          return (
-            <li key={item.key} className={styles.item} data-name={exercise.name}>
-              <EditorRow
-                name={exercise.name}
-                line={line}
-                notes={item.notes}
-                position={position}
-                accessibleName={itemAccessibleName(exercise.name, group, line, unavailable)}
-                unavailable={unavailable}
-                error={itemMessage(issues, item.key)}
-                errorId={`row-${item.key}-error`}
-                isFirst={index === 0}
-                isLast={index === draft.items.length - 1}
-                registerMain={(el) => {
-                  if (el) mainControls.current.set(item.key, el);
-                  else mainControls.current.delete(item.key);
-                }}
-                onOpen={() => setSheet((s) => ({ key: item.key, session: (s?.session ?? 0) + 1, open: true }))}
-                onMoveUp={() => {
-                  pendingFocus.current = item.key;
-                  dispatch(actions.moveUp(item.key));
-                }}
-                onMoveDown={() => {
-                  pendingFocus.current = item.key;
-                  dispatch(actions.moveDown(item.key));
-                }}
-                onRemove={() => {
-                  pendingFocus.current = draft.items[index + 1]?.key ?? "add";
-                  dispatch(actions.remove(item.key));
-                }}
-              />
-              {next ? (
-                <LinkToggle
-                  id={`link-${item.key}`}
-                  above={exercise.name}
-                  below={lookupExercise(next.exerciseId).name}
-                  linked={isLinked(draft.items, index)}
-                  refusal={refusal.ok ? null : refusal.reason}
-                  onToggle={() => dispatch(actions.toggleLink(index))}
+      {draft.sections.length === 0 ? (
+        <ul className={styles.items} aria-label="Exercises">
+          {draft.items.map((_, index) => renderRow(index, 0, draft.items.length))}
+        </ul>
+      ) : (
+        <>
+          {looseCount > 0 ? (
+            <ul className={styles.items} aria-label="Exercises">
+              {draft.items.slice(0, looseCount).map((_, index) => renderRow(index, 0, looseCount))}
+            </ul>
+          ) : null}
+          {draft.sections.map((section, j) => {
+            const [from, to] = sectionBounds[j]!;
+            const headingId = `section-${section.key}-name`;
+            return (
+              <section key={section.key} className={sectionStyles.section} aria-labelledby={headingId}>
+                <SectionHeader
+                  name={section.name}
+                  notes={section.notes}
+                  index={j}
+                  count={draft.sections.length}
+                  headingId={headingId}
+                  error={sectionError(issues, section.key)}
+                  errorId={`section-${section.key}-error`}
+                  registerMain={(el) => {
+                    if (el) mainControls.current.set(`section:${section.key}`, el);
+                    else mainControls.current.delete(`section:${section.key}`);
+                  }}
+                  onOpen={() => setSectionSheet((s) => ({ key: section.key, session: (s?.session ?? 0) + 1, open: true }))}
+                  onMoveUp={() => {
+                    pendingFocus.current = `section:${section.key}`;
+                    dispatch(actions.moveSectionUp(section.key));
+                  }}
+                  onMoveDown={() => {
+                    pendingFocus.current = `section:${section.key}`;
+                    dispatch(actions.moveSectionDown(section.key));
+                  }}
+                  onDelete={() => {
+                    pendingFocus.current = "add-section";
+                    dispatch(actions.deleteSection(section.key));
+                  }}
                 />
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                {to > from ? (
+                  <ul className={styles.items} aria-label={`Exercises in ${section.name}`}>
+                    {draft.items.slice(from, to).map((_, k) => renderRow(from + k, from, to))}
+                  </ul>
+                ) : (
+                  <p className={sectionStyles.reason}>{SECTION_EMPTY_HINT}</p>
+                )}
+              </section>
+            );
+          })}
+        </>
+      )}
       {issueFor(issues, "items") ? (
         <p id="routine-items-error" className={styles.reason} role={attempted ? "alert" : undefined}>
           {issueFor(issues, "items")}
         </p>
       ) : null}
+      <div className={sectionStyles.addRow}>
+        <Button
+          id="routine-add-section"
+          variant="secondary"
+          disabled={sectionsAtCap}
+          {...(sectionsAtCap ? { "aria-describedby": "routine-sections-cap" } : {})}
+          onClick={() => setAddSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
+        >
+          Add section
+        </Button>
+        {sectionsAtCap ? (
+          <p id="routine-sections-cap" className={sectionStyles.reason}>
+            {SECTIONS_CAP_MESSAGE}
+          </p>
+        ) : null}
+      </div>
       <Button
         id="routine-add-exercise"
         variant="secondary"
@@ -380,6 +471,32 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
             setSheet((s) => s && { ...s, open: false });
           }}
           onClose={() => setSheet((s) => s && { ...s, open: false })}
+        />
+      ) : null}
+      {sectionSheet && sheetSection ? (
+        <SectionSheet
+          key={sectionSheet.session}
+          open={sectionSheet.open}
+          section={sheetSection}
+          messages={sectionMessagesFor(issues, sheetSection.key)}
+          onDone={(name, notes) => {
+            dispatch(actions.renameSection(sheetSection.key, name));
+            dispatch(actions.setSectionNotes(sheetSection.key, notes));
+            setSectionSheet((s) => s && { ...s, open: false });
+          }}
+          onClose={() => setSectionSheet((s) => s && { ...s, open: false })}
+        />
+      ) : null}
+      {addSheet ? (
+        <AddSectionSheet
+          key={addSheet.session}
+          open={addSheet.open}
+          onAdd={(name) => {
+            dispatch(actions.addSection(name));
+            pendingFocus.current = "add-section";
+            setAddSheet((s) => s && { ...s, open: false });
+          }}
+          onClose={() => setAddSheet((s) => s && { ...s, open: false })}
         />
       ) : null}
       <ConfirmDialog
