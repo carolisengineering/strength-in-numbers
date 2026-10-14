@@ -3,6 +3,7 @@ import {
   ProgressPointSchema,
   RoutineItemSchema,
   RoutineSchema,
+  RoutineSectionSchema,
   SetEntrySchema,
   WorkoutDetailSchema,
   WorkoutSummarySchema,
@@ -12,6 +13,7 @@ import {
   type ProgressPoint,
   type Routine,
   type RoutineItem,
+  type RoutineSection,
   type SetEntry,
   type WorkoutDetail,
   type WorkoutSummary,
@@ -62,6 +64,8 @@ export interface ExerciseSpec {
   restSeconds?: number | null;
   /** Spec 10.2: the routine item's planned rows; each defaults to none. */
   plannedSets?: PlannedSet[];
+  /** Spec 10.3: index into `WorkoutDetailOptions.sections`; omitted / null = loose. */
+  sectionIndex?: number | null;
 }
 
 export interface WorkoutDetailOptions {
@@ -72,11 +76,15 @@ export interface WorkoutDetailOptions {
   localDate?: string;
   exercises?: ExerciseSpec[];
   routineName?: string | null;
+  /** Spec 10.3: the workout's snapshotted sections (ids minted) and the routine note. */
+  sections?: { name: string; notes?: string | null }[];
+  routineNotes?: string | null;
 }
 
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
 export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetail {
   const id = opts.id ?? nextId();
+  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null }));
   return WorkoutDetailSchema.parse({
     id,
     title: null,
@@ -90,8 +98,8 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     createdAt: T0,
     updatedAt: T0,
     routineName: opts.routineName ?? null,
-    routineNotes: null,
-    sections: [],
+    routineNotes: opts.routineNotes ?? null,
+    sections,
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -111,7 +119,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         restSeconds: spec.restSeconds ?? null,
         supersetGroup: spec.supersetGroup ?? null,
         plannedSets: spec.plannedSets ?? [],
-        sectionId: null,
+        sectionId: spec.sectionIndex == null ? null : sections[spec.sectionIndex]!.id,
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
@@ -177,6 +185,13 @@ export function makeProgressPoint(overrides: Record<string, unknown> = {}): Prog
 
 /** A deterministic routine id: `…-000000000003` for `n = 3`. */
 export const routineId = (n: number): string => `20000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+/** A deterministic section id: `…-000000000002` for `n = 2` (prefix 6 so it never collides with ids minted by `nextId`). */
+export const sectionId = (n: number): string => `60000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+export function makeRoutineSection(overrides: Record<string, unknown> = {}): RoutineSection {
+  return RoutineSectionSchema.parse({ id: sectionId(1), position: 0, name: "Warm-up", notes: null, ...overrides });
+}
 
 export function makeRoutineItem(overrides: Record<string, unknown> = {}): RoutineItem {
   return RoutineItemSchema.parse({
