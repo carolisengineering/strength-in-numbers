@@ -33,7 +33,7 @@ afterEach(() => cleanupApp());
 const EDIT_B = `/app/workouts/routines/${routineId(2)}/edit`;
 const EDIT_A = `/app/workouts/routines/${routineId(1)}/edit`;
 
-/** The page itself is a labelled `<section>` (the Screen shell); only the routine's own section regions count here. */
+/** The page itself is a labeled `<section>` (the Screen shell); only the routine's own section regions count here. */
 const sectionRegions = () => screen.queryAllByRole("region").filter((r) => !/^(Edit|New) routine$/.test(r.getAttribute("aria-label") ?? r.querySelector("h1")?.textContent ?? ""));
 
 async function open(

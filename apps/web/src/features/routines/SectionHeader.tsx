@@ -7,7 +7,7 @@ export interface SectionHeaderProps {
   notes: string;
   index: number;
   count: number;
-  /** The id the surrounding `<section>` is labelled by: it sits on the visible name, so the region reads "Main". */
+  /** The id the surrounding `<section>` is labeled by: it sits on the visible name, so the region reads "Main". */
   headingId: string;
   /** The first problem on this section (client or server), already worded; referenced from the name button. */
   error: string | null;

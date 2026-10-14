@@ -105,7 +105,7 @@ export function ExerciseCard({
             >
               {hasNote ? "Edit note" : "Add note"}
             </Button>
-            {/* Text, not colour alone, marks the state (as for set rows). */}
+            {/* Text, not color alone, marks the state (as for set rows). */}
             {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
             {noteSync?.state === "failed" ? (
               <>
@@ -158,7 +158,7 @@ export function ExerciseCard({
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
-                  {/* Text, not colour alone, marks the row (AC33). */}
+                  {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
                   {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
                   {rowSync?.state === "failed" ? <span className={styles.failedTag}>Couldn't save</span> : null}

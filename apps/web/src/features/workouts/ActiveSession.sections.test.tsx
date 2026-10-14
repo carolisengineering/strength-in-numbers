@@ -63,7 +63,7 @@ describe("10.3 AC32 — no sections, no change", () => {
   });
 });
 
-/** The page itself is a labelled region (it holds the h1); only the session's own section / note regions count. */
+/** The page itself is a labeled region (it holds the h1); only the session's own section / note regions count. */
 const sectionRegions = () => screen.getAllByRole("region").filter((r) => r.querySelector("h1") === null);
 const regionNames = () => sectionRegions().map((r) => within(r).getAllByRole("heading", { level: 2 })[0]!.textContent);
 
