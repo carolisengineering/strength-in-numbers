@@ -23,10 +23,11 @@ const bodyOf = (patch: SessionPatch): WorkoutExercisePatch =>
  * Spec 10.1 AC12–AC15, §6.3: plan a link / unlink / block move with `planSessionChange`, send the
  * PATCHes strictly one after another (online-only — never the 06.2 outbox, D6), and re-read the
  * active workout once: after the last PATCH, or after the first failure (later PATCHes are not sent).
- * The cards render from the cache, so they redraw once, from that refetch.
+ * The cards render from the cache, so they redraw once, from that refetch. `run` may be fed one section's slice of
+ * the list; `positionOffset` turns the planner's local positions into absolute ones (Spec 10.3 D12).
  */
 export interface Regroup {
-  run: (slots: readonly SessionSlot[], op: SessionOp) => Promise<RegroupOutcome>;
+  run: (slots: readonly SessionSlot[], op: SessionOp, options?: { positionOffset?: number }) => Promise<RegroupOutcome>;
   /** Re-send a failed plain move's own `{ position }` PATCH — absolute, so a lost response cannot move the card twice (D7, R1). */
   resend: (patch: SessionPatch, op: SessionOp) => Promise<RegroupOutcome>;
   busy: boolean;
@@ -62,12 +63,15 @@ export function useRegroup(): Regroup {
   );
 
   const run = useCallback(
-    async (slots: readonly SessionSlot[], op: SessionOp): Promise<RegroupOutcome> => {
+    async (slots: readonly SessionSlot[], op: SessionOp, options: { positionOffset?: number } = {}): Promise<RegroupOutcome> => {
       if (inFlight.current) return { status: "busy" };
       const plan = planSessionChange(slots, op);
       if (!plan.ok) return { status: "refused", message: plan.reason === "cap" ? plan.message : NO_FREE_GROUP_MESSAGE };
       if (plan.patches.length === 0) return { status: "done" };
-      return execute(plan.patches, op);
+      // Spec 10.3 P1: `slots` may be one section's slice of the workout; its positions start at `positionOffset`.
+      const offset = options.positionOffset ?? 0;
+      const patches = offset === 0 ? plan.patches : plan.patches.map((p) => ("position" in p ? { ...p, position: p.position + offset } : p));
+      return execute(patches, op);
     },
     [execute],
   );

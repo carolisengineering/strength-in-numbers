@@ -14,7 +14,7 @@ import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
-import { ExerciseCard } from "./ExerciseCard";
+import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
@@ -65,6 +65,8 @@ const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
+type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
@@ -111,12 +113,16 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
   const segments = useMemo(() => sectionSegments(rows, workout.sections), [rows, workout.sections]);
-  const slots = useMemo<SessionSlot[]>(() => rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), [rows]);
-  // A tap plans from the list last committed to the screen (set after commit, never during render).
-  const slotsRef = useRef(slots);
+  // A tap plans from the segment last committed to the screen (set after commit, never during render).
+  const plannerRef = useRef(new Map<string, { slots: SessionSlot[]; start: number }>());
   useLayoutEffect(() => {
-    slotsRef.current = slots;
-  }, [slots]);
+    const next = new Map<string, { slots: SessionSlot[]; start: number }>();
+    for (const segment of segments) {
+      const slots = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
+      for (const row of segment.rows) next.set(row.exercise.id, { slots, start: segment.start });
+    }
+    plannerRef.current = next;
+  }, [segments]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
   const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
 
@@ -243,18 +249,23 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
    * PATCH) keeps 06.1's copy and Try again, which re-sends that same absolute position; any other
    * failed plan offers none (D7).
    */
-  async function runRegroup(op: SessionOp, resend?: SessionPatch) {
+  async function runRegroup(request: RegroupRequest, resend?: SessionPatch) {
     if (structureLock.current) return;
+    const anchor = request.type === "move" ? request.id : request.upperId;
+    const context = plannerRef.current.get(anchor);
+    if (!context) return;
+    const op: SessionOp =
+      request.type === "move" ? request : { type: "toggleLink", index: context.slots.findIndex((s) => s.id === request.upperId) };
     structureLock.current = true;
     setBanner(null);
     try {
-      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(slotsRef.current, op);
+      const outcome = resend ? await regroup.resend(resend, op) : await regroup.run(context.slots, op, { positionOffset: context.start });
       if (outcome.status === "refused") {
         setBanner({ tone: "warning", text: outcome.message });
       } else if (outcome.status === "failed") {
         const { retry } = outcome;
         if (retry !== null) {
-          await handleFailure("move-exercise", outcome.error, () => void runRegroup(op, retry), { refetched: true });
+          await handleFailure("move-exercise", outcome.error, () => void runRegroup(request, retry), { refetched: true });
         } else {
           await handleFailure("regroup", outcome.error, undefined, { refetched: true });
         }
@@ -411,7 +422,6 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     const below = segment.rows[k + 1]?.exercise;
     const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
     const refusal = canLinkRule(segmentSlots, k);
-    const index = segment.start + k; // the flat index runRegroup plans from until Task 9
     return (
       <Fragment key={exercise.id}>
         <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
@@ -427,6 +437,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             firstFlaggedId={firstFlaggedId}
             firstFlaggedRef={setFirstFlaggedRef}
             onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+            {...(segment.heading !== null
+              ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
+              : {})}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             unitPreference={user?.unitPreference ?? "kg"}
             onGone={gone}
@@ -446,7 +459,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               linked={linkedBelow}
               refusal={refusal.ok ? null : refusal.reason}
               disabled={structureBusy}
-              onToggle={() => void runRegroup({ type: "toggleLink", index })}
+              onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
             />
           </div>
         ) : null}

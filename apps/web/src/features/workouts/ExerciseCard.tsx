@@ -36,7 +36,13 @@ export interface ExerciseCardProps {
   targetLine?: string;
   /** Spec 10.1 AC17: the card's name when it sits in a superset run; `null` names it by its heading. */
   accessibleName?: string | null;
+  /** Spec 10.3: why a Move button is disabled at a section edge; only passed for headed segments. */
+  moveReasons?: { up: string | null; down: string | null };
 }
+
+export const SEGMENT_FIRST_REASON = "First exercise in this section";
+export const SEGMENT_LAST_REASON = "Last exercise in this section";
+const NO_REASONS = { up: null, down: null } as const;
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();
 
@@ -63,7 +69,9 @@ export function ExerciseCard({
   failedRowRef,
   targetLine = "",
   accessibleName = null,
+  moveReasons = NO_REASONS,
 }: ExerciseCardProps) {
+  const reasonId = useId();
   const headingId = useId();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
@@ -86,12 +94,14 @@ export function ExerciseCard({
 
       {optionsOpen ? (
         <div className={styles.options}>
-          <Button variant="secondary" disabled={isFirst || structureBusy} onClick={() => onMove("up")}>
+          <Button variant="secondary" disabled={isFirst || structureBusy} {...(isFirst && moveReasons.up ? { "aria-describedby": `${reasonId}-up` } : {})} onClick={() => onMove("up")}>
             Move up
           </Button>
-          <Button variant="secondary" disabled={isLast || structureBusy} onClick={() => onMove("down")}>
+          {isFirst && moveReasons.up ? <p id={`${reasonId}-up`} className={styles.reason}>{moveReasons.up}</p> : null}
+          <Button variant="secondary" disabled={isLast || structureBusy} {...(isLast && moveReasons.down ? { "aria-describedby": `${reasonId}-down` } : {})} onClick={() => onMove("down")}>
             Move down
           </Button>
+          {isLast && moveReasons.down ? <p id={`${reasonId}-down`} className={styles.reason}>{moveReasons.down}</p> : null}
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
           </Button>

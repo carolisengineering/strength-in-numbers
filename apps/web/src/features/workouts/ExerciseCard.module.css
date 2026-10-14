@@ -114,3 +114,9 @@
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
+
+.reason {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
