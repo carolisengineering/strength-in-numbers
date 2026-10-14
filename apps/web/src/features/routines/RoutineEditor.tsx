@@ -15,6 +15,7 @@ import { useExerciseLookup } from "./exerciseLookup";
 import { AddSectionSheet } from "./AddSectionSheet";
 import { ItemSheet } from "./ItemSheet";
 import { LinkToggle } from "./LinkToggle";
+import { MoveToSectionSheet } from "./MoveToSectionSheet";
 import { SectionHeader } from "./SectionHeader";
 import { SectionSheet } from "./SectionSheet";
 import sectionStyles from "./Sections.module.css";
@@ -28,6 +29,7 @@ import {
   ROUTINE_GONE,
   SAVE_FAILED,
   SECTION_EMPTY_HINT,
+  SECTION_UNLINK_NOTICE,
   SECTIONS_CAP_MESSAGE,
 } from "./messages";
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
@@ -100,6 +102,16 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const [sheet, setSheet] = useState<{ key: string; session: number; open: boolean } | null>(null);
   const [sectionSheet, setSectionSheet] = useState<{ key: string; session: number; open: boolean } | null>(null);
   const [addSheet, setAddSheet] = useState<{ session: number; open: boolean } | null>(null);
+  const [moveSheet, setMoveSheet] = useState<{ itemKey: string; session: number; open: boolean } | null>(null);
+  // The native <dialog> restores focus to its opener on close; after "Move to section" the opener's row has
+  // moved to another list, so focus is set here AFTER the Sheet's own effect (child effects run first).
+  const focusAfterSheet = useRef<string | null>(null);
+  useEffect(() => {
+    const target = focusAfterSheet.current;
+    if (target === null) return;
+    focusAfterSheet.current = null;
+    mainControls.current.get(target)?.focus();
+  });
   const mainControls = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocus = useRef<string | "add" | "add-section" | null>(null);
 
@@ -300,6 +312,9 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
             pendingFocus.current = item.key;
             dispatch(actions.moveDown(item.key));
           }}
+          {...(draft.sections.length > 0
+            ? { onMoveToSection: () => setMoveSheet((s) => ({ itemKey: item.key, session: (s?.session ?? 0) + 1, open: true })) }
+            : {})}
           onRemove={() => {
             pendingFocus.current = draft.items[index + 1]?.key ?? "add";
             dispatch(actions.remove(item.key));
@@ -343,6 +358,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
       {/* Locked while a save is in flight: an edit made then would be lost when the save lands. */}
       <fieldset className={styles.form} disabled={saving}>
       {draft.adjusted ? <InlineNotice onDismiss={() => dispatch(actions.dismissAdjusted())}>{ADJUSTED_NOTICE}</InlineNotice> : null}
+      {draft.unlinkNotice ? <InlineNotice onDismiss={() => dispatch(actions.dismissUnlinkNotice())}>{SECTION_UNLINK_NOTICE}</InlineNotice> : null}
       <Field
         id="routine-name"
         label="Name"
@@ -457,7 +473,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
       />
       {sheet && sheetItem ? (
         <ItemSheet
-          key={sheet.session}
+          key={`item-${sheet.session}`}
           open={sheet.open}
           title={lookupExercise(sheetItem.exerciseId).name}
           item={sheetItem}
@@ -475,7 +491,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
       ) : null}
       {sectionSheet && sheetSection ? (
         <SectionSheet
-          key={sectionSheet.session}
+          key={`section-${sectionSheet.session}`}
           open={sectionSheet.open}
           section={sheetSection}
           messages={sectionMessagesFor(issues, sheetSection.key)}
@@ -489,7 +505,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
       ) : null}
       {addSheet ? (
         <AddSectionSheet
-          key={addSheet.session}
+          key={`add-${addSheet.session}`}
           open={addSheet.open}
           onAdd={(name) => {
             dispatch(actions.addSection(name));
@@ -497,6 +513,21 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
             setAddSheet((s) => s && { ...s, open: false });
           }}
           onClose={() => setAddSheet((s) => s && { ...s, open: false })}
+        />
+      ) : null}
+      {moveSheet && draft.items.some((i) => i.key === moveSheet.itemKey) ? (
+        <MoveToSectionSheet
+          key={`move-${moveSheet.session}`}
+          open={moveSheet.open}
+          title={`Move ${lookupExercise(draft.items.find((i) => i.key === moveSheet.itemKey)!.exerciseId).name}`}
+          current={draft.items.find((i) => i.key === moveSheet.itemKey)!.sectionKey}
+          sections={draft.sections}
+          onChoose={(sectionKey) => {
+            focusAfterSheet.current = moveSheet.itemKey;
+            dispatch(actions.moveItemToSection(moveSheet.itemKey, sectionKey));
+            setMoveSheet((s) => s && { ...s, open: false });
+          }}
+          onClose={() => setMoveSheet((s) => s && { ...s, open: false })}
         />
       ) : null}
       <ConfirmDialog
