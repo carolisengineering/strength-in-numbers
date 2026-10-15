@@ -12,6 +12,9 @@ import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
+import { AccountDataSection } from "../account/AccountDataSection";
+import { DeleteAccountSection } from "../account/DeleteAccountSection";
+import { useExportAccount } from "../account/useExportAccount";
 import styles from "./ProfileScreen.module.css";
 import { listTimeZones } from "./timeZones";
 import { useMe } from "./useMe";
@@ -69,6 +72,7 @@ export function ProfileScreen() {
 function ProfileForm({ me }: { me: Me }) {
   const { logout } = useSession();
   const update = useUpdateMe();
+  const exporter = useExportAccount(); // ONE per Profile screen; the delete dialog shares it (Spec 12 D13)
   const [values, setValues] = useState<FormValues>(() => fromMe(me));
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | undefined>();
@@ -201,12 +205,16 @@ function ProfileForm({ me }: { me: Me }) {
         </Button>
       </form>
 
+      <AccountDataSection exporter={exporter} />
+
       <div className={styles.account}>
         <p className={styles.email}>Signed in as {me.email}</p>
         <Button variant="secondary" block onClick={logout}>
           Log out
         </Button>
       </div>
+
+      <DeleteAccountSection exporter={exporter} timeZone={me.timezone} />
     </Screen>
   );
 }
