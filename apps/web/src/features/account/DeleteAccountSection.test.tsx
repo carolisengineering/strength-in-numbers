@@ -195,6 +195,17 @@ describe("12 AC18 — in flight", () => {
     fail();
     expect(await screen.findByRole("heading", { name: "Are you sure?" })).toBeInTheDocument();
     expect(dialog().getByText("Couldn't delete your account.")).toBeInTheDocument();
+    // AC19: the settle guard does not re-apply to a reopen after a failure.
+    expect(dialog().getByRole("button", { name: "Delete my account" })).toBeEnabled();
+  });
+
+  it("a second visit to step 2 starts inert again (Cancel resets the guard)", async () => {
+    renderIt();
+    await toStep2();
+    await settledConfirm();
+    await userEvent.click(dialog().getByRole("button", { name: "Cancel" }));
+    await toStep2();
+    expect(dialog().getByRole("button", { name: "Delete my account" })).toBeDisabled();
   });
 });
 

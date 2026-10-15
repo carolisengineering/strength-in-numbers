@@ -73,10 +73,10 @@ export function useExportAccount(): ExportAccount {
       },
       onError: (error) => {
         if (abort.signal.aborted) return; // unmount: the client wraps AbortError in ApiError.network
-        // A 403 account-deleted is handled by invalidating `me` (D7); the layout swaps this screen out.
-        if (isAccountDeleted(error)) return;
-        // A 401 means onAuthLost has started the logout (AC10): no notice for a session that is ending.
-        if (isSessionEnded(error)) {
+        // Neither shows a notice (AC10): a 403 account-deleted is handled by invalidating `me` (D7; the
+        // layout swaps this screen out), and an ended session by onAuthLost. Back to idle so the button is never stuck on "Preparing…" if the
+        // layout does not swap the screen (e.g. the `me` refetch comes back 200).
+        if (isAccountDeleted(error) || isSessionEnded(error)) {
           setState({ status: "idle" });
           return;
         }

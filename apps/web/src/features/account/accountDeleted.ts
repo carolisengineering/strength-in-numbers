@@ -6,9 +6,15 @@ import { ME_QUERY_KEY } from "../me/useMe";
 export const isAccountDeleted = (error: unknown): boolean =>
   error instanceof ApiError && error.status === 403 && error.type === "account-deleted";
 
-/** Spec 12 AC10 — a second `401` means the client's `onAuthLost` has already started the logout: show no notice. */
+/**
+ * Spec 12 AC10 — the client's `onAuthLost` has already started the logout, so show no notice: either a
+ * second `401`, or a lost-session token failure (status 0, not a network error, titled "Session expired"
+ * by `createApiClient`'s token step).
+ */
 export const isSessionEnded = (error: unknown): boolean =>
-  error instanceof ApiError && error.status === 401;
+  error instanceof ApiError &&
+  (error.status === 401 ||
+    (error.status === 0 && !error.isNetworkError && error.title === "Session expired"));
 
 /**
  * Spec 12 D7 — a `403 account-deleted` from an account call means "already done". Nothing else in the

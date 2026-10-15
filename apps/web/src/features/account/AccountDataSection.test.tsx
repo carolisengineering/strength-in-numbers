@@ -151,6 +151,13 @@ describe("12 AC10 — account and session errors are not this screen's to show",
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("a 403 account-deleted leaves the button usable again (it is not stuck on Preparing)", async () => {
+    server.use(http.get(EXPORT_URL, () => problem(403, "account-deleted")), http.get(ME_URL, () => HttpResponse.json({ id: "u" })));
+    renderSection();
+    await userEvent.click(section().getByRole("button", { name: "Download my data" }));
+    await waitFor(() => expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled());
+  });
+
   it("a 401 shows no notice (the client's onAuthLost has started the logout)", async () => {
     server.use(http.get(EXPORT_URL, () => problem(401, "invalid-token")));
     renderSection();

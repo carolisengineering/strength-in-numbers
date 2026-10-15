@@ -34,23 +34,30 @@ export function DeleteAccountSection({ exporter, timeZone }: DeleteAccountSectio
   const [settled, setSettled] = useState(false);
   const sending = useRef(false);
 
-  // AC16: Delete my account is inert for STEP_SETTLE_MS after step 2 appears, so the second tap of a
-  // double-tap on Continue (same screen position) cannot confirm. Not re-applied after a failure.
-  useEffect(() => {
-    if (!open || step !== 2) return;
-    setSettled(false);
-    const timer = setTimeout(() => setSettled(true), STEP_SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [open, step]);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearSettleTimer = useCallback(() => {
+    if (settleTimer.current !== null) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+  }, []);
+  useEffect(() => clearSettleTimer, [clearSettleTimer]);
 
   const close = useCallback(() => {
+    clearSettleTimer();
+    setSettled(false);
     setOpen(false);
     setStep(1);
     setFailure(null);
-  }, []);
+  }, [clearSettleTimer]);
 
   const confirm = useCallback(() => {
     if (step === 1) {
+      // AC16: Delete my account is inert for STEP_SETTLE_MS after Continue, so the second tap of a
+      // double-tap (same screen position) cannot confirm. Started here, by the user's step change, and
+      // not by an effect keyed on `open`/`step`: a reopen after a failure (AC19) must not re-arm it, and
+      // a second visit must start inert by construction rather than by effect-flush timing.
+      clearSettleTimer();
+      setSettled(false);
+      settleTimer.current = setTimeout(() => setSettled(true), STEP_SETTLE_MS);
       setStep(2);
       return;
     }
@@ -72,7 +79,7 @@ export function DeleteAccountSection({ exporter, timeZone }: DeleteAccountSectio
         },
       },
     );
-  }, [step, settled, mutation, timeZone]);
+  }, [step, settled, mutation, timeZone, clearSettleTimer]);
 
   return (
     <section className={styles.section} aria-labelledby={headingId}>
