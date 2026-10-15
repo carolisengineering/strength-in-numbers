@@ -3,8 +3,10 @@ export type {
   ApiClient,
   ApiRequestOptions,
   AppEnv,
+  BlobResponse,
   CreateApiClientOptions,
   GetTokenOptions,
+  RequestBlobOptions,
   ResponseSchema,
 } from "./client";
 export {
