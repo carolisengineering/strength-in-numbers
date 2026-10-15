@@ -1,4 +1,5 @@
 import { reportError } from "../observability/reportError";
+import { filenameFromContentDisposition } from "./contentDisposition";
 import { ApiError, parseProblem, parseRetryAfter } from "./problem";
 import { newRequestId, REQUEST_ID_HEADER } from "./requestId";
 
@@ -50,8 +51,21 @@ export interface ApiRequestOptions {
   readonly cache?: RequestCache;
 }
 
+export interface RequestBlobOptions {
+  readonly signal?: AbortSignal;
+  /** Used when the response has no usable `Content-Disposition` filename. */
+  readonly fallbackFilename?: string;
+}
+
+export interface BlobResponse {
+  readonly blob: Blob;
+  readonly filename: string;
+}
+
 export interface ApiClient {
   request: <T = unknown>(path: string, options?: ApiRequestOptions) => Promise<T>;
+  /** Spec 12: a raw-bytes GET (a file download). Same auth, 401 refresh and ApiError mapping as request(). */
+  requestBlob: (path: string, options?: RequestBlobOptions) => Promise<BlobResponse>;
   get: <T = unknown>(path: string, schema?: ResponseSchema<T>) => Promise<T>;
   post: <T = unknown>(
     path: string,
@@ -96,6 +110,9 @@ export function isLostSession(cause: unknown, online: boolean = browserOnline())
   return code !== "timeout";
 }
 
+/** Title of the `ApiError` thrown when no token can be had (a lost session); callers match on it. */
+export const SESSION_EXPIRED_TITLE = "Session expired";
+
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const { baseUrl, appEnv, getToken, onAuthLost } = options;
 
@@ -116,7 +133,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       throw new ApiError({
         status: 0,
         type: "about:blank",
-        title: "Session expired",
+        title: SESSION_EXPIRED_TITLE,
         detail: "Could not obtain an access token.",
         requestId,
         isNetworkError: false,
@@ -199,11 +216,15 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     });
   }
 
-  async function request<T = unknown>(
+  /**
+   * Token, the single 401 refresh-and-retry, `onAuthLost`, and the non-2xx → ApiError mapping —
+   * shared by `request()` and `requestBlob()` (Spec 12 AC4). Resolves only with an `ok` response.
+   */
+  async function send(
     path: string,
-    options_: ApiRequestOptions = {},
-  ): Promise<T> {
-    const requestId = newRequestId();
+    options_: ApiRequestOptions,
+    requestId: string,
+  ): Promise<Response> {
     const url = `${baseUrl}${path}`;
 
     let response = await fetchOnce(url, options_, requestId, false);
@@ -220,6 +241,15 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     if (!response.ok) {
       throw await readError(response, requestId);
     }
+    return response;
+  }
+
+  async function request<T = unknown>(
+    path: string,
+    options_: ApiRequestOptions = {},
+  ): Promise<T> {
+    const requestId = newRequestId();
+    const response = await send(path, options_, requestId);
 
     let data: unknown;
     if (response.status === 204) {
@@ -263,6 +293,45 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     return data as T;
   }
 
+  async function requestBlob(
+    path: string,
+    options_: RequestBlobOptions = {},
+  ): Promise<BlobResponse> {
+    const requestId = newRequestId();
+    const response = await send(path, { method: "GET", signal: options_.signal }, requestId);
+
+    // A 2xx that is not JSON is a proxy / captive-portal page: never hand it back as the file.
+    if (!(response.headers.get("content-type") ?? "").includes("json")) {
+      try {
+        await response.text();
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError({
+        status: response.status,
+        type: "about:blank",
+        title: "Malformed response",
+        detail: "The server returned a 2xx response that was not JSON.",
+        requestId,
+        isNetworkError: false,
+      });
+    }
+
+    let blob: Blob;
+    try {
+      blob = await response.blob();
+    } catch (cause) {
+      throw ApiError.network(requestId, cause);
+    }
+    return {
+      blob,
+      filename: filenameFromContentDisposition(
+        response.headers.get("content-disposition"),
+        options_.fallbackFilename,
+      ),
+    };
+  }
+
   function get<T = unknown>(
     path: string,
     schema?: ResponseSchema<T>,
@@ -293,5 +362,5 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     return request<T>(path, { method: "DELETE", schema });
   }
 
-  return { request, get, post, patch, delete: del };
+  return { request, requestBlob, get, post, patch, delete: del };
 }

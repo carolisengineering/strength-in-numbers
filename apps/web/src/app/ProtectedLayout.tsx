@@ -1,4 +1,6 @@
 import { ApiError } from "../api/problem";
+import { AccountDeletedConfirmation } from "../features/account/AccountDeletedConfirmation";
+import { useAccountDeletion } from "../features/account/useDeleteAccount";
 import { CatalogProvider } from "../features/catalog/CatalogProvider";
 import { useMe } from "../features/me/useMe";
 import { HistoryRecordsClientProvider } from "../features/history/HistoryRecordsClientProvider";
@@ -16,6 +18,7 @@ import { AppShell } from "./AppShell";
  * already authenticated and public routes never trigger `GET /v1/me`), and holds
  * the protected `<Outlet/>` closed until `GET /v1/me` resolves:
  *
+ *   a successful DELETE /v1/account (mutation cache) -> <AccountDeletedConfirmation/> (Spec 12)
  *   pending                              -> <Spinner/>
  *   403 account-deleted (ApiError)       -> <AccountDeleted/> (logs out on mount)
  *   503 auth-unavailable / network / any -> <RetryScreen/> ("Try again" refetches)
@@ -27,7 +30,12 @@ import { AppShell } from "./AppShell";
  * workout-client providers around it; Spec 08.0 adds the history/records read clients; Spec 08.1 adds the progress client; Spec 10.0 the routine client.
  */
 export function ProtectedLayout() {
-  const query = useMe();
+  const deletion = useAccountDeletion();
+  const query = useMe({ enabled: !deletion });
+
+  // Spec 12 D3: once the delete is accepted, render the confirmation INSTEAD of the providers below —
+  // unmounting them is what actually stops catalog sync, the outbox drain and the read clients.
+  if (deletion) return <AccountDeletedConfirmation deletion={deletion} />;
 
   if (query.isPending) {
     return <Spinner label="Loading your account…" />;

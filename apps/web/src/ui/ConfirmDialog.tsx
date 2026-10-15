@@ -14,6 +14,10 @@ export interface ConfirmDialogProps {
   variant?: "primary" | "danger";
   /** An in-flight confirm: disables both buttons so a double-tap cannot fire twice. */
   busy?: boolean;
+  /** Disables only the confirm button (Spec 12: the double-tap settle window). */
+  confirmDisabled?: boolean;
+  /** Changing this while open moves focus back to Cancel (Spec 12: step 1 → step 2 in place). */
+  focusKey?: string | number;
   onConfirm: () => void;
   /** Called by Cancel and by Escape / the Android back gesture. */
   onCancel: () => void;
@@ -35,6 +39,8 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "primary",
   busy = false,
+  confirmDisabled = false,
+  focusKey,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -54,6 +60,14 @@ export function ConfirmDialog({
     if (open && !isOpen) dialog.showModal();
     else if (!open && isOpen) dialog.close();
   }, [open]);
+
+  // Spec 12 D12: the safe action takes the initial focus *explicitly* — DOM order alone stops being
+  // true as soon as a body contains a button. Declared after the showModal effect so the dialog is
+  // already modal when focus moves.
+  useEffect(() => {
+    if (!open) return;
+    ref.current?.querySelector<HTMLButtonElement>("[data-confirm-cancel]")?.focus();
+  }, [open, focusKey]);
 
   return (
     <dialog
@@ -80,10 +94,10 @@ export function ConfirmDialog({
           </h2>
           <div className={styles.body}>{children}</div>
           <div className={styles.actions}>
-            <Button variant="secondary" disabled={busy} onClick={onCancel}>
+            <Button variant="secondary" disabled={busy} onClick={onCancel} data-confirm-cancel="">
               {cancelLabel}
             </Button>
-            <Button variant={variant} busy={busy} onClick={onConfirm}>
+            <Button variant={variant} busy={busy} disabled={confirmDisabled} onClick={onConfirm}>
               {confirmLabel}
             </Button>
           </div>

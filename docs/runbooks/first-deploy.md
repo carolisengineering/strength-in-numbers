@@ -708,6 +708,8 @@ only (Spec 05.2 D12).
 
 An ongoing operator task, not a release step. `DELETE /v1/account` only marks an
 account deleted; its data stays until you purge it, at least 30 days later.
+Testers can now download their data and request deletion themselves in the app
+(Profile → Your data / Delete account, Spec 12); the operator steps below are unchanged.
 
 **Monthly, or when a tester asks:**
 
