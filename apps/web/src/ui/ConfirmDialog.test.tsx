@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -107,5 +111,42 @@ describe("AC31 — <ConfirmDialog>", () => {
     );
     expect(container.querySelector("dialog")).not.toHaveAttribute("open");
     expect(screen.queryByText("4 exercises · 11 sets.")).not.toBeInTheDocument();
+  });
+});
+
+describe("12 AC12 — ConfirmDialog keeps Cancel as the initial focus", () => {
+  it("focuses Cancel on open even when the body contains a button", () => {
+    render(
+      <ConfirmDialog open title="T" confirmLabel="Go" onConfirm={() => {}} onCancel={() => {}}>
+        <button type="button">Download first</button>
+      </ConfirmDialog>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("re-focuses Cancel when focusKey changes while open", () => {
+    const { rerender } = render(
+      <ConfirmDialog open title="T" confirmLabel="Go" focusKey={1} onConfirm={() => {}} onCancel={() => {}}>
+        <button type="button">Body</button>
+      </ConfirmDialog>,
+    );
+    screen.getByRole("button", { name: "Body" }).focus();
+    rerender(
+      <ConfirmDialog open title="T2" confirmLabel="Go" focusKey={2} onConfirm={() => {}} onCancel={() => {}}>
+        <button type="button">Body</button>
+      </ConfirmDialog>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("confirmDisabled disables only the confirm button", () => {
+    render(<ConfirmDialog open title="T" confirmLabel="Go" confirmDisabled onConfirm={() => {}} onCancel={() => {}} />);
+    expect(screen.getByRole("button", { name: "Go" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  });
+
+  it("the actions row wraps (320 px)", () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ConfirmDialog.module.css"), "utf8");
+    expect(css).toMatch(/\.actions\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 });
