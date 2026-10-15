@@ -1,4 +1,4 @@
-export { createApiClient } from "./client";
+export { createApiClient, SESSION_EXPIRED_TITLE } from "./client";
 export type {
   ApiClient,
   ApiRequestOptions,

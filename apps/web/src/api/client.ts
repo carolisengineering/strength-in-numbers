@@ -110,6 +110,9 @@ export function isLostSession(cause: unknown, online: boolean = browserOnline())
   return code !== "timeout";
 }
 
+/** Title of the `ApiError` thrown when no token can be had (a lost session); callers match on it. */
+export const SESSION_EXPIRED_TITLE = "Session expired";
+
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   const { baseUrl, appEnv, getToken, onAuthLost } = options;
 
@@ -130,7 +133,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
       throw new ApiError({
         status: 0,
         type: "about:blank",
-        title: "Session expired",
+        title: SESSION_EXPIRED_TITLE,
         detail: "Could not obtain an access token.",
         requestId,
         isNetworkError: false,

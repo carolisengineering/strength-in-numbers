@@ -45,6 +45,8 @@ export function useExportAccount(): ExportAccount {
     },
   });
 
+  const { mutate } = mutation; // stable across renders, unlike the `mutation` object
+
   useEffect(
     () => () => {
       controller.current?.abort();
@@ -59,7 +61,7 @@ export function useExportAccount(): ExportAccount {
     const abort = new AbortController();
     controller.current = abort;
     setState({ status: "preparing" });
-    mutation.mutate(abort.signal, {
+    mutate(abort.signal, {
       onSuccess: (result) => {
         if (abort.signal.aborted) return;
         held.current = result;
@@ -83,7 +85,7 @@ export function useExportAccount(): ExportAccount {
         setState({ status: "error", error });
       },
     });
-  }, [mutation]);
+  }, [mutate]);
 
   const saveAgain = useCallback(() => {
     const current = held.current;

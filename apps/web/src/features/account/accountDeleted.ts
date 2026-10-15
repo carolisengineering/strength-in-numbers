@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
+import { SESSION_EXPIRED_TITLE } from "../../api/client";
 import { ApiError } from "../../api/problem";
 import { ME_QUERY_KEY } from "../me/useMe";
 
@@ -14,7 +15,7 @@ export const isAccountDeleted = (error: unknown): boolean =>
 export const isSessionEnded = (error: unknown): boolean =>
   error instanceof ApiError &&
   (error.status === 401 ||
-    (error.status === 0 && !error.isNetworkError && error.title === "Session expired"));
+    (error.status === 0 && !error.isNetworkError && error.title === SESSION_EXPIRED_TITLE));
 
 /**
  * Spec 12 D7 — a `403 account-deleted` from an account call means "already done". Nothing else in the

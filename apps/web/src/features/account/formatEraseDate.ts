@@ -4,6 +4,9 @@
  */
 export function formatEraseDate(iso: string, timeZone?: string): string {
   const date = new Date(iso);
+  // Called during render: a malformed value (the client passes a schema-mismatched body through in
+  // production) must show as-is rather than blank the post-lock screen.
+  if (Number.isNaN(date.getTime())) return iso;
   try {
     return new Intl.DateTimeFormat("en-US", { dateStyle: "long", ...(timeZone ? { timeZone } : {}) }).format(date);
   } catch (error) {

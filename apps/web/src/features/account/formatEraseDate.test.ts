@@ -15,4 +15,8 @@ describe("12 AC21 — the erase date is shown in the profile time zone", () => {
     expect(() => formatEraseDate(iso, "Mars/Olympus_Mons")).not.toThrow();
     expect(formatEraseDate(iso, "Mars/Olympus_Mons")).toMatch(/^November 1[23], 2026$/);
   });
+  it("shows the raw value instead of throwing during render when the date is malformed", () => {
+    expect(formatEraseDate("not-a-date", "UTC")).toBe("not-a-date");
+    expect(formatEraseDate("", undefined)).toBe("");
+  });
 });

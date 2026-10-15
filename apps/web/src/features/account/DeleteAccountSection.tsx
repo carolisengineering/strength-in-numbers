@@ -28,6 +28,7 @@ export interface DeleteAccountSectionProps {
 export function DeleteAccountSection({ exporter, timeZone }: DeleteAccountSectionProps) {
   const headingId = useId();
   const mutation = useDeleteAccount();
+  const { mutate } = mutation; // stable across renders, unlike the `mutation` object
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [failure, setFailure] = useState<FailureCopy | null>(null);
@@ -64,7 +65,7 @@ export function DeleteAccountSection({ exporter, timeZone }: DeleteAccountSectio
     if (!settled || sending.current) return;
     sending.current = true;
     setFailure(null);
-    mutation.mutate(
+    mutate(
       { timeZone },
       {
         onError: (error) => {
@@ -79,7 +80,7 @@ export function DeleteAccountSection({ exporter, timeZone }: DeleteAccountSectio
         },
       },
     );
-  }, [step, settled, mutation, timeZone, clearSettleTimer]);
+  }, [step, settled, mutate, timeZone, clearSettleTimer]);
 
   return (
     <section className={styles.section} aria-labelledby={headingId}>
