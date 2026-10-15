@@ -23,7 +23,7 @@ M4's exit criterion is a closed beta with a handful of real users. A tester must
 
 ### Non-goals
 
-- **UI** — the settings screen, the "Download your data first" step, the confirmation dialog, `logoutAndClear()` after the 202, and the account-deleted screen are Spec 12.
+- **UI** — the settings screen, the "Download your data first" step, the confirmation dialog, `logoutAndClear()` after the 202, and the account-deleted screen are [Spec 12](12-account-lifecycle-ui.md).
 - **R2 / S3 client / async export job / signed URLs / a Render cron job** — deferred to GA (D1). No new dependency, no new service.
 - **A restore endpoint or any self-service undo** during the grace window (D2). The owner rescues a mistaken delete with a hand-run `UPDATE` before the purge (runbook).
 - **Touching Auth0** — no Management API, no M2M credentials (D3). The IdP identity survives the purge; a later login re-provisions a fresh, empty account.
