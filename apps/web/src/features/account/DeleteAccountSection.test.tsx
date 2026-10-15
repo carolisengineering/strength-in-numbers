@@ -169,7 +169,12 @@ describe("12 AC18 — in flight", () => {
     renderIt();
     await toStep2();
     const confirm = await settledConfirm();
-    await userEvent.dblClick(confirm);
+    // Two clicks in ONE act: the busy/disabled state has not rendered between them, so only the `sending`
+    // ref stops the second DELETE (userEvent.dblClick yields in between).
+    act(() => {
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+    });
     await waitFor(() => expect(deleteCalls).toBe(1));
     expect(bodyText).toBe("");
     expect(confirm).toBeDisabled();

@@ -33,11 +33,10 @@ afterEach(() => {
   unstubAccountEnv();
 });
 
-function renderApp() {
-  const queryClient = makeQueryClient();
+function renderApp(queryClient = makeQueryClient()) {
   const router = createMemoryRouter(routes, { initialEntries: ["/app/profile"] });
-  render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
-  return { queryClient };
+  const view = render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>);
+  return { queryClient, unmount: view.unmount };
 }
 
 /** Drive the real flow (Task 7's UI): open → Continue → wait out the settle window → Delete my account. */
@@ -52,7 +51,7 @@ async function deleteThroughTheDialog() {
 describe("12 AC20 — after the 202 the app stops talking to /v1", () => {
   it("replaces the shell with the confirmation, and makes no further request on timers, focus or online events", async () => {
     server.use(deleteOk());
-    renderApp();
+    const { queryClient } = renderApp();
     await deleteThroughTheDialog();
 
     expect(await screen.findByRole("heading", { name: "Your account is scheduled for deletion" })).toBeInTheDocument();
@@ -60,17 +59,20 @@ describe("12 AC20 — after the 202 the app stops talking to /v1", () => {
     expect(screen.queryByRole("navigation")).toBeNull();
 
     await act(async () => {}); // let the confirmation's mount effect cancel and remove queries
+    // The mechanism, not a timing window: refetch-on-focus / on-reconnect / intervals all act on queries
+    // that are active (have an enabled observer). The only query left is ProtectedLayout's own `["me"]`,
+    // held by its `enabled: false` observer: inactive and idle, so nothing can refetch it.
+    const left = queryClient.getQueryCache().getAll();
+    expect(left.filter((q) => q.isActive() || q.state.fetchStatus !== "idle").map((q) => q.queryKey)).toEqual([]);
+    expect(left.map((q) => q.queryKey)).toEqual([["me"]]);
+    expect(queryClient.isFetching()).toBe(0);
+
     const before = requests.length;
-    vi.useFakeTimers();
-    try {
-      act(() => {
-        vi.advanceTimersByTime(5000);
-        window.dispatchEvent(new Event("focus"));
-        window.dispatchEvent(new Event("online"));
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(requests.slice(before)).toEqual([]);
   });
@@ -90,10 +92,18 @@ describe("12 AC20 — after the 202 the app stops talking to /v1", () => {
 
   it("keeps the confirmation after the Profile route remounts (the result lives in the mutation cache)", async () => {
     server.use(deleteOk());
-    const { queryClient } = renderApp();
+    const { queryClient, unmount } = renderApp();
     await deleteThroughTheDialog();
     await screen.findByRole("heading", { name: "Your account is scheduled for deletion" });
-    expect(queryClient.getMutationCache().getAll().some((m) => m.options.mutationKey?.[0] === "account")).toBe(true);
+    await act(async () => {});
+
+    unmount(); // the whole route tree (Profile, ProtectedLayout) goes away…
+    const before = requests.length;
+    renderApp(queryClient); // …and comes back on the same QueryClient, as a re-render of the app would
+
+    expect(await screen.findByRole("heading", { name: "Your account is scheduled for deletion" })).toBeInTheDocument();
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(requests.slice(before)).toEqual([]); // the gate came from the mutation cache, not from GET /v1/me
   });
 });
 

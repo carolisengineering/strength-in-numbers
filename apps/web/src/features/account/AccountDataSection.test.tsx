@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +73,12 @@ describe("12 AC6 — one request, a visible busy state", () => {
     renderSection();
     const button = section().getByRole("button", { name: "Download my data" });
 
-    await userEvent.dblClick(button);
+    // Two clicks in ONE act: React has not re-rendered the disabled button between them, so only the
+    // hook's in-flight ref stops the second request (userEvent.dblClick yields in between).
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
 
     const busy = await section().findByRole("button", { name: "Preparing your data…" });
     expect(busy).toBeDisabled();
