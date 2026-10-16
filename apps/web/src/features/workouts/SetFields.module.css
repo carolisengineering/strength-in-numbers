@@ -51,3 +51,18 @@
   background: var(--color-surface);
   color: var(--color-text);
 }
+
+/* Spec 17.1 D6: duration and distance keep their fields, sized like the stepper figures. */
+.figureInput {
+  min-height: calc(var(--space-8) + var(--space-4));
+  font-size: var(--font-size-figure);
+  font-weight: var(--font-weight-figure);
+  font-stretch: var(--font-stretch-figure);
+}
+
+/* "Set options": the Set type and unit selects, revealed inline. */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

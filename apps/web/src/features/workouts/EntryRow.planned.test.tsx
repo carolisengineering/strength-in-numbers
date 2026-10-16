@@ -24,7 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, finishButton, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -83,7 +83,8 @@ describe("10.2 AC21 — the label", () => {
 
 describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () => {
   it("fills type, weight, unit and reps from the next row; there is no RPE field", async () => {
-    await setup([bench()]);
+    const { user } = await setup([bench()]);
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Set type")).toHaveValue("warmup");
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Weight unit")).toHaveValue("kg");
@@ -91,7 +92,8 @@ describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () =>
     expect(screen.queryByLabelText("RPE")).toBeNull();
   });
   it("the plan's unit wins over the profile's", async () => {
-    await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");
+    const { user } = await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Weight unit")).toHaveValue("lb");
   });
   it("a single tap sends the row's values, isComplete, the attempt key and the row's type; a warm-up logs as warmup", async () => {
@@ -114,6 +116,7 @@ describe("10.2 AC24 — after a log", () => {
     const { fake, user } = await setup([bench()]);
     await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Set 2 of 3");
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Weight")).toHaveValue("80");
     expect(field("Bench", "Reps")).toHaveValue("8");
     expect(field("Bench", "Set type")).toHaveValue("working");
@@ -265,7 +268,8 @@ describe("10.2 AC27 — no plan, no change", () => {
     ["added by hand", { modality: "weight_reps", name: "Bench", sets: [logged(1, { weight: 60, reps: 8 })] } as ExerciseSpec],
     ["a rowless routine item", { modality: "weight_reps", name: "Bench", targetSets: 3, targetRepsLow: 8, targetRepsHigh: 8, sets: [logged(1, { weight: 60, reps: 8 })] } as ExerciseSpec],
   ])("%s keeps today's entry row: 'Set {n + 1}' and the copy-forward draft", async (_name, exercise) => {
-    await setup([exercise]);
+    const { user } = await setup([exercise]);
+    await openSetOptions(user, card("Bench"));
     expect(within(card("Bench")).getByText("Set 2")).toBeInTheDocument();
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Reps")).toHaveValue("8");

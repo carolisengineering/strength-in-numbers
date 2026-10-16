@@ -165,9 +165,12 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   }
 
   return (
-    <form className={styles.row} onSubmit={(event) => void log(event)} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
-      <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
+    <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => void log(event)} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
+      <div className={styles.labelRow}>
+        <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
+      </div>
       <SetFields
+        variant="entry"
         modality={exercise.modalitySnapshot}
         draft={draft}
         errors={{ ...clientErrors, ...serverErrors }}

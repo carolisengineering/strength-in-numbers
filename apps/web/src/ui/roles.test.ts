@@ -28,6 +28,8 @@ const SIGNAL_ALLOWED = [
   "features/catalog/CreateExerciseForm.module.css",
   "features/history/HistoryScreen.module.css",
   "features/workouts/FinishedWorkoutScreen.module.css",
+  // Spec 17.1 D12: the current-set panel (signal-soft ground, teal set label) is the "do this next" surface.
+  "features/workouts/EntryRow.module.css",
   "features/me/ThemeSetting.module.css",
 ];
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/history/HistoryScreen.module.css"];
@@ -73,6 +75,7 @@ describe("AC12 — panels separate by tint, not outline", () => {
     ["features/routines/RoutineEditor.module.css", ".card"],
     ["features/workouts/FinishedWorkoutScreen.module.css", ".exercise"],
     ["ui/ConfirmDialog.module.css", ".dialog"],
+    ["features/workouts/EntryRow.module.css", ".row"],
   ];
 
   it.each(PANELS)("%s %s has no control outline", (path, selector) => {

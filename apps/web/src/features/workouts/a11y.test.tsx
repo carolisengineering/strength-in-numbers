@@ -22,7 +22,7 @@ import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, ma
 import { createWorkoutFake } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { finishButton, logButton, makeCurrent, optionsButton } from "../../test/sessionHelpers";
+import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -53,7 +53,9 @@ async function setup() {
 
 describe("AC33 — accessibility and one-handed layout (component level)", () => {
   it("every input, select and textarea has a programmatic label", async () => {
-    await setup();
+    const { user } = await setup();
+    // Spec 17.1 AC23: Set type and the unit selects sit behind "Set options"; open it so they are still checked.
+    await openSetOptions(user, card("X"));
 
     const controls = document.querySelectorAll("input, select, textarea");
     // Spec 17.1 AC9: collapsed rows mount no inputs, so only the current card (X) counts.

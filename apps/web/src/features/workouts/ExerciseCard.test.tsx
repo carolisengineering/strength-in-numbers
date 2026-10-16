@@ -24,7 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
+import { card, logButton, makeCurrent, openSetOptions, restBetweenSets } from "../../test/sessionHelpers";
 
 afterEach(() => {
   observability.track.mockReset();
@@ -54,7 +54,8 @@ const FIELDS: Record<Modality, { shown: string[]; hidden: string[]; units: strin
 
 describe("AC21 — entry row fields per modality", () => {
   it.each(MODALITY_VALUES)("%s shows exactly its measures and no forbidden one", async (modality) => {
-    await setup([{ modality, name: "X" }]);
+    const { user } = await setup([{ modality, name: "X" }]);
+    await openSetOptions(user, card("X"));
     const row = within(card("X"));
 
     for (const label of FIELDS[modality].shown) expect(row.getByLabelText(label)).toBeInTheDocument();
@@ -64,7 +65,8 @@ describe("AC21 — entry row fields per modality", () => {
   });
 
   it.each(MODALITY_VALUES)("%s also offers Set type (default Working); no RPE, no More (17.1 AC1)", async (modality) => {
-    await setup([{ modality, name: "X" }]);
+    const { user } = await setup([{ modality, name: "X" }]);
+    await openSetOptions(user, card("X"));
     const row = within(card("X"));
 
     expect(row.getByLabelText("Set type")).toHaveValue("working");
@@ -85,26 +87,32 @@ describe("AC21 — entry row fields per modality", () => {
 
   it("units default from the profile: kg → kg / km", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "kg");
+    await openSetOptions(user, card("X"));
     expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("kg");
     await makeCurrent(user, "Y");
+    await openSetOptions(user, card("Y"));
     expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("km");
   });
 
   it("units default from the profile: lb → lb / mi", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "lb");
+    await openSetOptions(user, card("X"));
     expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("lb");
     await makeCurrent(user, "Y");
+    await openSetOptions(user, card("Y"));
     expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("mi");
   });
 
   it("Failure shows the log-0-reps hint", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    await openSetOptions(user, card("X"));
     await user.selectOptions(within(card("X")).getByLabelText("Set type"), "failure");
     expect(within(card("X")).getByText("Couldn't complete a rep? Log 0 reps.")).toBeInTheDocument();
   });
 
   it("the Set type select offers the four types", async () => {
-    await setup([{ modality: "weight_reps", name: "X" }]);
+    const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    await openSetOptions(user, card("X"));
     const options = within(within(card("X")).getByLabelText("Set type")).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["Warm-up", "Working", "Drop", "Failure"]);
   });
@@ -118,13 +126,14 @@ describe("AC22 — prefill", () => {
   });
 
   it("with sets it starts from the last logged set (values and units), with the type reset to Working", async () => {
-    await setup([
+    const { user } = await setup([
       {
         modality: "weight_reps",
         name: "X",
         sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 62.5, weightUnit: "lb", reps: 6, setType: "warmup" })],
       },
     ]);
+    await openSetOptions(user, card("X"));
     const row = within(card("X"));
     expect(row.getByLabelText("Weight")).toHaveValue("62.5");
     expect(row.getByLabelText("Reps")).toHaveValue("6");
@@ -202,6 +211,7 @@ describe("AC23 — Log set", () => {
   it("a failed attempt (0 reps) with a weight logs", async () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
+    await openSetOptions(user, card("X"));
     await user.selectOptions(row.getByLabelText("Set type"), "failure");
     await user.type(row.getByLabelText("Weight"), "100");
     await user.type(row.getByLabelText("Reps"), "0");
@@ -369,7 +379,8 @@ describe("10.1 AC16 — an exercise with no targets or notes renders exactly tod
     const card = screen.getByRole("article", { name: "Plain" }).cloneNode(true) as Element;
     card.querySelectorAll("[data-note-action]").forEach((node) => node.remove());
     // Spec 17.1 AC9: re-recorded for the collapsed rows.
-    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID" tabindex="-1">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
+    // Spec 17.1 AC18–AC23: re-recorded for the stepper panel.
+    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID" tabindex="-1">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" data-set-type="working" novalidate="" aria-label="Log a set of Plain"><div class="_labelRow_63cf20"><p class="_setNumber_63cf20">Set 1</p></div><div class="_fields_affedb"><div class="_measures_affedb"><div role="group" aria-label="Weight · kg" class="_stepper_f37d01"><button aria-label="Decrease weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_f37d01" inputmode="decimal" autocomplete="off" type="text" value=""></div><span class="_unit_f37d01" aria-hidden="true">kg</span></div><button aria-label="Increase weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div><div role="group" class="_stepper_f37d01"><button aria-label="Decrease reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_f37d01" inputmode="numeric" autocomplete="off" type="text" value=""></div></div><button aria-label="Increase reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Set options</button></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
   });
 });
 

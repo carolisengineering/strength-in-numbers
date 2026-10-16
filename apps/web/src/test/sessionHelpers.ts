@@ -43,3 +43,9 @@ export function cardNames(): string[] {
 
 /** A same-values tap within the 600 ms double-tap window is the same tap (Spec 06.2, 17.1): a real next set comes later. */
 export const restBetweenSets = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 650));
+
+/** Spec 17.1 AC23: Set type and the unit selects sit under "Set options" in the current-set panel. */
+export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promise<void> {
+  const toggle = within(scope).getByRole("button", { name: "Set options" });
+  if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
+}

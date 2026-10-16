@@ -1,15 +1,25 @@
+/* Spec 17.1 §6.5: the current-set panel, the "do this next" surface: tinted with signal-soft, never outlined (17.0 AC12). */
 .row {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-line);
+  padding: var(--card-pad-block) var(--card-pad-inline);
+  border-radius: var(--radius-md);
+  background: var(--color-signal-soft);
+}
+
+/* The label row: "Set 3 of 4" now, the rest readout beside it in Phase C. */
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .setNumber {
-  color: var(--color-muted);
+  color: var(--color-signal);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .formError {

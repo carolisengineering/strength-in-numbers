@@ -60,16 +60,16 @@ function contrast(a: string, b: string): number {
 // [foreground, backgrounds, minimum, what it is]
 const PAIRS: Array<[string, string[], number, string]> = [
   ["--color-text", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-pr-soft", "--color-signal-soft"], 4.5, "body text, record lines, selected text"],
-  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "secondary text"],
+  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "secondary text (also the current-set panel's labels, Spec 17.1)"],
   ["--color-warmup", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "warm-up set text"],
   ["--color-on-signal", ["--color-signal"], 4.5, "primary button / selected chip text"],
   ["--color-signal", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "links, nav label, CTA text"],
   ["--color-on-selected", ["--color-selected"], 4.5, "text on a chosen option"],
   ["--color-pr", ["--color-bg", "--color-surface", "--color-pr-soft"], 4.5, "record text"],
-  ["--color-danger", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "errors, destructive"],
+  ["--color-danger", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "errors, destructive (also field errors in the current-set panel)"],
   ["--color-success", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "saved"],
   ["--color-warning", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "needs attention"],
-  ["--color-border", ["--color-bg", "--color-surface", "--color-surface-raised"], 3, "control boundary (1.4.11)"],
+  ["--color-border", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 3, "control boundary (1.4.11), also inside the tinted current-set panel (Spec 17.1 D18)"],
   ["--color-focus", ["--color-bg", "--color-surface", "--color-surface-raised"], 3, "focus ring"],
   ["--color-signal", ["--color-bg", "--color-surface"], 3, "superset bracket, chart stroke"],
 ];
