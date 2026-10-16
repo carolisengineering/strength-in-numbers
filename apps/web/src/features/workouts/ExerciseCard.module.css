@@ -3,7 +3,6 @@
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--card-pad-block) var(--card-pad-inline);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }

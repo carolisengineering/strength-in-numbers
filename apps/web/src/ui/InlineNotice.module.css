@@ -4,14 +4,13 @@
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-left-width: var(--space-1);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 
 .info {
-  border-color: var(--color-border);
+  border-color: transparent;
 }
 
 .warning {

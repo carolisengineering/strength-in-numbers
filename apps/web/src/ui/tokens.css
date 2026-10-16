@@ -1,30 +1,47 @@
 /*
- * Design tokens (Spec 04.1 §6.2, AC1). The whole design vocabulary lives here
- * as CSS custom properties on `:root`; every `*.module.css` reads values only
- * through `var(--…)` — `scripts/assert-css-tokens.mjs` fails CI on a hard-coded
- * colour or px value anywhere else.
+ * Design tokens (Spec 04.1 §6.2; the "Stone" identity, Spec 17.0). The whole design vocabulary lives here
+ * as CSS custom properties on `:root`; every `*.module.css` reads values only through `var(--…)` —
+ * `scripts/assert-css-tokens.mjs` fails CI on a hard-coded colour or px value anywhere else, and
+ * `tokens.contrast.test.ts` checks every colour pair against WCAG 2.2 AA in both themes.
  *
- * Dark is the default (a phone in a gym, often at arm's length under harsh
- * light); `prefers-color-scheme: light` overrides the colour set only. Sizes
- * are `rem` so they scale with the user's font setting; the two exceptions are
- * radii and the minimum tap target, which are physical-ish sizes.
+ * Light is the base (designed for a gym in daylight); dark follows the OS (`prefers-color-scheme`) or the
+ * Profile switch (`data-theme` on <html>, set by `ui/theme.ts`). The dark values are written twice, in the
+ * media block and the attribute block, because CSS cannot share a declaration list between them; a test
+ * keeps the two identical. Sizes are `rem` so they scale with the user's font setting; radii and the
+ * minimum tap target are the physical-ish exceptions.
+ *
+ * Colour roles mean one thing each (Spec 17.0 §6.2): signal (teal) is the interactive colour, brass is
+ * records only, warm-up sets are muted, danger is destructive or failed, warning is "needs attention".
  */
 :root {
-  color-scheme: dark light;
+  color-scheme: light dark;
 
-  /* colour */
-  --color-bg: #0b0c0f;
-  --color-surface: #16181d;
-  --color-surface-raised: #1f2229;
-  --color-border: #2a2e37;
-  --color-text: #f2f3f5;
-  --color-muted: #9aa0aa;
-  --color-accent: #4f7cff;
-  --color-on-accent: #ffffff;
-  --color-danger: #ff5c5c;
-  --color-success: #3ccf7a;
-  --color-warning: #f0b429;
-  --color-focus: #8fb0ff;
+  /* colour: ground and ink */
+  --color-bg: #f3f1ec;
+  --color-surface: #fbfaf7;
+  --color-surface-raised: #ffffff;
+  --color-text: #24211d;
+  --color-muted: #6b645b;
+  /* a control's boundary (inputs, selects, secondary buttons): at least 3:1, WCAG 1.4.11 */
+  --color-border: #8c857a;
+  /* decorative hairlines only */
+  --color-line: #e3ded5;
+
+  /* colour: roles */
+  --color-signal: #1f5f5b;
+  --color-on-signal: #ffffff;
+  --color-signal-soft: #e1ebe8;
+  --color-pr: #84651c;
+  --color-pr-soft: #f3ead2;
+  --color-danger: #a3392b;
+  --color-success: #2d6a3e;
+  --color-warning: #9c4a0c;
+  --color-focus: #1f5f5b;
+
+  /* role aliases: their own names so a role can diverge later without a sweep */
+  --color-warmup: var(--color-muted);
+  --color-selected: var(--color-signal);
+  --color-on-selected: var(--color-on-signal);
 
   /* spacing scale */
   --space-1: 0.25rem;
@@ -71,19 +88,51 @@
   --card-pad-inline: var(--space-4);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-bg: #f7f7f9;
-    --color-surface: #ffffff;
-    --color-surface-raised: #ffffff;
-    --color-border: #d9dce3;
-    --color-text: #15171c;
-    --color-muted: #5b616d;
-    --color-accent: #2f5fe6;
-    --color-on-accent: #ffffff;
-    --color-danger: #d13232;
-    --color-success: #1f9d55;
-    --color-warning: #9a6700;
-    --color-focus: #2f5fe6;
+/* Dark: the OS asks for it and the Profile switch has not forced light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #1c1a17;
+    --color-surface: #26231f;
+    --color-surface-raised: #2f2b26;
+    --color-text: #eeeae3;
+    --color-muted: #a8a196;
+    --color-border: #7d776c;
+    --color-line: #37332e;
+    --color-signal: #6fbab1;
+    --color-on-signal: #0f2321;
+    --color-signal-soft: #1f3431;
+    --color-pr: #d8b566;
+    --color-pr-soft: #3a3120;
+    --color-danger: #e58b7a;
+    --color-success: #86c493;
+    --color-warning: #e39a5b;
+    --color-focus: #6fbab1;
   }
+}
+
+/* Dark: the Profile switch forces it. Must stay identical to the block above (tokens.contrast.test.ts). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #1c1a17;
+  --color-surface: #26231f;
+  --color-surface-raised: #2f2b26;
+  --color-text: #eeeae3;
+  --color-muted: #a8a196;
+  --color-border: #7d776c;
+  --color-line: #37332e;
+  --color-signal: #6fbab1;
+  --color-on-signal: #0f2321;
+  --color-signal-soft: #1f3431;
+  --color-pr: #d8b566;
+  --color-pr-soft: #3a3120;
+  --color-danger: #e58b7a;
+  --color-success: #86c493;
+  --color-warning: #e39a5b;
+  --color-focus: #6fbab1;
+}
+
+/* Light: the Profile switch forces it, so native widgets stay light on a dark OS. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }

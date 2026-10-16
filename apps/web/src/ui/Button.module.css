@@ -15,8 +15,8 @@
 }
 
 .primary {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-signal);
+  color: var(--color-on-signal);
 }
 
 .secondary {

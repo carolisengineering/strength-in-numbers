@@ -34,7 +34,7 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--tap-target-min);
-  color: var(--color-accent);
+  color: var(--color-signal);
 }
 
 .sessions {
@@ -50,7 +50,7 @@
   width: 100%;
   min-height: var(--tap-target-min);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text);
@@ -61,6 +61,6 @@
 }
 
 .session[aria-pressed="true"] {
-  border-color: var(--color-accent);
+  border-color: var(--color-selected);
   background: var(--color-surface-raised);
 }

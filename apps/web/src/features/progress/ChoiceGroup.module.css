@@ -5,6 +5,6 @@
 }
 
 .pressed {
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-selected);
+  color: var(--color-on-selected);
 }

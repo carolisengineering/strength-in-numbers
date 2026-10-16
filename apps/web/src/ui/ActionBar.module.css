@@ -16,7 +16,7 @@
   margin-inline: calc(-1 * var(--screen-pad));
   padding: var(--space-3) var(--screen-pad);
   background: var(--color-bg);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line);
 }
 
 .bar > button {
