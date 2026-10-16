@@ -6,13 +6,12 @@ import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow, type LoggedEvent } from "./EntryRow";
 import { NoteSheet } from "./NoteSheet";
-import { formatSet } from "./format";
 import type { RowSync } from "./outbox/project";
 import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
-import { WarmupMark } from "./WarmupMark";
+import { SetText, WarmupMark } from "./WarmupMark";
 
 export interface ExerciseCardProps {
   exercise: WorkoutExerciseDetail;
@@ -172,7 +171,7 @@ export function ExerciseCard({
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
                   <WarmupMark setType={set.setType} />
-                  <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+                  <SetText set={set} modality={exercise.modalitySnapshot} />
                   {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
                   {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}

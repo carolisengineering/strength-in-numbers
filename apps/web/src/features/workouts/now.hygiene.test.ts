@@ -21,3 +21,15 @@ describe("17.1 AC21 — seedDraft stays the only builder of a draft from a list"
     expect(callers).toEqual(["./EntryRow.tsx", "./setDraft.ts"]);
   });
 });
+
+describe("17.1 AC39 — (c) the panel's numbers use the signature figure tokens", () => {
+  it("NumberStepper and the figure inputs set size, weight and stretch from the figure tokens; nothing overrides numerics", () => {
+    for (const path of ["./NumberStepper.module.css", "./SetFields.module.css"]) {
+      const css = read(path);
+      for (const token of ["--font-size-figure", "--font-weight-figure", "--font-stretch-figure"]) expect(css, path).toContain(`var(${token})`);
+    }
+    for (const path of ["./NumberStepper.module.css", "./SetFields.module.css", "./EntryRow.module.css", "./ExerciseCard.module.css", "./SessionClock.module.css", "./WorkoutMenu.module.css"]) {
+      expect(read(path), path).not.toMatch(/font-variant-numeric/);
+    }
+  });
+});
