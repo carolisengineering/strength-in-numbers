@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import type { UnitPreference, WorkoutSummary } from "@sin/core";
+import { TrophyIcon } from "../../ui/icons";
 import { formatVolumeKg } from "../units/format";
 import { formatLocalDate } from "../workouts/format";
 import styles from "./HistoryScreen.module.css";
@@ -21,7 +22,7 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
         </span>
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={plural(workout.recordCount, "personal record", "personal records")}>
-            {"\u{1F3C6}"}
+            <TrophyIcon className={styles.trophy} />
           </span>
         ) : null}
       </span>

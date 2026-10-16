@@ -403,3 +403,20 @@ describe("10.1 AC16 — target line and notes under the name", () => {
     expect(within(row).getByLabelText("Reps")).toHaveValue("");
   });
 });
+
+describe("17.0 AC8 — warm-up sets are marked, not only muted", () => {
+  it("marks a warm-up row with data-set-type, a hidden W, and keeps Warm-up in its name", async () => {
+    await setup([
+      { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 40, reps: 8, setType: "warmup" }), makeSet({ setNumber: 2, weight: 60, reps: 5 })] },
+    ]);
+    const warm = within(card("X")).getByRole("button", { name: /Warm-up/ });
+    expect(warm).toHaveAttribute("data-set-type", "warmup");
+    const mark = warm.querySelector('[aria-hidden="true"]');
+    expect(mark?.textContent).toBe("W");
+
+    const working = within(card("X")).getByRole("button", { name: /60 kg × 5/ });
+    expect(working).toHaveAttribute("data-set-type", "working");
+    expect(working.textContent).not.toMatch(/^W/);
+    expect([...working.querySelectorAll('[aria-hidden="true"]')].map((e) => e.textContent)).not.toContain("W");
+  });
+});

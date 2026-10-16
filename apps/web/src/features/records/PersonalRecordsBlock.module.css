@@ -4,11 +4,14 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-pr-soft);
 }
 
+/* Brass means a record (Spec 17.0 §6.2); the record lines stay ink. Bold, so brass on its tint has air. */
 .heading {
+  color: var(--color-pr);
   font-size: var(--font-size-lg);
+  font-weight: 700;
 }
 
 .list {

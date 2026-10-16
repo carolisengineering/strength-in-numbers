@@ -127,3 +127,13 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+
+/* A warm-up set reads quieter than the working sets, and carries a W (Spec 17.0 §6.2). */
+.warmup {
+  color: var(--color-warmup);
+}
+
+.warmupMark {
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
