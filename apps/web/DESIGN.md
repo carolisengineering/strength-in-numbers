@@ -277,6 +277,18 @@ Quiet, firm and thumb-sized.
 ### Logged set row (signature)
 A logged set is a full-width, borderless, 44px button inside its card: a muted set number, then weight × reps in the Set figure style. A warm-up row is Warm Gray, body size and weight 400, with a bold W in a fixed slot after the set number (`aria-hidden`), and its accessible name still says "Warm-up". `data-set-type` is on every row so later specs can target types without a class per type. The finished-workout screen marks warm-ups the same way.
 
+### Current-set panel (entry panel)
+The current exercise's next set, on a Signal Wash (`--color-signal-soft`) ground at 10px with card insets and no outline: a bold teal label row ("Set 3 of 4", "Set 1 of 5 · Warm-up"), the steppers, and a secondary "Set options" disclosure holding Set type and the units. `data-set-type` is on the panel. It is the one place outside the shared Button that uses teal on the workout screen (allow-listed in `roles.test.ts`, `features/workouts/EntryRow.module.css`, Spec 17.1 D12). Its labels are muted and its errors brick; both pass 4.5:1 on the wash. Controls keep their own Stone Panel / Raised Stone fill, against which the Control Boundary holds 3:1 (against the wash itself it is about 3.0:1 light and 2.97:1 dark, an open question for the owner).
+
+### Stepper
+− number + for weight and reps: two 3rem secondary buttons with drawn minus and plus icons around a text input set in the figure style (`--font-size-figure`, `--font-weight-figure`, `--font-stretch-figure`), its unit muted under it. A button at its limit is disabled, never hidden. Each control is a labeled group ("Weight · lb"). Duration and distance keep fields at the same figure size.
+
+### Collapsed exercise row
+A non-current exercise is one 44px line inside its card: the summary ("Bench Press · 2 of 4 · next 185 × 5") as the heading's button, a drawn muted check when every planned set is logged, and the "Not saved yet" / "Couldn't save" words when a write is pending or failed.
+
+### Workout menu
+One secondary "Workout menu" button in the top row beside the elapsed clock reveals End workout early (or Finish workout) and Discard workout inline, full width. No popover.
+
 ### Records panel
 A Brass Wash panel (10px, card insets) with a bold Record Brass headline and ink record lines. On light, brass on its wash is the thinnest contrast in the system (about 4.5:1), so its text stays bold and large. In History, a record is a brass drawn trophy beside the row, labeled "1 personal record".
 
@@ -295,6 +307,7 @@ A Brass Wash panel (10px, card insets) with a bold Record Brass headline and ink
 - **Do** pair every color state with a non-color cue (weight, `aria-current`, checked, underline, a W, words).
 - **Do** draw new icons in `ui/icons.tsx` as 24×24, 2px-stroke, `currentColor` SVGs, and put a text label beside each.
 - **Do** keep targets at 44px and place a screen's main actions in the ActionBar.
+- **Do** keep one primary Button per screen. On the workout screen it is the bottom bar's Log / Finish button; everything else there is secondary or danger.
 
 ### Don't:
 - **Don't** use brass for anything that is not a personal record.
