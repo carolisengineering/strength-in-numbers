@@ -56,9 +56,11 @@ describe("10.3 AC32 — no sections, no change", () => {
       ],
     });
     expect(within(document.body).queryAllByRole("region").filter((r) => r.getAttribute("aria-labelledby") !== null && !r.querySelector("h1"))).toEqual([]);
+    // Spec 17.1 AC9: re-recorded for the collapsed rows.
     expect(markupOf(cards())).toMatchSnapshot("manual");
     cleanup();
     await setup({ routineName: "Push B", exercises: [ex("A"), ex("B", null, { supersetGroup: 2 }), ex("C", null, { supersetGroup: 2 })] });
+    // Spec 17.1 AC9: re-recorded for the collapsed rows.
     expect(markupOf(cards())).toMatchSnapshot("routine, no sections");
   });
 });

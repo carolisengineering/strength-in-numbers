@@ -24,6 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -54,7 +55,7 @@ async function logSet(user: Awaited<ReturnType<typeof setup>>["user"], reps: str
   const field = card().getByLabelText("Reps");
   await user.clear(field);
   await user.type(field, reps);
-  await user.click(card().getByRole("button", { name: "Log set" }));
+  await user.click(logButton("X"));
 }
 function goOffline(fake: Fake) {
   online = false;
@@ -243,7 +244,7 @@ describe("06.2 AC15 — the status line", () => {
   it("an offline structure write says so", async () => {
     const { fake, user } = await setup();
     goOffline(fake);
-    await user.click(card().getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("X"));
     await user.click(screen.getByRole("button", { name: "Remove exercise" }));
     await user.click(within(screen.getByRole("dialog", { name: /Remove X/ })).getByRole("button", { name: "Remove" }));
     expect(await screen.findByText("You're offline — try again when you have signal")).toBeInTheDocument();
@@ -271,10 +272,10 @@ describe("06.2 AC16 — Finish waits for the outbox", () => {
     goOffline(fake);
     await logSet(user, "5");
     await logSet(user, "6");
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+    expect(finishButton()).toBeDisabled();
     expect(screen.getByText("2 sets not saved yet")).toBeInTheDocument();
     goOnline(fake);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled());
+    await waitFor(() => expect(finishButton()).toBeEnabled());
     expect(screen.queryByText(/not saved yet/)).not.toBeInTheDocument();
   });
 });

@@ -16,7 +16,7 @@ import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
 import { useDraftStores } from "./drafts/DraftStoreContext";
-import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
+import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
@@ -30,8 +30,10 @@ import { resolveFailure, type Operation } from "./sessionErrors";
 import { RoutineNotePanel } from "./RoutineNotePanel";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
 import { SessionSection } from "./SessionSectionHeading";
+import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
+import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import {
   useAddExercise,
@@ -72,7 +74,7 @@ type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * The in-progress workout (Spec 06.1 §5.3): exercise cards, a sticky action bar, the exercise picker,
+ * The in-progress workout (Spec 06.1 §5.3): one current exercise card (Spec 17.1), the others collapsed, a sticky action bar, the exercise picker,
  * Finish and Discard. Exercise-structure writes (add / move / regroup / remove, Spec 10.1) are serialised: each changes
  * sibling `position`s, and the next move's arithmetic comes from the list on screen, so one write plus
  * its refetch at a time (§6.3).
@@ -122,6 +124,33 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
   const segments = useMemo(() => sectionSegments(rows, workout.sections), [rows, workout.sections]);
+  // Spec 17.1 §6.2: one exercise is current; the hook holds only the lifter's choice.
+  const current = useCurrentExercise(rows);
+  const { select: selectCurrent } = current;
+  const unitPreference = user?.unitPreference ?? "kg";
+  const headingRefs = useRef(new Map<string, HTMLHeadingElement>());
+  // §6.8: a tap focuses the new card's heading; any change scrolls it into view after commit.
+  const reveal = useRef<{ id: string; focus: boolean } | null>(null);
+  const makeCurrent = useCallback(
+    (id: string, focus: boolean) => {
+      reveal.current = { id, focus };
+      selectCurrent(id);
+    },
+    [selectCurrent],
+  );
+  useEffect(() => {
+    const pending = reveal.current;
+    if (pending === null || pending.id !== current.currentId) return;
+    const node = headingRefs.current.get(pending.id);
+    if (node === undefined) return;
+    reveal.current = null;
+    if (pending.focus) node.focus();
+    node.scrollIntoView?.({ block: "nearest" });
+  }, [current.currentId]);
+  const headingRefFor = (id: string) => (node: HTMLHeadingElement | null) => {
+    if (node) headingRefs.current.set(id, node);
+    else headingRefs.current.delete(id);
+  };
   // A tap plans from the segment last committed to the screen (set after commit, never during render).
   const plannerRef = useRef(new Map<string, { slots: SessionSlot[]; start: number }>());
   useLayoutEffect(() => {
@@ -247,7 +276,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     setPickerOpen(false);
     setPending({ name: exercise.name });
     try {
-      await add.mutateAsync({ workoutId: workout.id, exerciseId: exercise.id, modality: exercise.modality });
+      const added = await add.mutateAsync({ workoutId: workout.id, exerciseId: exercise.id, modality: exercise.modality });
+      reveal.current = { id: added.id, focus: false };
+      current.selectWhenAdded(added.id);
     } catch (error) {
       await handleFailure("add-exercise", error);
     } finally {
@@ -431,49 +462,66 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
-  function renderRow({ exercise, bracket, line, label, linkedBelow }: SupersetRow, k: number, segment: SectionSegment) {
+  function renderRow(row: SupersetRow, k: number, segment: SectionSegment) {
+    const { exercise, bracket, line, label, linkedBelow } = row;
     const below = segment.rows[k + 1]?.exercise;
     const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
     const refusal = canLinkRule(segmentSlots, k);
+    const isCurrent = exercise.id === current.currentId;
+    // Spec 17.1 AC16: a link toggle only beside the current card; elsewhere just the bracket's continuity.
+    const showToggle = below !== undefined && (isCurrent || below.id === current.currentId);
     return (
       <Fragment key={exercise.id}>
         <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
           <SupersetBracket position={bracket} />
-          <ExerciseCard
-            exercise={exercise}
-            targetLine={line}
-            accessibleName={label}
-            isFirst={k === 0}
-            isLast={k === segment.rows.length - 1}
-            structureBusy={structureBusy}
-            flaggedIds={flagged}
-            firstFlaggedId={firstFlaggedId}
-            firstFlaggedRef={setFirstFlaggedRef}
-            onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-            {...(segment.heading !== null
-              ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
-              : {})}
-            onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
-            unitPreference={user?.unitPreference ?? "kg"}
-            onGone={gone}
-            sync={sync}
-            onDiscardOp={(opId) => outbox?.discard(opId)}
-            firstFailedId={firstFailedId}
-            failedRowRef={setFailedRowRef}
-          />
+          {isCurrent ? (
+            <ExerciseCard
+              exercise={exercise}
+              targetLine={line}
+              accessibleName={label}
+              isFirst={k === 0}
+              isLast={k === segment.rows.length - 1}
+              structureBusy={structureBusy}
+              flaggedIds={flagged}
+              firstFlaggedId={firstFlaggedId}
+              firstFlaggedRef={setFirstFlaggedRef}
+              onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+              {...(segment.heading !== null
+                ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
+                : {})}
+              onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+              unitPreference={unitPreference}
+              onGone={gone}
+              sync={sync}
+              onDiscardOp={(opId) => outbox?.discard(opId)}
+              firstFailedId={firstFailedId}
+              failedRowRef={setFailedRowRef}
+              headingRef={headingRefFor(exercise.id)}
+            />
+          ) : (
+            <CollapsedExercise
+              exercise={exercise}
+              summary={collapsedSummary(row, unitPreference)}
+              accessibleName={label}
+              sync={sync}
+              onSelect={() => makeCurrent(exercise.id, true)}
+            />
+          )}
         </div>
         {below ? (
           <div className={styles.joint}>
             <SupersetBracket position={linkedBelow ? "middle" : "none"} />
-            <LinkToggle
-              id={`link-${exercise.id}`}
-              above={exercise.exerciseNameSnapshot}
-              below={below.exerciseNameSnapshot}
-              linked={linkedBelow}
-              refusal={refusal.ok ? null : refusal.reason}
-              disabled={structureBusy}
-              onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
-            />
+            {showToggle ? (
+              <LinkToggle
+                id={`link-${exercise.id}`}
+                above={exercise.exerciseNameSnapshot}
+                below={below.exerciseNameSnapshot}
+                linked={linkedBelow}
+                refusal={refusal.ok ? null : refusal.reason}
+                disabled={structureBusy}
+                onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
+              />
+            ) : null}
           </div>
         ) : null}
       </Fragment>

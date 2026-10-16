@@ -21,6 +21,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { card, cardNames, finishButton, logButton, makeCurrent, optionsButton } from "../../test/sessionHelpers";
 
 const EXERCISES_URL = `${API_BASE_URL}/v1/exercises`;
 
@@ -56,8 +57,6 @@ async function setup({ exercises = [], catalog = [bench, pullup], apiCatalog }: 
   return { fake, ...app };
 }
 
-const cardNames = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-const card = (name: string) => screen.getByRole("article", { name });
 const posts = (fake: ReturnType<typeof createWorkoutFake>, suffix: string) =>
   fake.requests.filter((r) => r.method === "POST" && r.path.endsWith(suffix));
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
@@ -83,11 +82,12 @@ describe("AC17 — session layout and Add exercise", () => {
     detail.exercises.reverse(); // the API order is not trusted: positions decide
     const fake = createWorkoutFake({ active: detail });
     prepareApp({ auth, fake });
-    renderApp("/app/workouts");
+    const { user } = renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
 
     expect(cardNames()).toEqual(["First", "Second", "Third"]);
     expect(within(card("First")).getByText("Weight × reps")).toBeInTheDocument();
+    await makeCurrent(user, "Third");
     expect(within(card("Third")).getByText("Duration")).toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe("AC17 — session layout and Add exercise", () => {
 
     expect(screen.getByText("Add your first exercise")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add exercise" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
+    expect(finishButton()).toBeInTheDocument();
   });
 
   it("the sticky bar comes after the cards and before the shell navigation", async () => {
@@ -182,7 +182,10 @@ describe("AC17 — session layout and Add exercise", () => {
     await openPickerAndPick(user, /Pull-up/);
     await waitFor(() => expect(reads).toBe(1));
 
-    await user.click(within(card("X")).getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
+    // Spec 17.1 AC13: the added exercise takes over as current once its refetch lands, collapsing X.
+    await screen.findByRole("article", { name: "Pull-up" });
+    await makeCurrent(user, "X");
     await within(card("X")).findAllByText("60 kg × 8").then((rows) => expect(rows).toHaveLength(2));
     gate.resolve();
 
@@ -293,8 +296,10 @@ describe("AC19 — reorder", () => {
     { modality: "weight_reps", name: "B" },
     { modality: "weight_reps", name: "C" },
   ];
-  const openOptions = async (user: ReturnType<typeof renderApp>["user"], name: string) =>
-    user.click(within(card(name)).getByRole("button", { name: "Options" }));
+  const openOptions = async (user: ReturnType<typeof renderApp>["user"], name: string) => {
+    await makeCurrent(user, name);
+    await user.click(optionsButton(name));
+  };
   const patchBodies = (fake: ReturnType<typeof createWorkoutFake>) =>
     fake.requests.filter((r) => r.method === "PATCH").map((r) => r.body);
 
@@ -322,10 +327,9 @@ describe("AC19 — reorder", () => {
     const { user } = await setup({ exercises: three });
 
     await openOptions(user, "A");
-    await openOptions(user, "C");
-
     expect(within(card("A")).getByRole("button", { name: "Move up" })).toBeDisabled();
     expect(within(card("A")).getByRole("button", { name: "Move down" })).toBeEnabled();
+    await openOptions(user, "C");
     expect(within(card("C")).getByRole("button", { name: "Move down" })).toBeDisabled();
   });
 
@@ -339,12 +343,12 @@ describe("AC19 — reorder", () => {
       }),
     );
     await openOptions(user, "B");
-    await openOptions(user, "C");
 
     await user.click(within(card("B")).getByRole("button", { name: "Move down" }));
 
-    expect(within(card("C")).getByRole("button", { name: "Move up" })).toBeDisabled();
     expect(within(card("B")).getByRole("button", { name: "Move up" })).toBeDisabled();
+    await openOptions(user, "C"); // only the current card mounts controls (Spec 17.1 AC9)
+    expect(within(card("C")).getByRole("button", { name: "Move up" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add exercise" })).toBeDisabled();
     gate.resolve();
     await screen.findByRole("alert");
@@ -403,7 +407,7 @@ describe("AC20 — remove", () => {
   it("a card with no sets is removed at once, with no dialog", async () => {
     const { fake, user } = await setup({ exercises: [{ modality: "weight_reps", name: "A" }] });
 
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     await waitFor(() => expect(screen.queryByRole("article", { name: "A" })).not.toBeInTheDocument());
@@ -416,7 +420,7 @@ describe("AC20 — remove", () => {
       exercises: [{ modality: "weight_reps", name: "A", sets: [makeSet({ setNumber: 1 }), makeSet({ setNumber: 2 }), makeSet({ setNumber: 3 })] }],
     });
 
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Remove A?" });
@@ -432,7 +436,7 @@ describe("AC20 — remove", () => {
     const { fake, user } = await setup({
       exercises: [{ modality: "weight_reps", name: "A", sets: [makeSet({ setNumber: 1 })] }],
     });
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     await user.click(within(await screen.findByRole("dialog", { name: "Remove A?" })).getByRole("button", { name: "Cancel" }));
@@ -446,7 +450,7 @@ describe("AC20 — remove", () => {
     fake.failNext({ method: "DELETE", path: /workout-exercises/ }, () => problemResponse(404, "not-found"));
     fake.state.active = makeWorkoutDetail({ id: fake.state.active!.id, exercises: [] }); // already gone server-side
 
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     await waitFor(() => expect(screen.queryByRole("article", { name: "A" })).not.toBeInTheDocument());
@@ -458,7 +462,7 @@ describe("AC20 — remove", () => {
     fake.failNext({ method: "DELETE", path: /workout-exercises/ }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
 
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
@@ -468,7 +472,7 @@ describe("AC20 — remove", () => {
     const { fake, user } = await setup({ exercises: [{ modality: "weight_reps", name: "A" }] });
     fake.failNext({ method: "DELETE", path: /workout-exercises/ }, () => HttpResponse.error());
 
-    await user.click(within(card("A")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15

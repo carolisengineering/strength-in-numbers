@@ -21,6 +21,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makePersonalRecord, makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
 
 const scrollIntoView = vi.fn();
@@ -46,7 +47,6 @@ async function setup(exercises: ExerciseSpec[] = oneSet) {
   return { fake, ...app };
 }
 
-const finishButton = () => screen.getByRole("button", { name: "Finish" });
 const patches = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "PATCH" && /^\/v1\/workouts\//.test(r.path));
 const finishDialog = () => screen.getByRole("dialog", { name: "Finish workout?" });
@@ -133,7 +133,7 @@ describe("AC26 — Finish: confirm and success", () => {
     await user.type(row.getByLabelText("Weight"), "{Control>}a{/Control}61"); // prefilled: replace
     expect(finishButton()).toBeEnabled();
 
-    await user.click(row.getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     expect(finishButton()).toBeDisabled();
     fake.setOffline(false);
@@ -276,7 +276,7 @@ describe("AC28 — other finish outcomes", () => {
 
 describe("AC29 — discard and the gone path", () => {
   const discardOpen = async (user: Awaited<ReturnType<typeof setup>>["user"]) => {
-    await user.click(screen.getByRole("button", { name: "Discard workout" }));
+    await discardWorkout(user);
     return screen.getByRole("dialog", { name: "Discard this workout?" });
   };
 
@@ -339,7 +339,7 @@ describe("AC29 — discard and the gone path", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
     const row = within(screen.getByRole("article", { name: "X" }));
 
-    await user.click(row.getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     expect(finishButton()).toBeDisabled();

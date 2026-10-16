@@ -20,6 +20,7 @@ import { onlineManager } from "@tanstack/react-query";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { makeCurrent } from "../../test/sessionHelpers";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -65,7 +66,9 @@ const openSheet = async (user: Awaited<ReturnType<typeof setupNotes>>["user"], l
 describe("10.3 AC27 — the Note action and sheet", () => {
   it("every active card has one: 'Add note' when empty, 'Edit note' otherwise; the sheet is prefilled with a live count", async () => {
     const { user } = await setupNotes();
+    await makeCurrent(user, "Y"); // Spec 17.1 AC9: only the current card mounts its Note action
     expect(screen.getByRole("button", { name: "Add note for Y" })).toHaveTextContent("Add note");
+    await makeCurrent(user, "X");
     const sheet = await openSheet(user, "Edit note for X");
     expect(sheet.getByLabelText("Note")).toHaveValue("Pause every rep");
     expect(sheet.getByText("15 / 500")).toBeInTheDocument();

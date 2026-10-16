@@ -24,6 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { card, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
 
 afterEach(() => {
   observability.track.mockReset();
@@ -38,15 +39,10 @@ async function setup(exercises: ExerciseSpec[], unitPreference: "kg" | "lb" = "k
   return { fake, ...app };
 }
 
-const card = (name: string) => screen.getByRole("article", { name });
 const setPosts = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"));
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
-const logButton = (name = "X") => within(card(name)).getByRole("button", { name: "Log set" });
-// A same-values tap within EntryRow's double-tap window (600 ms) is the same tap (Spec 06.2); a real
-// second set comes after a rest.
-const restBetweenSets = () => new Promise((resolve) => setTimeout(resolve, 650));
 
 const FIELDS: Record<Modality, { shown: string[]; hidden: string[]; units: string[] }> = {
   weight_reps: { shown: ["Weight", "Reps"], hidden: ["Added weight", "Minutes", "Seconds", "Distance"], units: ["Weight unit"] },
@@ -88,14 +84,16 @@ describe("AC21 — entry row fields per modality", () => {
   });
 
   it("units default from the profile: kg → kg / km", async () => {
-    await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "kg");
+    const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "kg");
     expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("kg");
+    await makeCurrent(user, "Y");
     expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("km");
   });
 
   it("units default from the profile: lb → lb / mi", async () => {
-    await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "lb");
+    const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "lb");
     expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("lb");
+    await makeCurrent(user, "Y");
     expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("mi");
   });
 
@@ -140,11 +138,11 @@ describe("AC22 — prefill", () => {
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await within(card("X")).findByText(/60 kg × 8/);
     expect(row.getByLabelText("Weight")).toHaveValue("60");
     await restBetweenSets();
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await waitFor(() => expect(setPosts(fake)).toHaveLength(2));
 
     const keys = setPosts(fake).map((r) => (r.body as Record<string, unknown>)["clientGeneratedId"]);
@@ -157,14 +155,14 @@ describe("AC23 — Log set", () => {
   it("is disabled until the draft parses, and enabled once it does", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
-    expect(logButton()).toBeDisabled();
+    expect(logButton("X")).toBeDisabled();
 
     await user.type(row.getByLabelText("Weight"), "60");
-    expect(logButton()).toBeDisabled();
+    expect(logButton("X")).toBeDisabled();
     await user.type(row.getByLabelText("Reps"), "8");
-    expect(logButton()).toBeEnabled();
+    expect(logButton("X")).toBeEnabled();
     await user.clear(row.getByLabelText("Reps"));
-    expect(logButton()).toBeDisabled();
+    expect(logButton("X")).toBeDisabled();
   });
 
   it("sends one POST with the parsed body, isComplete and the attempt key; the set appears; nothing refetches", async () => {
@@ -174,7 +172,7 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Reps"), "8");
     const readsBefore = activeReads(fake);
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
 
     expect(await row.findByText("52.5 kg × 8")).toBeInTheDocument();
     expect(setPosts(fake)).toHaveLength(1);
@@ -195,10 +193,10 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
 
     await waitFor(() => expect(row.getByRole("status")).toHaveTextContent("Set 1 logged"));
-    expect(logButton()).toHaveFocus();
+    expect(logButton("X")).toHaveFocus();
   });
 
   it("a failed attempt (0 reps) with a weight logs", async () => {
@@ -208,7 +206,7 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Weight"), "100");
     await user.type(row.getByLabelText("Reps"), "0");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
 
     expect(await row.findByText(/100 kg × 0 \(Failure\)/)).toBeInTheDocument();
     expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "failure", reps: 0, weight: 100 });
@@ -220,7 +218,7 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
 
-    await user.dblClick(logButton());
+    await user.dblClick(logButton("X"));
 
     await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
     await new Promise((r) => setTimeout(r, 50));
@@ -247,7 +245,7 @@ describe("AC23 — Log set", () => {
       }),
     );
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
     const weight = row.getByLabelText("Weight");
     await user.clear(weight);
     await user.type(weight, "65"); // the next set's weight, typed on a slow link before the response
@@ -255,7 +253,7 @@ describe("AC23 — Log set", () => {
     await row.findByText("60 kg × 8");
 
     expect(weight).toHaveValue("65"); // not snapped back to the logged set's 60
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await row.findByText("65 kg × 8");
     expect(bodies[1]).toMatchObject({ weight: 65 });
     expect(bodies[1]!["clientGeneratedId"]).not.toBe(bodies[0]!["clientGeneratedId"]);
@@ -267,10 +265,10 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await waitFor(() => expect(row.getAllByText("60 kg × 8")).toHaveLength(1));
     await restBetweenSets();
-    await user.click(logButton());
+    await user.click(logButton("X"));
 
     await waitFor(() => expect(row.getAllByText("60 kg × 8")).toHaveLength(2));
     expect(setPosts(fake)).toHaveLength(2);
@@ -282,7 +280,7 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Minutes"), "1");
     await user.type(row.getByLabelText("Seconds"), "30");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
 
     expect(await row.findByText("1:30")).toBeInTheDocument();
     expect(setPosts(fake)[0]!.body).toMatchObject({ durationS: 90 });
@@ -294,7 +292,7 @@ describe("AC23 — Log set", () => {
     await user.type(row.getByLabelText("Weight"), "60");
     await user.type(row.getByLabelText("Reps"), "8");
 
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await row.findByText("60 kg × 8");
 
     const call = observability.track.mock.calls.find(([name]) => name === "set_logged")!;
@@ -317,7 +315,7 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
     fake.failNext({ method: "POST", path: /\/sets$/ }, () =>
       problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }),
     );
-    await user.click(logButton());
+    await user.click(logButton("X"));
     const failed = (await row.findByText("Couldn't save")).closest("li")!;
     expect(within(failed).getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(row.getByLabelText("Weight")).toBeInTheDocument();
@@ -329,7 +327,7 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
   ])("%s leaves the row pending; Retry now resends with the same attempt key", async (_label, response) => {
     const { fake, user, row } = await filled();
     fake.failNext({ method: "POST", path: /\/sets$/ }, response);
-    await user.click(logButton());
+    await user.click(logButton("X"));
     await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
     expect(row.getByRole("button", { name: /60 kg × 8/ })).toHaveTextContent("Not saved yet");
     await user.click(await screen.findByRole("button", { name: "Retry now" }));
@@ -346,7 +344,7 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
     // The exercise was removed on another device; the workout itself is fine.
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(404, "not-found"));
     const before = activeReads(fake);
-    await user.click(logButton());
+    await user.click(logButton("X"));
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     await waitFor(() => expect(activeReads(fake) - before).toBe(1));
     expect(screen.queryByText(/out of date|already finished/)).not.toBeInTheDocument();
@@ -356,7 +354,7 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
   it("409 workout-finished fails the row; the status line counts it", async () => {
     const { fake, user, row } = await filled();
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
-    await user.click(logButton());
+    await user.click(logButton("X"));
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     expect(screen.getByText("1 set couldn't be saved")).toBeInTheDocument();
   });
@@ -370,7 +368,8 @@ describe("10.1 AC16 — an exercise with no targets or notes renders exactly tod
     // Spec 10.3 AC32: the Note action is the one allowed difference on an active card.
     const card = screen.getByRole("article", { name: "Plain" }).cloneNode(true) as Element;
     card.querySelectorAll("[data-note-action]").forEach((node) => node.remove());
-    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
+    // Spec 17.1 AC9: re-recorded for the collapsed rows.
+    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID" tabindex="-1">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
   });
 });
 

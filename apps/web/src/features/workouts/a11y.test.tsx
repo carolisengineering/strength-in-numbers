@@ -22,6 +22,7 @@ import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, ma
 import { createWorkoutFake } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { finishButton, logButton, makeCurrent, optionsButton } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -55,7 +56,8 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
     await setup();
 
     const controls = document.querySelectorAll("input, select, textarea");
-    expect(controls.length).toBeGreaterThan(8);
+    // Spec 17.1 AC9: collapsed rows mount no inputs, so only the current card (X) counts.
+    expect(controls.length).toBeGreaterThan(3);
     for (const control of controls) expect(control).toHaveAccessibleName();
   });
 
@@ -75,16 +77,20 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
   });
 
   it("each entry row has a polite live region for the 'Set N logged' announcement", async () => {
-    await setup();
+    const { user } = await setup();
 
-    const regions = screen.getAllByRole("status");
-    expect(regions.length).toBeGreaterThanOrEqual(2); // one per card
-    for (const region of regions) expect(region).toHaveAttribute("role", "status");
+    // One per card; Spec 17.1 AC9: only the current card mounts an entry row, so visit each.
+    for (const name of ["X", "Y"]) {
+      await makeCurrent(user, name);
+      const regions = within(screen.getByRole("article", { name })).getAllByRole("status");
+      expect(regions.length).toBeGreaterThanOrEqual(1);
+      for (const region of regions) expect(region).toHaveAttribute("role", "status");
+    }
   });
 
   it("a flagged set is announced as needing data, not conveyed by colour only", async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
 
     const flagged = await screen.findByRole("button", { name: /Needs data/ });
@@ -93,15 +99,16 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
   });
 
   it("the sticky action bar sits above the shell navigation, and Log set is the last element of its entry row", async () => {
-    await setup();
+    const { user } = await setup();
 
     const bar = screen.getByTestId("session-bar");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(bar.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     for (const name of ["X", "Y"]) {
+      await makeCurrent(user, name);
       const form = screen.getByRole("form", { name: `Log a set of ${name}` });
-      expect(form.lastElementChild).toBe(within(form).getByRole("button", { name: "Log set" }));
+      expect(form.lastElementChild).toBe(logButton(name));
     }
   });
 });
@@ -332,7 +339,7 @@ describe("10.1 AC27 — session supersets, accessibly", () => {
       }),
     });
     prepareApp({ auth, fake });
-    renderApp("/app/workouts");
+    const { user } = renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
 
     expect(screen.getByRole("article", { name: "A, superset 1, 3 sets" })).toBeInTheDocument();
@@ -340,7 +347,9 @@ describe("10.1 AC27 — session supersets, accessibly", () => {
     const linked = screen.getByRole("button", { name: "Superset A with B" });
     expect(linked.tagName).toBe("BUTTON");
     expect(linked).toHaveAttribute("aria-pressed", "true");
+    await makeCurrent(user, /^I,/); // Spec 17.1 AC16: toggles show only beside the current card
     expect(screen.getByRole("button", { name: "Superset I with J" })).toHaveAttribute("aria-pressed", "false");
+    await makeCurrent(user, /^D,/);
     const capped = screen.getByRole("button", { name: "Superset D with E" });
     expect(capped).toBeDisabled();
     expect(document.getElementById(capped.getAttribute("aria-describedby")!)).toHaveTextContent("A superset can have up to 8 exercises");
@@ -401,7 +410,7 @@ describe("10.3 AC37 — accessibility (component level): session", () => {
   it("controls name their target ('Edit note for Bench press'); a disabled Move says why in text, not a tooltip", async () => {
     const { user } = await sessionWithSections();
     expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // present only once Tasks 10-12 exist
-    await user.click(within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("Bench press, superset 1"));
     const up = within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Move up" });
     expect(up).toBeDisabled();
     expect(up).toHaveAccessibleDescription("First exercise in this section");
