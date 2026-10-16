@@ -5,6 +5,8 @@ import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
 import { localStorageAdapter, type StorageAdapter } from "../../storage/storage";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
+import { createDraftStores } from "./drafts/draftStore";
+import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { createOutbox, type Outbox } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/OutboxContext";
 import type { NoteOp, OutboxOp } from "./outbox/ops";
@@ -70,10 +72,11 @@ export interface WorkoutClientProviderProps {
 export function WorkoutClientProvider({ userId, storage, children }: WorkoutClientProviderProps) {
   const api = useApi();
   const queryClient = useQueryClient();
-  const { outbox, client } = useMemo(() => {
+  const { outbox, client, drafts } = useMemo(() => {
+    const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
     const outbox: Outbox = createOutbox({
-      storage: storage ?? localStorageAdapter(),
+      storage: adapter,
       rest,
       userId,
       onSynced: (op, row) => applySynced(queryClient, outbox, op, row),
@@ -91,14 +94,17 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     });
-    return { outbox, client };
+    return { outbox, client, drafts: createDraftStores(adapter, userId) };
   }, [api, queryClient, storage, userId]);
 
   useEffect(() => outbox.start(), [outbox]);
+  useEffect(() => () => drafts.flushAll(), [drafts]);
 
   return (
     <OutboxContext.Provider value={outbox}>
-      <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+      <DraftStoresContext.Provider value={drafts}>
+        <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+      </DraftStoresContext.Provider>
     </OutboxContext.Provider>
   );
 }
