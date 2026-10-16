@@ -158,12 +158,11 @@ export function ExerciseCard({
                   onClick={() => setEditing(set)}
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
-                  {/* Spec 17.0 AC8: the visible cue; "(Warm-up)" in the row's text stays the accessible one. */}
-                  {set.setType === "warmup" ? (
-                    <span className={styles.warmupMark} aria-hidden="true">
-                      W
-                    </span>
-                  ) : null}
+                  {/* Spec 17.0 AC8: the visible cue; "(Warm-up)" in the row's text stays the accessible one. The slot
+                      is on every row so the weights of warm-up and working sets share one column. */}
+                  <span className={styles.warmupMark} aria-hidden="true">
+                    {set.setType === "warmup" ? "W" : ""}
+                  </span>
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
                   {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}

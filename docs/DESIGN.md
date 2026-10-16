@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q20 resolved; consistency pass done
-**Last updated:** 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1))
+**Status:** Draft v0.5 — decisions Q1–Q22 resolved; consistency pass done
+**Last updated:** 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1))
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -144,7 +144,7 @@ return at GA.*
 
 | Concern | Choice | Why | Alternatives considered |
 |---|---|---|---|
-| Web client (v1, sole client) | **React SPA** — Vite + TypeScript, client-only, deployed as static assets. Router: React Router (library mode). Data layer: TanStack Query. Styling: CSS Modules + CSS custom-property design tokens, no CSS framework (Q11). Browser access/refresh tokens are held in memory only (Q12). | Whole app is behind auth → SSR/SEO unused. Cleanest architecture (static client + typed API + shared `core`), cheapest hosting, and the knowledge + code transfer almost 1:1 to a future React Native client (§3.4). Smallest concept surface for a developer newer to frontend to learn React fundamentals cleanly. Built mobile-first responsive so a phone browser is a first-class gym client. | **Next.js** — adds a server tier and framework-specific concepts (server vs client components, SSR) that are unused behind auth and do not transfer to React Native; reserved for the marketing site (see §9 GA). **Remix / TanStack Start** — same SSR tradeoff. |
+| Web client (v1, sole client) | **React SPA** — Vite + TypeScript, client-only, deployed as static assets. Router: React Router (library mode). Data layer: TanStack Query. Styling: CSS Modules + CSS custom-property design tokens, no CSS framework (Q11). Visual system: "Stone" — light-first, teal = interactive, brass = records only, self-hosted Instrument Sans (Q22; details in `apps/web/DESIGN.md`). Browser access/refresh tokens are held in memory only (Q12). | Whole app is behind auth → SSR/SEO unused. Cleanest architecture (static client + typed API + shared `core`), cheapest hosting, and the knowledge + code transfer almost 1:1 to a future React Native client (§3.4). Smallest concept surface for a developer newer to frontend to learn React fundamentals cleanly. Built mobile-first responsive so a phone browser is a first-class gym client. | **Next.js** — adds a server tier and framework-specific concepts (server vs client components, SSR) that are unused behind auth and do not transfer to React Native; reserved for the marketing site (see §9 GA). **Remix / TanStack Start** — same SSR tradeoff. |
 | Future mobile client (post-v1) | **React Native** (Expo) when the time comes | Reuses `packages/core` and the same REST API unchanged; closest skill transfer from React web; single codebase for iOS + Android. | Native Swift + Kotlin (2× cost); Flutter (no code-share with a React web app). Decision deferred, not made. |
 | Shared code | **`packages/core`** — framework-agnostic TypeScript: DTO types, Zod schemas, API client, units + estimated-1RM + volume + PR math. **No React, no DOM, no Node-only APIs.** | One implementation of the domain rules, importable by the web app today and a React Native app later with zero changes. This purity constraint is what makes "mobile later" cheap — see §3.4. | Duplicating logic per platform (drift risk); putting logic in the API only (clients re-implement for instant feedback). |
 | Backend | **Single stateless API service**, Node + TypeScript, **Fastify**, containerised. | Same language as both clients → domain math in `packages/core` is written and tested once. One toolchain for a solo developer. Fastify keeps Node fundamentals visible rather than hiding them behind framework abstractions. Also a deliberate learning/portfolio goal (§1.4). | **Go** (developer's existing language) — rejected because it forces the e1RM/PR math into a second implementation and adds a language context-switch for a solo dev. **NestJS** — more job-description keyword coverage and enforced structure, but adds DI/decorator/module concepts to learn on top of Node/TS itself; revisit only if the project sprawls. **Rails / Elixir** — no prior experience, no code-share. |
@@ -907,7 +907,7 @@ Planning implications:
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
   M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
-  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11–13 · GA = 14 · Phase 2 = 15. (`packages/core` (02) is a
+  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11–13 · GA = 14 · Phase 2 = 15 · Design refresh = 17.0–17.3 (outside M1–M4; after M3: visual identity "Stone" 17.0, workout screen "now" 17.1, finish and PR moments 17.2, landing page 17.3; see Q22). (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
@@ -940,7 +940,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3; Q22 from Spec 17.0). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -1201,6 +1201,31 @@ with rationale so the "why" survives.
   routine row lock); online-only session notes (owner ruled for the outbox, 2026-10-13). Section-note
   length is 2 000, the routine note's (owner ruling, 2026-10-13). Decided at implementation: one spec
   (Spec 10.3 O2) and no per-section Add exercise in v1 (Spec 10.3 O3). See Spec 09.2 §12 (D1–D15) and Spec 10.3 §12 (D1–D14).
+- **Q22 — Visual identity: "Stone", light-first, color roles, self-hosted type.** ✅
+  **Resolved (Spec 17.0, 2026-10-15/16): the web app is repainted as a calm, warm-neutral,
+  light-first system in which each color means one thing; no layout, API, migration or CSP
+  change.** Light is the base `:root`; dark is a `prefers-color-scheme: dark` override, and a
+  Light / Dark / System switch on Profile sets `data-theme` on `<html>` (an attribute is the only
+  thing that can outrank the OS media query; System removes it). The choice is a per-device
+  preference stored as `sin:pref:theme` and applied by `applyStoredTheme()` as the first
+  statement of `bootstrap()` (the CSP forbids an inline head script, so a one-frame flash on a
+  device whose override differs from the OS is accepted). `sin:pref:` is deliberately not in
+  `USER_DATA_KEY_PREFIXES`: a theme identifies no one and logout must not flip it. Roles: teal
+  is the interactive/brand color (nav, links, chart, selection, superset bracket); brass marks
+  records only; warm-up is muted with a "W" mark; danger (brick) covers destructive and failed
+  states, warning is a separate burnt orange so it never reads as a record; state is never by
+  color alone. `--color-accent` is removed with no alias, so a missed use fails loudly;
+  `--color-border` is the 3:1 control boundary and `--color-line` the decorative hairline. Type is
+  Instrument Sans, one self-hosted latin woff2, preloaded, with tabular figures on `body`. A
+  contrast test covers both themes (WCAG 2.2 AA). Rationale: the owner trains in natural light
+  and designed light first; per-device storage is the right scope for a cosmetic setting and
+  needs no API; named role tokens let teal's several jobs diverge later without a sweep. Rejected:
+  dark-default; an alias for `--color-accent` (hides misclassified uses); a server-side theme
+  preference (API and migration for a cosmetic setting, wrong semantics across devices); a
+  build-time inline script (CSP); Google Fonts or a `data:` font (third-party origin, CSP);
+  keeping signal exclusive to "do this next" (the owner chose coherence, D4). The visual system
+  (tokens, roles, type, rules) is documented in `apps/web/DESIGN.md`; `docs/DESIGN.md` stays the
+  product/architecture record. See Spec 17.0 §12 (D1–D17).
 
 ---
 

@@ -134,6 +134,8 @@
 }
 
 .warmupMark {
+  flex: none;
+  width: var(--space-4);
   font-weight: 700;
   font-size: var(--font-size-sm);
 }
