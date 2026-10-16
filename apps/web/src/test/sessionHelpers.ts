@@ -17,8 +17,11 @@ export async function makeCurrent(user: UserEvent, name: string | RegExp): Promi
   return card(name);
 }
 
-/** The control that logs the current exercise's set. */
-export const logButton = (name: string): HTMLElement => within(card(name)).getByRole("button", { name: "Log set" });
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Spec 17.1 AC25: the bottom bar's button logs the current exercise; its name ends "for {exercise}". */
+export const logButton = (name: string): HTMLElement =>
+  within(screen.getByTestId("session-bar")).getByRole("button", { name: new RegExp(`^Log .* for ${escape(name)}$`) });
 
 /** The current card's Options toggle. */
 export const optionsButton = (name: string): HTMLElement => within(card(name)).getByRole("button", { name: "Options" });

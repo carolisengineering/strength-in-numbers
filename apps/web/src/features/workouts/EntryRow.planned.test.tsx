@@ -292,8 +292,9 @@ describe("10.2 AC28 — each card has its own plan and progress", () => {
     expect(within(rowCard).getByText("Set 1 of 1")).toBeInTheDocument();
     expect(within(rowCard).getByLabelText("Weight")).toHaveValue("30");
     await makeCurrent(user, /^Bench, superset 1/);
-    await user.click(logButton(card(/^Bench, superset 1/).getAttribute("aria-label")!)); // the label carries the plan line
-    await within(card(/^Bench, superset 1/)).findByText("Set 2 of 2");
+    await user.click(logButton("Bench"));
+    // Spec 17.1 AC15: the log alternates to Row, so reopen Bench to see its progress.
+    await within(await makeCurrent(user, /^Bench, superset 1/)).findByText("Set 2 of 2");
     expect(within(await makeCurrent(user, /^Row, superset 1/)).getByText("Set 1 of 1")).toBeInTheDocument();
   });
   it("one exercise listed twice yields two cards with their own plans", async () => {

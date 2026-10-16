@@ -27,6 +27,8 @@ import { discardWorkout, finishButton, logButton } from "../../test/sessionHelpe
 import { DRAFTS_KEY, DRAFT_DEBOUNCE_MS, createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { EntryRow } from "./EntryRow";
+import { LogBarButton } from "./LogBarButton";
+import { LogActionContext, createLogActionStore } from "./logAction";
 import { WorkoutClientContext } from "./queries";
 
 afterEach(() => {
@@ -130,7 +132,10 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
       <QueryClientProvider client={makeQueryClient()}>
         <WorkoutClientContext.Provider value={client}>
           <DraftStoresContext.Provider value={stores}>
-            <EntryRow exercise={exercise} unitPreference="kg" onGone={() => {}} />
+            <LogActionContext.Provider value={createLogActionStore()}>
+              <EntryRow exercise={exercise} unitPreference="kg" onGone={() => {}} />
+              <LogBarButton />
+            </LogActionContext.Provider>
           </DraftStoresContext.Provider>
         </WorkoutClientContext.Provider>
       </QueryClientProvider>,
@@ -139,7 +144,7 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
     const reps = screen.getByLabelText("Reps");
     await user.clear(reps);
     await user.type(reps, "9");
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await user.click(screen.getByRole("button", { name: /^Log / }));
     await user.clear(reps); // the lifter is already entering the next set
     await user.type(reps, "6");
     response.resolve(makeSet({ setNumber: 2, reps: 9, weight: 80 }));

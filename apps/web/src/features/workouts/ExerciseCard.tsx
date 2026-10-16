@@ -4,7 +4,7 @@ import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
-import { EntryRow } from "./EntryRow";
+import { EntryRow, type LoggedEvent } from "./EntryRow";
 import { NoteSheet } from "./NoteSheet";
 import { formatSet } from "./format";
 import type { RowSync } from "./outbox/project";
@@ -45,6 +45,8 @@ export interface ExerciseCardProps {
   moveReasons?: { up: string | null; down: string | null };
   /** Spec 17.1 AC11: the heading takes focus when the lifter makes this card current. */
   headingRef?: (node: HTMLHeadingElement | null) => void;
+  /** Spec 17.1 §6.5: the entry panel's successful log, for auto-advance. */
+  onLogged?: (event: LoggedEvent) => void;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -78,6 +80,7 @@ export function ExerciseCard({
   accessibleName = null,
   moveReasons = NO_REASONS,
   headingRef,
+  onLogged,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -189,7 +192,7 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
-      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} />
+      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} />
 
       {noteSheet ? (
         <NoteSheet

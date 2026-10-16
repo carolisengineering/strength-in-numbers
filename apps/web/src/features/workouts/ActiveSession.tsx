@@ -11,13 +11,18 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { ActionBar, ActionBarHint } from "../../ui/ActionBar";
 import { Screen } from "../../ui/Screen";
+import { VisuallyHidden } from "../../ui/VisuallyHidden";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
+import { advanceAfterLog } from "./currentExercise";
 import { useDraftStores } from "./drafts/DraftStoreContext";
+import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
+import { LogActionContext, createLogActionStore } from "./logAction";
+import { LogBarButton } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
@@ -147,6 +152,32 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     if (pending.focus) node.focus();
     node.scrollIntoView?.({ block: "nearest" });
   }, [current.currentId]);
+
+  const [logStore] = useState(createLogActionStore);
+  const [announcement, setAnnouncement] = useState("");
+  const currentIdRef = useRef<string | null>(current.currentId);
+  useLayoutEffect(() => {
+    currentIdRef.current = current.currentId;
+  });
+
+  /**
+   * Spec 17.1 AC14–AC15: after a log, move current per `advanceAfterLog`, read from the cache the log just wrote
+   * (this render's `rows` may not hold the new set yet). Never when the lifter typed since the tap, and never when
+   * they already moved to another exercise (a late response).
+   */
+  function onLogged({ exerciseId, set, advance, wasExtra }: LoggedEvent) {
+    if (!advance || currentIdRef.current !== exerciseId) return;
+    const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+    if (!fresh || fresh.id !== workout.id) return;
+    const freshRows = supersetRows(fresh.exercises);
+    const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
+    if (next === exerciseId) return;
+    reveal.current = { id: next, focus: false };
+    current.advanceFrom(exerciseId, next);
+    // The panel that announced "Set N logged" unmounts with the advance, so the screen says it.
+    const nextName = freshRows.find((r) => r.exercise.id === next)?.exercise.exerciseNameSnapshot ?? "";
+    setAnnouncement(`Set ${set.setNumber} logged. Next: ${nextName}`);
+  }
   const headingRefFor = (id: string) => (node: HTMLHeadingElement | null) => {
     if (node) headingRefs.current.set(id, node);
     else headingRefs.current.delete(id);
@@ -497,6 +528,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               firstFailedId={firstFailedId}
               failedRowRef={setFailedRowRef}
               headingRef={headingRefFor(exercise.id)}
+              onLogged={onLogged}
             />
           ) : (
             <CollapsedExercise
@@ -536,6 +568,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
 
   return (
+    <LogActionContext.Provider value={logStore}>
     <Screen title="Workout">
       <div className={styles.topRow}>
         <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
@@ -594,6 +627,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         ) : null}
       </div>
 
+      <p role="status" data-testid="session-announcement">
+        <VisuallyHidden>{announcement}</VisuallyHidden>
+      </p>
       <SyncStatus
         pending={pendingCount}
         failed={failedCount}
@@ -606,10 +642,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       />
 
       <ActionBar data-testid="session-bar">
+        <LogBarButton />
         <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
           Add exercise
         </Button>
-        <Button disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
+        <Button variant="secondary" disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
           Finish
         </Button>
         {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
@@ -661,5 +698,6 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </p>
       </ConfirmDialog>
     </Screen>
+    </LogActionContext.Provider>
   );
 }

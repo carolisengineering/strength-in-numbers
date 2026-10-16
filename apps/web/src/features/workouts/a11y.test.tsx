@@ -100,7 +100,7 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
     expect(flagged).toHaveAttribute("data-needs-data", "true");
   });
 
-  it("the sticky action bar sits above the shell navigation, and Log set is the last element of its entry row", async () => {
+  it("the sticky action bar sits above the shell navigation, and holds the current exercise's Log button", async () => {
     const { user } = await setup();
 
     const bar = screen.getByTestId("session-bar");
@@ -109,8 +109,8 @@ describe("AC33 — accessibility and one-handed layout (component level)", () =>
 
     for (const name of ["X", "Y"]) {
       await makeCurrent(user, name);
-      const form = screen.getByRole("form", { name: `Log a set of ${name}` });
-      expect(form.lastElementChild).toBe(logButton(name));
+      // Spec 17.1 AC25: Log moved from the entry row to the bar.
+      expect(bar).toContainElement(logButton(name));
     }
   });
 });

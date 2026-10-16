@@ -23,7 +23,7 @@ import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card as cardOf, discardWorkout, finishButton, logButton, makeCurrent, optionsButton } from "../../test/sessionHelpers";
+import { card as cardOf, discardWorkout, finishButton, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 
 // Distinctive on purpose, so a leak is unmistakable in a scan.
 const SECRET_NAME = "Zebra Overhead Press";
@@ -169,6 +169,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     await screen.findByRole("article", { name: SECRET_NAME });
     await user.type(card(SECRET_NAME).getByLabelText("Weight"), SECRET_NUMBERS[0]!);
     await user.type(card(SECRET_NAME).getByLabelText("Reps"), SECRET_NUMBERS[1]!);
+    await restBetweenSets(); // Spec 17.1: the bar's double-tap window spans a panel swap
     await user.click(logButton(SECRET_NAME));
     await card(SECRET_NAME).findByText(/73\.5 kg × 11/);
     await user.click(finishButton());

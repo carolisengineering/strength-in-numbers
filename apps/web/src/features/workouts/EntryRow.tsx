@@ -1,44 +1,47 @@
-import { useId, useMemo, useReducer, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import type { WorkoutExerciseDetail } from "@sin/core";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
+import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 
-import { Button } from "../../ui/Button";
 import { useDraftPersistence, useRestoredDraft } from "./drafts/useDraftPersistence";
+import { DOUBLE_TAP_MS, LogActionContext, logLabel } from "./logAction";
+import { nextPlanned, setLabel } from "./plannedSets";
 import { reportUnexpected } from "./reportUnexpected";
-import { setLabel } from "./plannedSets";
 import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
-import {
-  createDraftReducer,
-  draftFieldForPath,
-  parseDraft,
-  seedDraft,
-  unitDefaultsFor,
-  type DraftField,
-} from "./setDraft";
+import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, unitDefaultsFor, type DraftField } from "./setDraft";
 import { useCreateSet } from "./useWorkoutMutations";
 import styles from "./EntryRow.module.css";
 
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
-const DOUBLE_TAP_MS = 600;
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds"]);
+
+export interface LoggedEvent {
+  readonly exerciseId: string;
+  readonly set: SetEntry;
+  /** False when the lifter typed between the tap and the response (06.1 §6.5): they are mid-entry, so nothing moves. */
+  readonly advance: boolean;
+  /** The set went past the plan ("Extra set"). */
+  readonly wasExtra: boolean;
+}
 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
   unitPreference: "kg" | "lb";
   /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
   onGone: (reason: "gone" | "finished") => void;
+  /** Spec 17.1 §6.5: called LAST after a successful log, once this row's own bookkeeping is done. */
+  onLogged?: (event: LoggedEvent) => void;
 }
 
 /**
- * The set-entry row (Spec 06.1 §5.4, D13): a **draft, not a server row**. It becomes one only when
- * "Log set" is tapped, and then it is already complete (`isComplete: true`), so the strict gate (05.1
+ * The current-set panel (Spec 06.1 §5.4, D13; Spec 17.1 §6.5): a **draft, not a server row**. It is logged from
+ * the bottom bar, which reads this row's action from the `logAction` store; it becomes a row only when logged, and then it is already complete (`isComplete: true`), so the strict gate (05.1
  * D14) and the finish rule hold by construction. The draft starts from the last logged set (D14).
  * Each attempt carries one `clientGeneratedId`, kept across failures and re-minted only after a
  * success (§6.5), so a retry after a lost response cannot log the set twice.
  */
-export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
+export function EntryRow({ exercise, unitPreference, onGone, onLogged }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
   const defaults = unitDefaultsFor(unitPreference);
@@ -79,6 +82,8 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const editedSinceTap = useRef(false);
 
   const parsed = useMemo(() => parseDraft(exercise.modalitySnapshot, draft), [exercise.modalitySnapshot, draft]);
+  const store = useContext(LogActionContext);
+  const [owner] = useState(() => Symbol("entry-row"));
 
   // Client-side messages appear only for fields the lifter has touched (an empty entry row is not an error).
   const clientErrors: Partial<Record<DraftField, string>> = {};
@@ -99,23 +104,27 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
     dispatch({ type: "edit", field, value });
   }
 
-  // A form whose submit button is disabled never fires `submit` on Enter, so `log()` cannot be the
-  // place that explains an invalid row. Catch the key instead and show every message (Spec 06.4 D2).
+  // No submit button (the bar logs), so Enter in any input is handled here: a valid draft logs, an invalid one shows
+  // every message (Spec 06.4 D2). preventDefault also stops a one-field form's implicit submission.
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Enter" || parsed.ok || !(event.target instanceof HTMLInputElement)) return;
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
     event.preventDefault();
+    if (parsed.ok) {
+      void log();
+      return;
+    }
     const invalid = Object.keys(parsed.errors) as DraftField[];
     setTouched((previous) => new Set([...previous, ...invalid]));
   }
 
-  async function log(event?: FormEvent) {
-    event?.preventDefault();
+  async function log() {
     const repeatTap = !editedSinceTap.current && Date.now() - lastLoggedAt.current < DOUBLE_TAP_MS;
     if (inFlight.current || !parsed.ok || repeatTap) return;
     inFlight.current = true;
     setServerErrors({});
     setFormError(null);
     const msToLog = firstTouchAt.current === null ? 0 : Date.now() - firstTouchAt.current;
+    const wasExtra = nextPlanned(plannedSets, count).kind === "extra";
     editedSinceTap.current = false;
     try {
       const set = await create.mutateAsync({
@@ -127,7 +136,8 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
       });
       lastLoggedAt.current = Date.now();
       setAnnouncement(`Set ${set.setNumber} logged`);
-      if (editedSinceTap.current) {
+      const typedSinceTap = editedSinceTap.current;
+      if (typedSinceTap) {
         // The next set is already being entered: keep it, and give it a fresh attempt key.
         dispatch({ type: "rekey" });
       } else {
@@ -139,6 +149,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         drafts.clear();
       }
       setSeededFor(count + 1); // this row's own log: the prop will catch up, and must not re-seed
+      onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra }); // last (§6.5)
     } catch (error) {
       reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);
@@ -164,8 +175,22 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
     }
   }
 
+  // Spec 17.1 D11: publish this row's action to the bar. `run` is stable and always calls the latest `log`.
+  const logRef = useRef(log);
+  useLayoutEffect(() => {
+    logRef.current = log;
+  });
+  const run = useCallback(() => void logRef.current(), []);
+  const label = logLabel(exercise.modalitySnapshot, draft, unitPreference);
+  const ariaLabel = `${label} for ${exercise.exerciseNameSnapshot}`;
+  const busy = create.isPending;
+  useEffect(() => {
+    store?.publish({ owner, label, ariaLabel, disabled: !parsed.ok, busy, run });
+  }, [store, owner, label, ariaLabel, parsed.ok, busy, run]);
+  useEffect(() => () => store?.withdraw(owner), [store, owner]);
+
   return (
-    <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => void log(event)} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
+    <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
       <div className={styles.labelRow}>
         <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
       </div>
@@ -185,10 +210,6 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
       <p className={styles.visuallyHidden} role="status">
         {announcement}
       </p>
-      {/* Not `busy`: a disabled button drops focus in some browsers; the in-flight ref blocks a double tap. */}
-      <Button type="submit" block disabled={!parsed.ok} aria-busy={create.isPending || undefined}>
-        Log set
-      </Button>
     </form>
   );
 }
