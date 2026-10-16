@@ -70,6 +70,10 @@ async function setup(exercises: ExerciseSpec[]) {
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
   await screen.findByRole("heading", { name: "Workout" });
+  // Spec 17.1 AC9: the screen brings the current panel into view once on open; count only what follows.
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  scrollIntoView.mockClear();
+  scrolled.length = 0;
   return { fake, ...app };
 }
 
@@ -436,7 +440,7 @@ describe("06.4 AC4 — Enter in an invalid, untouched entry row shows what is wr
     expect(row.getAllByRole("alert").length).toBeGreaterThanOrEqual(2); // Weight and Reps
     expect(row.getByLabelText("Weight")).toHaveAccessibleDescription(/.+/);
     expect(row.getByLabelText("Reps")).toHaveAccessibleDescription(/.+/);
-    expect(logButton("X")).toBeDisabled();
+    expect(logButton("X")).toHaveAttribute("aria-disabled", "true");
     expect(setPosts(fake)).toHaveLength(0);
   });
 

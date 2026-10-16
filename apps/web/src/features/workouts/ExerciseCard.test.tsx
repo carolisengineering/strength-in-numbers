@@ -164,14 +164,14 @@ describe("AC23 — Log set", () => {
   it("is disabled until the draft parses, and enabled once it does", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
-    expect(logButton("X")).toBeDisabled();
+    expect(logButton("X")).toHaveAttribute("aria-disabled", "true");
 
     await user.type(row.getByLabelText("Weight"), "60");
-    expect(logButton("X")).toBeDisabled();
+    expect(logButton("X")).toHaveAttribute("aria-disabled", "true");
     await user.type(row.getByLabelText("Reps"), "8");
-    expect(logButton("X")).toBeEnabled();
+    expect(logButton("X")).not.toHaveAttribute("aria-disabled");
     await user.clear(row.getByLabelText("Reps"));
-    expect(logButton("X")).toBeDisabled();
+    expect(logButton("X")).toHaveAttribute("aria-disabled", "true");
   });
 
   it("sends one POST with the parsed body, isComplete and the attempt key; the set appears; nothing refetches", async () => {

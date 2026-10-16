@@ -74,3 +74,22 @@ describe("17.1 AC17 — reveal before scrolling", () => {
     await waitFor(() => expect(scroll.mock.contexts).toContain(flagged.closest("button")));
   });
 });
+
+describe("17.1 AC9 — the current-set panel is brought into view when the screen opens", () => {
+  it("scrolls the current card's panel into view ('nearest', clear of the bar) once on load", async () => {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        exercises: [
+          { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] },
+          { modality: "weight_reps", name: "Y" },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    const panel = within(card("X")).getByRole("form");
+    await waitFor(() => expect(scroll.mock.contexts).toContain(panel));
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+  });
+});

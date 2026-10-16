@@ -148,7 +148,8 @@ describe("AC17 — session layout and Add exercise", () => {
 
     expect(screen.queryByRole("dialog", { name: "Add exercise" })).not.toBeInTheDocument();
     expect(screen.getByText("Adding Bench Press…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add exercise" })).toBeDisabled();
+    // Spec 17.1 AC29: an empty workout's Add exercise is the bar's button, unavailable by aria-disabled (keeps focus).
+    expect(screen.getByRole("button", { name: "Add exercise" })).toHaveAttribute("aria-disabled", "true");
     gate.resolve();
     await waitFor(() => expect(screen.queryByText("Adding Bench Press…")).not.toBeInTheDocument());
   });

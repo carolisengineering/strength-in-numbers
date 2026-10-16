@@ -98,14 +98,14 @@ describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () =>
   });
   it("a single tap sends the row's values, isComplete, the attempt key and the row's type; a warm-up logs as warmup", async () => {
     const { fake, user } = await setup([bench()]);
-    expect(logButton("Bench")).toBeEnabled();
+    expect(logButton("Bench")).not.toHaveAttribute("aria-disabled");
     await user.click(logButton("Bench"));
     await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
     expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "warmup", reps: 10, weight: 60, weightUnit: "kg", isComplete: true, clientGeneratedId: expect.any(String) });
   });
   it("a row that leaves a required measure blank keeps Log set disabled, with no error until touched", async () => {
     await setup([bench({ plannedSets: [planned("working", 8, null)] })]);
-    expect(logButton("Bench")).toBeDisabled();
+    expect(logButton("Bench")).toHaveAttribute("aria-disabled", "true");
     expect(within(card("Bench")).queryByText("Required")).toBeNull();
     expect(field("Bench", "Reps")).toHaveValue("8");
   });

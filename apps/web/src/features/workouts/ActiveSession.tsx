@@ -157,6 +157,17 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     if (pending.focus) node.focus();
     node.scrollIntoView?.({ block: "nearest" });
   }, [current.currentId]);
+  // Spec 17.1 AC9: on a phone the current-set panel can open below the fold (the top row, a routine note and done rows
+  // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
+  // and the scroller's scroll-padding keeps it clear of the bar.
+  const shownOnOpen = useRef(false);
+  useEffect(() => {
+    if (shownOnOpen.current || current.currentId === null) return;
+    const panel = headingRefs.current.get(current.currentId)?.closest("article")?.querySelector("form");
+    if (!panel) return;
+    shownOnOpen.current = true;
+    panel.scrollIntoView?.({ block: "nearest" });
+  }, [current.currentId]);
 
   const [logStore] = useState(createLogActionStore);
   const [announcement, setAnnouncement] = useState("");
@@ -177,7 +188,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     const freshRows = supersetRows(fresh.exercises);
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
     if (next === exerciseId) return;
-    reveal.current = { id: next, focus: false };
+    // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
+    // bar: the bar's button keeps it (AC29).
+    const focusInPanel = headingRefs.current.get(exerciseId)?.closest("article")?.contains(document.activeElement) ?? false;
+    reveal.current = { id: next, focus: focusInPanel };
     current.advanceFrom(exerciseId, next);
     // The panel that announced "Set N logged" unmounts with the advance, so the screen says it.
     const nextName = freshRows.find((r) => r.exercise.id === next)?.exercise.exerciseNameSnapshot ?? "";

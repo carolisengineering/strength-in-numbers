@@ -52,7 +52,7 @@ describe("17.1 AC25 — the bar is the per-set action", () => {
     expect(button).toHaveTextContent(/^Log 82.5 × 5$/);
     const weight = within(card("Bench Press")).getByLabelText("Weight");
     await user.clear(weight);
-    expect(bar().getByRole("button", { name: "Log set for Bench Press" })).toBeDisabled();
+    expect(bar().getByRole("button", { name: "Log set for Bench Press" })).toHaveAttribute("aria-disabled", "true");
   });
 });
 
@@ -232,7 +232,7 @@ describe("17.1 AC28 — Finish keeps every rule", () => {
     const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
     fake.setOffline(true);
     await user.click(logButton("A"));
-    expect(await screen.findByRole("button", { name: "Finish workout" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Finish workout" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
   });
 
@@ -257,5 +257,42 @@ describe("17.1 AC30 — Add exercise moved into the list", () => {
   it("a routine workout gets no list-end Finish", async () => {
     await setup([ex("A", { plannedSets: planned(2) })]);
     expect(screen.queryByRole("button", { name: "Finish workout" })).toBeNull();
+  });
+});
+
+describe("17.1 AC29 — the bar's button never takes `disabled` (a disabled button drops focus)", () => {
+  const repsOnly = (n: number): PlannedSet[] => Array.from({ length: n }, () => ({ setType: "working", repsLow: 8, repsHigh: 8, weight: null, weightUnit: null }));
+
+  it("an advance onto an exercise whose draft does not parse yet leaves the button focusable, aria-disabled, and inert", async () => {
+    const { fake, user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(2) }), ex("B", { supersetGroup: 1, plannedSets: repsOnly(2) })]);
+    await user.click(logButton("A"));
+    await waitFor(() => expect(isCurrent(/^B,/)).toBe(true));
+    const button = bar().getByRole("button", { name: /^Log set/ });
+    expect(button).not.toHaveAttribute("disabled");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveFocus();
+    await restBetweenSets();
+    await user.click(button);
+    expect(setPosts(fake)).toHaveLength(1);
+  });
+
+  it("Finish mode waiting on an unsaved set is aria-disabled, not disabled, and opens nothing", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    fake.setOffline(true);
+    await user.click(logButton("A"));
+    const finish = await bar().findByRole("button", { name: "Finish workout" });
+    expect(finish).not.toHaveAttribute("disabled");
+    expect(finish).toHaveAttribute("aria-disabled", "true");
+    await user.click(finish);
+    expect(screen.queryByRole("dialog", { name: "Finish workout?" })).toBeNull();
+  });
+});
+
+describe("17.1 AC29 — Enter that logs and advances hands focus to the new current card", () => {
+  it("Enter in A's Reps advances to B and focuses B's heading", async () => {
+    const { user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(2) }), ex("B", { supersetGroup: 1, plannedSets: planned(2) })]);
+    await user.type(within(card(/^A,/)).getByLabelText("Reps"), "{Enter}");
+    await waitFor(() => expect(isCurrent(/^B,/)).toBe(true));
+    await waitFor(() => expect(within(card(/^B,/)).getByRole("heading", { level: 2 })).toHaveFocus());
   });
 });

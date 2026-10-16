@@ -100,6 +100,7 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     await user.type(sheet.getByLabelText("Note"), "!");
     await user.click(sheet.getByRole("button", { name: "Save" }));
     await screen.findByText("1 note couldn't be saved");
+    scroll.mockClear(); // Spec 17.1 AC9: the screen brings the current panel into view once on open; count only what follows.
     await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Show" }));
     expect(scroll).toHaveBeenCalledTimes(1);
   });
