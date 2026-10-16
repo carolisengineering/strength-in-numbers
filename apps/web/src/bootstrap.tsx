@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { applyStoredTheme } from "./ui/theme";
+
 // Global stylesheets (Spec 04.1 §6.2): tokens first so `reset.css` can read
 // them. Imported here rather than in `AppRoot` so the config-error fallback
 // page below is styled too. Vite emits them as one hashed external `.css`
@@ -23,6 +25,9 @@ import { Misconfigured } from "./screens/Misconfigured";
  * later step.
  */
 export function bootstrap(rootElement: HTMLElement): void {
+  // First, before the config parse and React: the stored Light / Dark choice, so nothing paints in the
+  // wrong theme (Spec 17.0 §6.1, AC23). The CSP forbids the usual inline <head> script.
+  applyStoredTheme();
   try {
     getConfig();
   } catch (error) {

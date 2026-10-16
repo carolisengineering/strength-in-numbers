@@ -1,4 +1,7 @@
 import { act } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,5 +73,34 @@ describe("AC2 — main.tsx misconfiguration fallback", () => {
     expect(vi.mocked(console.error).mock.calls[0]?.[0]).toContain(
       "VITE_AUTH0_DOMAIN",
     );
+  });
+});
+
+describe("17.0 AC23 — the stored theme is applied before React mounts", () => {
+  afterEach(() => {
+    window.localStorage.removeItem("sin:pref:theme");
+    delete document.documentElement.dataset.theme;
+    vi.unstubAllEnvs();
+    resetConfigCache();
+  });
+
+  it("sets data-theme from storage before the first render, even when the config is broken", () => {
+    window.localStorage.setItem("sin:pref:theme", "dark");
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const root = document.createElement("div");
+    document.body.append(root);
+    // A broken config renders the static fallback without the app; the theme must already be applied.
+    act(() => {
+      bootstrap(root);
+    });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    root.remove();
+  });
+
+  it("is the first statement of bootstrap()", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "bootstrap.tsx"), "utf8");
+    const body = source.slice(source.indexOf("export function bootstrap"));
+    const firstStatement = body.split("\n").slice(1).find((line) => line.trim() && !line.trim().startsWith("//"));
+    expect(firstStatement?.trim()).toBe("applyStoredTheme();");
   });
 });
