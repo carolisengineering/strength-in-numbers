@@ -250,8 +250,8 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     expect(setPosts(fake)).toHaveLength(0);
   });
   // Spec 06.5 reverses this test's old expectation ("re-seeds it from the list" after typing): an edited draft
-  // now survives leaving the screen. An untouched prefill still follows the list.
-  it("navigating away and back keeps an edited draft and re-seeds an untouched one", async () => {
+  // now survives leaving the screen.
+  it("navigating away and back keeps an edited draft", async () => {
     const { router, user } = await setup([bench({ sets: [logged(1)] })]);
     const reps = field("Bench", "Reps");
     await user.clear(reps);
