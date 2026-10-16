@@ -454,9 +454,7 @@ describe("06.4 AC4 — Enter in an invalid, untouched entry row shows what is wr
 });
 
 describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row only", () => {
-  // BLOCKED on Spec 17.1 plan Task "reveal before scrolling" (D17, AC33): the flagged set sits in a collapsed card, which
-  // mounts no rows until that card is current. Un-skip when the Finish-blocked reveal lands; the body is unchanged.
-  it.skip("scrolls once, to the first flagged row in display order, when two cards each hold one", async () => {
+  it("scrolls once, to the first flagged row in display order, when two cards each hold one", async () => {
     const { user } = await setup([
       { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 }), incompleteSet(2)] },
       { modality: "weight_reps", name: "Y", sets: [incompleteSet(1)] },
@@ -466,7 +464,9 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
     await screen.findByRole("alert");
 
-    expect(screen.getAllByText("Needs data")).toHaveLength(2);
+    // Spec 17.1 AC17: X (first in display order) is revealed; Y stays collapsed, so its flagged row is not mounted.
+    expect(screen.getAllByText("Needs data")).toHaveLength(1);
+    expect(within(screen.getByRole("article", { name: "Y" })).queryByRole("form")).toBeNull();
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     const target = scrolled[0]!;
     expect(within(screen.getByRole("article", { name: "X" })).getByText("Needs data").closest("button")).toBe(target);
@@ -489,9 +489,7 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     expect(scrolled[0]).toBe(row);
   });
 
-  // BLOCKED on Spec 17.1 plan Task "reveal before scrolling" (D17, AC33): the flagged set sits in a collapsed card, which
-  // mounts no rows until that card is current. Un-skip when the Finish-blocked reveal lands; the body is unchanged.
-  it.skip("fixing the first flagged row does not scroll again to the next one", async () => {
+  it("fixing the first flagged row does not scroll again to the next one", async () => {
     const { user } = await setup([
       { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 }), incompleteSet(2)] },
       { modality: "weight_reps", name: "Y", sets: [incompleteSet(1)] },
@@ -507,7 +505,8 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     await user.click(within(sheet).getByRole("button", { name: "Delete set" }));
     await waitFor(() => expect(x.queryByText("Needs data")).not.toBeInTheDocument());
 
-    expect(screen.getAllByText("Needs data")).toHaveLength(1); // Y's row is now the first flagged
+    // Y's row is now the first flagged, but no second reveal happens: Y stays collapsed (Spec 17.1 AC17, once per diagnosis).
+    expect(within(screen.getByRole("article", { name: "Y" })).queryByRole("form")).toBeNull();
     await new Promise((r) => setTimeout(r, 20));
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });

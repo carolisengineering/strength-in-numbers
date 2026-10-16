@@ -207,13 +207,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, [flaggedIds, workout]);
 
   // The first flagged row in display order (exercise position, then set order) gets the ref.
-  const firstFlaggedId = useMemo(() => {
+  const firstFlagged = useMemo(() => {
     for (const exercise of exercises) {
       const set = exercise.sets.find((s) => flagged.has(s.id));
-      if (set) return set.id;
+      if (set) return { setId: set.id, exerciseId: exercise.id };
     }
     return null;
   }, [exercises, flagged]);
+  const firstFlaggedId = firstFlagged?.setId ?? null;
   const firstFlaggedRef = useRef<HTMLButtonElement | null>(null);
   const setFirstFlaggedRef = useCallback((node: HTMLButtonElement | null) => {
     firstFlaggedRef.current = node;
@@ -228,28 +229,50 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
   const { pending: notePending, failed: noteFailed } = unsavedNotes(outboxState.ops, workout.id);
   const unsavedNoteCount = notePending + noteFailed;
-  const firstFailedId = useMemo(() => {
+  const firstFailed = useMemo(() => {
     for (const exercise of exercises) {
-      if (sync.get(exercise.id)?.state === "failed") return exercise.id; // a failed note sits above its exercise's sets
+      if (sync.get(exercise.id)?.state === "failed") return { rowId: exercise.id, exerciseId: exercise.id }; // a failed note sits above its exercise's sets
       const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
-      if (set) return set.id;
+      if (set) return { rowId: set.id, exerciseId: exercise.id };
     }
     return null;
   }, [exercises, sync]);
+  const firstFailedId = firstFailed?.rowId ?? null;
   const failedRowRef = useRef<HTMLElement | null>(null);
   const setFailedRowRef = useCallback((node: HTMLElement | null) => {
     failedRowRef.current = node;
   }, []);
 
-  // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
-  // Once per diagnosis: the flagged set may only render a beat later, when the re-read reaches this
-  // screen's `workout` prop, so wait for its row; fixing that row later must not scroll to the next.
+  // Bring the first offending row into view when Finish is blocked. Spec 17.1 AC17: its card may be collapsed, so make
+  // that exercise current first; the row then renders and the effect runs again once its ref is set.
   const scrollPending = useRef(false);
   useEffect(() => {
-    if (!scrollPending.current || firstFlaggedRef.current === null) return;
+    if (!scrollPending.current || firstFlagged === null) return;
+    if (firstFlagged.exerciseId !== current.currentId) {
+      selectCurrent(firstFlagged.exerciseId);
+      return;
+    }
+    if (firstFlaggedRef.current === null) return;
     scrollPending.current = false;
     firstFlaggedRef.current.scrollIntoView?.({ block: "center" });
-  }, [flaggedIds, firstFlaggedId]);
+  }, [flaggedIds, firstFlagged, current.currentId, selectCurrent]);
+
+  // Spec 17.1 AC17: "Show" on a failed write in a collapsed card makes it current, then scrolls after commit.
+  const showFailedPending = useRef(false);
+  function showFailed() {
+    if (firstFailed === null) return;
+    if (firstFailed.exerciseId === current.currentId) {
+      failedRowRef.current?.scrollIntoView?.({ block: "center" });
+      return;
+    }
+    showFailedPending.current = true;
+    selectCurrent(firstFailed.exerciseId);
+  }
+  useEffect(() => {
+    if (!showFailedPending.current || failedRowRef.current === null) return;
+    showFailedPending.current = false;
+    failedRowRef.current.scrollIntoView?.({ block: "center" });
+  }, [current.currentId]);
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
@@ -683,7 +706,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         online={outboxState.online}
         onRetry={() => outbox?.retryNow()}
         onDiscardFailed={() => outbox?.discardFailed(workout.id)}
-        onShowFailed={firstFailedId ? () => failedRowRef.current?.scrollIntoView?.({ block: "center" }) : null}
+        onShowFailed={firstFailed ? showFailed : null}
       />
 
       <ActionBar data-testid="session-bar">
