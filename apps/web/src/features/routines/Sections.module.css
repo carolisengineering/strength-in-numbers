@@ -27,22 +27,35 @@
   font-size: var(--font-size-lg);
 }
 
+/* The name is the heading itself, tappable to rename: plain heading text with a pencil, no chip border
+   (a bordered name beside a bordered Options read as two equal buttons). */
 .nameButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   max-width: 100%;
   min-height: var(--tap-target-min);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text);
   font: inherit;
   font-weight: bold;
   text-align: start;
   overflow-wrap: anywhere;
+  cursor: pointer;
 }
 
 .nameButton:focus-visible {
   outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: var(--space-1);
+}
+
+.pencil {
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-muted);
 }
 
 /* User text is text: wrapped in full, line breaks kept (AC36). */
@@ -59,7 +72,18 @@
   font-size: var(--font-size-sm);
 }
 
-.options,
+/* The expanded section Options: a stacked menu of full-width actions, as on the rows. */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* "Add section" spans the width like "Add exercise" below it; a cap reason wraps under it. */
+.addRow > button {
+  flex: 1 1 100%;
+}
+
 .starters,
 .addRow {
   display: flex;

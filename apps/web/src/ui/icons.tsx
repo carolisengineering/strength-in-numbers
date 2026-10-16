@@ -64,3 +64,13 @@ export function PersonIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** Edit — a pencil, beside an editable name (Spec 10.3 section header). */
+export function PencilIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z" />
+      <path d="M13.5 6.5l4 4" />
+    </Svg>
+  );
+}

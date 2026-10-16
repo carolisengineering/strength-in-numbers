@@ -32,42 +32,44 @@ export function EditorRow(props: EditorRowProps) {
   const shownError = props.error !== null && !(props.unavailable && props.error === UNAVAILABLE) ? props.error : null;
   return (
     <div className={styles.row}>
-      <button
-        type="button"
-        ref={props.registerMain}
-        className={styles.main}
-        aria-label={props.accessibleName}
-        {...(shownError ? { "aria-describedby": props.errorId } : {})}
-        onClick={props.onOpen}
-      >
-        <ItemLine name={props.name} line={props.line} notes={props.notes} position={props.position} unavailable={props.unavailable} />
-      </button>
-      {shownError ? (
-        <p id={props.errorId} className={styles.reason}>
-          {shownError}
-        </p>
-      ) : null}
-      <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
-        Options
-      </Button>
-      {optionsOpen ? (
-        <div className={styles.options}>
-          <Button variant="secondary" disabled={props.isFirst} onClick={props.onMoveUp}>
-            Move up
-          </Button>
-          <Button variant="secondary" disabled={props.isLast} onClick={props.onMoveDown}>
-            Move down
-          </Button>
-          {props.onMoveToSection ? (
-            <Button variant="secondary" onClick={props.onMoveToSection}>
-              Move to section…
+      <div className={styles.card}>
+        <button
+          type="button"
+          ref={props.registerMain}
+          className={styles.main}
+          aria-label={props.accessibleName}
+          {...(shownError ? { "aria-describedby": props.errorId } : {})}
+          onClick={props.onOpen}
+        >
+          <ItemLine name={props.name} line={props.line} notes={props.notes} position={props.position} unavailable={props.unavailable} />
+        </button>
+        {shownError ? (
+          <p id={props.errorId} className={styles.reason}>
+            {shownError}
+          </p>
+        ) : null}
+        <Button variant="secondary" className={styles.optionsToggle} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+          Options
+        </Button>
+        {optionsOpen ? (
+          <div className={styles.options}>
+            <Button variant="secondary" disabled={props.isFirst} onClick={props.onMoveUp}>
+              Move up
             </Button>
-          ) : null}
-          <Button variant="danger" onClick={props.onRemove}>
-            Remove
-          </Button>
-        </div>
-      ) : null}
+            <Button variant="secondary" disabled={props.isLast} onClick={props.onMoveDown}>
+              Move down
+            </Button>
+            {props.onMoveToSection ? (
+              <Button variant="secondary" onClick={props.onMoveToSection}>
+                Move to section…
+              </Button>
+            ) : null}
+            <Button variant="danger" onClick={props.onRemove}>
+              Remove
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

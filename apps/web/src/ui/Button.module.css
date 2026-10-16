@@ -11,13 +11,11 @@
   font-size: var(--font-size-md);
   font-weight: 600;
   line-height: 1;
-  transition: opacity 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+/* Disabled reads as "not now", not as broken: a flat surface and muted text in every variant (no opacity,
+   which left white text on a faded accent below contrast). Declared after the variants so it wins. */
 
 .primary {
   background: var(--color-accent);
@@ -39,4 +37,11 @@
 .block {
   display: flex;
   width: 100%;
+}
+
+.button:disabled {
+  background: transparent;
+  color: var(--color-muted);
+  border-color: var(--color-border);
+  cursor: not-allowed;
 }

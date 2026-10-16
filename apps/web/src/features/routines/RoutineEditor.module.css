@@ -1,15 +1,3 @@
-/* O4: the Cancel / Save row stays reachable over a long list. */
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  background: var(--color-bg);
-}
-
 .input {
   width: 100%;
   min-height: var(--tap-target-min);
@@ -34,23 +22,51 @@
   flex-direction: column;
 }
 
+/* A row: the left gutter holds the superset bracket (positioned against this box); the card holds the rest. */
 .row {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
   padding: var(--space-2) 0 var(--space-2) var(--space-3);
+}
+
+/* The card: the main control on the left, Options pinned to its top-right corner (as on the session's
+   exercise card); an error line and the expanded Options span the full width underneath. */
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--card-pad-block) var(--card-pad-inline);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.card > * {
+  grid-column: 1 / -1;
+}
+
+.card > .main {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.optionsToggle {
+  align-self: start;
+}
+
+.card > .optionsToggle {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .main {
   display: flex;
-  flex: 1 1 12rem;
+  align-self: stretch;
   min-height: var(--tap-target-min);
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-text);
   text-align: start;
   font: inherit;
@@ -58,13 +74,14 @@
 
 .main:focus-visible {
   outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: var(--space-1);
 }
 
+/* The expanded Options: a stacked menu of full-width actions. */
 .options {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-2);
-  width: 100%;
 }
 
 .link {

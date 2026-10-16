@@ -56,6 +56,10 @@
 
   /* layout */
   --measure-max: 40rem;
+
+  /* card insets: every card-like panel uses these, so their edges line up */
+  --card-pad-block: var(--space-3);
+  --card-pad-inline: var(--space-4);
 }
 
 @media (prefers-color-scheme: light) {

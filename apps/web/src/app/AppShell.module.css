@@ -58,7 +58,8 @@
      the row past the viewport instead of scrolling inside it. */
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: var(--space-4);
+  /* No padding here: a sticky `bottom: 0` bar stops at the scroller's padding edge, so any padding left a
+     strip of scrolling content visible between the bar and the nav. `Screen` pads its own content. */
 }
 
 .nav {

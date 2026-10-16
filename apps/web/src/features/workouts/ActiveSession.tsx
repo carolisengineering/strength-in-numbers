@@ -9,6 +9,7 @@ import { applyFinishedCaches } from "../records/cache";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
+import { ActionBar, ActionBarHint } from "../../ui/ActionBar";
 import { Screen } from "../../ui/Screen";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
@@ -556,17 +557,17 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onShowFailed={firstFailedId ? () => failedRowRef.current?.scrollIntoView?.({ block: "center" }) : null}
       />
 
-      <div className={styles.bar} data-testid="session-bar">
+      <ActionBar data-testid="session-bar">
         <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
           Add exercise
         </Button>
         <Button disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
           Finish
         </Button>
-        {totalSets === 0 ? <p className={styles.barHint}>Log at least one set to finish</p> : null}
-        {unsaved > 0 ? <p className={styles.barHint}>{plural(unsaved, "set", "sets")} not saved yet</p> : null}
-        {unsavedNoteCount > 0 ? <p className={styles.barHint}>{plural(unsavedNoteCount, "note", "notes")} not saved yet</p> : null}
-      </div>
+        {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
+        {unsaved > 0 ? <ActionBarHint>{plural(unsaved, "set", "sets")} not saved yet</ActionBarHint> : null}
+        {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}
+      </ActionBar>
 
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
 

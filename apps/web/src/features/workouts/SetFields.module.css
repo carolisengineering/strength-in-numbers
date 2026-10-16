@@ -4,10 +4,16 @@
   gap: var(--space-3);
 }
 
+/* The measures share equal columns (weight | reps), wrapping to one column when a column would be too narrow. */
 .measures {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
   gap: var(--space-3);
+  align-items: end;
+}
+
+.measures > * {
+  min-width: 0;
 }
 
 /* A value and its unit select side by side; the unit is a narrow second column. */
@@ -15,7 +21,6 @@
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  flex: 2 1 12rem;
 }
 
 .withUnit > :first-child {
@@ -25,7 +30,6 @@
 .duration {
   display: flex;
   gap: var(--space-3);
-  flex: 2 1 12rem;
 }
 
 .duration > * {
