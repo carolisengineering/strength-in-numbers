@@ -47,6 +47,8 @@ export interface ExerciseCardProps {
   headingRef?: (node: HTMLHeadingElement | null) => void;
   /** Spec 17.1 §6.5: the entry panel's successful log, for auto-advance. */
   onLogged?: (event: LoggedEvent) => void;
+  /** Spec 17.1 AC27: Finish mode. */
+  logExtra?: boolean;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -81,6 +83,7 @@ export function ExerciseCard({
   moveReasons = NO_REASONS,
   headingRef,
   onLogged,
+  logExtra,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -192,7 +195,7 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
-      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} />
+      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
 
       {noteSheet ? (
         <NoteSheet

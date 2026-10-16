@@ -45,3 +45,15 @@
   position: relative;
   padding: var(--space-2) 0;
 }
+
+/* Spec 17.1 AC30: Add exercise (and a free-form workout's Finish) after the last row, equal widths. */
+.listEnd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.listEnd > button {
+  flex: 1;
+}

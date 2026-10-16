@@ -134,7 +134,7 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
           <DraftStoresContext.Provider value={stores}>
             <LogActionContext.Provider value={createLogActionStore()}>
               <EntryRow exercise={exercise} unitPreference="kg" onGone={() => {}} />
-              <LogBarButton />
+              <LogBarButton action={{ kind: "log" }} />
             </LogActionContext.Provider>
           </DraftStoresContext.Provider>
         </WorkoutClientContext.Provider>

@@ -97,7 +97,7 @@ describe("17.1 AC14 — auto-advance through the bar", () => {
         <WorkoutClientContext.Provider value={fakeClient({ createSet: () => response.promise as never })}>
           <LogActionContext.Provider value={store}>
             <EntryRow exercise={detail.exercises[0]!} unitPreference="kg" onGone={() => {}} onLogged={onLogged} />
-            <LogBarButton />
+            <LogBarButton action={{ kind: "log" }} />
           </LogActionContext.Provider>
         </WorkoutClientContext.Provider>
       </QueryClientProvider>,
@@ -149,7 +149,7 @@ describe("17.1 AC29 — focus survives advance", () => {
         <WorkoutClientContext.Provider value={fakeClient({ createSet: () => response.promise as never })}>
           <LogActionContext.Provider value={createLogActionStore()}>
             <EntryRow exercise={detail.exercises[0]!} unitPreference="kg" onGone={() => {}} />
-            <LogBarButton />
+            <LogBarButton action={{ kind: "log" }} />
           </LogActionContext.Provider>
         </WorkoutClientContext.Provider>
       </QueryClientProvider>,
@@ -176,7 +176,9 @@ describe("17.1 AC13 — a removed current exercise leaves no stale action on the
     await user.click(optionsButton("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Remove exercise" }));
     await waitFor(() => expect(screen.queryByRole("article", { name: "A" })).not.toBeInTheDocument());
-    expect(bar().getByRole("button", { name: /^Log set/ })).toBeDisabled();
+    // Spec 17.1 AC27: an empty workout's bar is Add exercise; no Log action survives the removal.
+    expect(bar().queryByRole("button", { name: /^Log / })).toBeNull();
+    expect(bar().getByRole("button", { name: "Add exercise" })).toBeInTheDocument();
   });
 });
 
@@ -195,5 +197,65 @@ describe("17.1 AC20 — Enter in any number field logs a valid draft", () => {
     await user.type(within(card("X")).getByLabelText("Weight"), "{Enter}");
     expect(within(card("X")).getAllByText("Required").length).toBeGreaterThanOrEqual(2);
     expect(setPosts(fake)).toHaveLength(0);
+  });
+});
+
+describe("17.1 AC27 — Finish mode", () => {
+  it("the bar reads Finish workout once every planned set is logged; the panel offers a secondary Log extra set", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    await user.click(logButton("A"));
+    const finish = await screen.findByRole("button", { name: "Finish workout" });
+    expect(screen.getByTestId("session-bar")).toContainElement(finish);
+    const extra = within(card("A")).getByRole("button", { name: "Log extra set" });
+    expect(extra.className).toMatch(/secondary/);
+    await restBetweenSets();
+    await user.click(extra);
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(2));
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+  });
+
+  it("a workout with no planned sets never shows Finish in the bar", async () => {
+    await setup([ex("A", { sets: [makeSet({ setNumber: 1 })] })]);
+    expect(bar().queryByRole("button", { name: "Finish workout" })).toBeNull();
+    expect(bar().getByRole("button", { name: /^Log / })).toBeInTheDocument();
+  });
+
+  it("an empty workout shows Add exercise as the bar's button", async () => {
+    await setup([]);
+    expect(bar().getByRole("button", { name: "Add exercise" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Add exercise" })).toHaveLength(1);
+  });
+});
+
+describe("17.1 AC28 — Finish keeps every rule", () => {
+  it("is disabled while a set is not saved, with today's hint", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    fake.setOffline(true);
+    await user.click(logButton("A"));
+    expect(await screen.findByRole("button", { name: "Finish workout" })).toBeDisabled();
+    expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+  });
+
+  it("opens today's Finish dialog", async () => {
+    const { user } = await setup([ex("A", { plannedSets: planned(1), sets: [makeSet({ setNumber: 1 })] })]);
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    expect(screen.getByRole("dialog", { name: "Finish workout?" })).toBeInTheDocument();
+  });
+});
+
+describe("17.1 AC30 — Add exercise moved into the list", () => {
+  it("sits after the last row, out of the bar; a free-form workout gets a secondary Finish workout beside it", async () => {
+    await setup([ex("A", { sets: [makeSet({ setNumber: 1 })] }), ex("B")]);
+    const add = screen.getByRole("button", { name: "Add exercise" });
+    expect(screen.getByTestId("session-bar")).not.toContainElement(add);
+    expect(card("B").compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const finish = screen.getByRole("button", { name: "Finish workout" });
+    expect(finish.className).toMatch(/secondary/);
+    expect(screen.getByTestId("session-bar")).not.toContainElement(finish);
+  });
+
+  it("a routine workout gets no list-end Finish", async () => {
+    await setup([ex("A", { plannedSets: planned(2) })]);
+    expect(screen.queryByRole("button", { name: "Finish workout" })).toBeNull();
   });
 });

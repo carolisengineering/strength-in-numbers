@@ -27,7 +27,7 @@ export const logButton = (name: string): HTMLElement =>
 export const optionsButton = (name: string): HTMLElement => within(card(name)).getByRole("button", { name: "Options" });
 
 /** The control that opens the Finish dialog. */
-export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish" });
+export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });
 
 /** Opens the Discard dialog. */
 export async function discardWorkout(user: UserEvent): Promise<void> {

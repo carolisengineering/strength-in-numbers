@@ -240,7 +240,8 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     // (Spec 06.5 reverses the old "even a typed draft is never stored": an EDITED draft is now persisted.)
     expect(Object.keys(window.localStorage).sort()).toEqual(before);
   });
-  it("the finish rule ignores it, and Finish succeeds without logging it", async () => {
+  // Spec 17.1: with planned sets left there is no Finish until Task 12's Workout menu (End workout early); un-skip there.
+  it.skip("the finish rule ignores it, and Finish succeeds without logging it", async () => {
     const exercises = [bench({ sets: [logged(1, { setType: "warmup", reps: 10, weight: 60 })] })];
     expect(findIncompleteWorkingSets(makeWorkoutDetail({ exercises }))).toEqual([]);
     const { fake, user } = await setup(exercises);

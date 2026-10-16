@@ -22,7 +22,7 @@ import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
-import { LogBarButton } from "./LogBarButton";
+import { LogBarButton, type BarAction } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
@@ -40,6 +40,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { barMode, unloggedPlanned } from "./unloggedPlanned";
 import {
   useAddExercise,
   useDeleteWorkout,
@@ -508,6 +509,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           {isCurrent ? (
             <ExerciseCard
               exercise={exercise}
+              logExtra={mode === "finish"}
               targetLine={line}
               accessibleName={label}
               isFirst={k === 0}
@@ -566,6 +568,16 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
   // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
+  // Spec 17.1 §6.6: the bar's mode and the planned sets End early would skip.
+  const unlogged = useMemo(() => unloggedPlanned(rows), [rows]);
+  const mode = barMode(rows, current.currentId);
+  const freeForm = unlogged.planned === 0;
+  const barAction: BarAction =
+    mode === "add"
+      ? { kind: "add", disabled: structureBusy, onClick: () => setPickerOpen(true) }
+      : mode === "finish"
+        ? { kind: "finish", disabled: finishDisabled, onClick: () => setFinishOpen(true) }
+        : { kind: "log" };
 
   return (
     <LogActionContext.Provider value={logStore}>
@@ -625,6 +637,19 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             <p>Adding {pending.name}…</p>
           </div>
         ) : null}
+        {exercises.length > 0 ? (
+          <div className={styles.listEnd}>
+            <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
+              Add exercise
+            </Button>
+            {/* D14: a workout with no plan has no Finish mode, so Finish lives here. */}
+            {freeForm ? (
+              <Button variant="secondary" disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
+                Finish workout
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <p role="status" data-testid="session-announcement">
@@ -642,13 +667,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       />
 
       <ActionBar data-testid="session-bar">
-        <LogBarButton />
-        <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
-          Add exercise
-        </Button>
-        <Button variant="secondary" disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
-          Finish
-        </Button>
+        <LogBarButton action={barAction} />
         {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
         {unsaved > 0 ? <ActionBarHint>{plural(unsaved, "set", "sets")} not saved yet</ActionBarHint> : null}
         {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}

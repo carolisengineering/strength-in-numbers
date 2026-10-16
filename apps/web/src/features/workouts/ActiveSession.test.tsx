@@ -91,19 +91,31 @@ describe("AC17 — session layout and Add exercise", () => {
     expect(within(card("Third")).getByText("Duration")).toBeInTheDocument();
   });
 
-  it("shows an Add your first exercise hint when there are none, and a sticky bar with both actions", async () => {
+  it("shows an Add your first exercise hint when there are none, and a sticky bar with the right action", async () => {
     await setup();
 
     expect(screen.getByText("Add your first exercise")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add exercise" })).toBeInTheDocument();
-    expect(finishButton()).toBeInTheDocument();
+    // Spec 17.1 AC30: Add exercise and a free-form Finish moved into the list; an empty workout's bar is Add exercise.
+    const bar = within(screen.getByTestId("session-bar"));
+    expect(bar.getByRole("button", { name: "Add exercise" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish workout" })).toBeNull();
+  });
+
+  it("with exercises, the bar holds the Log button and the list end holds Add exercise and Finish workout", async () => {
+    await setup({ exercises: [{ modality: "weight_reps", name: "First", sets: [makeSet({ setNumber: 1 })] }] });
+
+    // Spec 17.1 AC30: Add exercise and a free-form Finish moved into the list.
+    const bar = screen.getByTestId("session-bar");
+    expect(bar).toContainElement(logButton("First"));
+    expect(bar).not.toContainElement(screen.getByRole("button", { name: "Add exercise" }));
+    expect(bar).not.toContainElement(finishButton());
   });
 
   it("the sticky bar comes after the cards and before the shell navigation", async () => {
     await setup({ exercises: [{ modality: "weight_reps", name: "First" }] });
 
     const cardEl = card("First");
-    const bar = screen.getByRole("button", { name: "Add exercise" }).closest("[data-testid='session-bar']")!;
+    const bar = screen.getByTestId("session-bar");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(cardEl.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(bar.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

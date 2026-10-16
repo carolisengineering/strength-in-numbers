@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
 import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 
+import { Button } from "../../ui/Button";
 import { useDraftPersistence, useRestoredDraft } from "./drafts/useDraftPersistence";
 import { DOUBLE_TAP_MS, LogActionContext, logLabel } from "./logAction";
 import { nextPlanned, setLabel } from "./plannedSets";
@@ -32,6 +33,8 @@ export interface EntryRowProps {
   onGone: (reason: "gone" | "finished") => void;
   /** Spec 17.1 §6.5: called LAST after a successful log, once this row's own bookkeeping is done. */
   onLogged?: (event: LoggedEvent) => void;
+  /** Spec 17.1 AC27: in Finish mode the panel stays, with a secondary button for a set past the plan. */
+  logExtra?: boolean;
 }
 
 /**
@@ -41,7 +44,7 @@ export interface EntryRowProps {
  * Each attempt carries one `clientGeneratedId`, kept across failures and re-minted only after a
  * success (§6.5), so a retry after a lost response cannot log the set twice.
  */
-export function EntryRow({ exercise, unitPreference, onGone, onLogged }: EntryRowProps) {
+export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
   const defaults = unitDefaultsFor(unitPreference);
@@ -206,6 +209,11 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged }: EntryRo
         <p className={styles.formError} role="alert">
           {formError.text}
         </p>
+      ) : null}
+      {logExtra ? (
+        <Button variant="secondary" block disabled={!parsed.ok} aria-busy={busy || undefined} onClick={run}>
+          Log extra set
+        </Button>
       ) : null}
       <p className={styles.visuallyHidden} role="status">
         {announcement}

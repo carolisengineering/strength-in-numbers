@@ -9,9 +9,23 @@ import { DOUBLE_TAP_MS, LogActionContext, useLogAction } from "./logAction";
  * `disabled` (a disabled button drops focus). The double-tap window also spans a panel swap: a second tap within
  * 600 ms that would land on a different panel is the same tap.
  */
-export function LogBarButton() {
+export type BarAction =
+  | { readonly kind: "log" }
+  | { readonly kind: "finish"; readonly disabled: boolean; readonly onClick: () => void }
+  | { readonly kind: "add"; readonly disabled: boolean; readonly onClick: () => void };
+
+/** One `Button` in every mode, so the element (and its focus) survives the switch to Finish after the last planned set. */
+export function LogBarButton({ action: mode }: { action: BarAction }) {
   const action = useLogAction(useContext(LogActionContext));
   const last = useRef<{ at: number; owner: symbol } | null>(null);
+
+  if (mode.kind !== "log") {
+    return (
+      <Button block disabled={mode.disabled} onClick={mode.onClick}>
+        {mode.kind === "finish" ? "Finish workout" : "Add exercise"}
+      </Button>
+    );
+  }
 
   function onClick() {
     if (action === null) return;
