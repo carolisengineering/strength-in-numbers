@@ -83,3 +83,37 @@ describe("17.1 AC24 — 44 px targets", () => {
     expect(read("../../ui/Button.module.css")).toMatch(/--tap-target-min/);
   });
 });
+
+const NEW_TS = ["./currentExercise.ts", "./useCurrentExercise.ts", "./summaryLine.ts", "./stepper.ts", "./NumberStepper.tsx", "./logAction.ts", "./LogBarButton.tsx", "./unloggedPlanned.ts", "./WorkoutMenu.tsx", "./EndEarlyDialog.tsx", "./SessionClock.tsx", "../../ui/VisuallyHidden.tsx"];
+const all = import.meta.glob(["../../**/*.ts", "../../**/*.tsx", "!../../**/*.test.ts", "!../../**/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+
+describe("17.1 AC36 — logout guard and storage rules", () => {
+  it("no new file names the browser storage globals (comments included), imports auth, or reports anything", () => {
+    for (const path of NEW_TS) {
+      const src = read(path);
+      expect(src, path).not.toMatch(/localStorage|sessionStorage/);
+      expect(stripComments(src), path).not.toMatch(/from ["'][^"']*\/auth\/|\btrack\(|reportError\(|console\./);
+    }
+  });
+  it("useLogoutGuard is still imported by ProfileScreen only", () => {
+    const importers = Object.entries(all).filter(([, s]) => /from\s+["'][^"']*useLogoutGuard["']/.test(stripComments(s))).map(([p]) => p);
+    expect(importers).toHaveLength(1);
+    expect(importers[0]).toMatch(/\/me\/ProfileScreen\.tsx$/);
+  });
+});
+
+describe("17.1 AC37 — regroup still never carries notes", () => {
+  it("useRegroup and the patch type name no notes", () => {
+    expect(stripComments(read("./useRegroup.ts"))).not.toMatch(/notes/);
+    const client = stripComments(read("./workoutClient.ts"));
+    const at = client.indexOf("WorkoutExercisePatch");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(client.slice(at, client.indexOf("}", at))).not.toMatch(/notes/);
+  });
+});
+
+describe("17.1 AC35 — progress stays positional", () => {
+  it("the new pure modules never read setNumber", () => {
+    for (const path of ["./currentExercise.ts", "./summaryLine.ts", "./unloggedPlanned.ts"]) expect(stripComments(read(path)), path).not.toMatch(/setNumber/);
+  });
+});
