@@ -13,9 +13,12 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
+import { USER_ID } from "../../test/catalogHarness";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { localStorageAdapter } from "../../storage/storage";
+import { DRAFTS_KEY } from "./drafts/draftStore";
 
 afterEach(() => cleanupApp());
 
@@ -80,6 +83,41 @@ describe("17.1 AC2 — an edit never clears a stored RPE, and a fresh log carrie
     await user.clear(row.getByLabelText("Reps"));
     await user.type(row.getByLabelText("Reps"), "5");
     await user.click(row.getByRole("button", { name: "Log set" }));
+
+    await within(card()).findByText(/65 kg × 5/);
+    const posts = bodiesOf(fake, "POST", /\/sets$/);
+    expect(posts).toHaveLength(1);
+    expect("rpe" in posts[0]!).toBe(false);
+  });
+});
+
+describe("17.1 AC2 — a new set never inherits a hidden RPE (security review, 2026-10-16)", () => {
+  it("the copy-forward draft after a set with rpe 8 logs with no rpe key", async () => {
+    const { fake, user } = await active(8);
+    // Untouched: the entry row is seeded from the last logged set (60 kg × 8), which carries rpe 8.
+    await user.click(within(card()).getByRole("button", { name: "Log set" }));
+
+    await within(card()).findAllByText(/60 kg × 8/);
+    const posts = bodiesOf(fake, "POST", /\/sets$/);
+    expect(posts).toHaveLength(1);
+    expect("rpe" in posts[0]!).toBe(false);
+  });
+
+  it("a draft restored with an rpe logs with no rpe key", async () => {
+    const workout = makeWorkoutDetail({
+      exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8, rpe: 8 })] }],
+    });
+    const fake = createWorkoutFake({ active: workout });
+    prepareApp({ auth, fake });
+    const fields = { weight: "65", reps: "5", distance: "", minutes: "", seconds: "", rpe: "8", weightUnit: "kg", distanceUnit: "km", setType: "working" };
+    localStorageAdapter().set(
+      DRAFTS_KEY,
+      JSON.stringify({ v: 1, userId: USER_ID, workoutId: workout.id, byExercise: { [workout.exercises[0]!.id]: fields } }),
+    );
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    expect(within(card()).getByLabelText("Weight")).toHaveValue("65"); // the draft was restored
+    await user.click(within(card()).getByRole("button", { name: "Log set" }));
 
     await within(card()).findByText(/65 kg × 5/);
     const posts = bodiesOf(fake, "POST", /\/sets$/);

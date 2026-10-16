@@ -10,31 +10,29 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const stripComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 /**
- * What a lifter could read: the text of every string / template literal and every run of JSX text. Identifiers
- * (`rpe`, `targetRpe`, `RPE_CHOICES`) and comments are not user-visible, so they are not in the result.
+ * Every bare `RPE` token left once comments are stripped. Identifiers never hold the token on its own (they are
+ * `rpe`, `targetRpe`, `RPE_CHOICES`, where `_` is a word character), so whatever matches is in a string, a
+ * template or JSX text — including JSX that interpolates (`<dd>RPE {value}</dd>`).
  */
 export function userVisibleText(source: string): string[] {
-  const code = stripComments(source);
-  const literals = [...code.matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g)].map((m) => m[0]);
-  const jsxText = [...code.matchAll(/>([^<>{}=;]*[A-Za-z][^<>{}=;]*)</g)].map((m) => m[1]!);
-  return [...literals, ...jsxText];
+  return [...stripComments(source).matchAll(/\bRPE\b[^\n]{0,40}/g)].map((m) => m[0]);
 }
 
-/** Server-path messages the spec allows to stay: validateDraft's `targetRpe` text cannot fire from the UI (17.1 AC7). */
-const ALLOWED: Array<{ file: string; text: string }> = [
-  { file: "features/routines/validateDraft.ts", text: "Pick an RPE from the list" },
-];
+/** Nothing is allowed: the last RPE message (validateDraft's) went with the code-review pass (17.1 AC7). */
+const ALLOWED: Array<{ file: string; text: string }> = [];
 
 describe("17.1 AC7 — no user-visible RPE text in the web sources", () => {
-  it("the scanner sees string literals and JSX text but not identifiers or comments (self-check)", () => {
+  it("the scanner sees strings, templates and JSX text (interpolated too) but not identifiers or comments (self-check)", () => {
     const sample = [
       'const a = "RPE must be 1–10";',
       "const b = `RPE ${n}`;",
       "const c = <label>RPE</label>;",
+      "const d = <dd>RPE {value}</dd>;",
       "const targetRpe = 1; // RPE in a comment",
       "/* RPE in a block */ const rpe = RPE_CHOICES;",
     ].join("\n");
-    expect(userVisibleText(sample).filter((t) => /\bRPE\b/.test(t))).toEqual(['"RPE must be 1–10"', "`RPE ${n}`", "RPE"]);
+    expect(userVisibleText(sample)).toHaveLength(4);
+    expect(userVisibleText(sample).every((t) => t.startsWith("RPE"))).toBe(true);
   });
 
   it("no non-test .ts/.tsx under src/ has a string literal or JSX text containing the token RPE", () => {

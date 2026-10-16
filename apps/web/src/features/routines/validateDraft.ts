@@ -5,6 +5,7 @@ import {
   ROUTINE_ITEM_NOTES_MAX,
   ROUTINE_NAME_MAX,
   ROUTINE_NOTES_MAX,
+  RoutineItemInputSchema,
   RoutineWriteSchema,
   type Modality,
   type Routine,
@@ -25,7 +26,6 @@ export type ItemField =
   | "targetSets"
   | "targetRepsLow"
   | "targetRepsHigh"
-  | "targetRpe"
   | "restSeconds"
   | "supersetGroup"
   | "notes"
@@ -60,7 +60,6 @@ const ITEM_MESSAGES: Record<ItemField, string> = {
   targetSets: "Check the sets — a whole number from 1 to 20",
   targetRepsLow: "Check the reps — the low number can't be more than the high one",
   targetRepsHigh: "Check the reps",
-  targetRpe: "Pick an RPE from the list",
   restSeconds: "Check the rest — up to 15:00",
   supersetGroup: GROUP_BUG,
   notes: `Keep notes to ${ROUTINE_ITEM_NOTES_MAX} characters, without unusual characters`,
@@ -84,7 +83,9 @@ function itemInput(item: DraftItem, modality: Modality | null) {
   const itemNotes = item.notes?.trim() ?? "";
   const common = {
     exerciseId: item.exerciseId,
-    targetRpe: item.targetRpe,
+    // Spec 17.1 Phase A: RPE is not shown, so a stored target the schema would refuse can only be dropped
+    // (a save it blocked could never be fixed on screen); a valid one is sent unchanged.
+    targetRpe: RoutineItemInputSchema.shape.targetRpe.safeParse(item.targetRpe).success ? item.targetRpe : null,
     restSeconds: item.restSeconds,
     supersetGroup: item.supersetGroup,
     ...(itemNotes === "" ? {} : { notes: itemNotes }),

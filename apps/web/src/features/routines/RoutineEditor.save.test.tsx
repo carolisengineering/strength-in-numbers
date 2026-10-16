@@ -299,12 +299,12 @@ describe("10.0 AC31 — the empty-list reason is referenced", () => {
 });
 
 describe("17.1 AC5 — targetRpe round-trips through the item sheet untouched", () => {
-  async function openBenchAndSave(plan: boolean) {
+  async function openBenchAndSave(plan: boolean, exercise: RegExp = /^Bench Press/) {
     const fake = createWorkoutFake({ catalog, routines: [pushA] });
     prepareApp({ auth, catalog, fake });
     const { user } = renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
     const list = await screen.findByRole("list", { name: "Exercises" });
-    await user.click(within(list).getAllByRole("button", { name: /^Bench Press/ })[0]!);
+    await user.click(within(list).getAllByRole("button", { name: exercise })[0]!);
     expect(screen.queryByLabelText(/RPE/)).toBeNull();
     if (plan) await user.click(screen.getByRole("button", { name: "Plan each set" }));
     await user.click(screen.getByRole("button", { name: "Done" }));
@@ -324,8 +324,9 @@ describe("17.1 AC5 — targetRpe round-trips through the item sheet untouched", 
     expect(items[0]).toHaveProperty("sets");
   });
 
-  it("an item stored without a target still sends targetRpe null", async () => {
-    const items = await openBenchAndSave(false);
-    expect(items[1]).toMatchObject({ targetRpe: null });
+  it("an item stored without a target, opened and Done, still sends targetRpe null", async () => {
+    const items = await openBenchAndSave(false, /^Barbell Row/); // pushA's item 1: no targetRpe
+    expect(items[1]).toMatchObject({ exerciseId: exerciseId(2), targetRpe: null });
+    expect(items[0]).toMatchObject({ targetRpe: 8.5 }); // the untouched item keeps its stored value
   });
 });

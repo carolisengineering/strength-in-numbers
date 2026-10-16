@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
 **Status:** Draft v0.5 — decisions Q1–Q23 resolved; consistency pass done
-**Last updated:** 2026-10-16 (§2 item 4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1))
+**Last updated:** 2026-10-16 (§2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1))
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -297,7 +297,7 @@ Rules:
   their user.
 - **routine_item** — `routine_id`, `position`, `exercise_id`, `target_sets`,
   `target_reps_low`, `target_reps_high` (both or neither, low ≤ high), `target_rpe`
-  (nullable; stored as tenths, half steps), `rest_seconds`, `notes`,
+  (nullable; stored as tenths, half steps; kept but not shown in the UI, Q23), `rest_seconds`, `notes`,
   `superset_group SMALLINT NULL` — items in the same routine sharing a non-null
   value are performed together; `position` gives order, so interleave sequence is
   derivable. Circuits (3+ exercises) are the same construct with N members. UX is
@@ -398,7 +398,7 @@ survives). See Spec 09.
   (`warmup` | `working` | `drop` | `failure`). Nullable measure columns:
   `reps`, `weight`, `weight_unit`, `weight_kg` (**stored generated column** =
   `weight` normalised to kg), `distance`, `distance_unit`, `distance_m` (generated),
-  `duration_s`, `rpe`, `is_complete BOOL`, `completed_at`, and a nullable
+  `duration_s`, `rpe` (kept but not shown or entered in the UI, Q23), `is_complete BOOL`, `completed_at`, and a nullable
   `client_generated_id UUID` (optional create idempotency key, unique per
   `workout_exercise_id` — Spec 05.1 D15).
   Which measures are required is validated per `modality` in `packages/core`, not
@@ -1240,7 +1240,10 @@ with rationale so the "why" survives.
   path (PRODUCT.md: logging, nothing else); keeping the columns costs nothing and makes reversal a
   UI change. Rejected: dropping the columns (a migration and an API break for no gain); hiding
   only the entry field (finished views and target lines would show a value the lifter can no
-  longer enter). See Spec 17.1 §6.11, D15.
+  longer enter). Known consequences: a stored target RPE cannot be cleared from the UI (remove and
+  re-add the item), and an edit never sends RPE at all, so a set's stored value is untouchable
+  from the app; a stored target the schema would refuse is dropped on save rather than blocking
+  it. See Spec 17.1 §6.11, D15.
 
 ---
 

@@ -144,7 +144,7 @@ const INPUT_FOR_MEASURE: Record<string, DraftField> = {
   distance: "distance",
   distanceUnit: "distance",
   durationS: "minutes",
-  rpe: "rpe",
+  // No `rpe`: it has no input (Spec 17.1 Phase A), so a server error on it is a form-level message.
 };
 
 /**
@@ -158,7 +158,8 @@ export function draftFieldForPath(path: string): DraftField | null {
 
 /**
  * Only what changed, for `PATCH /v1/sets/{id}`; `null` when nothing did (the caller sends no request).
- * RPE is the one optional field: a body without it means "cleared".
+ * Never RPE: nothing on screen can change it (Spec 17.1 Phase A), so an edit must never send it — not even
+ * `null` when a stored value fails to round-trip through the draft's text.
  */
 export function diffForPatch(set: SetEntry, body: SetBody): Partial<SetBody> | null {
   const out: Partial<SetBody> = {};
@@ -169,8 +170,6 @@ export function diffForPatch(set: SetEntry, body: SetBody): Partial<SetBody> | n
   if (body.distance !== undefined && body.distance !== set.distance) out.distance = body.distance;
   if (body.distanceUnit !== undefined && body.distanceUnit !== set.distanceUnit) out.distanceUnit = body.distanceUnit;
   if (body.durationS !== undefined && body.durationS !== set.durationS) out.durationS = body.durationS;
-  const rpe = body.rpe ?? null;
-  if (rpe !== set.rpe) out.rpe = rpe;
   return Object.keys(out).length === 0 ? null : out;
 }
 
@@ -208,7 +207,9 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
 /**
  * The one place a draft is built from a card's list (Spec 10.2 AC22): today's copy-forward of the last logged
  * set, then — only when a planned row is next — the row overlaid. A field the row leaves null keeps the
- * copy-forward value (D4); RPE is blank (per set); after the plan or with none it is exactly `draftFromSet`.
+ * copy-forward value (D4). RPE is always blank: it is per set, and since Spec 17.1 Phase A nothing on screen
+ * shows it, so a new set must never carry the previous set's value. Only the edit sheet (`draftFromSet`
+ * directly) keeps a stored RPE, so an edit never clears it.
  */
 export function seedDraft(args: {
   plannedSets: readonly PlannedSet[];
@@ -216,7 +217,7 @@ export function seedDraft(args: {
   defaults: UnitDefaults;
   attemptKey: string;
 }): SetDraft {
-  const base = draftFromSet(args.sets.at(-1) ?? null, args.defaults, args.attemptKey);
+  const base = { ...draftFromSet(args.sets.at(-1) ?? null, args.defaults, args.attemptKey), rpe: "" };
   const next = nextPlanned(args.plannedSets, args.sets.length);
   if (next.kind !== "planned") return base;
   const { row } = next;
@@ -246,7 +247,7 @@ export function createDraftReducer(newKey: () => string) {
       case "edit":
         return { ...state, [action.field]: action.value } as SetDraft;
       case "reset":
-        return draftFromSet(action.from, action.defaults, newKey());
+        return { ...draftFromSet(action.from, action.defaults, newKey()), rpe: "" }; // an entry-row draft: no hidden RPE
       case "rekey":
         return { ...state, attemptKey: newKey() };
       case "seed":
@@ -258,7 +259,7 @@ export function createDraftReducer(newKey: () => string) {
           defaults: { weightUnit: state.weightUnit, distanceUnit: state.distanceUnit },
           attemptKey: newKey(),
         });
-        return { ...next, rpe: "" }; // RPE is per set: not copied forward
+        return next; // seedDraft already leaves RPE blank
       }
     }
   };
