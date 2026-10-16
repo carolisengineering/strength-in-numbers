@@ -131,3 +131,14 @@ describe("17.1 AC16 — brackets, sections and link toggles", () => {
     expect(within(section).getByRole("article", { name: "B" })).toBeInTheDocument();
   });
 });
+
+describe("17.1 AC31 — the clock sits beside Started and ignores which exercise is current", () => {
+  it("renders in the top row and does not change when current changes", async () => {
+    const { user } = await setup([ex("A"), ex("B")]);
+    const clock = screen.getByText(/Elapsed/).closest("p")!;
+    expect(clock.textContent).toMatch(/^Elapsed \d+:\d{2}(:\d{2})?$/);
+    expect(screen.getByText(/^Started /)).toBeInTheDocument();
+    await makeCurrent(user, "B");
+    expect(screen.getByText(/Elapsed/).closest("p")).toBe(clock); // the same element: current does not remount it
+  });
+});

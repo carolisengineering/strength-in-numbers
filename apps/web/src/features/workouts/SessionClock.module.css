@@ -1,0 +1,8 @@
+/* Spec 17.1 AC31: total workout time, a figure (tabular digits come from body). */
+.clock {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-figure);
+  font-stretch: var(--font-stretch-figure);
+}

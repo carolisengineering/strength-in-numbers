@@ -35,6 +35,7 @@ import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
 import { RoutineNotePanel } from "./RoutineNotePanel";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
+import { SessionClock } from "./SessionClock";
 import { SessionSection } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
@@ -599,7 +600,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     <LogActionContext.Provider value={logStore}>
     <Screen title="Workout">
       <WorkoutMenu
-        leading={<p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>}
+        leading={
+          <>
+            <SessionClock startedAt={workout.startedAt} />
+            <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
+          </>
+        }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
       />
