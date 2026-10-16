@@ -210,11 +210,11 @@ describe("AC6 — Profile saves (Spec 04.1 §2)", () => {
     expect(patchBodies).toEqual([{ unitPreference: "lb", timezone: "Asia/Tokyo" }]);
   });
 
-  it("the Log out control calls Auth0 logout with the site origin", async () => {
+  it("the Sign out control calls Auth0 logout with the site origin", async () => {
     renderProfile();
     await form();
 
-    await user().click(screen.getByRole("button", { name: "Log out" }));
+    await user().click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(auth.state.logout).toHaveBeenCalledWith({
       logoutParams: { returnTo: window.location.origin },

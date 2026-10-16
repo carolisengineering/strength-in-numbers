@@ -18,6 +18,7 @@ import { useExportAccount } from "../account/useExportAccount";
 import styles from "./ProfileScreen.module.css";
 import { listTimeZones } from "./timeZones";
 import { useMe } from "./useMe";
+import { useLogoutGuard } from "../workouts/useLogoutGuard";
 import { useUpdateMe } from "./useUpdateMe";
 
 type FieldName = keyof UpdateMeInput;
@@ -71,6 +72,7 @@ export function ProfileScreen() {
 
 function ProfileForm({ me }: { me: Me }) {
   const { logout } = useSession();
+  const guard = useLogoutGuard(logout); // Spec 06.5 D6: composed here; useSession().logout stays the unguarded one
   const update = useUpdateMe();
   const exporter = useExportAccount(); // ONE per Profile screen; the delete dialog shares it (Spec 12 D13)
   const [values, setValues] = useState<FormValues>(() => fromMe(me));
@@ -209,9 +211,10 @@ function ProfileForm({ me }: { me: Me }) {
 
       <div className={styles.account}>
         <p className={styles.email}>Signed in as {me.email}</p>
-        <Button variant="secondary" block onClick={logout}>
-          Log out
+        <Button variant="secondary" block onClick={guard.request}>
+          Sign out
         </Button>
+        {guard.dialog}
       </div>
 
       <DeleteAccountSection exporter={exporter} timeZone={me.timezone} />
