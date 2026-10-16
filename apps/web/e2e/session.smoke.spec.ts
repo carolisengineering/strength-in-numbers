@@ -2,14 +2,16 @@ import { expect, test } from "@playwright/test";
 
 import { E2E } from "./env";
 import {
-  EXERCISES,
-  NAMES,
   atNarrowViewport,
   card,
+  EXERCISES,
+  expectFocusContained,
   expectNoHorizontalOverflow,
   expectTapTargets,
-  expectFocusContained,
   installGuards,
+  logBar,
+  makeCurrent,
+  NAMES,
   openDialog,
   pendingOutboxOps,
   waitSynced,
@@ -41,10 +43,11 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
 
   await test.step("clean slate — discard a leftover workout from a failed earlier run", async () => {
     const start = page.getByRole("button", { name: NAMES.startWorkout });
-    const discard = page.getByRole("button", { name: NAMES.discardWorkout });
-    await expect(start.or(discard)).toBeVisible();
-    if (await discard.isVisible()) {
-      await discard.click();
+    const menu = page.getByRole("button", { name: NAMES.workoutMenu });
+    await expect(start.or(menu)).toBeVisible();
+    if (await menu.isVisible()) {
+      await menu.click();
+      await page.getByRole("button", { name: NAMES.discardWorkout }).click();
       await openDialog(page, NAMES.discardDialog).getByRole("button", { name: NAMES.discard, exact: true }).click();
       await expect(start).toBeVisible();
     }
@@ -85,7 +88,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
       for (const [label, value] of Object.entries(exercise.fields)) {
         await form.getByLabel(label, { exact: true }).fill(value);
       }
-      await form.getByRole("button", { name: NAMES.logSet }).click();
+      await logBar(page).click(); // a just-added exercise is current (Spec 17.1 AC13)
       await waitSynced(page, exerciseCard, 1);
       await expect(exerciseCard.getByRole("listitem").first()).toContainText(exercise.shows);
     });
@@ -104,27 +107,27 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await page.reload();
     await page.waitForURL(workouts);
     for (const exercise of EXERCISES) {
-      const exerciseCard = card(page, exercise.name);
+      const exerciseCard = await makeCurrent(page, exercise.name);
       await expect(exerciseCard.getByRole("listitem")).toHaveCount(1);
       await expect(exerciseCard.getByRole("listitem").first()).toContainText(exercise.shows);
     }
   });
 
   await test.step("reorder: Options → Move up survives a reload", async () => {
-    const pullUp = card(page, EXERCISES[1].name);
-    await pullUp.getByRole("button", { name: NAMES.options }).click();
+    const pullUp = await makeCurrent(page, EXERCISES[1].name);
+    await pullUp.getByRole("button", { name: NAMES.options(EXERCISES[1].name) }).click();
     await pullUp.getByRole("button", { name: NAMES.moveUp }).click();
-    const headings = page.getByRole("article").getByRole("heading", { level: 2 });
-    await expect(headings.first()).toHaveText(EXERCISES[1].name);
+    const articles = page.getByRole("article");
+    await expect(articles.first()).toHaveAccessibleName(EXERCISES[1].name);
     await expect(finishButton).toBeEnabled();
     await page.reload();
     await page.waitForURL(workouts);
-    await expect(headings.first()).toHaveText(EXERCISES[1].name);
-    await expect(headings.nth(1)).toHaveText(EXERCISES[0].name);
+    await expect(articles.first()).toHaveAccessibleName(EXERCISES[1].name);
+    await expect(articles.nth(1)).toHaveAccessibleName(EXERCISES[0].name);
   });
 
   await test.step("edit a set in the sheet and wait for it to sync", async () => {
-    const bench = card(page, EXERCISES[0].name);
+    const bench = await makeCurrent(page, EXERCISES[0].name);
     await bench.getByRole("listitem").first().getByRole("button").click();
     const sheet = openDialog(page, `Set 1 · ${EXERCISES[0].name}`);
     await sheet.getByLabel("Reps", { exact: true }).fill("6");
@@ -135,9 +138,9 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
   });
 
   await test.step("remove an exercise; the confirm dialog traps focus and Escape cancels (AC4)", async () => {
-    const run = card(page, EXERCISES[4].name);
+    const run = await makeCurrent(page, EXERCISES[4].name);
     const removeButton = run.getByRole("button", { name: NAMES.removeExercise });
-    await run.getByRole("button", { name: NAMES.options }).click();
+    await run.getByRole("button", { name: NAMES.options(EXERCISES[4].name) }).click();
     await removeButton.click();
     const confirm = openDialog(page, NAMES.removeDialog(EXERCISES[4].name));
     await expect(confirm).toBeVisible();
@@ -147,7 +150,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await expect(run).toBeVisible();
 
     if (!(await removeButton.isVisible())) {
-      await run.getByRole("button", { name: NAMES.options }).click();
+      await run.getByRole("button", { name: NAMES.options(EXERCISES[4].name) }).click();
     }
     await removeButton.click();
     await confirm.getByRole("button", { name: NAMES.remove, exact: true }).click();
@@ -157,7 +160,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
   let workoutId = "";
   await test.step("finish through the confirm dialog and read the summary", async () => {
     await finishButton.click();
-    await openDialog(page, NAMES.finishDialog).getByRole("button", { name: NAMES.finish, exact: true }).click();
+    await openDialog(page, NAMES.finishDialog).getByRole("button", { name: NAMES.finishConfirm, exact: true }).click();
     await expect(page.getByRole("heading", { name: NAMES.summaryHeading })).toBeVisible();
     workoutId = new URL(page.url()).pathname.split("/").pop() ?? "";
     for (const exercise of EXERCISES.slice(0, 4)) {

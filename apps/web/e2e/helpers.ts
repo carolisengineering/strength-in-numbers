@@ -9,14 +9,16 @@ export const NAMES = {
   addExercise: "Add exercise",
   searchExercises: "Search exercises",
   close: "Close",
-  logSet: "Log set",
+  logSet: /^Log /,
   logSetForm: (exercise: string) => `Log a set of ${exercise}`,
-  options: "Options",
+  options: (exercise: string) => `Options for ${exercise}`,
+  workoutMenu: "Workout menu",
   moveUp: "Move up",
   removeExercise: "Remove exercise",
   save: "Save",
-  finish: "Finish",
+  finish: "Finish workout",
   finishDialog: "Finish workout?",
+  finishConfirm: "Finish",
   discardWorkout: "Discard workout",
   discardDialog: "Discard this workout?",
   discard: "Discard",
@@ -55,6 +57,20 @@ const OUTBOX_KEY = "sin:workout:outbox";
 
 export function card(page: Page, exercise: string): Locator {
   return page.getByRole("article", { name: exercise, exact: true });
+}
+
+/** Spec 17.1 D11: the bottom bar's one button logs the current exercise's set. */
+export function logBar(page: Page): Locator {
+  return page.getByTestId("session-bar").getByRole("button", { name: NAMES.logSet });
+}
+
+/** Spec 17.1 AC11: make an exercise current (tap its collapsed row); returns its card once the panel shows. */
+export async function makeCurrent(page: Page, exercise: string): Promise<Locator> {
+  const row = card(page, exercise);
+  const collapsed = row.getByRole("heading", { level: 2 }).getByRole("button", { expanded: false });
+  if ((await collapsed.count()) > 0) await collapsed.click();
+  await expect(row.getByRole("form", { name: NAMES.logSetForm(exercise) })).toBeVisible();
+  return row;
 }
 
 export function openDialog(page: Page, name: string | RegExp): Locator {

@@ -322,6 +322,7 @@ export const active = makeWorkout(ACTIVE_N, activeStart, 0, [
   { key: "overhead_press", routineItem: pushItems[1], sectionId: WS_MAIN, sets: [WU(5, 30)] },
   { key: "incline_db_press", routineItem: pushItems[2], sectionId: WS_ACC, sets: [] },
   { key: "lateral_raise", routineItem: pushItems[3], sectionId: WS_ACC, sets: [] },
+  { key: "plank", routineItem: lowerItems[3], sectionId: WS_ACC, sets: [] },
 ], {
   active: true,
   routine: push,
@@ -338,6 +339,29 @@ export const active = makeWorkout(ACTIVE_N, activeStart, 0, [
     s.completedAt = s.createdAt = s.updatedAt = iso(t);
   }
 }
+
+// Spec 17.1 AC57: every planned set logged, for the Finish-mode capture (the bar reads "Finish workout").
+export const activeDone = (() => {
+  const done = structuredClone(active);
+  let t = Date.parse(done.startedAt) + 30 * MIN;
+  let n = 0;
+  for (const ex of done.exercises) {
+    for (let i = ex.sets.length; i < ex.plannedSets.length; i += 1) {
+      const row = ex.plannedSets[i];
+      const isDuration = ex.modalitySnapshot === "duration";
+      const kg = row.weight === null ? null : row.weightUnit === "lb" ? row.weight * 0.45359237 : row.weight;
+      t += MIN;
+      n += 1;
+      ex.sets.push({
+        id: uuid("d9000000", n), workoutExerciseId: ex.id, clientGeneratedId: uuid("c9000000", n), setNumber: i + 1,
+        setType: row.setType, reps: isDuration ? null : (row.repsLow ?? 10), weight: row.weight, weightUnit: row.weight === null ? null : row.weightUnit,
+        weightKg: kg, distance: null, distanceUnit: null, distanceM: null, durationS: isDuration ? 45 : null,
+        rpe: null, isComplete: true, completedAt: iso(t), createdAt: iso(t), updatedAt: iso(t),
+      });
+    }
+  }
+  return done;
+})();
 
 // ---------------------------------------------------------------- records + progress
 const epley = (w, r) => (r === 1 ? w : r >= 1 && r <= 12 ? w * (1 + r / 30) : null);
@@ -454,6 +478,7 @@ export function payloadChecks() {
     ["history", "WorkoutHistoryResponseSchema", history],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ...allWorkouts.map((w) => [`workout ${w.id}`, "WorkoutDetailSchema", w]),
+    ["active, all planned logged", "WorkoutDetailSchema", activeDone],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
   ];
 }
