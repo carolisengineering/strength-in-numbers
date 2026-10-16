@@ -30,7 +30,7 @@ describe("10.3 AC29 — SyncStatus", () => {
     expect(screen.getByText("Offline — 2 notes will save when you're back online")).toBeInTheDocument();
     rerender(<SyncStatus pending={0} failed={0} failedNotes={1} {...props} />);
     expect(screen.getByText("1 note couldn't be saved")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard 1 note that couldn't be saved" })).toBeInTheDocument();
   });
 
   it("sets and notes together share one line each, with one set of buttons", () => {

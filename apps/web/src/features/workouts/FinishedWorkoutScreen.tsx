@@ -13,7 +13,7 @@ import { useMe } from "../me/useMe";
 import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { classifyWorkoutError } from "./errors";
-import { formatLocalDate, formatSet } from "./format";
+import { formatLocalDate } from "./format";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
@@ -22,7 +22,7 @@ import { SessionSection } from "./SessionSectionHeading";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
-import { WarmupMark } from "./WarmupMark";
+import { SetText, WarmupMark } from "./WarmupMark";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -148,7 +148,7 @@ function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: Sup
             <li key={set.id} className={set.setType === "warmup" ? `${styles.set} ${styles.warmup}` : styles.set} data-set-type={set.setType}>
               <span className={styles.setNumber}>{set.setNumber}</span>
               <WarmupMark setType={set.setType} />
-              <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+              <SetText set={set} modality={exercise.modalitySnapshot} />
             </li>
           ))}
         </ol>

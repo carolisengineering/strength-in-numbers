@@ -2,15 +2,16 @@ import { useId, useState } from "react";
 import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
+import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
-import { EntryRow } from "./EntryRow";
+import { EntryRow, type LoggedEvent } from "./EntryRow";
 import { NoteSheet } from "./NoteSheet";
-import { formatSet } from "./format";
 import type { RowSync } from "./outbox/project";
+import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
-import { WarmupMark } from "./WarmupMark";
+import { SetText, WarmupMark } from "./WarmupMark";
 
 export interface ExerciseCardProps {
   exercise: WorkoutExerciseDetail;
@@ -41,6 +42,12 @@ export interface ExerciseCardProps {
   accessibleName?: string | null;
   /** Spec 10.3: why a Move button is disabled at a section edge; only passed for headed segments. */
   moveReasons?: { up: string | null; down: string | null };
+  /** Spec 17.1 AC11: the heading takes focus when the lifter makes this card current. */
+  headingRef?: (node: HTMLHeadingElement | null) => void;
+  /** Spec 17.1 §6.5: the entry panel's successful log, for auto-advance. */
+  onLogged?: (event: LoggedEvent) => void;
+  /** Spec 17.1 AC27: Finish mode. */
+  logExtra?: boolean;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -73,6 +80,9 @@ export function ExerciseCard({
   targetLine = "",
   accessibleName = null,
   moveReasons = NO_REASONS,
+  headingRef,
+  onLogged,
+  logExtra,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -92,7 +102,7 @@ export function ExerciseCard({
     <article className={styles.card} {...(accessibleName ? { "aria-label": accessibleName } : { "aria-labelledby": headingId })}>
       <header className={styles.header}>
         <div className={styles.titles}>
-          <h2 className={styles.name} id={headingId}>
+          <h2 className={styles.name} id={headingId} ref={headingRef} tabIndex={-1}>
             {exercise.exerciseNameSnapshot}
           </h2>
           <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
@@ -111,14 +121,15 @@ export function ExerciseCard({
             {noteSync?.state === "failed" ? (
               <>
                 <span className={styles.failedTag}>Couldn't save</span>
-                <Button variant="secondary" onClick={() => onDiscardOp?.(noteSync.opId)}>
+                <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
                   Discard
                 </Button>
               </>
             ) : null}
           </div>
         </div>
-        <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+        {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
+        <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
           Options
         </Button>
       </header>
@@ -160,7 +171,7 @@ export function ExerciseCard({
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
                   <WarmupMark setType={set.setType} />
-                  <span>{formatSet(set, exercise.modalitySnapshot)}</span>
+                  <SetText set={set} modality={exercise.modalitySnapshot} />
                   {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
                   {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
@@ -169,11 +180,11 @@ export function ExerciseCard({
                 {rowSync?.state === "failed" ? (
                   <span className={styles.rowActions}>
                     {rowSync.status === 422 ? (
-                      <Button variant="secondary" onClick={() => setEditing(set)}>
+                      <Button variant="secondary" aria-label={`Edit set ${set.setNumber} of ${exercise.exerciseNameSnapshot}`} onClick={() => setEditing(set)}>
                         Edit
                       </Button>
                     ) : null}
-                    <Button variant="secondary" onClick={() => onDiscardOp?.(rowSync.opId)}>
+                    <Button variant="secondary" aria-label={`Discard set ${set.setNumber} of ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(rowSync.opId)}>
                       Discard
                     </Button>
                   </span>
@@ -184,7 +195,7 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
-      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} />
+      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
 
       {noteSheet ? (
         <NoteSheet
@@ -205,6 +216,36 @@ export function ExerciseCard({
         onClose={() => setEditing(null)}
         onGone={onGone}
       />
+    </article>
+  );
+}
+
+export interface CollapsedExerciseProps {
+  exercise: WorkoutExerciseDetail;
+  summary: CollapsedSummary;
+  /** The article's name: the superset label in a run, else the exercise's name (as on the expanded card). */
+  accessibleName?: string | null;
+  sync?: ReadonlyMap<string, RowSync>;
+  onSelect: () => void;
+}
+
+/**
+ * Spec 17.1 AC9–AC10: an exercise that is not current is one summary line. The whole line is the heading's button;
+ * it mounts no entry row, sheet or Options (one extra tap to edit or move, §6.3).
+ */
+export function CollapsedExercise({ exercise, summary, accessibleName = null, sync = NO_SYNC, onSelect }: CollapsedExerciseProps) {
+  const state = collapsedSync(exercise, sync);
+  return (
+    <article className={`${styles.card} ${styles.collapsed}`} aria-label={accessibleName ?? exercise.exerciseNameSnapshot}>
+      <h2 className={styles.collapsedHeading}>
+        <button type="button" className={styles.summary} aria-expanded={false} aria-label={summary.name} onClick={onSelect}>
+          <span className={styles.summaryText}>{summary.text}</span>
+          {summary.done ? <CheckIcon className={styles.check} /> : null}
+        </button>
+      </h2>
+      {/* Text, not color alone, marks the state (06.2 AC14). */}
+      {state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+      {state === "failed" ? <span className={styles.failedTag}>Couldn't save</span> : null}
     </article>
   );
 }

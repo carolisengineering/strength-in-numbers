@@ -18,6 +18,7 @@ import { localStorageAdapter } from "../../storage/storage";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { logButton } from "../../test/sessionHelpers";
 import { DRAFTS_KEY } from "../workouts/drafts/draftStore";
 
 let online: ReturnType<typeof vi.spyOn>;
@@ -36,7 +37,7 @@ async function openProfileWithQueuedSet() {
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
   await screen.findByRole("heading", { name: "Workout" });
-  await app.user.click(within(screen.getByRole("article", { name: "Bench" })).getByRole("button", { name: "Log set" }));
+  await app.user.click(logButton("Bench"));
   await app.router.navigate("/app/profile");
   await screen.findByRole("button", { name: "Sign out" });
   return app;

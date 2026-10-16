@@ -32,7 +32,8 @@ export function SyncStatus({ pending, failed, pendingNotes = 0, failedNotes = 0,
               Show
             </Button>
           ) : null}
-          <Button variant="secondary" onClick={onDiscardFailed}>
+          {/* Spec 17.1 AC38: no bare "Discard" on the session screen; the visible word comes first (WCAG 2.5.3). */}
+          <Button variant="secondary" aria-label={`Discard ${what(failed, failedNotes)} that couldn't be saved`} onClick={onDiscardFailed}>
             Discard
           </Button>
         </p>

@@ -45,7 +45,8 @@ const orDash = (value: number | null, render: (n: number) => string): string =>
 const withUnit = (value: number | null, unit: string | null): string =>
   orDash(value, (n) => `${NUMBER.format(n)} ${unit ?? ""}`.trim());
 
-export function formatSet(set: SetEntry, modality: Modality): string {
+/** A logged set's core text and its non-working type suffix (" (Warm-up)"); Spec 17.1 AC39 hides the warm-up one visually. */
+export function formatSetParts(set: SetEntry, modality: Modality): { core: string; typeSuffix: string } {
   const reps = orDash(set.reps, String);
   let core: string;
   switch (modality) {
@@ -66,6 +67,10 @@ export function formatSet(set: SetEntry, modality: Modality): string {
       break;
   }
   // Spec 17.1 Phase A: RPE is stored but never shown.
-  const tag = set.setType === "working" ? "" : ` (${SET_TYPE_LABELS[set.setType]})`;
-  return `${core}${tag}`;
+  return { core, typeSuffix: set.setType === "working" ? "" : ` (${SET_TYPE_LABELS[set.setType]})` };
+}
+
+export function formatSet(set: SetEntry, modality: Modality): string {
+  const { core, typeSuffix } = formatSetParts(set, modality);
+  return `${core}${typeSuffix}`;
 }

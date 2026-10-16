@@ -11,13 +11,19 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { ActionBar, ActionBarHint } from "../../ui/ActionBar";
 import { Screen } from "../../ui/Screen";
+import { VisuallyHidden } from "../../ui/VisuallyHidden";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
+import { advanceAfterLog } from "./currentExercise";
 import { useDraftStores } from "./drafts/DraftStoreContext";
-import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
+import type { LoggedEvent } from "./EntryRow";
+import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
+import { LogActionContext, createLogActionStore } from "./logAction";
+import { EndEarlyDialog } from "./EndEarlyDialog";
+import { LogBarButton, type BarAction } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
@@ -29,10 +35,15 @@ import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
 import { RoutineNotePanel } from "./RoutineNotePanel";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
+import { SessionClock } from "./SessionClock";
 import { SessionSection } from "./SessionSectionHeading";
+import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
+import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { WorkoutMenu } from "./WorkoutMenu";
+import { barMode, unloggedPlanned } from "./unloggedPlanned";
 import {
   useAddExercise,
   useDeleteWorkout,
@@ -72,7 +83,7 @@ type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
- * The in-progress workout (Spec 06.1 §5.3): exercise cards, a sticky action bar, the exercise picker,
+ * The in-progress workout (Spec 06.1 §5.3): one current exercise card (Spec 17.1), the others collapsed, a sticky action bar, the exercise picker,
  * Finish and Discard. Exercise-structure writes (add / move / regroup / remove, Spec 10.1) are serialised: each changes
  * sibling `position`s, and the next move's arithmetic comes from the list on screen, so one write plus
  * its refetch at a time (§6.3).
@@ -102,6 +113,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const [removing, setRemoving] = useState<WorkoutExerciseDetail | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [endEarlyOpen, setEndEarlyOpen] = useState(false);
   const [flaggedIds, setFlaggedIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
   const [banner, setBanner] = useState<Banner | null>(null);
   // Synchronous guards: React state would not have updated before a second tap lands.
@@ -122,6 +134,73 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   );
   const rows = useMemo(() => supersetRows(workout.exercises), [workout.exercises]);
   const segments = useMemo(() => sectionSegments(rows, workout.sections), [rows, workout.sections]);
+  // Spec 17.1 §6.2: one exercise is current; the hook holds only the lifter's choice.
+  const current = useCurrentExercise(rows);
+  const { select: selectCurrent } = current;
+  const unitPreference = user?.unitPreference ?? "kg";
+  const headingRefs = useRef(new Map<string, HTMLHeadingElement>());
+  // §6.8: a tap focuses the new card's heading; any change scrolls it into view after commit.
+  const reveal = useRef<{ id: string; focus: boolean } | null>(null);
+  const makeCurrent = useCallback(
+    (id: string, focus: boolean) => {
+      reveal.current = { id, focus };
+      selectCurrent(id);
+    },
+    [selectCurrent],
+  );
+  useEffect(() => {
+    const pending = reveal.current;
+    if (pending === null || pending.id !== current.currentId) return;
+    const node = headingRefs.current.get(pending.id);
+    if (node === undefined) return;
+    reveal.current = null;
+    if (pending.focus) node.focus();
+    node.scrollIntoView?.({ block: "nearest" });
+  }, [current.currentId]);
+  // Spec 17.1 AC9: on a phone the current-set panel can open below the fold (the top row, a routine note and done rows
+  // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
+  // and the scroller's scroll-padding keeps it clear of the bar.
+  const shownOnOpen = useRef(false);
+  useEffect(() => {
+    if (shownOnOpen.current || current.currentId === null) return;
+    const panel = headingRefs.current.get(current.currentId)?.closest("article")?.querySelector("form");
+    if (!panel) return;
+    shownOnOpen.current = true;
+    panel.scrollIntoView?.({ block: "nearest" });
+  }, [current.currentId]);
+
+  const [logStore] = useState(createLogActionStore);
+  const [announcement, setAnnouncement] = useState("");
+  const currentIdRef = useRef<string | null>(current.currentId);
+  useLayoutEffect(() => {
+    currentIdRef.current = current.currentId;
+  });
+
+  /**
+   * Spec 17.1 AC14–AC15: after a log, move current per `advanceAfterLog`, read from the cache the log just wrote
+   * (this render's `rows` may not hold the new set yet). Never when the lifter typed since the tap, and never when
+   * they already moved to another exercise (a late response).
+   */
+  function onLogged({ exerciseId, set, advance, wasExtra }: LoggedEvent) {
+    if (!advance || currentIdRef.current !== exerciseId) return;
+    const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+    if (!fresh || fresh.id !== workout.id) return;
+    const freshRows = supersetRows(fresh.exercises);
+    const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
+    if (next === exerciseId) return;
+    // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
+    // bar: the bar's button keeps it (AC29).
+    const focusInPanel = headingRefs.current.get(exerciseId)?.closest("article")?.contains(document.activeElement) ?? false;
+    reveal.current = { id: next, focus: focusInPanel };
+    current.advanceFrom(exerciseId, next);
+    // The panel that announced "Set N logged" unmounts with the advance, so the screen says it.
+    const nextName = freshRows.find((r) => r.exercise.id === next)?.exercise.exerciseNameSnapshot ?? "";
+    setAnnouncement(`Set ${set.setNumber} logged. Next: ${nextName}`);
+  }
+  const headingRefFor = (id: string) => (node: HTMLHeadingElement | null) => {
+    if (node) headingRefs.current.set(id, node);
+    else headingRefs.current.delete(id);
+  };
   // A tap plans from the segment last committed to the screen (set after commit, never during render).
   const plannerRef = useRef(new Map<string, { slots: SessionSlot[]; start: number }>());
   useLayoutEffect(() => {
@@ -142,13 +221,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, [flaggedIds, workout]);
 
   // The first flagged row in display order (exercise position, then set order) gets the ref.
-  const firstFlaggedId = useMemo(() => {
+  const firstFlagged = useMemo(() => {
     for (const exercise of exercises) {
       const set = exercise.sets.find((s) => flagged.has(s.id));
-      if (set) return set.id;
+      if (set) return { setId: set.id, exerciseId: exercise.id };
     }
     return null;
   }, [exercises, flagged]);
+  const firstFlaggedId = firstFlagged?.setId ?? null;
   const firstFlaggedRef = useRef<HTMLButtonElement | null>(null);
   const setFirstFlaggedRef = useCallback((node: HTMLButtonElement | null) => {
     firstFlaggedRef.current = node;
@@ -163,28 +243,50 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
   const { pending: notePending, failed: noteFailed } = unsavedNotes(outboxState.ops, workout.id);
   const unsavedNoteCount = notePending + noteFailed;
-  const firstFailedId = useMemo(() => {
+  const firstFailed = useMemo(() => {
     for (const exercise of exercises) {
-      if (sync.get(exercise.id)?.state === "failed") return exercise.id; // a failed note sits above its exercise's sets
+      if (sync.get(exercise.id)?.state === "failed") return { rowId: exercise.id, exerciseId: exercise.id }; // a failed note sits above its exercise's sets
       const set = exercise.sets.find((s) => sync.get(s.id)?.state === "failed");
-      if (set) return set.id;
+      if (set) return { rowId: set.id, exerciseId: exercise.id };
     }
     return null;
   }, [exercises, sync]);
+  const firstFailedId = firstFailed?.rowId ?? null;
   const failedRowRef = useRef<HTMLElement | null>(null);
   const setFailedRowRef = useCallback((node: HTMLElement | null) => {
     failedRowRef.current = node;
   }, []);
 
-  // Bring the first offending row into view when Finish is blocked (phones: the row may be offscreen).
-  // Once per diagnosis: the flagged set may only render a beat later, when the re-read reaches this
-  // screen's `workout` prop, so wait for its row; fixing that row later must not scroll to the next.
+  // Bring the first offending row into view when Finish is blocked. Spec 17.1 AC17: its card may be collapsed, so make
+  // that exercise current first; the row then renders and the effect runs again once its ref is set.
   const scrollPending = useRef(false);
   useEffect(() => {
-    if (!scrollPending.current || firstFlaggedRef.current === null) return;
+    if (!scrollPending.current || firstFlagged === null) return;
+    if (firstFlagged.exerciseId !== current.currentId) {
+      selectCurrent(firstFlagged.exerciseId);
+      return;
+    }
+    if (firstFlaggedRef.current === null) return;
     scrollPending.current = false;
     firstFlaggedRef.current.scrollIntoView?.({ block: "center" });
-  }, [flaggedIds, firstFlaggedId]);
+  }, [flaggedIds, firstFlagged, current.currentId, selectCurrent]);
+
+  // Spec 17.1 AC17: "Show" on a failed write in a collapsed card makes it current, then scrolls after commit.
+  const showFailedPending = useRef(false);
+  function showFailed() {
+    if (firstFailed === null) return;
+    if (firstFailed.exerciseId === current.currentId) {
+      failedRowRef.current?.scrollIntoView?.({ block: "center" });
+      return;
+    }
+    showFailedPending.current = true;
+    selectCurrent(firstFailed.exerciseId);
+  }
+  useEffect(() => {
+    if (!showFailedPending.current || failedRowRef.current === null) return;
+    showFailedPending.current = false;
+    failedRowRef.current.scrollIntoView?.({ block: "center" });
+  }, [current.currentId]);
 
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
@@ -247,7 +349,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     setPickerOpen(false);
     setPending({ name: exercise.name });
     try {
-      await add.mutateAsync({ workoutId: workout.id, exerciseId: exercise.id, modality: exercise.modality });
+      const added = await add.mutateAsync({ workoutId: workout.id, exerciseId: exercise.id, modality: exercise.modality });
+      reveal.current = { id: added.id, focus: false };
+      current.selectWhenAdded(added.id);
     } catch (error) {
       await handleFailure("add-exercise", error);
     } finally {
@@ -322,7 +426,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }
 
   /** `409 workout-finished`: if the workout really is finished, our own finish landed (a lost first response). */
-  async function confirmAlreadyFinished() {
+  async function confirmAlreadyFinished(endedEarly: boolean) {
     try {
       const fresh = await client.getById(workout.id);
       if (fresh.endedAt === null) {
@@ -338,10 +442,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         setCount: fresh.exercises.reduce((n, e) => n + e.sets.length, 0),
         durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
         viaReplay: true,
+        endedEarly,
+        unloggedPlannedSets: unlogged.total,
       });
       afterFinished();
     } catch {
-      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish() });
+      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
     }
   }
 
@@ -358,18 +464,21 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
-  async function confirmFinish() {
+  /** The one finish path (Spec 17.1 §6.7): Finish and End workout early both call it, so their waits and failures match. */
+  async function confirmFinish(endedEarly = false) {
     if (finishLock.current) return;
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()) });
+      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
       setFinishOpen(false);
+      setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
       // screen must not yank them back across screens.
       afterFinished();
     } catch (error) {
       setFinishOpen(false);
+      setEndEarlyOpen(false);
       reportUnexpected("finish", error);
       const action = resolveFailure("finish", error);
       switch (action.type) {
@@ -380,7 +489,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           await diagnoseIncomplete();
           break;
         case "finished-check":
-          await confirmAlreadyFinished();
+          await confirmAlreadyFinished(endedEarly);
           break;
         case "clock":
           track("workout_conflict", { kind: "clock" });
@@ -395,7 +504,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
                 ? action.text
                 : "Couldn't finish — try again",
             requestId: "requestId" in action ? action.requestId : null,
-            retry: () => void confirmFinish(),
+            retry: () => void confirmFinish(endedEarly),
           });
       }
     } finally {
@@ -431,49 +540,68 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
-  function renderRow({ exercise, bracket, line, label, linkedBelow }: SupersetRow, k: number, segment: SectionSegment) {
+  function renderRow(row: SupersetRow, k: number, segment: SectionSegment) {
+    const { exercise, bracket, line, label, linkedBelow } = row;
     const below = segment.rows[k + 1]?.exercise;
     const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
     const refusal = canLinkRule(segmentSlots, k);
+    const isCurrent = exercise.id === current.currentId;
+    // Spec 17.1 AC16: a link toggle only beside the current card; elsewhere just the bracket's continuity.
+    const showToggle = below !== undefined && (isCurrent || below.id === current.currentId);
     return (
       <Fragment key={exercise.id}>
         <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
           <SupersetBracket position={bracket} />
-          <ExerciseCard
-            exercise={exercise}
-            targetLine={line}
-            accessibleName={label}
-            isFirst={k === 0}
-            isLast={k === segment.rows.length - 1}
-            structureBusy={structureBusy}
-            flaggedIds={flagged}
-            firstFlaggedId={firstFlaggedId}
-            firstFlaggedRef={setFirstFlaggedRef}
-            onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-            {...(segment.heading !== null
-              ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
-              : {})}
-            onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
-            unitPreference={user?.unitPreference ?? "kg"}
-            onGone={gone}
-            sync={sync}
-            onDiscardOp={(opId) => outbox?.discard(opId)}
-            firstFailedId={firstFailedId}
-            failedRowRef={setFailedRowRef}
-          />
+          {isCurrent ? (
+            <ExerciseCard
+              exercise={exercise}
+              logExtra={mode === "finish"}
+              targetLine={line}
+              accessibleName={label}
+              isFirst={k === 0}
+              isLast={k === segment.rows.length - 1}
+              structureBusy={structureBusy}
+              flaggedIds={flagged}
+              firstFlaggedId={firstFlaggedId}
+              firstFlaggedRef={setFirstFlaggedRef}
+              onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
+              {...(segment.heading !== null
+                ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
+                : {})}
+              onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
+              unitPreference={unitPreference}
+              onGone={gone}
+              sync={sync}
+              onDiscardOp={(opId) => outbox?.discard(opId)}
+              firstFailedId={firstFailedId}
+              failedRowRef={setFailedRowRef}
+              headingRef={headingRefFor(exercise.id)}
+              onLogged={onLogged}
+            />
+          ) : (
+            <CollapsedExercise
+              exercise={exercise}
+              summary={collapsedSummary(row, unitPreference)}
+              accessibleName={label}
+              sync={sync}
+              onSelect={() => makeCurrent(exercise.id, true)}
+            />
+          )}
         </div>
         {below ? (
           <div className={styles.joint}>
             <SupersetBracket position={linkedBelow ? "middle" : "none"} />
-            <LinkToggle
-              id={`link-${exercise.id}`}
-              above={exercise.exerciseNameSnapshot}
-              below={below.exerciseNameSnapshot}
-              linked={linkedBelow}
-              refusal={refusal.ok ? null : refusal.reason}
-              disabled={structureBusy}
-              onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
-            />
+            {showToggle ? (
+              <LinkToggle
+                id={`link-${exercise.id}`}
+                above={exercise.exerciseNameSnapshot}
+                below={below.exerciseNameSnapshot}
+                linked={linkedBelow}
+                refusal={refusal.ok ? null : refusal.reason}
+                disabled={structureBusy}
+                onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
+              />
+            ) : null}
           </div>
         ) : null}
       </Fragment>
@@ -486,16 +614,38 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
   // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
+  // Spec 17.1 §6.6: the bar's mode and the planned sets End early would skip.
+  const unlogged = useMemo(() => unloggedPlanned(rows), [rows]);
+  const mode = barMode(rows, current.currentId);
+  const freeForm = unlogged.planned === 0;
+  const barAction: BarAction =
+    mode === "add"
+      ? { kind: "add", disabled: structureBusy, onClick: () => setPickerOpen(true) }
+      : mode === "finish"
+        ? { kind: "finish", disabled: finishDisabled, onClick: () => setFinishOpen(true) }
+        : { kind: "log" };
+  const endReason =
+    totalSets === 0 ? "Log a set first" : unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null;
+  const endItem = {
+    label: unlogged.total > 0 ? ("End workout early" as const) : ("Finish workout" as const),
+    disabled: finishDisabled,
+    reason: endReason,
+    onClick: () => (unlogged.total > 0 ? setEndEarlyOpen(true) : setFinishOpen(true)),
+  };
 
   return (
+    <LogActionContext.Provider value={logStore}>
     <Screen title="Workout">
-      <div className={styles.topRow}>
-        <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
-        {/* Away from the thumb on purpose, and it confirms: discarding deletes every logged set. */}
-        <Button variant="secondary" onClick={() => setDiscardOpen(true)}>
-          Discard workout
-        </Button>
-      </div>
+      <WorkoutMenu
+        leading={
+          <>
+            <SessionClock startedAt={workout.startedAt} />
+            <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
+          </>
+        }
+        endItem={endItem}
+        onDiscard={() => setDiscardOpen(true)}
+      />
 
       {shown ? (
         <InlineNotice
@@ -544,8 +694,24 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             <p>Adding {pending.name}…</p>
           </div>
         ) : null}
+        {exercises.length > 0 ? (
+          <div className={styles.listEnd}>
+            <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
+              Add exercise
+            </Button>
+            {/* D14: a workout with no plan has no Finish mode, so Finish lives here. */}
+            {freeForm ? (
+              <Button variant="secondary" disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
+                Finish workout
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
+      <p role="status" data-testid="session-announcement">
+        <VisuallyHidden>{announcement}</VisuallyHidden>
+      </p>
       <SyncStatus
         pending={pendingCount}
         failed={failedCount}
@@ -554,16 +720,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         online={outboxState.online}
         onRetry={() => outbox?.retryNow()}
         onDiscardFailed={() => outbox?.discardFailed(workout.id)}
-        onShowFailed={firstFailedId ? () => failedRowRef.current?.scrollIntoView?.({ block: "center" }) : null}
+        onShowFailed={firstFailed ? showFailed : null}
       />
 
       <ActionBar data-testid="session-bar">
-        <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
-          Add exercise
-        </Button>
-        <Button disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
-          Finish
-        </Button>
+        <LogBarButton action={barAction} />
         {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
         {unsaved > 0 ? <ActionBarHint>{plural(unsaved, "set", "sets")} not saved yet</ActionBarHint> : null}
         {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}
@@ -588,7 +749,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         confirmLabel="Finish"
         cancelLabel="Keep logging"
         busy={finish.isPending}
-        onConfirm={() => void confirmFinish()}
+        onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
         <p>
@@ -596,6 +757,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           workout can't be edited.
         </p>
       </ConfirmDialog>
+      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 
       <ConfirmDialog
         open={discardOpen}
@@ -613,5 +775,6 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         </p>
       </ConfirmDialog>
     </Screen>
+    </LogActionContext.Provider>
   );
 }

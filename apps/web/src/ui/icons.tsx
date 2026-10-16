@@ -102,3 +102,21 @@ export function CloseIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** Decrease — a minus (Spec 17.1 steppers; never a "−" glyph). */
+export function MinusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+    </Svg>
+  );
+}
+
+/** Increase — a plus (Spec 17.1 steppers). */
+export function PlusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </Svg>
+  );
+}

@@ -54,7 +54,7 @@ function makeHandler(state) {
       const r = D.routines.find((x) => x.id === decodeURIComponent(seg[1]));
       res = r ? json(r) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/workouts/active") {
-      res = state.active ? json(D.active) : problem(404, "not-found", "No active workout");
+      res = state.active ? json(state.done ? D.activeDone : D.active) : problem(404, "not-found", "No active workout");
     } else if (m === "GET" && p === "/v1/workouts") res = json(D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const w = D.allWorkouts.find((x) => x.id === decodeURIComponent(seg[1]));
@@ -156,6 +156,8 @@ async function layoutDump(page) {
         pinned: pinnedOf(el),
         disabled: el.disabled || el.getAttribute("aria-disabled") === "true" || undefined,
         smallTarget: r.width < 44 || r.height < 44 || undefined,
+        // A text input too narrow for its own value (Spec 17.1 AC24: the steppers' numbers must be readable).
+        clipped: (el.tagName === "INPUT" && el.scrollWidth > el.clientWidth + 1) || undefined,
         offscreenX: r.left < 0 || r.right > vw + 0.5 || undefined,
       };
     });
@@ -266,7 +268,9 @@ async function shoot(page, device, name, note) {
   dump.scroller = sc.tag;
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
-  report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0) });
+  // Every enabled control on the page counts, scrolled into view or not (a below-the-fold panel is still the panel).
+  const small = dump.items.filter((it) => (it.smallTarget || it.clipped) && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h}${it.clipped ? " clipped" : ""}`);
+  report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0), smallTargets: small });
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }
 
@@ -316,17 +320,41 @@ try {
       await page.keyboard.press("Escape");
       await page.waitForTimeout(300);
     });
-    await tryStep("finish dialog", async () => {
-      await go("/app/workouts");
-      await page.getByRole("button", { name: "Finish", exact: true }).click();
-      await page.waitForSelector("dialog[open]", { timeout: 4000 });
-      await shoot(page, device, "03-finish-dialog", "Finish-workout confirmation dialog");
-      await page.keyboard.press("Escape");
-    });
     await tryStep("exercise options", async () => {
       await go("/app/workouts");
       await page.locator('button[aria-expanded="false"]').filter({ hasText: /option|more|…/i }).first().click({ timeout: 3000 });
       await shoot(page, device, "04-workout-exercise-options", "Active session with the first exercise's options row expanded");
+    });
+    await tryStep("end-early dialog", async () => {
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Workout menu" }).click();
+      await shoot(page, device, "22-workout-menu", "Workout menu open: End workout early and Discard");
+      await page.getByRole("button", { name: "End workout early" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "03-end-early-dialog", "End workout early dialog listing the unlogged planned sets");
+      await page.keyboard.press("Escape");
+    });
+    await tryStep("superset mid-alternation", async () => {
+      await go("/app/workouts");
+      await page.getByRole("article", { name: /^Incline/ }).getByRole("heading", { level: 2 }).getByRole("button").click();
+      await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
+      await page.waitForTimeout(400);
+      await shoot(page, device, "23-superset-alternation", "After logging Incline DB Press set 1: Lateral Raise is current");
+    });
+    await tryStep("duration exercise", async () => {
+      await go("/app/workouts");
+      await page.getByRole("article", { name: "Plank" }).getByRole("heading", { level: 2 }).getByRole("button").click();
+      await shoot(page, device, "24-duration-exercise", "Plank current: Minutes / Seconds fields, no steppers");
+    });
+    await tryStep("finish mode", async () => {
+      state.done = true;
+      await go("/app/workouts");
+      await shoot(page, device, "25-finish-mode", "Every planned set logged: the bar reads Finish workout, the panel offers Log extra set");
+      await page.getByTestId("session-bar").getByRole("button", { name: "Finish workout" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "03b-finish-dialog", "Finish-workout confirmation dialog");
+      await page.keyboard.press("Escape");
+      state.done = false;
     });
 
     // No active workout: start screen + routines.
@@ -375,8 +403,9 @@ try {
       state.active = true;
       state.hangWrites = true;
       await go("/app/workouts");
-      await page.getByRole("button", { name: "Log set" }).first().click();
+      await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
       await page.waitForTimeout(500);
+      await shoot(page, device, "26-queued-row", "A set logged with writes held: the row says Not saved yet");
       await page.getByRole("link", { name: "Profile" }).last().click();
       await settle(page);
       await page.getByRole("button", { name: "Sign out", exact: true }).click();
@@ -431,6 +460,11 @@ try {
   await browser.close();
 }
 
+// Spec 17.1 AC24: every enabled, visible control on the session screens is at least 44 px in both axes.
+const SESSION_SHOTS = /\/(01|03|04|2[2-6])-/;
+const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
+for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
+if (tooSmall.length) process.exitCode = 1;
 fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);

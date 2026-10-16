@@ -88,7 +88,7 @@ export function useStartWorkout(): UseMutationResult<Workout, Error, { body: Cre
 export function useFinishWorkout(): UseMutationResult<
   UpdatedWorkout,
   Error,
-  { id: string; endedAt: string; viaReplay?: boolean }
+  { id: string; endedAt: string; viaReplay?: boolean; endedEarly?: boolean; unloggedPlannedSets?: number }
 > {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
@@ -100,7 +100,7 @@ export function useFinishWorkout(): UseMutationResult<
     // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
     // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),
     // or `ActiveSession` does when the response lands after the lifter left (no summary will mount).
-    onSuccess: (updated, { id, viaReplay }) => {
+    onSuccess: (updated, { id, viaReplay, endedEarly, unloggedPlannedSets }) => {
       drafts?.clearWorkout(id); // Spec 06.5 AC10
       // `newRecords` belongs to the records cache, never to the workout detail (Spec 08.0 AC5).
       const { newRecords, ...workout } = updated;
@@ -111,6 +111,9 @@ export function useFinishWorkout(): UseMutationResult<
         exerciseCount: cached?.exercises.length ?? 0,
         setCount: cached?.exercises.reduce((n, e) => n + e.sets.length, 0) ?? 0,
         durationMin: Math.round((Date.parse(workout.endedAt ?? workout.startedAt) - Date.parse(workout.startedAt)) / 60_000),
+        // Spec 17.1 AC53: scalars only.
+        endedEarly: endedEarly ?? false,
+        unloggedPlannedSets: unloggedPlannedSets ?? 0,
         ...(viaReplay ? { viaReplay: true } : {}),
       });
     },

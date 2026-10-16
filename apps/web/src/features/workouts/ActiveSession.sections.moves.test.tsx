@@ -19,6 +19,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makeWorkoutDetail, type ExerciseSpec, type WorkoutDetailOptions } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { makeCurrent, optionsButton } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -48,8 +49,11 @@ const SECTIONED: WorkoutDetailOptions = {
 };
 const bodies = (fake: Awaited<ReturnType<typeof setup>>["fake"]) =>
   fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workout-exercises/")).map((r) => r.body as Record<string, unknown>);
-const options = async (user: Awaited<ReturnType<typeof setup>>["user"], name: string) =>
-  user.click(within(screen.getByRole("article", { name: new RegExp(`^${name}(,|$)`) })).getByRole("button", { name: "Options" }));
+/** `name` is the card's exact accessible name (these cards are not in a superset yet). */
+const options = async (user: Awaited<ReturnType<typeof setup>>["user"], name: string) => {
+  await makeCurrent(user, name);
+  await user.click(optionsButton(name));
+};
 
 describe("10.3 AC26 — moves and links stay inside a section", () => {
   it("Move up / Move down are disabled (not hidden) at a segment's edges, with the reason in text", async () => {
@@ -76,6 +80,7 @@ describe("10.3 AC26 — moves and links stay inside a section", () => {
     expect(screen.queryByRole("button", { name: "Superset a3 with b1" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Superset b2 with tail" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Superset a1 with a2" }));
+    await makeCurrent(user, "b1"); // Spec 17.1 AC16: the toggle shows only beside the current card
     await user.click(await screen.findByRole("button", { name: "Superset b1 with b2" }));
     await waitFor(() => expect(bodies(fake).length).toBeGreaterThanOrEqual(2));
     for (const body of bodies(fake)) {
@@ -87,6 +92,7 @@ describe("10.3 AC26 — moves and links stay inside a section", () => {
     const { user } = await setup(SECTIONED);
     await user.click(screen.getByRole("button", { name: "Superset a1 with a2" }));
     await waitFor(() => expect(screen.getByRole("article", { name: "a1, superset 1" })).toBeInTheDocument());
+    await makeCurrent(user, "b1"); // Spec 17.1 AC16
     await user.click(screen.getByRole("button", { name: "Superset b1 with b2" }));
     // the planner may reuse the stored number 1 in B; runs end at the heading, so B's run is 'superset 2' on screen
     await waitFor(() => expect(screen.getByRole("article", { name: "b1, superset 2" })).toBeInTheDocument());

@@ -24,6 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { card, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -49,12 +50,8 @@ async function setup(exercises: ExerciseSpec[], unitPreference: "kg" | "lb" = "k
   await screen.findByRole("heading", { name: "Workout" });
   return { fake, ...app };
 }
-const card = (name: string) => screen.getByRole("article", { name });
-const logButton = (name = "Bench") => within(card(name)).getByRole("button", { name: "Log set" });
 const setPosts = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"));
 const field = (name: string, label: string) => within(card(name)).getByLabelText(label);
-// A same-values tap within EntryRow's double-tap window (600 ms) is the same tap (Spec 06.2).
-const restBetweenSets = () => new Promise((resolve) => setTimeout(resolve, 650));
 const logged = (n: number, o: Record<string, unknown> = {}) => makeSet({ setNumber: n, ...o });
 const bench = (o: Partial<ExerciseSpec> = {}): ExerciseSpec => ({ modality: "weight_reps", name: "Bench", plannedSets: PLAN, ...o });
 
@@ -79,14 +76,15 @@ describe("10.2 AC21 — the label", () => {
     expect(label.tagName).toBe("P");
     expect(label).not.toHaveAttribute("role");
     expect(screen.getByRole("form", { name: "Log a set of Bench" })).toBeInTheDocument();
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await waitFor(() => expect(within(card("Bench")).getByRole("status")).toHaveTextContent("Set 1 logged"));
   });
 });
 
 describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () => {
   it("fills type, weight, unit and reps from the next row; there is no RPE field", async () => {
-    await setup([bench()]);
+    const { user } = await setup([bench()]);
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Set type")).toHaveValue("warmup");
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Weight unit")).toHaveValue("kg");
@@ -94,19 +92,20 @@ describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () =>
     expect(screen.queryByLabelText("RPE")).toBeNull();
   });
   it("the plan's unit wins over the profile's", async () => {
-    await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");
+    const { user } = await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Weight unit")).toHaveValue("lb");
   });
   it("a single tap sends the row's values, isComplete, the attempt key and the row's type; a warm-up logs as warmup", async () => {
     const { fake, user } = await setup([bench()]);
-    expect(logButton()).toBeEnabled();
-    await user.click(logButton());
+    expect(logButton("Bench")).not.toHaveAttribute("aria-disabled");
+    await user.click(logButton("Bench"));
     await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
     expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "warmup", reps: 10, weight: 60, weightUnit: "kg", isComplete: true, clientGeneratedId: expect.any(String) });
   });
   it("a row that leaves a required measure blank keeps Log set disabled, with no error until touched", async () => {
     await setup([bench({ plannedSets: [planned("working", 8, null)] })]);
-    expect(logButton()).toBeDisabled();
+    expect(logButton("Bench")).toHaveAttribute("aria-disabled", "true");
     expect(within(card("Bench")).queryByText("Required")).toBeNull();
     expect(field("Bench", "Reps")).toHaveValue("8");
   });
@@ -115,17 +114,18 @@ describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () =>
 describe("10.2 AC24 — after a log", () => {
   it("each tap logs the next row; after the last it is 'Extra set' with the last set copied", async () => {
     const { fake, user } = await setup([bench()]);
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Set 2 of 3");
+    await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Weight")).toHaveValue("80");
     expect(field("Bench", "Reps")).toHaveValue("8");
     expect(field("Bench", "Set type")).toHaveValue("working");
     await restBetweenSets();
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Set 3 of 3");
     expect(field("Bench", "Weight")).toHaveValue("100");
     await restBetweenSets();
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Extra set");
     expect(field("Bench", "Weight")).toHaveValue("100");
     expect(field("Bench", "Reps")).toHaveValue("6");
@@ -143,7 +143,7 @@ describe("10.2 AC24 — after a log", () => {
         return HttpResponse.json(makeSet({ workoutExerciseId: exerciseRowId, setNumber: 1, weight: 80, reps: 8 }), { status: 201 });
       }),
     );
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     const weight = field("Bench", "Weight");
     await user.clear(weight);
     await user.type(weight, "82.5");
@@ -222,7 +222,7 @@ describe("10.2 AC20 — a queued set counts at once (06.2)", () => {
   it("offline, the label and the prefill advance as soon as the set is queued", async () => {
     const { fake, user } = await setup([bench()]);
     fake.setOffline(true);
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Set 2 of 3");
     expect(within(card("Bench")).getByText("Not saved yet")).toBeInTheDocument();
     expect(field("Bench", "Weight")).toHaveValue("80");
@@ -244,8 +244,10 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     const exercises = [bench({ sets: [logged(1, { setType: "warmup", reps: 10, weight: 60 })] })];
     expect(findIncompleteWorkingSets(makeWorkoutDetail({ exercises }))).toEqual([]);
     const { fake, user } = await setup(exercises);
-    await user.click(screen.getByRole("button", { name: "Finish" }));
-    await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    // Spec 17.1 AC33: with planned sets left, finishing is End workout early in the Workout menu.
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    await user.click(screen.getByRole("button", { name: "End workout early" }));
+    await user.click(within(screen.getByRole("dialog", { name: "End workout early?" })).getByRole("button", { name: "End workout" }));
     await waitFor(() => expect(fake.requests.some((r) => r.method === "PATCH" && /^\/v1\/workouts\//.test(r.path))).toBe(true));
     expect(setPosts(fake)).toHaveLength(0);
   });
@@ -268,7 +270,8 @@ describe("10.2 AC27 — no plan, no change", () => {
     ["added by hand", { modality: "weight_reps", name: "Bench", sets: [logged(1, { weight: 60, reps: 8 })] } as ExerciseSpec],
     ["a rowless routine item", { modality: "weight_reps", name: "Bench", targetSets: 3, targetRepsLow: 8, targetRepsHigh: 8, sets: [logged(1, { weight: 60, reps: 8 })] } as ExerciseSpec],
   ])("%s keeps today's entry row: 'Set {n + 1}' and the copy-forward draft", async (_name, exercise) => {
-    await setup([exercise]);
+    const { user } = await setup([exercise]);
+    await openSetOptions(user, card("Bench"));
     expect(within(card("Bench")).getByText("Set 2")).toBeInTheDocument();
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Reps")).toHaveValue("8");
@@ -283,25 +286,29 @@ describe("10.2 AC28 — each card has its own plan and progress", () => {
       { modality: "weight_reps", name: "Bench", supersetGroup: 1, plannedSets: [planned("working", 5, 50), planned("working", 5, 55)] },
       { modality: "weight_reps", name: "Row", supersetGroup: 1, plannedSets: [planned("working", 12, 30)] },
     ]);
-    const benchCard = screen.getByRole("article", { name: /^Bench, superset 1/ });
-    const rowCard = screen.getByRole("article", { name: /^Row, superset 1/ });
+    // Spec 17.1 AC9: only the current card mounts its entry row, so visit each.
+    const benchCard = await makeCurrent(user, /^Bench, superset 1/);
     expect(within(benchCard).getByText("Set 1 of 2")).toBeInTheDocument();
-    expect(within(rowCard).getByText("Set 1 of 1")).toBeInTheDocument();
     expect(within(benchCard).getByLabelText("Weight")).toHaveValue("50");
-    expect(within(rowCard).getByLabelText("Weight")).toHaveValue("30");
-    await user.click(within(benchCard).getByRole("button", { name: "Log set" }));
-    await within(benchCard).findByText("Set 2 of 2");
+    const rowCard = await makeCurrent(user, /^Row, superset 1/);
     expect(within(rowCard).getByText("Set 1 of 1")).toBeInTheDocument();
+    expect(within(rowCard).getByLabelText("Weight")).toHaveValue("30");
+    await makeCurrent(user, /^Bench, superset 1/);
+    await user.click(logButton("Bench"));
+    // Spec 17.1 AC15: the log alternates to Row, so reopen Bench to see its progress.
+    await within(await makeCurrent(user, /^Bench, superset 1/)).findByText("Set 2 of 2");
+    expect(within(await makeCurrent(user, /^Row, superset 1/)).getByText("Set 1 of 1")).toBeInTheDocument();
   });
   it("one exercise listed twice yields two cards with their own plans", async () => {
-    await setup([
+    const { user } = await setup([
       { modality: "weight_reps", name: "Bench", plannedSets: [planned("working", 5, 50)] },
       { modality: "weight_reps", name: "Bench", plannedSets: [planned("working", 12, 30)] },
     ]);
-    const cards = screen.getAllByRole("article", { name: "Bench" });
-    expect(cards).toHaveLength(2);
-    expect(within(cards[0]!).getByLabelText("Weight")).toHaveValue("50");
-    expect(within(cards[1]!).getByLabelText("Weight")).toHaveValue("30");
+    expect(screen.getAllByRole("article", { name: "Bench" })).toHaveLength(2);
+    expect(within(screen.getAllByRole("article", { name: "Bench" })[0]!).getByLabelText("Weight")).toHaveValue("50");
+    // Spec 17.1 AC9: the second card is collapsed (same name, so tap its own heading button).
+    await user.click(within(within(screen.getAllByRole("article", { name: "Bench" })[1]!).getByRole("heading", { level: 2 })).getByRole("button"));
+    expect(within(screen.getAllByRole("article", { name: "Bench" })[1]!).getByLabelText("Weight")).toHaveValue("30");
   });
   it("Move down leaves every card's plan and progress intact", async () => {
     const { user } = await setup([
@@ -309,11 +316,14 @@ describe("10.2 AC28 — each card has its own plan and progress", () => {
       { modality: "weight_reps", name: "Row", plannedSets: [planned("working", 12, 30), planned("working", 12, 32)] },
     ]);
     await user.click(logButton("Bench"));
+    // Spec 17.1 AC9: Bench's plan is done, so current advances to Row; Bench is collapsed until tapped.
+    await makeCurrent(user, "Bench");
     await within(card("Bench")).findByText("Extra set");
-    await user.click(within(card("Bench")).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("Bench"));
     await user.click(within(card("Bench")).getByRole("button", { name: "Move down" }));
     await waitFor(() => expect(screen.getAllByRole("article")[0]).toHaveAccessibleName("Row"));
     expect(within(card("Bench")).getByText("Extra set")).toBeInTheDocument();
+    await makeCurrent(user, "Row");
     expect(within(card("Row")).getByText("Set 1 of 2")).toBeInTheDocument();
     expect(within(card("Row")).getByLabelText("Weight")).toHaveValue("30");
   });
@@ -322,7 +332,7 @@ describe("10.2 AC28 — each card has its own plan and progress", () => {
 describe("10.2 AC33 — nothing planned reaches analytics or error reports", () => {
   it("logging a planned set tracks only the existing set_logged properties", async () => {
     const { user } = await setup([bench({ plannedSets: [planned("working", 8, 82.5)] })]);
-    await user.click(logButton());
+    await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Extra set");
     const call = observability.track.mock.calls.find(([event]) => event === "set_logged")!;
     expect(Object.keys(call[1] as object).sort()).toEqual(["edited", "modality", "msToLog", "setType"]);

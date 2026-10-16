@@ -23,7 +23,7 @@
   --color-text: #24211d;
   --color-muted: #6b645b;
   /* a control's boundary (inputs, selects, secondary buttons): at least 3:1, WCAG 1.4.11 */
-  --color-border: #8c857a;
+  --color-border: #878075;
   /* decorative hairlines only */
   --color-line: #e3ded5;
 
@@ -90,6 +90,10 @@
   /* the narrowest a set-entry field column gets before the row wraps to one column (fits two at 320px) */
   --field-min-width: 7rem;
 
+  /* the narrowest a stepper (two 3rem buttons around a figure that fits "102.5") gets before the entry panel stacks its
+     measures (Spec 17.1 AC24: two side by side do not fit at 390px) */
+  --stepper-min-width: 13rem;
+
   /* card insets: every card-like panel uses these, so their edges line up */
   --card-pad-block: var(--space-3);
   --card-pad-inline: var(--space-4);
@@ -104,7 +108,7 @@
     --color-surface-raised: #2f2b26;
     --color-text: #eeeae3;
     --color-muted: #a8a196;
-    --color-border: #7d776c;
+    --color-border: #837d72;
     --color-line: #37332e;
     --color-signal: #6fbab1;
     --color-on-signal: #0f2321;
@@ -126,7 +130,7 @@
   --color-surface-raised: #2f2b26;
   --color-text: #eeeae3;
   --color-muted: #a8a196;
-  --color-border: #7d776c;
+  --color-border: #837d72;
   --color-line: #37332e;
   --color-signal: #6fbab1;
   --color-on-signal: #0f2321;

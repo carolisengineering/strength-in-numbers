@@ -17,6 +17,7 @@ import { USER_ID } from "../../test/catalogHarness";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { logButton } from "../../test/sessionHelpers";
 import { localStorageAdapter } from "../../storage/storage";
 import { DRAFTS_KEY } from "./drafts/draftStore";
 
@@ -82,7 +83,7 @@ describe("17.1 AC2 — an edit never clears a stored RPE, and a fresh log carrie
     await user.type(row.getByLabelText("Weight"), "65");
     await user.clear(row.getByLabelText("Reps"));
     await user.type(row.getByLabelText("Reps"), "5");
-    await user.click(row.getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     await within(card()).findByText(/65 kg × 5/);
     const posts = bodiesOf(fake, "POST", /\/sets$/);
@@ -95,7 +96,7 @@ describe("17.1 AC2 — a new set never inherits a hidden RPE (security review, 2
   it("the copy-forward draft after a set with rpe 8 logs with no rpe key", async () => {
     const { fake, user } = await active(8);
     // Untouched: the entry row is seeded from the last logged set (60 kg × 8), which carries rpe 8.
-    await user.click(within(card()).getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     await within(card()).findAllByText(/60 kg × 8/);
     const posts = bodiesOf(fake, "POST", /\/sets$/);
@@ -117,7 +118,7 @@ describe("17.1 AC2 — a new set never inherits a hidden RPE (security review, 2
     const { user } = renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
     expect(within(card()).getByLabelText("Weight")).toHaveValue("65"); // the draft was restored
-    await user.click(within(card()).getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     await within(card()).findByText(/65 kg × 5/);
     const posts = bodiesOf(fake, "POST", /\/sets$/);

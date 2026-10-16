@@ -22,6 +22,7 @@ import { localStorageAdapter } from "../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { finishButton, logButton } from "../../test/sessionHelpers";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -69,12 +70,12 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     const sheet = await openSheet(user, "Edit note for X");
     await user.type(sheet.getByLabelText("Note"), " more");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+    expect(finishButton()).toBeDisabled();
     expect(screen.getByText("1 note not saved yet")).toBeInTheDocument();
     expect(screen.queryByText(/sets? not saved yet/)).toBeNull();
     expect(screen.getByText("Offline — 1 note will save when you're back online")).toBeInTheDocument();
     goOnline(fake);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled());
+    await waitFor(() => expect(finishButton()).toBeEnabled());
     expect(screen.queryByText(/not saved yet/)).toBeNull();
   });
 
@@ -85,9 +86,9 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     await user.type(sheet.getByLabelText("Note"), "!");
     await user.click(sheet.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("1 note couldn't be saved")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
-    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled());
+    expect(finishButton()).toBeDisabled();
+    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: /^Discard / }));
+    await waitFor(() => expect(finishButton()).toBeEnabled());
   });
 
   it("'Show' on a failed note scrolls to its card row", async () => {
@@ -99,6 +100,7 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     await user.type(sheet.getByLabelText("Note"), "!");
     await user.click(sheet.getByRole("button", { name: "Save" }));
     await screen.findByText("1 note couldn't be saved");
+    scroll.mockClear(); // Spec 17.1 AC9: the screen brings the current panel into view once on open; count only what follows.
     await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Show" }));
     expect(scroll).toHaveBeenCalledTimes(1);
   });
@@ -109,13 +111,13 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     const field = within(screen.getByRole("article", { name: "X" })).getByLabelText("Reps");
     await user.clear(field);
     await user.type(field, "5");
-    await user.click(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
     expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
     expect(screen.getByText("Offline — 1 set will save when you're back online")).toBeInTheDocument();
     // The cards carry a Note action, so scope the "no note wording" check to the status line and the bar hints.
     expect(within(screen.getByTestId("sync-status")).queryByText(/note/i)).toBeNull();
     expect(screen.queryByText(/notes? not saved yet/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+    expect(finishButton()).toBeDisabled();
   });
 });
 
@@ -178,7 +180,7 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     const card = within(screen.getByRole("article", { name: "X" }));
     expect(await card.findByText("Couldn't save")).toBeInTheDocument();
     expect(observability.track).not.toHaveBeenCalledWith("set_sync_failed", expect.anything());
-    await user.click(card.getByRole("button", { name: "Discard" }));
+    await user.click(card.getByRole("button", { name: /^Discard note / }));
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 });

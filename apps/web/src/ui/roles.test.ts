@@ -28,6 +28,8 @@ const SIGNAL_ALLOWED = [
   "features/catalog/CreateExerciseForm.module.css",
   "features/history/HistoryScreen.module.css",
   "features/workouts/FinishedWorkoutScreen.module.css",
+  // Spec 17.1 D12: the current-set panel (signal-soft ground, teal set label) is the "do this next" surface.
+  "features/workouts/EntryRow.module.css",
   "features/me/ThemeSetting.module.css",
 ];
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/history/HistoryScreen.module.css"];
@@ -73,6 +75,7 @@ describe("AC12 — panels separate by tint, not outline", () => {
     ["features/routines/RoutineEditor.module.css", ".card"],
     ["features/workouts/FinishedWorkoutScreen.module.css", ".exercise"],
     ["ui/ConfirmDialog.module.css", ".dialog"],
+    ["features/workouts/EntryRow.module.css", ".row"],
   ];
 
   it.each(PANELS)("%s %s has no control outline", (path, selector) => {
@@ -86,5 +89,12 @@ describe("AC12 — panels separate by tint, not outline", () => {
   it("keeps a 3:1 control outline on form fields and secondary buttons", () => {
     expect(sheets.find((s) => s.path === "ui/Field.module.css")!.css).toMatch(/border:\s*1px solid var\(--color-border\)/);
     expect(sheets.find((s) => s.path === "ui/Button.module.css")!.css).toMatch(/\.secondary\s*\{[^}]*border-color:\s*var\(--color-border\)/);
+  });
+});
+
+describe("17.1 AC40 — the current-set panel is the one new teal use", () => {
+  it("EntryRow.module.css is allow-listed and on the tint-not-outline list", () => {
+    expect(SIGNAL_ALLOWED).toContain("features/workouts/EntryRow.module.css");
+    expect(users(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/)).toContain("features/workouts/EntryRow.module.css");
   });
 });

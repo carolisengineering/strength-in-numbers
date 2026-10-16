@@ -36,7 +36,8 @@
   width: 100%;
 }
 
-.button:disabled {
+.button:disabled,
+.button[aria-disabled="true"] {
   cursor: not-allowed;
 }
 
@@ -44,7 +45,8 @@
    opacity that left white text on a faded accent below contrast. It outranks the variants on specificity
    (two classes' worth against one). A busy button (`busy` also disables it) keeps its variant's look: it is
    working, not unavailable. */
-.button:disabled:not([aria-busy="true"]) {
+.button:disabled:not([aria-busy="true"]),
+.button[aria-disabled="true"]:not([aria-busy="true"]) {
   background: transparent;
   color: var(--color-muted);
   border-color: var(--color-border);

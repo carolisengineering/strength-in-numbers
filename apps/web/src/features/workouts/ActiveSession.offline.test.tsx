@@ -24,6 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -54,7 +55,7 @@ async function logSet(user: Awaited<ReturnType<typeof setup>>["user"], reps: str
   const field = card().getByLabelText("Reps");
   await user.clear(field);
   await user.type(field, reps);
-  await user.click(card().getByRole("button", { name: "Log set" }));
+  await user.click(logButton("X"));
 }
 function goOffline(fake: Fake) {
   online = false;
@@ -182,8 +183,8 @@ describe("06.2 AC14 — every set row shows its sync state", () => {
     );
     await logSet(user, "5");
     const row = await failedRow();
-    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    await user.click(within(row).getByRole("button", { name: "Discard" }));
+    expect(within(row).getByRole("button", { name: /^Edit set / })).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: /^Discard set / }));
     expect(card().queryByRole("button", { name: /× 5/ })).not.toBeInTheDocument();
   });
 
@@ -192,7 +193,7 @@ describe("06.2 AC14 — every set row shows its sync state", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-error"));
     await logSet(user, "5");
     const row = await failedRow();
-    await user.click(within(row).getByRole("button", { name: "Edit" }));
+    await user.click(within(row).getByRole("button", { name: /^Edit set / }));
     const sheet = screen.getByRole("dialog", { name: /Set 2/ });
     await user.type(within(sheet).getByLabelText("Reps"), "{Control>}a{/Control}6");
     await user.click(within(sheet).getByRole("button", { name: "Save" }));
@@ -225,7 +226,7 @@ describe("06.2 AC15 — the status line", () => {
     expect(await screen.findByText("1 set couldn't be saved")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("article", { name: "X" })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
-    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard" }));
+    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: /^Discard / }));
     expect(screen.queryByTestId("sync-status")).not.toBeInTheDocument();
   });
 
@@ -236,6 +237,7 @@ describe("06.2 AC15 — the status line", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
     await logSet(user, "5");
     await failedRow();
+    scroll.mockClear(); // Spec 17.1 AC9: the screen brings the current panel into view once on open; count only what follows.
     await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Show" }));
     expect(scroll).toHaveBeenCalledTimes(1);
   });
@@ -243,7 +245,7 @@ describe("06.2 AC15 — the status line", () => {
   it("an offline structure write says so", async () => {
     const { fake, user } = await setup();
     goOffline(fake);
-    await user.click(card().getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("X"));
     await user.click(screen.getByRole("button", { name: "Remove exercise" }));
     await user.click(within(screen.getByRole("dialog", { name: /Remove X/ })).getByRole("button", { name: "Remove" }));
     expect(await screen.findByText("You're offline — try again when you have signal")).toBeInTheDocument();
@@ -271,10 +273,10 @@ describe("06.2 AC16 — Finish waits for the outbox", () => {
     goOffline(fake);
     await logSet(user, "5");
     await logSet(user, "6");
-    expect(screen.getByRole("button", { name: "Finish" })).toBeDisabled();
+    expect(finishButton()).toBeDisabled();
     expect(screen.getByText("2 sets not saved yet")).toBeInTheDocument();
     goOnline(fake);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Finish" })).toBeEnabled());
+    await waitFor(() => expect(finishButton()).toBeEnabled());
     expect(screen.queryByText(/not saved yet/)).not.toBeInTheDocument();
   });
 });
@@ -286,7 +288,7 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     await logSet(user, "5");
     const row = await failedRow();
     expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 409 });
-    await user.click(within(row).getByRole("button", { name: "Discard" }));
+    await user.click(within(row).getByRole("button", { name: /^Discard set / }));
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 

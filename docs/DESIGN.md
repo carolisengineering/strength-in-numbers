@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q23 resolved; consistency pass done
-**Last updated:** 2026-10-16 (§2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1))
+**Status:** Draft v0.5 — decisions Q1–Q24 resolved; consistency pass done
+**Last updated:** 2026-10-16 (§2 item 8 / Q24 from Spec 17.1 Phase B — the "now" workout screen: one current exercise, ± steppers by the set's unit, the per-set bottom bar, End workout early. Earlier same day: §2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)))
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -102,12 +102,11 @@ resolved) and Risk R6.
 8. **Supersets / circuits (Tier B)** — group exercises, bracketed display, grid-style
    logging (no forced interleave). Grouping, bracketed display and grid logging land in
    M3 alongside routines (Specs 09, 10.0, 10.1); "grid logging" means the grouped cards
-   are joined by one bracket and **each keeps its own Log set row** — there is no
-   combined superset card in M3 (Spec 10.1 D3 — whose "no set prefill / no progress count" half Spec 10.2 reverses, Q20); the **one rest timer per group** after
+   are joined by one bracket; since Spec 17.1 the session shows **one current exercise that alternates through the run, logged from the single bottom bar** (Spec 10.1 D3's "each keeps its own Log set row" is superseded, and its "no set prefill / no progress count" half Spec 10.2 reverses, Q20, Q24); the **one rest timer per group** after
    its last exercise lands with the rest timer in M4 (§9). See §4.3 and Q5.
 
 **Explicitly deferred:** guided interleaved superset logging (Tier C — A1→B1→A2→B2
-flow), editing individual sets of a finished workout, plate calculator, standalone
+flow) (Spec 17.1's auto-advance suggests the next member of a run but forces nothing, since a tap picks any exercise; a strict guided flow stays deferred, Q24), editing individual sets of a finished workout, plate calculator, standalone
 1RM calculators, CSV import from competitors.
 
 ---
@@ -941,7 +940,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3; Q22 from Spec 17.0; Q23 from Spec 17.1). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3; Q22 from Spec 17.0; Q23–Q24 from Spec 17.1). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -1244,6 +1243,20 @@ with rationale so the "why" survives.
   re-add the item), and an edit never sends RPE at all, so a set's stored value is untouchable
   from the app; a stored target the schema would refuse is dropped on save rather than blocking
   it. See Spec 17.1 §6.11, D15.
+- **Q24 — Workout screen "now": one current exercise, steppers by the set's unit, the per-set bar.** ✅ **Resolved
+  (Spec 17.1 Phase B, 2026-10-16; owner decisions 2026-10-15/16): one exercise is current and expanded and the others
+  collapse to a one-line summary; current is computed from the workout (`chooseCurrent` / `advanceAfterLog`) with the
+  lifter's tap on top, moves on after a planned set that finished its exercise, and alternates through a superset run
+  (a tap still picks any exercise); weight and reps get ± steppers that step by the draft's own unit (5 lb / 2.5 kg) in
+  integer milli-units, as ordinary edits; the bottom bar is the per-set "Log 185 × 5", becomes "Finish workout" once
+  every planned set is logged, and is the screen's one primary button; "Add exercise" moves to the end of the list; a
+  Workout menu holds End workout early (listing the planned sets it skips, on the same finish path as Finish) and
+  Discard; the top row shows the elapsed time.** Rationale: the next set comes first (PRODUCT principle 1); one current
+  exercise makes "Log" unambiguous; computed state cannot drift across reloads or devices. Rejected: several open cards
+  (the page stays long); storing current in `localStorage` (drift, a new key, logout handling); per-card Log buttons;
+  a portal or form-associated bar button (remounts on advance and drops focus); steppers by the profile's unit (wrong
+  step on a plan stored in the other unit). `workout_finished` gains `endedEarly` and `unloggedPlannedSets`. The rest
+  timer (Phase C) is added to this entry when it lands. See Spec 17.1 §6, D2–D14.
 
 ---
 

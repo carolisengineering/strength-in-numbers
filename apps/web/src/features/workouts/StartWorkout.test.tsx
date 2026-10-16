@@ -108,7 +108,7 @@ describe("AC16 — Start", () => {
     await user.click(start);
 
     expect(await screen.findByRole("heading", { name: "Workout" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("You already had a workout in progress — resumed it.");
+    expect(screen.getByText("You already had a workout in progress — resumed it.").closest("[role=status]")).not.toBeNull(); // Spec 17.1: the session has its own status line too
     expect(observability.track).toHaveBeenCalledWith("workout_started", { resumed: true, fromRoutine: false });
   });
 

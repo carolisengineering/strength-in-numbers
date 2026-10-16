@@ -23,6 +23,7 @@ import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { card as cardOf, discardWorkout, finishButton, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 
 // Distinctive on purpose, so a leak is unmistakable in a scan.
 const SECRET_NAME = "Zebra Overhead Press";
@@ -41,7 +42,8 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   set_edited: { modality: "string" },
   set_deleted: { modality: "string" },
   finish_blocked: { incompleteCount: "number" },
-  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean" },
+  // Spec 17.1 AC53: endedEarly and unloggedPlannedSets are scalars.
+  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number" },
   workout_discarded: { phase: "string", setCount: "number" },
   workout_conflict: { kind: "string" },
   exercise_picked: { source: "string", msSinceOpen: "number" },
@@ -109,7 +111,7 @@ async function setup(exercises: ExerciseSpec[] = []) {
   return { fake, ...app };
 }
 
-const card = (name: string) => within(screen.getByRole("article", { name }));
+const card = (name: string) => within(cardOf(name));
 const finishConfirm = () => within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" });
 
 describe("AC35 — observability hygiene across the flows", () => {
@@ -142,7 +144,7 @@ describe("AC35 — observability hygiene across the flows", () => {
 
     await user.type(card(SECRET_NAME).getByLabelText("Weight"), SECRET_NUMBERS[0]!);
     await user.type(card(SECRET_NAME).getByLabelText("Reps"), SECRET_NUMBERS[1]!);
-    await user.click(card(SECRET_NAME).getByRole("button", { name: "Log set" }));
+    await user.click(logButton(SECRET_NAME));
     await card(SECRET_NAME).findByText(/73\.5 kg × 11/);
 
     await user.click(card(SECRET_NAME).getByRole("button", { name: /73\.5 kg × 11/ }));
@@ -156,7 +158,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
     await waitFor(() => expect(card(SECRET_NAME).queryByText(/73\.5/)).not.toBeInTheDocument());
 
-    await user.click(card(SECRET_NAME).getByRole("button", { name: "Options" }));
+    await user.click(optionsButton(SECRET_NAME));
     await user.click(card(SECRET_NAME).getByRole("button", { name: "Remove exercise" }));
     await waitFor(() => expect(screen.queryByRole("article", { name: SECRET_NAME })).not.toBeInTheDocument());
     expect(observability.track).toHaveBeenCalledWith("exercise_removed", { setCount: 0 });
@@ -168,9 +170,10 @@ describe("AC35 — observability hygiene across the flows", () => {
     await screen.findByRole("article", { name: SECRET_NAME });
     await user.type(card(SECRET_NAME).getByLabelText("Weight"), SECRET_NUMBERS[0]!);
     await user.type(card(SECRET_NAME).getByLabelText("Reps"), SECRET_NUMBERS[1]!);
-    await user.click(card(SECRET_NAME).getByRole("button", { name: "Log set" }));
+    await restBetweenSets(); // Spec 17.1: the bar's double-tap window spans a panel swap
+    await user.click(logButton(SECRET_NAME));
     await card(SECRET_NAME).findByText(/73\.5 kg × 11/);
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(finishConfirm());
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/app\/workouts\/.+/));
     expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.objectContaining({ exerciseCount: 1, setCount: 1 }));
@@ -181,7 +184,8 @@ describe("AC35 — observability hygiene across the flows", () => {
       { modality: "weight_reps", name: "A" },
       { modality: "weight_reps", name: "B" },
     ]);
-    await user.click(card("B").getByRole("button", { name: "Options" }));
+    await makeCurrent(user, "B"); // Spec 17.1 AC9: only the current card has Options
+    await user.click(optionsButton("B"));
     await user.click(card("B").getByRole("button", { name: "Move up" }));
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("exercise_moved", { direction: "up" }));
   });
@@ -190,7 +194,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     const { fake, user, router } = await setup([
       { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: null, weightUnit: null, reps: 8, isComplete: false })] },
     ]);
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(finishConfirm());
     await screen.findByText("Needs data");
     expect(observability.track).toHaveBeenCalledWith("finish_blocked", { incompleteCount: 1 });
@@ -204,14 +208,14 @@ describe("AC35 — observability hygiene across the flows", () => {
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
     fake.state.finished.set(id, { ...fake.state.active!, endedAt: new Date().toISOString() });
     fake.state.active = null;
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(finishConfirm());
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
   });
 
   it("discard", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }]);
-    await user.click(screen.getByRole("button", { name: "Discard workout" }));
+    await discardWorkout(user);
     await user.click(within(screen.getByRole("dialog", { name: "Discard this workout?" })).getByRole("button", { name: "Discard" }));
     await screen.findByRole("heading", { name: "Start a workout" });
   });
@@ -236,13 +240,13 @@ describe("AC35 — observability hygiene across the flows", () => {
     await screen.findByText(/has been retired/);
     // clock
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(422, "validation-error"));
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(finishConfirm());
     await screen.findByText(/device clock looks wrong/);
     // gone — through a structure write: queued set writes surface failures on the row instead (06.2)
     fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
-    await user.click(card("X").getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("X"));
     await user.click(card("X").getByRole("button", { name: "Remove exercise" }));
     await user.click(within(await screen.findByRole("dialog", { name: /^Remove X/ })).getByRole("button", { name: "Remove" }));
     await screen.findByRole("heading", { name: "Start a workout" });
@@ -256,7 +260,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "something-new"));
     await user.clear(card("X").getByLabelText("Reps"));
     await user.type(card("X").getByLabelText("Reps"), "7");
-    await user.click(card("X").getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     await waitFor(() => expect(observability.reportError).toHaveBeenCalledTimes(1));
     expect(observability.reportError).toHaveBeenCalledWith(expect.anything(), { source: "workouts", op: "create-set" });
@@ -265,7 +269,7 @@ describe("AC35 — observability hygiene across the flows", () => {
   it("expected failures are not reported (06.2: retried by the outbox)", async () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }]);
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => HttpResponse.error());
-    await user.click(card("X").getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(500, "about:blank"));
     await user.click(await screen.findByRole("button", { name: "Retry now" }));
     await waitFor(() => expect(fake.requests.filter((r) => r.path.endsWith("/sets"))).toHaveLength(2));

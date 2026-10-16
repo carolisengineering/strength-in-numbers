@@ -146,7 +146,7 @@ describe("AC25 — edit and delete a logged set", () => {
 
     expect(screen.queryByRole("dialog", { name: /^Set/ })).not.toBeInTheDocument();
     const failed = (await within(card()).findByText("Couldn't save")).closest("li")!;
-    expect(within(failed).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(failed).getByRole("button", { name: /^Edit set / })).toBeInTheDocument();
   });
 
   it("06.2 AC14 — a network failure on save keeps the new value pending; Retry now saves it", async () => {

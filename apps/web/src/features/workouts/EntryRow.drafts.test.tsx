@@ -23,9 +23,12 @@ import { USER_ID } from "../../test/catalogHarness";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
+import { discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
 import { DRAFTS_KEY, DRAFT_DEBOUNCE_MS, createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { EntryRow } from "./EntryRow";
+import { LogBarButton } from "./LogBarButton";
+import { LogActionContext, createLogActionStore } from "./logAction";
 import { WorkoutClientContext } from "./queries";
 
 afterEach(() => {
@@ -114,7 +117,7 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
     const { user } = await setup();
     await typeInto(user, "Reps", "9");
     await waitFor(() => expect(storedDrafts()).not.toBeNull());
-    await user.click(within(card()).getByRole("button", { name: "Log set" }));
+    await user.click(logButton("Bench"));
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });
 
@@ -129,7 +132,10 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
       <QueryClientProvider client={makeQueryClient()}>
         <WorkoutClientContext.Provider value={client}>
           <DraftStoresContext.Provider value={stores}>
-            <EntryRow exercise={exercise} unitPreference="kg" onGone={() => {}} />
+            <LogActionContext.Provider value={createLogActionStore()}>
+              <EntryRow exercise={exercise} unitPreference="kg" onGone={() => {}} />
+              <LogBarButton action={{ kind: "log" }} />
+            </LogActionContext.Provider>
           </DraftStoresContext.Provider>
         </WorkoutClientContext.Provider>
       </QueryClientProvider>,
@@ -138,7 +144,7 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
     const reps = screen.getByLabelText("Reps");
     await user.clear(reps);
     await user.type(reps, "9");
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await user.click(screen.getByRole("button", { name: /^Log / }));
     await user.clear(reps); // the lifter is already entering the next set
     await user.type(reps, "6");
     response.resolve(makeSet({ setNumber: 2, reps: 9, weight: 80 }));
@@ -176,7 +182,7 @@ describe("06.5 AC10 — finish, discard and the gone path drop the workout's dra
   it("discarding removes the key", async () => {
     const { user } = await setup();
     await edit(user);
-    await user.click(screen.getByRole("button", { name: "Discard workout" }));
+    await discardWorkout(user);
     await user.click(within(screen.getByRole("dialog", { name: "Discard this workout?" })).getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });
@@ -184,7 +190,7 @@ describe("06.5 AC10 — finish, discard and the gone path drop the workout's dra
   it("finishing removes the key", async () => {
     const { user } = await setup();
     await edit(user);
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });
@@ -193,7 +199,7 @@ describe("06.5 AC10 — finish, discard and the gone path drop the workout's dra
     const { user, fake } = await setup();
     await edit(user);
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
-    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(finishButton());
     await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });

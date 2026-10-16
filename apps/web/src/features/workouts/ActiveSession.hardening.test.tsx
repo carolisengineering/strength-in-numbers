@@ -44,6 +44,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
+import { finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
 import { WorkoutsScreen } from "./WorkoutsScreen";
 
@@ -69,10 +70,13 @@ async function setup(exercises: ExerciseSpec[]) {
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
   await screen.findByRole("heading", { name: "Workout" });
+  // Spec 17.1 AC9: the screen brings the current panel into view once on open; count only what follows.
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+  scrollIntoView.mockClear();
+  scrolled.length = 0;
   return { fake, ...app };
 }
 
-const finishButton = () => screen.getByRole("button", { name: "Finish" });
 const finishDialog = () => screen.getByRole("dialog", { name: "Finish workout?" });
 const incompleteSet = (setNumber: number) =>
   makeSet({ setNumber, weight: null, weightUnit: null, reps: 8, isComplete: false });
@@ -277,7 +281,7 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
     // A banner appears (a failed move), then clears through its own retry, which refetches.
     fake.failNext({ method: "PATCH", path: /\/v1\/workout-exercises\// }, () => problemResponse(500, "about:blank"));
     const x = within(screen.getByRole("article", { name: "X" }));
-    await user.click(x.getByRole("button", { name: "Options" }));
+    await user.click(optionsButton("X"));
     await user.click(x.getByRole("button", { name: "Move down" }));
     const alert = await screen.findByRole("alert");
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
@@ -353,7 +357,7 @@ describe("06.4 AC9 — a diagnosis interrupted by the next set write is correcte
     // …and a set logged meanwhile cancels it (06.1 AC11).
     const x = within(screen.getByRole("article", { name: "X" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish workout?" })).not.toBeInTheDocument());
-    await user.click(x.getByRole("button", { name: "Log set" }));
+    await user.click(logButton("X"));
 
     // The banner is computed from the pre-refetch copy: no ids to flag, so the fallback.
     expect(await screen.findByRole("alert")).toHaveTextContent("Some sets are incomplete — reload and check your sets.");
@@ -436,7 +440,7 @@ describe("06.4 AC4 — Enter in an invalid, untouched entry row shows what is wr
     expect(row.getAllByRole("alert").length).toBeGreaterThanOrEqual(2); // Weight and Reps
     expect(row.getByLabelText("Weight")).toHaveAccessibleDescription(/.+/);
     expect(row.getByLabelText("Reps")).toHaveAccessibleDescription(/.+/);
-    expect(row.getByRole("button", { name: "Log set" })).toBeDisabled();
+    expect(logButton("X")).toHaveAttribute("aria-disabled", "true");
     expect(setPosts(fake)).toHaveLength(0);
   });
 
@@ -464,7 +468,9 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
     await screen.findByRole("alert");
 
-    expect(screen.getAllByText("Needs data")).toHaveLength(2);
+    // Spec 17.1 AC17: X (first in display order) is revealed; Y stays collapsed, so its flagged row is not mounted.
+    expect(screen.getAllByText("Needs data")).toHaveLength(1);
+    expect(within(screen.getByRole("article", { name: "Y" })).queryByRole("form")).toBeNull();
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     const target = scrolled[0]!;
     expect(within(screen.getByRole("article", { name: "X" })).getByText("Needs data").closest("button")).toBe(target);
@@ -503,7 +509,8 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     await user.click(within(sheet).getByRole("button", { name: "Delete set" }));
     await waitFor(() => expect(x.queryByText("Needs data")).not.toBeInTheDocument());
 
-    expect(screen.getAllByText("Needs data")).toHaveLength(1); // Y's row is now the first flagged
+    // Y's row is now the first flagged, but no second reveal happens: Y stays collapsed (Spec 17.1 AC17, once per diagnosis).
+    expect(within(screen.getByRole("article", { name: "Y" })).queryByRole("form")).toBeNull();
     await new Promise((r) => setTimeout(r, 20));
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
