@@ -67,9 +67,12 @@ export function logBar(page: Page): Locator {
 /** Spec 17.1 AC11: make an exercise current (tap its collapsed row); returns its card once the panel shows. */
 export async function makeCurrent(page: Page, exercise: string): Promise<Locator> {
   const row = card(page, exercise);
+  const form = row.getByRole("form", { name: NAMES.logSetForm(exercise) });
   const collapsed = row.getByRole("heading", { level: 2 }).getByRole("button", { expanded: false });
-  if ((await collapsed.count()) > 0) await collapsed.click();
-  await expect(row.getByRole("form", { name: NAMES.logSetForm(exercise) })).toBeVisible();
+  // Wait for the card to render one way or the other first: right after a reload `count()` would see nothing yet.
+  await expect(form.or(collapsed)).toBeVisible();
+  if (await collapsed.isVisible()) await collapsed.click();
+  await expect(form).toBeVisible();
   return row;
 }
 
