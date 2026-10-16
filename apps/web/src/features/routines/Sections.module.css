@@ -42,7 +42,7 @@
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  font-weight: bold;
+  font-weight: 700;
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;
