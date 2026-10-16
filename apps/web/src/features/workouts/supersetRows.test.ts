@@ -29,8 +29,8 @@ describe("10.1 AC17 — supersetRows", () => {
 });
 
 describe("10.2 AC29 — the target line carries the planned weight", () => {
-  it("a uniform plan: '4 × 6–8 @ 100 kg · RPE 8'", () => {
-    expect(lineFor({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8, plannedSets: [p(100), p(100), p(100), p(100)] })).toBe("4 × 6–8 @ 100 kg · RPE 8");
+  it("a uniform plan: '4 × 6–8 @ 100 kg' (RPE is never shown, 17.1 AC4)", () => {
+    expect(lineFor({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8, plannedSets: [p(100), p(100), p(100), p(100)] })).toBe("4 × 6–8 @ 100 kg");
   });
   it("a ramp reads as a range", () => {
     expect(lineFor({ targetSets: 3, targetRepsLow: 6, targetRepsHigh: 10, plannedSets: [p(60), p(80), p(100)] })).toBe("3 × 6–10 @ 60–100 kg");
@@ -40,7 +40,7 @@ describe("10.2 AC29 — the target line carries the planned weight", () => {
     expect(lineFor({ targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5, plannedSets: [p(null), p(null)] })).toBe("2 × 5");
   });
   it("no plan is exactly today's line", () => {
-    expect(lineFor({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 })).toBe("3 × 8–10 · RPE 8 · 2:00");
+    expect(lineFor({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 })).toBe("3 × 8–10 · 2:00");
     expect(lineFor({})).toBe("");
   });
   it("the card's accessible label (a card in a superset run) carries the weight too", () => {

@@ -140,7 +140,6 @@ describe("AC33 — tap targets", () => {
     ["./SetFields.module.css", ".input"],
     ["./SetFields.module.css", ".select"],
     ["./SetFields.module.css", ".unit"],
-    ["./SetFields.module.css", ".summary"],
     ["./FinishedWorkoutScreen.module.css", ".back"],
     ["../../ui/Button.module.css", ".button"],
     ["../../ui/Sheet.module.css", ".close"],

@@ -125,11 +125,13 @@ describe("AC6 — parseDraft", () => {
     expect(errorsOf(parseDraft("duration", base())).minutes).toBe("Required");
   });
 
-  it("RPE: bounds and one decimal; included only when non-empty", () => {
+  it("RPE (17.1 AC2): a valid value is sent; an invalid one is dropped, never an error; empty is absent", () => {
     const d = { weight: "1", reps: "1" };
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "11" }))).rpe).toBe("RPE must be 1–10");
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "0.5" }))).rpe).toBe("RPE must be 1–10");
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "8.55" }))).rpe).toBe("RPE must be 1–10");
+    for (const bad of ["11", "0.5", "8.55", "abc"]) {
+      const r = parseDraft("weight_reps", base({ ...d, rpe: bad }));
+      expect(r.ok, bad).toBe(true);
+      expect(r.ok && "rpe" in r.body, bad).toBe(false);
+    }
     const ok = parseDraft("weight_reps", base({ ...d, rpe: "8,5" }));
     expect(ok.ok && ok.body.rpe).toBe(8.5);
     const none = parseDraft("weight_reps", base(d));

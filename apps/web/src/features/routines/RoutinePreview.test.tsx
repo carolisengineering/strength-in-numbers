@@ -37,7 +37,7 @@ describe("10.0 AC18 — preview content", () => {
     const list = screen.getByRole("list", { name: "Exercises" });
     const rows = within(list).getAllByRole("listitem");
     expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual([
-      "Bench Press, superset 1, 4 × 6–8 · RPE 8.5 · 2:00",
+      "Bench Press, superset 1, 4 × 6–8 · 2:00", // fixture targetRpe 8.5: never shown (17.1 AC4)
       "Barbell Row, superset 1, 4 × 8–10",
       "Overhead Press, 3 × 8",
     ]);

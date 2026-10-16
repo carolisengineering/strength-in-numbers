@@ -57,7 +57,6 @@ const MSG = {
   decimals: "Use up to 3 decimal places",
   large: "Too large",
   seconds: "Seconds must be 0–59",
-  rpe: "RPE must be 1–10",
 } as const;
 
 type Parsed = { value: number } | { error: string };
@@ -126,11 +125,12 @@ export function parseDraft(modality: Modality, d: SetDraft): ParseResult {
       }
     }
   }
+  // Spec 17.1 Phase A: RPE has no input any more, so it is read but never an error the lifter could not see
+  // or fix. A valid value (a stored set's own, or an old draft's) is sent as before; an unparsable one is dropped.
   if (d.rpe.trim() !== "") {
     const s = d.rpe.trim().replace(",", ".");
     const value = Number(s);
-    if (!/^\d+(\.\d)?$/.test(s) || value < 1 || value > 10) errors.rpe = MSG.rpe;
-    else body.rpe = value;
+    if (/^\d+(\.\d)?$/.test(s) && value >= 1 && value <= 10) body.rpe = value;
   }
 
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, body };

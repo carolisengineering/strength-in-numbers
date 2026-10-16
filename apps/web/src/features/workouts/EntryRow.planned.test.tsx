@@ -85,13 +85,13 @@ describe("10.2 AC21 — the label", () => {
 });
 
 describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () => {
-  it("fills type, weight, unit and reps from the next row; RPE blank", async () => {
+  it("fills type, weight, unit and reps from the next row; there is no RPE field", async () => {
     await setup([bench()]);
     expect(field("Bench", "Set type")).toHaveValue("warmup");
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Weight unit")).toHaveValue("kg");
     expect(field("Bench", "Reps")).toHaveValue("10");
-    expect(field("Bench", "RPE")).toHaveValue("");
+    expect(screen.queryByLabelText("RPE")).toBeNull();
   });
   it("the plan's unit wins over the profile's", async () => {
     await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");

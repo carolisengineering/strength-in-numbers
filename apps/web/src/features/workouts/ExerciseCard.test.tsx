@@ -67,12 +67,14 @@ describe("AC21 — entry row fields per modality", () => {
     if (FIELDS[modality].units.length === 0) expect(row.queryByLabelText(/unit/)).not.toBeInTheDocument();
   });
 
-  it.each(MODALITY_VALUES)("%s also offers Set type (default Working) and an optional RPE under More", async (modality) => {
+  it.each(MODALITY_VALUES)("%s also offers Set type (default Working); no RPE, no More (17.1 AC1)", async (modality) => {
     await setup([{ modality, name: "X" }]);
     const row = within(card("X"));
 
     expect(row.getByLabelText("Set type")).toHaveValue("working");
-    expect(row.getByText("More").closest("details")).toContainElement(row.getByLabelText("RPE"));
+    expect(row.queryByLabelText(/RPE/)).not.toBeInTheDocument();
+    expect(row.queryByText(/^More$/)).not.toBeInTheDocument();
+    expect(card("X").querySelector("details, summary")).toBeNull();
   });
 
   it("numeric inputs are text inputs with a numeric keypad, never type=number", async () => {
@@ -82,7 +84,6 @@ describe("AC21 — entry row fields per modality", () => {
     expect(row.getByLabelText("Distance")).toHaveAttribute("inputmode", "decimal");
     expect(row.getByLabelText("Minutes")).toHaveAttribute("inputmode", "numeric");
     expect(row.getByLabelText("Seconds")).toHaveAttribute("inputmode", "numeric");
-    expect(row.getByLabelText("RPE")).toHaveAttribute("inputmode", "decimal");
     for (const input of card("X").querySelectorAll("input")) expect(input).toHaveAttribute("type", "text");
   });
 
@@ -369,7 +370,7 @@ describe("10.1 AC16 — an exercise with no targets or notes renders exactly tod
     // Spec 10.3 AC32: the Note action is the one allowed difference on an active card.
     const card = screen.getByRole("article", { name: "Plain" }).cloneNode(true) as Element;
     card.querySelectorAll("[data-note-action]").forEach((node) => node.remove());
-    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div><details class="_more_affedb"><summary class="_summary_affedb">More</summary><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-rpe">RPE</label><input id="ID-rpe" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div></details></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
+    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" novalidate="" aria-label="Log a set of Plain"><p class="_setNumber_63cf20">Set 1</p><div class="_fields_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-type">Set type</label><select id="ID-type" class="_select_affedb"><option value="warmup">Warm-up</option><option value="working">Working</option><option value="drop">Drop</option><option value="failure">Failure</option></select></div><div class="_measures_affedb"><div class="_withUnit_affedb"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_affedb" inputmode="decimal" autocomplete="off" type="text" value=""></div><select class="_unit_affedb" aria-label="Weight unit"><option value="kg">kg</option><option value="lb">lb</option></select></div><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_affedb" inputmode="numeric" autocomplete="off" type="text" value=""></div></div></div><p class="_visuallyHidden_63cf20" role="status"></p><button type="submit" class="_button_241daf _primary_241daf _block_241daf" disabled="">Log set</button></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
   });
 });
 
@@ -388,7 +389,8 @@ describe("10.1 AC16 — target line and notes under the name", () => {
       },
     ]);
     const bench = card("Bench");
-    expect(within(bench).getByText("4 × 6–8 · RPE 8.5 · 2:00")).toBeInTheDocument();
+    expect(within(bench).getByText("4 × 6–8 · 2:00")).toBeInTheDocument();
+    expect(within(bench).queryByText(/RPE/)).toBeNull(); // targetRpe 8.5 is stored, never shown (17.1 AC4)
     const notes = within(bench).getByText(/Pause the last rep/);
     expect(notes.textContent).toBe("Pause the last rep\nElbows in");
     expect(notes.innerHTML).not.toContain("<");

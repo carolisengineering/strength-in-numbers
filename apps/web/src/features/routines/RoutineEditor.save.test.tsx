@@ -96,7 +96,6 @@ describe("10.0 AC32 — save success and navigation", () => {
     await user.click(within(list).getByRole("button", { name: "Superset Bench Press with Barbell Row" }));
     await user.click(within(list).getAllByRole("button", { name: /^Bench Press/ })[0]!);
     await user.type(screen.getByLabelText("Sets"), "3");
-    await user.selectOptions(screen.getByLabelText("RPE"), "8.5");
     await user.click(screen.getByRole("button", { name: "Done" }));
     await user.dblClick(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/app\/workouts\/routines\/[0-9a-f-]{36}$/));
@@ -105,7 +104,7 @@ describe("10.0 AC32 — save success and navigation", () => {
     expect(writes(fake)[0]!.body).toEqual({
       name: "Legs",
       items: [
-        { exerciseId: exerciseId(1), targetRpe: 8.5, restSeconds: null, supersetGroup: null, sets: [{ setType: "working" }, { setType: "working" }, { setType: "working" }] },
+        { exerciseId: exerciseId(1), targetRpe: null, restSeconds: null, supersetGroup: null, sets: [{ setType: "working" }, { setType: "working" }, { setType: "working" }] },
         { exerciseId: exerciseId(1), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
         { exerciseId: exerciseId(2), targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: 1 },
       ],
@@ -296,5 +295,37 @@ describe("10.0 AC31 — the empty-list reason is referenced", () => {
     const { user } = renderApp("/app/workouts/routines/new");
     await user.type(await screen.findByLabelText("Name"), "Legs");
     expect(screen.getByRole("button", { name: "Add exercise" })).toHaveAccessibleDescription(/Add at least one exercise/);
+  });
+});
+
+describe("17.1 AC5 — targetRpe round-trips through the item sheet untouched", () => {
+  async function openBenchAndSave(plan: boolean) {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    prepareApp({ auth, catalog, fake });
+    const { user } = renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    const list = await screen.findByRole("list", { name: "Exercises" });
+    await user.click(within(list).getAllByRole("button", { name: /^Bench Press/ })[0]!);
+    expect(screen.queryByLabelText(/RPE/)).toBeNull();
+    if (plan) await user.click(screen.getByRole("button", { name: "Plan each set" }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(writes(fake)).toHaveLength(1));
+    return (writes(fake)[0]!.body as { items: Array<Record<string, unknown>> }).items;
+  }
+
+  it("quick mode: opening an item with targetRpe 8.5, Done, Save sends targetRpe 8.5", async () => {
+    const items = await openBenchAndSave(false);
+    expect(items[0]).toMatchObject({ exerciseId: exerciseId(1), targetRpe: 8.5, restSeconds: 120 });
+  });
+
+  it("plan mode: the same item entered into plan mode still sends targetRpe 8.5", async () => {
+    const items = await openBenchAndSave(true);
+    expect(items[0]).toMatchObject({ exerciseId: exerciseId(1), targetRpe: 8.5, restSeconds: 120 });
+    expect(items[0]).toHaveProperty("sets");
+  });
+
+  it("an item stored without a target still sends targetRpe null", async () => {
+    const items = await openBenchAndSave(false);
+    expect(items[1]).toMatchObject({ targetRpe: null });
   });
 });

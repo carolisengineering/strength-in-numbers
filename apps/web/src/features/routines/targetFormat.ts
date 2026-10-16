@@ -116,17 +116,15 @@ export function formatReps(low: number | null, high: number | null): string {
   return low === high ? `${low}` : `${low}-${high}`;
 }
 
-/** 6, 6.5 … 10 — whatever halves the core schema accepts (Spec 09 AC10). */
-export const RPE_CHOICES: readonly number[] = Array.from({ length: 21 }, (_, i) => i / 2).filter((v) =>
-  accepts(shape.targetRpe, v),
-);
-
 function repsText(t: Targets): string | null {
   if (t.targetRepsLow === null || t.targetRepsHigh === null) return null;
   return t.targetRepsLow === t.targetRepsHigh ? `${t.targetRepsLow}` : `${t.targetRepsLow}–${t.targetRepsHigh}`;
 }
 
-/** "3 × 8–10 @ 60–100 kg · RPE 8 · 2:00" — only what is set; `""` when nothing is. Without `sets` the weight is omitted. */
+/**
+ * "3 × 8–10 @ 60–100 kg · 2:00" — only what is set; `""` when nothing is. Without `sets` the weight is omitted.
+ * `targetRpe` is never shown (Spec 17.1 Phase A): it stays in the data and round-trips untouched.
+ */
 export function targetLine(t: Targets, sets?: readonly WeightedRow[]): string {
   const parts: string[] = [];
   const reps = repsText(t);
@@ -137,7 +135,6 @@ export function targetLine(t: Targets, sets?: readonly WeightedRow[]): string {
   const weight = sets === undefined ? "" : plannedWeightText(sets);
   const head = [main, weight === "" ? null : weight].filter((p): p is string => p !== null).join(" ");
   if (head !== "") parts.push(head);
-  if (t.targetRpe !== null) parts.push(`RPE ${t.targetRpe}`);
   if (t.restSeconds !== null) parts.push(formatRest(t.restSeconds));
   return parts.join(" · ");
 }

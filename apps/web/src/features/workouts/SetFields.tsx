@@ -168,22 +168,7 @@ export function SetFields({ modality, draft, errors, onChange, idPrefix }: SetFi
         })}
       </div>
 
-      <details className={styles.more}>
-        <summary className={styles.summary}>More</summary>
-        <Field id={id("rpe")} label="RPE" error={errors.rpe}>
-          {(control) => (
-            <input
-              {...control}
-              className={styles.input}
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              value={draft.rpe}
-              onChange={(e) => onChange("rpe", e.target.value)}
-            />
-          )}
-        </Field>
-      </details>
+      {/* Spec 17.1 Phase A: RPE is not shown. The draft still carries it, so an edit never clears a stored value. */}
     </div>
   );
 }

@@ -61,7 +61,8 @@ describe("AC30 — finished workout summary", () => {
     expect(screen.getByText(/Fri 2 Oct · 58 min/)).toBeInTheDocument();
     const bench = screen.getByRole("region", { name: "Barbell bench press" });
     expect(within(bench).getByText("60 kg × 8")).toBeInTheDocument();
-    expect(within(bench).getByText("62.5 kg × 6 @8")).toBeInTheDocument();
+    expect(within(bench).getByText("62.5 kg × 6")).toBeInTheDocument(); // the fixture set has rpe 8: stored, never shown (17.1 AC3)
+    expect(within(bench).queryByText(/@\s?8|RPE/)).toBeNull();
     expect(within(screen.getByRole("region", { name: "Pull-up" })).getByText("12 reps")).toBeInTheDocument();
   });
 
