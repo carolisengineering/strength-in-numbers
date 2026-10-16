@@ -30,32 +30,6 @@
   color: var(--color-muted);
 }
 
-/*
- * The sticky action bar (Spec 06.1 §5.3, §6.8): it keeps "Add exercise" and "Finish" in the lower
- * third of the screen. `sticky` inside AppShell's scrolling <main>, so it sits just above the nav.
- */
-.bar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding: var(--space-3) 0;
-  background: var(--color-bg);
-  border-top: 1px solid var(--color-border);
-}
-
-.bar > button {
-  flex: 1;
-}
-
-.barHint {
-  flex-basis: 100%;
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
-  text-align: center;
-}
-
 /* Spec 10.1: one exercise card, bracketed when it sits in a superset run. The bracket spans the card and,
    on a linked boundary, the joint below it, so it reads as one line down the run. */
 .slot {

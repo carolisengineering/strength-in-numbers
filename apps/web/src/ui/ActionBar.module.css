@@ -1,0 +1,33 @@
+/*
+ * The screen's bottom action bar: the thumb-zone actions of a screen (Start, Add exercise / Finish, Cancel /
+ * Save). `sticky` inside AppShell's scrolling <main>, so it sits flush on the nav while the content scrolls
+ * under it; `margin-top: auto` (Screen is at least the scroller's height) keeps it at the bottom when the
+ * content is short. It bleeds across Screen's side padding and stacks above positioned content (the
+ * superset bracket).
+ */
+.bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: auto;
+  margin-inline: calc(-1 * var(--screen-pad));
+  padding: var(--space-3) var(--screen-pad);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.bar > button {
+  flex: 1;
+}
+
+/* A status line under the buttons (why Finish is disabled, unsaved writes). */
+.hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}

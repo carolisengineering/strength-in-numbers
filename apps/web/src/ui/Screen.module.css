@@ -5,7 +5,16 @@
   width: 100%;
   max-width: var(--measure-max);
   margin-inline: auto;
-  padding: var(--space-4);
+  padding: var(--screen-pad);
+  /* At least the scroller's height, so a bottom action bar (`margin-top: auto`) sits in the thumb zone even
+     when the content is short. */
+  min-height: 100%;
+}
+
+/* With a bottom action bar, the bar is the screen's bottom edge: no padding under it, or a strip of background
+   would show between it and the nav at the end of the list (sticky stops at this box's content edge). */
+.screen:has(> [data-action-bar]) {
+  padding-bottom: 0;
 }
 
 .title {

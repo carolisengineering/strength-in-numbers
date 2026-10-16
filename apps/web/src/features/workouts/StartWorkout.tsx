@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { ActionBar } from "../../ui/ActionBar";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
@@ -12,7 +13,7 @@ export interface StartWorkoutProps {
   onDismissNotice?: () => void;
   /** `resumed` is true when the server said a workout was already in progress and we adopted it. */
   onStarted: (resumed: boolean) => void;
-  /** Rendered under the Start button — Spec 10.0's Routines section. */
+  /** Spec 10.0's Routines section, rendered above the bottom bar's Start button. */
   children?: ReactNode;
 }
 
@@ -43,11 +44,14 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children }: S
             </InlineNotice>
           ) : null}
         </div>
-        <Button block busy={busy} onClick={() => void onStart()}>
-          Start empty workout
-        </Button>
         {children}
       </div>
+      {/* Spec 06.1 §5.2: the Start button sits in the thumb zone — the bottom bar, below the routines. */}
+      <ActionBar>
+        <Button busy={busy} onClick={() => void onStart()}>
+          Start empty workout
+        </Button>
+      </ActionBar>
     </Screen>
   );
 }

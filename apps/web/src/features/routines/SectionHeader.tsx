@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
+import { PencilIcon } from "../../ui/icons";
 import styles from "./Sections.module.css";
 
 export interface SectionHeaderProps {
@@ -40,6 +41,7 @@ export function SectionHeader(props: SectionHeaderProps) {
             onClick={props.onOpen}
           >
             <span id={props.headingId}>{props.name}</span>
+            <PencilIcon className={styles.pencil} />
           </button>
         </h2>
         <Button

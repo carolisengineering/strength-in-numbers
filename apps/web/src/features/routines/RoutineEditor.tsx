@@ -3,6 +3,7 @@ import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-rou
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
 import { ROUTINE_ITEMS_MAX, ROUTINE_SECTIONS_MAX } from "@sin/core";
+import { ActionBar } from "../../ui/ActionBar";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Field } from "../../ui/Field";
@@ -336,14 +337,6 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
 
   return (
     <Screen title={routine ? "Edit routine" : "New routine"}>
-      <div className={styles.header}>
-        <Button variant="secondary" onClick={() => (back ? navigate(-1) : navigate(cancelTo, { replace: true }))}>
-          Cancel
-        </Button>
-        <Button busy={saving} disabled={!canSave} onClick={() => void save()}>
-          Save
-        </Button>
-      </div>
       {gone ? (
         <InlineNotice tone="error">
           {ROUTINE_GONE}{" "}
@@ -463,6 +456,15 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
         </p>
       ) : null}
       </fieldset>
+      {/* O4: Cancel / Save stay reachable over a long list — the bottom bar, in the thumb zone. */}
+      <ActionBar>
+        <Button variant="secondary" onClick={() => (back ? navigate(-1) : navigate(cancelTo, { replace: true }))}>
+          Cancel
+        </Button>
+        <Button busy={saving} disabled={!canSave} onClick={() => void save()}>
+          Save
+        </Button>
+      </ActionBar>
       <ExercisePicker
         open={pickerOpen}
         onPick={(exercise) => {
