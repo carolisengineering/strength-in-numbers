@@ -16,6 +16,7 @@ import { AccountDataSection } from "../account/AccountDataSection";
 import { DeleteAccountSection } from "../account/DeleteAccountSection";
 import { useExportAccount } from "../account/useExportAccount";
 import styles from "./ProfileScreen.module.css";
+import { ThemeSetting } from "./ThemeSetting";
 import { listTimeZones } from "./timeZones";
 import { useMe } from "./useMe";
 import { useLogoutGuard } from "../workouts/useLogoutGuard";
@@ -206,6 +207,8 @@ function ProfileForm({ me }: { me: Me }) {
           Save
         </Button>
       </form>
+
+      <ThemeSetting />
 
       <AccountDataSection exporter={exporter} />
 

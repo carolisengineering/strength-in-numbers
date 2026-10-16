@@ -37,11 +37,11 @@
 }
 
 .choice:has(input:checked) {
-  border-color: var(--color-accent);
+  border-color: var(--color-selected);
 }
 
 .details {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line);
   padding-top: var(--space-2);
 }
 

@@ -46,7 +46,7 @@ const browserGlobals = {
 };
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**"] },
+  { ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "apps/web/.screens/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -65,6 +65,14 @@ export default tseslint.config(
     files: ["**/*.mjs", "**/*.js"],
     languageOptions: { globals: nodeGlobals },
     rules: { "no-console": "off" },
+  },
+  // Spec 17.0 screenshot harness: Node scripts whose page.evaluate callbacks run in the browser, and a fake
+  // Auth0 module that the harness bundles into the page.
+  {
+    files: ["apps/web/scripts/screens/**/*.{mjs,js}"],
+    languageOptions: {
+      globals: { ...nodeGlobals, ...browserGlobals, getComputedStyle: "readonly", performance: "readonly", Intl: "readonly" },
+    },
   },
   // apps/web — browser globals, JSX, and the React Hooks rules (Spec 04.0
   // §6.1 / §7 / §10). Picked up by the root `pnpm run lint` (`eslint .`).

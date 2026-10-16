@@ -52,7 +52,7 @@
   min-height: var(--tap-target-min);
   padding: var(--space-2) 0;
   border: 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-line);
   background: transparent;
   color: var(--color-text);
   text-align: start;
@@ -76,9 +76,9 @@
 .tag {
   flex-shrink: 0;
   padding: 0 var(--space-2);
-  border: 1px solid var(--color-accent);
+  border: 1px solid var(--color-signal);
   border-radius: var(--radius-sm);
-  color: var(--color-accent);
+  color: var(--color-signal);
   font-size: var(--font-size-sm);
 }
 
@@ -88,7 +88,7 @@
   padding: var(--space-2) 0;
   border: 0;
   background: transparent;
-  color: var(--color-accent);
+  color: var(--color-signal);
   text-align: start;
   overflow-wrap: anywhere;
 }

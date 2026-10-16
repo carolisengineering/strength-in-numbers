@@ -162,6 +162,19 @@ describe("08.0 AC11 — a history row", () => {
   });
 });
 
+describe("17.0 AC7 — the record badge is a brass trophy icon, not an emoji", () => {
+  it("draws an SVG trophy inside the labeled badge", async () => {
+    const ws = finishedWorkouts(1);
+    setup(ws, { records: [makePersonalRecord({ workoutId: ws[0]!.id })] });
+    await screen.findByRole("list", { name: "Finished workouts" });
+
+    const badge = screen.getByRole("img", { name: "1 personal record" });
+    expect(badge.className).toMatch(/badge/);
+    expect(badge.querySelector("svg")).not.toBeNull();
+    expect(badge.textContent).not.toMatch(/\u{1F3C6}/u);
+  });
+});
+
 describe("08.0 AC12 — the record badge", () => {
   it("0 → no badge; 1 → '1 personal record'; 2 → '2 personal records'", async () => {
     const ws = finishedWorkouts(3);

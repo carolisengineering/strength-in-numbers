@@ -1,0 +1,526 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T13:42:00.859Z",
+  "title": "Design System: Strength in Numbers (web app)",
+  "extensions": {
+    "scope": "Visual system of apps/web only. docs/DESIGN.md remains the product and architecture source of truth. Decisions: Spec 17.0 (docs/specs/17.0-visual-identity-stone.md). Source of values: apps/web/src/ui/tokens.css.",
+    "themes": {
+      "light": "Base :root; color-scheme: light dark.",
+      "dark": "Two identical blocks: @media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) } and :root[data-theme=\"dark\"]; kept identical by tokens.contrast.test.ts (AC20). The Profile Light / Dark / System switch sets data-theme on <html>.",
+      "aliases": {
+        "--color-warmup": "var(--color-muted)",
+        "--color-selected": "var(--color-signal)",
+        "--color-on-selected": "var(--color-on-signal)"
+      }
+    },
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Stone Ground",
+        "canonical": "#f3f1ec",
+        "dark": "#1c1a17",
+        "purpose": "The ground behind everything; also sheets, the ActionBar and the theme-color meta.",
+        "oklch": "oklch(95.8% 0.007 88.6)",
+        "tonalRamp": [
+          "#0c0b08",
+          "#282623",
+          "#464541",
+          "#686662",
+          "#8b8984",
+          "#b0aea9",
+          "#d3d1cc",
+          "#f0eee9"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Stone Panel",
+        "canonical": "#fbfaf7",
+        "dark": "#26231f",
+        "purpose": "Cards, list rows, the app header and the bottom nav. Separation by tint, not outline.",
+        "oklch": "oklch(98.5% 0.004 91.4)",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272624",
+          "#464543",
+          "#676663",
+          "#8a8986",
+          "#afaeab",
+          "#d2d1ce",
+          "#efeeeb"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised Stone",
+        "canonical": "#ffffff",
+        "dark": "#2f2b26",
+        "purpose": "Dialogs, secondary buttons, segmented options.",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#262626",
+          "#454545",
+          "#666666",
+          "#898989",
+          "#aeaeae",
+          "#d1d1d1",
+          "#eeeeee"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Warm Ink",
+        "canonical": "#24211d",
+        "dark": "#eeeae3",
+        "purpose": "Body text, headings, the spinner.",
+        "oklch": "oklch(25.0% 0.009 75.2)",
+        "tonalRamp": [
+          "#0d0b07",
+          "#292622",
+          "#484440",
+          "#696561",
+          "#8c8883",
+          "#b1ada8",
+          "#d4d0cb",
+          "#f2eee8"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Warm Gray",
+        "canonical": "#6b645b",
+        "dark": "#a8a196",
+        "purpose": "Secondary text, labels, inactive nav. --color-warmup is an alias of it.",
+        "oklch": "oklch(50.7% 0.017 74.3)",
+        "tonalRamp": [
+          "#0f0a04",
+          "#2b251e",
+          "#4a443b",
+          "#6c655c",
+          "#8f887e",
+          "#b4ada3",
+          "#d8d0c5",
+          "#f5ede3"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Control Boundary",
+        "canonical": "#8c857a",
+        "dark": "#7d776c",
+        "purpose": "The 1px boundary of a control; at least 3:1 (WCAG 1.4.11).",
+        "oklch": "oklch(62.0% 0.018 79.3)",
+        "tonalRamp": [
+          "#0f0a04",
+          "#2b261c",
+          "#4a443a",
+          "#6c655b",
+          "#8f887d",
+          "#b4ada1",
+          "#d7d0c4",
+          "#f5ede1"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e3ded5",
+        "dark": "#37332e",
+        "purpose": "Decorative separators only; exempt from contrast by design.",
+        "oklch": "oklch(90.2% 0.013 82.4)",
+        "tonalRamp": [
+          "#0e0b05",
+          "#2a261f",
+          "#49443d",
+          "#6a655e",
+          "#8d8980",
+          "#b2ada5",
+          "#d5d0c7",
+          "#f3eee5"
+        ]
+      },
+      "signal": {
+        "role": "primary",
+        "displayName": "Deep Stone Teal",
+        "canonical": "#1f5f5b",
+        "dark": "#6fbab1",
+        "purpose": "The interactive color: primary action, active nav, links, selection, chart, superset bracket. --color-selected is an alias of it.",
+        "oklch": "oklch(44.4% 0.064 189.3)",
+        "tonalRamp": [
+          "#001211",
+          "#00302d",
+          "#09504c",
+          "#34726e",
+          "#599691",
+          "#7dbbb6",
+          "#a0dfda",
+          "#bdfdf7"
+        ]
+      },
+      "on-signal": {
+        "role": "primary",
+        "displayName": "On-Signal",
+        "canonical": "#ffffff",
+        "dark": "#0f2321",
+        "purpose": "Text on a signal fill. --color-on-selected is an alias of it.",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#262626",
+          "#454545",
+          "#666666",
+          "#898989",
+          "#aeaeae",
+          "#d1d1d1",
+          "#eeeeee"
+        ]
+      },
+      "signal-soft": {
+        "role": "primary",
+        "displayName": "Teal Wash",
+        "canonical": "#e1ebe8",
+        "dark": "#1f3431",
+        "purpose": "Tinted signal ground; ::selection.",
+        "oklch": "oklch(93.2% 0.011 176.3)",
+        "tonalRamp": [
+          "#060d0b",
+          "#212826",
+          "#3f4745",
+          "#606866",
+          "#828b89",
+          "#a7b0ae",
+          "#cad3d1",
+          "#e7f1ee"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus Teal",
+        "canonical": "#1f5f5b",
+        "dark": "#6fbab1",
+        "purpose": "The focus ring, used only as an outline.",
+        "oklch": "oklch(44.4% 0.064 189.3)",
+        "tonalRamp": [
+          "#001211",
+          "#00302d",
+          "#09504c",
+          "#34726e",
+          "#599691",
+          "#7dbbb6",
+          "#a0dfda",
+          "#bdfdf7"
+        ]
+      },
+      "pr": {
+        "role": "secondary",
+        "displayName": "Record Brass",
+        "canonical": "#84651c",
+        "dark": "#d8b566",
+        "purpose": "Personal records only: the records heading and the History trophy.",
+        "oklch": "oklch(52.5% 0.096 84.4)",
+        "tonalRamp": [
+          "#1c0400",
+          "#3c1f00",
+          "#5d3f00",
+          "#806116",
+          "#a4843f",
+          "#caa964",
+          "#eecc87",
+          "#ffeaa8"
+        ]
+      },
+      "pr-soft": {
+        "role": "secondary",
+        "displayName": "Brass Wash",
+        "canonical": "#f3ead2",
+        "dark": "#3a3120",
+        "purpose": "The records panel ground.",
+        "oklch": "oklch(93.8% 0.033 89.9)",
+        "tonalRamp": [
+          "#110a00",
+          "#2d2613",
+          "#4c4431",
+          "#6d6651",
+          "#918973",
+          "#b6ad97",
+          "#d9d1b9",
+          "#f7eed6"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Quiet Brick",
+        "canonical": "#a3392b",
+        "dark": "#e58b7a",
+        "purpose": "Destructive and failed: delete, discard, couldn't save, field errors.",
+        "oklch": "oklch(49.4% 0.143 30.4)",
+        "tonalRamp": [
+          "#2a0000",
+          "#530000",
+          "#7f180d",
+          "#a83e30",
+          "#d16352",
+          "#f78b7a",
+          "#ffb3a2",
+          "#ffd4c4"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Burnt Orange",
+        "canonical": "#9c4a0c",
+        "dark": "#e39a5b",
+        "purpose": "Needs attention; deliberately off brass.",
+        "oklch": "oklch(50.5% 0.128 50.1)",
+        "tonalRamp": [
+          "#270000",
+          "#4f0500",
+          "#772800",
+          "#9e4c0f",
+          "#c56f3b",
+          "#ee9560",
+          "#ffbb8c",
+          "#ffdbb2"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Field Green",
+        "canonical": "#2d6a3e",
+        "dark": "#86c493",
+        "purpose": "The Saved confirmation.",
+        "oklch": "oklch(47.2% 0.095 150.4)",
+        "tonalRamp": [
+          "#001400",
+          "#003208",
+          "#125328",
+          "#397548",
+          "#5c996b",
+          "#81bf8e",
+          "#a4e3b1",
+          "#c3ffcf"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The screen title, one per screen."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "App header title, exercise card names, sheet and dialog titles, the records heading."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "A screen's key number (the progress readout). --font-size-figure, --font-weight-figure, --font-stretch-figure (90%)."
+      },
+      "set": {
+        "displayName": "Set",
+        "purpose": "A logged set's weight x reps. --font-size-set, --font-weight-figure."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text; tabular-nums on body is inherited everywhere."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels, legends, tags, nav labels."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "button-state",
+        "value": "background-color 120ms ease, color 120ms ease",
+        "purpose": "Button background and color changes."
+      },
+      {
+        "name": "spinner",
+        "value": "spin 0.9s linear infinite",
+        "purpose": "The loading ring; stopped under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "48rem",
+        "purpose": "Header inline padding grows to 2rem; main caps at --measure-max."
+      }
+    ],
+    "layout": {
+      "measure-max": "40rem",
+      "screen-pad": "var(--space-4)",
+      "tap-target-min": "44px",
+      "focus-ring-width": "2px",
+      "action-bar-clearance": "calc(var(--tap-target-min) + 2 * var(--space-3) + var(--space-4))",
+      "field-min-width": "7rem",
+      "card-pad-block": "var(--space-3)",
+      "card-pad-inline": "var(--space-4)"
+    },
+    "focusRing": "outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width);",
+    "enforcement": [
+      "tokens.contrast.test.ts: WCAG 2.2 AA pairs in both themes (4.5:1 text, 3:1 boundaries, focus, teal strokes); every hex token in a pair or exemption; the two dark blocks identical.",
+      "roles.test.ts: allow-lists for signal, brass (records only) and warm-up; panels declare no --color-border outline.",
+      "pnpm --filter @sin/web run assert:css-tokens: no hex color or px length outside tokens.css (0 and 1px excepted); no --color-accent.",
+      "fonts.test.ts: self-hosted Instrument Sans, no http(s) URL in any stylesheet."
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The next action; a teal fill, ideally one per screen.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Finish</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: var(--tap-target-min); min-width: var(--tap-target-min); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; font-family: var(--font-family); font-size: var(--font-size-md); font-weight: 600; line-height: 1; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; } .ds-btn:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-btn-primary { background: var(--color-signal); color: var(--color-on-signal); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other action: raised stone with a 3:1 control boundary.",
+      "html": "<button class=\"ds-btn ds-btn-secondary\">Add exercise</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap-target-min); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; font-family: var(--font-family); font-size: var(--font-size-md); font-weight: 600; line-height: 1; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; } .ds-btn:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-btn-secondary { background: var(--color-surface-raised); color: var(--color-text); border-color: var(--color-border); }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive actions: brick outline and text, never a fill.",
+      "html": "<button class=\"ds-btn ds-btn-danger\">Discard workout</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap-target-min); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; font-family: var(--font-family); font-size: var(--font-size-md); font-weight: 600; line-height: 1; cursor: pointer; } .ds-btn:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-btn-danger { background: transparent; color: var(--color-danger); border-color: var(--color-danger); } .ds-btn:disabled { background: transparent; color: var(--color-muted); border-color: var(--color-border); cursor: not-allowed; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Label above, panel fill, 3:1 boundary, brick when invalid.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Weight (kg)</span><input class=\"ds-input\" inputmode=\"decimal\" value=\"82.5\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: var(--space-1); font-family: var(--font-family); } .ds-field-label { font-size: var(--font-size-sm); font-weight: 600; color: var(--color-muted); } .ds-input { min-height: var(--tap-target-min); width: 100%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font: inherit; font-variant-numeric: tabular-nums; caret-color: var(--color-signal); } .ds-input:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-input[aria-invalid=\"true\"] { border-color: var(--color-danger); }"
+    },
+    {
+      "name": "Bottom Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Icon over label; the current page is teal and bold with aria-current.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item\" aria-current=\"page\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12\"/></svg>Workouts</a><a class=\"ds-nav-item\" href=\"#\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/></svg>History</a></nav>",
+      "css": ".ds-nav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--space-1); padding: var(--space-1) var(--space-2); background: var(--color-surface); border-top: 1px solid var(--color-line); font-family: var(--font-family); } .ds-nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); min-height: var(--tap-target-min); padding: var(--space-1); border-radius: var(--radius-sm); color: var(--color-muted); font-size: var(--font-size-sm); text-decoration: none; } .ds-nav-item[aria-current=\"page\"] { color: var(--color-signal); font-weight: 700; } .ds-nav-item:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-icon { width: var(--space-6); height: var(--space-6); flex: none; }"
+    },
+    {
+      "name": "Segmented Choice",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "The theme switch: one bordered strip, the checked option filled with the selected alias.",
+      "html": "<fieldset class=\"ds-seg\"><label class=\"ds-seg-opt\"><input type=\"radio\" name=\"ds-theme\">Light</label><label class=\"ds-seg-opt\"><input type=\"radio\" name=\"ds-theme\">Dark</label><label class=\"ds-seg-opt\"><input type=\"radio\" name=\"ds-theme\" checked>System</label></fieldset>",
+      "css": ".ds-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; font-family: var(--font-family); } .ds-seg-opt { position: relative; display: flex; align-items: center; justify-content: center; min-height: var(--tap-target-min); background: var(--color-surface-raised); color: var(--color-text); font-weight: 600; cursor: pointer; } .ds-seg-opt + .ds-seg-opt { border-left: 1px solid var(--color-border); } .ds-seg-opt input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; } .ds-seg-opt:has(input:checked) { background: var(--color-selected); color: var(--color-on-selected); } .ds-seg-opt:has(input:focus-visible) { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: calc(-1 * var(--focus-ring-width) * 2); }"
+    },
+    {
+      "name": "Exercise Card with Set Rows",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Signature: a tinted panel with no outline; set rows in the Set figure style, warm-ups muted with a W.",
+      "html": "<section class=\"ds-card\"><h3 class=\"ds-card-name\">Bench Press</h3><ol class=\"ds-sets\"><li><button class=\"ds-set ds-set-warmup\" data-set-type=\"warmup\"><span class=\"ds-set-n\">1</span><span class=\"ds-w\" aria-hidden=\"true\">W</span>40 kg × 8</button></li><li><button class=\"ds-set\" data-set-type=\"working\"><span class=\"ds-set-n\">2</span>82.5 kg × 5</button></li></ol></section>",
+      "css": ".ds-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--card-pad-block) var(--card-pad-inline); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); font-family: var(--font-family); font-variant-numeric: tabular-nums; } .ds-card-name { margin: 0; font-size: var(--font-size-lg); font-weight: 700; } .ds-sets { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: 0; padding: 0; } .ds-set { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: var(--tap-target-min); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-text); font: inherit; font-size: var(--font-size-set); font-weight: var(--font-weight-figure); text-align: left; cursor: pointer; } .ds-set:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-set-n { min-width: var(--space-6); color: var(--color-muted); } .ds-set-warmup { color: var(--color-warmup, var(--color-muted)); font-size: var(--font-size-md); font-weight: 400; } .ds-w { flex: none; width: var(--space-4); font-weight: 700; font-size: var(--font-size-sm); }"
+    },
+    {
+      "name": "Records Panel",
+      "kind": "custom",
+      "refersTo": "records-panel",
+      "description": "The one brass surface: a brass wash with a bold brass heading and ink lines.",
+      "html": "<section class=\"ds-records\"><h2 class=\"ds-records-h\">Personal records</h2><ul class=\"ds-records-list\"><li>Bench Press — Heaviest weight 82.5 kg (was 80 kg)</li></ul></section>",
+      "css": ".ds-records { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-pr-soft); color: var(--color-text); font-family: var(--font-family); font-variant-numeric: tabular-nums; } .ds-records-h { margin: 0; color: var(--color-pr); font-size: var(--font-size-lg); font-weight: 700; } .ds-records-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding-left: var(--space-4); }"
+    },
+    {
+      "name": "Action Bar",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Sticky thumb-zone bar flush on the nav; equal-width buttons, one teal fill.",
+      "html": "<div class=\"ds-bar\"><button class=\"ds-bar-btn ds-bar-secondary\">Add exercise</button><button class=\"ds-bar-btn ds-bar-primary\">Finish</button></div>",
+      "css": ".ds-bar { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3) var(--screen-pad); background: var(--color-bg); border-top: 1px solid var(--color-line); font-family: var(--font-family); } .ds-bar-btn { flex: 1; min-height: var(--tap-target-min); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; font: inherit; font-weight: 600; line-height: 1; cursor: pointer; } .ds-bar-btn:focus-visible { outline: var(--focus-ring-width) solid var(--color-focus); outline-offset: var(--focus-ring-width); } .ds-bar-primary { background: var(--color-signal); color: var(--color-on-signal); } .ds-bar-secondary { background: var(--color-surface-raised); color: var(--color-text); border-color: var(--color-border); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Instrument",
+    "overview": "A precise, quiet tool for the lift in front of you. The lifter glances at a phone at arm's length between sets, sees what comes next, logs it and moves on. The screen is a warm stone ground with slightly lighter stone panels and warm ink. Color is rationed by role, so whatever color appears means something: deep teal is the one interactive color, brass appears only when you beat a record, and brick or burnt orange only when something is wrong. On most screens teal is the only chromatic color.\n\nNumbers are the content. Weights, reps and readouts get size and weight from the one typeface, never a second family, and every digit is tabular so columns line up and nothing jitters. Panels are set apart by tint, not outline; there are few boxes, soft radii, and hairlines only where a structural edge needs one. There are no shadows.\n\nThe system is light-first, designed for a gym with natural light. Dark is a deliberate warm-charcoal version of the same roles: it follows the OS through `prefers-color-scheme`, or the Profile switch forces Light or Dark through `data-theme` on `<html>`. It refuses the category default of a gray or black screen with a generic accent everywhere and record gold diluted by decoration.",
+    "keyCharacteristics": [
+      "Warm stone ground and panels, warm ink; light is the base theme, dark is the same roles in warm charcoal.",
+      "One interactive color (teal); brass for records only; brick and burnt orange only for trouble.",
+      "Instrument Sans everywhere, self-hosted, tabular figures on by default.",
+      "Figures as the signature: larger, firmer, slightly narrower numbers.",
+      "Separation by tint, not outline; no shadows; dialogs have no frame.",
+      "Hand-drawn 2px-stroke icons, always beside a text label.",
+      "Thumb-zone layout: 44px targets, a sticky bottom ActionBar flush on the bottom nav."
+    ],
+    "rules": [
+      {
+        "name": "The Single Meaning Rule",
+        "body": "Each color role means one thing. Teal is interactive, brass is a record, muted plus W is a warm-up, brick is destructive or failed, burnt orange needs attention. `roles.test.ts` keeps brass, warm-up and signal inside per-file allow-lists; a new use edits the list in the same change and justifies it in its spec.",
+        "section": "colors"
+      },
+      {
+        "name": "The Earned Brass Rule",
+        "body": "Brass appears only where a personal record is shown. It is never used for selection, links, charts or decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never By Color Alone Rule",
+        "body": "Every color state has a second cue: the active nav item is bold plus `aria-current`, a selection is a fill plus checked or `aria-pressed`, links are underlined, a warm-up set carries a W and \"Warm-up\" in its name, notices and tags carry words.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Borders Rule",
+        "body": "`border` is a control's 3:1 boundary; `line` is a decorative hairline. Never use `line` to outline a control, and never use `border` to outline a panel.",
+        "section": "colors"
+      },
+      {
+        "name": "The Figures Are The Content Rule",
+        "body": "Numbers get size, weight and a narrower width from the four figure tokens (`--font-size-figure`, `--font-size-set`, `--font-weight-figure`, `--font-stretch-figure`), never a second family. They are the system's signature.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Everywhere Rule",
+        "body": "`body` sets `font-variant-numeric: tabular-nums` once, and everything inherits it, chart labels included. No stylesheet sets it back to proportional, and no per-component number class exists.",
+        "section": "typography"
+      },
+      {
+        "name": "The Thumb Rule",
+        "body": "Every interactive target is at least `--tap-target-min` (44px) in both axes. Sizes are rem so they follow the user's font setting; radii, the tap target and the 1px lines are the physical exceptions.",
+        "section": "layout"
+      },
+      {
+        "name": "The Tint Not Outline Rule",
+        "body": "Panels (exercise cards, routine notes, History rows, records, notices, progress rows) separate from the ground by tint alone. A panel gets a 1px outline only to carry state: a warning or error notice in its tone color, a \"Needs data\" set row in Burnt Orange. Controls keep their Control Boundary.",
+        "section": "elevation"
+      },
+      {
+        "name": "The No Frame Rule",
+        "body": "Dialogs and sheets have no border and no shadow; the browser's default dialog frame is removed.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** write every design value in `src/ui/tokens.css` and read it through `var(--…)`. `assert:css-tokens` fails CI on a hex color or px length anywhere else (except `0` and `1px`).",
+      "**Do** give every new color token a contrast pair, or a commented exemption, in `tokens.contrast.test.ts`; text pairs need 4.5:1 and control boundaries, focus and teal strokes need 3:1, in both themes.",
+      "**Do** write a new dark value into both dark blocks; the test fails if they differ.",
+      "**Do** add a file to the signal, brass or warm-up allow-list in `roles.test.ts` in the same change that adds the use, and justify it in that spec.",
+      "**Do** separate panels with Stone Panel on Stone Ground, and keep the 1px Control Boundary on every control.",
+      "**Do** set key numbers with the figure tokens (`--font-size-figure`, `--font-size-set`, `--font-weight-figure`, `--font-stretch-figure`).",
+      "**Do** pair every color state with a non-color cue (weight, `aria-current`, checked, underline, a W, words).",
+      "**Do** draw new icons in `ui/icons.tsx` as 24×24, 2px-stroke, `currentColor` SVGs, and put a text label beside each.",
+      "**Do** keep targets at 44px and place a screen's main actions in the ActionBar."
+    ],
+    "donts": [
+      "**Don't** use brass for anything that is not a personal record.",
+      "**Don't** give warm-up sets a color of their own; they are muted and marked W.",
+      "**Don't** use teal for decoration, records, warnings or failures.",
+      "**Don't** outline a panel with `--color-border`, or outline a control with `--color-line`.",
+      "**Don't** add shadows, or a frame to a dialog.",
+      "**Don't** add a second typeface, a third-party font request, or a `data:` font.",
+      "**Don't** switch figures back to proportional digits anywhere.",
+      "**Don't** use an emoji or Unicode glyph as an icon, and don't add an icon package.",
+      "**Don't** reintroduce a catch-all accent token; `--color-accent` was removed on purpose."
+    ]
+  }
+}

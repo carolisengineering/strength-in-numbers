@@ -30,7 +30,12 @@ const REQUIRED_TOKENS = [
   "--color-surface",
   "--color-text",
   "--color-muted",
-  "--color-accent",
+  "--color-border",
+  "--color-line",
+  "--color-signal",
+  "--color-on-signal",
+  "--color-pr",
+  "--color-warmup",
   "--color-danger",
   "--space-1",
   "--space-2",
@@ -125,6 +130,15 @@ for (const file of files) {
   );
 }
 assert(files.length > 0, `scanned ${files.length} stylesheet(s) besides tokens.css`);
+
+// ── 2b. the retired accent token is gone (Spec 17.0 AC13: every use picked a role) ──
+const accentUsers = walk(SRC).filter((f) => /--color-(on-)?accent\b/.test(stripComments(readFileSync(f, "utf8"))));
+assert(
+  accentUsers.length === 0,
+  accentUsers.length === 0
+    ? "no stylesheet references the retired --color-accent / --color-on-accent"
+    : `--color-accent is retired (use a role token, Spec 17.0 §6.3): ${accentUsers.map((f) => relative(WEB, f)).join(", ")}`,
+);
 
 // ── 3. no CSS framework dependency ─────────────────────────────────────────
 const pkg = JSON.parse(readFileSync(join(WEB, "package.json"), "utf8"));

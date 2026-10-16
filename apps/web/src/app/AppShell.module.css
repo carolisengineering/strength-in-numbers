@@ -25,7 +25,7 @@
   padding: var(--space-3) var(--space-4);
   padding-top: calc(var(--space-3) + env(safe-area-inset-top));
   background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-line);
 }
 
 .headerTitle {
@@ -78,7 +78,7 @@
   padding: var(--space-1) var(--space-2);
   padding-bottom: calc(var(--space-1) + env(safe-area-inset-bottom));
   background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line);
 }
 
 .navTarget {
@@ -103,8 +103,10 @@
   text-overflow: ellipsis;
 }
 
+/* Where you are: teal, and bold so the cue is not color alone (Spec 17.0 D4). */
 .navTarget[aria-current="page"] {
-  color: var(--color-accent);
+  color: var(--color-signal);
+  font-weight: 700;
 }
 
 .navTargetComingSoon {

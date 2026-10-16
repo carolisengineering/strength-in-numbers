@@ -3,7 +3,7 @@
   position: absolute;
   left: 0;
   width: var(--space-1);
-  background: var(--color-accent);
+  background: var(--color-signal);
 }
 
 .first {

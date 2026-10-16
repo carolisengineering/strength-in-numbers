@@ -74,3 +74,31 @@ export function PencilIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** A personal record — a trophy (Spec 17.0 AC7: brass via currentColor; the badge carries the label). */
+export function TrophyIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 3h8v5a4 4 0 0 1-8 0V3z" />
+      <path d="M8 5H5a3 3 0 0 0 3 4M16 5h3a3 3 0 0 1-3 4M12 12v4M8 21h8M9.5 17.5h5" />
+    </Svg>
+  );
+}
+
+/** On / done — a check mark (Spec 17.0: replaces a "✓" glyph the font does not have). */
+export function CheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </Svg>
+  );
+}
+
+/** Close — an ×, drawn (not the multiplication glyph) so it matches the icon set's stroke. */
+export function CloseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  );
+}

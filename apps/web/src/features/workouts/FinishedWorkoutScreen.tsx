@@ -22,6 +22,7 @@ import { SessionSection } from "./SessionSectionHeading";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
+import { WarmupMark } from "./WarmupMark";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -144,8 +145,9 @@ function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: Sup
         {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
         <ol className={styles.sets}>
           {exercise.sets.map((set) => (
-            <li key={set.id} className={styles.set}>
+            <li key={set.id} className={set.setType === "warmup" ? `${styles.set} ${styles.warmup}` : styles.set} data-set-type={set.setType}>
               <span className={styles.setNumber}>{set.setNumber}</span>
+              <WarmupMark setType={set.setType} />
               <span>{formatSet(set, exercise.modalitySnapshot)}</span>
             </li>
           ))}

@@ -6,7 +6,7 @@
 }
 
 .grid {
-  stroke: var(--color-border);
+  stroke: var(--color-line);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -19,13 +19,13 @@
 
 .line {
   fill: none;
-  stroke: var(--color-accent);
+  stroke: var(--color-signal);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
 .dot {
-  fill: var(--color-accent);
+  fill: var(--color-signal);
 }
 
 /* Size and an outline, not colour alone, mark the selection (Spec 08.1 AC16). */

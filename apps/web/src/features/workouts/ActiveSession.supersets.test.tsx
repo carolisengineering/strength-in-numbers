@@ -89,7 +89,9 @@ describe("10.1 AC19 — link toggles", () => {
   it("one between each adjacent pair, none after the last; pressed state and label follow the link", async () => {
     await setup([ex("A", 1), ex("B", 1), ex("C")]);
     expect(toggle("A", "B")).toHaveAttribute("aria-pressed", "true");
-    expect(toggle("A", "B")).toHaveTextContent("Superset ✓");
+    // Spec 17.0: the check is a drawn icon now (the font has no ✓); the visible word stays.
+    expect(toggle("A", "B")).toHaveTextContent(/^Superset$/);
+    expect(toggle("A", "B").querySelector("svg")).not.toBeNull();
     expect(toggle("B", "C")).toHaveAttribute("aria-pressed", "false");
     expect(toggle("B", "C")).toHaveTextContent("Superset with next");
     expect(screen.getAllByRole("button", { name: /^Superset / })).toHaveLength(2);

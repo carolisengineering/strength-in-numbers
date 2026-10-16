@@ -1,4 +1,5 @@
 import { Button } from "../../ui/Button";
+import { CheckIcon } from "../../ui/icons";
 import styles from "./RoutineEditor.module.css";
 
 export interface LinkToggleProps {
@@ -27,7 +28,14 @@ export function LinkToggle({ id, above, below, linked, refusal, onToggle, disabl
         {...(blocked ? { "aria-describedby": reasonId } : {})}
         onClick={onToggle}
       >
-        {linked ? "Superset ✓" : "Superset with next"}
+        {linked ? (
+          <>
+            Superset
+            <CheckIcon className={styles.linkCheck} />
+          </>
+        ) : (
+          "Superset with next"
+        )}
       </Button>
       {blocked ? (
         <p id={reasonId} className={styles.reason}>

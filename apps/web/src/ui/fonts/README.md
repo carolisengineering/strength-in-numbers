@@ -1,0 +1,2 @@
+Instrument Sans (SIL Open Font License 1.1, see `OFL.txt`), version 1.000, from google/fonts `ofl/instrumentsans/InstrumentSans[wdth,wght].ttf`.
+Roman only, both variable axes kept (wght 400–700, wdth 75–100), all OpenType features kept (incl. `tnum`). Subset with fontTools `pyftsubset` to U+0020–007E, U+00A0–00FF, U+2013–2014, U+2018–201D, U+2026, U+2191, U+2193, U+2212 as woff2 (Spec 17.0 §6.4). The font has no `±` or `✓`; other characters fall back per glyph to the system font.

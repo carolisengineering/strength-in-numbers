@@ -34,5 +34,7 @@ export default defineConfig({
     // hashed same-origin module script (CSP-clean); lift the advisory so CI
     // logs stay clean. Revisit with route-level code-splitting in a later spec.
     chunkSizeWarningLimit: 900,
+    // Never inline a font as a data: URL: the CSP's font-src is 'self' only (Spec 17.0 §6.4, AC11).
+    assetsInlineLimit: (filePath: string) => (filePath.endsWith(".woff2") ? false : undefined),
   },
 });

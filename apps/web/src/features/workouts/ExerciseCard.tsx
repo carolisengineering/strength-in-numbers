@@ -10,6 +10,7 @@ import type { RowSync } from "./outbox/project";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
+import { WarmupMark } from "./WarmupMark";
 
 export interface ExerciseCardProps {
   exercise: WorkoutExerciseDetail;
@@ -152,11 +153,13 @@ export function ExerciseCard({
                 <button
                   type="button"
                   ref={set.id === firstFlaggedId ? firstFlaggedRef : undefined}
-                  className={needsData ? `${styles.set} ${styles.needsData}` : styles.set}
+                  className={[styles.set, needsData ? styles.needsData : "", set.setType === "warmup" ? styles.warmup : ""].filter(Boolean).join(" ")}
+                  data-set-type={set.setType}
                   data-needs-data={needsData ? "true" : undefined}
                   onClick={() => setEditing(set)}
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
+                  <WarmupMark setType={set.setType} />
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
                   {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}

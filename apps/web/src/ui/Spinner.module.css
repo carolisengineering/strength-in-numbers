@@ -13,8 +13,8 @@
   width: var(--space-8);
   height: var(--space-8);
   border-radius: 50%;
-  border: var(--space-1) solid var(--color-border);
-  border-top-color: var(--color-accent);
+  border: var(--space-1) solid var(--color-line);
+  border-top-color: var(--color-text);
   animation: spin 0.9s linear infinite;
 }
 

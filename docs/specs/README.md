@@ -51,6 +51,10 @@ spec small enough to finish in one work session.
 | 14 | Marketing site (Next.js) | static | separate deploy | — | Not started |
 | 15 | AWS migration (phase 2) — `infra/` in CDK or Terraform | infra | replaces Render | 01–13 stable | Not started |
 | 16 | [Dev scenario tooling](16-dev-scenario-tooling.md) — scenario runner replaying typed fixtures against a running API (seed + assert), `.http` request collection, React-free HTTP client moved to `@sin/core/http` | dev tooling | none (local scripts) | 01, 03.1, 04.0, 05.0 | Draft |
+| 17.0 | [Visual identity "Stone"](17.0-visual-identity-stone.md) — light-first palette (dark follows the OS; Profile Light/Dark/System switch), committed screenshot harness, Instrument Sans self-hosted with tabular figures, color roles (teal = interactive/primary, brass = records, warm-up muted + W), tint-not-outline surfaces, `--color-accent` removed, a contrast test for both themes; no layout, API or CSP change | UI | web (CSS + font asset) | 04.1, 04.0, 08.0 | Implemented (PR pending) |
+| 17.1 | Workout screen "now" — current exercise expanded, ± steppers, per-set Log button, auto-advance, rest timer, RPE hidden in the UI (data and API unchanged) | UI | web | 17.0, 06.5, 10.1, 10.2 | Not started |
+| 17.2 | Finish & PR moments — Finish dialog, summary header, one PR card per exercise, e1RM rounding, History trophy | UI | web | 17.0, 08.0, 07.0 | Not started |
+| 17.3 | Landing page — name, one line, a big Log in button; no product page | UI | web | 17.0, 04.0 | Not started |
 
 **Ownership of cross-cutting concerns:**
 
@@ -93,7 +97,7 @@ after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 · M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11, 12, 13 · GA = 14 ·
-Phase 2 = 15. (`packages/core` (02) is a foundation both M0 clients import — an
+Phase 2 = 15 · Design refresh = 17.0, 17.1, 17.2, 17.3 (after M3; 17.0 first, then 17.1; 17.2 and 17.3 are independent of each other). (`packages/core` (02) is a foundation both M0 clients import — an
 M0 prerequisite, not M1 work.)
 
 ## Spec template

@@ -4,7 +4,7 @@
   gap: var(--space-2);
   margin: var(--space-4) 0;
   padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-line);
 }
 
 .header {
@@ -42,7 +42,7 @@
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  font-weight: bold;
+  font-weight: 700;
   text-align: start;
   overflow-wrap: anywhere;
   cursor: pointer;

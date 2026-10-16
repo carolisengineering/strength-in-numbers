@@ -10,7 +10,6 @@
 
 .exercise {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }
@@ -37,8 +36,14 @@
 .setNumber {
   min-width: var(--space-6);
   color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
 }
+
+/* A warm-up set reads quieter and carries a W (Spec 17.0 §6.2), as on the active card. */
+.warmup {
+  color: var(--color-warmup);
+}
+
+
 
 .actions {
   display: flex;
@@ -53,7 +58,7 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--tap-target-min);
-  color: var(--color-accent);
+  color: var(--color-signal);
 }
 
 /* Spec 10.1 AC24: the same bracket, target line and notes as the active screen, read-only. */

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 import styles from "./Sheet.module.css";
+import { CloseIcon } from "./icons";
 
 export interface SheetProps {
   /** The parent owns this; the sheet never closes itself. */
@@ -59,7 +60,7 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
         <>
           <header className={styles.header}>
             <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
-              <span aria-hidden="true">×</span>
+              <CloseIcon />
             </button>
             <h2 className={styles.title} id={titleId}>
               {title}
