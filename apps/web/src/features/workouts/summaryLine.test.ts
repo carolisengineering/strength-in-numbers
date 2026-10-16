@@ -83,7 +83,7 @@ describe("17.1 AC10 — collapsed rows report queued and failed writes (06.2)", 
     const failed: RowSync = { state: "failed", opId: "op", status: 422 };
     expect(collapsedSync(exercise, new Map())).toBeNull();
     expect(collapsedSync(exercise, new Map([[a!.id, pending]]))).toBe("pending");
-    expect(collapsedSync(exercise, new Map([[a!.id, pending], [b!.id, failed]]))).toBe("failed");
+    expect(collapsedSync(exercise, new Map<string, RowSync>([[a!.id, pending], [b!.id, failed]]))).toBe("failed");
     expect(collapsedSync(exercise, new Map([[exercise.id, failed]]))).toBe("failed");
   });
 });
