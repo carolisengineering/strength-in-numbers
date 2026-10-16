@@ -57,6 +57,18 @@ button {
 
 a {
   color: var(--color-signal);
+  text-underline-offset: 0.2em;
+}
+
+/* The parts the browser draws carry the palette too (Spec 17.0: no stray colour). */
+::selection {
+  background: var(--color-signal-soft);
+  color: var(--color-text);
+}
+
+:root {
+  caret-color: var(--color-signal);
+  accent-color: var(--color-signal);
 }
 
 :focus-visible {

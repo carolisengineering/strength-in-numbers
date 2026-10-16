@@ -38,6 +38,18 @@
   color: var(--color-muted);
 }
 
+/* A warm-up set reads quieter and carries a W (Spec 17.0 §6.2), as on the active card. */
+.warmup {
+  color: var(--color-warmup);
+}
+
+.warmupMark {
+  flex: none;
+  width: var(--space-4);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

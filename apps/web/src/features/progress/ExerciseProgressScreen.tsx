@@ -110,7 +110,8 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
           <>
             <div className={styles.readoutRow}>
               <p className={styles.readout} aria-live="polite" aria-atomic="true">
-                {formatLocalDateWithYear(selected.localDate)} · {formatPointValue(selected, metric, pref)}
+                {formatLocalDateWithYear(selected.localDate)} ·{" "}
+                <strong className={styles.readoutValue}>{formatPointValue(selected, metric, pref)}</strong>
               </p>
               <Link className={styles.link} to={`/app/history/${encodeURIComponent(selected.id)}`}>
                 Open workout

@@ -144,8 +144,12 @@ function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: Sup
         {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
         <ol className={styles.sets}>
           {exercise.sets.map((set) => (
-            <li key={set.id} className={styles.set}>
+            <li key={set.id} className={set.setType === "warmup" ? `${styles.set} ${styles.warmup}` : styles.set} data-set-type={set.setType}>
               <span className={styles.setNumber}>{set.setNumber}</span>
+              {/* Spec 17.0: as on the active card — a W slot on every row, so the weights share a column. */}
+              <span className={styles.warmupMark} aria-hidden="true">
+                {set.setType === "warmup" ? "W" : ""}
+              </span>
               <span>{formatSet(set, exercise.modalitySnapshot)}</span>
             </li>
           ))}

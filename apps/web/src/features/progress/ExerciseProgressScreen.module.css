@@ -19,7 +19,17 @@
 }
 
 .readout {
-  font-size: var(--font-size-lg);
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The selected point's value is the screen's figure (Spec 17.0 signature). */
+.readoutValue {
+  color: var(--color-text);
+  font-size: var(--font-size-figure);
+  font-weight: var(--font-weight-figure);
+  font-stretch: var(--font-stretch-figure);
+  line-height: 1.1;
 }
 
 .caption,

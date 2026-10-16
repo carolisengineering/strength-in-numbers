@@ -39,7 +39,7 @@ const SIGNAL_ALLOWED = [
   "features/me/ThemeSetting.module.css",
 ];
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/history/HistoryScreen.module.css"];
-const WARMUP_ALLOWED = ["features/workouts/ExerciseCard.module.css"];
+const WARMUP_ALLOWED = ["features/workouts/ExerciseCard.module.css", "features/workouts/FinishedWorkoutScreen.module.css"];
 
 describe("AC6 — colour roles stay single-meaning", () => {
   it("uses brass only on records", () => {

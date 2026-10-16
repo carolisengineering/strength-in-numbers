@@ -4,6 +4,8 @@
   max-width: var(--measure-max);
   margin: auto auto var(--space-4);
   padding: 0;
+  /* No frame: the raised surface over the dimmed backdrop is the lift (the browser draws a heavy default). */
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   color: var(--color-text);

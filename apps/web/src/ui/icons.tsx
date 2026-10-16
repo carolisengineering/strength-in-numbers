@@ -94,3 +94,11 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/** Close — an ×, drawn (not the multiplication glyph) so it matches the icon set's stroke. */
+export function CloseIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  );
+}

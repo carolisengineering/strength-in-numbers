@@ -40,8 +40,12 @@
   border: 0;
   background: transparent;
   color: var(--color-text);
-  font-size: var(--font-size-xl);
   line-height: 1;
+}
+
+.closeIcon {
+  width: var(--space-6);
+  height: var(--space-6);
 }
 
 .body {

@@ -61,6 +61,13 @@
   --font-size-xl: 1.75rem;
   --line-height: 1.5;
 
+  /* the signature: numbers are the content (Spec 17.0 FIRST VIEWPORT) — a larger, firmer, slightly
+     narrower figure for logged weight × reps and readouts (Instrument Sans has a width axis) */
+  --font-size-figure: 1.75rem;
+  --font-size-set: 1.125rem;
+  --font-weight-figure: 600;
+  --font-stretch-figure: 90%;
+
   /* shape */
   --radius-sm: 6px;
   --radius-md: 10px;

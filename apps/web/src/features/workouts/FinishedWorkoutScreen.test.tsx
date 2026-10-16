@@ -294,3 +294,29 @@ describe("10.1 AC18 — tolerant shapes on the finished screen", () => {
     ]);
   });
 });
+
+describe("17.0 AC8 — warm-up sets are marked on the summary too", () => {
+  it("marks a warm-up row with data-set-type and a hidden W; working rows get an empty slot", async () => {
+    const workout = makeWorkoutDetail({
+      startedAt: "2026-10-02T18:02:00.000Z",
+      endedAt: "2026-10-02T19:00:00.000Z",
+      exercises: [
+        {
+          modality: "weight_reps",
+          name: "Back squat",
+          sets: [makeSet({ setNumber: 1, weight: 60, reps: 5, setType: "warmup" }), makeSet({ setNumber: 2, weight: 100, reps: 5 })],
+        },
+      ],
+    });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [workout], active: null }) });
+    renderApp(`/app/history/${workout.id}`);
+
+    const squat = await screen.findByRole("region", { name: "Back squat" });
+    const [warm, working] = within(squat).getAllByRole("listitem");
+    expect(warm).toHaveAttribute("data-set-type", "warmup");
+    expect(warm!.querySelector('[aria-hidden="true"]')?.textContent).toBe("W");
+    expect(warm).toHaveTextContent("(Warm-up)");
+    expect(working).toHaveAttribute("data-set-type", "working");
+    expect(working!.querySelector('[aria-hidden="true"]')?.textContent).toBe("");
+  });
+});
