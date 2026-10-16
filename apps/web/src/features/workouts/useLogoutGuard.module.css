@@ -1,0 +1,30 @@
+.saving {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.ring {
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 50%;
+  border: var(--space-1) solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation: none;
+  }
+}

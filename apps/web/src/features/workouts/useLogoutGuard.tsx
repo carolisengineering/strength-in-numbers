@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { Spinner } from "../../ui/Spinner";
 import { createLogoutGuard, type GuardState } from "./logoutGuard";
 import { MESSAGES, unsavedMessage } from "./messages";
 import { useOutbox } from "./outbox/OutboxContext";
+import styles from "./useLogoutGuard.module.css";
 
 const IDLE: GuardState = { phase: "idle", unsaved: { sets: 0, notes: 0 } };
 const noSubscribe = () => () => {};
@@ -31,8 +31,16 @@ export function LogoutGuardDialog({ state, onCancel, onConfirm }: LogoutGuardDia
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      <div aria-live="polite">
-        {syncing ? <Spinner label={MESSAGES.syncingBody} /> : <p>{unsavedMessage(state.unsaved)}</p>}
+      {/* Inline, not the page-level Spinner (min-height 100dvh): the dialog must stay a small sheet so Cancel stays in reach. */}
+      <div role="status">
+        {syncing ? (
+          <p className={styles.saving}>
+            <span className={styles.ring} aria-hidden="true" />
+            {MESSAGES.syncingBody}
+          </p>
+        ) : (
+          <p>{unsavedMessage(state.unsaved)}</p>
+        )}
       </div>
     </ConfirmDialog>
   );
