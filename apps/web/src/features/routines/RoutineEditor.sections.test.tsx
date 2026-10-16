@@ -49,7 +49,8 @@ async function open(
 }
 
 describe("10.3 AC14 — a section-free routine looks exactly as in 10.2", () => {
-  it("the exercise list markup is unchanged (baseline recorded before Spec 10.3's edits)", async () => {
+  // Baseline recorded before Spec 10.3's edits; re-baselined 2026-10-16 when the design refresh (Stage 1) wrapped each row in a card.
+  it("the exercise list markup matches the section-free baseline", async () => {
     await open(EDIT_A);
     expect(markupOf(screen.getByRole("list", { name: "Exercises" }))).toMatchSnapshot();
     expect(sectionRegions()).toEqual([]);

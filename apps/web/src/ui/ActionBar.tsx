@@ -13,7 +13,7 @@ export interface ActionBarProps extends HTMLAttributes<HTMLDivElement> {
  */
 export function ActionBar({ children, className, ...rest }: ActionBarProps) {
   return (
-    <div {...rest} className={[styles.bar, className ?? ""].filter(Boolean).join(" ")}>
+    <div {...rest} data-action-bar="" className={[styles.bar, className ?? ""].filter(Boolean).join(" ")}>
       {children}
     </div>
   );

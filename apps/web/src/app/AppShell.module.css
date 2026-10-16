@@ -62,6 +62,12 @@
      strip of scrolling content visible between the bar and the nav. `Screen` pads its own content. */
 }
 
+/* A screen with a bottom action bar: whatever gets focus or is scrolled into view stops above the bar, not
+   behind it (WCAG 2.4.11). */
+.main:has([data-action-bar]) {
+  scroll-padding-bottom: var(--action-bar-clearance);
+}
+
 .nav {
   display: grid;
   grid-auto-flow: column;

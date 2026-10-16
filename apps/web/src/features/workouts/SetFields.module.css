@@ -7,7 +7,7 @@
 /* The measures share equal columns (weight | reps), wrapping to one column when a column would be too narrow. */
 .measures {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--field-min-width)), 1fr));
   gap: var(--space-3);
   align-items: end;
 }

@@ -14,9 +14,6 @@
   transition: background-color 120ms ease, color 120ms ease;
 }
 
-/* Disabled reads as "not now", not as broken: a flat surface and muted text in every variant (no opacity,
-   which left white text on a faded accent below contrast). Declared after the variants so it wins. */
-
 .primary {
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -40,6 +37,14 @@
 }
 
 .button:disabled {
+  cursor: not-allowed;
+}
+
+/* Disabled reads as "not now", not as broken: a flat surface and muted text in every variant, instead of an
+   opacity that left white text on a faded accent below contrast. It outranks the variants on specificity
+   (two classes' worth against one). A busy button (`busy` also disables it) keeps its variant's look: it is
+   working, not unavailable. */
+.button:disabled:not([aria-busy="true"]) {
   background: transparent;
   color: var(--color-muted);
   border-color: var(--color-border);

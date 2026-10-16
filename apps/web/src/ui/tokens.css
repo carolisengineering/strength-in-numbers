@@ -57,6 +57,15 @@
   /* layout */
   --measure-max: 40rem;
 
+  /* a screen's inset from the viewport edge; ActionBar bleeds across exactly this much */
+  --screen-pad: var(--space-4);
+
+  /* the height a bottom ActionBar takes (one row of buttons plus its padding), kept clear when scrolling to focus */
+  --action-bar-clearance: calc(var(--tap-target-min) + 2 * var(--space-3) + var(--space-4));
+
+  /* the narrowest a set-entry field column gets before the row wraps to one column (fits two at 320px) */
+  --field-min-width: 7rem;
+
   /* card insets: every card-like panel uses these, so their edges line up */
   --card-pad-block: var(--space-3);
   --card-pad-inline: var(--space-4);

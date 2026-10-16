@@ -13,7 +13,7 @@ export interface StartWorkoutProps {
   onDismissNotice?: () => void;
   /** `resumed` is true when the server said a workout was already in progress and we adopted it. */
   onStarted: (resumed: boolean) => void;
-  /** Rendered under the Start button — Spec 10.0's Routines section. */
+  /** Spec 10.0's Routines section, rendered above the bottom bar's Start button. */
   children?: ReactNode;
 }
 

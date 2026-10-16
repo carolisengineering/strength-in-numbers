@@ -50,10 +50,6 @@
   grid-row: 1;
 }
 
-.optionsToggle {
-  align-self: start;
-}
-
 .card > .optionsToggle {
   grid-column: 2;
   grid-row: 1;
