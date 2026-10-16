@@ -163,7 +163,7 @@ describe("06.5 AC4 — a storage failure is reported once and never thrown", () 
   });
 });
 
-describe("06.5 AC5 — nothing is written after logout's write block", () => {
+describe("06.5 AC5 — nothing is written after the logout write block", () => {
   it("a pending timer, flush() and a later set leave no key behind", () => {
     const storage = localStorageAdapter();
     storage.remove(DRAFTS_KEY);

@@ -34,6 +34,9 @@ export default defineConfig({
         // Spec 06.2 AC20: the outbox decides whether a lifter's set reaches the server.
         "src/features/workouts/outbox/**": { lines: 90 },
         "src/storage/**": { lines: 90 },
+        // Spec 06.5 AC26: the drafts store and the sign-out guard decide whether typing or sets are lost.
+        "src/features/workouts/drafts/**": { lines: 90 },
+        "src/features/workouts/logoutGuard.ts": { lines: 90 },
       },
     },
   },
