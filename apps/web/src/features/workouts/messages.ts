@@ -3,7 +3,7 @@ import type { Unsaved } from "./logoutGuard";
 /** The only source of the sign-out guard's text (Spec 06.5 AC22). N is the only dynamic value, an integer. */
 export const MESSAGES = {
   syncingTitle: "Saving your sets…",
-  syncingBody: "Saving your sets…",
+  syncingBody: "Trying to send them now…",
   cancel: "Cancel",
   warningTitle: "Sign out with unsaved sets?",
   stay: "Stay",
