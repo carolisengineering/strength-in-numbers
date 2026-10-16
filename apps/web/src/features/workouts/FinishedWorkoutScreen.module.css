@@ -36,7 +36,6 @@
 .setNumber {
   min-width: var(--space-6);
   color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .actions {

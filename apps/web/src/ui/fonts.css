@@ -1,0 +1,13 @@
+/*
+ * The app's one typeface (Spec 17.0 §6.4): Instrument Sans, self-hosted under the SPA's own origin so the
+ * CSP's `font-src 'self'` covers it (no third-party request). `swap` shows text in the fallback until the
+ * file arrives; index.html preloads it. Vite never inlines it as a data: URL (vite.config.ts).
+ */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("./fonts/InstrumentSans-roman-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-stretch: 75% 100%;
+  font-style: normal;
+  font-display: swap;
+}

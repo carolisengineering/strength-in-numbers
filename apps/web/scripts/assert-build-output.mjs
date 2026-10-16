@@ -111,6 +111,21 @@ assert(
     : `emitted chunks still import "@sin/core": ${leaks.join(", ")}`,
 );
 
+// ── 5. the font is self-hosted and CSP-clean (Spec 17.0 AC11) ─────────────────
+const assetsDir = join(DIST, "assets");
+const assetNames = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
+const fontFile = assetNames.find((n) => /^InstrumentSans-roman-latin-[\w-]+\.woff2$/.test(n));
+assert(Boolean(fontFile), "dist/assets carries the content-hashed Instrument Sans woff2");
+const cssFiles = assetNames.filter((n) => n.endsWith(".css")).map((n) => readFileSync(join(assetsDir, n), "utf8"));
+assert(cssFiles.length > 0, "dist/assets carries the built stylesheet");
+assert(cssFiles.every((c) => !/url\(\s*["']?data:font|url\(\s*["']?data:[^)]*woff/i.test(c)), "no built stylesheet inlines a font as a data: URL (font-src is 'self')");
+assert(cssFiles.every((c) => !/url\(\s*["']?(https?:)?\/\//i.test(c)), "no built stylesheet loads anything from another origin");
+const preload = html.match(/<link\b[^>]*rel="preload"[^>]*>/i)?.[0] ?? "";
+assert(
+  Boolean(fontFile) && preload.includes(`/assets/${fontFile}`) && /\bcrossorigin\b/.test(preload) && /as="font"/.test(preload),
+  "index.html preloads the hashed font (as=font, crossorigin)",
+);
+
 // ── 4. the screenshot harness's fake Auth0 never reaches production (Spec 17.0 AC19) ──
 const HARNESS_MARKER = "sin-screens-harness-fake-auth";
 const harnessLeaks = jsFiles.filter((f) => readFileSync(f, "utf8").includes(HARNESS_MARKER));

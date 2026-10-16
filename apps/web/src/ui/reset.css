@@ -24,6 +24,8 @@ body {
   font-family: var(--font-family);
   font-size: var(--font-size-md);
   line-height: var(--line-height);
+  /* Equal-width digits everywhere, so weights, reps and times line up and never jitter (Spec 17.0 §6.5). */
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 

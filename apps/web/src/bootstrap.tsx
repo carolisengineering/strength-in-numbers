@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 // page below is styled too. Vite emits them as one hashed external `.css`
 // (CSP `style-src 'self'`, Spec 04.0 §6.6).
 import "./ui/tokens.css";
+import "./ui/fonts.css";
 import "./ui/reset.css";
 
 import { AppRoot } from "./app/AppRoot";

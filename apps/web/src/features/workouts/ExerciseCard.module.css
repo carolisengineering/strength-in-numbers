@@ -100,7 +100,6 @@
 .setNumber {
   min-width: var(--space-6);
   color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
 }
 
 /* Spec 10.1 AC16: the routine's targets and notes, display only. */
