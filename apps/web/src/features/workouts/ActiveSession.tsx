@@ -22,6 +22,7 @@ import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
+import { EndEarlyDialog } from "./EndEarlyDialog";
 import { LogBarButton, type BarAction } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
@@ -40,6 +41,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishTimestamp } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { WorkoutMenu } from "./WorkoutMenu";
 import { barMode, unloggedPlanned } from "./unloggedPlanned";
 import {
   useAddExercise,
@@ -110,6 +112,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const [removing, setRemoving] = useState<WorkoutExerciseDetail | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [endEarlyOpen, setEndEarlyOpen] = useState(false);
   const [flaggedIds, setFlaggedIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
   const [banner, setBanner] = useState<Banner | null>(null);
   // Synchronous guards: React state would not have updated before a second tap lands.
@@ -385,7 +388,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }
 
   /** `409 workout-finished`: if the workout really is finished, our own finish landed (a lost first response). */
-  async function confirmAlreadyFinished() {
+  async function confirmAlreadyFinished(endedEarly: boolean) {
     try {
       const fresh = await client.getById(workout.id);
       if (fresh.endedAt === null) {
@@ -401,10 +404,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         setCount: fresh.exercises.reduce((n, e) => n + e.sets.length, 0),
         durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
         viaReplay: true,
+        endedEarly,
+        unloggedPlannedSets: unlogged.total,
       });
       afterFinished();
     } catch {
-      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish() });
+      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
     }
   }
 
@@ -421,18 +426,21 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     }
   }
 
-  async function confirmFinish() {
+  /** The one finish path (Spec 17.1 §6.7): Finish and End workout early both call it, so their waits and failures match. */
+  async function confirmFinish(endedEarly = false) {
     if (finishLock.current) return;
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()) });
+      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
       setFinishOpen(false);
+      setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
       // screen must not yank them back across screens.
       afterFinished();
     } catch (error) {
       setFinishOpen(false);
+      setEndEarlyOpen(false);
       reportUnexpected("finish", error);
       const action = resolveFailure("finish", error);
       switch (action.type) {
@@ -443,7 +451,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           await diagnoseIncomplete();
           break;
         case "finished-check":
-          await confirmAlreadyFinished();
+          await confirmAlreadyFinished(endedEarly);
           break;
         case "clock":
           track("workout_conflict", { kind: "clock" });
@@ -458,7 +466,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
                 ? action.text
                 : "Couldn't finish — try again",
             requestId: "requestId" in action ? action.requestId : null,
-            retry: () => void confirmFinish(),
+            retry: () => void confirmFinish(endedEarly),
           });
       }
     } finally {
@@ -578,17 +586,23 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       : mode === "finish"
         ? { kind: "finish", disabled: finishDisabled, onClick: () => setFinishOpen(true) }
         : { kind: "log" };
+  const endReason =
+    totalSets === 0 ? "Log a set first" : unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null;
+  const endItem = {
+    label: unlogged.total > 0 ? ("End workout early" as const) : ("Finish workout" as const),
+    disabled: finishDisabled,
+    reason: endReason,
+    onClick: () => (unlogged.total > 0 ? setEndEarlyOpen(true) : setFinishOpen(true)),
+  };
 
   return (
     <LogActionContext.Provider value={logStore}>
     <Screen title="Workout">
-      <div className={styles.topRow}>
-        <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
-        {/* Away from the thumb on purpose, and it confirms: discarding deletes every logged set. */}
-        <Button variant="secondary" onClick={() => setDiscardOpen(true)}>
-          Discard workout
-        </Button>
-      </div>
+      <WorkoutMenu
+        leading={<p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>}
+        endItem={endItem}
+        onDiscard={() => setDiscardOpen(true)}
+      />
 
       {shown ? (
         <InlineNotice
@@ -692,7 +706,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         confirmLabel="Finish"
         cancelLabel="Keep logging"
         busy={finish.isPending}
-        onConfirm={() => void confirmFinish()}
+        onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
         <p>
@@ -700,6 +714,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           workout can't be edited.
         </p>
       </ConfirmDialog>
+      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 
       <ConfirmDialog
         open={discardOpen}

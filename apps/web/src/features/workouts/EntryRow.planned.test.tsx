@@ -24,7 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -240,13 +240,14 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     // (Spec 06.5 reverses the old "even a typed draft is never stored": an EDITED draft is now persisted.)
     expect(Object.keys(window.localStorage).sort()).toEqual(before);
   });
-  // Spec 17.1: with planned sets left there is no Finish until Task 12's Workout menu (End workout early); un-skip there.
-  it.skip("the finish rule ignores it, and Finish succeeds without logging it", async () => {
+  it("the finish rule ignores it, and Finish succeeds without logging it", async () => {
     const exercises = [bench({ sets: [logged(1, { setType: "warmup", reps: 10, weight: 60 })] })];
     expect(findIncompleteWorkingSets(makeWorkoutDetail({ exercises }))).toEqual([]);
     const { fake, user } = await setup(exercises);
-    await user.click(finishButton());
-    await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    // Spec 17.1 AC33: with planned sets left, finishing is End workout early in the Workout menu.
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    await user.click(screen.getByRole("button", { name: "End workout early" }));
+    await user.click(within(screen.getByRole("dialog", { name: "End workout early?" })).getByRole("button", { name: "End workout" }));
     await waitFor(() => expect(fake.requests.some((r) => r.method === "PATCH" && /^\/v1\/workouts\//.test(r.path))).toBe(true));
     expect(setPosts(fake)).toHaveLength(0);
   });

@@ -42,7 +42,7 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   set_edited: { modality: "string" },
   set_deleted: { modality: "string" },
   finish_blocked: { incompleteCount: "number" },
-  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean" },
+  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number" },
   workout_discarded: { phase: "string", setCount: "number" },
   workout_conflict: { kind: "string" },
   exercise_picked: { source: "string", msSinceOpen: "number" },

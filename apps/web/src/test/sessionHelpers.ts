@@ -29,8 +29,10 @@ export const optionsButton = (name: string): HTMLElement => within(card(name)).g
 /** The control that opens the Finish dialog. */
 export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });
 
-/** Opens the Discard dialog. */
+/** Spec 17.1 AC32: Discard lives in the Workout menu. */
 export async function discardWorkout(user: UserEvent): Promise<void> {
+  const menu = screen.getByRole("button", { name: "Workout menu" });
+  if (menu.getAttribute("aria-expanded") !== "true") await user.click(menu);
   await user.click(screen.getByRole("button", { name: "Discard workout" }));
 }
 
