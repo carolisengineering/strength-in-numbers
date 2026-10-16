@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { useIsMutating } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WorkoutSchema, type WorkoutDetail } from "@sin/core";
 import { ApiError } from "../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
@@ -9,6 +9,7 @@ import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/worko
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { RECORDS_KEYS } from "../records/queries";
+import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import {
   SET_MUTATION_KEY,
@@ -275,5 +276,44 @@ describe("08.0 AC8 — delete success at hook level", () => {
     expect(qc.getQueryState(RECORDS_KEYS.forExercise("e"))?.isInvalidated).toBe(false);
     // Spec 08.1 AC8: nor progress.
     expect(qc.getQueryState(PROGRESS_KEYS.series("e", "3m"))?.isInvalidated).toBe(false);
+  });
+});
+
+describe("06.5 AC10 — finish and discard clear the workout's drafts", () => {
+  const stores = () => ({ forWorkout: vi.fn(), clearWorkout: vi.fn(), flushAll: vi.fn() });
+  const wrapperWithDrafts = (qc: ReturnType<typeof makeQueryClient>, client: ReturnType<typeof fakeClient>, s: ReturnType<typeof stores>) => {
+    const Inner = wrapperWith(qc, client);
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <Inner>
+          <DraftStoresContext.Provider value={s}>{children}</DraftStoresContext.Provider>
+        </Inner>
+      );
+    };
+  };
+
+  it("useDeleteWorkout clears on success and not on failure", async () => {
+    const { qc, detail } = seeded();
+    const s = stores();
+    const ok = renderHook(() => useDeleteWorkout(), { wrapper: wrapperWithDrafts(qc, fakeClient({ deleteWorkout: async () => undefined }), s) });
+    await act(() => ok.result.current.mutateAsync({ id: detail.id, phase: "active", setCount: 1 }));
+    expect(s.clearWorkout).toHaveBeenCalledWith(detail.id);
+
+    const s2 = stores();
+    const bad = renderHook(() => useDeleteWorkout(), { wrapper: wrapperWithDrafts(qc, fakeClient({ deleteWorkout: async () => Promise.reject(new Error("boom")) }), s2) });
+    await act(async () => {
+      await bad.result.current.mutateAsync({ id: detail.id, phase: "active", setCount: 1 }).catch(() => undefined);
+    });
+    expect(s2.clearWorkout).not.toHaveBeenCalled();
+  });
+
+  it("useFinishWorkout clears on success", async () => {
+    const { qc, detail } = seeded();
+    const s = stores();
+    const endedAt = "2026-01-01T10:00:00.000Z";
+    const finished = { ...WorkoutSchema.parse({ ...detail, endedAt }), newRecords: [] };
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWithDrafts(qc, fakeClient({ finish: async () => finished }), s) });
+    await act(() => result.current.mutateAsync({ id: detail.id, endedAt }));
+    expect(s.clearWorkout).toHaveBeenCalledWith(detail.id);
   });
 });

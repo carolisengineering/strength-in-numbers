@@ -19,6 +19,7 @@ import type {
 import { ApiError } from "../../api";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
+import { useDraftStores } from "./drafts/DraftStoreContext";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
@@ -91,6 +92,7 @@ export function useFinishWorkout(): UseMutationResult<
 > {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
+  const drafts = useDraftStores();
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, endedAt }) => client.finish(id, { endedAt }),
@@ -99,6 +101,7 @@ export function useFinishWorkout(): UseMutationResult<
     // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),
     // or `ActiveSession` does when the response lands after the lifter left (no summary will mount).
     onSuccess: (updated, { id, viaReplay }) => {
+      drafts?.clearWorkout(id); // Spec 06.5 AC10
       // `newRecords` belongs to the records cache, never to the workout detail (Spec 08.0 AC5).
       const { newRecords, ...workout } = updated;
       const cached = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
@@ -121,10 +124,12 @@ export function useDeleteWorkout(): UseMutationResult<
 > {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
+  const drafts = useDraftStores();
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
     onSuccess: (_void, { id, phase, setCount }) => {
+      drafts?.clearWorkout(id); // Spec 06.5 AC10
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
       // An in-progress workout has no records and no History row (Spec 08.0 AC8).
       if (phase === "finished") applyDeletedCaches(queryClient, id);

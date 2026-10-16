@@ -41,9 +41,10 @@ const bench = (o: Partial<ExerciseSpec> = {}): ExerciseSpec => ({
   sets: [makeSet({ setNumber: 1, reps: 8, weight: 80 })],
   ...o,
 });
-async function setup(exercises: ExerciseSpec[] = [bench()]) {
+async function setup(exercises: ExerciseSpec[] = [bench()], seedStorage?: () => void) {
   const fake = createWorkoutFake({ active: makeWorkoutDetail({ exercises }) });
-  prepareApp({ auth, fake });
+  prepareApp({ auth, fake }); // clears user data, so anything a test wants stored is seeded after it
+  seedStorage?.();
   const app = renderApp("/app/workouts");
   await screen.findByRole("heading", { name: "Workout" });
   return { fake, ...app };
@@ -150,17 +151,53 @@ describe("06.5 AC9 — logging clears the stored draft; typing after the tap kee
 
 describe("06.5 AC11 — drafts survive a reload but not a different workout", () => {
   it("a value stored for another workout is dropped and not restored", async () => {
-    storage.set(
-      DRAFTS_KEY,
-      JSON.stringify({
-        v: 1,
-        userId: USER_ID,
-        workoutId: "some-old-workout",
-        byExercise: { x: { weight: "1", reps: "1", distance: "", minutes: "", seconds: "", rpe: "", weightUnit: "kg", distanceUnit: "km", setType: "working" } },
-      }),
-    );
-    await setup();
+    await setup([bench()], () => {
+      storage.set(
+        DRAFTS_KEY,
+        JSON.stringify({
+          v: 1,
+          userId: USER_ID,
+          workoutId: "some-old-workout",
+          byExercise: { x: { weight: "1", reps: "1", distance: "", minutes: "", seconds: "", rpe: "", weightUnit: "kg", distanceUnit: "km", setType: "working" } },
+        }),
+      );
+    });
     expect(field("Reps")).toHaveValue("8"); // seeded from the last set, not "1"
     expect(storedDrafts()).toBeNull();
+  });
+});
+
+describe("06.5 AC10 — finish, discard and the gone path drop the workout's drafts", () => {
+  const edit = async (user: ReturnType<typeof userEvent.setup>) => {
+    await typeInto(user, "Reps", "9");
+    await waitFor(() => expect(storedDrafts()).not.toBeNull());
+  };
+
+  it("discarding removes the key", async () => {
+    const { user } = await setup();
+    await edit(user);
+    await user.click(screen.getByRole("button", { name: "Discard workout" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Discard this workout?" })).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(storedDrafts()).toBeNull());
+  });
+
+  it("finishing removes the key", async () => {
+    const { user } = await setup();
+    await edit(user);
+    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(storedDrafts()).toBeNull());
+  });
+
+  it("an orphan entry is ignored on restore and pruned by the next write", async () => {
+    const fields = { weight: "1", reps: "1", distance: "", minutes: "", seconds: "", rpe: "", weightUnit: "kg", distanceUnit: "km", setType: "working" };
+    const workout = makeWorkoutDetail({ id: "018f4e8a-1c2d-4f3a-8b6c-9d0e1f2a3b99", exercises: [bench()] });
+    const live = workout.exercises[0]!.id;
+    prepareApp({ auth, fake: createWorkoutFake({ active: workout }) }); // clears user data, so seed after
+    storage.set(DRAFTS_KEY, JSON.stringify({ v: 1, userId: USER_ID, workoutId: "018f4e8a-1c2d-4f3a-8b6c-9d0e1f2a3b99", byExercise: { "removed-exercise": fields, [live]: { ...fields, reps: "5" } } }));
+    renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    expect(field("Reps")).toHaveValue("5"); // the live entry restored; the orphan was never asked for
+    await waitFor(() => expect(Object.keys(storedDrafts().byExercise)).toEqual([live]));
   });
 });
