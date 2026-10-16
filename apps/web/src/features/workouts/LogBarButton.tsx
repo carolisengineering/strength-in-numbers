@@ -1,4 +1,4 @@
-import { useContext, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 
 import { Button } from "../../ui/Button";
 import { DOUBLE_TAP_MS, LogActionContext, useLogAction } from "./logAction";
@@ -18,6 +18,19 @@ export type BarAction =
 export function LogBarButton({ action: mode }: { action: BarAction }) {
   const action = useLogAction(useContext(LogActionContext));
   const last = useRef<{ at: number; owner: symbol } | null>(null);
+  // The window covers only the advance this button's own tap caused: any other input in between (a row tapped, the
+  // picker, a key in a field) is a deliberate next step, so the next tap logs however soon it comes.
+  useEffect(() => {
+    const reset = (event: Event) => {
+      if (!(event.target instanceof Element) || event.target.closest("[data-log-bar]") === null) last.current = null;
+    };
+    document.addEventListener("pointerdown", reset, true);
+    document.addEventListener("keydown", reset, true);
+    return () => {
+      document.removeEventListener("pointerdown", reset, true);
+      document.removeEventListener("keydown", reset, true);
+    };
+  }, []);
 
   if (mode.kind !== "log") {
     return (
@@ -38,7 +51,7 @@ export function LogBarButton({ action: mode }: { action: BarAction }) {
   }
 
   return (
-    <Button block aria-disabled={inert || undefined} aria-label={action?.ariaLabel} aria-busy={action?.busy || undefined} onClick={onClick}>
+    <Button block data-log-bar="" aria-disabled={inert || undefined} aria-label={action?.ariaLabel} aria-busy={action?.busy || undefined} onClick={onClick}>
       {action?.label ?? "Log set"}
     </Button>
   );

@@ -16,7 +16,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { card, logButton, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -294,5 +294,17 @@ describe("17.1 AC29 — Enter that logs and advances hands focus to the new curr
     await user.type(within(card(/^A,/)).getByLabelText("Reps"), "{Enter}");
     await waitFor(() => expect(isCurrent(/^B,/)).toBe(true));
     await waitFor(() => expect(within(card(/^B,/)).getByRole("heading", { level: 2 })).toHaveFocus());
+  });
+});
+
+describe("17.1 AC29 — the double-tap window covers only the advance its own tap caused", () => {
+  it("a tap after any other input (a row tapped, an exercise added) logs, however fast", async () => {
+    const { fake, user } = await setup([ex("X", { plannedSets: planned(3) }), ex("Y", { plannedSets: planned(3) })]);
+    await user.click(logButton("X"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    // No pause: the lifter (or a fast browser test) taps Y's row, then Log, well inside 600 ms of the first tap.
+    await makeCurrent(user, "Y");
+    await user.click(logButton("Y"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(2));
   });
 });
