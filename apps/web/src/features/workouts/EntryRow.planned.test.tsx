@@ -232,12 +232,12 @@ describe("10.2 AC20 — a queued set counts at once (06.2)", () => {
 
 describe("10.2 AC26 — an untouched prefill is not a set", () => {
   it("sends no request on mount and stores nothing", async () => {
-    const { fake, user } = await setup([bench({ sets: [logged(1)] })]);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(setPosts(fake)).toHaveLength(0);
-    // The app's own startup writes (catalog cache, …) are already in; the entry row adds nothing to them.
+    const { fake } = await setup([bench({ sets: [logged(1)] })]);
     const before = Object.keys(window.localStorage).sort();
-    await user.type(field("Bench", "Reps"), "1"); // even a typed draft is never stored
+    await new Promise((r) => setTimeout(r, 400)); // past Spec 06.5's draft debounce
+    expect(setPosts(fake)).toHaveLength(0);
+    // The app's own startup writes (catalog cache, …) are already in; an untouched row adds nothing to them.
+    // (Spec 06.5 reverses the old "even a typed draft is never stored": an EDITED draft is now persisted.)
     expect(Object.keys(window.localStorage).sort()).toEqual(before);
   });
   it("the finish rule ignores it, and Finish succeeds without logging it", async () => {
@@ -249,7 +249,9 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     await waitFor(() => expect(fake.requests.some((r) => r.method === "PATCH" && /^\/v1\/workouts\//.test(r.path))).toBe(true));
     expect(setPosts(fake)).toHaveLength(0);
   });
-  it("navigating away and back re-seeds it from the list", async () => {
+  // Spec 06.5 reverses this test's old expectation ("re-seeds it from the list" after typing): an edited draft
+  // now survives leaving the screen.
+  it("navigating away and back keeps an edited draft", async () => {
     const { router, user } = await setup([bench({ sets: [logged(1)] })]);
     const reps = field("Bench", "Reps");
     await user.clear(reps);
@@ -257,7 +259,7 @@ describe("10.2 AC26 — an untouched prefill is not a set", () => {
     await act(() => router.navigate("/app/history"));
     await act(() => router.navigate("/app/workouts"));
     await screen.findByRole("heading", { name: "Workout" });
-    expect(field("Bench", "Reps")).toHaveValue("8");
+    expect(field("Bench", "Reps")).toHaveValue("77");
   });
 });
 

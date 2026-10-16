@@ -2,6 +2,7 @@ import { useId, useMemo, useReducer, useRef, useState, type FormEvent, type Keyb
 import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { Button } from "../../ui/Button";
+import { useDraftPersistence, useRestoredDraft } from "./drafts/useDraftPersistence";
 import { reportUnexpected } from "./reportUnexpected";
 import { setLabel } from "./plannedSets";
 import { resolveFailure } from "./sessionErrors";
@@ -43,8 +44,13 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const defaults = unitDefaultsFor(unitPreference);
   const count = exercise.sets.length;
   const plannedSets = exercise.plannedSets;
+  // Spec 06.5 §6.3: a stored, edited draft wins over the seed. It gets a fresh attemptKey (never stored)
+  // and starts touched, so the 10.2 re-seed below can never overwrite it.
+  const restored = useRestoredDraft(exercise.workoutId, exercise.id);
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
-    seedDraft({ plannedSets, sets: exercise.sets, defaults, attemptKey: crypto.randomUUID() }),
+    restored
+      ? { ...restored, attemptKey: crypto.randomUUID() }
+      : seedDraft({ plannedSets, sets: exercise.sets, defaults, attemptKey: crypto.randomUUID() }),
   );
   // Spec 10.2 AC25. `seededFor` is the logged count the draft was last built for. If the count changes by any
   // route other than this row's own log (a delete from the edit sheet, another device logging), an UNTOUCHED
@@ -52,7 +58,8 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   // for "state derived from a changed prop"; this row's own log sets `seededFor` ahead of the prop, so it
   // never re-seeds itself.
   const [seededFor, setSeededFor] = useState(count);
-  const [untouched, setUntouched] = useState(true);
+  const [untouched, setUntouched] = useState(restored === undefined);
+  const drafts = useDraftPersistence({ workoutId: exercise.workoutId, workoutExerciseId: exercise.id, draft, untouched });
   if (seededFor !== count) {
     setSeededFor(count);
     if (untouched) dispatch({ type: "seed", plannedSets, sets: exercise.sets, defaults });
@@ -66,7 +73,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   // tap within this window with nothing typed in between is the same tap, not a second set.
   const lastLoggedAt = useRef(Number.NEGATIVE_INFINITY);
   const firstTouchAt = useRef<number | null>(null);
-  const edited = useRef(false);
+  const edited = useRef(restored !== undefined);
   // True once the lifter types after tapping Log: on a slow link they may already be entering the next
   // set, and the response must not snap their field back to the set that was just logged.
   const editedSinceTap = useRef(false);
@@ -129,6 +136,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
         firstTouchAt.current = null;
         edited.current = false;
         setUntouched(true);
+        drafts.clear();
       }
       setSeededFor(count + 1); // this row's own log: the prop will catch up, and must not re-seed
     } catch (error) {

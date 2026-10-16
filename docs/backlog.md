@@ -370,3 +370,61 @@ carry (targets from the logged sets?).
 
 **Status: Open.** A [Spec 10.0](specs/10.0-routines-ui.md) non-goal; today a copy means
 building the routine again by hand.
+
+## BL-15
+
+**Spec 12: two `ExportControl`s are mounted at once, so the export UI and its live region are duplicated.**
+
+**Status: Open.** Found by an automated `/code-review` of the Spec 06.5 branch (2026-10-15); not yet reproduced.
+`ProfileForm` shares one exporter between `AccountDataSection` and the delete dialog's
+step 1 ([Spec 12](specs/12-account-lifecycle-ui.md) D13). `ConfirmDialog` renders its
+children while closed, so both controls exist in the DOM, each with its own
+`role="status"`. When an export finishes, a screen reader announces "Saved…" twice and
+both controls show the download or error state; `getByRole("status")` is ambiguous in
+tests.
+
+**Done looks like:** the dialog's control is rendered only while the dialog is open (or
+the live region lives in one place), with a test that exactly one status region exists
+after an export.
+
+## BL-16
+
+**Spec 12: Escape during an in-flight `DELETE /v1/account` can bypass the settle window or leave a dead confirm.**
+
+**Status: Open.** Same source as BL-15; not yet reproduced.
+`DeleteAccountSection.close()` resets the step and `settled` while the request may still
+be in flight (`sending.current` true). (a) If the request then fails, the error handler
+reopens at step 2 with `settled` true, and `confirmDisabled` / `busy` follow
+`mutation.isPending` (already false), so Delete is enabled without the AC16 settle
+window. (b) If the lifter reopens during the flight and walks to step 2, the confirm tap
+is silently ignored because `sending.current` is still true, while the button looks
+active.
+
+**Done looks like:** `close()` is a no-op (or disables the confirm visibly) while a delete
+is in flight, and a reopen after a failure restarts the settle window; one test for each
+case.
+
+## BL-17
+
+**Spec 12: an export that fails with 403 `account-deleted` can reset to idle with no message.**
+
+**Status: Open.** Same source as BL-15; not yet reproduced.
+`useExportAccount` returns to `idle` on that failure and relies on the invalidated `me`
+query flipping the app to the deleted screen. If the refetch returns 200 (a race or a
+transient error), "Download my data" flicks back to idle with no file and no notice, so a
+failed export looks like one that never ran.
+
+**Done looks like:** the hook shows its generic failure notice unless `me` confirms the
+account is deleted, with a test for the "`me` still 200" case.
+
+## BL-18
+
+**Spec 12: `contentDisposition.ts` truncates the download filename by UTF-16 code unit.**
+
+**Status: Open.** Same source as BL-15; not yet reproduced. Low.
+Cutting a long `filename*=UTF-8''…` value at the length limit can split a surrogate pair
+and leave a lone surrogate in the `download` name. Windows-reserved names (`CON`) and
+trailing dots are also not handled.
+
+**Done looks like:** truncation counts code points (or backs off a split pair), and the
+reserved-name / trailing-dot cases are either handled or recorded as accepted.

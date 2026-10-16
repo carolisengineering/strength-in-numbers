@@ -14,6 +14,7 @@ import { ExercisePicker } from "../catalog/ExercisePicker";
 import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
+import { useDraftStores } from "./drafts/DraftStoreContext";
 import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
 import { findIncompleteWorkingSets } from "./incomplete";
@@ -87,6 +88,13 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const finish = useFinishWorkout();
   const discard = useDeleteWorkout();
   const setWritePending = useIsSetWritePending();
+  const drafts = useDraftStores();
+
+  // Spec 06.5 AC10: an entry whose exercise is no longer in the workout is dropped on the next write.
+  const exerciseIds = workout.exercises.map((e) => e.id).join(",");
+  useEffect(() => {
+    drafts?.forWorkout(workout.id).retainOnly(new Set(exerciseIds === "" ? [] : exerciseIds.split(",")));
+  }, [drafts, workout.id, exerciseIds]);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState<{ name: string } | null>(null);
@@ -180,6 +188,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const refetchActive = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
 
   const gone = (reason: "gone" | "finished", options?: { refetched?: boolean }) => {
+    drafts?.clearWorkout(workout.id);
     track("workout_conflict", { kind: reason });
     onGone(options);
   };
