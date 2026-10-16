@@ -20,7 +20,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 
 import { localStorageAdapter, memoryStorageAdapter } from "../../storage/storage";
 import { USER_ID } from "../../test/catalogHarness";
-import { createWorkoutFake } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
 import { DRAFTS_KEY, DRAFT_DEBOUNCE_MS, createDraftStores } from "./drafts/draftStore";
@@ -184,6 +184,15 @@ describe("06.5 AC10 — finish, discard and the gone path drop the workout's dra
   it("finishing removes the key", async () => {
     const { user } = await setup();
     await edit(user);
+    await user.click(screen.getByRole("button", { name: "Finish" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(storedDrafts()).toBeNull());
+  });
+
+  it("the gone path removes the key (409 workout-finished, but the workout is still active on re-read)", async () => {
+    const { user, fake } = await setup();
+    await edit(user);
+    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
     await user.click(screen.getByRole("button", { name: "Finish" }));
     await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
     await waitFor(() => expect(storedDrafts()).toBeNull());
