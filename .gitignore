@@ -15,5 +15,8 @@ apps/web/e2e/.auth/
 apps/web/test-results/
 apps/web/playwright-report/
 
+# Spec 17.0 — screenshot harness output (pnpm --filter @sin/web run screens).
+apps/web/.screens/
+
 # Obsidian vault config for anyone opening the repo as a vault
 .obsidian/

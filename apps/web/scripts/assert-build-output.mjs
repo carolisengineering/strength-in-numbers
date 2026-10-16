@@ -111,4 +111,14 @@ assert(
     : `emitted chunks still import "@sin/core": ${leaks.join(", ")}`,
 );
 
+// ── 4. the screenshot harness's fake Auth0 never reaches production (Spec 17.0 AC19) ──
+const HARNESS_MARKER = "sin-screens-harness-fake-auth";
+const harnessLeaks = jsFiles.filter((f) => readFileSync(f, "utf8").includes(HARNESS_MARKER));
+assert(
+  harnessLeaks.length === 0,
+  harnessLeaks.length === 0
+    ? "no emitted chunk carries the screenshot harness's fake-auth marker (Spec 17.0 AC19)"
+    : `the screenshot harness's fake Auth0 module leaked into: ${harnessLeaks.join(", ")}`,
+);
+
 process.exit(failed ? 1 : 0);
