@@ -84,7 +84,7 @@ describe("AC5 — the browser bar follows a forced theme", () => {
     light.content = "#f3f1ec";
     const dark = document.createElement("meta");
     dark.name = "theme-color";
-    dark.media = "(prefers-color-scheme: dark)";
+    dark.media = "(prefers-color-scheme:dark)"; // spacing must not matter
     dark.content = "#1c1a17";
     document.head.append(light, dark);
     return [light, dark] as const;

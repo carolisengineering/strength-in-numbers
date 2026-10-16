@@ -32,7 +32,7 @@ function apply(pref: ThemePreference): void {
 function syncThemeColor(pref: ThemePreference): void {
   const metas = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
   for (const meta of metas) meta.dataset.osContent ??= meta.content;
-  const forced = isForced(pref) ? metas.find((m) => m.media.includes(`prefers-color-scheme: ${pref}`))?.dataset.osContent : undefined;
+  const forced = isForced(pref) ? metas.find((m) => new RegExp(`prefers-color-scheme:\\s*${pref}\\b`).test(m.media))?.dataset.osContent : undefined;
   for (const meta of metas) meta.content = forced ?? meta.dataset.osContent!;
 }
 
