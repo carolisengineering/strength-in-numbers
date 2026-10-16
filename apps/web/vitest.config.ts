@@ -37,6 +37,8 @@ export default defineConfig({
         // Spec 06.5 AC26: the drafts store and the sign-out guard decide whether typing or sets are lost.
         "src/features/workouts/drafts/**": { lines: 90 },
         "src/features/workouts/logoutGuard.ts": { lines: 90 },
+        // Spec 17.1 §10: the current-exercise rules decide where the lifter's next tap lands.
+        "src/features/workouts/currentExercise.ts": { lines: 90 },
       },
     },
   },
