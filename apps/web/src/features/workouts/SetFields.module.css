@@ -51,14 +51,3 @@
   background: var(--color-surface);
   color: var(--color-text);
 }
-
-.more {
-  color: var(--color-muted);
-}
-
-.summary {
-  display: flex;
-  align-items: center;
-  min-height: var(--tap-target-min);
-  cursor: pointer;
-}

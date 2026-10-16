@@ -16,8 +16,8 @@ describe("AC8 — formatSet and formatDuration", () => {
     expect(formatSet(makeSet(overrides), modality)).toBe(text);
   });
 
-  it("appends RPE and a label for a non-working type", () => {
-    expect(formatSet(makeSet({ rpe: 8 }), "weight_reps")).toBe("60 kg × 8 @8");
+  it("appends a label for a non-working type, and never the RPE (17.1 AC3)", () => {
+    expect(formatSet(makeSet({ rpe: 8 }), "weight_reps")).toBe("60 kg × 8");
     expect(formatSet(makeSet({ setType: "warmup" }), "weight_reps")).toBe("60 kg × 8 (Warm-up)");
     expect(formatSet(makeSet({ setType: "failure", reps: 0 }), "weight_reps")).toBe("60 kg × 0 (Failure)");
   });

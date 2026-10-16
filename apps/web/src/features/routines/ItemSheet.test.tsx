@@ -35,12 +35,11 @@ describe("10.0 AC28 — the item sheet", () => {
     const { onDone, user } = setup();
     await user.type(screen.getByLabelText("Sets"), "3");
     await user.type(screen.getByLabelText("Reps"), "8-10");
-    await user.selectOptions(screen.getByLabelText("RPE"), "8.5");
     await user.type(screen.getByLabelText("Rest"), "1:30");
     await user.type(screen.getByLabelText("Notes"), " slow eccentric ");
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onDone).toHaveBeenCalledWith(
-      { targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8.5, restSeconds: 90 },
+      { targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: null, restSeconds: 90 },
       "slow eccentric",
     );
   });
@@ -69,15 +68,22 @@ describe("10.0 AC28 — the item sheet", () => {
     setup(item({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 9, restSeconds: 125, notes: "belt" }));
     expect(screen.getByLabelText("Sets")).toHaveValue("4");
     expect(screen.getByLabelText("Reps")).toHaveValue("6-8");
-    expect(screen.getByLabelText("RPE")).toHaveValue("9");
+    expect(screen.queryByLabelText(/RPE/)).toBeNull();
     expect(screen.getByLabelText("Rest")).toHaveValue("2:05");
     expect(screen.getByLabelText("Notes")).toHaveValue("belt");
   });
 
-  it("RPE offers No target and 6 … 10 in halves", () => {
+  it("17.1 AC1 — the sheet has no RPE control and nothing labeled RPE", () => {
     setup();
-    const options = Array.from((screen.getByLabelText("RPE") as HTMLSelectElement).options).map((o) => o.textContent);
-    expect(options).toEqual(["No target", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10"]);
+    expect(screen.queryByLabelText(/RPE/)).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /RPE/ })).toBeNull();
+    expect(screen.queryByText(/RPE/)).toBeNull();
+  });
+
+  it.each([8.5, 6, 10])("17.1 AC5 — a stored targetRpe of %s passes through Done untouched", async (targetRpe) => {
+    const { onDone, user } = setup(item({ targetSets: 3, targetRpe }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ targetSets: 3, targetRpe }), null);
   });
 
   it("Close discards edits", async () => {

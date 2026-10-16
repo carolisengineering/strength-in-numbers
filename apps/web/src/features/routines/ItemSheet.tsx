@@ -30,7 +30,6 @@ import {
   parseRest,
   parseSets,
   parseWeight,
-  RPE_CHOICES,
   type Targets,
 } from "./targetFormat";
 import { UnitToggle } from "./UnitToggle";
@@ -85,7 +84,6 @@ export function ItemSheet({
   const [plan, setPlan] = useState<readonly PlanRowText[] | null>(() =>
     item.plan === null ? null : rowsFromPlan(item.plan).map((r) => ({ ...r, reps: showReps ? r.reps : "", weight: showWeight ? r.weight : "" })),
   );
-  const [rpe, setRpe] = useState(item.targetRpe === null ? "" : String(item.targetRpe));
   const [rest, setRest] = useState(item.restSeconds === null ? "" : formatRest(item.restSeconds));
   const [notes, setNotes] = useState(item.notes ?? "");
   const [errors, setErrors] = useState<SheetMessages>(fieldMessages);
@@ -133,7 +131,8 @@ export function ItemSheet({
       setRowErrors(parsedRows.ok ? new Map() : parsedRows.errors);
       if (!parsedRows.ok || !restParsed.ok || !notesParsed.ok) return;
       onPlanned?.({ mode: "rows", rows: parsedRows.rows });
-      onDone({ ...deriveTargets(parsedRows.rows), targetRpe: rpe === "" ? null : Number(rpe), restSeconds: restParsed.value }, notesParsed.value);
+      // targetRpe is not shown (Spec 17.1 Phase A); pass the stored value through so Done never clears it.
+      onDone({ ...deriveTargets(parsedRows.rows), targetRpe: item.targetRpe, restSeconds: restParsed.value }, notesParsed.value);
       return;
     }
 
@@ -153,7 +152,7 @@ export function ItemSheet({
         targetSets: setsParsed.value,
         targetRepsLow: repsParsed.value.low,
         targetRepsHigh: repsParsed.value.high,
-        targetRpe: rpe === "" ? null : Number(rpe),
+        targetRpe: item.targetRpe,
         restSeconds: restParsed.value,
       },
       notesParsed.value,
@@ -215,18 +214,6 @@ export function ItemSheet({
             )}
           </>
         )}
-        <Field id="item-rpe" label="RPE">
-          {(control) => (
-            <select {...control} className={styles.input} value={rpe} onChange={(e) => setRpe(e.target.value)}>
-              <option value="">No target</option>
-              {RPE_CHOICES.map((value) => (
-                <option key={value} value={String(value)}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
         <Field id="item-rest" label="Rest" hint="m:ss, like 1:30" {...(errors.rest ? { error: errors.rest } : {})}>
           {(control) => <input {...control} className={styles.input} inputMode="text" value={rest} onChange={(e) => setRest(e.target.value)} />}
         </Field>

@@ -22,7 +22,7 @@ const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
 const DOUBLE_TAP_MS = 600;
-const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "rpe"]);
+const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds"]);
 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
@@ -49,7 +49,7 @@ export function EntryRow({ exercise, unitPreference, onGone }: EntryRowProps) {
   const restored = useRestoredDraft(exercise.workoutId, exercise.id);
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
     restored
-      ? { ...restored, attemptKey: crypto.randomUUID() }
+      ? { ...restored, rpe: "", attemptKey: crypto.randomUUID() } // Spec 17.1 Phase A: no hidden RPE in a new set
       : seedDraft({ plannedSets, sets: exercise.sets, defaults, attemptKey: crypto.randomUUID() }),
   );
   // Spec 10.2 AC25. `seededFor` is the logged count the draft was last built for. If the count changes by any

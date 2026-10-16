@@ -65,7 +65,7 @@ export function formatSet(set: SetEntry, modality: Modality): string {
       core = `${withUnit(set.distance, set.distanceUnit)} · ${orDash(set.durationS, formatDuration)}`;
       break;
   }
-  const rpe = set.rpe === null ? "" : ` @${NUMBER.format(set.rpe)}`;
+  // Spec 17.1 Phase A: RPE is stored but never shown.
   const tag = set.setType === "working" ? "" : ` (${SET_TYPE_LABELS[set.setType]})`;
-  return `${core}${rpe}${tag}`;
+  return `${core}${tag}`;
 }

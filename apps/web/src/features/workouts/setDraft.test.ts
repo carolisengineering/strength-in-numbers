@@ -125,11 +125,13 @@ describe("AC6 — parseDraft", () => {
     expect(errorsOf(parseDraft("duration", base())).minutes).toBe("Required");
   });
 
-  it("RPE: bounds and one decimal; included only when non-empty", () => {
+  it("RPE (17.1 AC2): a valid value is sent; an invalid one is dropped, never an error; empty is absent", () => {
     const d = { weight: "1", reps: "1" };
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "11" }))).rpe).toBe("RPE must be 1–10");
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "0.5" }))).rpe).toBe("RPE must be 1–10");
-    expect(errorsOf(parseDraft("weight_reps", base({ ...d, rpe: "8.55" }))).rpe).toBe("RPE must be 1–10");
+    for (const bad of ["11", "0.5", "8.55", "abc"]) {
+      const r = parseDraft("weight_reps", base({ ...d, rpe: bad }));
+      expect(r.ok, bad).toBe(true);
+      expect(r.ok && "rpe" in r.body, bad).toBe(false);
+    }
     const ok = parseDraft("weight_reps", base({ ...d, rpe: "8,5" }));
     expect(ok.ok && ok.body.rpe).toBe(8.5);
     const none = parseDraft("weight_reps", base(d));
@@ -170,11 +172,14 @@ describe("AC7 — diffForPatch", () => {
   it("reps and set type edits are diffed", () => {
     expect(diffForPatch(set(), body({ reps: 9, setType: "drop" }))).toEqual({ reps: 9, setType: "drop" });
   });
-  it("cleared RPE → { rpe: null }", () => {
-    expect(diffForPatch(set({ rpe: 8 }), body())).toEqual({ rpe: null });
+  // Spec 17.1 Phase A (AC2): RPE has no input, so an edit never sends it — neither a "cleared" null when the
+  // stored value fails to round-trip through the draft, nor a different value.
+  it("17.1 AC2: a body without rpe does not clear a stored RPE", () => {
+    expect(diffForPatch(set({ rpe: 8 }), body())).toBeNull();
+    expect(diffForPatch(set({ rpe: 8 }), body({ reps: 9 }))).toEqual({ reps: 9 });
   });
-  it("a changed RPE is sent", () => {
-    expect(diffForPatch(set({ rpe: 8 }), body({ rpe: 9 }))).toEqual({ rpe: 9 });
+  it("17.1 AC2: an RPE in the body is never sent", () => {
+    expect(diffForPatch(set({ rpe: 8 }), body({ rpe: 9 }))).toBeNull();
   });
   it("no change → null", () => {
     expect(diffForPatch(set(), body())).toBeNull();
@@ -233,7 +238,6 @@ describe("draftFieldForPath — a server field path names an input", () => {
     ["distance", "distance"],
     ["distanceUnit", "distance"],
     ["durationS", "minutes"],
-    ["rpe", "rpe"],
     ["body.weight", "weight"],
     ["/reps", "reps"],
     ["sets.0.durationS", "minutes"],
@@ -241,7 +245,8 @@ describe("draftFieldForPath — a server field path names an input", () => {
     expect(draftFieldForPath(path)).toBe(field);
   });
 
-  it.each(["isComplete", "setType", "", "body", "weights"])("%j matches no input", (path) => {
+  // "rpe" has no input since Spec 17.1 Phase A, so its errors fall to the form-level message.
+  it.each(["isComplete", "setType", "", "body", "weights", "rpe", "/rpe"])("%j matches no input", (path) => {
     expect(draftFieldForPath(path)).toBeNull();
   });
 });
@@ -312,11 +317,13 @@ describe("10.2 AC22 — seedDraft overlays the next planned row on today's copy-
     const logged = set({ rpe: 8 });
     expect(seed([planRow(), planRow({ setType: "drop" })], [logged])).toMatchObject({ setType: "drop", rpe: "" });
   });
-  it("after the plan (extra) and with no plan (none) the result is exactly draftFromSet", () => {
+  it("after the plan (extra) and with no plan (none) the result is draftFromSet with RPE blank (17.1 AC2)", () => {
     const logged = set({ weight: 60, reps: 8, rpe: 8 });
-    expect(seed([planRow()], [logged])).toEqual(draftFromSet(logged, KG, "k1"));
-    expect(seed([], [logged])).toEqual(draftFromSet(logged, KG, "k1"));
+    // Spec 17.1 Phase A: RPE is hidden, so a new set never inherits the previous set's value.
+    expect(seed([planRow()], [logged])).toEqual({ ...draftFromSet(logged, KG, "k1"), rpe: "" });
+    expect(seed([], [logged])).toEqual({ ...draftFromSet(logged, KG, "k1"), rpe: "" });
     expect(seed([], [])).toEqual(draftFromSet(null, KG, "k1"));
+    expect(draftFromSet(logged, KG, "k1").rpe).toBe("8"); // the edit sheet still sees the stored value
   });
   it("a null field is '' — never '0'", () => {
     const draft = seed([planRow({ repsLow: null, repsHigh: null, weight: null, weightUnit: null })], []);

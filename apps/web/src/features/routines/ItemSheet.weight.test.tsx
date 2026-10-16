@@ -110,7 +110,8 @@ describe("10.2 AC11 — fields gated by exercise", () => {
     for (const label of shown) expect(screen.getByLabelText(label)).toBeInTheDocument();
     for (const label of hidden) expect(screen.queryByLabelText(label)).toBeNull();
     if (hidden.includes("Weight")) expect(screen.queryByRole("group", { name: "Weight unit" })).toBeNull();
-    for (const label of ["RPE", "Rest", "Notes"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    for (const label of ["Rest", "Notes"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/RPE/)).toBeNull(); // 17.1 AC1
   });
 });
 

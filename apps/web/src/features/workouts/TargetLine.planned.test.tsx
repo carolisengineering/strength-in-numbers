@@ -44,7 +44,8 @@ describe("10.2 AC29 — the active card", () => {
     prepareApp({ auth, fake });
     renderApp("/app/workouts");
     const card = await screen.findByRole("article", { name: /^Bench/ });
-    expect(within(card).getByText("3 × 6–10 @ 60–100 kg · RPE 8")).toBeInTheDocument();
+    expect(within(card).getByText("3 × 6–10 @ 60–100 kg")).toBeInTheDocument();
+    expect(within(card).queryByText(/RPE/)).toBeNull(); // the fixture has targetRpe 8: stored, never shown (17.1 AC4)
   });
 });
 
@@ -57,14 +58,16 @@ describe("10.2 AC30 — the finished workout shows the weight too, at both route
     const detail = finished();
     prepareApp({ auth, fake: createWorkoutFake({ finished: [detail] }) });
     renderApp(path(detail.id));
-    expect(await screen.findByText("3 × 6–10 @ 60–100 kg · RPE 8")).toBeInTheDocument();
+    expect(await screen.findByText("3 × 6–10 @ 60–100 kg")).toBeInTheDocument();
+    expect(screen.queryByText(/RPE/)).toBeNull();
     expect(screen.queryByText(/planned|of 3/i)).toBeNull(); // no planned-versus-logged comparison
   });
   it("an item with no planned weights renders exactly as in 10.1", async () => {
     const detail = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [ramp({ plannedSets: [] })] });
     prepareApp({ auth, fake: createWorkoutFake({ finished: [detail] }) });
     renderApp(`/app/workouts/${detail.id}`);
-    expect(await screen.findByText("3 × 6–10 · RPE 8")).toBeInTheDocument();
+    expect(await screen.findByText("3 × 6–10")).toBeInTheDocument();
+    expect(screen.queryByText(/RPE/)).toBeNull();
   });
   it("the History LIST row shows no target line", async () => {
     const detail = finished();

@@ -12,7 +12,6 @@ import {
   parseWeight,
   plannedWeightText,
   REST_MESSAGE,
-  RPE_CHOICES,
   routineSummary,
   targetLine,
   WEIGHT_MESSAGE,
@@ -83,10 +82,6 @@ describe("10.0 AC9 — sets, RPE and notes bounds come from the core schema", ()
     expect(parseSets("3")).toEqual({ ok: true, value: 3 });
   });
 
-  it("RPE choices are 6 to 10 in halves", () => {
-    expect(RPE_CHOICES).toEqual([6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10]);
-  });
-
   it("notes: blank → null, trimmed, capped at the core constant", () => {
     expect(parseNotes("   ")).toEqual({ ok: true, value: null });
     expect(parseNotes("  pause at bottom ")).toEqual({ ok: true, value: "pause at bottom" });
@@ -103,10 +98,10 @@ describe("10.0 AC9 — targetLine renders only what is set", () => {
     [{ targetSets: 3 }, "3 sets"],
     [{ targetSets: 1 }, "1 set"],
     [{ targetRepsLow: 8, targetRepsHigh: 10 }, "8–10 reps"],
-    [{ targetRpe: 8 }, "RPE 8"],
-    [{ targetRpe: 8.5 }, "RPE 8.5"],
+    [{ targetRpe: 8 }, ""],
+    [{ targetRpe: 8.5 }, ""],
     [{ restSeconds: 120 }, "2:00"],
-    [{ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 }, "3 × 8–10 · RPE 8 · 2:00"],
+    [{ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 }, "3 × 8–10 · 2:00"],
   ])("%j → %j", (partial, line) => {
     expect(targetLine({ ...none, ...partial })).toBe(line);
   });
@@ -223,16 +218,39 @@ describe("10.2 AC3 — targetLine with a plan", () => {
   });
 
   it.each([
-    [T({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8.5, restSeconds: 120 }), [kg(100), kg(100), kg(100), kg(100)], "4 × 6–8 @ 100 kg · RPE 8.5 · 2:00"],
+    [T({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8.5, restSeconds: 120 }), [kg(100), kg(100), kg(100), kg(100)], "4 × 6–8 @ 100 kg · 2:00"],
     [T({ targetSets: 3, targetRepsLow: 6, targetRepsHigh: 10 }), [kg(60), kg(80), kg(100)], "3 × 6–10 @ 60–100 kg"],
     [T({ targetSets: 3 }), [kg(60), kg(80), kg(100)], "3 sets @ 60–100 kg"],
     [T({ targetSets: 1 }), [kg(40)], "1 set @ 40 kg"],
     [T({ targetRepsLow: 8, targetRepsHigh: 10 }), [kg(20)], "8–10 reps @ 20 kg"],
     [T({ targetRepsLow: 1, targetRepsHigh: 1 }), [kg(20)], "1 rep @ 20 kg"],
     [T(), [kg(100)], "@ 100 kg"],
-    [T({ targetRpe: 8 }), [kg(100)], "@ 100 kg · RPE 8"],
+    [T({ targetRpe: 8 }), [kg(100)], "@ 100 kg"],
     [T({ targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5 }), [kg(60), lb(135)], "2 × 5"],
   ])("%j with %j → %s", (targets, sets, expected) => {
     expect(targetLine(targets, sets)).toBe(expected);
+  });
+});
+
+describe("17.1 AC4 — targetLine never shows RPE", () => {
+  const T = (o: Partial<Targets> = {}): Targets => ({ ...none, ...o });
+  it.each<[string, Targets, string]>([
+    ["RPE alone", T({ targetRpe: 8 }), ""],
+    ["half-step RPE alone", T({ targetRpe: 8.5 }), ""],
+    ["with sets and reps", T({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 9 }), "3 × 8–10"],
+    ["with rest", T({ targetRpe: 7.5, restSeconds: 90 }), "1:30"],
+    ["with sets, reps and rest", T({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8.5, restSeconds: 120 }), "4 × 6–8 · 2:00"],
+  ])("%s, without weight", (_n, targets, expected) => {
+    expect(targetLine(targets)).toBe(expected);
+  });
+  it.each<[string, Targets, string]>([
+    ["with weight", T({ targetRpe: 8 }), "@ 100 kg"],
+    ["with sets, reps, weight and rest", T({ targetSets: 4, targetRepsLow: 6, targetRepsHigh: 8, targetRpe: 8.5, restSeconds: 120 }), "4 × 6–8 @ 100 kg · 2:00"],
+  ])("%s", (_n, targets, expected) => {
+    expect(targetLine(targets, [kg(100), kg(100), kg(100), kg(100)])).toBe(expected);
+  });
+  it("the accessible name built from a line never carries RPE", () => {
+    const line = targetLine(T({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: 8, restSeconds: 120 }));
+    expect(itemAccessibleName("Bench press", 1, line, false)).toBe("Bench press, superset 1, 3 × 8–10 · 2:00");
   });
 });

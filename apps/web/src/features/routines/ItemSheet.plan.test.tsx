@@ -22,7 +22,7 @@ function setup(initial = item(), extra: { modality?: Modality | null; defaultUni
 const rowsCount = () => screen.queryAllByRole("group", { name: /^Set \d+$/ }).length;
 
 describe("10.2 AC12 — Plan each set", () => {
-  it("the quick line always offers it; it replaces Sets / Reps / Weight with rows and keeps RPE, Rest, Notes", async () => {
+  it("the quick line always offers it; it replaces Sets / Reps / Weight with rows and keeps Rest, Notes (no RPE, 17.1 AC1)", async () => {
     const { user } = setup(item({ targetSets: 3, targetRepsLow: 6, targetRepsHigh: 8, weight: 100, weightUnit: "kg" }));
     await user.click(screen.getByRole("button", { name: "Plan each set" }));
     expect(rowsCount()).toBe(3);
@@ -30,7 +30,8 @@ describe("10.2 AC12 — Plan each set", () => {
     expect(screen.getByLabelText("Set 3 weight")).toHaveValue("100");
     expect(screen.queryByLabelText("Sets")).toBeNull();
     expect(screen.queryByRole("button", { name: "Plan each set" })).toBeNull();
-    for (const label of ["RPE", "Rest", "Notes"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    for (const label of ["Rest", "Notes"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/RPE/)).toBeNull();
   });
   it("a blank Sets field makes one row (D11)", async () => {
     const { user } = setup(item());

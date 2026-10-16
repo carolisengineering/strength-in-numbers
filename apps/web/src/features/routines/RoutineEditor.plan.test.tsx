@@ -54,7 +54,9 @@ describe("10.2 AC15 — the weight is in the row summary", () => {
     renderApp(previewPath);
     const list = await screen.findByRole("list", { name: "Exercises" });
     const items = within(list).getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("4 × 6–8 @ 100 kg · RPE 8.5 · 2:00");
+    expect(items[0]).toHaveTextContent("4 × 6–8 @ 100 kg · 2:00");
+    expect(list).not.toHaveTextContent(/RPE/); // targetRpe 8.5 is stored, never shown (17.1 AC4)
+    for (const li of items) expect(li).not.toHaveAccessibleName(/RPE/);
     expect(items[1]).toHaveTextContent("3 × 6–10 @ 60–100 kg");
     expect(items[1]).toHaveAccessibleName(/Barbell Row, 3 × 6–10 @ 60–100 kg/);
     expect(items[2]).toHaveTextContent("8–10 reps");
@@ -63,7 +65,8 @@ describe("10.2 AC15 — the weight is in the row summary", () => {
   it("the editor row shows the same, for a quick item with a weight and for a ramp", async () => {
     prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [everyShape] }) });
     renderApp(editPath);
-    expect(await screen.findByRole("button", { name: /Bench Press, 4 × 6–8 @ 100 kg · RPE 8.5 · 2:00/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Bench Press, 4 × 6–8 @ 100 kg · 2:00/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /RPE/ })).toBeNull(); // 17.1 AC4
     expect(screen.getByRole("button", { name: /Barbell Row, 3 × 6–10 @ 60–100 kg/ })).toBeInTheDocument();
   });
   it("typing a weight on the quick line updates the row line after Done", async () => {
