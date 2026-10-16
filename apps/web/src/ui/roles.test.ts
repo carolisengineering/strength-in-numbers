@@ -91,3 +91,10 @@ describe("AC12 — panels separate by tint, not outline", () => {
     expect(sheets.find((s) => s.path === "ui/Button.module.css")!.css).toMatch(/\.secondary\s*\{[^}]*border-color:\s*var\(--color-border\)/);
   });
 });
+
+describe("17.1 AC40 — the current-set panel is the one new teal use", () => {
+  it("EntryRow.module.css is allow-listed and on the tint-not-outline list", () => {
+    expect(SIGNAL_ALLOWED).toContain("features/workouts/EntryRow.module.css");
+    expect(users(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/)).toContain("features/workouts/EntryRow.module.css");
+  });
+});
