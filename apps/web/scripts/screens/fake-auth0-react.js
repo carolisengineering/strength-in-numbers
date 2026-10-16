@@ -3,9 +3,10 @@
 // vite.config.ts and src/** never reference this directory (AC19), and `assert:build-output` fails if the
 // marker below ever appears in a production build.
 // Logged-out mode: the page sets `window.__SIN_FAKE_AUTH__ = false` (Playwright addInitScript).
-export const SCREENS_HARNESS_MARKER = "sin-screens-harness-fake-auth";
+// The marker sits in the fake user's id (used by every useAuth0 call), so tree-shaking cannot drop it.
+const SCREENS_HARNESS_MARKER = "sin-screens-harness-fake-auth";
 const user = {
-  sub: "auth0|harness-user",
+  sub: `auth0|${SCREENS_HARNESS_MARKER}`,
   name: "Carol Lifter",
   nickname: "carol",
   email: "carol@example.com",

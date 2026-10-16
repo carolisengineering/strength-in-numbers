@@ -1,23 +1,15 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-// Spec 17.0 §6.2–§6.6: each colour role means one thing, and panels separate by tint, not outline.
+import { stylesheets } from "../test/sourceScan";
+
+// Spec 17.0 §6.2–§6.6: each color role means one thing, and panels separate by tint, not outline.
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
-const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "");
-
-function stylesheets(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) stylesheets(path, out);
-    else if (name.endsWith(".css") && name !== "tokens.css") out.push(path);
-  }
-  return out;
-}
-
-const sheets = stylesheets(SRC).map((path) => ({ path: relative(SRC, path), css: strip(readFileSync(path, "utf8")) }));
+const sheets = stylesheets(SRC)
+  .filter((s) => !s.path.endsWith("tokens.css"))
+  .map((s) => ({ path: relative(SRC, s.path), css: s.css }));
 const users = (pattern: RegExp) => sheets.filter((s) => pattern.test(s.css)).map((s) => s.path).sort();
 
 // A later spec that adds a use edits the list in the same change and justifies it in its §12.
@@ -41,12 +33,12 @@ const SIGNAL_ALLOWED = [
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/history/HistoryScreen.module.css"];
 const WARMUP_ALLOWED = ["features/workouts/ExerciseCard.module.css", "features/workouts/FinishedWorkoutScreen.module.css"];
 
-describe("AC6 — colour roles stay single-meaning", () => {
+describe("AC6 — color roles stay single-meaning", () => {
   it("uses brass only on records", () => {
     expect(PR_ALLOWED).toEqual(expect.arrayContaining(users(/--color-pr(-soft)?\b/)));
   });
 
-  it("uses the warm-up colour only on set rows", () => {
+  it("uses the warm-up color only on set rows", () => {
     expect(WARMUP_ALLOWED).toEqual(expect.arrayContaining(users(/--color-warmup\b/)));
   });
 

@@ -18,9 +18,11 @@ afterEach(() => {
 });
 
 describe("AC21 — the switch renders and is accessible", () => {
-  it("is a labeled radiogroup of Light, Dark, System with System checked by default", () => {
+  it("is one labeled group of Light, Dark, System radios with System checked by default", () => {
     render(<ThemeSetting />);
-    const group = screen.getByRole("radiogroup", { name: "Theme" });
+    // The fieldset and its legend are the one labeled group; native radios need no extra radiogroup role.
+    const group = screen.getByRole("group", { name: "Theme" });
+    expect(screen.queryByRole("radiogroup")).toBeNull();
     const radios = within(group).getAllByRole("radio");
     expect(radios.map((r) => r.closest("label")?.textContent)).toEqual(["Light", "Dark", "System"]);
     expect(within(group).getByRole("radio", { name: "System" })).toBeChecked();

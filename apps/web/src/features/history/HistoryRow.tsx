@@ -22,7 +22,7 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
         </span>
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={plural(workout.recordCount, "personal record", "personal records")}>
-            <TrophyIcon className={styles.trophy} />
+            <TrophyIcon />
           </span>
         ) : null}
       </span>

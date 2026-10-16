@@ -20,6 +20,20 @@ function apply(pref: ThemePreference): void {
   const root = document.documentElement;
   if (isForced(pref)) root.dataset.theme = pref;
   else delete root.dataset.theme;
+  syncThemeColor(pref);
+}
+
+/**
+ * The browser's own bar follows the page, not only the OS. index.html carries one `theme-color` tag per OS
+ * scheme (`media="(prefers-color-scheme: …)"`), each set to that theme's ground. A forced theme copies its own
+ * tag's color into both, so whichever tag the browser matches agrees; System restores each tag's original.
+ * No color is written here: the values come from the tags (AC5 pins them to tokens.css).
+ */
+function syncThemeColor(pref: ThemePreference): void {
+  const metas = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+  for (const meta of metas) meta.dataset.osContent ??= meta.content;
+  const forced = isForced(pref) ? metas.find((m) => m.media.includes(`prefers-color-scheme: ${pref}`))?.dataset.osContent : undefined;
+  for (const meta of metas) meta.content = forced ?? meta.dataset.osContent!;
 }
 
 /** The stored choice; anything unreadable or unknown means System. Never throws. */

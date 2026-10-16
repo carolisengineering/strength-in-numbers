@@ -68,8 +68,3 @@
   flex-shrink: 0;
   color: var(--color-pr);
 }
-
-.trophy {
-  width: var(--space-6);
-  height: var(--space-6);
-}

@@ -1,13 +1,15 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { filesUnder, stripCssComments } from "../test/sourceScan";
+
 // Spec 17.0 §6.7: the token set and its contrast, checked from tokens.css itself in both themes.
 const UI = dirname(fileURLToPath(import.meta.url));
 const SRC = join(UI, "..");
-const css = readFileSync(join(UI, "tokens.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = stripCssComments(readFileSync(join(UI, "tokens.css"), "utf8"));
 
 type Block = Record<string, string>;
 
@@ -57,8 +59,8 @@ function contrast(a: string, b: string): number {
 
 // [foreground, backgrounds, minimum, what it is]
 const PAIRS: Array<[string, string[], number, string]> = [
-  ["--color-text", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "body text"],
-  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "secondary text"],
+  ["--color-text", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-pr-soft", "--color-signal-soft"], 4.5, "body text, record lines, selected text"],
+  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "secondary text"],
   ["--color-warmup", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "warm-up set text"],
   ["--color-on-signal", ["--color-signal"], 4.5, "primary button / selected chip text"],
   ["--color-signal", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "links, nav label, CTA text"],
@@ -89,15 +91,9 @@ describe("AC1 — the Stone token set", () => {
   });
 
   it("has no --color-accent / --color-on-accent anywhere in src", () => {
-    const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        if (statSync(path).isDirectory()) walk(path);
-        else if (/\.(css|tsx?)$/.test(name) && !name.endsWith(".test.ts") && /--color-(on-)?accent\b/.test(readFileSync(path, "utf8"))) offenders.push(path);
-      }
-    };
-    walk(SRC);
+    const offenders = filesUnder(SRC, /\.(css|tsx?)$/)
+      .filter((path) => !path.endsWith(".test.ts"))
+      .filter((path) => /--color-(on-)?accent\b/.test(readFileSync(path, "utf8")));
     expect(offenders).toEqual([]);
   });
 });

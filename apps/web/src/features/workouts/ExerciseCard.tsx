@@ -10,6 +10,7 @@ import type { RowSync } from "./outbox/project";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
+import { WarmupMark } from "./WarmupMark";
 
 export interface ExerciseCardProps {
   exercise: WorkoutExerciseDetail;
@@ -158,11 +159,7 @@ export function ExerciseCard({
                   onClick={() => setEditing(set)}
                 >
                   <span className={styles.setNumber}>{set.setNumber}</span>
-                  {/* Spec 17.0 AC8: the visible cue; "(Warm-up)" in the row's text stays the accessible one. The slot
-                      is on every row so the weights of warm-up and working sets share one column. */}
-                  <span className={styles.warmupMark} aria-hidden="true">
-                    {set.setType === "warmup" ? "W" : ""}
-                  </span>
+                  <WarmupMark setType={set.setType} />
                   <span>{formatSet(set, exercise.modalitySnapshot)}</span>
                   {/* Text, not color alone, marks the row (AC33). */}
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}

@@ -9,8 +9,9 @@
   background: var(--color-surface);
 }
 
+/* An info notice keeps a hairline so it never reads as one more content card. */
 .info {
-  border-color: transparent;
+  border-color: var(--color-line);
 }
 
 .warning {

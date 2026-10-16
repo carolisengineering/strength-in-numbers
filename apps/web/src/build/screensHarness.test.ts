@@ -1,26 +1,19 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+
+import { filesUnder } from "../test/sourceScan";
 
 // Spec 17.0 §6.10: the screenshot harness lives in apps/web/scripts/screens and must stay a dev tool.
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SRC = join(WEB, "src");
 const HARNESS = join(WEB, "scripts", "screens");
 
-function files(dir: string, match: RegExp, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) files(path, match, out);
-    else if (match.test(name)) out.push(path);
-  }
-  return out;
-}
-
 describe("AC18 — the screenshot harness is portable", () => {
   it("names no machine-specific path", () => {
-    const offenders = files(HARNESS, /\.(mjs|js|md)$/).filter((f) => /\/Users\/|\/home\/|[A-Z]:\\\\/.test(readFileSync(f, "utf8")));
+    const offenders = filesUnder(HARNESS, /\.(mjs|js|md)$/).filter((f) => /\/Users\/|\/home\/|[A-Z]:\\\\/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
   });
 
@@ -38,7 +31,7 @@ describe("AC19 — the harness's fake Auth0 cannot reach production", () => {
   });
 
   it("is never referenced from src/**", () => {
-    const offenders = files(SRC, /\.(ts|tsx|css)$/)
+    const offenders = filesUnder(SRC, /\.(ts|tsx|css)$/)
       .filter((f) => !f.endsWith("screensHarness.test.ts"))
       .filter((f) => /scripts\/screens|fake-auth0-react/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);

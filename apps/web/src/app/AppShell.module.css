@@ -103,7 +103,7 @@
   text-overflow: ellipsis;
 }
 
-/* Where you are: teal, and bold so the cue is not colour alone (Spec 17.0 D4). */
+/* Where you are: teal, and bold so the cue is not color alone (Spec 17.0 D4). */
 .navTarget[aria-current="page"] {
   color: var(--color-signal);
   font-weight: 700;

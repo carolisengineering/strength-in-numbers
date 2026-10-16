@@ -43,11 +43,6 @@
   line-height: 1;
 }
 
-.closeIcon {
-  width: var(--space-6);
-  height: var(--space-6);
-}
-
 .body {
   flex: 1;
   overflow-y: auto;

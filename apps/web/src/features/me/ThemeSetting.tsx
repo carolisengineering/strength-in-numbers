@@ -13,7 +13,7 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
  * Light / Dark / System (Spec 17.0 §5.4, AC21–AC22). A per-device display setting: it applies instantly and
  * is stored on this device only, so it has no Save button and never touches `/v1/me`. Native radios inside
  * labels give arrow-key and screen-reader behavior for free; the checked option is filled and checked, never
- * marked by colour alone.
+ * marked by color alone.
  */
 export function ThemeSetting() {
   const [value, setValue] = useState<ThemePreference>(() => readThemePreference());
@@ -28,7 +28,7 @@ export function ThemeSetting() {
   return (
     <fieldset className={styles.fieldset} aria-describedby={hintId}>
       <legend className={styles.legend}>Theme</legend>
-      <div className={styles.options} role="radiogroup" aria-label="Theme">
+      <div className={styles.options}>
         {OPTIONS.map((option) => (
           <label key={option.value} className={styles.option}>
             <input

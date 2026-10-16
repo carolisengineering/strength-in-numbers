@@ -60,7 +60,7 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
         <>
           <header className={styles.header}>
             <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
-              <CloseIcon className={styles.closeIcon} />
+              <CloseIcon />
             </button>
             <h2 className={styles.title} id={titleId}>
               {title}

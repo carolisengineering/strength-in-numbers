@@ -11,6 +11,9 @@
  *   3. bundled `@sin/core` (no unresolved / externalised import of it survives
  *      into the emitted JS).
  *   4. carries the Spec 06.3 `sin-commit` meta stamp (`index.html`, check 1e).
+ *   5. self-hosts the Instrument Sans woff2 under a content hash, inlines no font as a `data:` URL, loads
+ *      nothing from another origin, and preloads the hashed font (Spec 17.0 AC11).
+ *   6. carries no trace of the screenshot harness's fake Auth0 module (Spec 17.0 AC19).
  *
  * Any failure exits non-zero.
  */
@@ -126,7 +129,7 @@ assert(
   "index.html preloads the hashed font (as=font, crossorigin)",
 );
 
-// ── 4. the screenshot harness's fake Auth0 never reaches production (Spec 17.0 AC19) ──
+// ── 6. the screenshot harness's fake Auth0 never reaches production (Spec 17.0 AC19) ──
 const HARNESS_MARKER = "sin-screens-harness-fake-auth";
 const harnessLeaks = jsFiles.filter((f) => readFileSync(f, "utf8").includes(HARNESS_MARKER));
 assert(

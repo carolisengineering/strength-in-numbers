@@ -75,3 +75,35 @@ describe("AC24 — a device preference survives logout", () => {
     expect(storage.get("sin:workout:drafts")).toBeNull();
   });
 });
+
+describe("AC5 — the browser bar follows a forced theme", () => {
+  function addMetas() {
+    const light = document.createElement("meta");
+    light.name = "theme-color";
+    light.media = "(prefers-color-scheme: light)";
+    light.content = "#f3f1ec";
+    const dark = document.createElement("meta");
+    dark.name = "theme-color";
+    dark.media = "(prefers-color-scheme: dark)";
+    dark.content = "#1c1a17";
+    document.head.append(light, dark);
+    return [light, dark] as const;
+  }
+
+  it("copies the forced theme's ground into both tags, and System restores them", () => {
+    const [light, dark] = addMetas();
+    const storage = memoryStorageAdapter();
+
+    setThemePreference("dark", storage);
+    expect([light.content, dark.content]).toEqual(["#1c1a17", "#1c1a17"]);
+
+    setThemePreference("light", storage);
+    expect([light.content, dark.content]).toEqual(["#f3f1ec", "#f3f1ec"]);
+
+    setThemePreference("system", storage);
+    expect([light.content, dark.content]).toEqual(["#f3f1ec", "#1c1a17"]);
+    light.remove();
+    dark.remove();
+  });
+});
+

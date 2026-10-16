@@ -22,6 +22,7 @@ import { SessionSection } from "./SessionSectionHeading";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
+import { WarmupMark } from "./WarmupMark";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -146,10 +147,7 @@ function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: Sup
           {exercise.sets.map((set) => (
             <li key={set.id} className={set.setType === "warmup" ? `${styles.set} ${styles.warmup}` : styles.set} data-set-type={set.setType}>
               <span className={styles.setNumber}>{set.setNumber}</span>
-              {/* Spec 17.0: as on the active card — a W slot on every row, so the weights share a column. */}
-              <span className={styles.warmupMark} aria-hidden="true">
-                {set.setType === "warmup" ? "W" : ""}
-              </span>
+              <WarmupMark setType={set.setType} />
               <span>{formatSet(set, exercise.modalitySnapshot)}</span>
             </li>
           ))}

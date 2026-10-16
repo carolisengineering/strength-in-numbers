@@ -1,8 +1,8 @@
 /*
  * Design tokens (Spec 04.1 §6.2; the "Stone" identity, Spec 17.0). The whole design vocabulary lives here
  * as CSS custom properties on `:root`; every `*.module.css` reads values only through `var(--…)` —
- * `scripts/assert-css-tokens.mjs` fails CI on a hard-coded colour or px value anywhere else, and
- * `tokens.contrast.test.ts` checks every colour pair against WCAG 2.2 AA in both themes.
+ * `scripts/assert-css-tokens.mjs` fails CI on a hard-coded color or px value anywhere else, and
+ * `tokens.contrast.test.ts` checks every color pair against WCAG 2.2 AA in both themes.
  *
  * Light is the base (designed for a gym in daylight); dark follows the OS (`prefers-color-scheme`) or the
  * Profile switch (`data-theme` on <html>, set by `ui/theme.ts`). The dark values are written twice, in the
@@ -10,13 +10,13 @@
  * keeps the two identical. Sizes are `rem` so they scale with the user's font setting; radii and the
  * minimum tap target are the physical-ish exceptions.
  *
- * Colour roles mean one thing each (Spec 17.0 §6.2): signal (teal) is the interactive colour, brass is
+ * Color roles mean one thing each (Spec 17.0 §6.2): signal (teal) is the interactive color, brass is
  * records only, warm-up sets are muted, danger is destructive or failed, warning is "needs attention".
  */
 :root {
   color-scheme: light dark;
 
-  /* colour: ground and ink */
+  /* color: ground and ink */
   --color-bg: #f3f1ec;
   --color-surface: #fbfaf7;
   --color-surface-raised: #ffffff;
@@ -27,7 +27,7 @@
   /* decorative hairlines only */
   --color-line: #e3ded5;
 
-  /* colour: roles */
+  /* color: roles */
   --color-signal: #1f5f5b;
   --color-on-signal: #ffffff;
   --color-signal-soft: #e1ebe8;

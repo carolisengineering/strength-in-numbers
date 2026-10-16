@@ -77,24 +77,32 @@ describe("AC2 — main.tsx misconfiguration fallback", () => {
 });
 
 describe("17.0 AC23 — the stored theme is applied before React mounts", () => {
+  let root: HTMLDivElement;
+
+  beforeEach(() => {
+    resetConfigCache();
+    root = document.createElement("div");
+    document.body.append(root);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
   afterEach(() => {
     window.localStorage.removeItem("sin:pref:theme");
     delete document.documentElement.dataset.theme;
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     resetConfigCache();
+    root.remove();
   });
 
-  it("sets data-theme from storage before the first render, even when the config is broken", () => {
+  it("sets data-theme from storage even when the config is broken (it runs before the config parse)", () => {
+    stubEnv({ ...VALID_ENV, VITE_AUTH0_DOMAIN: "" });
     window.localStorage.setItem("sin:pref:theme", "dark");
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const root = document.createElement("div");
-    document.body.append(root);
-    // A broken config renders the static fallback without the app; the theme must already be applied.
     act(() => {
       bootstrap(root);
     });
+    expect(root.textContent).toMatch(/not set up right/i); // the static fallback: no app mounted
     expect(document.documentElement.dataset.theme).toBe("dark");
-    root.remove();
   });
 
   it("is the first statement of bootstrap()", () => {

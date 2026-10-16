@@ -1,23 +1,15 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { stripCssComments as strip, stylesheets } from "../test/sourceScan";
+
 const UI = dirname(fileURLToPath(import.meta.url));
 const SRC = join(UI, "..");
 const WEB = join(SRC, "..");
-const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "");
-
-function stylesheets(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) stylesheets(path, out);
-    else if (name.endsWith(".css")) out.push(path);
-  }
-  return out;
-}
-const sheets = stylesheets(SRC).map((path) => ({ path, css: strip(readFileSync(path, "utf8")) }));
+const sheets = stylesheets(SRC);
 
 describe("AC9 — the font is self-hosted and declared correctly", () => {
   const fontsCss = strip(readFileSync(join(UI, "fonts.css"), "utf8"));
