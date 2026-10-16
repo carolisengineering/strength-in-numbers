@@ -48,11 +48,10 @@ export function NumberStepper({ id, label, unit, value, inputMode, error, decrea
             />
           )}
         </Field>
-        {unit ? (
-          <span className={styles.unit} aria-hidden="true">
-            {unit}
-          </span>
-        ) : null}
+        {/* Always present, so two steppers side by side line up on their inputs; empty for reps. */}
+        <span className={styles.unit} aria-hidden="true">
+          {unit ?? "\u00a0"}
+        </span>
       </div>
       <Button variant="secondary" className={styles.step} aria-label={increaseLabel} disabled={!canIncrease} onClick={onIncrease}>
         <PlusIcon />

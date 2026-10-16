@@ -117,3 +117,13 @@ describe("17.1 AC35 — progress stays positional", () => {
     for (const path of ["./currentExercise.ts", "./summaryLine.ts", "./unloggedPlanned.ts"]) expect(stripComments(read(path)), path).not.toMatch(/setNumber/);
   });
 });
+
+describe("17.1 AC24 — the steppers keep their numbers readable on a phone", () => {
+  it("the entry panel's measures wrap to one column before a stepper gets narrower than --stepper-min-width", () => {
+    const css = read("./SetFields.module.css");
+    const at = css.indexOf(".entryMeasures {");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(css.slice(at, css.indexOf("}", at))).toMatch(/minmax\(min\(100%, var\(--stepper-min-width\)\), 1fr\)/);
+    expect(read("../../ui/tokens.css")).toMatch(/--stepper-min-width:/);
+  });
+});

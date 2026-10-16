@@ -156,6 +156,8 @@ async function layoutDump(page) {
         pinned: pinnedOf(el),
         disabled: el.disabled || el.getAttribute("aria-disabled") === "true" || undefined,
         smallTarget: r.width < 44 || r.height < 44 || undefined,
+        // A text input too narrow for its own value (Spec 17.1 AC24: the steppers' numbers must be readable).
+        clipped: (el.tagName === "INPUT" && el.scrollWidth > el.clientWidth + 1) || undefined,
         offscreenX: r.left < 0 || r.right > vw + 0.5 || undefined,
       };
     });
@@ -266,7 +268,8 @@ async function shoot(page, device, name, note) {
   dump.scroller = sc.tag;
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
-  const small = dump.items.filter((it) => it.smallTarget && !it.disabled && it.visibleNow).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h}`);
+  // Every enabled control on the page counts, scrolled into view or not (a below-the-fold panel is still the panel).
+  const small = dump.items.filter((it) => (it.smallTarget || it.clipped) && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h}${it.clipped ? " clipped" : ""}`);
   report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0), smallTargets: small });
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }

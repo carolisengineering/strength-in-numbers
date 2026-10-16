@@ -90,6 +90,10 @@
   /* the narrowest a set-entry field column gets before the row wraps to one column (fits two at 320px) */
   --field-min-width: 7rem;
 
+  /* the narrowest a stepper (two 3rem buttons around a figure that fits "102.5") gets before the entry panel stacks its
+     measures (Spec 17.1 AC24: two side by side do not fit at 390px) */
+  --stepper-min-width: 13rem;
+
   /* card insets: every card-like panel uses these, so their edges line up */
   --card-pad-block: var(--space-3);
   --card-pad-inline: var(--space-4);

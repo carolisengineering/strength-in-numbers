@@ -125,7 +125,7 @@ function EntryFields(props: Common) {
   const figure = `${styles.input} ${styles.figureInput}`;
   return (
     <div className={styles.fields}>
-      <div className={styles.measures}>
+      <div className={`${styles.measures} ${styles.entryMeasures}`}>
         {measures.map((measure) => {
           switch (measure) {
             case "weight":

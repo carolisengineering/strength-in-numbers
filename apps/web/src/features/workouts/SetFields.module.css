@@ -16,6 +16,11 @@
   min-width: 0;
 }
 
+/* The entry panel's steppers: weight and reps share a row only where both numbers stay readable, else they stack. */
+.entryMeasures {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--stepper-min-width)), 1fr));
+}
+
 /* A value and its unit select side by side; the unit is a narrow second column. */
 .withUnit {
   display: flex;
