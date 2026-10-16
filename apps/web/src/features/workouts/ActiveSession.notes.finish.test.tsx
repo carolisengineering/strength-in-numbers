@@ -87,7 +87,7 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     await user.click(sheet.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("1 note couldn't be saved")).toBeInTheDocument();
     expect(finishButton()).toBeDisabled();
-    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard" }));
+    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: /^Discard / }));
     await waitFor(() => expect(finishButton()).toBeEnabled());
   });
 
@@ -179,7 +179,7 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     const card = within(screen.getByRole("article", { name: "X" }));
     expect(await card.findByText("Couldn't save")).toBeInTheDocument();
     expect(observability.track).not.toHaveBeenCalledWith("set_sync_failed", expect.anything());
-    await user.click(card.getByRole("button", { name: "Discard" }));
+    await user.click(card.getByRole("button", { name: /^Discard note / }));
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 });

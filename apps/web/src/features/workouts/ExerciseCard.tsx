@@ -122,14 +122,15 @@ export function ExerciseCard({
             {noteSync?.state === "failed" ? (
               <>
                 <span className={styles.failedTag}>Couldn't save</span>
-                <Button variant="secondary" onClick={() => onDiscardOp?.(noteSync.opId)}>
+                <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
                   Discard
                 </Button>
               </>
             ) : null}
           </div>
         </div>
-        <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+        {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
+        <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
           Options
         </Button>
       </header>
@@ -180,11 +181,11 @@ export function ExerciseCard({
                 {rowSync?.state === "failed" ? (
                   <span className={styles.rowActions}>
                     {rowSync.status === 422 ? (
-                      <Button variant="secondary" onClick={() => setEditing(set)}>
+                      <Button variant="secondary" aria-label={`Edit set ${set.setNumber} of ${exercise.exerciseNameSnapshot}`} onClick={() => setEditing(set)}>
                         Edit
                       </Button>
                     ) : null}
-                    <Button variant="secondary" onClick={() => onDiscardOp?.(rowSync.opId)}>
+                    <Button variant="secondary" aria-label={`Discard set ${set.setNumber} of ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(rowSync.opId)}>
                       Discard
                     </Button>
                   </span>

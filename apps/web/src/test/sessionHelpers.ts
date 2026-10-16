@@ -23,8 +23,8 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const logButton = (name: string): HTMLElement =>
   within(screen.getByTestId("session-bar")).getByRole("button", { name: new RegExp(`^Log .* for ${escape(name)}$`) });
 
-/** The current card's Options toggle. */
-export const optionsButton = (name: string): HTMLElement => within(card(name)).getByRole("button", { name: "Options" });
+/** The card's Options toggle, "Options for {exercise}" (Spec 17.1 AC38); `name` is the card's name, so a superset card works too. */
+export const optionsButton = (name: string | RegExp): HTMLElement => within(card(name)).getByRole("button", { name: /^Options for / });
 
 /** The control that opens the Finish dialog. */
 export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });

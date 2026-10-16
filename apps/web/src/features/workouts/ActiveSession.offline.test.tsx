@@ -183,8 +183,8 @@ describe("06.2 AC14 — every set row shows its sync state", () => {
     );
     await logSet(user, "5");
     const row = await failedRow();
-    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    await user.click(within(row).getByRole("button", { name: "Discard" }));
+    expect(within(row).getByRole("button", { name: /^Edit set / })).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: /^Discard set / }));
     expect(card().queryByRole("button", { name: /× 5/ })).not.toBeInTheDocument();
   });
 
@@ -193,7 +193,7 @@ describe("06.2 AC14 — every set row shows its sync state", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-error"));
     await logSet(user, "5");
     const row = await failedRow();
-    await user.click(within(row).getByRole("button", { name: "Edit" }));
+    await user.click(within(row).getByRole("button", { name: /^Edit set / }));
     const sheet = screen.getByRole("dialog", { name: /Set 2/ });
     await user.type(within(sheet).getByLabelText("Reps"), "{Control>}a{/Control}6");
     await user.click(within(sheet).getByRole("button", { name: "Save" }));
@@ -226,7 +226,7 @@ describe("06.2 AC15 — the status line", () => {
     expect(await screen.findByText("1 set couldn't be saved")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("article", { name: "X" })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
-    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard" }));
+    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: /^Discard / }));
     expect(screen.queryByTestId("sync-status")).not.toBeInTheDocument();
   });
 
@@ -287,7 +287,7 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     await logSet(user, "5");
     const row = await failedRow();
     expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 409 });
-    await user.click(within(row).getByRole("button", { name: "Discard" }));
+    await user.click(within(row).getByRole("button", { name: /^Discard set / }));
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 

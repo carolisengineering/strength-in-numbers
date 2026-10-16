@@ -163,7 +163,7 @@ describe("10.3 AC28 — delivery", () => {
     await user.click(sheet.getByRole("button", { name: "Save" }));
     expect(await cardX().findByText("Couldn't save")).toBeInTheDocument();
     expect(cardX().getByText("Will fail")).toBeInTheDocument();
-    await user.click(cardX().getByRole("button", { name: "Discard" }));
+    await user.click(cardX().getByRole("button", { name: /^Discard note / }));
     await waitFor(() => expect(cardX().getByText("Pause every rep")).toBeInTheDocument());
     expect(observability.track.mock.calls.some(([name]) => String(name).startsWith("set_sync"))).toBe(false);
   });

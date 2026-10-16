@@ -19,7 +19,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, makeSet, makeWorkoutDetail, routineId } from "../../test/workoutFixtures";
-import { createWorkoutFake } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
@@ -442,5 +442,56 @@ describe("10.3 AC37 — accessibility (component level): editor", () => {
     const dialog = await screen.findByRole("dialog", { name: "Add section" });
     expect(within(dialog).getByRole("group", { name: "Section names" })).toBeInTheDocument();
     for (const control of dialog.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
+  });
+});
+
+describe("17.1 AC38 — no bare button names on the session screen", () => {
+  async function three() {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        exercises: [
+          { modality: "weight_reps", name: "Bench", sets: [makeSet({ setNumber: 1 })] },
+          { modality: "bodyweight_reps", name: "Pull-up" },
+          { modality: "weight_reps", name: "Row" },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    return { fake, ...app };
+  }
+  const names = () => screen.getAllByRole("button").map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
+
+  it("every visible button name is unique or carries its exercise", async () => {
+    const { user } = await three();
+    await user.click(screen.getByRole("button", { name: "Options for Bench" }));
+    await user.click(screen.getByRole("button", { name: "Set options" }));
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    const all = names();
+    for (const bare of ["Options", "Log set", "More", "Edit", "Discard"]) expect(all).not.toContain(bare);
+    const repeated = all.filter((n, i) => all.indexOf(n) !== i);
+    // The open Workout menu's item and the list end's Finish workout (AC30, AC33) open the same dialog: one action,
+    // one name (WCAG 3.2.4 consistent identification), so that pair is the only repeat allowed without an exercise.
+    const sameAction = ["Finish workout"];
+    expect(repeated.filter((n) => !sameAction.includes(n) && !["Bench", "Pull-up", "Row"].some((e) => n.includes(e)))).toEqual([]);
+  });
+
+  it("the steppers say what they step, by the draft's unit", async () => {
+    await three();
+    expect(screen.getByRole("button", { name: "Decrease weight by 2.5 kg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Decrease reps" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Increase reps" })).toBeInTheDocument();
+  });
+
+  it("a failed row's actions name the set and the exercise", async () => {
+    const { fake, user } = await three();
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }));
+    await user.click(logButton("Bench"));
+    expect(await screen.findByRole("button", { name: "Edit set 2 of Bench" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard set 2 of Bench" })).toBeInTheDocument();
+    // The sync line's Discard says what it throws away (no bare "Discard" on the session screen).
+    expect(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard 1 set that couldn't be saved" })).toBeInTheDocument();
   });
 });
