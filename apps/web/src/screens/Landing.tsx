@@ -1,5 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { login } from "../auth/login";
 import { Button } from "../ui/Button";
@@ -26,18 +26,22 @@ export interface LandingProps {
 export function Landing({ returnTo }: LandingProps) {
   const { loginWithRedirect } = useAuth0();
   const [busy, setBusy] = useState(false);
+  // The guard itself: a ref, because two events in one task share a render, and `busy` would read false in both.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) setBusy(false);
+      if (!event.persisted) return;
+      inFlight.current = false;
+      setBusy(false);
     };
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
   const start = () => {
-    // A second event can arrive before React re-renders the disabled button.
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     login(loginWithRedirect, returnTo);
   };

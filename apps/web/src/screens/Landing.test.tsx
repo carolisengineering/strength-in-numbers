@@ -172,6 +172,18 @@ describe("17.3 AC12 — a second tap does nothing", () => {
     expect(button).toHaveTextContent(/^Log in$/);
   });
 
+  it("two clicks in the same task, before any re-render, still start one login", () => {
+    renderLanding();
+    const button = screen.getByRole("button", { name: /log in/i });
+
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    expect(auth.loginWithRedirect).toHaveBeenCalledTimes(1);
+  });
+
   it("Enter and Space after the first activation call nothing more", async () => {
     renderLanding();
     const button = screen.getByRole("button", { name: /log in/i });
