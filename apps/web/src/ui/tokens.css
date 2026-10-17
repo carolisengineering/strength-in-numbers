@@ -83,6 +83,8 @@
 
   /* a screen's inset from the viewport edge; ActionBar bleeds across exactly this much */
   --screen-pad: var(--space-4);
+  /* Spec 17.1 AC44: the rest line across the top of the workout screen (3 px). */
+  --rest-line-height: 0.1875rem;
 
   /* the height a bottom ActionBar takes (one row of buttons plus its padding), kept clear when scrolling to focus */
   --action-bar-clearance: calc(var(--tap-target-min) + 2 * var(--space-3) + var(--space-4));

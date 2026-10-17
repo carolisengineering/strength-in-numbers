@@ -28,6 +28,7 @@ const SIGNAL_ALLOWED = [
   "features/catalog/CreateExerciseForm.module.css",
   "features/history/HistoryScreen.module.css",
   "features/workouts/FinishedWorkoutScreen.module.css",
+  "features/workouts/RestLine.module.css",
   // Spec 17.1 D12: the current-set panel (signal-soft ground, teal set label) is the "do this next" surface.
   "features/workouts/EntryRow.module.css",
   "features/me/ThemeSetting.module.css",

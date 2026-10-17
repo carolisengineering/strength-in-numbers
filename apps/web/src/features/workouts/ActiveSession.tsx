@@ -18,7 +18,9 @@ import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
 import { advanceAfterLog } from "./currentExercise";
 import { useDraftStores } from "./drafts/DraftStoreContext";
-import { useRestStores } from "./useRestTimer";
+import { RestLine } from "./RestLine";
+import { restAfterLog } from "./restTimer";
+import { useRestStore, useRestStores } from "./useRestTimer";
 import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
@@ -103,6 +105,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const setWritePending = useIsSetWritePending();
   const drafts = useDraftStores();
   const restStores = useRestStores();
+  const rest = useRestStore(workout.id);
 
   // Spec 06.5 AC10: an entry whose exercise is no longer in the workout is dropped on the next write.
   const exerciseIds = workout.exercises.map((e) => e.id).join(",");
@@ -179,15 +182,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   });
 
   /**
-   * Spec 17.1 AC14–AC15: after a log, move current per `advanceAfterLog`, read from the cache the log just wrote
-   * (this render's `rows` may not hold the new set yet). Never when the lifter typed since the tap, and never when
-   * they already moved to another exercise (a late response).
+   * Spec 17.1 AC14–AC15 and AC41–AC42: after a log, read the cache the log just wrote (this render's `rows` may not
+   * hold the new set yet). The rest is decided first and always (a typed-since-tap log still rests); then current moves
+   * per `advanceAfterLog`, never when the lifter typed since the tap and never when they already moved elsewhere.
    */
   function onLogged({ exerciseId, set, advance, wasExtra }: LoggedEvent) {
-    if (!advance || currentIdRef.current !== exerciseId) return;
     const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
     if (!fresh || fresh.id !== workout.id) return;
     const freshRows = supersetRows(fresh.exercises);
+    const restFor = restAfterLog({ rows: freshRows, loggedId: exerciseId, setType: set.setType });
+    if (restFor) rest?.start(restFor.durationS);
+    else rest?.clear();
+    if (!advance || currentIdRef.current !== exerciseId) return;
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
     if (next === exerciseId) return;
     // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
@@ -639,6 +645,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   return (
     <LogActionContext.Provider value={logStore}>
     <Screen title="Workout">
+      <RestLine workoutId={workout.id} />
       <WorkoutMenu
         leading={
           <>

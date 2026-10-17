@@ -7,6 +7,7 @@ import { DOUBLE_TAP_MS, LogActionContext, logLabel } from "./logAction";
 import { nextPlanned, setLabel } from "./plannedSets";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
+import { RestReadout } from "./RestReadout";
 import { SetFields, type DraftEditField } from "./SetFields";
 import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, unitDefaultsFor, type DraftField } from "./setDraft";
 import { useCreateSet } from "./useWorkoutMutations";
@@ -196,6 +197,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
     <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
       <div className={styles.labelRow}>
         <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
+        <RestReadout workoutId={exercise.workoutId} />
       </div>
       <SetFields
         variant="entry"
