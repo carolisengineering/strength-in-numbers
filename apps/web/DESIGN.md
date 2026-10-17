@@ -292,6 +292,9 @@ One secondary "Workout menu" button in the top row beside the elapsed clock reve
 ### Rest line and readout
 A 3px line (`--rest-line-height`) across the top of the workout screen: a `--color-line` track with a `--color-signal` fill, sticky at the top of the scroller and bleeding across the screen padding. It fills once a second as the rest runs and is gone at zero. Its slot is always mounted, so a rest starting or ending never moves the page. It is a native `<progress>` inside an `aria-hidden` slot, because the production CSP forbids inline style; "Rest over" is said once, politely, outside the hidden slot. The readout is "Rest m:ss", then "Ready" at zero, a figure in the panel's label row, not teal (the panel's label is the teal element). `RestLine.module.css` is on the signal allow-list in `roles.test.ts`. No sound, vibration or notification (Spec 17.1 D10).
 
+### Finish stats
+A `ul` of figures over small muted labels: "52 min / duration", "4 / exercises", "18 / sets", and "14,250 lb / volume" when a working set qualifies. Figures use the figure tokens (tabular); the row wraps (2 x 2 at 390 px) and never clips a long figure. Shared by both Finish dialogs (three stats, no volume) and the summary header (four). It is static: no animation, no live region, nothing announced on arrival (Spec 17.2 AC13). "sets" counts working sets only.
+
 ### Records panel
 A Brass Wash panel (10px, card insets) with a bold Record Brass headline and ink record lines. On light, brass on its wash is the thinnest contrast in the system (about 4.5:1), so its text stays bold and large. In History, a record is a brass drawn trophy beside the row, labeled "1 personal record".
 

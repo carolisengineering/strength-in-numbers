@@ -1,4 +1,5 @@
 import type { FinishStatsValue } from "./finishStats";
+import styles from "./FinishDialog.module.css";
 import { FinishStats } from "./FinishStatsList";
 import type { UnloggedPlanned } from "./unloggedPlanned";
 
@@ -10,12 +11,12 @@ const sets = (n: number) => (n === 1 ? "1 set" : `${n} sets`);
  */
 export function FinishDialogBody({ stats, unitPreference, unlogged, note }: { stats: FinishStatsValue; unitPreference: "kg" | "lb"; unlogged?: UnloggedPlanned; note: string }) {
   return (
-    <>
+    <div className={styles.body}>
       <FinishStats stats={stats} unitPreference={unitPreference} />
       {unlogged && unlogged.total > 0 ? (
         <>
           <p>{unlogged.total === 1 ? "1 planned set not logged" : `${unlogged.total} planned sets not logged`}</p>
-          <ul>
+          <ul className={styles.list}>
             {unlogged.byExercise.map((e) => (
               <li key={e.id}>
                 {e.name} · {sets(e.count)}
@@ -25,6 +26,6 @@ export function FinishDialogBody({ stats, unitPreference, unlogged, note }: { st
         </>
       ) : null}
       <p>{note}</p>
-    </>
+    </div>
   );
 }

@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(join(here, p), "utf8");
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const NEW_TS = ["./finishStats.ts", "./FinishStatsList.tsx", "./FinishDialog.tsx"];
-const NEW_CSS = ["./FinishStatsList.module.css"];
+const NEW_CSS = ["./FinishStatsList.module.css", "./FinishDialog.module.css"];
 
 describe("17.2 AC7 — the finish flow is not touched", () => {
   it("the new modules never name finishLock, confirmFinish or useFinishWorkout", () => {
