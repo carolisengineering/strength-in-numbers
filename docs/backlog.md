@@ -475,3 +475,25 @@ Design questions to settle first:
 **Done looks like:** a numbered spec pair (API, UI) with the table, the public route and its
 limits, the approval path and the landing copy decided; the Auth0 sign-up setting recorded
 as a decision; the purge/export implications written down.
+
+## BL-20
+
+**Restyle `AuthError` on the front door.**
+
+**Status: Open.** Deferred out of [Spec 17.3](specs/17.3-landing-page.md) (D14, owner
+2026-10-17). After 17.3, `Landing` and `ResumingSession` share the `FrontDoor` title card, but
+`screens/AuthError.tsx` ("Couldn't sign you in", Auth0's `error_description`, a "Try again"
+button to `/?signin`) is still the unstyled Spec 04.0 placeholder. It shows only after a
+canceled or failed login, so it is rarer than the other two, but it is the screen a lifter
+sees when something went wrong.
+
+Design questions to settle first:
+- Whether it reuses `FrontDoor` (name, hairline, the message as the line, "Try again" as the
+  one primary Button) or reads as an error first (the name smaller, the message in ink).
+- How to show Auth0's `error_description`, which is free text of unknown length and wording:
+  verbatim under a plain sentence, or only for some error codes.
+- `Try again` must keep going to `/?signin` (the hint-cookie loop guard, Spec 04.0 AC6).
+
+**Done looks like:** `AuthError` on the front-door design with its behavior and test ids
+unchanged, captured by the screenshot harness in both themes.
+
