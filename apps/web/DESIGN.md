@@ -173,7 +173,7 @@ Each color is defined twice: light in `:root` (the frontmatter values) and dark 
 - **Selected / On-Selected** (`--color-selected`, `--color-on-selected`): aliases of signal and on-signal for the fill and text of a chosen option (chips, segments, the theme switch). They are separate names so selection can diverge later without a sweep.
 
 ### Secondary
-- **Record Brass** (`pr`; dark `#d8b566`): records, and nothing else. The heading of the records block and the History trophy badge. **Brass Wash** (`pr-soft`; dark `#3a3120`) is the records panel's ground. The record lines themselves stay ink.
+- **Record Brass** (`pr`; dark `#d8b566`): records, and nothing else. The heading of the records section, the gain and "First record" on a record card, and the History trophy badge with its count. **Brass Wash** (`pr-soft`; dark `#3a3120`) is the record cards' ground. The figures themselves stay ink.
 
 ### Tertiary (state)
 - **Quiet Brick** (`danger`; dark `#e58b7a`): destructive *and* failed. Delete, discard, a write that did not save ("Couldn't save"), field errors, the error notice. It does not mean "important".
@@ -296,7 +296,7 @@ A 3px line (`--rest-line-height`) across the top of the workout screen: a `--col
 A `ul` of figures over small muted labels: "52 min / duration", "4 / exercises", "18 / sets", and "14,250 lb / volume" when a working set qualifies. Figures use the figure tokens (tabular); the row wraps (2 x 2 at 390 px) and never clips a long figure. Shared by both Finish dialogs (three stats, no volume) and the summary header (four). It is static: no animation, no live region, nothing announced on arrival (Spec 17.2 AC13). "sets" counts working sets only.
 
 ### Record cards
-Under a bold Record Brass heading ("Personal records" and "N new"), one Brass Wash card per exercise (10px, card insets, a tint and no outline): the exercise name and the lead set ("82.5 kg x 5"), the lead label, the new value large in ink, the gain in bold brass ("+2.5 kg") or "First record", a muted "was 80 kg", then the exercise's other records as name-only chips on a neutral surface tint. Set-volume records are not shown. On light, brass on its wash is the thinnest contrast in the system (about 4.5:1), so brass text stays bold and large. Progress keeps the plain records list. `RecordCardList.module.css` is on the brass allow-list. In History, a record is a brass drawn trophy plus "N PRs" beside the row (the accessible name stays "N personal records"); a workout with no records shows nothing there.
+Under a bold Record Brass heading ("Personal records" and "N new"), one Brass Wash card per exercise (10px, card insets, a tint and no outline): the exercise name and the lead set ("82.5 kg × 5"), the lead label, the new value large in ink, the gain in bold brass ("+2.5 kg") or "First record", a muted "was 80 kg", then the exercise's other records as name-only chips on a neutral surface tint. Set-volume records are not shown. On light, brass on its wash is the thinnest contrast in the system (about 4.5:1), so brass text stays bold and large. Progress keeps the plain records list. `RecordCardList.module.css` is on the brass allow-list. In History, a record is a brass drawn trophy plus "N PRs" beside the row (the accessible name stays "N personal records"); a workout with no records shows nothing there.
 
 ### Notices
 `InlineNotice` is a Stone Panel block (10px, 0.75rem by 1rem). Info has no outline; warning and error add a 1px Burnt Orange or Quiet Brick outline, and the words carry the meaning. There is no colored side stripe.
