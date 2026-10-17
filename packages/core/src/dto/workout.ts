@@ -181,7 +181,7 @@ export const WorkoutSummarySchema = WorkoutSchema.extend({
   workingSetCount: z.number().int().min(0),
   /** kg × reps over qualifying working sets; `null` when none qualifies — never 0. */
   totalVolume: z.number().positive().nullable(),
-  /** `personal_record` rows this workout holds now (07.0 D18). */
+  /** `personal_record` rows this workout holds now (07.0 D18), not counting `best_set_volume` (Spec 07.3): the figure the finish summary lists. */
   recordCount: z.number().int().min(0),
 });
 export type WorkoutSummary = z.infer<typeof WorkoutSummarySchema>;
