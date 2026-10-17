@@ -71,7 +71,7 @@ const stored = () => localStorageAdapter().get(REST_KEY);
 
 // Clock arithmetic used below: logOnce starts the rest at t0 and leaves t at t0 + 1 s, so a 120 s rest reads 1:59.
 
-describe("17.1 AC41 / AC44 — a working set starts the exercise's rest: readout in the panel, line at the top", () => {
+describe("17.1 AC41 / AC44 — a working set starts the exercise rest: readout in the panel, line at the top", () => {
   it("counts from the clock, with an aria-hidden line that fills", async () => {
     const { user, fake } = await setup([ex("A"), ex("B")]);
     await logOnce(user, fake);
