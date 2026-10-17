@@ -18,6 +18,24 @@ export function recordLabel(type: RecordType): string {
   }
 }
 
+/** Chip names on a record card (Spec 17.2 AC20): short, because a chip carries a name and nothing else. */
+export function shortRecordLabel(type: RecordType): string {
+  switch (type) {
+    case "heaviest_weight":
+      return "Heaviest";
+    case "best_est_1rm":
+      return "Est. 1RM";
+    case "best_set_volume":
+      return "Set volume";
+    case "max_reps":
+      return "Most reps";
+    default: {
+      const unreachable: never = type;
+      throw new Error(`Unhandled record type: ${String(unreachable)}`);
+    }
+  }
+}
+
 /**
  * Name, then the record-type order — so the finish response and the GET (whose server orderings are
  * specified independently) render the same list (Spec 08.0 §6.5).
