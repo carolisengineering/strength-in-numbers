@@ -37,7 +37,7 @@ describe("17.1 AC39 — (c) the panel's numbers use the signature figure tokens"
 });
 
 const SRC = join(here, "..", "..");
-const NEW_CSS = ["./NumberStepper.module.css", "./WorkoutMenu.module.css", "./SessionClock.module.css", "../../ui/VisuallyHidden.module.css"];
+const NEW_CSS = ["./NumberStepper.module.css", "./WorkoutMenu.module.css", "./SessionClock.module.css", "./RestReadout.module.css", "../../ui/VisuallyHidden.module.css"];
 
 describe("17.1 AC40 — roles and tokens", () => {
   it("teal in the new and changed workout stylesheets appears only in EntryRow.module.css", () => {

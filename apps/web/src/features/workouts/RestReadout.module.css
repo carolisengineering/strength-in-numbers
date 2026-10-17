@@ -1,0 +1,8 @@
+/* Spec 17.1 AC44: the rest countdown, a figure in the panel's label row (tabular digits come from body). */
+.readout {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-figure);
+  font-stretch: var(--font-stretch-figure);
+}

@@ -346,6 +346,20 @@ try {
       await page.getByRole("article", { name: "Plank" }).getByRole("heading", { level: 2 }).getByRole("button").click();
       await shoot(page, device, "24-duration-exercise", "Plank current: Minutes / Seconds fields, no steppers");
     });
+    await tryStep("rest running", async () => {
+      await go("/app/workouts");
+      // Bench Press: two planned warm-ups (no rest), then a working set with a stored 180 s rest.
+      const benchHeading = page.getByRole("article", { name: /^Bench/ }).getByRole("heading", { level: 2 }).getByRole("button");
+      if (await benchHeading.count()) await benchHeading.click();
+      for (let i = 0; i < 3; i += 1) {
+        await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
+        await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
+      }
+      await page.waitForTimeout(1500);
+      await page.getByRole("timer").scrollIntoViewIfNeeded();
+      await shoot(page, device, "26-rest-running", "A working set logged: Rest m:ss in the panel and the teal line at the top");
+      await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
+    });
     await tryStep("finish mode", async () => {
       state.done = true;
       await go("/app/workouts");

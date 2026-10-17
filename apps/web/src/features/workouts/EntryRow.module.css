@@ -8,7 +8,7 @@
   background: var(--color-signal-soft);
 }
 
-/* The label row: "Set 3 of 4" now, the rest readout beside it in Phase C. */
+/* The label row: "Set 3 of 4" now, the rest readout beside it. */
 .labelRow {
   display: flex;
   align-items: baseline;

@@ -39,6 +39,8 @@ export default defineConfig({
         "src/features/workouts/logoutGuard.ts": { lines: 90 },
         // Spec 17.1 §10: the current-exercise rules decide where the lifter's next tap lands.
         "src/features/workouts/currentExercise.ts": { lines: 90 },
+        // Spec 17.1 §10: the rest store decides what a reload shows mid-rest.
+        "src/features/workouts/restStore.ts": { lines: 90 },
       },
     },
   },

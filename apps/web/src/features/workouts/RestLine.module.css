@@ -1,0 +1,36 @@
+/*
+ * Spec 17.1 AC44 / D12: the rest line. Sticky at the top of the scroller, bleeding across Screen's side padding like the
+ * ActionBar. Always mounted; its negative bottom margin cancels its own height and Screen's gap, so the page sits
+ * exactly where it did before Phase C.
+ */
+.slot {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--rest-line-height);
+  margin-inline: calc(-1 * var(--screen-pad));
+  margin-block-end: calc(-1 * (var(--rest-line-height) + var(--space-4)));
+}
+
+/* A native <progress> (aria-hidden by the slot): the fill needs no inline style. It steps once a second. */
+.fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  appearance: none;
+  border: 0;
+  background: var(--color-line);
+  color: var(--color-signal);
+}
+
+.fill::-webkit-progress-bar {
+  background: var(--color-line);
+}
+
+.fill::-webkit-progress-value {
+  background: var(--color-signal);
+}
+
+.fill::-moz-progress-bar {
+  background: var(--color-signal);
+}
