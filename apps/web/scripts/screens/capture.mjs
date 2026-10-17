@@ -277,6 +277,7 @@ async function checkFrontDoor(page, label) {
       nameOffset: (n.top + n.bottom) / 2 - (col.top + l.top) / 2,
       spanLines: [...main.querySelectorAll("h1 span, p span")].map(lines),
       hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      nameTop: n.top,
       nameStyle: { stretch: name.fontStretch, weight: name.fontWeight, align: getComputedStyle(column).textAlign },
       space4: rootPx,
       space6: 1.5 * rootPx,
@@ -526,6 +527,15 @@ try {
     await ap.getByTestId("resuming-session").waitFor();
     await shoot(ap, device, "00b-resuming", "Resuming your session, the front door's other screen (Spec 17.3 AC14)");
     await checkFrontDoor(ap, `${theme}/${device}/00b-resuming`);
+    // "Go to sign in" leads straight to the landing, so the name must not move between the two (Spec 17.3 §5.2).
+    {
+      const [landing, resuming] = frontDoor.slice(-2);
+      const drift = Math.abs(landing.nameTop - resuming.nameTop);
+      if (drift > 1) {
+        resuming.violations.push(`name ${drift.toFixed(1)}px off the landing's`);
+        console.error(`  FRONT DOOR ${theme}/${device}/00b-resuming: name ${drift.toFixed(1)}px off the landing's`);
+      }
+    }
     await anon.close();
 
     // The smallest phone (Spec 17.3 AC19 / AC21): the landing only.

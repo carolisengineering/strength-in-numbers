@@ -212,7 +212,7 @@ Each color is defined twice: light in `:root` (the frontmatter values) and dark 
 - **Set** (`--font-weight-figure`, `--font-size-set`): a logged set row's weight × reps. A warm-up row drops to body size at weight 400 in Warm Gray, with a bold W.
 - **Body** (400, 1rem, 1.5): running text, notes, list content; screens cap at a 40rem measure.
 - **Label** (600, 0.875rem): field labels, legends, tags, nav labels, hints (hints are 400).
-- **Brand** (700, `--font-size-brand`, a `clamp()` from 3.25 to 5.5rem; `--font-stretch-brand` 75%; `--letter-spacing-brand`; line-height 0.92): the name "Strength in Numbers" on the front door, once per screen, as two authored lines.
+- **Brand** (700, `--font-size-brand`, a `clamp()` from 3.25 to 5.5rem; `--font-stretch-brand` 75%; `--letter-spacing-brand`; line-height 1): the name "Strength in Numbers" on the front door, once per screen, as two authored lines.
 
 ### Named Rules
 **The Figures Are The Content Rule.** Numbers get size, weight and a narrower width from the four figure tokens (`--font-size-figure`, `--font-size-set`, `--font-weight-figure`, `--font-stretch-figure`), never a second family. They are the system's signature.
