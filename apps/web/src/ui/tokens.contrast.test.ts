@@ -60,7 +60,7 @@ function contrast(a: string, b: string): number {
 // [foreground, backgrounds, minimum, what it is]
 const PAIRS: Array<[string, string[], number, string]> = [
   ["--color-text", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-pr-soft", "--color-signal-soft"], 4.5, "body text, record lines, selected text"],
-  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "secondary text (also the current-set panel's labels, Spec 17.1)"],
+  ["--color-muted", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft", "--color-pr-soft"], 4.5, "secondary text (also the current-set panel's labels, Spec 17.1; the record card's \"was\" line, Spec 17.2 AC37)"],
   ["--color-warmup", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "warm-up set text"],
   ["--color-on-signal", ["--color-signal"], 4.5, "primary button / selected chip text"],
   ["--color-signal", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "links, nav label, CTA text"],

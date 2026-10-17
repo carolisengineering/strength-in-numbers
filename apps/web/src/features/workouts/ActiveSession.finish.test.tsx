@@ -365,7 +365,8 @@ describe("08.0 AC21 — finish lands on a summary with its PRs and no extra fetc
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
     const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText(/^X — Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+    expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument(); // 17.2 AC15: a record card
+    expect(within(block).getByText("102.5 kg")).toBeInTheDocument();
     expect(fake.requests.some((r) => r.path === "/v1/personal-records")).toBe(false);
 
     await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "History" }));
@@ -391,7 +392,8 @@ describe("08.0 AC7 — the 409 recovery path gets the cache effects", () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
     const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText(/X — Heaviest weight 102\.5 kg/)).toBeInTheDocument();
+    expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument();
+    expect(within(block).getByText("102.5 kg")).toBeInTheDocument();
     const gets = fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/personal-records");
     expect(gets).toEqual([expect.objectContaining({ search: `?workoutId=${active.id}` })]);
   });
