@@ -7,6 +7,8 @@ import { localStorageAdapter, type StorageAdapter } from "../../storage/storage"
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
+import { createRestStores } from "./restStore";
+import { RestStoresContext } from "./useRestTimer";
 import { createOutbox, type Outbox } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/OutboxContext";
 import type { NoteOp, OutboxOp } from "./outbox/ops";
@@ -72,7 +74,7 @@ export interface WorkoutClientProviderProps {
 export function WorkoutClientProvider({ userId, storage, children }: WorkoutClientProviderProps) {
   const api = useApi();
   const queryClient = useQueryClient();
-  const { outbox, client, drafts } = useMemo(() => {
+  const { outbox, client, drafts, rest } = useMemo(() => {
     const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
     const outbox: Outbox = createOutbox({
@@ -94,7 +96,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     });
-    return { outbox, client, drafts: createDraftStores(adapter, userId) };
+    return { outbox, client, drafts: createDraftStores(adapter, userId), rest: createRestStores(adapter, userId) };
   }, [api, queryClient, storage, userId]);
 
   useEffect(() => outbox.start(), [outbox]);
@@ -103,7 +105,9 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
   return (
     <OutboxContext.Provider value={outbox}>
       <DraftStoresContext.Provider value={drafts}>
-        <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+        <RestStoresContext.Provider value={rest}>
+          <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+        </RestStoresContext.Provider>
       </DraftStoresContext.Provider>
     </OutboxContext.Provider>
   );

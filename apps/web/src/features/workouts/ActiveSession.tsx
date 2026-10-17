@@ -18,6 +18,7 @@ import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
 import { advanceAfterLog } from "./currentExercise";
 import { useDraftStores } from "./drafts/DraftStoreContext";
+import { useRestStores } from "./useRestTimer";
 import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
 import { formatStartedTime } from "./format";
@@ -101,6 +102,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const discard = useDeleteWorkout();
   const setWritePending = useIsSetWritePending();
   const drafts = useDraftStores();
+  const restStores = useRestStores();
 
   // Spec 06.5 AC10: an entry whose exercise is no longer in the workout is dropped on the next write.
   const exerciseIds = workout.exercises.map((e) => e.id).join(",");
@@ -292,6 +294,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
   const gone = (reason: "gone" | "finished", options?: { refetched?: boolean }) => {
     drafts?.clearWorkout(workout.id);
+    restStores?.clearWorkout(workout.id);
     track("workout_conflict", { kind: reason });
     onGone(options);
   };
