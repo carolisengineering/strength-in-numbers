@@ -217,7 +217,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
     });
   });
 
-  describe("AC14 — recordCount is the records a workout holds now", () => {
+  describe("AC14 / 07.3 AC1 / 07.3 AC4 — recordCount is the records a workout holds now, set volume excluded", () => {
     it("matches personal_record and drops after a backdated finish takes a tie", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
@@ -228,12 +228,69 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
         return workoutId;
       };
       const later = await finish(10);
-      expect((await list(u, 1)).items[0]).toMatchObject({ id: later, recordCount: 3 });
+      expect((await list(u, 1)).items[0]).toMatchObject({ id: later, recordCount: 2 }); // 07.3: heaviest weight + est. 1RM; set volume is not counted
       await finish(5); // backdated, ties every record → earliest wins
       const rows = (await list(u, 10)).items;
       expect(rows.find((r) => r.id === later)!.recordCount).toBe(0);
       const counts = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, later);
       expect(counts[0]!.n).toBe(0);
+    });
+  });
+
+  describe("07.3 AC2 — a volume-only workout counts zero", () => {
+    it("lists recordCount 0 while the set-volume row still exists", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
+      await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
+      await db.prisma.$executeRawUnsafe(`DELETE FROM "personal_record" WHERE workout_id = $1::uuid AND record_type <> 'best_set_volume'`, workoutId);
+      expect((await list(u, 1)).items[0]).toMatchObject({ id: workoutId, recordCount: 0 });
+      const rows = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, workoutId);
+      expect(rows[0]!.n).toBe(1);
+    });
+  });
+
+  describe("07.3 AC3 — other record types still count", () => {
+    const finishOne = async (u: string, exercises: { exerciseId: string; modality?: string; sets: { reps: number; weight?: number }[] }[]) => {
+      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises });
+      await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
+      return workoutId;
+    };
+    const types = async (workoutId: string) =>
+      (await db.prisma.$queryRawUnsafe<{ record_type: string }[]>(`SELECT record_type FROM "personal_record" WHERE workout_id = $1::uuid`, workoutId)).map((r) => r.record_type);
+
+    it("a max_reps record is counted", async () => {
+      const u = await insertUser(db);
+      const pushups = await insertExercise(db, { modality: "bodyweight_reps" });
+      const id = await finishOne(u, [{ exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 20 }] }]);
+      const held = await types(id);
+      expect(held).toContain("max_reps");
+      expect((await list(u, 1)).items[0]!.recordCount).toBe(held.filter((t) => t !== "best_set_volume").length);
+      expect((await list(u, 1)).items[0]!.recordCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("three types across a weight_reps and a bodyweight_reps exercise count three", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const pushups = await insertExercise(db, { modality: "bodyweight_reps" });
+      const id = await finishOne(u, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 100 }] },
+        { exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 20 }] },
+      ]);
+      expect(await types(id)).toEqual(expect.arrayContaining(["heaviest_weight", "best_est_1rm", "best_set_volume", "max_reps"]));
+      expect((await list(u, 1)).items[0]).toMatchObject({ id, recordCount: 3 });
+    });
+  });
+
+  describe("07.3 AC5 — the finish response still lists set volume", () => {
+    it("newRecords has 3 entries while the History row says 2", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
+      const finished = await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
+      expect(finished.newRecords).toHaveLength(3);
+      expect(finished.newRecords.map((r) => r.recordType)).toContain("best_set_volume");
+      expect((await list(u, 1)).items[0]).toMatchObject({ id: workoutId, recordCount: 2 });
     });
   });
 
