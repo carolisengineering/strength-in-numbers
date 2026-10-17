@@ -4,7 +4,7 @@
 pnpm --filter @sin/web run screens
 ```
 
-This renders every logged-in screen with a fake Auth0 module and fake API data. It captures each screen in light and dark, at 390 px (phone, 2×) and 1280 px, into `apps/web/.screens/<theme>/<device>/`, which is gitignored. Each screen gets a viewport PNG, a full-scroll `-full.png` and a `.layout.json`. The JSON lists every control's box, small tap targets, overlapping controls, and what the sticky bars cover. `_report.json` collects unmatched API calls and console errors. The run takes a few minutes.
+This renders every logged-in screen with a fake Auth0 module and fake API data, plus the logged-out front door (Spec 17.3: the landing, its focused button, `Resuming your session…` via the Auth0 hint cookie, a 320 x 568 landing under `mobile-320/`, and the landing under the Dark override). The front door's layout measurements go to `_report.json` under `frontDoor`, and any violation fails the run. It captures each screen in light and dark, at 390 px (phone, 2×) and 1280 px, into `apps/web/.screens/<theme>/<device>/`, which is gitignored. Each screen gets a viewport PNG, a full-scroll `-full.png` and a `.layout.json`. The JSON lists every control's box, small tap targets, overlapping controls, and what the sticky bars cover. `_report.json` collects unmatched API calls and console errors. The run takes a few minutes.
 
 **Options**
 - `SCREENS_THEMES=light` captures one theme; `SCREENS_DEVICES=mobile` captures one viewport.

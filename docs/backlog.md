@@ -428,3 +428,72 @@ trailing dots are also not handled.
 
 **Done looks like:** truncation counts code points (or backs off a split pair), and the
 reserved-name / trailing-dot cases are either handled or recorded as accepted.
+
+## BL-19
+
+**Request access / waitlist for closed sign-up.**
+
+**Status: Open.** Deferred out of [Spec 17.3](specs/17.3-landing-page.md) (owner direction,
+2026-10-17: the landing page is design only, with one Log in button). The owner wants
+sign-up closed to strangers, with a waitlist to follow later. This needs its own API-first
+spec (API, then UI), not a button on the landing page.
+
+Design questions to settle first:
+- **Storage.** A new table (for example `access_request`: id, email, created_at, status,
+  decided_at, a note). It is not user-owned (no `user` row exists yet), so Spec 11's
+  "a new user-owned table must cascade from `user`" rule and the purge test's table discovery
+  need a deliberate exception or a retention/erase path. Email is personal data: DESIGN's
+  privacy position and the export/purge story must say what happens to a waitlist row.
+- **Public endpoint.** An unauthenticated `POST /v1/...` is the first `/v1` route without
+  a user. Spec 05.2's limits are per user plus an IP budget (`clientAddress()`); a public
+  write needs its own `writeGroup` and `ipBudget` (small, per IP and global), a duplicate
+  email rule that does not reveal whether an address is already a user or already on the
+  list, a `bodyLimit`, email validation, and bot resistance (a honeypot field, or a
+  challenge) with its CSP and privacy cost. The error contract and OpenAPI opt-in
+  (`config.published`) apply.
+- **Approval path.** Options: an operator script in the `account:purge` style (dry run by
+  default, `--confirm`) that lists pending requests and approves them; an Auth0 invite
+  (Management API call or a manual "create user" in the dashboard) so the approved person
+  gets a set-password email; or a self-serve approval screen (needs an admin role the app
+  does not have). Smallest coherent: operator script plus a manual Auth0 invite, with the
+  email as the join key.
+- **What the page says.** The landing page currently promises nothing about access. A
+  request form needs copy for the form, the confirmation ("we will email you"), the
+  rate-limited and error states, and what an existing user sees (Log in stays the primary
+  Button; the request control is secondary, a link-like control or a separate `/request`
+  route). It must not become a product page.
+- **Interaction with the Auth0 sign-up setting.** If the tenant's sign-ups are closed
+  ("Disable Sign Ups" on the database connection, and no social connections), Log in cannot
+  create accounts and invites are the only way in; if they are open, a waitlist is advisory
+  only. Decide the tenant setting first (owner-side check in Spec 17.3 §12), and whether
+  "Log in" on a closed tenant should explain itself when a stranger tries it (Auth0's own
+  Universal Login message today).
+- **Abuse and email.** Whether to send a confirmation email at all (needs a mail provider,
+  a secret and a bounce story; not in the stack today), or to show the confirmation on
+  screen only and notify the operator by reading the table.
+
+**Done looks like:** a numbered spec pair (API, UI) with the table, the public route and its
+limits, the approval path and the landing copy decided; the Auth0 sign-up setting recorded
+as a decision; the purge/export implications written down.
+
+## BL-20
+
+**Restyle `AuthError` on the front door.**
+
+**Status: Open.** Deferred out of [Spec 17.3](specs/17.3-landing-page.md) (D14, owner
+2026-10-17). After 17.3, `Landing` and `ResumingSession` share the `FrontDoor` title card, but
+`screens/AuthError.tsx` ("Couldn't sign you in", Auth0's `error_description`, a "Try again"
+button to `/?signin`) is still the unstyled Spec 04.0 placeholder. It shows only after a
+canceled or failed login, so it is rarer than the other two, but it is the screen a lifter
+sees when something went wrong.
+
+Design questions to settle first:
+- Whether it reuses `FrontDoor` (name, hairline, the message as the line, "Try again" as the
+  one primary Button) or reads as an error first (the name smaller, the message in ink).
+- How to show Auth0's `error_description`, which is free text of unknown length and wording:
+  verbatim under a plain sentence, or only for some error codes.
+- `Try again` must keep going to `/?signin` (the hint-cookie loop guard, Spec 04.0 AC6).
+
+**Done looks like:** `AuthError` on the front-door design with its behavior and test ids
+unchanged, captured by the screenshot harness in both themes.
+

@@ -245,6 +245,55 @@ async function settle(page) {
 
 const report = [];
 let THEME = "light";
+
+// Spec 17.3 AC19 / AC21 / AC22 / AC24: the front door's composition, measured in the page. Violations go to
+// `_report.json` under `frontDoor`.
+const frontDoor = [];
+async function checkFrontDoor(page, label) {
+  const m = await page.evaluate(() => {
+    const px = (v) => parseFloat(v) || 0;
+    const rootPx = px(getComputedStyle(document.documentElement).fontSize);
+    const main = document.querySelector("main");
+    const column = main.firstElementChild;
+    const h1 = main.querySelector("h1");
+    const line = main.querySelector("p");
+    const control = main.querySelector("button, a");
+    const vh = window.innerHeight;
+    const lines = (el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    };
+    const c = control.getBoundingClientRect(), n = h1.getBoundingClientRect(), l = line.getBoundingClientRect();
+    const col = column.getBoundingClientRect();
+    const name = getComputedStyle(h1);
+    return {
+      narrow: window.innerWidth < 48 * rootPx,
+      controlTopPct: c.top / vh,
+      bottomGap: vh - c.bottom,
+      mainPadBottom: px(getComputedStyle(main).paddingBottom),
+      lineToControl: c.top - l.bottom,
+      // The name's center against the midpoint of the space between the column's top and the hairline.
+      nameOffset: (n.top + n.bottom) / 2 - (col.top + l.top) / 2,
+      spanLines: [...main.querySelectorAll("h1 span, p span")].map(lines),
+      hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      nameTop: n.top,
+      nameStyle: { stretch: name.fontStretch, weight: name.fontWeight, align: getComputedStyle(column).textAlign },
+      space4: rootPx,
+      space6: 1.5 * rootPx,
+    };
+  });
+  const violations = [];
+  if (m.narrow && m.controlTopPct < 0.85) violations.push(`control top at ${(m.controlTopPct * 100).toFixed(1)}% of the viewport (want >= 85%)`);
+  if (m.narrow && Math.abs(m.bottomGap - m.mainPadBottom) > 1) violations.push(`control ${m.bottomGap}px above the bottom, padding is ${m.mainPadBottom}px`);
+  if (Math.abs(m.lineToControl - m.space6) > 1) violations.push(`line to control ${m.lineToControl}px (want space-6)`);
+  if (Math.abs(m.nameOffset) > m.space4) violations.push(`name ${m.nameOffset.toFixed(1)}px off center`);
+  if (m.spanLines.some((n) => n !== 1)) violations.push(`a line span wraps: ${m.spanLines.join(",")}`);
+  if (m.hscroll) violations.push("horizontal scroll");
+  if (m.nameStyle.stretch !== "75%" || m.nameStyle.weight !== "700" || m.nameStyle.align !== "center") violations.push(`name style ${JSON.stringify(m.nameStyle)}`);
+  frontDoor.push({ shot: label, ...m, violations });
+  for (const v of violations) console.error(`  FRONT DOOR ${label}: ${v}`);
+}
 async function shoot(page, device, name, note) {
   await settle(page);
   const dir = path.join(OUT, THEME, device);
@@ -467,7 +516,39 @@ try {
     ap.on("pageerror", (err) => consoleErrors.push(`${device} anon: PAGEERROR ${err.message.slice(0, 300)}`));
     await ap.goto(BASE + "/");
     await shoot(ap, device, "00-landing", "Public landing page, logged out");
+    await checkFrontDoor(ap, `${theme}/${device}/00-landing`);
+    if (device === "mobile") {
+      await ap.keyboard.press("Tab");
+      await shoot(ap, device, "00a-landing-focus", "Landing with the Log in button focused (Spec 17.3 AC28)");
+    }
+    // The Auth0 hint cookie makes / show ResumingSession; the fake loginWithRedirect only logs, so it stays put.
+    await anon.addCookies([{ name: "auth0.harness-client-id.is.authenticated", value: "true", url: BASE }]);
+    await ap.goto(BASE + "/");
+    await ap.getByTestId("resuming-session").waitFor();
+    await shoot(ap, device, "00b-resuming", "Resuming your session, the front door's other screen (Spec 17.3 AC14)");
+    await checkFrontDoor(ap, `${theme}/${device}/00b-resuming`);
+    // "Go to sign in" leads straight to the landing, so the name must not move between the two (Spec 17.3 §5.2).
+    {
+      const [landing, resuming] = frontDoor.slice(-2);
+      const drift = Math.abs(landing.nameTop - resuming.nameTop);
+      if (drift > 1) {
+        resuming.violations.push(`name ${drift.toFixed(1)}px off the landing's`);
+        console.error(`  FRONT DOOR ${theme}/${device}/00b-resuming: name ${drift.toFixed(1)}px off the landing's`);
+      }
+    }
     await anon.close();
+
+    // The smallest phone (Spec 17.3 AC19 / AC21): the landing only.
+    if (device === "mobile") {
+      const small = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
+      await small.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
+      await small.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+      const sp = await small.newPage();
+      await sp.goto(BASE + "/");
+      await shoot(sp, "mobile-320", "00-landing", "Landing at 320 x 568");
+      await checkFrontDoor(sp, `${theme}/mobile-320/00-landing`);
+      await small.close();
+    }
   }
 
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
@@ -480,6 +561,18 @@ try {
     await page.goto(BASE + "/app/profile");
     await shoot(page, "mobile", "17-profile", "Profile on a light OS with the Dark override stored");
     await ctx.close();
+
+    // The landing under the same override (Spec 17.3 AC27).
+    const anon = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light" });
+    await anon.addInitScript(() => {
+      window.__SIN_FAKE_AUTH__ = false;
+      try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ }
+    });
+    await anon.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+    const ap = await anon.newPage();
+    await ap.goto(BASE + "/");
+    await shoot(ap, "mobile", "00-landing", "Landing on a light OS with the Dark override stored");
+    await anon.close();
   }
 } finally {
   await browser.close();
@@ -490,7 +583,8 @@ const SESSION_SHOTS = /\/(01|03|04|2[2-6])-/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, unmatched: [...unmatched], consoleErrors }, null, 1));
+if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

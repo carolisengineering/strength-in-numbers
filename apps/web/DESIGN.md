@@ -212,6 +212,7 @@ Each color is defined twice: light in `:root` (the frontmatter values) and dark 
 - **Set** (`--font-weight-figure`, `--font-size-set`): a logged set row's weight × reps. A warm-up row drops to body size at weight 400 in Warm Gray, with a bold W.
 - **Body** (400, 1rem, 1.5): running text, notes, list content; screens cap at a 40rem measure.
 - **Label** (600, 0.875rem): field labels, legends, tags, nav labels, hints (hints are 400).
+- **Brand** (700, `--font-size-brand`, a `clamp()` from 3.25 to 5.5rem; `--font-stretch-brand` 75%; `--letter-spacing-brand`; line-height 1): the name "Strength in Numbers" on the front door, once per screen, as two authored lines.
 
 ### Named Rules
 **The Figures Are The Content Rule.** Numbers get size, weight and a narrower width from the four figure tokens (`--font-size-figure`, `--font-size-set`, `--font-weight-figure`, `--font-stretch-figure`), never a second family. They are the system's signature.
@@ -298,6 +299,14 @@ A `ul` of figures over small muted labels: "52 min / duration", "4 / exercises",
 ### Record cards
 Under a bold Record Brass heading ("Personal records" and "N new"), one Brass Wash card per exercise (10px, card insets, a tint and no outline): the exercise name and the lead set ("82.5 kg × 5"), the lead label, the new value large in ink, the gain in bold brass ("+2.5 kg") or "First record", a muted "was 80 kg", then the exercise's other records as name-only chips on a neutral surface tint. Set-volume records are not shown. On light, brass on its wash is the thinnest contrast in the system (about 4.5:1), so brass text stays bold and large. Progress keeps the plain records list. `RecordCardList.module.css` is on the brass allow-list. In History, a record is a brass drawn trophy plus "N PRs" beside the row (the accessible name stays "N personal records"); a workout with no records shows nothing there.
 
+### Front door
+The signed-out screens (`Landing`, `ResumingSession`) share one centered title card, `FrontDoor` (Spec 17.3):
+- **Name:** the Brand name, centered in the space above a Hairline.
+- **Line:** one muted line (`--font-size-lg`) under the Hairline.
+- **Bottom control:** the landing's block primary Button, 56px tall and busy after a tap, or the resuming screen's underlined teal link, at least 44px tall.
+- **Column:** a 30rem column that fills a phone's height, putting the control in the thumb zone. From 48rem it is capped at 40rem tall and centered.
+- **Ground:** safe-area padded on all four sides, on Stone Ground. No panel, no mark.
+
 ### Notices
 `InlineNotice` is a Stone Panel block (10px, 0.75rem by 1rem). Info has no outline; warning and error add a 1px Burnt Orange or Quiet Brick outline, and the words carry the meaning. There is no colored side stripe.
 
@@ -313,6 +322,7 @@ Under a bold Record Brass heading ("Personal records" and "N new"), one Brass Wa
 - **Do** pair every color state with a non-color cue (weight, `aria-current`, checked, underline, a W, words).
 - **Do** draw new icons in `ui/icons.tsx` as 24×24, 2px-stroke, `currentColor` SVGs, and put a text label beside each.
 - **Do** keep targets at 44px and place a screen's main actions in the ActionBar.
+- **Do** keep the landing page to the name, one sentence and one Log in button.
 - **Do** keep one primary Button per screen. On the workout screen it is the bottom bar's Log / Finish button; everything else there is secondary or danger.
 
 ### Don't:
