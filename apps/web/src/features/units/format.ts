@@ -1,4 +1,4 @@
-import { kgToLb, type RecordUnit, type UnitPreference } from "@sin/core";
+import { kgToLb, type RecordType, type RecordUnit, type UnitPreference } from "@sin/core";
 
 /**
  * Canonical kg → the lifter's unit (Spec 08.0 §6.4, D8). Pure and React-free so Spec 08.1's chart
@@ -39,4 +39,36 @@ export function formatRecordValue(value: number, unit: RecordUnit, pref: UnitPre
       throw new Error(`Unhandled record unit: ${String(unreachable)}`);
     }
   }
+}
+
+/**
+ * Spec 17.2 §6.4 (AC21-AC23, AC29): an estimated 1RM is an estimate, so it is shown on a coarse step: the nearest 1 lb for
+ * lb accounts, 0.5 kg for kg accounts. Display only (nothing in `@sin/core` changes, and chart data is not rounded).
+ * Arithmetic is on the integer step count, so a gain is a difference of whole steps, never float subtraction noise.
+ */
+const E1RM_SHOWN = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
+
+const e1rmStep = (pref: UnitPreference): number => (pref === "lb" ? 1 : 0.5);
+
+/** The display-unit value divided by its step, rounded half up. */
+export function e1rmSteps(valueKg: number, pref: UnitPreference): number {
+  const display = pref === "lb" ? kgToLb(valueKg) : valueKg;
+  return Math.round(display / e1rmStep(pref));
+}
+
+const stepsText = (steps: number, pref: UnitPreference): string => `${E1RM_SHOWN.format(steps * e1rmStep(pref))} ${pref}`;
+
+export function roundedE1rm(valueKg: number, pref: UnitPreference): string {
+  return stepsText(e1rmSteps(valueKg, pref), pref);
+}
+
+/** "+5 lb" / "+0.5 kg": the difference of the rounded values; `null` when it is not a rise (D16: no "+0"). */
+export function formatE1rmGain(newKg: number, prevKg: number, pref: UnitPreference): string | null {
+  const gain = e1rmSteps(newKg, pref) - e1rmSteps(prevKg, pref);
+  return gain > 0 ? `+${stepsText(gain, pref)}` : null;
+}
+
+/** `formatRecordValue`, except an est. 1RM goes through `roundedE1rm`: the one door for record values by type. */
+export function formatRecordByType(recordType: RecordType, value: number, unit: RecordUnit, pref: UnitPreference): string {
+  return recordType === "best_est_1rm" ? roundedE1rm(value, pref) : formatRecordValue(value, unit, pref);
 }

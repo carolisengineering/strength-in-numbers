@@ -66,5 +66,13 @@
 .badge {
   display: inline-flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--color-pr);
+}
+
+/* Spec 17.2 AC31: the count beside the trophy, brass like the trophy; the badge's accessible name carries the long form. */
+.badgeText {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
 }

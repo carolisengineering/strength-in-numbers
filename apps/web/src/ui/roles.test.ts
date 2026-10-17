@@ -33,7 +33,8 @@ const SIGNAL_ALLOWED = [
   "features/workouts/EntryRow.module.css",
   "features/me/ThemeSetting.module.css",
 ];
-const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/history/HistoryScreen.module.css"];
+// Spec 17.2 AC35: the record cards join the records block and the History badge.
+const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/records/RecordCardList.module.css", "features/history/HistoryScreen.module.css"];
 const WARMUP_ALLOWED = ["features/workouts/ExerciseCard.module.css", "features/workouts/FinishedWorkoutScreen.module.css"];
 
 describe("AC6 — color roles stay single-meaning", () => {
@@ -68,6 +69,7 @@ describe("AC12 — panels separate by tint, not outline", () => {
   const PANELS: Array<[string, string]> = [
     ["features/workouts/ExerciseCard.module.css", ".card"],
     ["features/records/PersonalRecordsBlock.module.css", ".block"],
+    ["features/records/RecordCardList.module.css", ".card"],
     ["features/history/HistoryScreen.module.css", ".row"],
     ["features/workouts/RoutineNotePanel.module.css", ".panel"],
     ["features/progress/ProgressScreen.module.css", ".row"],

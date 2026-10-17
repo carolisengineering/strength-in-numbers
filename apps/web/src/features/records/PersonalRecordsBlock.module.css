@@ -1,24 +1,26 @@
+/* The summary's records section (Spec 17.2): a heading row over the cards; the cards carry the tint. */
 .block {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--card-pad-block) var(--card-pad-inline);
-  border-radius: var(--radius-md);
-  background: var(--color-pr-soft);
 }
 
-/* Brass means a record (Spec 17.0 §6.2); the record lines stay ink. Bold, so brass on its tint has air. */
-.heading {
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+/* Brass means a record (Spec 17.0 §6.2). Bold, so brass has air on the page ground. */
+.heading,
+.count {
+  margin: 0;
   color: var(--color-pr);
   font-size: var(--font-size-lg);
   font-weight: 700;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding-left: var(--space-4);
-  overflow-wrap: anywhere;
+.count {
+  font-size: var(--font-size-md);
 }

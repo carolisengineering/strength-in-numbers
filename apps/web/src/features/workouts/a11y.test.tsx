@@ -495,3 +495,29 @@ describe("17.1 AC38 — no bare button names on the session screen", () => {
     expect(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Discard 1 set that couldn't be saved" })).toBeInTheDocument();
   });
 });
+
+describe("17.2 AC30 — the record cards are accessible", () => {
+  it("heading order is h1 then h2 then h3, the chips are plain list items, and nothing relies on color", async () => {
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
+    const e = workout.exercises[0]!;
+    const mine = (o: Record<string, unknown>) => makePersonalRecord({ workoutId: workout.id, exerciseId: e.exerciseId, sourceExerciseId: e.exerciseId, exerciseName: "Bench Press", sourceSetId: e.sets[0]!.id, ...o });
+    prepareApp({
+      auth,
+      fake: createWorkoutFake({
+        finished: [workout],
+        records: [mine({ recordType: "heaviest_weight", value: 102.5, previousValue: 100 }), mine({ recordType: "best_est_1rm", value: 120, previousValue: null })],
+      }),
+    });
+    renderApp(`/app/workouts/${workout.id}`);
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    const levels = within(screen.getByRole("main")).getAllByRole("heading").map((h) => Number(h.tagName.slice(1)));
+    expect(levels[0]).toBe(1);
+    expect(levels.indexOf(2)).toBeLessThan(levels.indexOf(3));
+    expect(within(block).getByRole("heading", { level: 3, name: "Bench Press" })).toBeInTheDocument();
+    const chips = within(block).getByRole("list", { name: "Also set records for Bench Press" });
+    expect(within(chips).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Est. 1RM"]);
+    expect(within(chips).queryByRole("link")).toBeNull();
+    expect(within(chips).queryByRole("button")).toBeNull();
+    expect(within(block).getByText("+2.5 kg")).toBeInTheDocument(); // the gain is text, not a color
+  });
+});

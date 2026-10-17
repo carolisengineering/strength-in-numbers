@@ -295,8 +295,16 @@ function pullSession(n, daysAgo, dl, pullups, row, pulldown) {
   ], { routine: pull });
 }
 
-// Oldest first (n ascending = chronological).
+// Oldest first (chronological; records are decided in this order: a tie stays with the earlier workout).
+const byStart = (a, b) => a.startedAt.localeCompare(b.startedAt);
 export const finished = [
+  // Spec 17.2 AC33: workouts that hold NO records, so History and the summaries show the real range. A light push day
+  // (every lift below the earlier best), a bench "volume day" (60 kg x 20 beats the best set volume but not the weight, and
+  // 20 reps is past the e1RM formula's range: a volume-only record, which the summary hides and History does not count),
+  // and a plank-only session (no record types, no volume).
+  pushSession(10, 19, 70, 40, 22, 7),
+  makeWorkout(11, at(9), 25, [{ key: "bench_press", sets: [W(20, 60), W(20, 60)] }], { title: "Bench volume day" }),
+  makeWorkout(12, at(6), 12, [{ key: "plank", sets: [{ durationS: 45 }, { durationS: 40 }] }], { title: "Plank only" }),
   pushSession(1, 25, 77.5, 45, 24, 8),
   lowerSession(2, 23, 110, 90, 180),
   pullSession(3, 21, 145, [9, 8, 7, 6], 65, 55),
@@ -310,7 +318,7 @@ export const finished = [
   ], { title: "Hotel gym", notes: "Only dumbbells to 25 kg. Short session." }),
   pushSession(8, 4, 82.5, 47.5, 26, 10),
   lowerSession(9, 2, 117.5, 95, 200),
-];
+].sort(byStart);
 
 // The ACTIVE session: Push Day, started 38 minutes ago, part-way through.
 const ACTIVE_N = 50;
@@ -445,7 +453,8 @@ export function summaryOf(w) {
     exerciseNames: exs.slice(0, 3).map((e) => e.exerciseNameSnapshot),
     workingSetCount: working.length,
     totalVolume: vol > 0 ? round(vol) : null,
-    recordCount: records.filter((r) => r.workoutId === w.id).length,
+    // Spec 07.3: the served count excludes set-volume records.
+    recordCount: records.filter((r) => r.workoutId === w.id && r.recordType !== "best_set_volume").length,
   };
 }
 
@@ -460,7 +469,13 @@ export const ids = {
   squat: exByKey.back_squat.id,
   pullUp: exByKey.pull_up.id,
   latestFinished: finished[finished.length - 1].id,
-  latestPush: finished[7].id,
+  // The newest Push Day (it holds records with gains: a lead card plus chips).
+  latestPush: [...finished].reverse().find((w) => w.routineName === push.name).id,
+  // Spec 17.2 AC40 states: the first workout (every record is a first record, many cards), and three without records.
+  firstWorkout: finished[0].id,
+  noRecords: finished.find((w) => w.title === null && w.routineName === push.name && w.exercises[0].sets.some((s) => s.weight === 70)).id,
+  volumeOnly: finished.find((w) => w.title === "Bench volume day").id,
+  plankOnly: finished.find((w) => w.title === "Plank only").id,
   activeId: active.id,
 };
 

@@ -99,7 +99,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
       <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
-      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} />
+      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {
           const body = segment.rows.map((row, k) => (

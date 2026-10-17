@@ -1,5 +1,5 @@
 import { kgToLb, type ProgressPoint, type ProgressSeries, type RecordUnit, type UnitPreference } from "@sin/core";
-import { formatRecordValue } from "../units/format";
+import { formatRecordValue, roundedE1rm } from "../units/format";
 import { rangeLabel, type Range } from "./range";
 
 /** The four chartable metrics (Spec 08.1 AC2), in display order. */
@@ -52,6 +52,8 @@ export function resolveMetric(chosen: Metric | null | undefined, available: read
 
 /** The displayed string always comes from the canonical value through the shared formatter (08.0 D8). */
 export function formatPointValue(point: ChartPoint, metric: Metric, pref: UnitPreference): string {
+  // Spec 17.2 AC29: an estimate is shown on a coarse step here too; the plotted data stays exact.
+  if (metric === "est1rm") return roundedE1rm(point.canonical, pref);
   return formatRecordValue(point.canonical, METRICS[metric].unit, pref);
 }
 

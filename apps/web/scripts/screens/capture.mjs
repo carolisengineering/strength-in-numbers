@@ -398,9 +398,20 @@ try {
     await shoot(page, device, "11-workout-finished", "Finished workout (Push Day, 4 days ago) under the Workouts tab");
 
     await go("/app/history");
-    await shoot(page, device, "12-history", "History list (9 finished workouts)");
+    await shoot(page, device, "12-history", "History list (12 finished workouts: badges with counts, and rows with none)");
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
+    // Spec 17.2 AC40: the summary in its other states.
+    await tryStep("record-card summaries", async () => {
+      await go(`/app/history/${D.ids.firstWorkout}`);
+      await shoot(page, device, "27-summary-first-record", "The first Push Day: the one record it still holds is a first record ('First record' in brass, no gain, no was)");
+      await go(`/app/history/${D.ids.noRecords}`);
+      await shoot(page, device, "28-summary-no-records", "A light day: stats with volume, no records section, no brass");
+      await go(`/app/history/${D.ids.volumeOnly}`);
+      await shoot(page, device, "29-summary-volume-only", "Only a set-volume record: the section is hidden and History shows no badge for it");
+      await go(`/app/history/${D.ids.plankOnly}`);
+      await shoot(page, device, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records");
+    });
 
     await go("/app/progress");
     await shoot(page, device, "14-progress", "Progress list (exercises with records)");

@@ -194,7 +194,9 @@ describe("08.0 AC19 — the summary never waits on records", () => {
     renderApp(`/app/workouts/${workout.id}`);
 
     const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText("Barbell bench press — Heaviest weight 226 lb (was 220.5 lb)")).toBeInTheDocument();
+    expect(within(block).getByRole("heading", { level: 3, name: "Barbell bench press" })).toBeInTheDocument(); // 17.2 AC15: a card
+    expect(within(block).getByText("226 lb")).toBeInTheDocument();
+    expect(within(block).getByText("was 220.5 lb")).toBeInTheDocument();
     // Set rows keep the unit they were entered in (Review Focus 5).
     expect(within(screen.getByRole("region", { name: "Barbell bench press" })).getByText("60 kg × 8")).toBeInTheDocument();
   });

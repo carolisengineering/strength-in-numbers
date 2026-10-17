@@ -150,7 +150,8 @@ function summaryOf(detail: WorkoutDetail, records: readonly PersonalRecord[]) {
       .map((e) => e.exerciseNameSnapshot),
     workingSetCount,
     totalVolume: qualifying ? volume : null,
-    recordCount: records.filter((r) => r.workoutId === detail.id).length,
+    // Spec 07.3: the served count does not include set-volume records, so a History row matches the finish summary.
+    recordCount: records.filter((r) => r.workoutId === detail.id && r.recordType !== "best_set_volume").length,
   };
 }
 
