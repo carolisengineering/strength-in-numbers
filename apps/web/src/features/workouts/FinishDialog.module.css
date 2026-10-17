@@ -1,0 +1,15 @@
+/* Spec 17.2 AC1-AC2: the dialog body reads as stats, then a flagged list, then a note, with room between them. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.body p {
+  margin: 0;
+}
+
+.list {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}

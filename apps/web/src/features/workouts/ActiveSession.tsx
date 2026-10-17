@@ -42,6 +42,8 @@ import { SessionClock } from "./SessionClock";
 import { SessionSection } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
+import { finishStatsFor } from "./finishStats";
+import { FinishDialogBody } from "./FinishDialog";
 import { finishTimestamp } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
@@ -220,6 +222,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     plannerRef.current = next;
   }, [segments]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
+  // Spec 17.2 AC6: the dialogs read "now" once, when one opens, so the duration does not tick under the lifter's eyes.
+  const dialogOpen = finishOpen || endEarlyOpen;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recomputed only when a dialog opens or closes, by design
+  const openedAt = useMemo(() => new Date(), [dialogOpen]);
+  // Dialogs show three stats (no volume, AC9); the projected list counts a queued set (06.2).
+  const dialogStats = useMemo(
+    () => ({ ...finishStatsFor({ startedAt: workout.startedAt, exercises }, finishTimestamp(workout.startedAt, openedAt)), volumeKg: null }),
+    [workout.startedAt, exercises, openedAt],
+  );
   const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
 
   // A flag lasts only while the set is still incomplete: fixing or deleting it clears the marker.
@@ -762,12 +773,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <p>
-          {plural(exercises.length, "exercise", "exercises")} · {plural(totalSets, "set", "sets")}. A finished
-          workout can't be edited.
-        </p>
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} note="A finished workout can't be edited." />
       </ConfirmDialog>
-      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
+      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 
       <ConfirmDialog
         open={discardOpen}
