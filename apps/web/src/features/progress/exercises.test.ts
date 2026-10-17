@@ -42,7 +42,7 @@ describe("08.1 AC6 — grouping records by exercise", () => {
   it("headline text in the lifter's unit, with the newest record's date", () => {
     const [bench, pull, odd] = groupByExercise(records);
     expect(headlineText(bench!, "kg")).toBe("Best est. 1RM 122.5 kg · Tue 6 Oct");
-    expect(headlineText(bench!, "lb")).toBe("Best est. 1RM 270.1 lb · Tue 6 Oct");
+    expect(headlineText(bench!, "lb")).toBe("Best est. 1RM 270 lb · Tue 6 Oct");
     expect(headlineText(pull!, "kg")).toBe("Most reps 15 reps · Sun 4 Oct");
     expect(headlineText(odd!, "kg")).toBe("Sat 1 Aug");
   });

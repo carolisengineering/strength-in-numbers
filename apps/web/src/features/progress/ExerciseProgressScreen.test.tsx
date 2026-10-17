@@ -342,10 +342,10 @@ describe("08.1 AC23 — unknown and malformed ids", () => {
 describe("08.1 AC24 — units follow the profile", () => {
   it("lb: summary, readout and sessions in lb", async () => {
     setup({ unitPreference: "lb" });
-    await screen.findByRole("img", { name: "Est. 1RM, 3 months: 231.5 lb to 270.1 lb, best 270.1 lb" });
-    expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 270.1 lb");
-    expect(sessions()[0]).toHaveTextContent("270.1 lb");
-    expect(await screen.findByText(/Best est\. 1RM 270\.1 lb/)).toBeInTheDocument();
+    await screen.findByRole("img", { name: "Est. 1RM, 3 months: 231 lb to 270 lb, best 270 lb" });
+    expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 270 lb");
+    expect(sessions()[0]).toHaveTextContent("270 lb");
+    expect(await screen.findByText(/Best est\. 1RM 270 lb/)).toBeInTheDocument();
   });
 });
 

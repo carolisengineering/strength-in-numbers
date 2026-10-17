@@ -1,5 +1,5 @@
 import { RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference } from "@sin/core";
-import { formatRecordValue } from "../units/format";
+import { formatRecordByType } from "../units/format";
 
 export function recordLabel(type: RecordType): string {
   switch (type) {
@@ -32,8 +32,8 @@ export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[
 
 /** `"Bench Press — Heaviest weight 102.5 kg (was 100 kg)"` (Spec 08.0 AC18). */
 export function recordLine(record: PersonalRecord, pref: UnitPreference): string {
-  const value = formatRecordValue(record.value, record.unit, pref);
+  const value = formatRecordByType(record.recordType, record.value, record.unit, pref);
   const was =
-    record.previousValue === null ? " (first record)" : ` (was ${formatRecordValue(record.previousValue, record.unit, pref)})`;
+    record.previousValue === null ? " (first record)" : ` (was ${formatRecordByType(record.recordType, record.previousValue, record.unit, pref)})`;
   return `${record.exerciseName} — ${recordLabel(record.recordType)} ${value}${was}`;
 }

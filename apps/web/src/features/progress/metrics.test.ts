@@ -62,7 +62,7 @@ describe("08.1 AC2 — metrics are data-derived and null-safe", () => {
 
   it("values and captions use the shared formatter", () => {
     const [p] = pointsFor(series([c]), "est1rm", "lb");
-    expect(formatPointValue(p!, "est1rm", "lb")).toBe("270.1 lb");
+    expect(formatPointValue(p!, "est1rm", "lb")).toBe("270 lb");
     expect(captionFor("est1rm", "kg")).toBe("Est. 1RM (kg)");
     expect(captionFor("volume", "lb")).toBe("Volume (lb × reps)");
     expect(captionFor("reps", "lb")).toBe("Reps");
@@ -84,9 +84,9 @@ describe("08.1 AC9 — the chart's accessible summary", () => {
   it("in lb, through the same formatter as the readout", () => {
     const points = pointsFor(series([p1, p3]), "est1rm", "lb");
     expect(chartSummary({ metric: "est1rm", range: "1y", points, pref: "lb" })).toBe(
-      "Est. 1RM, 1 year: 231.5 lb to 270.1 lb, best 270.1 lb",
+      "Est. 1RM, 1 year: 231 lb to 270 lb, best 270 lb",
     );
-    expect(formatPointValue(points[1]!, "est1rm", "lb")).toBe("270.1 lb");
+    expect(formatPointValue(points[1]!, "est1rm", "lb")).toBe("270 lb");
   });
 
   it("one point", () => {

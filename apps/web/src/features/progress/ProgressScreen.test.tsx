@@ -130,6 +130,6 @@ describe("08.1 AC24 — list units follow the profile", () => {
   it("lb profile → headline in lb", async () => {
     setup({ unitPreference: "lb" });
     const list = await screen.findByRole("list", { name: "Exercises" });
-    expect(within(list).getAllByRole("link")[0]).toHaveTextContent("Best est. 1RM 270.1 lb · Tue 6 Oct");
+    expect(within(list).getAllByRole("link")[0]).toHaveTextContent("Best est. 1RM 270 lb · Tue 6 Oct");
   });
 });

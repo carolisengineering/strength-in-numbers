@@ -1,6 +1,6 @@
 import type { PersonalRecord, RecordType, UnitPreference } from "@sin/core";
 import { recordLabel } from "../records/labels";
-import { formatRecordValue } from "../units/format";
+import { formatRecordByType } from "../units/format";
 import { formatLocalDate } from "../workouts/format";
 
 /** One Progress list row (Spec 08.1 AC6, D6). */
@@ -33,5 +33,5 @@ export function groupByExercise(records: readonly PersonalRecord[]): ExerciseEnt
 export function headlineText(entry: ExerciseEntry, pref: UnitPreference): string {
   const date = formatLocalDate(entry.newest.localDate);
   const h = entry.headline;
-  return h ? `${recordLabel(h.recordType)} ${formatRecordValue(h.value, h.unit, pref)} · ${date}` : date;
+  return h ? `${recordLabel(h.recordType)} ${formatRecordByType(h.recordType, h.value, h.unit, pref)} · ${date}` : date;
 }
