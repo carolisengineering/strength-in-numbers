@@ -1,5 +1,5 @@
 import type { PlannedSet } from "@sin/core";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workou
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { finishButton } from "../../test/sessionHelpers";
+import { WORKOUT_KEYS } from "./queries";
 import { FinishDialogBody } from "./FinishDialog";
 
 const START = Date.parse("2026-10-02T10:00:00.000Z"); // the fixtures' startedAt
@@ -110,6 +111,25 @@ describe("17.2 AC3 — the flag is part of the shared body", () => {
   });
 });
 
+describe("17.2 AC3 — the plain Finish dialog shows the flag by construction", () => {
+  it("a planned set that becomes unlogged while Finish is open shows the flag before the note", async () => {
+    const { user, queryClient } = await setup([ex("A", { plannedSets: planned(1), sets: working(1) })]);
+    await user.click(finishButton());
+    expect(within(finishDialog()).queryByText(/planned sets? not logged/)).toBeNull();
+    await act(async () => {
+      const active = queryClient.getQueryData<{ exercises: { plannedSets: PlannedSet[] }[] }>(WORKOUT_KEYS.active)!;
+      const next = structuredClone(active);
+      next.exercises[0]!.plannedSets = planned(2);
+      queryClient.setQueryData(WORKOUT_KEYS.active, next);
+      await new Promise((resolve) => setTimeout(resolve, 20)); // the cache notifies on a timer
+    });
+    const dialog = finishDialog();
+    const text = dialog.textContent ?? "";
+    expect(await within(dialog).findByText("1 planned set not logged")).toBeInTheDocument();
+    expect(text.indexOf("1 planned set not logged")).toBeLessThan(text.indexOf("A finished workout can't be edited."));
+  });
+});
+
 describe("17.2 AC5 — sets are working sets only, and Finish still counts every set", () => {
   it("6 warm-ups and 3 working sets read 3; Finish stays enabled and setCount is 9", async () => {
     const { fake, user } = await setup([ex("A", { sets: [...warmups(6), ...working(3, 7)] })]);
@@ -130,10 +150,17 @@ describe("17.2 AC5 — sets are working sets only, and Finish still counts every
 
 describe("17.2 AC6 — the dialog duration is captured when it opens", () => {
   it("does not tick while open and refreshes on the next open", async () => {
-    const { user } = await setup([ex("A", { sets: working(1) })]);
+    const { user, queryClient } = await setup([ex("A", { sets: working(1) })]);
     await user.click(finishButton());
     expect(statTexts(finishDialog())[0]).toBe("41 minduration");
     vi.setSystemTime(START + 51 * 60_000);
+    // A re-render while open (new cache data, as a late outbox settle would): the number must not move with the clock.
+    await act(async () => {
+      const next = structuredClone(queryClient.getQueryData<{ updatedAt: string }>(WORKOUT_KEYS.active)!);
+      next.updatedAt = new Date(START + 52 * 60_000).toISOString(); // a changed value, so structural sharing does not skip the render
+      queryClient.setQueryData(WORKOUT_KEYS.active, next);
+      await new Promise((resolve) => setTimeout(resolve, 20)); // the cache notifies on a timer
+    });
     expect(statTexts(finishDialog())[0]).toBe("41 minduration");
     await user.click(within(finishDialog()).getByRole("button", { name: "Keep logging" }));
     await user.click(finishButton());
