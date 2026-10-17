@@ -99,6 +99,14 @@
   /* card insets: every card-like panel uses these, so their edges line up */
   --card-pad-block: var(--space-3);
   --card-pad-inline: var(--space-4);
+
+  /* the front door (Spec 17.3): the name as a condensed title card, and the column it sits in. The name is the one
+     use of the brand tokens; the column fills a phone's height and is capped (then centered) from 48rem. */
+  --font-size-brand: clamp(3.25rem, 1.5rem + 9vw, 5.5rem);
+  --font-stretch-brand: 75%;
+  --letter-spacing-brand: -0.02em;
+  --landing-column-max: 30rem;
+  --landing-column-max-height: 40rem;
 }
 
 /* Dark: the OS asks for it and the Profile switch has not forced light. */

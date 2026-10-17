@@ -4,7 +4,7 @@ import { useMe } from "../features/me/useMe";
 import styles from "./AppShell.module.css";
 import { NAV_ITEMS, navItemFor } from "./navItems";
 
-const APP_NAME = "strength-in-numbers";
+const APP_NAME = "Strength in Numbers";
 
 /**
  * The protected frame (Spec 04.1 §5, AC2 / AC3). `ProtectedLayout` renders it

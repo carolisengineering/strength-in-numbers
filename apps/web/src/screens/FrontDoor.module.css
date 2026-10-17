@@ -1,0 +1,87 @@
+/*
+ * The front door (Spec 17.3): a centered title card shared by Landing and ResumingSession. On a phone the column fills
+ * the viewport, so the bottom control sits in the thumb zone and the name centers in the space above the hairline;
+ * from 48rem (AppShell's breakpoint) the column is capped and centered. Only ink, muted and the hairline: the
+ * button's teal comes from Button.module.css and the link's from reset.css.
+ */
+.frontDoor {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding:
+    calc(var(--space-8) + env(safe-area-inset-top))
+    calc(var(--screen-pad) + env(safe-area-inset-right))
+    calc(var(--space-6) + env(safe-area-inset-bottom))
+    calc(var(--screen-pad) + env(safe-area-inset-left));
+}
+
+.column {
+  width: 100%;
+  max-width: var(--landing-column-max);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.top {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--space-8);
+}
+
+/* The two lines are authored spans (Strength / in Numbers), never a wrap, so the break cannot land elsewhere. */
+.name {
+  font-size: var(--font-size-brand);
+  font-weight: 700;
+  font-stretch: var(--font-stretch-brand);
+  letter-spacing: var(--letter-spacing-brand);
+  line-height: 0.92;
+  color: var(--color-text);
+}
+
+.name span,
+.line span {
+  display: block;
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* The decorative hairline (Two Borders Rule: --color-line, never --color-border). */
+.line {
+  font-size: var(--font-size-lg);
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-line);
+  padding-top: var(--space-4);
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  font-size: var(--font-size-lg);
+}
+
+.login {
+  min-height: calc(var(--tap-target-min) + var(--space-3));
+  font-size: var(--font-size-lg);
+}
+
+@media (min-width: 48rem) {
+  .frontDoor {
+    justify-content: center;
+  }
+
+  /* The column still grows with flex: 1, so this cap is what centers it. */
+  .column {
+    max-height: var(--landing-column-max-height);
+  }
+}

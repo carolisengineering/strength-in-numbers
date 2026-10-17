@@ -209,3 +209,13 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Progress");
   });
 });
+
+describe("17.3 AC17 — the in-app header says the product name", () => {
+  it("shows Strength in Numbers when the route has no section label", async () => {
+    auth.state.isAuthenticated = true;
+    renderAt(["/app/nope"]);
+
+    const shell = await screen.findByTestId("app-shell");
+    expect(within(shell.querySelector("header")!).getByText("Strength in Numbers")).toBeInTheDocument();
+  });
+});

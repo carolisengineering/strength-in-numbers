@@ -106,12 +106,14 @@ function renderAt(initialEntries: InitialEntry[]) {
   return { router, queryClient, ...utils };
 }
 
-describe("AC3 — Landing when unauthenticated and no prior session", () => {
+describe("AC3 / 17.3 AC7 — Landing when unauthenticated and no prior session", () => {
   it("renders the value prop + exactly one control, no /v1 call, no redirect", async () => {
     const { router } = renderAt(["/"]);
 
     expect(await screen.findByTestId("landing")).toBeInTheDocument();
-    expect(screen.getByText("Log your lifts. See the numbers move.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Strength in Numbers" })).toBeInTheDocument();
+    expect(screen.getByText("Log your lifts.")).toBeInTheDocument();
+    expect(screen.getByText("Count your progress.")).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(
       screen.getByRole("button", { name: /log in/i }),
@@ -123,7 +125,7 @@ describe("AC3 — Landing when unauthenticated and no prior session", () => {
   });
 });
 
-describe("AC5 — login kicks off PKCE", () => {
+describe("AC5 / 17.3 AC6 — login kicks off PKCE", () => {
   it("the Log in control calls loginWithRedirect once with the PKCE authorizationParams", async () => {
     renderAt(["/"]);
     await screen.findByTestId("landing");
@@ -144,7 +146,7 @@ describe("AC5 — login kicks off PKCE", () => {
   });
 });
 
-describe("AC4 — session-resume bridge (routing)", () => {
+describe("AC4 / 17.3 AC8 — session-resume bridge (routing)", () => {
   it("with the hint cookie set, calls loginWithRedirect(returnTo) and shows ResumingSession", async () => {
     document.cookie = `auth0.${CLIENT_ID}.is.authenticated=true`;
 
@@ -384,6 +386,32 @@ describe("AC6 — callback completes or fails cleanly", () => {
     renderAt(["/callback?error=access_denied"]);
     expect(screen.getByTestId("auth-error")).toBeInTheDocument();
     expect(screen.queryByTestId("auth-error-detail")).toBeNull();
+  });
+});
+
+describe("17.3 AC9 — a failed login comes back to a working Log in", () => {
+  it("goes from the callback error through Try again to the landing, whose Log in starts a login", async () => {
+    const { router } = renderAt(["/callback?error=access_denied"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(router.state.location.search).toBe("?signin"));
+    expect(await screen.findByTestId("landing")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    expect(auth.state.loginWithRedirect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("17.3 AC10 — already signed in", () => {
+  it("sends a signed-in visitor of /?signin to /app without rendering the landing", async () => {
+    auth.state.isAuthenticated = true;
+
+    const { router } = renderAt(["/?signin"]);
+
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Start a workout" });
+    expect(screen.queryByTestId("landing")).toBeNull();
+    expect(router.state.location.pathname).toBe("/app/workouts");
   });
 });
 

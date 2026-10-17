@@ -8,7 +8,7 @@ export function Misconfigured() {
     <main>
       <h1>This app is not set up right</h1>
       <p>
-        strength-in-numbers is missing configuration it needs to start. If you
+        Strength in Numbers is missing configuration it needs to start. If you
         are the developer, check the <code>VITE_*</code> build variables against{" "}
         <code>apps/web/.env.example</code>. Otherwise, please try again later.
       </p>
