@@ -58,7 +58,8 @@ describe("AC30 — finished workout summary", () => {
     setup();
 
     expect(await screen.findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
-    expect(screen.getByText(/Fri 2 Oct · 58 min/)).toBeInTheDocument();
+    expect(screen.getByText("Fri 2 Oct")).toBeInTheDocument(); // 17.2 AC8: the minutes moved to the stats row
+    expect(screen.getByText("duration").previousElementSibling).toHaveTextContent("58 min");
     const bench = screen.getByRole("region", { name: "Barbell bench press" });
     expect(within(bench).getByText("60 kg × 8")).toBeInTheDocument();
     expect(within(bench).getByText("62.5 kg × 6")).toBeInTheDocument(); // the fixture set has rpe 8: stored, never shown (17.1 AC3)

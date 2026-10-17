@@ -14,6 +14,8 @@ import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { classifyWorkoutError } from "./errors";
 import { formatLocalDate } from "./format";
+import { finishStatsFor } from "./finishStats";
+import { FinishStats } from "./FinishStatsList";
 import { WORKOUT_KEYS, useWorkoutDetail } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
@@ -87,18 +89,16 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {
   const { data: me } = useMe();
   const home = SECTION_HOME[section];
-  const minutes = Math.round((Date.parse(endedAt) - Date.parse(workout.startedAt)) / 60_000);
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
   const segments = sectionSegments(supersetRows(workout.exercises), workout.sections);
 
   return (
     <Screen title="Workout summary">
-      <p className={styles.meta}>
-        {date} · {minutes} min
-      </p>
+      <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
+      <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} />
       <div className={styles.exercises}>
         {segments.map((segment) => {
