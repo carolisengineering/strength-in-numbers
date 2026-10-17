@@ -45,7 +45,7 @@ const recOf = (w: ReturnType<typeof makeWorkoutDetail>, i: number, o: Record<str
   return makePersonalRecord({ exerciseId: e.exerciseId, sourceExerciseId: e.exerciseId, exerciseName: e.exerciseNameSnapshot, sourceSetId: e.sets[0]!.id, workoutId: w.id, ...o });
 };
 
-describe("17.2 AC15 / AC18 / AC20 / AC26 — one record card per exercise", () => {
+describe("17.2 AC15 / AC18 / AC20 / AC26 / AC27 — one record card per exercise", () => {
   it("shows a lead with its gain and was, the other records as chips, set volume nowhere, and N new", async () => {
     const { workout, records } = withRecords([bench()], (w) => [
       recOf(w, 0, { recordType: "heaviest_weight", value: 190, previousValue: 185 }),
