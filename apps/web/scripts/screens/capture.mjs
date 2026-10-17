@@ -356,6 +356,7 @@ try {
         await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
       }
       await page.waitForTimeout(1500);
+      await page.getByRole("timer").scrollIntoViewIfNeeded();
       await shoot(page, device, "26-rest-running", "A working set logged: Rest m:ss in the panel and the teal line at the top");
       await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
     });
