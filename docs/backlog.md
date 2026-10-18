@@ -375,7 +375,13 @@ building the routine again by hand.
 
 **Spec 12: two `ExportControl`s are mounted at once, so the export UI and its live region are duplicated.**
 
-**Status: Open.** Found by an automated `/code-review` of the Spec 06.5 branch (2026-10-15); not yet reproduced.
+**Status: Resolved (2026-10-18), not a defect.** `ConfirmDialog` renders its body only while
+open (since Spec 06.1, 2026-10-02), so a closed dialog adds no second control or status region.
+While the dialog is open the section's control is behind a `showModal()` dialog, which makes it
+inert and hidden from assistive technology. Pinned by `apps/web/src/features/account/a11y.test.tsx`
+("one export status region … (BL-15)"), which fails if the dialog body renders while closed.
+
+Original report: found by an automated `/code-review` of the Spec 06.5 branch (2026-10-15).
 `ProfileForm` shares one exporter between `AccountDataSection` and the delete dialog's
 step 1 ([Spec 12](specs/12-account-lifecycle-ui.md) D13). `ConfirmDialog` renders its
 children while closed, so both controls exist in the DOM, each with its own
@@ -391,7 +397,14 @@ after an export.
 
 **Spec 12: Escape during an in-flight `DELETE /v1/account` can bypass the settle window or leave a dead confirm.**
 
-**Status: Open.** Same source as BL-15; not yet reproduced.
+**Status: Resolved (2026-10-18), not a defect.** (a) is the behavior Spec 12 AC19 requires: the
+settle guard stops the second tap of a Continue double-tap, and a reopen after a failure has no
+Continue tap, so it does not re-arm (the existing AC18 test asserts it). (b) cannot happen: the
+dialog's `busy` follows `mutation.isPending`, which stays true until the request settles, so a
+dialog reopened mid-flight shows a disabled, `aria-busy` Continue and never reaches step 2. Pinned by
+`DeleteAccountSection.test.tsx` ("reopening during the request … (BL-16)").
+
+Original report (same source as BL-15):
 `DeleteAccountSection.close()` resets the step and `settled` while the request may still
 be in flight (`sending.current` true). (a) If the request then fails, the error handler
 reopens at step 2 with `settled` true, and `confirmDisabled` / `busy` follow
@@ -408,7 +421,14 @@ case.
 
 **Spec 12: an export that fails with 403 `account-deleted` can reset to idle with no message.**
 
-**Status: Open.** Same source as BL-15; not yet reproduced.
+**Status: Resolved (2026-10-18).** `notifyIfAccountDeleted` now returns the `me` invalidation, and
+the export mutation's `onError` returns it, so the `mutate()` callbacks run after the `me` refetch
+has answered. The 403 stays quiet only when `meConfirmsDeleted` (the `me` query itself failed with
+`403 account-deleted`); otherwise the generic "Couldn't prepare your data." notice shows. Tests in
+`AccountDataSection.test.tsx` (12 AC10 block). Side effect: the delete mutation also stays pending
+until that refetch answers, which keeps its dialog busy until the screen swaps.
+
+Original report (same source as BL-15):
 `useExportAccount` returns to `idle` on that failure and relies on the invalidated `me`
 query flipping the app to the deleted screen. If the refetch returns 200 (a race or a
 transient error), "Download my data" flicks back to idle with no file and no notice, so a
@@ -421,7 +441,12 @@ account is deleted, with a test for the "`me` still 200" case.
 
 **Spec 12: `contentDisposition.ts` truncates the download filename by UTF-16 code unit.**
 
-**Status: Open.** Same source as BL-15; not yet reproduced. Low.
+**Status: Resolved (2026-10-18).** The 120 cap counts code points (a surrogate pair is never split),
+trailing dots and whitespace are stripped (Windows drops them), and a Windows reserved device name
+(`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`/`LPT0-9` incl. `¹²³`, `CONIN$`, `CONOUT$`, any extension)
+falls back to the default name. Tests in `apps/web/src/api/contentDisposition.test.ts`.
+
+Original report (same source as BL-15, low):
 Cutting a long `filename*=UTF-8''…` value at the length limit can split a surrogate pair
 and leave a lone surrogate in the `download` name. Windows-reserved names (`CON`) and
 trailing dots are also not handled.

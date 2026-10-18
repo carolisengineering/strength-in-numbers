@@ -200,8 +200,34 @@ describe("12 AC18 — in flight", () => {
     fail();
     expect(await screen.findByRole("heading", { name: "Are you sure?" })).toBeInTheDocument();
     expect(dialog().getByText("Couldn't delete your account.")).toBeInTheDocument();
-    // AC19: the settle guard does not re-apply to a reopen after a failure.
+    // AC19: the settle guard does not re-apply to a reopen after a failure. Deliberate, not a bypass
+    // (BL-16 (a)): the guard stops the second tap of a Continue double-tap, and a reopen has no Continue tap.
     expect(dialog().getByRole("button", { name: "Delete my account" })).toBeEnabled();
+  });
+
+  // BL-16 (b): `busy` follows the mutation, which stays pending until the request settles, so a dialog
+  // reopened mid-flight cannot be walked to an active-looking Delete my account that ignores the tap.
+  it("reopening during the request shows a busy step 1 that cannot reach step 2 (BL-16)", async () => {
+    let release!: () => void;
+    server.use(http.delete(ACCOUNT_URL, async () => {
+      deleteCalls += 1;
+      await new Promise<void>((resolve) => { release = resolve; });
+      return problem(500, "internal");
+    }));
+    renderIt();
+    await toStep2();
+    await userEvent.click(await settledConfirm());
+    await waitFor(() => expect(deleteCalls).toBe(1));
+    act(() => { screen.getByRole("dialog").dispatchEvent(new Event("cancel", { cancelable: true })); });
+    await userEvent.click(trigger());
+    const cont = dialog().getByRole("button", { name: "Continue" });
+    expect(cont).toBeDisabled();
+    expect(cont).toHaveAttribute("aria-busy", "true");
+    await userEvent.click(cont);
+    expect(dialog().getByRole("heading", { name: "Delete your account?" })).toBeInTheDocument();
+    release();
+    expect(await screen.findByRole("heading", { name: "Are you sure?" })).toBeInTheDocument();
+    expect(deleteCalls).toBe(1);
   });
 
   it("a second visit to step 2 starts inert again (Cancel resets the guard)", async () => {
