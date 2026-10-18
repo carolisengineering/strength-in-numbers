@@ -64,6 +64,7 @@ describe("AC13 — the finish runs the integrity check after the lock, before th
       .queue_([{ modality_snapshot: "weight_reps", reps: 5, weight: 100, distance: null, duration_s: null }])
       .queue_([{ ...w, ended_at: new Date(ENDED) }])
       .queue_([{ n: 1 }])
+      .queue_(1) // 07.4 AC25 (amended): the finish's set-time clamp ($executeRaw)
       .queue_([]); // Spec 07.0: touched lineage roots — none
     const r = await repoOver(stub).updateWorkout(w.user_id, w.id, { endedAt: ENDED });
     expect(r.workout.endedAt).toEqual(new Date(ENDED));
@@ -94,6 +95,7 @@ describe("AC14 — non-working sets are never inspected", () => {
       .queue_([])
       .queue_([{ ...w, ended_at: new Date(ENDED) }])
       .queue_([{ n: 0 }])
+      .queue_(1) // 07.4 AC25 (amended): the finish's set-time clamp ($executeRaw)
       .queue_([]); // Spec 07.0: touched lineage roots — none
     await repoOver(stub).updateWorkout(w.user_id, w.id, { endedAt: ENDED });
     expect(stub.calls[2]).toMatch(/WHERE .*se\.set_type = 'working'/s);

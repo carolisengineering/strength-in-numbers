@@ -61,10 +61,9 @@ import type {
 } from "../../src/repositories/routine.js";
 import {
   assertAddPositionInRange,
-  assertEndedAtInBounds,
-  assertEndedAtNotBeforeStartedAt,
   assertReorderPositionInRange,
   computeAppendPosition,
+  retimeOrThrow,
 } from "../../src/repositories/workout-writes.js";
 import {
   assertFinishedSetComplete,
@@ -616,6 +615,15 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return this.detail(this.ownedWorkoutOrThrow(actingUserId, id));
   }
 
+  /** Spec 07.4 AC25: the repository's `clampSetTimes`, on the in-memory sets. */
+  private clampSetTimes(workoutId: string, start: Date, end: Date): void {
+    for (const s of this.sets.values()) {
+      const we = this.exercises.get(s.workoutExerciseId);
+      if (we?.workoutId !== workoutId || s.completedAt === null) continue;
+      this.sets.set(s.id, { ...s, completedAt: clampInstantToSpan(s.completedAt, start, end) });
+    }
+  }
+
   async updateWorkout(
     actingUserId: string,
     id: string,
@@ -626,7 +634,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       // Spec 07.4 AC3 / D17: only a re-finish is refused; {} / endedAt: null are no-ops.
       if (patch.endedAt != null) throw new WorkoutFinishedError();
       const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-      if (!("title" in patch) && !("notes" in patch)) return { workout: w, exerciseCount, newRecords: [], finishedEdit: null };
+      if (!("title" in patch) && !("notes" in patch)) return { workout: w, exerciseCount, newRecords: [], finishedEdit: null, hadPlannedDuration: false };
       const edited: WorkoutRecord = {
         ...w,
         title: "title" in patch ? patch.title ?? null : w.title,
@@ -634,21 +642,16 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         updatedAt: new Date(w.updatedAt.getTime() + 1000),
       };
       this.workouts.set(id, edited);
-      return { workout: edited, exerciseCount, newRecords: [], finishedEdit: FakeWorkoutRepository.edit(edited) };
+      return { workout: edited, exerciseCount, newRecords: [], finishedEdit: FakeWorkoutRepository.edit(edited), hadPlannedDuration: false };
     }
-    let endedAt: Date | null = w.endedAt;
-    if ("endedAt" in patch && patch.endedAt !== undefined) {
-      if (patch.endedAt === null) {
-        endedAt = null;
-      } else {
-        const d = new Date(patch.endedAt);
-        assertEndedAtNotBeforeStartedAt(w.startedAt, d);
-        assertEndedAtInBounds(d, new Date());
-        endedAt = d;
-      }
-    }
+    // Spec 07.4 §6.4: the same pure rules as the repository. The fake has no profile zone, so a moved
+    // start without `tzOffsetMinutes` takes offset 0; route tests that assert `localDate` send one.
+    const next = retimeOrThrow({ startedAt: w.startedAt, endedAt: null, plannedDurationS: w.plannedDurationS }, patch, new Date());
+    const endedAt = next.endedAt;
+    const tzOffsetMinutes = next.startChanged ? (patch.tzOffsetMinutes ?? 0) : w.tzOffsetMinutes;
+    const localDate = next.startChanged ? localDateFor(next.startedAt.toISOString(), tzOffsetMinutes) : w.localDate;
     // Spec 05.1 §6.5: a finish must find every working set complete.
-    if (endedAt !== null && w.endedAt === null) {
+    if (endedAt !== null) {
       for (const we of this.exercises.values()) {
         if (we.workoutId !== id) continue;
         for (const s of this.sets.values()) {
@@ -661,12 +664,17 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       ...w,
       title: "title" in patch ? patch.title ?? null : w.title,
       notes: "notes" in patch ? patch.notes ?? null : w.notes,
+      startedAt: next.startedAt,
       endedAt,
+      localDate,
+      tzOffsetMinutes,
+      plannedDurationS: next.plannedDurationS,
       updatedAt: new Date(w.updatedAt.getTime() + 1000),
     };
     this.workouts.set(id, updated);
+    if (endedAt !== null) this.clampSetTimes(id, updated.startedAt, endedAt);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    return { workout: updated, exerciseCount, newRecords: [], finishedEdit: null };
+    return { workout: updated, exerciseCount, newRecords: [], finishedEdit: null, hadPlannedDuration: endedAt !== null && w.plannedDurationS !== null };
   }
 
   async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {

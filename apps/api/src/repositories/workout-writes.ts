@@ -3,7 +3,14 @@
  * D43, D47) — unit-testable with an injected clock, no database. Shared by
  * `workout.prisma.ts` and (for arithmetic) `FakeWorkoutRepository`.
  */
-import { WORKOUT_FUTURE_SKEW_MAX_MS, WORKOUT_STARTED_AT_PAST_MAX_MS } from "@sin/core";
+import {
+  resolveRetime,
+  WORKOUT_FUTURE_SKEW_MAX_MS,
+  WORKOUT_STARTED_AT_PAST_MAX_MS,
+  type RetimeCurrent,
+  type RetimePatch,
+  type RetimeResult,
+} from "@sin/core";
 import { ValidationError } from "../errors/app-error.js";
 
 function fieldError(path: string, message: string): never {
@@ -34,6 +41,13 @@ export function assertEndedAtNotBeforeStartedAt(startedAt: Date, endedAt: Date):
   if (endedAt.getTime() < startedAt.getTime()) {
     fieldError("endedAt", "must not be before startedAt");
   }
+}
+
+/** Spec 07.4 §6.4: `resolveRetime`, with its field error thrown as a 422 (static message, #57). */
+export function retimeOrThrow(current: RetimeCurrent, patch: RetimePatch, now: Date): Extract<RetimeResult, { ok: true }> {
+  const result = resolveRetime(current, patch, now);
+  if (!result.ok) fieldError(result.path, result.message);
+  return result;
 }
 
 /** §6.7: add with no `position` appends at the current count `n`. */

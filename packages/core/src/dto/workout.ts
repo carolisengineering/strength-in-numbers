@@ -140,12 +140,26 @@ export const CreateWorkoutSchema = z.strictObject({
 });
 export type CreateWorkout = z.infer<typeof CreateWorkoutSchema>;
 
-/** PATCH /v1/workouts/{id} body. */
-export const UpdateWorkoutSchema = z.strictObject({
-  title: WorkoutTitle.nullable().optional(),
-  notes: WorkoutNotes.nullable().optional(),
-  endedAt: z.iso.datetime({ offset: true }).nullable().optional(),
-});
+/** PATCH /v1/workouts/{id} body. Spec 07.4 §5.1 adds Change Time: `startedAt`, `tzOffsetMinutes`
+ * (only with `startedAt`) and `durationSeconds` (never with a non-null `endedAt`); the time rules
+ * themselves are `resolveRetime`'s, on the merged result. */
+export const UpdateWorkoutSchema = z
+  .strictObject({
+    title: WorkoutTitle.nullable().optional(),
+    notes: WorkoutNotes.nullable().optional(),
+    endedAt: z.iso.datetime({ offset: true }).nullable().optional(),
+    startedAt: z.iso.datetime({ offset: true }).optional(),
+    tzOffsetMinutes: TzOffsetMinutes.optional(),
+    durationSeconds: z.number().int().min(0).max(WORKOUT_DURATION_MAX_S).nullable().optional(),
+  })
+  .refine((b) => b.tzOffsetMinutes === undefined || b.startedAt !== undefined, {
+    path: ["tzOffsetMinutes"],
+    message: "requires startedAt",
+  })
+  .refine((b) => b.durationSeconds === undefined || b.endedAt == null, {
+    path: ["durationSeconds"],
+    message: "cannot be combined with endedAt",
+  });
 export type UpdateWorkout = z.infer<typeof UpdateWorkoutSchema>;
 
 /** POST /v1/workouts/{id}/exercises body. */

@@ -229,6 +229,26 @@ describe("AC13 — a non-finish PATCH takes no PR lock and returns newRecords: [
     expect(result.newRecords).toEqual([]);
     expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
     expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
+    // 07.4 AC17: still exactly the row lock, the UPDATE and the count.
+    expect(stub.calls).toHaveLength(3);
+  });
+
+  it("07.4 AC4 / AC20 — a live start move takes no PR lock and touches no set row", async () => {
+    const stub = new ScriptedPrisma();
+    const inProgress = baseRow({ started_at: new Date(Date.now() - 3_600_000) });
+    const moved = new Date(Date.now() - 7_200_000);
+    stub.queueRows([inProgress]); // FOR UPDATE
+    stub.queueRows([{ timezone: "UTC" }]); // profile zone (no tzOffsetMinutes sent)
+    stub.queueRows([{ ...inProgress, started_at: moved }]); // UPDATE ... RETURNING
+    stub.queueRows([{ n: 0 }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+
+    const result = await repo.updateWorkout(inProgress.user_id, inProgress.id, { startedAt: moved.toISOString() });
+
+    expect(result.workout.startedAt).toEqual(moved);
+    expect(stub.calls[0]!.sql).toContain("FOR UPDATE");
+    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
+    expect(stub.calls.some((c) => c.sql.includes("set_entry"))).toBe(false);
   });
 
   it("a finish takes the PR lock first, before the row lock (D9, amended by AC18)", async () => {

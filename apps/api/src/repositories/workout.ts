@@ -109,6 +109,10 @@ export interface UpdateWorkoutFields {
   title?: string | null;
   notes?: string | null;
   endedAt?: string | null;
+  /** Spec 07.4 §5.1 (Change Time): checked by `resolveRetime` on the merged result. */
+  startedAt?: string;
+  tzOffsetMinutes?: number;
+  durationSeconds?: number | null;
 }
 
 /** `POST /v1/workouts/{id}/exercises` body (§5, §6.6). */
@@ -220,6 +224,8 @@ export interface UpdateWorkoutResult {
   newRecords: PersonalRecordRecord[];
   /** Spec 07.4 §9: set iff a finished workout's title/notes changed (the route logs `workout_edited`). */
   finishedEdit: FinishedEdit | null;
+  /** Spec 07.4 §9: true iff this request finished a workout that had a planned duration (`workout_finished`). */
+  hadPlannedDuration: boolean;
 }
 
 /**

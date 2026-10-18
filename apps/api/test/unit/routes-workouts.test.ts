@@ -154,7 +154,8 @@ describe("AC8 — PATCH /v1/workouts/{id}: finish", () => {
     expect(invalidEvenWhenFinished.statusCode).toBe(422);
   });
 
-  it("tzOffsetMinutes is an unknown key on PATCH -> 422", async () => {
+  // Amended by 07.4 AC19: still 422, now because tzOffsetMinutes needs startedAt.
+  it("tzOffsetMinutes without startedAt on PATCH -> 422", async () => {
     const { app } = await buildTestApp();
     const created = await app.inject({
       method: "POST",
@@ -549,5 +550,43 @@ describe("Spec 09 AC23 — PATCH /v1/workout-exercises/{id} supersetGroup", () =
       });
       expect(res.statusCode, String(bad)).toBe(422);
     }
+  });
+});
+
+describe("07.4 AC19 — PATCH /v1/workouts/{id} Change Time validation", () => {
+  async function liveWorkout() {
+    const { app } = await buildTestApp();
+    const created = await app.inject({ method: "POST", url: "/v1/workouts", headers: BEARER, payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT } });
+    const patch = (payload: object) => app.inject({ method: "PATCH", url: `/v1/workouts/${created.json().id}`, headers: BEARER, payload });
+    return { patch };
+  }
+  const paths = (res: { json: () => { errors?: { path: string; message: string }[] } }) => res.json().errors;
+
+  it("tzOffsetMinutes alone names tzOffsetMinutes; endedAt with durationSeconds names durationSeconds", async () => {
+    const { patch } = await liveWorkout();
+    const a = await patch({ tzOffsetMinutes: 60 });
+    expect(a.statusCode).toBe(422);
+    expect(paths(a)).toEqual([expect.objectContaining({ path: "tzOffsetMinutes", message: "requires startedAt" })]);
+    const b = await patch({ endedAt: ENDED_AT, durationSeconds: 60 });
+    expect(b.statusCode).toBe(422);
+    expect(paths(b)).toEqual([expect.objectContaining({ path: "durationSeconds", message: "cannot be combined with endedAt" })]);
+  });
+
+  it("a live start move and a plan are 200 and come back on the response", async () => {
+    const { patch } = await liveWorkout();
+    const earlier = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    const moved = await patch({ startedAt: earlier, tzOffsetMinutes: 0 });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json()).toMatchObject({ startedAt: earlier, plannedDurationSeconds: null });
+    const planned = await patch({ durationSeconds: 3600 });
+    expect(planned.statusCode).toBe(200);
+    expect(planned.json().plannedDurationSeconds).toBe(3600);
+  });
+
+  it("a changed start before 2000-01-01 is 422 on startedAt", async () => {
+    const { patch } = await liveWorkout();
+    const res = await patch({ startedAt: "1999-12-31T23:59:59.000Z" });
+    expect(res.statusCode).toBe(422);
+    expect(paths(res)).toEqual([expect.objectContaining({ path: "startedAt", message: "must not be before 2000-01-01" })]);
   });
 });
