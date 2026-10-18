@@ -448,6 +448,19 @@ eligible sets.
    There is no backfill and no rollout-window hazard: old code never writes the new columns, and no client creates sections until Spec 10.3.
 4. Spec 10.3 (the UI) merges only after step 3 is clean.
 
+### 0012 — workout planned duration (Spec 07.4 Phase B)
+
+1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 07.4 Phase B; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `planned_duration_s`, so the migration safely precedes it.
+2. Merge Phase B (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `plannedDurationSeconds`, which the old API does not send — accepted on staging, as in 0010 / 0011).
+3. Verify: any `GET $BASE/v1/workouts/{id}` and the first page of `GET $BASE/v1/workouts` show `plannedDurationSeconds: null`. Consistency query — expected `0`:
+
+   ```sql
+   SELECT count(*) FROM "workout" WHERE planned_duration_s IS NOT NULL AND ended_at IS NOT NULL;
+   ```
+
+   (The `workout_planned_duration_live_only` CHECK makes this impossible; the query confirms the constraint is live.) No backfill, no `records:rebuild`.
+4. Rollback: revert the code only; the column stays (expand-only), old code ignores it, and a live workout's stored plan is simply never used.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
