@@ -244,6 +244,13 @@ describe("createLogger — Zod issues in a logged error chain are scrubbed (#11)
     expect(out).toContain("FST_ERR_RESPONSE_SERIALIZATION");
   });
 
+  it("masks a path segment that is not an identifier or index (a record keyed by user data)", () => {
+    const schema = z.record(z.string(), z.number());
+    const out = logged(responseViolation(schema.safeParse({ [EMAIL]: "not a number" }).error!));
+    expect(out).toContain('"path":["*"]');
+    expect(out).not.toContain(EMAIL);
+  });
+
   it("caps the number of issues logged", () => {
     const schema = z.array(z.string().max(1));
     const out = logged(responseViolation(schema.safeParse(Array.from({ length: 25 }, () => "xx")).error!));
@@ -265,6 +272,113 @@ describe("createLogger — Zod issues in a logged error chain are scrubbed (#11)
   it("leaves a non-Zod chain as it was (control)", () => {
     const err = new Error("outer", { cause: new Error("connect ECONNREFUSED db:5432") });
     expect(logged(err)).toContain("connect ECONNREFUSED db:5432");
+  });
+});
+
+describe("createLogger — a request-validation error's `validation[]` and message are scrubbed (#57)", () => {
+  function logged(err: unknown): string {
+    const { lines, logger } = capture();
+    logger.error({ err }, "request error");
+    return lines.join("");
+  }
+
+  /** The shape Fastify's `wrapValidationError` builds from `fastify-type-provider-zod`'s entries. */
+  function fastifyValidationError(validation: unknown[]): Error {
+    const err = Object.assign(new Error(`body/displayName ${NAME} is too long`), {
+      statusCode: 400,
+      code: "FST_ERR_VALIDATION",
+      validation,
+      validationContext: "body",
+    });
+    return err;
+  }
+
+  it("keeps instancePath + keyword (+ schema bounds) per entry and drops message, input and the joined message", () => {
+    const out = logged(
+      fastifyValidationError([
+        { keyword: "too_big", instancePath: "/displayName", schemaPath: "#/displayName/too_big", message: `${NAME} is too long`, params: { input: NAME, maximum: 3 } },
+      ]),
+    );
+    expect(out).not.toContain(NAME);
+    expect(out).toContain('"validation":[{"instancePath":"/displayName","keyword":"too_big","params":{"maximum":3}}]');
+    expect(out).toContain('"code":"FST_ERR_VALIDATION"');
+    expect(out).toContain('"statusCode":400');
+    expect(out).toContain('"validationContext":"body"');
+    expect(out).toContain("[scrubbed validation error: 1 issue(s)]");
+  });
+
+  it("keeps the schema's own bounds from `params`, but not request-supplied key names", () => {
+    const out = logged(
+      fastifyValidationError([
+        { keyword: "too_big", instancePath: "/displayName", message: NAME, params: { origin: "string", maximum: 3, inclusive: true, input: NAME } },
+        { keyword: "unrecognized_keys", instancePath: "", message: NAME, params: { keys: [EMAIL] } },
+      ]),
+    );
+    expect(out).toContain('{"instancePath":"/displayName","keyword":"too_big","params":{"origin":"string","maximum":3,"inclusive":true}}');
+    expect(out).toContain('{"instancePath":"","keyword":"unrecognized_keys"}');
+    expect(out).not.toContain(NAME);
+    expect(out).not.toContain(EMAIL);
+  });
+
+  // Code review: `instancePath` is the issue path joined with `/`, so a key a client chose (a record keyed
+  // by email) would reach the log through it. Only identifier-shaped segments and indexes are kept.
+  it("masks path segments that are not identifiers or indexes (a request-chosen record key)", () => {
+    const out = logged(fastifyValidationError([{ keyword: "too_big", instancePath: `/byEmail/${EMAIL}/sets/0`, message: "x" }]));
+    expect(out).toContain('"instancePath":"/byEmail/*/sets/0"');
+    expect(out).not.toContain(EMAIL);
+  });
+
+  it("drops non-string instancePath / keyword rather than logging them", () => {
+    const out = logged(fastifyValidationError([{ keyword: { seen: NAME }, instancePath: NAME.length, message: NAME }]));
+    expect(out).not.toContain(NAME);
+    expect(out).toContain('"validation":[{}]');
+  });
+
+  it("caps the number of entries logged", () => {
+    const entries = Array.from({ length: 25 }, (_, i) => ({ keyword: "custom", instancePath: `/items/${i}`, message: NAME }));
+    const out = logged(fastifyValidationError(entries));
+    expect(out.match(/"keyword":"custom"/g)).toHaveLength(20);
+    expect(out).toContain('"issuesTruncated":5');
+  });
+
+  it("scrubs a validation error that sits in a cause chain", () => {
+    const out = logged(new Error("outer", { cause: fastifyValidationError([{ keyword: "custom", instancePath: "/email", message: `saw ${EMAIL}` }]) }));
+    expect(out).not.toContain(EMAIL);
+    expect(out).toContain('"instancePath":"/email"');
+    expect(out).toContain("outer");
+  });
+
+  it("end to end: a body schema whose custom message echoes the value is logged without it", async () => {
+    const { lines, logger } = capture();
+    const { app } = await buildTestApp({ logger });
+    // Test-only root route: the request schema echoes the value (the regression #57 guards against).
+    app.withTypeProvider<ZodTypeProvider>().post(
+      "/__probe/pii-request",
+      {
+        schema: {
+          body: z.object({
+            displayName: z.string().max(3, { error: (iss) => `${String(iss.input)} is too long` }),
+            email: z.string().refine(() => false, { error: (iss) => `rejected ${String(iss.input)}`, params: { seen: EMAIL } }),
+          }),
+          response: { 200: z.object({ ok: z.boolean() }) },
+        },
+      },
+      async () => ({ ok: true }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/__probe/pii-request",
+      headers: { "content-type": "application/json" },
+      payload: { displayName: NAME, email: EMAIL },
+    });
+    expect(res.statusCode).toBe(422);
+    const out = lines.join("");
+    expect(out).toContain("request error");
+    expect(out).toContain('"instancePath":"/displayName","keyword":"too_big"');
+    expect(out).toContain('"instancePath":"/email","keyword":"custom"');
+    expect(out).not.toContain(NAME);
+    expect(out).not.toContain(EMAIL);
+    await app.close();
   });
 });
 
