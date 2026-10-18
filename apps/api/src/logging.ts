@@ -107,7 +107,11 @@ interface ValidationErrorLike extends Error {
   validationContext?: unknown;
 }
 
-/** Fastify's request-validation error (`wrapValidationError`), Zod- or AJV-built. */
+/**
+ * Fastify's request-validation error (`wrapValidationError`), Zod- or AJV-built. Matched by shape
+ * alone — any `Error` with a `validation` array — which fails closed: another such error would lose its
+ * message and stack in the log, never leak through it.
+ */
 function isValidationError(err: unknown): err is ValidationErrorLike {
   return err instanceof Error && Array.isArray((err as { validation?: unknown }).validation);
 }

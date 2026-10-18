@@ -55,33 +55,47 @@ function messageOf(result: unknown): string {
   return "";
 }
 
-const sentinelIssue = (): Record<string, unknown> => ({ code: "custom", input: SENTINEL, path: ["field"] });
+/** Each message function is called once per issue code × input shape, so a message that echoes only for one code or one input type is still exercised. */
+const ISSUE_CODES = ["custom", "invalid_type", "too_big", "too_small", "invalid_format", "invalid_value", "unrecognized_keys"];
+const SENTINEL_INPUTS: unknown[] = [SENTINEL, { value: SENTINEL }, [SENTINEL]];
+const sentinelIssues = (): Record<string, unknown>[] =>
+  ISSUE_CODES.flatMap((code) => SENTINEL_INPUTS.map((input) => ({ code, input, path: ["field"], keys: [SENTINEL] })));
 
-const exportedSchemas = Object.entries(core).filter(([, value]) => typeof value === "object" && value !== null && "_zod" in value);
+/** The message a function returns for each sentinel issue. */
+function messagesOf(fn: ErrorFn): string[] {
+  return sentinelIssues().map((issue) => messageOf(fn(issue)));
+}
+
+// Every object export: a schema, or a plain object/array that holds schemas (walked by collectErrorFns).
+const exportedSchemas = Object.entries(core).filter(([, value]) => typeof value === "object" && value !== null);
 
 describe("#57 — Zod messages on exported schemas never echo the value (probe)", () => {
   it("finds the schemas and their message functions (the probe is not vacuous)", () => {
-    expect(exportedSchemas.length).toBeGreaterThan(20);
+    expect(exportedSchemas.filter(([, value]) => "_zod" in (value as object)).length).toBeGreaterThan(20);
     expect(exportedSchemas.flatMap(([, schema]) => collectErrorFns(schema)).length).toBeGreaterThan(5);
   });
 
   it.each(exportedSchemas)("%s", (_name, schema) => {
     for (const fn of collectErrorFns(schema)) {
-      expect(messageOf(fn(sentinelIssue()))).not.toContain(SENTINEL);
+      for (const message of messagesOf(fn)) expect(message).not.toContain(SENTINEL);
     }
   });
 
   it("catches an echoing message in every form Zod accepts (control)", () => {
     const echo = (iss: { input?: unknown }) => `saw ${String(iss.input)}`;
+    const echoOnTypeError = (iss: { code?: unknown; input?: unknown }) =>
+      iss.code === "invalid_type" ? `got ${JSON.stringify(iss.input)}` : "wrong";
     const planted = [
       z.object({ a: z.string().max(3, { error: echo }) }),
       z.string().refine(() => false, { error: echo }),
       z.array(z.string().min(1, { error: echo })).optional(),
       z.union([z.number(), z.string({ error: echo })]),
       z.string().pipe(z.string().refine(() => false, { message: SENTINEL })),
+      z.number({ error: echoOnTypeError }),
+      { nested: { schema: z.string({ error: echo }) } }, // a schema inside an exported plain object
     ];
     for (const schema of planted) {
-      const messages = collectErrorFns(schema).map((fn) => messageOf(fn(sentinelIssue())));
+      const messages = collectErrorFns(schema).flatMap(messagesOf);
       expect(messages.some((m) => m.includes(SENTINEL))).toBe(true);
     }
   });
@@ -94,12 +108,16 @@ function zodSourceFiles(dir: string): string[] {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return zodSourceFiles(path);
     if (!entry.name.endsWith(".ts")) return [];
-    return /from ["']zod["']/.test(readFileSync(path, "utf8")) ? [path] : [];
+    return /from ["']zod(?:\/[^"']*)?["']/.test(readFileSync(path, "utf8")) ? [path] : [];
   });
 }
 
-/** A string literal, or a template whose `${…}` are all UPPER_SNAKE constants. */
-const STATIC_MESSAGE = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`$\\]|\\.|\$\{[A-Z][A-Z0-9_]*\})*`)/;
+/** A string literal, or a template whose `${…}` are all UPPER_SNAKE constants, and nothing after it (no `+ value`, no ternary). */
+const STATIC_MESSAGE = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`$\\]|\\.|\$\{[A-Z][A-Z0-9_]*\})*`)\s*[,}\n)]/;
+
+/** Comments, so prose such as `// message: …` neither trips nor satisfies the scan. */
+const stripComments = (source: string): string =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
 /** `message:` values that are not literals but are checked elsewhere. */
 const ALLOWED_MESSAGE_EXPRESSIONS = new Set([
@@ -115,9 +133,11 @@ describe("#57 — superRefine issue messages are static (source scan)", () => {
   });
 
   it.each(files.map((f) => [f.slice(SRC.length + 1), f]))("%s", (_name, file) => {
-    const source = readFileSync(file, "utf8");
+    const source = stripComments(readFileSync(file, "utf8"));
     expect(source).not.toMatch(/\breportInput\b/);
     expect(source).not.toMatch(/\bparams\s*:/);
+    expect(source, "shorthand `{ message }` hides the value it carries").not.toMatch(/[{,]\s*message\s*[,}]/);
+    expect(source, "addIssue must take an object literal, so its message is scanned here").not.toMatch(/\baddIssue\(\s*(?!\{)/);
     for (const match of source.matchAll(/\bmessage\s*:\s*/g)) {
       const rest = source.slice(match.index + match[0].length);
       if (STATIC_MESSAGE.test(rest)) continue;
