@@ -27,6 +27,10 @@ export async function notifyIfAccountDeleted(error: unknown, queryClient: QueryC
   if (isAccountDeleted(error)) await queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
 }
 
-/** True once the `me` query itself has failed with `403 account-deleted`, i.e. the layout will swap the screen (BL-17). */
+/**
+ * True once the `me` query itself has failed with `403 account-deleted`, i.e. the layout will swap the
+ * screen (BL-17). Assumes `me` has an active observer (`ProtectedLayout` always has one): without one the
+ * invalidation only marks it stale, nothing refetches, and this stays false.
+ */
 export const meConfirmsDeleted = (queryClient: QueryClient): boolean =>
   isAccountDeleted(queryClient.getQueryState(ME_QUERY_KEY)?.error);
