@@ -1,0 +1,13 @@
+/* A text link styled as a tap target (Spec 06.1 AC33), as FinishedWorkoutScreen's back link. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-target-min);
+  color: var(--color-signal);
+  text-decoration: none;
+}
+
+.back:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+}

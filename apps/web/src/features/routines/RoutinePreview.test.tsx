@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -16,7 +17,9 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
+import { API_BASE_URL } from "../../test/catalogHarness";
 import { exerciseId } from "../../test/catalogFixtures";
+import { server } from "../../test/msw/server";
 import { catalog, pushA } from "../../test/routineFixtures";
 import { makeRoutine, makeRoutineItem, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
@@ -54,7 +57,7 @@ const before = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.
 
 // Issue #98: on a phone the actions sat under the whole exercise list. Back leads the screen, then the
 // name, then Start / Edit / Delete (and any start or delete notice), then the notes and the exercises.
-describe("#98 — the preview's actions come before the exercises", () => {
+describe("10.0 AC18 — preview order: Back, name, actions, notes, exercises (#98)", () => {
   it("orders Back, the h1, Start, Edit, Delete, the notes, then the exercise list", async () => {
     prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushA] }) });
     renderApp(`/app/workouts/routines/${routineId(1)}`);
@@ -82,14 +85,68 @@ describe("#98 — the preview's actions come before the exercises", () => {
     expect(before(screen.getByRole("button", { name: "Delete" }), alert)).toBe(true);
     expect(before(alert, screen.getByRole("list", { name: "Exercises" }))).toBe(true);
   });
+});
 
-  it.each([routineId(9)])("the gone screen (%s) also leads with Back", async (id) => {
+/** Back to Workouts is the screen's first element, before its h1 and before `content`. */
+function expectBackLeads(title: string, content: Element) {
+  const back = screen.getByRole("link", { name: "Back to Workouts" });
+  expect(back).toHaveAttribute("href", "/app/workouts");
+  expect(before(back, screen.getByRole("heading", { level: 1, name: title }))).toBe(true);
+  expect(before(back, content)).toBe(true);
+}
+
+/** The list fails (so the screen falls back to the detail read) and the detail read never answers. */
+function holdDetail(fake: ReturnType<typeof createWorkoutFake>) {
+  fake.failNext({ method: "GET", path: /^\/v1\/routines$/ }, () => problemResponse(500, "internal"));
+  server.use(http.get(`${API_BASE_URL}/v1/routines/:id`, () => new Promise<never>(() => {})));
+}
+
+describe("10.0 AC19 — every preview state leads with Back (#98)", () => {
+  it("while loading", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    prepareApp({ auth, catalog, fake });
+    holdDetail(fake);
+    renderApp(`/app/workouts/routines/${routineId(1)}`);
+    expectBackLeads("Routine", await screen.findByText("Loading routine…"));
+  });
+
+  it("after a load failure, so Retry is not the only way out", async () => {
+    const fake = createWorkoutFake({ catalog });
+    fake.failNext({ method: "GET", path: /^\/v1\/routines\/./ }, () => problemResponse(418, "teapot"));
+    prepareApp({ auth, catalog, fake });
+    renderApp(`/app/workouts/routines/${routineId(1)}`);
+    expectBackLeads("Routine", await screen.findByRole("alert"));
+  });
+
+  it.each([routineId(9), "not-a-uuid"])("when the routine is gone (%s)", async (id) => {
     prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushA] }) });
     renderApp(`/app/workouts/routines/${id}`);
-    const message = await screen.findByText("That routine no longer exists");
-    const back = screen.getByRole("link", { name: "Back to Workouts" });
-    expect(before(back, screen.getByRole("heading", { level: 1, name: "Routine" }))).toBe(true);
-    expect(before(back, message)).toBe(true);
+    expectBackLeads("Routine", await screen.findByText("That routine no longer exists"));
+  });
+});
+
+// The editor's load states share the preview's (its gone state is the preview's `RoutineGone`), so all three lead with Back.
+describe("10.0 AC25 — the editor's load states lead with Back (#98)", () => {
+  it("while loading", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    prepareApp({ auth, catalog, fake });
+    holdDetail(fake);
+    renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    expectBackLeads("Edit routine", await screen.findByText("Loading routine…"));
+  });
+
+  it("after a load failure", async () => {
+    const fake = createWorkoutFake({ catalog });
+    fake.failNext({ method: "GET", path: /^\/v1\/routines\/./ }, () => problemResponse(418, "teapot"));
+    prepareApp({ auth, catalog, fake });
+    renderApp(`/app/workouts/routines/${routineId(1)}/edit`);
+    expectBackLeads("Edit routine", await screen.findByRole("alert"));
+  });
+
+  it("when the routine is gone", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushA] }) });
+    renderApp(`/app/workouts/routines/${routineId(9)}/edit`);
+    expectBackLeads("Routine", await screen.findByText("That routine no longer exists"));
   });
 });
 

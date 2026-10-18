@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine, RoutineItem } from "@sin/core";
+import { BackLink } from "../../ui/BackLink";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -40,7 +41,7 @@ function RoutinePreview({ id }: { id: string }) {
 
   if (lookup.status === "pending") {
     return (
-      <Screen title="Routine" lead={<BackLink />}>
+      <Screen title="Routine" lead={<BackToWorkouts />}>
         <p role="status" className={styles.status}>
           Loading routine…
         </p>
@@ -50,7 +51,7 @@ function RoutinePreview({ id }: { id: string }) {
   if (lookup.status === "not-found") return <RoutineGone />;
   if (lookup.status === "error") {
     return (
-      <Screen title="Routine" lead={<BackLink />}>
+      <Screen title="Routine" lead={<BackToWorkouts />}>
         <InlineNotice tone="error" requestId={classifyRoutineError(lookup.error).requestId} actionLabel="Retry" onAction={lookup.retry}>
           {LOAD_ONE_FAILED}
         </InlineNotice>
@@ -62,20 +63,15 @@ function RoutinePreview({ id }: { id: string }) {
 
 export function RoutineGone() {
   return (
-    <Screen title="Routine" lead={<BackLink />}>
+    <Screen title="Routine" lead={<BackToWorkouts />}>
       <p className={styles.status}>{ROUTINE_GONE}</p>
     </Screen>
   );
 }
 
-/** Leads every preview state, above the `<h1>` (#98): reachable without scrolling past the exercises. */
-function BackLink() {
-  return (
-    <Link className={styles.back} to={WORKOUTS_PATH}>
-      <span aria-hidden="true">‹</span>
-      Back to Workouts
-    </Link>
-  );
+/** Leads every preview and editor load state, above the `<h1>` (#98): reachable without scrolling past the exercises. */
+export function BackToWorkouts() {
+  return <BackLink to={WORKOUTS_PATH} label="Back to Workouts" />;
 }
 
 export function RoutineItems({ routine }: { routine: Routine }) {
@@ -182,7 +178,7 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
 
   // #98: the actions (and their notices) lead, so Start is reachable without scrolling past the exercises.
   return (
-    <Screen title={routine.name} lead={<BackLink />}>
+    <Screen title={routine.name} lead={<BackToWorkouts />}>
       <div className={styles.actions}>
         {active.data ? (
           <p className={styles.blocked}>
