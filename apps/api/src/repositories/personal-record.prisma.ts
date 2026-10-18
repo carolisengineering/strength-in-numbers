@@ -44,6 +44,33 @@ export async function rootsForWorkout(client: RawClient, workoutId: string): Pro
   return rows.map((r) => r.root_id);
 }
 
+/** Spec 07.4 §6.2 — the lineage root of one workout_exercise (a set or exercise edit touches one root). */
+export async function rootOfWorkoutExercise(client: RawClient, workoutExerciseId: string): Promise<string> {
+  const rows = await client.$queryRaw<{ root_id: string }[]>`
+    SELECT COALESCE(e.forked_from_exercise_id, e.id)::text AS root_id
+    FROM "workout_exercise" we
+    JOIN "exercise" e ON e.id = we.exercise_id
+    WHERE we.id = ${workoutExerciseId}::uuid
+  `;
+  const row = rows[0];
+  if (!row) throw new NotFoundError("workout exercise vanished under the write lock");
+  return row.root_id;
+}
+
+/** Spec 07.4 §6.2 / AC7 — roots that occur on more than one card of the workout: the only ones a
+ * reorder can affect, since `workout_exercise.position` is a tie-break only between them. */
+export async function rootsRepeatedInWorkout(client: RawClient, workoutId: string): Promise<string[]> {
+  const rows = await client.$queryRaw<{ root_id: string }[]>`
+    SELECT COALESCE(e.forked_from_exercise_id, e.id)::text AS root_id
+    FROM "workout_exercise" we
+    JOIN "exercise" e ON e.id = we.exercise_id
+    WHERE we.workout_id = ${workoutId}::uuid
+    GROUP BY 1
+    HAVING count(*) > 1
+  `;
+  return rows.map((r) => r.root_id);
+}
+
 export interface LineageSetRow {
   root_id: string;
   set_id: string;
