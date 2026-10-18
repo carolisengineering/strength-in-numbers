@@ -5,7 +5,7 @@ import {
   IncompleteWorkingSetsError,
   NotFoundError,
   ValidationError,
-  WorkoutFinishedError,
+  WorkoutWouldBeEmptyError,
 } from "../../src/errors/app-error.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
@@ -106,12 +106,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     const afterFinish = await repo.createSet(userId, weIds[0]!, { clientGeneratedId, reps: 10 });
     expect(afterFinish.created).toBe(false);
     expect(afterFinish.set.id).toBe(first.set.id);
-    await expect(
-      repo.createSet(userId, weIds[0]!, { clientGeneratedId: uuidv7(), reps: 10 }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+    // Amended by 07.4 (AC14): a new key on a finished workout is created in finished mode.
+    expect((await repo.createSet(userId, weIds[0]!, { clientGeneratedId: uuidv7(), reps: 10 })).created).toBe(true);
 
     const detail = await repo.getWorkoutById(userId, workoutId);
-    expect(detail.exercises.map((e) => e.sets.length)).toEqual([1, 3]);
+    expect(detail.exercises.map((e) => e.sets.length)).toEqual([2, 3]);
     expect(detail.exercises[0]!.sets[0]!.clientGeneratedId).toBe(clientGeneratedId);
   });
 
@@ -137,7 +136,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
   it("AC8 — create with reps only, then PATCH { weight, weightUnit, isComplete } ⇒ ok; without weight ⇒ 422", async () => {
     const { userId, weIds } = await workoutWith("weight_reps");
     const a = (await repo.createSet(userId, weIds[0]!, { reps: 5 })).set;
-    const done = await repo.updateSet(userId, a.id, { weight: 100, weightUnit: "kg", isComplete: true });
+    const { set: done } = await repo.updateSet(userId, a.id, { weight: 100, weightUnit: "kg", isComplete: true });
     expect(done).toMatchObject({ reps: 5, weight: 100, weightUnit: "kg", isComplete: true });
     const b = (await repo.createSet(userId, weIds[0]!, { reps: 5 })).set;
     await expect(repo.updateSet(userId, b.id, { isComplete: true })).rejects.toBeInstanceOf(ValidationError);
@@ -147,15 +146,15 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     const { userId, weIds } = await workoutWith("bodyweight_reps");
     const s = (await repo.createSet(userId, weIds[0]!, { reps: 10 })).set;
     expect(s.completedAt).toBeNull();
-    const first = await repo.updateSet(userId, s.id, { isComplete: true });
+    const { set: first } = await repo.updateSet(userId, s.id, { isComplete: true });
     expect(first.completedAt).not.toBeNull();
     await new Promise((r) => setTimeout(r, 20));
-    const again = await repo.updateSet(userId, s.id, { isComplete: true, reps: 11 });
+    const { set: again } = await repo.updateSet(userId, s.id, { isComplete: true, reps: 11 });
     expect(again.completedAt).toEqual(first.completedAt);
-    expect((await repo.updateSet(userId, s.id, { isComplete: false })).completedAt).toBeNull();
+    expect((await repo.updateSet(userId, s.id, { isComplete: false })).set.completedAt).toBeNull();
   });
 
-  it("AC9 — delete the middle of three: 1 and 3 remain, GET agrees, repeat delete 404, finished-workout delete 409", async () => {
+  it("AC9 (amended by 07.4) — delete the middle of three: 1 and 3 remain, GET agrees, repeat delete 404; finished: delete ok, last set 409", async () => {
     const { userId, workoutId, weIds } = await workoutWith("bodyweight_reps");
     const ids = [];
     for (let i = 0; i < 3; i += 1) {
@@ -166,7 +165,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     expect(detail.exercises[0]!.sets.map((s) => s.setNumber)).toEqual([1, 3]);
     await expect(repo.deleteSet(userId, ids[1]!)).rejects.toBeInstanceOf(NotFoundError);
     await finish(userId, workoutId);
-    await expect(repo.deleteSet(userId, ids[0]!)).rejects.toBeInstanceOf(WorkoutFinishedError);
+    await repo.deleteSet(userId, ids[0]!);
+    await expect(repo.deleteSet(userId, ids[2]!)).rejects.toBeInstanceOf(WorkoutWouldBeEmptyError);
   });
 
   it("AC12 — GET /active and /{id} both carry sets ordered by setNumber", async () => {

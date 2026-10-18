@@ -79,19 +79,27 @@ describe("AC3 — create appends, Location header, setNumber not client-settable
   });
 });
 
-describe("AC5 — workout-finished guards all three routes", () => {
-  it("POST, PATCH and DELETE on a finished workout's set are 409 workout-finished", async () => {
+describe("AC5 (amended by 07.4) / 07.4 AC1 — set routes open on a finished workout", () => {
+  it("POST, PATCH and DELETE succeed on a finished workout; the last set's DELETE is 409 workout-would-be-empty", async () => {
     const { app, workoutId, weId } = await setup();
     const id = (await postSet(app, weId, { reps: 5, weight: 100, weightUnit: "kg", isComplete: true })).json().id;
     expect((await finishWorkout(app, workoutId)).statusCode).toBe(200);
-    for (const res of [
-      await postSet(app, weId, {}),
-      await patchSet(app, id, { reps: 6 }),
-      await app.inject({ method: "DELETE", url: `/v1/sets/${id}`, headers: BEARER }),
-    ]) {
-      expect(res.statusCode).toBe(409);
-      expect(res.json().type).toMatch(/workout-finished$/);
-    }
+    const added = await postSet(app, weId, { setType: "warmup", reps: 5, weight: 40, weightUnit: "kg", isComplete: true });
+    expect(added.statusCode).toBe(201);
+    expect((await patchSet(app, id, { reps: 6 })).statusCode).toBe(200);
+    expect((await app.inject({ method: "DELETE", url: `/v1/sets/${id}`, headers: BEARER })).statusCode).toBe(204);
+    const last = await app.inject({ method: "DELETE", url: `/v1/sets/${added.json().id}`, headers: BEARER });
+    expect(last.statusCode).toBe(409);
+    expect(last.json().type).toMatch(/workout-would-be-empty$/);
+  });
+
+  it("07.4 AC9 — a finished-mode working set missing a measure is 422 naming it", async () => {
+    const { app, workoutId, weId } = await setup();
+    await postSet(app, weId, { reps: 5, weight: 100, weightUnit: "kg", isComplete: true });
+    await finishWorkout(app, workoutId);
+    const bad = await postSet(app, weId, { weight: 100, weightUnit: "kg" });
+    expect(bad.statusCode).toBe(422);
+    expect(fieldPaths(bad)).toEqual(["reps"]);
   });
 });
 
@@ -254,7 +262,7 @@ describe("AC22 — a create carrying clientGeneratedId is idempotent (route leve
     expect(b.statusCode).toBe(201);
     expect(b.json().id).not.toBe(a.json().id);
   });
-  it("a replay after the workout finished is still 200 with the stored row; a new key is 409", async () => {
+  it("a replay after the workout finished is still 200 with the stored row; a new key is created (07.4 AC14)", async () => {
     const { app, workoutId, weId } = await setup("bodyweight_reps");
     const clientGeneratedId = uuidv7();
     const first = await postSet(app, weId, { clientGeneratedId, reps: 10, isComplete: true });
@@ -262,7 +270,7 @@ describe("AC22 — a create carrying clientGeneratedId is idempotent (route leve
     const replay = await postSet(app, weId, { clientGeneratedId, reps: 10, isComplete: true });
     expect(replay.statusCode).toBe(200);
     expect(replay.json().id).toBe(first.json().id);
-    expect((await postSet(app, weId, { clientGeneratedId: uuidv7(), reps: 10 })).statusCode).toBe(409);
+    expect((await postSet(app, weId, { clientGeneratedId: uuidv7(), reps: 10 })).statusCode).toBe(201);
   });
   it("an upper-case key is echoed lower-case, and replays match whatever their case", async () => {
     const { app, weId } = await setup();

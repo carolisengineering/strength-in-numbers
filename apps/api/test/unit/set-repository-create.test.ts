@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, ValidationError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { FakeExerciseRepository } from "../helpers/fakes.js";
 
@@ -78,13 +78,19 @@ describe("AC4 — createSet ownership (404, never 403)", () => {
   });
 });
 
-describe("AC5 — createSet on a finished workout", () => {
-  it("phase 1 sees ended_at and throws WorkoutFinishedError before opening the transaction", async () => {
-    const stub = new ScriptedPrisma().queue_([
-      { workout_id: uuidv7(), modality_snapshot: "weight_reps", ended_at: new Date() },
-    ]);
-    await expect(repoOver(stub).createSet(uuidv7(), uuidv7(), {})).rejects.toBeInstanceOf(WorkoutFinishedError);
-    expect(stub.calls).toHaveLength(1);
+describe("AC5 (amended by 07.4) — createSet on a finished workout", () => {
+  it("phase 1 seeing ended_at no longer refuses: the transaction opens in finished mode with the PR lock", async () => {
+    const stub = new ScriptedPrisma()
+      .queue_([{ workout_id: uuidv7(), modality_snapshot: "weight_reps", ended_at: new Date() }])
+      .queue_(1) // PR lock
+      .queue_(1) // advisory lock
+      .queue_([{ ended_at: new Date(), started_at: new Date() }])
+      .queue_([{ id: uuidv7() }])
+      .queue_([{ max: null }])
+      .queue_([setRow({ set_type: "warmup" })]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { setType: "warmup" });
+    expect(result.created).toBe(true);
+    expect(stub.values[1]![0]).toMatch(/^pr:/);
   });
 });
 
@@ -135,13 +141,20 @@ describe("AC10/AC11 + Review Focus 5 — statement order inside the create trans
     expect(max).not.toContain("pg_advisory");
     expect(insert).toContain('INSERT INTO "set_entry"');
   });
-  it("the workout finished between phase 1 and the lock ⇒ WorkoutFinishedError, nothing inserted", async () => {
+  it("the workout finished between phase 1 and the lock ⇒ (amended by 07.4) restart in finished mode, no WorkoutFinishedError", async () => {
     const stub = new ScriptedPrisma()
       .queue_([{ workout_id: uuidv7(), modality_snapshot: "weight_reps", ended_at: null }])
       .queue_(1)
-      .queue_([{ ended_at: new Date() }]);
-    await expect(repoOver(stub).createSet(uuidv7(), uuidv7(), {})).rejects.toBeInstanceOf(WorkoutFinishedError);
-    expect(stub.calls.some((s) => s.includes("INSERT"))).toBe(false);
+      .queue_([{ ended_at: new Date(), started_at: new Date() }])
+      .queue_(1) // finished: PR lock
+      .queue_(1)
+      .queue_([{ ended_at: new Date(), started_at: new Date() }])
+      .queue_([{ id: uuidv7() }])
+      .queue_([{ max: null }])
+      .queue_([setRow({ set_type: "warmup" })]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { setType: "warmup" });
+    expect(result.created).toBe(true);
+    expect(stub.calls.filter((s) => s.includes("INSERT"))).toHaveLength(1);
   });
   it("the workout_exercise was deleted between phase 1 and the lock ⇒ NotFoundError, not an FK 500", async () => {
     const stub = new ScriptedPrisma()
@@ -179,11 +192,19 @@ describe("AC22 — createSet with a clientGeneratedId is idempotent", () => {
     expect(result.created).toBe(false);
   });
 
-  it("a new key on a finished workout is still WorkoutFinishedError", async () => {
-    const stub = new ScriptedPrisma().queue_(phase1(new Date())).queue_([]);
-    await expect(
-      repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: uuidv7() }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+  it("07.4 AC14 — a new key on a finished workout is created in finished mode (was WorkoutFinishedError)", async () => {
+    const stub = new ScriptedPrisma()
+      .queue_(phase1(new Date()))
+      .queue_([]) // lookup, no lock
+      .queue_(1) // PR lock
+      .queue_(1) // advisory lock
+      .queue_([]) // lookup under the lock
+      .queue_([{ ended_at: new Date(), started_at: new Date() }])
+      .queue_([{ id: uuidv7() }])
+      .queue_([{ max: null }])
+      .queue_([setRow({ set_type: "warmup" })]);
+    const result = await repoOver(stub).createSet(uuidv7(), uuidv7(), { clientGeneratedId: uuidv7(), setType: "warmup" });
+    expect(result.created).toBe(true);
   });
 
   it("a new key is looked up again under the advisory lock, then inserted with the key: created true", async () => {

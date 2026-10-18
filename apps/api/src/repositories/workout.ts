@@ -6,6 +6,7 @@
  * (`isWorkoutId` / `isWorkoutExerciseId`), exactly as `exercise.prisma.ts`
  * does with `isExerciseId`.
  */
+import type { FinishedEdit } from "./write-mode.js";
 import type { DistanceUnit, PlannedSet, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
@@ -179,6 +180,8 @@ export interface CreateSetResult {
   set: SetEntryRecord;
   modalitySnapshot: string;
   created: boolean;
+  /** Spec 07.4 §9: set iff this was a finished-mode write (the route logs `workout_edited`). */
+  finishedEdit: FinishedEdit | null;
 }
 
 /**
@@ -309,9 +312,9 @@ export interface WorkoutRepository {
   /** Spec 05.1 §6.4 + D10. Merge-then-validate against the stored row, under a
    * `FOR SHARE` re-check of the parent workout. Throws `NotFoundError`,
    * `WorkoutFinishedError`, `ValidationError`. */
-  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord>;
+  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<{ set: SetEntryRecord; finishedEdit: FinishedEdit | null }>;
 
   /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; no finished-workout
    * exemption. Throws `NotFoundError`, `WorkoutFinishedError`. */
-  deleteSet(actingUserId: string, id: string): Promise<void>;
+  deleteSet(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }>;
 }

@@ -70,8 +70,8 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
       config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
     },
     async (request) => {
-      const updated = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
-      return toSetEntryDto(updated);
+      const { set } = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
+      return toSetEntryDto(set);
     },
   );
 

@@ -1,4 +1,5 @@
 import {
+  clampInstantToSpan,
   isExerciseId,
   isRoutineId,
   isWorkoutExerciseId,
@@ -47,6 +48,7 @@ import {
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
+  WorkoutWouldBeEmptyError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
 import { assertPlannedSetsFitModalities, resolveItemPlan } from "../../src/repositories/planned-sets.js";
@@ -65,6 +67,7 @@ import {
   computeAppendPosition,
 } from "../../src/repositories/workout-writes.js";
 import {
+  assertFinishedSetComplete,
   assertSetMeasuresValid,
   fieldsToMeasures,
   isWorkingSetComplete,
@@ -92,6 +95,7 @@ import type {
   UpdateSetFields,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
+import type { FinishedEdit } from "../../src/repositories/write-mode.js";
 import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
 import type {
   PersonalRecordFilter,
@@ -777,11 +781,12 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       const stored = [...this.sets.values()].find(
         (s) => s.workoutExerciseId === we.id && s.clientGeneratedId === clientGeneratedId,
       );
-      if (stored) return { set: stored, modalitySnapshot: we.modalitySnapshot, created: false };
+      if (stored) return { set: stored, modalitySnapshot: we.modalitySnapshot, created: false, finishedEdit: null };
     }
-    if (workout.endedAt !== null) throw new WorkoutFinishedError();
     const next = fieldsToMeasures(fields);
     assertSetMeasuresValid(we.modalitySnapshot as Modality, next);
+    // Spec 07.4: a finished parent is written in finished mode (integrity, clamped completedAt).
+    if (workout.endedAt !== null) assertFinishedSetComplete(we.modalitySnapshot as Modality, next.setType, next);
     const siblings = [...this.sets.values()].filter((s) => s.workoutExerciseId === we.id);
     const now = new Date();
     const set: SetEntryRecord = {
@@ -791,12 +796,12 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       setNumber: Math.max(0, ...siblings.map((s) => s.setNumber)) + 1,
       ...next,
       ...FakeWorkoutRepository.withCanonical(next),
-      completedAt: next.isComplete ? now : null,
+      completedAt: next.isComplete ? FakeWorkoutRepository.completedNow(workout, now) : null,
       createdAt: now,
       updatedAt: now,
     };
     this.sets.set(set.id, set);
-    return { set, modalitySnapshot: we.modalitySnapshot, created: true };
+    return { set, modalitySnapshot: we.modalitySnapshot, created: true, finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
 
   private ownedSetOrThrow(
@@ -809,26 +814,48 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return { set, we, workout };
   }
 
-  async updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord> {
+  async updateSet(
+    actingUserId: string,
+    id: string,
+    patch: UpdateSetFields,
+  ): Promise<{ set: SetEntryRecord; finishedEdit: FinishedEdit | null }> {
     const { set, we, workout } = this.ownedSetOrThrow(actingUserId, id);
-    if (workout.endedAt !== null) throw new WorkoutFinishedError();
     const next = mergeSetPatch(set, patch);
     assertSetMeasuresValid(we.modalitySnapshot as Modality, next);
+    if (workout.endedAt !== null) assertFinishedSetComplete(we.modalitySnapshot as Modality, next.setType, next);
     const updated: SetEntryRecord = {
       ...set,
       ...next,
       ...FakeWorkoutRepository.withCanonical(next),
-      completedAt: next.isComplete ? (set.completedAt ?? new Date()) : null,
+      completedAt: next.isComplete ? (set.completedAt ?? FakeWorkoutRepository.completedNow(workout, new Date())) : null,
       updatedAt: new Date(set.updatedAt.getTime() + 1000),
     };
     this.sets.set(id, updated);
-    return updated;
+    return { set: updated, finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
 
-  async deleteSet(actingUserId: string, id: string): Promise<void> {
+  async deleteSet(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
     const { workout } = this.ownedSetOrThrow(actingUserId, id);
-    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    if (workout.endedAt !== null) this.assertWouldNotEmpty(workout.id, 1);
     this.sets.delete(id);
+    return { finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  /** Spec 07.4 §6.6: `now`, kept inside a finished workout's span. */
+  private static completedNow(workout: WorkoutRecord, now: Date): Date {
+    return workout.endedAt === null ? now : clampInstantToSpan(now, workout.startedAt, workout.endedAt);
+  }
+
+  /** The fake does no PR work; a finished-mode write still reports itself (07.4 §9). */
+  private static edit(workout: WorkoutRecord): FinishedEdit | null {
+    return workout.endedAt === null ? null : { workoutId: workout.id, recordsRecomputed: false, rootCount: 0, recomputeMs: 0 };
+  }
+
+  /** Spec 07.4 §6.3, over the in-memory rows. */
+  private assertWouldNotEmpty(workoutId: string, removed: number): void {
+    const cards = new Set([...this.exercises.values()].filter((e) => e.workoutId === workoutId).map((e) => e.id));
+    const n = [...this.sets.values()].filter((s) => cards.has(s.workoutExerciseId)).length;
+    if (n >= 1 && n - removed <= 0) throw new WorkoutWouldBeEmptyError(workoutId);
   }
 }
 
