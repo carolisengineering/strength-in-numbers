@@ -1,5 +1,6 @@
 /**
- * Spec 07.0 AC27 — finish-path latency on ~2 years of one user's history.
+ * Spec 07.0 AC27 — finish-path latency on ~2 years of one user's history; Spec 07.4 AC33 adds a
+ * finished-workout set edit (set edit + lineage recompute) on the same history.
  * A dev tool, not a CI gate (D19). Needs Docker (Testcontainers), like the
  * integration tests:
  *   PATH="$HOME/.docker/bin:$PATH" pnpm --filter @sin/api run bench:finish
@@ -45,12 +46,26 @@ try {
     await repo.updateWorkout(user, workoutId, { endedAt: new Date(sessionAt(n).getTime() + 3_600_000).toISOString() });
     timings.push(performance.now() - t0);
   }
-  timings.sort((a, b) => a - b);
-  const pct = (p: number) => timings[Math.min(timings.length - 1, Math.ceil((p / 100) * timings.length) - 1)]!;
-  process.stdout.write(
-    `finish latency over ${RUNS} runs, ${HISTORY_SESSIONS}+ sessions × ${EXERCISES} exercises × ${SETS} sets: ` +
-      `p50 ${pct(50).toFixed(1)} ms, p99 ${pct(99).toFixed(1)} ms, max ${timings.at(-1)!.toFixed(1)} ms\n`,
-  );
+  const report = (label: string, samples: number[]) => {
+    samples.sort((a, b) => a - b);
+    const pct = (p: number) => samples[Math.min(samples.length - 1, Math.ceil((p / 100) * samples.length) - 1)]!;
+    process.stdout.write(
+      `${label} latency over ${RUNS} runs, ${HISTORY_SESSIONS}+ sessions × ${EXERCISES} exercises × ${SETS} sets: ` +
+        `p50 ${pct(50).toFixed(1)} ms, p99 ${pct(99).toFixed(1)} ms, max ${samples.at(-1)!.toFixed(1)} ms\n`,
+    );
+  };
+  report("finish", timings);
+
+  // Spec 07.4 AC33: edit a working set of an old finished workout (weight up, so the lineage recompute
+  // runs and moves records), RUNS times across the history.
+  const edits: number[] = [];
+  for (let r = 0; r < RUNS; r++) {
+    const old = await logWorkout(db, user, { startedAt: new Date(sessionAt(r).getTime() + 3_600_000 * 3), exercises: exercisesFor(r) });
+    const t0 = performance.now();
+    await repo.updateSet(user, old.setIds[0]![0]!, { weight: 200 + r });
+    edits.push(performance.now() - t0);
+  }
+  report("finished-workout set edit", edits);
 } finally {
   await db.stop();
 }
