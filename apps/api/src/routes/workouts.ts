@@ -21,6 +21,7 @@ import {
   IncompleteWorkingSetsError,
   NotFoundError,
   WorkoutFinishedError,
+  WorkoutWouldBeEmptyError,
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
 import { toWorkoutDetailDto, toWorkoutDto, toWorkoutExerciseDto } from "./mappers.js";
@@ -223,7 +224,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: AddWorkoutExerciseSchema,
         response: { 201: WorkoutExerciseSchema },
       },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError, ExerciseRetiredError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, ExerciseRetiredError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -251,7 +252,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         body: UpdateWorkoutExerciseSchema,
         response: { 200: WorkoutExerciseSchema },
       },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError], writeGroup: "workouts" },
     },
     async (request) => {
       const updated = await deps.workoutRepository.updateWorkoutExercise(
@@ -267,7 +268,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     "/workout-exercises/:id",
     {
       schema: { params: workoutExerciseIdParams, response: { 204: z.undefined() } },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, WorkoutWouldBeEmptyError], writeGroup: "workouts" },
     },
     async (request, reply) => {
       await deps.workoutRepository.deleteWorkoutExercise(request.user!.id, request.params.id);

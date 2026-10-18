@@ -76,29 +76,22 @@ const MATRIX: Record<string, Slugs> = {
     409: ["workout-finished", "incomplete-working-sets"],
   }),
   "DELETE /v1/workouts/{id}": withCentral("body", { 404: ["not-found"] }),
+  // Spec 07.4 AC31: child writes open on a finished workout, so `workout-finished` is gone from
+  // them; the two deletes can refuse to empty a finished workout.
   "POST /v1/workouts/{id}/exercises": withCentral("body", {
     404: ["not-found"],
-    409: ["workout-finished", "exercise-retired"],
+    409: ["exercise-retired"],
   }),
-  "PATCH /v1/workout-exercises/{id}": withCentral("body", {
-    404: ["not-found"],
-    409: ["workout-finished"],
-  }),
+  "PATCH /v1/workout-exercises/{id}": withCentral("body", { 404: ["not-found"] }),
   "DELETE /v1/workout-exercises/{id}": withCentral("body", {
     404: ["not-found"],
-    409: ["workout-finished"],
+    409: ["workout-would-be-empty"],
   }),
-  "POST /v1/workout-exercises/{id}/sets": withCentral("body", {
-    404: ["not-found"],
-    409: ["workout-finished"],
-  }),
-  "PATCH /v1/sets/{id}": withCentral("body", {
-    404: ["not-found"],
-    409: ["workout-finished"],
-  }),
+  "POST /v1/workout-exercises/{id}/sets": withCentral("body", { 404: ["not-found"] }),
+  "PATCH /v1/sets/{id}": withCentral("body", { 404: ["not-found"] }),
   "DELETE /v1/sets/{id}": withCentral("body", {
     404: ["not-found"],
-    409: ["workout-finished"],
+    409: ["workout-would-be-empty"],
   }),
   // Spec 09 §5
   "GET /v1/routines": withCentral("none"),

@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { CreateSetSchema, SetEntrySchema, UpdateSetSchema } from "@sin/core";
-import { NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
+import { NotFoundError, WorkoutWouldBeEmptyError } from "../errors/app-error.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import { toSetEntryDto } from "./mappers.js";
 
@@ -34,7 +34,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
         body: CreateSetSchema,
         response: { 201: SetEntrySchema, 200: SetEntrySchema },
       },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
+      config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
@@ -67,7 +67,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
     "/sets/:id",
     {
       schema: { params: idParams, body: UpdateSetSchema, response: { 200: SetEntrySchema } },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
+      config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
     },
     async (request) => {
       const updated = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
@@ -79,7 +79,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
     "/sets/:id",
     {
       schema: { params: idParams, response: { 204: z.undefined() } },
-      config: { published: true, problems: [NotFoundError, WorkoutFinishedError], writeGroup: "sets" },
+      config: { published: true, problems: [NotFoundError, WorkoutWouldBeEmptyError], writeGroup: "sets" },
     },
     async (request, reply) => {
       await deps.workoutRepository.deleteSet(request.user!.id, request.params.id);

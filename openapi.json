@@ -7263,7 +7263,7 @@
             }
           },
           "409": {
-            "description": "Workout finished / Exercise retired",
+            "description": "Exercise retired",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -7275,7 +7275,6 @@
                       "properties": {
                         "type": {
                           "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished",
                             "https://strengthinnumbers.app/problems/exercise-retired"
                           ]
                         }
@@ -7780,29 +7779,6 @@
               }
             }
           },
-          "409": {
-            "description": "Workout finished",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished"
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
           "413": {
             "description": "Payload too large",
             "content": {
@@ -8029,7 +8005,7 @@
             }
           },
           "409": {
-            "description": "Workout finished",
+            "description": "Workout would have no sets",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8041,7 +8017,7 @@
                       "properties": {
                         "type": {
                           "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished"
+                            "https://strengthinnumbers.app/problems/workout-would-be-empty"
                           ]
                         }
                       }
@@ -11382,29 +11358,6 @@
               }
             }
           },
-          "409": {
-            "description": "Workout finished",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished"
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
           "413": {
             "description": "Payload too large",
             "content": {
@@ -11941,29 +11894,6 @@
               }
             }
           },
-          "409": {
-            "description": "Workout finished",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished"
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          },
           "413": {
             "description": "Payload too large",
             "content": {
@@ -12190,7 +12120,7 @@
             }
           },
           "409": {
-            "description": "Workout finished",
+            "description": "Workout would have no sets",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -12202,7 +12132,7 @@
                       "properties": {
                         "type": {
                           "enum": [
-                            "https://strengthinnumbers.app/problems/workout-finished"
+                            "https://strengthinnumbers.app/problems/workout-would-be-empty"
                           ]
                         }
                       }
