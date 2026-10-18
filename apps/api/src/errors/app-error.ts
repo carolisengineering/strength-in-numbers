@@ -229,18 +229,31 @@ export class SyncTokenExpiredError extends AppError {
   }
 }
 
-/** Spec 05.0 §5/§6.5 — the single "the parent is immutable" signal: raised by
- * PATCH /v1/workouts/{id} against a finished workout and by all three
- * exercise-within-workout writes when the (parent) workout has ended_at set. */
+/** Spec 05.0 §5/§6.5, narrowed by Spec 07.4 (D17): a finish (`PATCH /v1/workouts/{id}` with a
+ * non-null `endedAt`) against a workout that is already finished. The client's Finish recovery
+ * path reads it as "my first finish landed"; child writes no longer raise it. */
 export class WorkoutFinishedError extends AppError {
   readonly status = 409;
   readonly slug = "workout-finished";
   readonly title = "Workout finished";
-  readonly publicDetail =
-    "This workout has already been finished and can no longer be modified.";
+  readonly publicDetail = "This workout has already been finished.";
 
   constructor(internal = "target workout has ended_at set") {
     super(internal);
+  }
+}
+
+/** Spec 07.4 §5.2 / AC10 — a finished-workout delete would leave the workout with no sets. No
+ * extension member; `workoutId` is internal (for the `workout_edit_refused` log line only). */
+export class WorkoutWouldBeEmptyError extends AppError {
+  readonly status = 409;
+  readonly slug = "workout-would-be-empty";
+  readonly title = "Workout would have no sets";
+  readonly publicDetail = "This would leave the workout with no sets. Delete the whole workout instead.";
+
+  // Defaulted: the OpenAPI problem lists construct every error class with no arguments.
+  constructor(readonly workoutId: string = "") {
+    super("finished workout would have no sets");
   }
 }
 

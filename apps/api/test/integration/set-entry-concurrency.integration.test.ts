@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import type { Modality } from "@sin/core";
-import { IncompleteWorkingSetsError, NotFoundError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { IncompleteWorkingSetsError, NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import type { CreateSetResult, UpdateWorkoutResult, WorkoutRepository } from "../../src/repositories/workout.js";
@@ -99,7 +99,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set concurrency (real Postgr
     expect(Number(n[0]!.n)).toBe(1);
   });
 
-  it("AC11 — a concurrent finish and create: the set commits first, or the create is 409 and writes nothing", async () => {
+  it("AC11 (amended by 07.4) — a concurrent finish and create: the set commits before the finish, or after it in finished mode", async () => {
     for (let round = 0; round < 5; round += 1) {
       const { userId, workoutId, weIds } = await workoutWith("bodyweight_reps");
       const [fin, add] = await Promise.allSettled([
@@ -107,19 +107,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set concurrency (real Postgr
         repo.createSet(userId, weIds[0]!, { setType: "warmup" }),
       ]);
       expect(fin.status).toBe("fulfilled");
-      if (add.status === "rejected") {
-        expect(add.reason).toBeInstanceOf(WorkoutFinishedError);
-        const n = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
-          `SELECT count(*) AS n FROM "set_entry" WHERE workout_exercise_id = $1::uuid`,
-          weIds[0]!,
-        );
-        expect(Number(n[0]!.n)).toBe(0);
-      } else {
-        // Same clock-capture tolerance 05.0's AC9 test documents: ended_at is
-        // client-captured before dispatch, created_at is DB now().
-        const endedAt = (fin as PromiseFulfilledResult<UpdateWorkoutResult>).value.workout.endedAt!;
-        expect(add.value.set.createdAt.getTime() - endedAt.getTime()).toBeLessThanOrEqual(50);
-      }
+      // 07.4: no refusal any more — the create lands either way, and its completed_at (if any)
+      // never falls after the workout's end.
+      expect(add.status).toBe("fulfilled");
+      const endedAt = (fin as PromiseFulfilledResult<UpdateWorkoutResult>).value.workout.endedAt!;
+      const n = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+        `SELECT count(*) AS n FROM "set_entry" WHERE workout_exercise_id = $1::uuid`,
+        weIds[0]!,
+      );
+      expect(Number(n[0]!.n)).toBe(1);
+      expect(endedAt).toBeInstanceOf(Date);
     }
   });
 
@@ -136,8 +133,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set concurrency (real Postgr
         expect(fin.status).toBe("rejected");
         expect((fin as PromiseRejectedResult).reason).toBeInstanceOf(IncompleteWorkingSetsError);
       } else {
-        // (b) the finish locked first ⇒ create is 409 with nothing written; finish succeeded.
-        expect(add.reason).toBeInstanceOf(WorkoutFinishedError);
+        // (b, amended by 07.4) the finish locked first ⇒ the create runs in finished mode, where an
+        // incomplete working set is a 422 with nothing written; the finish succeeded.
+        expect(add.reason).toBeInstanceOf(ValidationError);
         expect(fin.status).toBe("fulfilled");
       }
       // Never: a finished workout holding an incomplete working set.
@@ -163,7 +161,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set concurrency (real Postgr
         expect(fin.status).toBe("rejected");
         expect((fin as PromiseRejectedResult).reason).toBeInstanceOf(IncompleteWorkingSetsError);
       } else {
-        expect(patch.reason).toBeInstanceOf(WorkoutFinishedError);
+        expect(patch.reason).toBeInstanceOf(ValidationError); // 07.4: finished-mode integrity (AC9)
         expect(fin.status).toBe("fulfilled");
       }
     }

@@ -24,6 +24,7 @@ import type {
   WorkoutDetailRecord,
   WorkoutExerciseDetailRecord,
   WorkoutExerciseRecord,
+  WithFinishedEdit,
   WorkoutRecord,
   WorkoutSectionRecord,
   WorkoutRepository,
@@ -37,12 +38,20 @@ import {
 } from "./workout-writes.js";
 import {
   assertWorkingSetsComplete,
+  assertWouldNotEmpty,
   createSetEntryMethods,
   loadSetsForWorkout,
   type RawClient,
 } from "./set-entry.prisma.js";
 import type { PersonalRecordRecord } from "./personal-record.js";
-import { lockUserRecords, recomputeRecordsForRoots, rootsForWorkout } from "./personal-record.prisma.js";
+import {
+  lockUserRecords,
+  recomputeRecordsForRoots,
+  rootOfWorkoutExercise,
+  repeatedRootOfWorkoutExercise,
+  rootsForWorkout,
+} from "./personal-record.prisma.js";
+import { assertStillLive, noRecompute, recomputeTimed, withWriteMode, type FinishedEdit } from "./write-mode.js";
 import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-history.prisma.js";
 
 /**
@@ -192,6 +201,29 @@ interface RoutineItemCopyRow {
   superset_group: number | null;
   notes: string | null;
   section_id: string | null;
+}
+
+/** Spec 07.4 AC3: a finished workout's PATCH without `endedAt` — `{}` / `endedAt: null` return the
+ * row unchanged (no UPDATE); `title` / `notes` are written. Records never depend on them. */
+async function finishedDetailsEdit(tx: RawClient, current: WorkoutDbRow, patch: UpdateWorkoutFields): Promise<UpdateWorkoutResult> {
+  let row = current;
+  let finishedEdit: FinishedEdit | null = null;
+  if ("title" in patch || "notes" in patch) {
+    const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
+    const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
+    const updated = await tx.$queryRaw<WorkoutDbRow[]>`
+      UPDATE "workout" SET title = ${nextTitle}, notes = ${nextNotes}, updated_at = now()
+      WHERE id = ${current.id}::uuid
+      RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
+                tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+    `;
+    row = updated[0]!;
+    finishedEdit = noRecompute(current.id);
+  }
+  const countRows = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${current.id}::uuid
+  `;
+  return { workout: toRecord(row), exerciseCount: countRows[0]!.n, newRecords: [], finishedEdit };
 }
 
 export function createWorkoutRepository(
@@ -498,14 +530,17 @@ export function createWorkoutRepository(
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      return prisma.$transaction(async (tx) => {
+      // Spec 07.4 §6.1: no unlocked preflight here — the live attempt's row lock reveals a finished
+      // workout, and a non-finish PATCH then restarts in finished mode (PR lock first).
+      return withWriteMode(prisma, actingUserId, null, async (tx, mode) => {
         // Spec 07.0 D9 (amended): a finish attempt takes the per-user PR
         // advisory lock BEFORE the row lock. The recompute's INSERTs take
         // FK KEY SHARE locks on other workouts' rows, so a PR writer that held
         // a row lock while waiting for the PR lock could deadlock with one
         // that holds the PR lock (found by AC18). PR lock → row locks,
-        // everywhere. A non-finish PATCH never takes it (AC13).
-        if (patch.endedAt != null) {
+        // everywhere. A live non-finish PATCH never takes it (AC13); a finished-mode
+        // one already holds it (withWriteMode, 07.4 AC4).
+        if (mode === "live" && patch.endedAt != null) {
           await lockUserRecords(tx, actingUserId);
         }
         // The row lock is the first data-touching statement, ahead of every
@@ -524,14 +559,14 @@ export function createWorkoutRepository(
         if (!current) {
           throw new NotFoundError("workout not found or not owned by the acting user");
         }
-        // The target's state is checked before any handler body rule — a
-        // finished workout rejects every schema-valid PATCH, {} included
-        // (§6.5, AC8).
         if (current.ended_at !== null) {
-          throw new WorkoutFinishedError();
+          // Spec 07.4 D17: only a re-finish is refused ("already finished", the client's recovery path).
+          if (patch.endedAt != null) throw new WorkoutFinishedError();
+          assertStillLive(mode, current.ended_at); // a title/notes edit restarts in finished mode
+          return finishedDetailsEdit(tx, current, patch);
         }
 
-        // `current.ended_at` is always `null` here (a finished workout threw
+        // `current.ended_at` is always `null` here (a finished workout returned
         // above), so an absent key, an explicit `endedAt: null`, and an
         // explicit `endedAt: undefined` all fall through to the same
         // no-op value — the three fields share one guard shape (Minor #3).
@@ -574,7 +609,7 @@ export function createWorkoutRepository(
           const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
           newRecords = written.filter((r) => r.workoutId === id);
         }
-        return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n, newRecords };
+        return { workout: toRecord(updatedRows[0]!), exerciseCount: countRows[0]!.n, newRecords, finishedEdit: null };
       });
     },
     async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
@@ -625,7 +660,7 @@ export function createWorkoutRepository(
       actingUserId: string,
       workoutId: string,
       fields: AddWorkoutExerciseFields,
-    ): Promise<WorkoutExerciseRecord> {
+    ): Promise<WithFinishedEdit<WorkoutExerciseRecord>> {
       if (!isWorkoutId(workoutId)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
@@ -638,9 +673,6 @@ export function createWorkoutRepository(
       const workout = wRows[0];
       if (!workout) {
         throw new NotFoundError("workout not found or not owned by the acting user");
-      }
-      if (workout.ended_at !== null) {
-        throw new WorkoutFinishedError();
       }
 
       // Phase 2 (§6.6): resolve the exercise on the root client, before the
@@ -656,8 +688,8 @@ export function createWorkoutRepository(
         throw new ExerciseRetiredError();
       }
 
-      // Phases 3-4 (§6.7/§6.8): the position transaction.
-      return prisma.$transaction(async (tx) => {
+      // Phases 3-4 (§6.7/§6.8): the position transaction — in finished mode behind the PR lock (07.4).
+      return withWriteMode(prisma, actingUserId, workout.ended_at ?? null, async (tx, mode) => {
         await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
         // The lock is its own statement, ahead of every read it protects
         // (§6.8, following insertWithCap/D23).
@@ -670,9 +702,7 @@ export function createWorkoutRepository(
           // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
           throw new NotFoundError("workout not found or not owned by the acting user");
         }
-        if (locked.ended_at !== null) {
-          throw new WorkoutFinishedError();
-        }
+        assertStillLive(mode, locked.ended_at);
 
         const countRows = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
@@ -700,14 +730,16 @@ export function createWorkoutRepository(
                     modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                     '[]'::json AS planned_sets
         `;
-        return toExerciseRecord(insertedRows[0]!);
+        const added = toExerciseRecord(insertedRows[0]!);
+        // 07.4 §6.2: an added card has no sets yet, so it can affect no record.
+        return { ...added, finishedEdit: mode === "finished" ? noRecompute(workoutId) : null };
       });
     },
     async updateWorkoutExercise(
       actingUserId: string,
       id: string,
       patch: UpdateWorkoutExerciseFields,
-    ): Promise<WorkoutExerciseRecord> {
+    ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }> {
       if (!isWorkoutExerciseId(id)) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
@@ -734,9 +766,6 @@ export function createWorkoutRepository(
       if (!current) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
-      if (current.ended_at !== null) {
-        throw new WorkoutFinishedError();
-      }
 
       // Every patch shape (position change, notes-only, or {}) goes through
       // the same lock/deferred-constraint transaction (§6.7): a notes-only
@@ -744,7 +773,7 @@ export function createWorkoutRepository(
       // finishWorkout, without ever raising WorkoutFinishedError.
       const workoutId = current.workout_id;
       const requestedPosition = patch.position;
-      return prisma.$transaction(async (tx) => {
+      return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
         await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
         // The lock is its own statement, ahead of every read it protects
         // (§6.8, following insertWithCap/D23).
@@ -757,9 +786,7 @@ export function createWorkoutRepository(
           // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
           throw new NotFoundError("workout exercise not found or not owned by the acting user");
         }
-        if (locked.ended_at !== null) {
-          throw new WorkoutFinishedError();
-        }
+        assertStillLive(mode, locked.ended_at);
 
         const targetRows = await tx.$queryRaw<
           { id: string; position: number; notes: string | null; superset_group: number | null }[]
@@ -819,10 +846,18 @@ export function createWorkoutRepository(
                     modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                     ${WE_PLANNED_SETS} AS planned_sets
         `;
-        return toExerciseRecord(updatedRows[0]!);
+        const exercise = toExerciseRecord(updatedRows[0]!);
+        const moved = nextPosition !== target.position;
+        const changed = moved || nextNotes !== target.notes || nextGroup !== target.superset_group;
+        // A no-op PATCH in finished mode reports no edit (same as the workout PATCH's `{}`).
+        if (mode === "live" || !changed) return { ...exercise, finishedEdit: null, moved };
+        // 07.4 §6.2 / AC7: position is a records tie-break only between cards of one lineage, and a
+        // move changes only the moved card's order against the others.
+        const root = moved ? await repeatedRootOfWorkoutExercise(tx, id) : null;
+        return { ...exercise, finishedEdit: await recomputeTimed(tx, actingUserId, workoutId, root ? [root] : []), moved };
       });
     },
-    async deleteWorkoutExercise(actingUserId: string, id: string): Promise<void> {
+    async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
       if (!isWorkoutExerciseId(id)) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
@@ -841,11 +876,8 @@ export function createWorkoutRepository(
       if (!current) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
-      if (current.ended_at !== null) {
-        throw new WorkoutFinishedError();
-      }
 
-      await prisma.$transaction(async (tx) => {
+      return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
         await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
         // The lock is its own statement, ahead of every read it protects
         // (§6.8, following insertWithCap/D23).
@@ -858,9 +890,7 @@ export function createWorkoutRepository(
           // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
           throw new NotFoundError("workout exercise not found or not owned by the acting user");
         }
-        if (locked.ended_at !== null) {
-          throw new WorkoutFinishedError();
-        }
+        assertStillLive(mode, locked.ended_at);
 
         const targetRows = await tx.$queryRaw<{ position: number }[]>`
           SELECT position FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
@@ -870,11 +900,25 @@ export function createWorkoutRepository(
           throw new NotFoundError("workout exercise not found or not owned by the acting user");
         }
 
+        // 07.4 §6.2 / §6.3: in finished mode, read the card's sets and its root BEFORE the cascade
+        // removes them, and refuse to empty the workout.
+        let roots: string[] = [];
+        if (mode === "finished") {
+          const own = await tx.$queryRaw<{ n: number; has_working: boolean | null }[]>`
+            SELECT count(*)::int AS n, bool_or(set_type = 'working') AS has_working
+            FROM "set_entry" WHERE workout_exercise_id = ${id}::uuid
+          `;
+          await assertWouldNotEmpty(tx, current.workout_id, own[0]?.n ?? 0);
+          if (own[0]?.has_working) roots = [await rootOfWorkoutExercise(tx, id)];
+        }
+
         await tx.$executeRaw`DELETE FROM "workout_exercise" WHERE id = ${id}::uuid`;
         await tx.$executeRaw`
           UPDATE "workout_exercise" SET position = position - 1
           WHERE workout_id = ${current.workout_id}::uuid AND position > ${target.position}
         `;
+        if (mode === "live") return { finishedEdit: null };
+        return { finishedEdit: await recomputeTimed(tx, actingUserId, current.workout_id, roots) };
       });
     },
   };

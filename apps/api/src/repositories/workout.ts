@@ -6,6 +6,7 @@
  * (`isWorkoutId` / `isWorkoutExerciseId`), exactly as `exercise.prisma.ts`
  * does with `isExerciseId`.
  */
+import type { FinishedEdit } from "./write-mode.js";
 import type { DistanceUnit, PlannedSet, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
@@ -179,6 +180,8 @@ export interface CreateSetResult {
   set: SetEntryRecord;
   modalitySnapshot: string;
   created: boolean;
+  /** Spec 07.4 §9: set iff this was a finished-mode write (the route logs `workout_edited`). */
+  finishedEdit: FinishedEdit | null;
 }
 
 /**
@@ -203,12 +206,18 @@ export interface CreateWorkoutResult {
  * as the write, so the route can log `workout_finished`'s `exercise_count`
  * without a second round trip.
  */
+/** Spec 07.4 §9: a write result carrying what a finished-mode write did (null in live mode), for the
+ * route's `workout_edited` line. Mappers pick fields explicitly, so it never reaches a response. */
+export type WithFinishedEdit<T> = T & { finishedEdit: FinishedEdit | null };
+
 export interface UpdateWorkoutResult {
   workout: WorkoutRecord;
   exerciseCount: number;
   /** Spec 07.0 §6.3: the records this workout holds after a finish — `[]`
    * for any non-finish PATCH. */
   newRecords: PersonalRecordRecord[];
+  /** Spec 07.4 §9: set iff a finished workout's title/notes changed (the route logs `workout_edited`). */
+  finishedEdit: FinishedEdit | null;
 }
 
 /**
@@ -251,8 +260,9 @@ export interface WorkoutRepository {
   /**
    * `PATCH /v1/workouts/{id}` (§6.5). Applies `title`/`notes`/`endedAt`
    * (finish transition) atomically under an exclusive row lock taken ahead of
-   * every check (Global Constraints, this plan). Throws `NotFoundError`,
-   * `WorkoutFinishedError` (409, target already has `ended_at` set), or
+   * every check (Global Constraints, this plan). On a finished workout (Spec 07.4) only
+   * `title`/`notes` apply and `{}`/`endedAt: null` are no-ops. Throws `NotFoundError`,
+   * `WorkoutFinishedError` (409, a non-null `endedAt` on an already-finished workout), or
    * `ValidationError` (422, `endedAt < startedAt` or the skew window —
    * evaluated inside the lock, after the finished-check), or
    * `IncompleteWorkingSetsError` (409, Spec 05.1 §6.5 — a finish with a
@@ -273,45 +283,45 @@ export interface WorkoutRepository {
   /**
    * Three-phase add (§6.6): resolve the workout and the exercise on the root
    * client, then open the position transaction (§6.7/§6.8). Throws
-   * `NotFoundError` (workout or exerciseId not visible), `WorkoutFinishedError`,
+   * `NotFoundError` (workout or exerciseId not visible),
    * `ExerciseRetiredError` (409, from 03.2), or `ValidationError` (422,
-   * out-of-range `position`).
+   * out-of-range `position`). Works on a finished workout too (Spec 07.4, finished mode).
    */
   addWorkoutExercise(
     actingUserId: string,
     workoutId: string,
     fields: AddWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord>>;
 
-  /** Reorder and/or edit notes (§6.7). Throws `NotFoundError`,
-   * `WorkoutFinishedError`, or `ValidationError` (422, out-of-range `position`). */
+  /** Reorder and/or edit notes / supersetGroup (§6.7), live or finished (Spec 07.4). Throws
+   * `NotFoundError` or `ValidationError` (422, out-of-range `position`). */
   updateWorkoutExercise(
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }>;
 
-  /** Delete + close the position gap (§6.7). Throws `NotFoundError` or
-   * `WorkoutFinishedError`. */
-  deleteWorkoutExercise(actingUserId: string, id: string): Promise<void>;
+  /** Delete + close the position gap (§6.7), live or finished. Throws `NotFoundError`, or
+   * `WorkoutWouldBeEmptyError` (409) when it would leave a finished workout with no sets (Spec 07.4). */
+  deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }>;
 
   /**
    * Spec 05.1 §6.2/§6.3. Resolves the workout_exercise through its workout
    * (404 not 403), validates the body against its modality (§6.1), then
    * appends at `max(set_number) + 1` under a per-workout_exercise advisory
    * lock. A `clientGeneratedId` already stored under this workout_exercise
-   * returns that row with `created: false`, ahead of the finished check and
-   * the validation (D15). Throws `NotFoundError`, `WorkoutFinishedError`,
-   * `ValidationError`.
+   * returns that row with `created: false`, ahead of any lock and the validation
+   * (D15). On a finished workout it runs in finished mode (Spec 07.4: a working set must be
+   * complete, `completed_at` clamped into the span). Throws `NotFoundError`, `ValidationError`.
    */
   createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult>;
 
   /** Spec 05.1 §6.4 + D10. Merge-then-validate against the stored row, under a
-   * `FOR SHARE` re-check of the parent workout. Throws `NotFoundError`,
-   * `WorkoutFinishedError`, `ValidationError`. */
-  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<SetEntryRecord>;
+   * `FOR SHARE` re-check of the parent workout; live or finished (Spec 07.4). Throws
+   * `NotFoundError`, `ValidationError`. */
+  updateSet(actingUserId: string, id: string, patch: UpdateSetFields): Promise<{ set: SetEntryRecord; finishedEdit: FinishedEdit | null }>;
 
-  /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; no finished-workout
-   * exemption. Throws `NotFoundError`, `WorkoutFinishedError`. */
-  deleteSet(actingUserId: string, id: string): Promise<void>;
+  /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; live or finished (Spec 07.4). Throws
+   * `NotFoundError`, or `WorkoutWouldBeEmptyError` (409) for a finished workout's last set. */
+  deleteSet(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }>;
 }

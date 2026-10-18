@@ -107,6 +107,7 @@ const EXPECTED = [
   // time.ts (Spec 05.0 §5)
   "localDateFor",
   "offsetMinutesForZone",
+  "clampInstantToSpan",
   // ids — set entry (Spec 05.1 §5)
   "SetEntryIdSchema",
   "parseSetEntryId",
@@ -137,6 +138,7 @@ const EXPECTED = [
   "sumVolumeMilli",
   "setRecordValueMilli",
   "progressPoints",
+  "setChangeAffectsRecords",
   // dto — progress series (Spec 07.2 §5)
   "ProgressPointSchema",
   "ProgressSeriesSchema",

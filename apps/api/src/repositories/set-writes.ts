@@ -86,6 +86,17 @@ export function isWorkingSetComplete(modality: Modality, m: Pick<SetMeasures, Me
   return requiredMeasuresFor(modality).every((name) => m[name] !== null);
 }
 
+/** Spec 07.4 AC9 / D13 — on a finished workout a `working` set must already pass the finish
+ * check, or it would enter the PR engine half-filled: a field error per missing measure. Live
+ * workouts keep half-filled rows (05.1). */
+export function assertFinishedSetComplete(modality: Modality, setType: SetType, m: Pick<SetMeasures, MeasureName>): void {
+  if (setType !== "working") return;
+  const errors: FieldError[] = requiredMeasuresFor(modality)
+    .filter((name) => m[name] === null)
+    .map((name) => ({ path: name, message: "required on a finished workout" }));
+  if (errors.length > 0) throw new ValidationError(errors, `set: ${modality} working set incomplete on a finished workout`);
+}
+
 /** Create (§6.1 point 2): no stored row, so an absent key is null. */
 export function fieldsToMeasures(fields: CreateSetFields): MergedSet {
   return {

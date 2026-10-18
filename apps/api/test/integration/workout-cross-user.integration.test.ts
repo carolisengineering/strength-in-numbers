@@ -261,6 +261,43 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
   const RACE_ITERATIONS = 20;
   const RACE_MIN_VANISHED_ROW_HITS = RACE_ITERATIONS * 0.6;
 
+  it("07.4 AC16 — on B's FINISHED workout, every write route that now opens is still 404 (never 403) for A, and B's rows are untouched", async () => {
+    const app = await appFor();
+    await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_A });
+    await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_B });
+    const exerciseId = uuidv7();
+    await db.prisma.$executeRawUnsafe(
+      `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'Shared', 'weight_reps', true)`,
+      exerciseId,
+    );
+    const startedAt = new Date(Date.now() - 3_600_000).toISOString();
+    const bWorkoutId = (await app.inject({ method: "POST", url: "/v1/workouts", headers: JSON_B, payload: { clientGeneratedId: uuidv7(), startedAt } })).json().id as string;
+    const bCardId = (await app.inject({ method: "POST", url: `/v1/workouts/${bWorkoutId}/exercises`, headers: JSON_B, payload: { exerciseId } })).json().id as string;
+    const bSetId = (await app.inject({ method: "POST", url: `/v1/workout-exercises/${bCardId}/sets`, headers: JSON_B, payload: { reps: 5, weight: 100, weightUnit: "kg", isComplete: true } })).json().id as string;
+    const finish = await app.inject({ method: "PATCH", url: `/v1/workouts/${bWorkoutId}`, headers: JSON_B, payload: { endedAt: new Date().toISOString() } });
+    expect(finish.statusCode).toBe(200);
+
+    const attempts: { method: "POST" | "PATCH" | "DELETE"; url: string; payload?: object }[] = [
+      { method: "PATCH", url: `/v1/workouts/${bWorkoutId}`, payload: { title: "mine now" } },
+      { method: "POST", url: `/v1/workouts/${bWorkoutId}/exercises`, payload: { exerciseId } },
+      { method: "PATCH", url: `/v1/workout-exercises/${bCardId}`, payload: { notes: "x" } },
+      { method: "DELETE", url: `/v1/workout-exercises/${bCardId}` },
+      { method: "POST", url: `/v1/workout-exercises/${bCardId}/sets`, payload: { setType: "warmup", reps: 1 } },
+      { method: "PATCH", url: `/v1/sets/${bSetId}`, payload: { rpe: 9 } },
+      { method: "DELETE", url: `/v1/sets/${bSetId}` },
+    ];
+    for (const a of attempts) {
+      const res = await app.inject({ method: a.method, url: a.url, headers: a.payload ? JSON_A : BEARER_A, ...(a.payload ? { payload: a.payload } : {}) });
+      expect(res.statusCode, `${a.method} ${a.url}`).toBe(404);
+      expect(res.json().type).toMatch(/not-found$/);
+    }
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${bWorkoutId}`, headers: BEARER_B });
+    expect(detail.json().title).toBeNull();
+    expect(detail.json().exercises).toHaveLength(1);
+    expect(detail.json().exercises[0].sets).toHaveLength(1);
+    expect(detail.json().exercises[0].sets[0].rpe).toBeNull();
+  });
+
   it("a workout deleted between the handler's read and the add-exercise transaction's lock is reliably 404, never 500", async () => {
     const userId = await insertUser();
     const exerciseId = uuidv7();

@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { WorkoutFinishedError } from "../../src/errors/app-error.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
@@ -66,7 +65,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — workout reads and writes
     expect(d.exercises.find((e) => e.id === e2)!.sectionId).toBe(main);
   });
 
-  it("AC18 — notes: set, clear, absent key, position-only, supersetGroup-only; finished workout → WorkoutFinishedError", async () => {
+  it("AC18 — notes: set, clear, absent key, position-only, supersetGroup-only; finished workout accepts a note too (amended by 07.4 AC2)", async () => {
     const { u, workoutId, e0 } = await sectioned();
     expect((await workouts().updateWorkoutExercise(u, e0, { notes: "x" })).notes).toBe("x");
     expect((await workouts().updateWorkoutExercise(u, e0, { supersetGroup: 2 })).notes).toBe("x");
@@ -74,6 +73,6 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — workout reads and writes
     expect((await workouts().updateWorkoutExercise(u, e0, {})).notes).toBe("x");
     expect((await workouts().updateWorkoutExercise(u, e0, { notes: null })).notes).toBeNull();
     await db.prisma.$executeRawUnsafe(`UPDATE "workout" SET ended_at = now() WHERE id = $1::uuid`, workoutId);
-    await expect(workouts().updateWorkoutExercise(u, e0, { notes: "late" })).rejects.toBeInstanceOf(WorkoutFinishedError);
+    expect((await workouts().updateWorkoutExercise(u, e0, { notes: "late" })).notes).toBe("late");
   });
 });

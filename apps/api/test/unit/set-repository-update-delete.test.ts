@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, ValidationError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { FakeExerciseRepository } from "../helpers/fakes.js";
 
@@ -45,7 +45,7 @@ const setRow = (o: Record<string, unknown> = {}) => ({
   updated_at: new Date("2026-09-27T10:00:00Z"),
   ...o,
 });
-const owner = (modality = "weight_reps") => [{ workout_id: uuidv7(), modality_snapshot: modality }];
+const owner = (modality = "weight_reps") => [{ workout_id: uuidv7(), modality_snapshot: modality, ended_at: null }];
 
 describe("AC4 — updateSet / deleteSet ownership", () => {
   it("malformed id ⇒ NotFoundError, no statement", async () => {
@@ -64,19 +64,14 @@ describe("AC4 — updateSet / deleteSet ownership", () => {
   });
 });
 
-describe("AC5 / D10 — finished parent, checked under FOR SHARE", () => {
-  it("updateSet: workout FOR SHARE shows ended_at ⇒ WorkoutFinishedError, no UPDATE", async () => {
-    const stub = new ScriptedPrisma().queue_(owner()).queue_([{ ended_at: new Date() }]);
-    await expect(repoOver(stub).updateSet(uuidv7(), uuidv7(), { reps: 6 })).rejects.toBeInstanceOf(
-      WorkoutFinishedError,
-    );
+describe("AC5 / D10 (amended by 07.4) — the parent is re-read under FOR SHARE", () => {
+  // Spec 07.4 AC1: a finished parent no longer refuses; the finished-mode statement order lives in
+  // set-repository-finished.test.ts. Here: the live path still re-reads the parent under FOR SHARE.
+  it("updateSet (live): workout FOR SHARE is the first statement in the transaction", async () => {
+    const stored = setRow();
+    const stub = new ScriptedPrisma().queue_(owner()).queue_([{ ended_at: null }]).queue_([stored]).queue_([stored]);
+    await repoOver(stub).updateSet(uuidv7(), stored.id, { reps: 6 });
     expect(stub.calls[1]).toMatch(/FROM "workout" WHERE .* FOR SHARE/s);
-    expect(stub.calls.some((s) => s.includes('UPDATE "set_entry"'))).toBe(false);
-  });
-  it("deleteSet: same, no exemption (contrast 05.0's whole-workout DELETE)", async () => {
-    const stub = new ScriptedPrisma().queue_(owner()).queue_([{ ended_at: new Date() }]);
-    await expect(repoOver(stub).deleteSet(uuidv7(), uuidv7())).rejects.toBeInstanceOf(WorkoutFinishedError);
-    expect(stub.calls.some((s) => s.includes("DELETE"))).toBe(false);
   });
 });
 
@@ -89,12 +84,12 @@ describe("AC8 — updateSet merges then validates", () => {
       .queue_([{ ended_at: null }])
       .queue_([stored])
       .queue_([updated]);
-    const result = await repoOver(stub).updateSet(uuidv7(), stored.id, { isComplete: true });
+    const { set: result } = await repoOver(stub).updateSet(uuidv7(), stored.id, { isComplete: true });
     expect(result.isComplete).toBe(true);
     expect(stub.calls[1]).toContain('FROM "workout"');
     expect(stub.calls[2]).toMatch(/FROM "set_entry" WHERE .* FOR UPDATE/s);
     expect(stub.calls[3]).toContain('UPDATE "set_entry"');
-    expect(stub.calls[3]).toContain("COALESCE(completed_at, now())");
+    expect(stub.calls[3]).toContain("COALESCE(completed_at, LEAST(GREATEST(now(), ");
   });
   it("{ isComplete: true } against a row missing weight ⇒ ValidationError, no UPDATE", async () => {
     const stub = new ScriptedPrisma()

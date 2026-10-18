@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { NotFoundError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { NotFoundError } from "../../src/errors/app-error.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
@@ -70,8 +70,7 @@ describe.skipIf(!shouldRunIntegration())("AC23 — PATCH workout exercise supers
     await expect(repo().updateWorkoutExercise(v, a.id, { supersetGroup: 1 })).rejects.toBeInstanceOf(NotFoundError);
 
     await repo().updateWorkout(u, workout.id, { endedAt: new Date(Date.now() + 60_000).toISOString() });
-    await expect(repo().updateWorkoutExercise(u, a.id, { supersetGroup: 1 })).rejects.toBeInstanceOf(
-      WorkoutFinishedError,
-    );
+    // Amended by 07.4 (AC2): a finished workout's card can be regrouped.
+    expect((await repo().updateWorkoutExercise(u, a.id, { supersetGroup: 1 })).supersetGroup).toBe(1);
   });
 });

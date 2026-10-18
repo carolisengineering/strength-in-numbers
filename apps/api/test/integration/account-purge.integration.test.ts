@@ -303,10 +303,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
       expect(results[0]!.status).toBe("fulfilled");
       for (const r of results.slice(1)) {
         if (r.status === "rejected") {
-          // NotFound: the purge's DELETE won. WorkoutFinished: the finish won and
-          // the set create lost. Anything else (a generic Error, 40P01, a lock
-          // timeout) is a real failure.
-          expect(["NotFoundError", "WorkoutFinishedError"], String(r.reason)).toContain((r.reason as Error).constructor.name);
+          // NotFound: the purge's DELETE won. (Spec 07.4: a set create that loses to the finish now
+          // runs in finished mode instead of answering WorkoutFinished.) Anything else (a generic
+          // Error, 40P01, a lock timeout) is a real failure.
+          expect(["NotFoundError"], String(r.reason)).toContain((r.reason as Error).constructor.name);
         }
       }
       expect(await exists(u)).toBe(false);

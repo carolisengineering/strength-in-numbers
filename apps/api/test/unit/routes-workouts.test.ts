@@ -117,7 +117,7 @@ describe("AC — GET /v1/workouts/{id}", () => {
 });
 
 describe("AC8 — PATCH /v1/workouts/{id}: finish", () => {
-  it("finishes an in-progress workout, then rejects every further schema-valid PATCH", async () => {
+  it("finishes an in-progress workout; afterwards only a re-finish is 409 (amended by 07.4 AC3)", async () => {
     const { app } = await buildTestApp();
     const created = await app.inject({
       method: "POST",
@@ -138,9 +138,12 @@ describe("AC8 — PATCH /v1/workouts/{id}: finish", () => {
 
     for (const payload of [{}, { endedAt: null }, { title: "x" }]) {
       const res = await app.inject({ method: "PATCH", url: `/v1/workouts/${id}`, headers: BEARER, payload });
-      expect(res.statusCode).toBe(409);
-      expect(res.json().type).toContain("workout-finished");
+      expect(res.statusCode).toBe(200);
+      expect(res.json().endedAt).toBe(ENDED_AT);
     }
+    const refinish = await app.inject({ method: "PATCH", url: `/v1/workouts/${id}`, headers: BEARER, payload: { endedAt: ENDED_AT } });
+    expect(refinish.statusCode).toBe(409);
+    expect(refinish.json().type).toContain("workout-finished");
 
     const invalidEvenWhenFinished = await app.inject({
       method: "PATCH",

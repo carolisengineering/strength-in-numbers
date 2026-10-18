@@ -111,13 +111,13 @@ describe("AC18 — PATCH /v1/workout-exercises/{id} notes (existing behavior, pi
     expect(res.statusCode).toBe(422);
     expect(res.json().errors.map((e: { path: string }) => e.path)).toEqual(["notes"]);
   });
-  it("exactly 4 000 characters is accepted; a finished workout answers 409 workout-finished", async () => {
+  it("exactly 4 000 characters is accepted; a finished workout accepts a note too (amended by 07.4 AC2)", async () => {
     const { json, detail, workoutId } = await sectionedWorkout();
     const id = detail.exercises[0].id as string;
     expect((await json("PATCH", `/v1/workout-exercises/${id}`, { notes: "x".repeat(WORKOUT_NOTES_MAX) })).statusCode).toBe(200);
     await json("PATCH", `/v1/workouts/${workoutId}`, { endedAt: ENDED_AT });
     const res = await json("PATCH", `/v1/workout-exercises/${id}`, { notes: "late" });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().type).toMatch(/workout-finished$/);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().notes).toBe("late");
   });
 });
