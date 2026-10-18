@@ -97,6 +97,11 @@ const EXPECTED = [
   "WORKOUT_NOTES_MAX",
   "WORKOUT_FUTURE_SKEW_MAX_MS",
   "WORKOUT_STARTED_AT_PAST_MAX_MS",
+  "WORKOUT_DURATION_MAX_S",
+  "WORKOUT_START_EDIT_FLOOR",
+  // workout-retime.ts (Spec 07.4 §6.4)
+  "resolveRetime",
+  "RETIME_MESSAGES",
   "WorkoutSchema",
   "WorkoutExerciseSchema",
   "WorkoutDetailSchema",

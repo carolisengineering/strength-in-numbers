@@ -24,6 +24,7 @@ export * from "./dto/routine-section.js";
 export * from "./dto/account.js";
 export * from "./dto/planned-set.js";
 export * from "./time.js";
+export * from "./workout-retime.js";
 export * from "./records.js";
 export * from "./routines.js";
 export * from "./plannedSets.js";

@@ -20,6 +20,12 @@ export const WORKOUT_NOTES_MAX = 4000;
 export const WORKOUT_FUTURE_SKEW_MAX_MS = 5 * 60 * 1000; // 300_000
 export const WORKOUT_STARTED_AT_PAST_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 604_800_000
 
+/** Spec 07.4 §5.3 — Change Time bounds: a workout lasts at most a day (also the
+ * `workout_planned_duration_range` CHECK), and a changed start is never before the
+ * fixed floor (D7; also the date picker's `min`). `POST` keeps the 7-day bound above. */
+export const WORKOUT_DURATION_MAX_S = 86_400;
+export const WORKOUT_START_EDIT_FLOOR = "2000-01-01T00:00:00Z";
+
 /** Like `noControlChars`, but permits TAB, LF, CR — notes are multi-line
  * prose, a title is a single line. Still rejects every other C0 char and DEL. */
 export const noControlCharsExceptWhitespace = (s: string): boolean => {
