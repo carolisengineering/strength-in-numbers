@@ -99,6 +99,8 @@ const EXPECTED = [
   "WORKOUT_STARTED_AT_PAST_MAX_MS",
   "WORKOUT_DURATION_MAX_S",
   "WORKOUT_START_EDIT_FLOOR",
+  "REQUIRES_START",
+  "NOT_WITH_ENDED_AT",
   // workout-retime.ts (Spec 07.4 §6.4)
   "resolveRetime",
   "RETIME_MESSAGES",

@@ -12,14 +12,19 @@ export async function userTimezone(tx: RawClient, userId: string): Promise<strin
   return rows[0]?.timezone ?? "UTC";
 }
 
-/** AC24 / D8: the calendar fields for a changed start — the sent offset, else the profile zone at that instant. */
+/** AC24 / D8: the calendar fields after a PATCH — the stored ones unless the start changed; then the
+ * sent offset, else the profile zone at the new instant. */
 export async function calendarFor(
   tx: RawClient,
   userId: string,
-  startedAt: Date,
+  current: { local_date: Date; tz_offset_minutes: number },
+  next: { startedAt: Date; startChanged: boolean },
   tzOffsetMinutes: number | undefined,
 ): Promise<{ localDate: string; tzOffsetMinutes: number }> {
-  const iso = startedAt.toISOString();
+  if (!next.startChanged) {
+    return { localDate: current.local_date.toISOString().slice(0, 10), tzOffsetMinutes: current.tz_offset_minutes };
+  }
+  const iso = next.startedAt.toISOString();
   const offset = tzOffsetMinutes ?? offsetMinutesForZone(iso, await userTimezone(tx, userId));
   return { localDate: localDateFor(iso, offset), tzOffsetMinutes: offset };
 }

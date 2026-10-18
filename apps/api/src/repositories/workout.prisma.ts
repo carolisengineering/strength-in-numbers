@@ -24,7 +24,6 @@ import type {
   WorkoutDetailRecord,
   WorkoutExerciseDetailRecord,
   WorkoutExerciseRecord,
-  RetimeOutcome,
   WithFinishedEdit,
   WorkoutRecord,
   WorkoutSectionRecord,
@@ -35,6 +34,7 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
   retimeOrThrow,
+  retimeOutcome,
 } from "./workout-writes.js";
 import { calendarFor, clampSetTimes, shiftSetTimes } from "./workout-retime.prisma.js";
 import {
@@ -198,27 +198,6 @@ interface RoutineItemCopyRow {
   section_id: string | null;
 }
 
-/** Spec 07.4 §9: what a Change Time did, for the route's `workout_retimed` line; null when the
- * patch carried neither `startedAt` nor `durationSeconds`. */
-function retimeOutcome(
-  patch: UpdateWorkoutFields,
-  wasFinished: boolean,
-  oldStart: Date,
-  next: { startedAt: Date; endedAt: Date | null; plannedDurationS: number | null; startChanged: boolean },
-  recordsRecomputed: boolean,
-): RetimeOutcome | null {
-  if (patch.startedAt === undefined && patch.durationSeconds === undefined) return null;
-  return {
-    wasFinished,
-    startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - oldStart.getTime()) / 1000) : null,
-    durationSeconds: next.endedAt !== null
-      ? Math.round((next.endedAt.getTime() - next.startedAt.getTime()) / 1000)
-      : next.plannedDurationS,
-    startedAt: next.startedAt,
-    recordsRecomputed,
-  };
-}
-
 /**
  * Spec 07.4 §6.5, finished mode (the PR lock is already held): title / notes and Change Time on a
  * finished workout. `{}` / `endedAt: null` change nothing and issue no UPDATE (AC3). A moved start
@@ -239,9 +218,7 @@ async function finishedPatch(
   const detailsSent = "title" in patch || "notes" in patch;
   let row = current;
   if (detailsSent || next.startChanged || next.endChanged) {
-    const calendar = next.startChanged
-      ? await calendarFor(tx, userId, next.startedAt, patch.tzOffsetMinutes)
-      : { localDate: current.local_date.toISOString().slice(0, 10), tzOffsetMinutes: current.tz_offset_minutes };
+    const calendar = await calendarFor(tx, userId, current, next, patch.tzOffsetMinutes);
     const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
     const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
     const updated = await tx.$queryRaw<WorkoutDbRow[]>`
@@ -264,8 +241,9 @@ async function finishedPatch(
     workout: toRecord(row),
     exerciseCount: countRows[0]!.n,
     newRecords: [],
-    // Records never depend on title / notes; a re-time reports its recompute on `retime`.
-    finishedEdit: detailsSent ? noRecompute(current.id) : null,
+    // Title / notes never touch records, but a start change in the same request did recompute them:
+    // both log lines then report the same recompute (§9).
+    finishedEdit: detailsSent ? (recompute ?? noRecompute(current.id)) : null,
     hadPlannedDuration: false,
     retime: retimeOutcome(patch, true, current.started_at, next, recompute?.recordsRecomputed ?? false),
   };
@@ -620,9 +598,7 @@ export function createWorkoutRepository(
         );
         const finishing = next.endedAt !== null;
         // AC24 / D8: the calendar fields move only with the start.
-        const calendar = next.startChanged
-          ? await calendarFor(tx, actingUserId, next.startedAt, patch.tzOffsetMinutes)
-          : { localDate: current.local_date.toISOString().slice(0, 10), tzOffsetMinutes: current.tz_offset_minutes };
+        const calendar = await calendarFor(tx, actingUserId, current, next, patch.tzOffsetMinutes);
         const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
 

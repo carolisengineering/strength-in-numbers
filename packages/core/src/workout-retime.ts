@@ -2,7 +2,7 @@
  * Spec 07.4 §6.4 — Change Time's one pure rule set, shared by the API repository and (for
  * pre-validation) the client. DB-free and clock-injected, like 05.0's `workout-writes.ts`.
  */
-import { WORKOUT_FUTURE_SKEW_MAX_MS, WORKOUT_START_EDIT_FLOOR } from "./dto/workout.js";
+import { NOT_WITH_ENDED_AT, REQUIRES_START, WORKOUT_FUTURE_SKEW_MAX_MS, WORKOUT_START_EDIT_FLOOR } from "./dto/workout.js";
 
 // Static `422` messages (CLAUDE.md #57): never a value. Bare constants, so the #57 source scan can see them.
 const FUTURE = "must not be more than 5 minutes in the future";
@@ -17,8 +17,8 @@ export const RETIME_MESSAGES = {
   floor: FLOOR,
   endsInFuture: ENDS_IN_FUTURE,
   beforeStart: BEFORE_START,
-  requiresStart: "requires startedAt",
-  notWithEndedAt: "cannot be combined with endedAt",
+  requiresStart: REQUIRES_START,
+  notWithEndedAt: NOT_WITH_ENDED_AT,
   finishedDurationNull: FINISHED_DURATION_NULL,
 } as const;
 

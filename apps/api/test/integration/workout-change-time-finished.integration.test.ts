@@ -142,6 +142,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.4 Phase B — Change Time on a
       await expectEqualsRebuild(user, [bench]);
     });
 
+    it("§9 (code review) — a title + start PATCH reports the same recompute on finishedEdit as on retime", async () => {
+      const w = await finishedWithTimes();
+      await rebuild(w.user, [w.bench]);
+      const result = await repo().updateWorkout(w.user, w.workoutId, { title: "Leg day", startedAt: day(2).toISOString() });
+      expect(result.retime).toMatchObject({ recordsRecomputed: true });
+      expect(result.finishedEdit).toMatchObject({ recordsRecomputed: true, rootCount: 1 });
+    });
+
     it("a duration-only change recomputes nothing", async () => {
       const w = await finishedWithTimes();
       await rebuild(w.user, [w.bench]);

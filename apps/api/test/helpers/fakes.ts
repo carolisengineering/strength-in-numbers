@@ -64,6 +64,7 @@ import {
   assertReorderPositionInRange,
   computeAppendPosition,
   retimeOrThrow,
+  retimeOutcome,
 } from "../../src/repositories/workout-writes.js";
 import {
   assertFinishedSetComplete,
@@ -645,7 +646,6 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
       const next = retimeOrThrow({ startedAt: w.startedAt, endedAt: w.endedAt, plannedDurationS: null }, patch, new Date());
       const detailsSent = "title" in patch || "notes" in patch;
-      const timeSent = patch.startedAt !== undefined || patch.durationSeconds !== undefined;
       let edited = w;
       if (detailsSent || next.startChanged || next.endChanged) {
         const tzOffsetMinutes = next.startChanged ? (patch.tzOffsetMinutes ?? 0) : w.tzOffsetMinutes;
@@ -663,20 +663,16 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       }
       if (next.startChanged) this.shiftSetTimes(id, next.startedAt.getTime() - w.startedAt.getTime());
       if (next.startChanged || next.endChanged) this.clampSetTimes(id, next.startedAt, next.endedAt!);
-      const retime = timeSent
-        ? {
-            wasFinished: true,
-            startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - w.startedAt.getTime()) / 1000) : null,
-            durationSeconds: Math.round((next.endedAt!.getTime() - next.startedAt.getTime()) / 1000),
-            startedAt: next.startedAt,
-            recordsRecomputed: next.startChanged,
-          }
-        : null;
+      // The repository recomputes the workout's lineage roots on a start change; no exercises, no roots.
+      const exerciseIds = new Set([...this.exercises.values()].filter((e) => e.workoutId === id).map((e) => e.exerciseId));
+      const recomputed = next.startChanged && exerciseIds.size > 0;
+      const recompute: FinishedEdit | null = recomputed ? { workoutId: id, recordsRecomputed: true, rootCount: exerciseIds.size, recomputeMs: 0 } : null;
+      const retime = retimeOutcome(patch, true, w.startedAt, next, recomputed);
       return {
         workout: edited,
         exerciseCount,
         newRecords: [],
-        finishedEdit: detailsSent ? FakeWorkoutRepository.edit(edited) : null,
+        finishedEdit: detailsSent ? (recompute ?? FakeWorkoutRepository.edit(edited)) : null,
         hadPlannedDuration: false,
         retime,
       };
@@ -711,15 +707,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(id, updated);
     if (endedAt !== null) this.clampSetTimes(id, updated.startedAt, endedAt);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    const retime = patch.startedAt !== undefined || patch.durationSeconds !== undefined
-      ? {
-          wasFinished: false,
-          startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - w.startedAt.getTime()) / 1000) : null,
-          durationSeconds: endedAt !== null ? Math.round((endedAt.getTime() - next.startedAt.getTime()) / 1000) : next.plannedDurationS,
-          startedAt: next.startedAt,
-          recordsRecomputed: false,
-        }
-      : null;
+    const retime = retimeOutcome(patch, false, w.startedAt, next, false);
     return {
       workout: updated,
       exerciseCount,
