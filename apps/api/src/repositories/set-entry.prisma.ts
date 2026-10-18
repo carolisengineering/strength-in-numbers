@@ -2,7 +2,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { isSetEntryId, isWorkoutExerciseId, type Modality } from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { IncompleteWorkingSetsError, NotFoundError, WorkoutFinishedError } from "../errors/app-error.js";
+import { IncompleteWorkingSetsError, NotFoundError, WorkoutFinishedError, WorkoutWouldBeEmptyError } from "../errors/app-error.js";
 import { assertSetMeasuresValid, fieldsToMeasures, isWorkingSetComplete, mergeSetPatch } from "./set-writes.js";
 import type {
   CreateSetFields,
@@ -140,6 +140,20 @@ export async function loadSetsForWorkout(client: RawClient, workoutId: string): 
  * off, so this read can't miss one (AC21). warmup / drop / failure sets are
  * excluded by the WHERE and never inspected (AC14).
  */
+/** Spec 07.4 §6.3 / AC10 — refuse a finished-mode delete that would take the workout's set
+ * count (any set type) from ≥ 1 to 0. Runs under the PR lock, which serializes every
+ * finished-mode write of the user, so two devices cannot both pass it (AC11). */
+export async function assertWouldNotEmpty(client: RawClient, workoutId: string, removed: number): Promise<void> {
+  const rows = await client.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n
+    FROM "set_entry" se
+    JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
+    WHERE we.workout_id = ${workoutId}::uuid
+  `;
+  const n = rows[0]?.n ?? 0;
+  if (n >= 1 && n - removed <= 0) throw new WorkoutWouldBeEmptyError(workoutId);
+}
+
 export async function assertWorkingSetsComplete(client: RawClient, workoutId: string): Promise<void> {
   const rows = await client.$queryRaw<
     {
