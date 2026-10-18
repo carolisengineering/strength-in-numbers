@@ -1,3 +1,4 @@
+import { logFinishedEdit, withRefusalLogged } from "./finished-edit-log.js";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -38,7 +39,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      const { set, modalitySnapshot, created } = await deps.workoutRepository.createSet(
+      const { set, modalitySnapshot, created, finishedEdit } = await deps.workoutRepository.createSet(
         actingUserId,
         request.params.id,
         request.body,
@@ -58,6 +59,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
         },
         "set_created",
       );
+      logFinishedEdit(request.log, actingUserId, "set_added", finishedEdit);
       reply.code(201).header("location", `/v1/sets/${set.id}`);
       return toSetEntryDto(set);
     },
@@ -70,7 +72,8 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
       config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
     },
     async (request) => {
-      const { set } = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
+      const { set, finishedEdit } = await deps.workoutRepository.updateSet(request.user!.id, request.params.id, request.body);
+      logFinishedEdit(request.log, request.user!.id, "set_changed", finishedEdit);
       return toSetEntryDto(set);
     },
   );
@@ -82,7 +85,11 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
       config: { published: true, problems: [NotFoundError, WorkoutWouldBeEmptyError], writeGroup: "sets" },
     },
     async (request, reply) => {
-      await deps.workoutRepository.deleteSet(request.user!.id, request.params.id);
+      const actingUserId = request.user!.id;
+      const { finishedEdit } = await withRefusalLogged(request.log, actingUserId, () =>
+        deps.workoutRepository.deleteSet(actingUserId, request.params.id),
+      );
+      logFinishedEdit(request.log, actingUserId, "set_deleted", finishedEdit);
       reply.code(204).send();
       return reply;
     },

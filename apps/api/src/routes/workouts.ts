@@ -1,3 +1,4 @@
+import { exerciseEditKind, logFinishedEdit, withRefusalLogged } from "./finished-edit-log.js";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -166,7 +167,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     async (request) => {
       const actingUserId = request.user!.id;
       const isFinishAttempt = request.body.endedAt !== undefined && request.body.endedAt !== null;
-      const { workout: updated, exerciseCount, newRecords } = await deps.workoutRepository.updateWorkout(
+      const { workout: updated, exerciseCount, newRecords, finishedEdit } = await deps.workoutRepository.updateWorkout(
         actingUserId,
         request.params.id,
         request.body,
@@ -185,6 +186,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         );
       }
       // Spec 07.0 §5: the finish summary rides on the PATCH response.
+      logFinishedEdit(request.log, actingUserId, "details_changed", finishedEdit);
       const body: UpdatedWorkout = { ...toWorkoutDto(updated), newRecords: newRecords.map(toPersonalRecordDto) };
       return body;
     },
@@ -239,6 +241,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         },
         "workout_exercise_added",
       );
+      logFinishedEdit(request.log, actingUserId, "exercise_added", created.finishedEdit);
       reply.code(201).header("location", `/v1/workout-exercises/${created.id}`);
       return toWorkoutExerciseDto(created);
     },
@@ -260,6 +263,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         request.params.id,
         request.body,
       );
+      logFinishedEdit(request.log, request.user!.id, exerciseEditKind(updated.moved, request.body), updated.finishedEdit);
       return toWorkoutExerciseDto(updated);
     },
   );
@@ -271,7 +275,11 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
       config: { published: true, problems: [NotFoundError, WorkoutWouldBeEmptyError], writeGroup: "workouts" },
     },
     async (request, reply) => {
-      await deps.workoutRepository.deleteWorkoutExercise(request.user!.id, request.params.id);
+      const actingUserId = request.user!.id;
+      const { finishedEdit } = await withRefusalLogged(request.log, actingUserId, () =>
+        deps.workoutRepository.deleteWorkoutExercise(actingUserId, request.params.id),
+      );
+      logFinishedEdit(request.log, actingUserId, "exercise_removed", finishedEdit);
       reply.code(204).send();
       return reply;
     },
