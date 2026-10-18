@@ -118,6 +118,7 @@ export function toWorkoutDto(r: WorkoutRecord): Workout {
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
     routineName: r.routineName,
+    plannedDurationSeconds: r.plannedDurationS,
   };
 }
 

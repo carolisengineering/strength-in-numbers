@@ -6,6 +6,7 @@ import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
 import { TRUNCATE_ACCOUNTS } from "./account-helpers.js";
+import { toWorkoutDetailDto } from "../../src/routes/mappers.js";
 
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000);
 
@@ -131,5 +132,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     expect(nBig).toBe(nSmall);
     expect(nSmall).toBeGreaterThanOrEqual(7); // not vacuous: the listener really saw the statements
     expect(nSmall).toBeLessThanOrEqual(8);
+  });
+
+  // Spec 07.4 AC30: the export's workout statement is hand-written (Spec 11), so the new column needs its own pin.
+  it("07.4 AC30 — each workout carries plannedDurationSeconds as stored: the live plan, null once finished", async () => {
+    const u = await insertUser(db);
+    const finished = (await logWorkout(db, u, { startedAt: daysAgo(3), exercises: [] })).workoutId;
+    const live = (await logWorkout(db, u, { startedAt: daysAgo(0.1), finish: "none", exercises: [] })).workoutId;
+    await db.prisma.$executeRawUnsafe(`UPDATE "workout" SET planned_duration_s = 2700 WHERE id = $1::uuid`, live);
+    const s = await createAccountExportRepository(db.prisma).snapshot(u);
+    const dto = (id: string) => toWorkoutDetailDto(s.workouts.find((w) => w.id === id)!);
+    expect(dto(live).plannedDurationSeconds).toBe(2700);
+    expect(dto(finished).plannedDurationSeconds).toBeNull();
   });
 });

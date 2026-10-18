@@ -27,6 +27,7 @@ const validWorkout = {
   createdAt: "2026-09-01T10:00:00.000Z",
   updatedAt: "2026-09-01T10:00:00.000Z",
   routineName: null,
+  plannedDurationSeconds: null,
 };
 
 describe("AC19 — dto/workout.ts code constants", () => {
@@ -56,6 +57,15 @@ describe("AC19/AC16 — WorkoutSchema", () => {
     const rest: Record<string, unknown> = { ...validWorkout };
     delete rest.startedAt;
     expect(() => WorkoutSchema.parse(rest)).toThrow();
+  });
+});
+
+describe("07.4 AC19 — WorkoutSchema.plannedDurationSeconds is required-nullable", () => {
+  it("accepts null and an integer; a payload without the key fails", () => {
+    expect(WorkoutSchema.safeParse({ ...validWorkout, plannedDurationSeconds: 3600 }).success).toBe(true);
+    const rest: Record<string, unknown> = { ...validWorkout };
+    delete rest.plannedDurationSeconds;
+    expect(WorkoutSchema.safeParse(rest).success).toBe(false);
   });
 });
 
@@ -100,7 +110,8 @@ describe("AC19/AC16 — CreateWorkoutSchema", () => {
 });
 
 describe("AC19/AC16 — UpdateWorkoutSchema", () => {
-  it("rejects localDate and tzOffsetMinutes as unknown keys", () => {
+  // Amended by 07.4 AC19: tzOffsetMinutes is now a key, but only together with startedAt.
+  it("rejects localDate as an unknown key and tzOffsetMinutes without startedAt", () => {
     expect(() => UpdateWorkoutSchema.parse({ localDate: "2026-09-01" })).toThrow();
     expect(() => UpdateWorkoutSchema.parse({ tzOffsetMinutes: 60 })).toThrow();
   });
@@ -231,5 +242,31 @@ describe("10.1 AC26 — routine-derived response fields stay required-nullable",
     const without: Record<string, unknown> = { ...full };
     delete without[field];
     expect(WorkoutExerciseSchema.safeParse(without).success).toBe(false);
+  });
+});
+
+describe("07.4 AC19 — UpdateWorkoutSchema Change Time keys", () => {
+  const issue = (body: unknown) => {
+    const r = UpdateWorkoutSchema.safeParse(body);
+    return r.success ? null : r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }));
+  };
+  it("accepts startedAt, tzOffsetMinutes with startedAt, and durationSeconds 0..86400 or null", () => {
+    expect(issue({ startedAt: "2026-09-01T10:00:00.000Z", tzOffsetMinutes: -300 })).toBeNull();
+    expect(issue({ durationSeconds: 0 })).toBeNull();
+    expect(issue({ durationSeconds: 86_400 })).toBeNull();
+    expect(issue({ durationSeconds: null })).toBeNull();
+    expect(issue({ startedAt: "2026-09-01T10:00:00.000Z", endedAt: "2026-09-01T11:00:00.000Z" })).toBeNull();
+  });
+  it("tzOffsetMinutes without startedAt is refused on tzOffsetMinutes with a static message", () => {
+    expect(issue({ tzOffsetMinutes: 60 })).toEqual([{ path: "tzOffsetMinutes", message: "requires startedAt" }]);
+  });
+  it("durationSeconds with a non-null endedAt is refused on durationSeconds; endedAt: null is fine", () => {
+    expect(issue({ endedAt: "2026-09-01T11:00:00.000Z", durationSeconds: 60 })).toEqual([{ path: "durationSeconds", message: "cannot be combined with endedAt" }]);
+    expect(issue({ endedAt: null, durationSeconds: 60 })).toBeNull();
+  });
+  it("out-of-range or fractional durations are refused", () => {
+    expect(issue({ durationSeconds: 86_401 })).not.toBeNull();
+    expect(issue({ durationSeconds: -1 })).not.toBeNull();
+    expect(issue({ durationSeconds: 1.5 })).not.toBeNull();
   });
 });

@@ -113,3 +113,16 @@ describe("AC20 — the nine workout operations are in the published OpenAPI cont
     expect(exerciseFields.every(isCamelCase)).toBe(true);
   });
 });
+
+describe("07.4 AC31 — PATCH /v1/workouts/{id} publishes the Change Time keys", () => {
+  it("the request body lists startedAt, tzOffsetMinutes and durationSeconds as optional properties", async () => {
+    const { app } = await buildTestApp();
+    await app.ready();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as {
+      paths: Record<string, Record<string, { requestBody?: { content: Record<string, { schema: { properties?: Record<string, unknown>; required?: string[] } }> } }>>;
+    };
+    const body = doc.paths["/v1/workouts/{id}"]!.patch!.requestBody!.content["application/json"]!.schema;
+    expect(Object.keys(body.properties ?? {})).toEqual(expect.arrayContaining(["title", "notes", "endedAt", "startedAt", "tzOffsetMinutes", "durationSeconds"]));
+    expect(body.required ?? []).toEqual([]);
+  });
+});

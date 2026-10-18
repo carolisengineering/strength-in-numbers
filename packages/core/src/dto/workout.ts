@@ -20,6 +20,17 @@ export const WORKOUT_NOTES_MAX = 4000;
 export const WORKOUT_FUTURE_SKEW_MAX_MS = 5 * 60 * 1000; // 300_000
 export const WORKOUT_STARTED_AT_PAST_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 604_800_000
 
+/** Spec 07.4 §5.3 — Change Time bounds: a typed `durationSeconds` (and so a stored plan, the
+ * `workout_planned_duration_range` CHECK) is at most a day, and a changed start is never before the
+ * fixed floor (D7; also the date picker's `min`). A finish's `endedAt` has no length cap (05.0), so a
+ * finished workout may be longer. `POST` keeps the 7-day bound above. */
+export const WORKOUT_DURATION_MAX_S = 86_400;
+export const WORKOUT_START_EDIT_FLOOR = "2000-01-01T00:00:00Z";
+
+/** Spec 07.4 §5.1 — the request schema's two cross-key messages, shared with `RETIME_MESSAGES` (#57: static). */
+export const REQUIRES_START = "requires startedAt";
+export const NOT_WITH_ENDED_AT = "cannot be combined with endedAt";
+
 /** Like `noControlChars`, but permits TAB, LF, CR — notes are multi-line
  * prose, a title is a single line. Still rejects every other C0 char and DEL. */
 export const noControlCharsExceptWhitespace = (s: string): boolean => {
@@ -60,6 +71,8 @@ export const WorkoutSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
   /** Spec 09 D15/D20: the routine's name as it was at start; `null` for a manual start. */
   routineName: z.string().nullable(),
+  /** Spec 07.4 §3: a live workout's planned "took" (Change Time); `null` when unset and always once finished. */
+  plannedDurationSeconds: z.number().int().nullable(),
 });
 export type Workout = z.infer<typeof WorkoutSchema>;
 
@@ -132,12 +145,26 @@ export const CreateWorkoutSchema = z.strictObject({
 });
 export type CreateWorkout = z.infer<typeof CreateWorkoutSchema>;
 
-/** PATCH /v1/workouts/{id} body. */
-export const UpdateWorkoutSchema = z.strictObject({
-  title: WorkoutTitle.nullable().optional(),
-  notes: WorkoutNotes.nullable().optional(),
-  endedAt: z.iso.datetime({ offset: true }).nullable().optional(),
-});
+/** PATCH /v1/workouts/{id} body. Spec 07.4 §5.1 adds Change Time: `startedAt`, `tzOffsetMinutes`
+ * (only with `startedAt`) and `durationSeconds` (never with a non-null `endedAt`); the time rules
+ * themselves are `resolveRetime`'s, on the merged result. */
+export const UpdateWorkoutSchema = z
+  .strictObject({
+    title: WorkoutTitle.nullable().optional(),
+    notes: WorkoutNotes.nullable().optional(),
+    endedAt: z.iso.datetime({ offset: true }).nullable().optional(),
+    startedAt: z.iso.datetime({ offset: true }).optional(),
+    tzOffsetMinutes: TzOffsetMinutes.optional(),
+    durationSeconds: z.number().int().min(0).max(WORKOUT_DURATION_MAX_S).nullable().optional(),
+  })
+  .refine((b) => b.tzOffsetMinutes === undefined || b.startedAt !== undefined, {
+    path: ["tzOffsetMinutes"],
+    message: REQUIRES_START,
+  })
+  .refine((b) => b.durationSeconds === undefined || b.endedAt == null, {
+    path: ["durationSeconds"],
+    message: NOT_WITH_ENDED_AT,
+  });
 export type UpdateWorkout = z.infer<typeof UpdateWorkoutSchema>;
 
 /** POST /v1/workouts/{id}/exercises body. */

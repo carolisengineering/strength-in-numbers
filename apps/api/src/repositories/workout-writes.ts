@@ -3,8 +3,16 @@
  * D43, D47) — unit-testable with an injected clock, no database. Shared by
  * `workout.prisma.ts` and (for arithmetic) `FakeWorkoutRepository`.
  */
-import { WORKOUT_FUTURE_SKEW_MAX_MS, WORKOUT_STARTED_AT_PAST_MAX_MS } from "@sin/core";
+import {
+  resolveRetime,
+  WORKOUT_FUTURE_SKEW_MAX_MS,
+  WORKOUT_STARTED_AT_PAST_MAX_MS,
+  type RetimeCurrent,
+  type RetimePatch,
+  type RetimeResult,
+} from "@sin/core";
 import { ValidationError } from "../errors/app-error.js";
+import type { RetimeOutcome } from "./workout.js";
 
 function fieldError(path: string, message: string): never {
   throw new ValidationError([{ path, message }], `${path}: ${message}`);
@@ -21,19 +29,32 @@ export function assertStartedAtInBounds(startedAt: Date, now: Date): void {
   }
 }
 
-/** §6.4/§6.5: endedAt on finish uses the same future bound as startedAt. */
-export function assertEndedAtInBounds(endedAt: Date, now: Date): void {
-  const deltaMs = endedAt.getTime() - now.getTime();
-  if (deltaMs > WORKOUT_FUTURE_SKEW_MAX_MS) {
-    fieldError("endedAt", "must not be more than 5 minutes in the future");
-  }
+/** Spec 07.4 §6.4: `resolveRetime`, with its field error thrown as a 422 (static message, #57). */
+export function retimeOrThrow(current: RetimeCurrent, patch: RetimePatch, now: Date): Extract<RetimeResult, { ok: true }> {
+  const result = resolveRetime(current, patch, now);
+  if (!result.ok) fieldError(result.path, result.message);
+  return result;
 }
 
-/** §6.5: endedAt >= startedAt; equality allowed. */
-export function assertEndedAtNotBeforeStartedAt(startedAt: Date, endedAt: Date): void {
-  if (endedAt.getTime() < startedAt.getTime()) {
-    fieldError("endedAt", "must not be before startedAt");
-  }
+/** Spec 07.4 §9: what a Change Time did, for the route's `workout_retimed` line; null when the patch
+ * carried neither `startedAt` nor `durationSeconds`. Shared by the repository and the fake. */
+export function retimeOutcome(
+  patch: { startedAt?: string; durationSeconds?: number | null },
+  wasFinished: boolean,
+  oldStart: Date,
+  next: { startedAt: Date; endedAt: Date | null; plannedDurationS: number | null; startChanged: boolean },
+  recordsRecomputed: boolean,
+): RetimeOutcome | null {
+  if (patch.startedAt === undefined && patch.durationSeconds === undefined) return null;
+  return {
+    wasFinished,
+    startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - oldStart.getTime()) / 1000) : null,
+    durationSeconds: next.endedAt !== null
+      ? Math.round((next.endedAt.getTime() - next.startedAt.getTime()) / 1000)
+      : next.plannedDurationS,
+    startedAt: next.startedAt,
+    recordsRecomputed,
+  };
 }
 
 /** §6.7: add with no `position` appends at the current count `n`. */

@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
@@ -12,6 +10,7 @@ const BEFORE_0011 = [
   "0010_create_planned_sets",
 ];
 
+// AC22's whole-schema `prisma migrate diff` check moved to 0012's test (07.4 AC18, CLAUDE.md).
 describe.skipIf(!shouldRunIntegration())("Spec 09.2 — migration 0011 (real Postgres)", () => {
   let db: IntegrationDb;
   const ids: Record<string, string> = {};
@@ -118,21 +117,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — migration 0011 (real Pos
     );
     expect(rows.map((r) => r.indexname).sort()).toEqual(["routine_item_section_idx", "workout_exercise_section_idx"]);
     for (const r of rows) expect(r.indexdef).toMatch(/WHERE \(section_id IS NOT NULL\)/);
-  });
-
-  it("AC22 — prisma migrate diff reports no difference beyond the two generated set_entry columns", () => {
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2);
-    const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });

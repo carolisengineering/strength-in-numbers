@@ -195,6 +195,7 @@ describe("finish", () => {
       createdAt: detail.createdAt,
       updatedAt: "2026-10-02T11:00:00.000Z",
       routineName: null,
+      plannedDurationSeconds: null,
     } as const;
     const { result } = renderHook(() => useFinishWorkout(), {
       wrapper: wrapperWith(qc, fakeClient({ finish: async () => ({ ...finished, newRecords: [] }) })),

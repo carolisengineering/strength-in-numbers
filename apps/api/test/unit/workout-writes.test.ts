@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ValidationError } from "../../src/errors/app-error.js";
 import {
   assertAddPositionInRange,
-  assertEndedAtInBounds,
-  assertEndedAtNotBeforeStartedAt,
   assertReorderPositionInRange,
   assertStartedAtInBounds,
   computeAppendPosition,
+  retimeOrThrow,
 } from "../../src/repositories/workout-writes.js";
 
 const NOW = new Date("2026-09-15T12:00:00.000Z");
@@ -34,26 +33,23 @@ describe("AC7 — assertStartedAtInBounds", () => {
   });
 });
 
-describe("AC7/AC8 — assertEndedAtInBounds", () => {
+// Amended by 07.4: the finish's endedAt rules now run in `resolveRetime`, through `retimeOrThrow`.
+describe("AC7/AC8 — a finish's endedAt future bound", () => {
+  const live = { startedAt: new Date(NOW.getTime() - 3_600_000), endedAt: null, plannedDurationS: null };
   it("accepts exactly at the +5 minute future bound and rejects just past it", () => {
-    expect(() =>
-      assertEndedAtInBounds(new Date(NOW.getTime() + 5 * 60 * 1000), NOW),
-    ).not.toThrow();
-    expect(() =>
-      assertEndedAtInBounds(new Date(NOW.getTime() + 5 * 60 * 1000 + 1), NOW),
-    ).toThrow(ValidationError);
+    expect(() => retimeOrThrow(live, { endedAt: new Date(NOW.getTime() + 5 * 60 * 1000).toISOString() }, NOW)).not.toThrow();
+    expect(() => retimeOrThrow(live, { endedAt: new Date(NOW.getTime() + 5 * 60 * 1000 + 1).toISOString() }, NOW)).toThrow(ValidationError);
   });
 });
 
-describe("AC8 — assertEndedAtNotBeforeStartedAt", () => {
+describe("AC8 — a finish's endedAt is not before startedAt", () => {
   const startedAt = new Date("2026-09-15T10:00:00.000Z");
+  const live = { startedAt, endedAt: null, plannedDurationS: null };
   it("accepts endedAt === startedAt", () => {
-    expect(() => assertEndedAtNotBeforeStartedAt(startedAt, startedAt)).not.toThrow();
+    expect(() => retimeOrThrow(live, { endedAt: startedAt.toISOString() }, NOW)).not.toThrow();
   });
   it("rejects endedAt < startedAt", () => {
-    expect(() =>
-      assertEndedAtNotBeforeStartedAt(startedAt, new Date(startedAt.getTime() - 1)),
-    ).toThrow(ValidationError);
+    expect(() => retimeOrThrow(live, { endedAt: new Date(startedAt.getTime() - 1).toISOString() }, NOW)).toThrow(ValidationError);
   });
 });
 

@@ -26,6 +26,8 @@ export interface WorkoutRecord {
   updatedAt: Date;
   /** Spec 09: `routine_name_snapshot` — set at start-from-routine, never updated. */
   routineName: string | null;
+  /** Spec 07.4 §4: `planned_duration_s` — a live workout's planned "took"; always null once finished. */
+  plannedDurationS: number | null;
 }
 
 /** One history row (Spec 07.1 §6.4): the workout plus its summary. Volume stays
@@ -107,6 +109,10 @@ export interface UpdateWorkoutFields {
   title?: string | null;
   notes?: string | null;
   endedAt?: string | null;
+  /** Spec 07.4 §5.1 (Change Time): checked by `resolveRetime` on the merged result. */
+  startedAt?: string;
+  tzOffsetMinutes?: number;
+  durationSeconds?: number | null;
 }
 
 /** `POST /v1/workouts/{id}/exercises` body (§5, §6.6). */
@@ -218,6 +224,20 @@ export interface UpdateWorkoutResult {
   newRecords: PersonalRecordRecord[];
   /** Spec 07.4 §9: set iff a finished workout's title/notes changed (the route logs `workout_edited`). */
   finishedEdit: FinishedEdit | null;
+  /** Spec 07.4 §9: true iff this request finished a workout that had a planned duration (`workout_finished`). */
+  hadPlannedDuration: boolean;
+  /** Spec 07.4 §9: set iff the patch carried `startedAt` or `durationSeconds` (the route logs `workout_retimed`). */
+  retime: RetimeOutcome | null;
+}
+
+/** Spec 07.4 §9 — a Change Time's effect. `startShiftSeconds` is null unless the start moved;
+ * `durationSeconds` is the resulting finished duration, or the stored plan on a live workout. */
+export interface RetimeOutcome {
+  wasFinished: boolean;
+  startShiftSeconds: number | null;
+  durationSeconds: number | null;
+  startedAt: Date;
+  recordsRecomputed: boolean;
 }
 
 /**

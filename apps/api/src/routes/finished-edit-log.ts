@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import { WorkoutWouldBeEmptyError } from "../errors/app-error.js";
+import type { RetimeOutcome } from "../repositories/workout.js";
 import type { FinishedEdit } from "../repositories/write-mode.js";
 
 /** Spec 07.4 §9 — one value per kind of finished-workout edit (ids and enums only, never a value). */
@@ -27,6 +28,24 @@ export function logFinishedEdit(log: FastifyBaseLogger, userId: string, edit: Fi
       recompute_ms: finishedEdit.recomputeMs,
     },
     "workout_edited",
+  );
+}
+
+const DAY_MS = 86_400_000;
+
+/** §9 `workout_retimed`, after commit, iff the PATCH carried `startedAt` or `durationSeconds` (ids, enums and numbers only). */
+export function logRetimed(log: FastifyBaseLogger, userId: string, workoutId: string, retime: RetimeOutcome | null, now: Date): void {
+  if (retime === null) return;
+  log.info(
+    {
+      workout_id: workoutId,
+      user_id: userId,
+      was_finished: retime.wasFinished,
+      start_shift_seconds: retime.startShiftSeconds,
+      duration_seconds: retime.durationSeconds,
+      days_back: retime.startShiftSeconds === null ? null : Math.max(0, Math.floor((now.getTime() - retime.startedAt.getTime()) / DAY_MS)),
+    },
+    "workout_retimed",
   );
 }
 

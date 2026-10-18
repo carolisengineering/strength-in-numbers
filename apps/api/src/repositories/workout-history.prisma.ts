@@ -30,6 +30,7 @@ interface PageRow {
   created_at: Date;
   updated_at: Date;
   routine_name_snapshot: string | null;
+  planned_duration_s: number | null;
   started_at_text: string;
   exercise_count: number;
   exercise_names: string[];
@@ -61,7 +62,7 @@ export async function listFinishedWorkouts(
   const rows = await client.$queryRaw<PageRow[]>`
     SELECT w.id, w.user_id, w.title, w.notes, w.started_at, w.ended_at, w.local_date,
            w.tz_offset_minutes, w.client_generated_id, w.source, w.created_at, w.updated_at,
-           w.routine_name_snapshot,
+           w.routine_name_snapshot, w.planned_duration_s,
            to_char(w.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS started_at_text,
            (SELECT count(*)::int FROM "workout_exercise" we WHERE we.workout_id = w.id) AS exercise_count,
            ARRAY(SELECT we.exercise_name_snapshot FROM "workout_exercise" we
@@ -123,6 +124,7 @@ export async function listFinishedWorkouts(
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     routineName: r.routine_name_snapshot,
+    plannedDurationS: r.planned_duration_s,
     exerciseCount: r.exercise_count,
     exerciseNames: r.exercise_names,
     workingSetCount: r.working_set_count,

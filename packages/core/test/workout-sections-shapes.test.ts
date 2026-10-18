@@ -10,7 +10,7 @@ const exercise = {
 };
 const detail = {
   id: G(2), title: null, notes: null, startedAt: T, endedAt: null, localDate: "2026-10-13", tzOffsetMinutes: 0,
-  clientGeneratedId: G(9), source: "manual", createdAt: T, updatedAt: T, routineName: null,
+  clientGeneratedId: G(9), source: "manual", createdAt: T, updatedAt: T, routineName: null, plannedDurationSeconds: null,
   exercises: [exercise], routineNotes: null, sections: [],
 };
 
@@ -25,10 +25,11 @@ describe("AC1 — workout response shapes", () => {
   it("WorkoutDetail adds exercises, routineNotes, sections in that order", () => {
     expect(Object.keys(WorkoutDetailSchema.shape).slice(-3)).toEqual(["exercises", "routineNotes", "sections"]);
   });
+  // Amended by 07.4 AC19: `plannedDurationSeconds` is the one key added since; still no section fields (D14).
   it("WorkoutSchema and WorkoutSummary are UNCHANGED (D14)", () => {
     expect(Object.keys(WorkoutSchema.shape)).toEqual([
       "id", "title", "notes", "startedAt", "endedAt", "localDate", "tzOffsetMinutes", "clientGeneratedId",
-      "source", "createdAt", "updatedAt", "routineName",
+      "source", "createdAt", "updatedAt", "routineName", "plannedDurationSeconds",
     ]);
     expect(Object.keys(WorkoutSummarySchema.shape)).not.toContain("sections");
     expect(Object.keys(WorkoutSummarySchema.shape)).not.toContain("routineNotes");

@@ -70,7 +70,7 @@ export function createAccountExportRepository(
           );
           const workoutRows = await tx.$queryRaw<WorkoutExportDbRow[]>`
             SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-                   tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot,
+                   tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s,
                    routine_notes_snapshot, ${workoutSectionsJson('"workout".id')} AS sections
             FROM "workout" WHERE user_id = ${userId}::uuid
             ORDER BY started_at, id`;

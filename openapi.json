@@ -1051,6 +1051,18 @@
                               "null"
                             ]
                           },
+                          "plannedDurationSeconds": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "exercises": {
                             "type": "array",
                             "items": {
@@ -1523,6 +1535,7 @@
                           "createdAt",
                           "updatedAt",
                           "routineName",
+                          "plannedDurationSeconds",
                           "exercises",
                           "routineNotes",
                           "sections"
@@ -4095,6 +4108,18 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "plannedDurationSeconds": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -4109,7 +4134,8 @@
                     "source",
                     "createdAt",
                     "updatedAt",
-                    "routineName"
+                    "routineName",
+                    "plannedDurationSeconds"
                   ],
                   "additionalProperties": false
                 }
@@ -4193,6 +4219,18 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "plannedDurationSeconds": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -4207,7 +4245,8 @@
                     "source",
                     "createdAt",
                     "updatedAt",
-                    "routineName"
+                    "routineName",
+                    "plannedDurationSeconds"
                   ],
                   "additionalProperties": false
                 }
@@ -4552,6 +4591,18 @@
                               "null"
                             ]
                           },
+                          "plannedDurationSeconds": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "exerciseCount": {
                             "type": "integer",
                             "minimum": 0,
@@ -4599,6 +4650,7 @@
                           "createdAt",
                           "updatedAt",
                           "routineName",
+                          "plannedDurationSeconds",
                           "exerciseCount",
                           "exerciseNames",
                           "workingSetCount",
@@ -4847,6 +4899,18 @@
                         "null"
                       ]
                     },
+                    "plannedDurationSeconds": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "exercises": {
                       "type": "array",
                       "items": {
@@ -5319,6 +5383,7 @@
                     "createdAt",
                     "updatedAt",
                     "routineName",
+                    "plannedDurationSeconds",
                     "exercises",
                     "routineNotes",
                     "sections"
@@ -5561,6 +5626,18 @@
                         "null"
                       ]
                     },
+                    "plannedDurationSeconds": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "exercises": {
                       "type": "array",
                       "items": {
@@ -6033,6 +6110,7 @@
                     "createdAt",
                     "updatedAt",
                     "routineName",
+                    "plannedDurationSeconds",
                     "exercises",
                     "routineNotes",
                     "sections"
@@ -6249,6 +6327,28 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "startedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "tzOffsetMinutes": {
+                    "type": "integer",
+                    "minimum": -720,
+                    "maximum": 840
+                  },
+                  "durationSeconds": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 86400
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -6343,6 +6443,18 @@
                       "type": [
                         "string",
                         "null"
+                      ]
+                    },
+                    "plannedDurationSeconds": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
                       ]
                     },
                     "newRecords": {
@@ -6446,6 +6558,7 @@
                     "createdAt",
                     "updatedAt",
                     "routineName",
+                    "plannedDurationSeconds",
                     "newRecords"
                   ],
                   "additionalProperties": false
