@@ -66,6 +66,8 @@ export const WorkoutSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
   /** Spec 09 D15/D20: the routine's name as it was at start; `null` for a manual start. */
   routineName: z.string().nullable(),
+  /** Spec 07.4 §3: a live workout's planned "took" (Change Time); `null` when unset and always once finished. */
+  plannedDurationSeconds: z.number().int().nullable(),
 });
 export type Workout = z.infer<typeof WorkoutSchema>;
 

@@ -26,6 +26,8 @@ export interface WorkoutRecord {
   updatedAt: Date;
   /** Spec 09: `routine_name_snapshot` — set at start-from-routine, never updated. */
   routineName: string | null;
+  /** Spec 07.4 §4: `planned_duration_s` — a live workout's planned "took"; always null once finished. */
+  plannedDurationS: number | null;
 }
 
 /** One history row (Spec 07.1 §6.4): the workout plus its summary. Volume stays

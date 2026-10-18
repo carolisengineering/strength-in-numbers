@@ -75,6 +75,8 @@ export interface WorkoutDbRow {
   created_at: Date;
   updated_at: Date;
   routine_name_snapshot: string | null;
+  /** Spec 07.4 §4 (migration 0012): NULL unless a live workout has a planned "took". */
+  planned_duration_s: number | null;
 }
 
 function toRecord(r: WorkoutDbRow): WorkoutRecord {
@@ -92,6 +94,7 @@ function toRecord(r: WorkoutDbRow): WorkoutRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     routineName: r.routine_name_snapshot,
+    plannedDurationS: r.planned_duration_s ?? null,
   };
 }
 
@@ -215,7 +218,7 @@ async function finishedDetailsEdit(tx: RawClient, current: WorkoutDbRow, patch: 
       UPDATE "workout" SET title = ${nextTitle}, notes = ${nextNotes}, updated_at = now()
       WHERE id = ${current.id}::uuid
       RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
     `;
     row = updated[0]!;
     finishedEdit = noRecompute(current.id);
@@ -249,7 +252,7 @@ export function createWorkoutRepository(
            ${fields.clientGeneratedId}::uuid, 'manual', now(), now())
         ON CONFLICT (user_id, client_generated_id) DO NOTHING
         RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                  tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                  tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
       `;
       const insertedRow = rows[0];
       return insertedRow
@@ -352,7 +355,7 @@ export function createWorkoutRepository(
                  routine_notes_snapshot = ${routine.notes}
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         `;
         return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount } as InsertOutcome;
       });
@@ -408,7 +411,7 @@ export function createWorkoutRepository(
   ): Promise<WorkoutDbRow | undefined> {
     const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
       SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-             tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+             tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
       FROM "workout"
       WHERE user_id = ${actingUserId}::uuid AND client_generated_id = ${clientGeneratedId}::uuid
     `;
@@ -496,7 +499,7 @@ export function createWorkoutRepository(
     async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         FROM "workout"
         WHERE user_id = ${actingUserId}::uuid AND ended_at IS NULL
       `;
@@ -511,7 +514,7 @@ export function createWorkoutRepository(
       }
       const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         FROM "workout"
         WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
       `;
@@ -550,7 +553,7 @@ export function createWorkoutRepository(
         // this lock and the write with no restructuring.
         const rows = await tx.$queryRaw<WorkoutDbRow[]>`
           SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
           FROM "workout"
           WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           FOR UPDATE
@@ -592,7 +595,7 @@ export function createWorkoutRepository(
               updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
-                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
+                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         `;
         // §9: `exercise_count` for the `workout_finished` log line comes from
         // this transaction (the lock above already holds the row), not a

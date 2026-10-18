@@ -124,6 +124,8 @@ model Workout {
   routine             Routine?  @relation(fields: [routineId], references: [id], onDelete: SetNull)
   routineNameSnapshot String?   @map("routine_name_snapshot")
   routineNotesSnapshot String?  @map("routine_notes_snapshot")
+  // Spec 07.4 §4: a live workout's planned "took"; the CHECKs (0..86400, live-only) are in 0012's SQL.
+  plannedDurationS    Int?      @map("planned_duration_s")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises          WorkoutExercise[]

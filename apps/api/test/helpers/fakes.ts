@@ -406,6 +406,7 @@ export function makeWorkoutRecord(overrides: Partial<WorkoutRecord> = {}): Worko
     createdAt: now,
     updatedAt: now,
     routineName: null,
+    plannedDurationS: null,
     ...overrides,
   };
 }
@@ -504,6 +505,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       createdAt: now,
       updatedAt: now,
       routineName: null,
+      plannedDurationS: null,
     };
     const copied: WorkoutExerciseRecord[] = [];
     let sectionRecords: WorkoutSectionRecord[] = [];

@@ -98,6 +98,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     createdAt: T0,
     updatedAt: T0,
     routineName: opts.routineName ?? null,
+    plannedDurationSeconds: null,
     routineNotes: opts.routineNotes ?? null,
     sections,
     exercises: (opts.exercises ?? []).map((spec, position) => {
@@ -141,6 +142,7 @@ export function makeWorkoutSummary(overrides: Record<string, unknown> = {}): Wor
     createdAt: T0,
     updatedAt: T0,
     routineName: null,
+    plannedDurationSeconds: null,
     exerciseCount: 1,
     exerciseNames: ["Bench Press"],
     workingSetCount: 3,

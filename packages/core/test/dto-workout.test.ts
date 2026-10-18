@@ -27,6 +27,7 @@ const validWorkout = {
   createdAt: "2026-09-01T10:00:00.000Z",
   updatedAt: "2026-09-01T10:00:00.000Z",
   routineName: null,
+  plannedDurationSeconds: null,
 };
 
 describe("AC19 — dto/workout.ts code constants", () => {
@@ -56,6 +57,15 @@ describe("AC19/AC16 — WorkoutSchema", () => {
     const rest: Record<string, unknown> = { ...validWorkout };
     delete rest.startedAt;
     expect(() => WorkoutSchema.parse(rest)).toThrow();
+  });
+});
+
+describe("07.4 AC19 — WorkoutSchema.plannedDurationSeconds is required-nullable", () => {
+  it("accepts null and an integer; a payload without the key fails", () => {
+    expect(WorkoutSchema.safeParse({ ...validWorkout, plannedDurationSeconds: 3600 }).success).toBe(true);
+    const rest: Record<string, unknown> = { ...validWorkout };
+    delete rest.plannedDurationSeconds;
+    expect(WorkoutSchema.safeParse(rest).success).toBe(false);
   });
 });
 

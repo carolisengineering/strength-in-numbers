@@ -398,6 +398,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         createdAt: now(),
         updatedAt: now(),
         routineName: routine?.name ?? null,
+        plannedDurationSeconds: null,
         routineNotes: routine?.notes ?? null,
         sections: startSections,
         exercises: (routine?.items ?? []).map((item, position) => {
