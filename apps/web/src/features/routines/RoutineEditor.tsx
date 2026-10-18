@@ -38,7 +38,7 @@ import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
-import { RoutineGone } from "./RoutinePreview";
+import { BackToWorkouts, RoutineGone } from "./RoutinePreview";
 import { fieldMessagesFor, itemMessage, rowMessagesFor, sectionError, sectionMessagesFor } from "./sheetIssues";
 import styles from "./RoutineEditor.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
@@ -66,7 +66,7 @@ function EditLoader({ id }: { id: string }) {
   }, [error]);
   if (lookup.status === "pending") {
     return (
-      <Screen title="Edit routine">
+      <Screen title="Edit routine" lead={<BackToWorkouts />}>
         <p role="status">Loading routine…</p>
       </Screen>
     );
@@ -74,7 +74,7 @@ function EditLoader({ id }: { id: string }) {
   if (lookup.status === "not-found") return <RoutineGone />;
   if (lookup.status === "error") {
     return (
-      <Screen title="Edit routine">
+      <Screen title="Edit routine" lead={<BackToWorkouts />}>
         <InlineNotice tone="error" requestId={classifyRoutineError(lookup.error).requestId} actionLabel="Retry" onAction={lookup.retry}>
           {LOAD_ONE_FAILED}
         </InlineNotice>

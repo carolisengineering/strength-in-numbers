@@ -22,11 +22,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
 }
 
-.secondary,
-.back {
+.secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -39,8 +37,7 @@
   text-decoration: none;
 }
 
-.secondary:focus-visible,
-.back:focus-visible {
+.secondary:focus-visible {
   outline: var(--focus-ring-width) solid var(--color-focus);
 }
 

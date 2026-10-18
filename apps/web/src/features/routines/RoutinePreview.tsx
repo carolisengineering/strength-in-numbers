@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine, RoutineItem } from "@sin/core";
+import { BackLink } from "../../ui/BackLink";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -40,7 +41,7 @@ function RoutinePreview({ id }: { id: string }) {
 
   if (lookup.status === "pending") {
     return (
-      <Screen title="Routine">
+      <Screen title="Routine" lead={<BackToWorkouts />}>
         <p role="status" className={styles.status}>
           Loading routine…
         </p>
@@ -50,11 +51,10 @@ function RoutinePreview({ id }: { id: string }) {
   if (lookup.status === "not-found") return <RoutineGone />;
   if (lookup.status === "error") {
     return (
-      <Screen title="Routine">
+      <Screen title="Routine" lead={<BackToWorkouts />}>
         <InlineNotice tone="error" requestId={classifyRoutineError(lookup.error).requestId} actionLabel="Retry" onAction={lookup.retry}>
           {LOAD_ONE_FAILED}
         </InlineNotice>
-        <BackLink />
       </Screen>
     );
   }
@@ -63,19 +63,15 @@ function RoutinePreview({ id }: { id: string }) {
 
 export function RoutineGone() {
   return (
-    <Screen title="Routine">
+    <Screen title="Routine" lead={<BackToWorkouts />}>
       <p className={styles.status}>{ROUTINE_GONE}</p>
-      <BackLink />
     </Screen>
   );
 }
 
-function BackLink() {
-  return (
-    <Link className={styles.back} to={WORKOUTS_PATH}>
-      Back to Workouts
-    </Link>
-  );
+/** Leads every preview and editor load state, above the `<h1>` (#98): reachable without scrolling past the exercises. */
+export function BackToWorkouts() {
+  return <BackLink to={WORKOUTS_PATH} label="Back to Workouts" />;
 }
 
 export function RoutineItems({ routine }: { routine: Routine }) {
@@ -180,25 +176,9 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
         ? { text: START_RETIRED, action: "edit" as const }
         : { text: failure.kind === "validation" ? START_CLOCK_MESSAGE : START_FAILED_MESSAGE, action: "retry" as const };
 
+  // #98: the actions (and their notices) lead, so Start is reachable without scrolling past the exercises.
   return (
-    <Screen title={routine.name}>
-      {routine.notes ? <p className={styles.notes}>{routine.notes}</p> : null}
-      <RoutineItems routine={routine} />
-      {startFailure ? (
-        <InlineNotice
-          tone="error"
-          requestId={failure?.requestId ?? null}
-          actionLabel={startFailure.action === "edit" ? "Edit" : "Try again"}
-          onAction={() => (startFailure.action === "edit" ? navigate(routineEditPath(routine.id), { state: EDITOR_FROM_BACK }) : void onStart())}
-        >
-          {startFailure.text}
-        </InlineNotice>
-      ) : null}
-      {deleteFailure ? (
-        <InlineNotice tone="error" requestId={deleteFailure.kind === "network" ? null : deleteFailure.requestId}>
-          {deleteMessage(deleteFailure)}
-        </InlineNotice>
-      ) : null}
+    <Screen title={routine.name} lead={<BackToWorkouts />}>
       <div className={styles.actions}>
         {active.data ? (
           <p className={styles.blocked}>
@@ -219,7 +199,23 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
           Delete
         </Button>
       </div>
-      <BackLink />
+      {startFailure ? (
+        <InlineNotice
+          tone="error"
+          requestId={failure?.requestId ?? null}
+          actionLabel={startFailure.action === "edit" ? "Edit" : "Try again"}
+          onAction={() => (startFailure.action === "edit" ? navigate(routineEditPath(routine.id), { state: EDITOR_FROM_BACK }) : void onStart())}
+        >
+          {startFailure.text}
+        </InlineNotice>
+      ) : null}
+      {deleteFailure ? (
+        <InlineNotice tone="error" requestId={deleteFailure.kind === "network" ? null : deleteFailure.requestId}>
+          {deleteMessage(deleteFailure)}
+        </InlineNotice>
+      ) : null}
+      {routine.notes ? <p className={styles.notes}>{routine.notes}</p> : null}
+      <RoutineItems routine={routine} />
       <ConfirmDialog
         open={confirmOpen}
         title={`Delete ${routine.name}?`}

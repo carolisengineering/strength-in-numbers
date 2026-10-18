@@ -22,3 +22,8 @@
   font-weight: 700;
   line-height: 1.2;
 }
+
+/* #98: the slot above the <h1> keeps its content's width, so a link never becomes a full-width tap target. */
+.lead {
+  align-self: flex-start;
+}
