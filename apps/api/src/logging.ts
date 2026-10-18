@@ -28,6 +28,15 @@ import type { Config } from "./config.js";
  *    would put the user's email there. So a Zod error is replaced by a stub that
  *    keeps only schema-shaped issue fields (see `KEPT_ZOD_ISSUE_FIELDS`) — no
  *    message at all, since any message may be custom.
+ *
+ * 4. The same for a request-validation error (#57). Fastify wraps a failed
+ *    request parse in an `Error` whose `validation[]` holds one entry per Zod
+ *    issue (`fastify-type-provider-zod`'s `createValidationError`: the issue's
+ *    `message`, and every other issue field in `params`) and whose `message`
+ *    joins those messages. It is not a Zod error, so step 3 never saw it. It is
+ *    replaced by a stub that keeps `instancePath` + `keyword` per entry and
+ *    Fastify's own `code` / `statusCode` / `validationContext`. The 422 body is
+ *    built separately (`normalizeError`) and is unaffected.
  */
 
 const PRISMA_ERROR_NAME = /^PrismaClient/;
@@ -72,7 +81,7 @@ const KEPT_ZOD_ISSUE_FIELDS = [
   "keys",
 ] as const;
 
-/** Bounds the log line for a large array response that fails every element. */
+/** Bounds the log line for a large array that fails every element (Zod issues and validation entries). */
 const MAX_ZOD_ISSUES = 20;
 
 function scrubZodIssue(issue: unknown, depth: number): Record<string, unknown> {
@@ -89,6 +98,28 @@ function scrubZodIssue(issue: unknown, depth: number): Record<string, unknown> {
     );
   }
   return kept;
+}
+
+interface ValidationErrorLike extends Error {
+  validation: unknown[];
+  code?: unknown;
+  statusCode?: unknown;
+  validationContext?: unknown;
+}
+
+/** Fastify's request-validation error (`wrapValidationError`), Zod- or AJV-built. */
+function isValidationError(err: unknown): err is ValidationErrorLike {
+  return err instanceof Error && Array.isArray((err as { validation?: unknown }).validation);
+}
+
+/** Keeps where and which check failed; `message` and `params` may carry the value. */
+function scrubValidationEntry(entry: unknown): Record<string, string> {
+  if (typeof entry !== "object" || entry === null) return {};
+  const { instancePath, keyword } = entry as { instancePath?: unknown; keyword?: unknown };
+  return {
+    ...(typeof instancePath === "string" ? { instancePath } : {}),
+    ...(typeof keyword === "string" ? { keyword } : {}),
+  };
 }
 
 const MAX_CAUSE_DEPTH = 8;
@@ -115,11 +146,27 @@ function stubFor(err: Error | ZodErrorLike, cause: unknown): Error | undefined {
     Object.assign(stub, { issues, ...(truncated > 0 ? { issuesTruncated: truncated } : {}), cause });
     return stub;
   }
+  if (isValidationError(err)) {
+    const validation = err.validation.slice(0, MAX_ZOD_ISSUES).map(scrubValidationEntry);
+    const truncated = err.validation.length - validation.length;
+    const stub = new Error(`[scrubbed validation error: ${err.validation.length} issue(s)]`);
+    stub.name = err.name;
+    stub.stack = `${err.name}: [scrubbed]`;
+    Object.assign(stub, {
+      code: typeof err.code === "string" ? err.code : undefined,
+      statusCode: typeof err.statusCode === "number" ? err.statusCode : undefined,
+      validationContext: typeof err.validationContext === "string" ? err.validationContext : undefined,
+      validation,
+      ...(truncated > 0 ? { issuesTruncated: truncated } : {}),
+      cause,
+    });
+    return stub;
+  }
   return undefined;
 }
 
 /**
- * Returns `err` with every Prisma or Zod error in its `cause` chain (and in an
+ * Returns `err` with every Prisma, Zod or request-validation error in its `cause` chain (and in an
  * `AggregateError`'s `errors`, which pino serializes too) replaced by a stub
  * (`stubFor`) that keeps only the fields safe to log. Other errors are
  * shallow-copied only when something beneath them changed, so the common path

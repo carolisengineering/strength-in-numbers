@@ -268,6 +268,91 @@ describe("createLogger — Zod issues in a logged error chain are scrubbed (#11)
   });
 });
 
+describe("createLogger — a request-validation error's `validation[]` and message are scrubbed (#57)", () => {
+  function logged(err: unknown): string {
+    const { lines, logger } = capture();
+    logger.error({ err }, "request error");
+    return lines.join("");
+  }
+
+  /** The shape Fastify's `wrapValidationError` builds from `fastify-type-provider-zod`'s entries. */
+  function fastifyValidationError(validation: unknown[]): Error {
+    const err = Object.assign(new Error(`body/displayName ${NAME} is too long`), {
+      statusCode: 400,
+      code: "FST_ERR_VALIDATION",
+      validation,
+      validationContext: "body",
+    });
+    return err;
+  }
+
+  it("keeps instancePath + keyword per entry and drops message, params and the joined message", () => {
+    const out = logged(
+      fastifyValidationError([
+        { keyword: "too_big", instancePath: "/displayName", schemaPath: "#/displayName/too_big", message: `${NAME} is too long`, params: { input: NAME, maximum: 3 } },
+      ]),
+    );
+    expect(out).not.toContain(NAME);
+    expect(out).toContain('"validation":[{"instancePath":"/displayName","keyword":"too_big"}]');
+    expect(out).toContain('"code":"FST_ERR_VALIDATION"');
+    expect(out).toContain('"statusCode":400');
+    expect(out).toContain('"validationContext":"body"');
+    expect(out).toContain("[scrubbed validation error: 1 issue(s)]");
+  });
+
+  it("drops non-string instancePath / keyword rather than logging them", () => {
+    const out = logged(fastifyValidationError([{ keyword: { seen: NAME }, instancePath: NAME.length, message: NAME }]));
+    expect(out).not.toContain(NAME);
+    expect(out).toContain('"validation":[{}]');
+  });
+
+  it("caps the number of entries logged", () => {
+    const entries = Array.from({ length: 25 }, (_, i) => ({ keyword: "custom", instancePath: `/items/${i}`, message: NAME }));
+    const out = logged(fastifyValidationError(entries));
+    expect(out.match(/"keyword":"custom"/g)).toHaveLength(20);
+    expect(out).toContain('"issuesTruncated":5');
+  });
+
+  it("scrubs a validation error that sits in a cause chain", () => {
+    const out = logged(new Error("outer", { cause: fastifyValidationError([{ keyword: "custom", instancePath: "/email", message: `saw ${EMAIL}` }]) }));
+    expect(out).not.toContain(EMAIL);
+    expect(out).toContain('"instancePath":"/email"');
+    expect(out).toContain("outer");
+  });
+
+  it("end to end: a body schema whose custom message echoes the value is logged without it", async () => {
+    const { lines, logger } = capture();
+    const { app } = await buildTestApp({ logger });
+    // Test-only root route: the request schema echoes the value (the regression #57 guards against).
+    app.withTypeProvider<ZodTypeProvider>().post(
+      "/__probe/pii-request",
+      {
+        schema: {
+          body: z.object({
+            displayName: z.string().max(3, { error: (iss) => `${String(iss.input)} is too long` }),
+            email: z.string().refine(() => false, { error: (iss) => `rejected ${String(iss.input)}`, params: { seen: EMAIL } }),
+          }),
+          response: { 200: z.object({ ok: z.boolean() }) },
+        },
+      },
+      async () => ({ ok: true }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/__probe/pii-request",
+      headers: { "content-type": "application/json" },
+      payload: { displayName: NAME, email: EMAIL },
+    });
+    expect(res.statusCode).toBe(422);
+    const out = lines.join("");
+    expect(out).toContain("request error");
+    expect(out).toContain('"instancePath":"/displayName","keyword":"too_big"');
+    expect(out).toContain('"instancePath":"/email","keyword":"custom"');
+    expect(out).not.toContain(NAME);
+    expect(out).not.toContain(EMAIL);
+  });
+});
+
 describe("error handler + real logger — end to end (#7)", () => {
   class ThrowingUserRepository extends FakeUserRepository {
     override async updateProfile(): Promise<UserRecord> {
