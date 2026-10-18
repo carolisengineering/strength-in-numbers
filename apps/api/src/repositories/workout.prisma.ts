@@ -48,10 +48,10 @@ import {
   lockUserRecords,
   recomputeRecordsForRoots,
   rootOfWorkoutExercise,
+  repeatedRootOfWorkoutExercise,
   rootsForWorkout,
-  rootsRepeatedInWorkout,
 } from "./personal-record.prisma.js";
-import { assertStillLive, recomputeTimed, withWriteMode, type FinishedEdit } from "./write-mode.js";
+import { assertStillLive, noRecompute, recomputeTimed, withWriteMode, type FinishedEdit } from "./write-mode.js";
 import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-history.prisma.js";
 
 /**
@@ -218,7 +218,7 @@ async function finishedDetailsEdit(tx: RawClient, current: WorkoutDbRow, patch: 
                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot
     `;
     row = updated[0]!;
-    finishedEdit = await recomputeTimed(tx, current.user_id, current.id, []);
+    finishedEdit = noRecompute(current.id);
   }
   const countRows = await tx.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${current.id}::uuid
@@ -732,7 +732,7 @@ export function createWorkoutRepository(
         `;
         const added = toExerciseRecord(insertedRows[0]!);
         // 07.4 §6.2: an added card has no sets yet, so it can affect no record.
-        return { ...added, finishedEdit: mode === "finished" ? await recomputeTimed(tx, actingUserId, workoutId, []) : null };
+        return { ...added, finishedEdit: mode === "finished" ? noRecompute(workoutId) : null };
       });
     },
     async updateWorkoutExercise(
@@ -848,10 +848,13 @@ export function createWorkoutRepository(
         `;
         const exercise = toExerciseRecord(updatedRows[0]!);
         const moved = nextPosition !== target.position;
-        if (mode === "live") return { ...exercise, finishedEdit: null, moved };
-        // 07.4 §6.2 / AC7: position is a records tie-break only between cards of one lineage.
-        const roots = moved ? await rootsRepeatedInWorkout(tx, workoutId) : [];
-        return { ...exercise, finishedEdit: await recomputeTimed(tx, actingUserId, workoutId, roots), moved };
+        const changed = moved || nextNotes !== target.notes || nextGroup !== target.superset_group;
+        // A no-op PATCH in finished mode reports no edit (same as the workout PATCH's `{}`).
+        if (mode === "live" || !changed) return { ...exercise, finishedEdit: null, moved };
+        // 07.4 §6.2 / AC7: position is a records tie-break only between cards of one lineage, and a
+        // move changes only the moved card's order against the others.
+        const root = moved ? await repeatedRootOfWorkoutExercise(tx, id) : null;
+        return { ...exercise, finishedEdit: await recomputeTimed(tx, actingUserId, workoutId, root ? [root] : []), moved };
       });
     },
     async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {

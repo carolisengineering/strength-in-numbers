@@ -54,6 +54,11 @@ export interface FinishedEdit {
   recomputeMs: number;
 }
 
+/** A finished-mode write that cannot affect records (an added card, notes, a regroup, title/notes). */
+export function noRecompute(workoutId: string): FinishedEdit {
+  return { workoutId, recordsRecomputed: false, rootCount: 0, recomputeMs: 0 };
+}
+
 /** `recomputeRecordsForRoots` (unchanged, 07.0) with the timing §9 logs; no roots, no query. */
 export async function recomputeTimed(
   tx: RawClient,
@@ -61,7 +66,7 @@ export async function recomputeTimed(
   workoutId: string,
   roots: readonly string[],
 ): Promise<FinishedEdit> {
-  if (roots.length === 0) return { workoutId, recordsRecomputed: false, rootCount: 0, recomputeMs: 0 };
+  if (roots.length === 0) return noRecompute(workoutId);
   const started = performance.now();
   await recomputeRecordsForRoots(tx, userId, roots);
   return { workoutId, recordsRecomputed: true, rootCount: roots.length, recomputeMs: Math.round(performance.now() - started) };

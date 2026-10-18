@@ -158,16 +158,10 @@ export async function loadSetsForWorkout(client: RawClient, workoutId: string): 
   return rows.map(toSetRecord);
 }
 
-/**
- * Spec 05.1 §6.5 — 05.0's Extension seam 1. Must run inside the finish
- * transaction, AFTER its FOR UPDATE lock on the workout row (D9): only then
- * has every concurrent set write on this workout either committed or backed
- * off, so this read can't miss one (AC21). warmup / drop / failure sets are
- * excluded by the WHERE and never inspected (AC14).
- */
 /** Spec 07.4 §6.3 / AC10 — refuse a finished-mode delete that would take the workout's set
- * count (any set type) from ≥ 1 to 0. Runs under the PR lock, which serializes every
- * finished-mode write of the user, so two devices cannot both pass it (AC11). */
+ * count (any set type) from ≥ 1 to 0. PRECONDITION: the caller holds `lockUserRecords` (every
+ * finished-mode write does, via `withWriteMode`) — that lock serializes the user's finished-mode
+ * writes, so two devices cannot both pass the count (AC11). Without it the guard is racy. */
 export async function assertWouldNotEmpty(client: RawClient, workoutId: string, removed: number): Promise<void> {
   const rows = await client.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n
@@ -179,6 +173,13 @@ export async function assertWouldNotEmpty(client: RawClient, workoutId: string, 
   if (n >= 1 && n - removed <= 0) throw new WorkoutWouldBeEmptyError(workoutId);
 }
 
+/**
+ * Spec 05.1 §6.5 — 05.0's Extension seam 1. Must run inside the finish
+ * transaction, AFTER its FOR UPDATE lock on the workout row (D9): only then
+ * has every concurrent set write on this workout either committed or backed
+ * off, so this read can't miss one (AC21). warmup / drop / failure sets are
+ * excluded by the WHERE and never inspected (AC14).
+ */
 export async function assertWorkingSetsComplete(client: RawClient, workoutId: string): Promise<void> {
   const rows = await client.$queryRaw<
     {

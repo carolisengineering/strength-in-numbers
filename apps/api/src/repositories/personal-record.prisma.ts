@@ -57,18 +57,21 @@ export async function rootOfWorkoutExercise(client: RawClient, workoutExerciseId
   return row.root_id;
 }
 
-/** Spec 07.4 §6.2 / AC7 — roots that occur on more than one card of the workout: the only ones a
- * reorder can affect, since `workout_exercise.position` is a tie-break only between them. */
-export async function rootsRepeatedInWorkout(client: RawClient, workoutId: string): Promise<string[]> {
-  const rows = await client.$queryRaw<{ root_id: string }[]>`
-    SELECT COALESCE(e.forked_from_exercise_id, e.id)::text AS root_id
+/** Spec 07.4 §6.2 / AC7 — the moved card's root iff that lineage appears on another card of the same
+ * workout. A move shifts a contiguous range by one, so every other pair keeps its order: only the moved
+ * card's position against its own lineage can change a records tie-break (code review). */
+export async function repeatedRootOfWorkoutExercise(client: RawClient, workoutExerciseId: string): Promise<string | null> {
+  const rows = await client.$queryRaw<{ root_id: string; repeated: boolean }[]>`
+    SELECT COALESCE(e.forked_from_exercise_id, e.id)::text AS root_id,
+           (SELECT count(*) FROM "workout_exercise" we2 JOIN "exercise" e2 ON e2.id = we2.exercise_id
+            WHERE we2.workout_id = we.workout_id
+              AND COALESCE(e2.forked_from_exercise_id, e2.id) = COALESCE(e.forked_from_exercise_id, e.id)) > 1 AS repeated
     FROM "workout_exercise" we
     JOIN "exercise" e ON e.id = we.exercise_id
-    WHERE we.workout_id = ${workoutId}::uuid
-    GROUP BY 1
-    HAVING count(*) > 1
+    WHERE we.id = ${workoutExerciseId}::uuid
   `;
-  return rows.map((r) => r.root_id);
+  const row = rows[0];
+  return row?.repeated ? row.root_id : null;
 }
 
 export interface LineageSetRow {

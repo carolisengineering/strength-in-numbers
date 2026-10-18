@@ -79,14 +79,41 @@ describe("AC9 (amended by 07.4) — updateWorkoutExercise on a finished parent",
     stub.queueRows([{ id: row.id, position: 1, notes: null, superset_group: null }]); // FOR UPDATE
     stub.queueRows([{ n: 3 }]);
     stub.queueRows([exerciseRow({ id: row.id, position: 0 })]); // UPDATE … RETURNING
-    stub.queueRows([{ root_id: uuidv7() }]); // rootsRepeatedInWorkout
+    stub.queueRows([{ root_id: uuidv7(), repeated: true }]); // the moved card's root, and whether it repeats
     stub.queueRows([]); // recompute loader: no qualifying sets
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     const result = await repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 });
     expect(result.moved).toBe(true);
     expect(result.finishedEdit).toMatchObject({ recordsRecomputed: true, rootCount: 1 });
     expect(stub.calls[1]!.sql).toContain("pg_advisory_xact_lock");
-    expect(stub.calls.some((c) => c.sql.includes("HAVING count(*) > 1"))).toBe(true);
+  });
+
+  it("code review — moving a card whose lineage appears once recomputes nothing (other cards keep their order)", async () => {
+    const stub = new ScriptedPrisma();
+    const row = ownedRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    stub.queueRows([row]);
+    stub.queueRows([{ ended_at: row.ended_at }]);
+    stub.queueRows([{ id: row.id, position: 1, notes: null, superset_group: null }]);
+    stub.queueRows([{ n: 3 }]);
+    stub.queueRows([exerciseRow({ id: row.id, position: 0 })]);
+    stub.queueRows([{ root_id: uuidv7(), repeated: false }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    const result = await repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 });
+    expect(result.finishedEdit).toMatchObject({ recordsRecomputed: false, rootCount: 0 });
+    expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
+  });
+
+  it("code review — an empty PATCH on a finished card changes nothing and reports no edit", async () => {
+    const stub = new ScriptedPrisma();
+    const row = ownedRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    stub.queueRows([row]);
+    stub.queueRows([{ ended_at: row.ended_at }]);
+    stub.queueRows([{ id: row.id, position: 1, notes: "x", superset_group: null }]);
+    stub.queueRows([{ n: 3 }]);
+    stub.queueRows([exerciseRow({ id: row.id, position: 1, notes: "x" })]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    const result = await repo.updateWorkoutExercise(row.user_id, row.id, {});
+    expect(result.finishedEdit).toBeNull();
   });
 
   it("07.4 AC7 — a notes-only patch on a finished parent recomputes nothing", async () => {

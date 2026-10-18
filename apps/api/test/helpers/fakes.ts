@@ -771,7 +771,8 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       updatedAt: new Date(we.updatedAt.getTime() + 1000),
     };
     this.exercises.set(id, updated);
-    return { ...updated, finishedEdit: FakeWorkoutRepository.edit(workout), moved: nextPosition !== we.position };
+    const changed = nextPosition !== we.position || updated.notes !== we.notes || updated.supersetGroup !== we.supersetGroup;
+    return { ...updated, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null, moved: nextPosition !== we.position };
   }
 
   async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
