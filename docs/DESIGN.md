@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q24 resolved; consistency pass done
-**Last updated:** 2026-10-17 (Q26 from Spec 17.3 — the front door: the landing and resuming screens as one title card, "Strength in Numbers", a double-tap guard on Log in. Earlier same day: Q25 from Spec 17.2 Phase B — record cards, e1RM display rounding, the History count badge. Earlier same day: Q25 from Phase A — the Finish dialogs and summary header. Earlier same day: §4.5 from Spec 07.3 — History recordCount excludes set volume. Earlier same day: §2 items 1 and 8 / §9 M3 and M4 rows / Q5 / Q24 from Spec 17.1 Phase C — the rest timer, pulled forward from M4). Earlier: 2026-10-16 (§2 item 8 / Q24 from Spec 17.1 Phase B — the "now" workout screen: one current exercise, ± steppers by the set's unit, the per-set bottom bar, End workout early. Earlier same day: §2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)))
+**Status:** Draft v0.5 — decisions Q1–Q27 resolved; consistency pass done
+**Last updated:** 2026-10-18 (§2 items 4–5 / §4.4 / §4.5 / §4.9 / §5.3 / §6 / §9 / Q27 from Spec 07.4 — finished workouts become editable and workout times fixable: set and exercise writes open on a finished workout with in-transaction record recomputes, Change Time on `PATCH /v1/workouts/{id}`, a stored live "took"; draft, owner decisions 2026-10-18. Earlier: 2026-10-17 (Q26 from Spec 17.3 — the front door: the landing and resuming screens as one title card, "Strength in Numbers", a double-tap guard on Log in. Earlier same day: Q25 from Spec 17.2 Phase B — record cards, e1RM display rounding, the History count badge. Earlier same day: Q25 from Phase A — the Finish dialogs and summary header. Earlier same day: §4.5 from Spec 07.3 — History recordCount excludes set volume. Earlier same day: §2 items 1 and 8 / §9 M3 and M4 rows / Q5 / Q24 from Spec 17.1 Phase C — the rest timer, pulled forward from M4). Earlier: 2026-10-16 (§2 item 8 / Q24 from Spec 17.1 Phase B — the "now" workout screen: one current exercise, ± steppers by the set's unit, the per-set bottom bar, End workout early. Earlier same day: §2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)))
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -86,10 +86,12 @@ resolved) and Risk R6.
    during the workout: Specs 09.2 / 10.3.)
 4. **Workout logging** — start a session (optionally from a routine), add
    exercises, log sets (reps, weight, RPE, set type: warmup/working/drop/failure),
-   check them off, session notes, finish. (RPE is stored and accepted by the API but not shown
+   check them off, session notes, finish, and — afterwards — edit a finished workout or fix its start time and duration (Spec 07.4). (RPE is stored and accepted by the API but not shown
    or entered in the UI: Q23.) The rest timer is Spec 17.1 Phase C (Q24).
 5. **History** — chronological list of past workouts, drill into any session.
-   Finished workouts are read-only in v1 (delete-whole-workout aside, §4.5).
+   A finished workout can be corrected afterwards — change a set, add or remove sets and
+   exercises, fix the start time and duration — and records, History and Progress follow
+   (Spec 07.4, Q27; introduced by Spec 07.4, replacing "finished workouts are read-only in v1").
    (UI: Spec 08.0 — the History tab and `/app/history/:id`.)
 6. **Progress** — per-exercise charts: top-set weight, estimated 1RM, total
    volume; personal-record list and PR notifications at finish. (PR engine and
@@ -106,7 +108,7 @@ resolved) and Risk R6.
    its last exercise (Spec 17.1 Phase C, Q24). See §4.3 and Q5.
 
 **Explicitly deferred:** guided interleaved superset logging (Tier C — A1→B1→A2→B2
-flow) (Spec 17.1's auto-advance suggests the next member of a run but forces nothing, since a tap picks any exercise; a strict guided flow stays deferred, Q24), editing individual sets of a finished workout, plate calculator, standalone
+flow) (Spec 17.1's auto-advance suggests the next member of a run but forces nothing, since a tap picks any exercise; a strict guided flow stays deferred, Q24), plate calculator, standalone
 1RM calculators, CSV import from competitors.
 
 ---
@@ -355,7 +357,7 @@ survives). See Spec 09.
   is not). `routine_id uuid NULL REFERENCES routine(id) ON DELETE SET NULL` and
   `routine_name_snapshot text NULL` are set when the workout is started from a
   routine (Spec 09; closes Spec 05.0 D36); `routine_notes_snapshot text NULL` (1–2 000)
-  holds the routine's own note at that moment (Spec 09.2).
+  holds the routine's own note at that moment (Spec 09.2). `planned_duration_s integer NULL` (0–86 400) is a live workout's "took": set by Change Time, consumed by the client's Finish (`endedAt = started_at + took`), cleared by the finish itself and forbidden on a finished row by a CHECK (Spec 07.4, migration `0012`). `local_date` / `tz_offset_minutes` are derived at write time and re-derived **only when `started_at` is changed** (Change Time, Spec 07.4); a finished workout's set `completed_at` values always lie within `[started_at, ended_at]`.
 - **At most one in-progress workout per user** is a database invariant: a
   partial unique index on `user_id WHERE ended_at IS NULL` (Spec 05.0 D38).
 - **workout_exercise** — `workout_id`, `position`, `exercise_id`,
@@ -410,9 +412,10 @@ survives). See Spec 09.
   `PATCH`/`DELETE` by id — Spec 05.1 D1); `(workout_exercise_id, set_number)` is an
   internal, append-only ordinal, not a client-facing address.
 
-Concurrency: two tabs editing the same in-progress workout are last-write-wins
+Concurrency: two tabs editing the same in-progress **or finished** workout are last-write-wins
 per row (per set once `set_entry` exists); `updated_at` is returned so a client
-can detect it lost a race. Full conflict resolution is out of scope while there
+can detect it lost a race. Writes to a finished workout additionally serialize per user on the PR
+advisory lock (Spec 07.4). Full conflict resolution is out of scope while there
 is one (web) client.
 
 ### 4.5 Personal records (derived cache)
@@ -465,9 +468,15 @@ transaction, after the `ended_at` write and 05.1's integrity check), deleting a
 finished workout (same transaction as the delete; deleting an in-progress workout
 touches nothing), and the `records:rebuild` release step (like the catalog seed, run
 after `migrate deploy`; idempotent; `--user` for one account). A per-user advisory
-lock serializes the writers; a recompute failure rolls the finish back. Invalidation
-stays simple because **finished workouts are immutable in v1**; editing a finished
-workout's sets is post-v1 and will call the same recompute. The table is a cache,
+lock serializes the writers; a recompute failure rolls the finish back. **Finished
+workouts are editable (Spec 07.4, Q27 — this replaces "finished workouts are immutable in
+v1")**, and every edit that can change a record calls the same recompute in the edit's own
+transaction, PR lock first: a set created, changed (`setType`, `reps`, weight) or deleted
+(only a `working` set matters), an exercise removed, exercises reordered (only roots
+occurring twice in the workout, because position is a tie-break), and a change of the
+workout's `started_at` (all its roots — `achieved_at`, `local_date` and every
+`previous_value` depend on it). A duration-only change, a note, a superset group, a title
+and an added exercise recompute nothing. The table is a cache,
 not a source of truth — rebuildable from `set_entry` at any time. All PR math lives
 in `packages/core` with exhaustive tests (Risk R4).
 
@@ -522,12 +531,13 @@ dedup without touching the v1 schema.
 | `user` | soft (`deleted_at`), tokens revoked (every `/v1` call → `403 account-deleted`) | hard purge after 30-day grace (manual `account:purge` CLI in the beta) |
 | `workout`, `workout_exercise`, `set_entry` | hard delete (cascade) | hard purge |
 | `set_entry` during an in-progress session | hard delete (transient editing) | — |
+| `set_entry` / `workout_exercise` of a **finished** workout | hard delete (Spec 07.4); refused with `409 workout-would-be-empty` if it would leave the workout with no sets — delete the whole workout instead | hard purge |
 | `routine` (+ `routine_item`, `routine_item_set`) | hard delete (cascade); `workout.routine_id` nulls, name snapshot kept — Spec 09 / 09.1 | hard purge |
 | `workout_planned_set` | follows its `workout_exercise` / `workout` (cascade); never user-edited | hard purge |
 | `routine_section` | follows its `routine` (cascade); replaced by the routine `PUT`; deleting one leaves its items (`section_id` → NULL) — Spec 09.2 | hard purge |
 | `workout_section` | follows its `workout` (cascade); never user-edited | hard purge |
 | custom `exercise` | soft (`is_active = false`) — history snapshots keep sessions readable | hard purge (`exercise.owner_user_id` is `ON DELETE CASCADE`; `workout_exercise.exercise_id` is also `ON DELETE CASCADE` — Spec 05.0 D37 — so no purge-ordering step is needed) |
-| `personal_record` | never user-deleted; recomputed | hard purge |
+| `personal_record` | never user-deleted; recomputed (finish, delete, and every Spec 07.4 edit that can change a record) | hard purge |
 | `body_metric` | hard delete | hard purge |
 
 Account deletion (Spec 11, Q19): `DELETE /v1/account` immediately sets
@@ -658,6 +668,11 @@ the network is down. Spec 06.5 adds persisted entry-row drafts and a logout
 warning for unsaved sets; Spec 06.6 adds multi-tab co-operation (Web Locks) and
 a Playwright offline run.
 
+**Editing a finished workout and Change Time are online-only (Spec 07.4, Q27).** They
+go through the same set / exercise / workout routes but not the outbox: the outcome depends
+on the server (records recompute, the empty-workout guard, time bounds), so a failed write is
+shown as failed rather than queued and rejected later. Every such request is retry-safe.
+
 The gym-case mitigation (Risk R1) is implemented for set writes by Specs 06.2 /
 06.5 / 06.6: the outbox lives in `localStorage` (behind `StorageAdapter`), so a dropped
 connection or a closed tab does not lose a logged set. With memory-only tokens
@@ -770,7 +785,7 @@ infrastructure — APNs / FCM arrive with the native mobile app, if ever.
   from Spec 09.1, whose UI, Spec 10.2, merges only after the API is deployed and
   verified; then `Routine.sections`, `RoutineItem.sectionId`, `WorkoutDetail.sections` /
   `routineNotes` and `WorkoutExercise.sectionId` from Spec 09.2, whose UI, Spec 10.3, follows
-  the same rule).
+  the same rule; then `Workout.plannedDurationSeconds` from Spec 07.4 Phase B, whose UI follows the same rule).
 - **JSON casing:** wire DTOs are `camelCase` (`displayName`, `unitPreference`,
   `createdAt`); DB columns stay `snake_case`; the DTO layer maps between them.
   Established by Spec 01's `/v1/me`, pinned here.
@@ -785,14 +800,15 @@ POST   /workouts                  { clientGeneratedId, startedAt, tzOffsetMinute
 GET    /workouts/active           → the caller's one in-progress workout, or 404
 GET    /workouts?limit=&cursor=   → { items: WorkoutSummary[], next } history list (Spec 07.1)
 GET    /workouts/{id}            # exercises[] carry plannedSets[] (Spec 09.1; [] for a manual add / pre-0010 workout) and sectionId; the detail carries sections[] and routineNotes (Spec 09.2; [] / null for a manual or pre-0011 workout)
-PATCH  /workouts/{id}             { title?, notes?, endedAt? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
+PATCH  /workouts/{id}             { title?, notes?, endedAt?, startedAt?, tzOffsetMinutes?, durationSeconds? }   # finish = set endedAt; → Workout + newRecords[] (Spec 07.0; [] unless a finish)
+                                   # Spec 07.4 "Change Time": startedAt (+ tzOffsetMinutes) / durationSeconds on a live or finished workout; live durationSeconds is stored as the "took"; 409 workout-finished = re-finish only
 DELETE /workouts/{id}            # whole session only, allowed finished or not
 POST   /workouts/{id}/exercises   { exerciseId, position? }
 PATCH  /workout-exercises/{id}    { position?, notes?, supersetGroup? }   # supersetGroup: 1–99 | null (Spec 09); notes = the session note, key presence decides, null clears (pinned by Spec 09.2, used by 10.3)
-DELETE /workout-exercises/{id}
+DELETE /workout-exercises/{id}       # sets / exercises are writable on a finished workout too (Spec 07.4); 409 workout-would-be-empty if it would leave a finished workout with no sets
 POST   /workout-exercises/{id}/sets   { clientGeneratedId?, setType?, reps?, weight?, weightUnit?, ... }
 PATCH  /sets/{id}                     { same fields minus clientGeneratedId, all optional }
-DELETE /sets/{id}
+DELETE /sets/{id}                    # 409 workout-would-be-empty as above (finished workout, last set)
 GET    /exercises?since=          → catalog (global + custom), ETag
 POST   /exercises                 → custom exercise
 GET    /progress/exercises/{id}?from=&to=   → { exerciseId, points[] }, un-paginated (Spec 07.2)
@@ -908,7 +924,7 @@ Planning implications:
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
   M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
-  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11–13 · GA = 14 · Phase 2 = 15 · Design refresh = 17.0–17.3 (outside M1–M4; after M3: visual identity "Stone" 17.0, workout screen "now" 17.1, finish and PR moments 17.2, landing page 17.3; see Q22). (`packages/core` (02) is a
+  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11–13 · GA = 14 · Phase 2 = 15 · Post-M4 improvements = 07.4 (edit finished workouts, fix workout times; issues #89 / #90) · Design refresh = 17.0–17.3 (outside M1–M4; after M3: visual identity "Stone" 17.0, workout screen "now" 17.1, finish and PR moments 17.2, landing page 17.3; see Q22). (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
@@ -941,7 +957,7 @@ Planning implications:
 
 ### Decisions log (formerly open questions)
 
-All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3; Q22 from Spec 17.0; Q23–Q24 from Spec 17.1; Q25 from Spec 17.2; Q26 from Spec 17.3). Kept here
+All resolved as of v0.5 (Q1–Q9 at v0.3; Q10–Q12 added from Specs 04.0/04.1; Q13 from Spec 07.0; Q14 from Spec 07.1; Q15 from Spec 07.2; Q16 from Spec 08.0; Q17 from Spec 08.1; Q18–Q20 from Specs 09, 11 and 09.1/10.2; Q21 from Specs 09.2/10.3; Q22 from Spec 17.0; Q23–Q24 from Spec 17.1; Q25 from Spec 17.2; Q26 from Spec 17.3; Q27 from Spec 07.4). Kept here
 with rationale so the "why" survives.
 
 - **Q1 — Backend language/framework.** ✅ **Resolved: Node + TypeScript + Fastify +
@@ -1288,6 +1304,24 @@ with rationale so the "why" survives.
   the in-app header's fallback, the setup-error screen); export filenames keep the slug. No mark, no product page until
   launch (Spec 14), no request-access or waitlist (BL-19), and sign-up policy is an Auth0 tenant setting, not a page
   decision. `AuthError` is BL-20. See Spec 17.3 §6, D1–D18.
+- **Q27 — Editing finished workouts and fixing workout times.** ✅ **Resolved (Spec 07.4, 2026-10-18; owner decisions in the
+  approved design brief, builder choices D1–D19): finished workouts are editable, reusing the existing set, exercise and
+  workout routes (no edit routes); every finished-mode write is one transaction that takes the per-user PR lock first and
+  recomputes the touched lineages through the existing `recomputeRecordsForRoots`; the server refuses to leave a finished
+  workout with no sets (`409 workout-would-be-empty`); Change Time is `startedAt` / `durationSeconds` on `PATCH /v1/workouts/{id}`
+  for live and finished workouts, a live "took" is stored server-side (`planned_duration_s`) and the client sends the
+  resulting `endedAt` at Finish; a changed start is bounded to 5 minutes ahead and a fixed 2000-01-01 floor (no rolling window); `local_date` is re-derived
+  with the start; a finished re-time shifts set `completed_at` by the start delta and keeps every set inside the workout's
+  span; finished edits and Change Time are online-only.** Rationale: the PR engine was built so that "editing a finished
+  workout will call the same recompute" (Q13), so the work is the envelope around it — lock order, a mode flip when a finish
+  lands mid-write, and a guard against an empty workout — not new record math, and reuse of the live routes keeps "the same
+  screen as logging" one contract. A stored "took" survives a reload or a second device without a new `localStorage` key, and
+  leaving Finish's `endedAt` explicit keeps its recovery path and Spec 17.2's duration dialog honest. Online-only is the
+  safer reading of "never lose an edit silently": a queued delete the guard later refuses would be exactly that. Rejected:
+  dedicated edit routes; a whole-workout `PUT`; an `edited` marker (the owner wants edited workouts indistinguishable);
+  rejecting overlapping workouts; shifting sets on a live start change; queueing finished edits in the outbox. Cost: one
+  recompute per record-relevant finished-mode set write (benchmarked against the 400 ms p99, Spec 07.4 AC33); a queued live op
+  from a second device now lands on a finished workout instead of `409`. See Spec 07.4 §12 (D1–D19).
 
 ---
 
