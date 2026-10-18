@@ -82,6 +82,7 @@ import type {
   UpdateWorkoutExerciseFields,
   UpdateWorkoutFields,
   UpdateWorkoutResult,
+  WithFinishedEdit,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
@@ -619,7 +620,20 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     patch: UpdateWorkoutFields,
   ): Promise<UpdateWorkoutResult> {
     const w = this.ownedWorkoutOrThrow(actingUserId, id);
-    if (w.endedAt !== null) throw new WorkoutFinishedError();
+    if (w.endedAt !== null) {
+      // Spec 07.4 AC3 / D17: only a re-finish is refused; {} / endedAt: null are no-ops.
+      if (patch.endedAt != null) throw new WorkoutFinishedError();
+      const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
+      if (!("title" in patch) && !("notes" in patch)) return { workout: w, exerciseCount, newRecords: [], finishedEdit: null };
+      const edited: WorkoutRecord = {
+        ...w,
+        title: "title" in patch ? patch.title ?? null : w.title,
+        notes: "notes" in patch ? patch.notes ?? null : w.notes,
+        updatedAt: new Date(w.updatedAt.getTime() + 1000),
+      };
+      this.workouts.set(id, edited);
+      return { workout: edited, exerciseCount, newRecords: [], finishedEdit: FakeWorkoutRepository.edit(edited) };
+    }
     let endedAt: Date | null = w.endedAt;
     if ("endedAt" in patch && patch.endedAt !== undefined) {
       if (patch.endedAt === null) {
@@ -650,7 +664,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     };
     this.workouts.set(id, updated);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    return { workout: updated, exerciseCount, newRecords: [] };
+    return { workout: updated, exerciseCount, newRecords: [], finishedEdit: null };
   }
 
   async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
@@ -673,9 +687,8 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     actingUserId: string,
     workoutId: string,
     fields: AddWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord> {
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord>> {
     const w = this.ownedWorkoutOrThrow(actingUserId, workoutId);
-    if (w.endedAt !== null) throw new WorkoutFinishedError();
     const exercise = await this.exerciseRepository.findVisibleById(
       actingUserId,
       fields.exerciseId,
@@ -713,7 +726,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       sectionId: null,
     };
     this.exercises.set(record.id, record);
-    return record;
+    return { ...record, finishedEdit: FakeWorkoutRepository.edit(w) };
   }
 
   private ownedExerciseOrThrow(
@@ -733,9 +746,8 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord> {
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }> {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
-    if (workout.endedAt !== null) throw new WorkoutFinishedError();
     const n = [...this.exercises.values()].filter((e) => e.workoutId === we.workoutId).length;
     let nextPosition = we.position;
     if (patch.position !== undefined && patch.position !== we.position) {
@@ -759,12 +771,15 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       updatedAt: new Date(we.updatedAt.getTime() + 1000),
     };
     this.exercises.set(id, updated);
-    return updated;
+    return { ...updated, finishedEdit: FakeWorkoutRepository.edit(workout), moved: nextPosition !== we.position };
   }
 
-  async deleteWorkoutExercise(actingUserId: string, id: string): Promise<void> {
+  async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
-    if (workout.endedAt !== null) throw new WorkoutFinishedError();
+    if (workout.endedAt !== null) {
+      const own = [...this.sets.values()].filter((s) => s.workoutExerciseId === id).length;
+      this.assertWouldNotEmpty(workout.id, own);
+    }
     this.exercises.delete(id);
     this.cascadeSets(new Set([id]));
     for (const e of this.exercises.values()) {
@@ -772,6 +787,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         this.exercises.set(e.id, { ...e, position: e.position - 1 });
       }
     }
+    return { finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
 
   async createSet(actingUserId: string, workoutExerciseId: string, fields: CreateSetFields): Promise<CreateSetResult> {

@@ -206,12 +206,18 @@ export interface CreateWorkoutResult {
  * as the write, so the route can log `workout_finished`'s `exercise_count`
  * without a second round trip.
  */
+/** Spec 07.4 §9: a write result carrying what a finished-mode write did (null in live mode), for the
+ * route's `workout_edited` line. Mappers pick fields explicitly, so it never reaches a response. */
+export type WithFinishedEdit<T> = T & { finishedEdit: FinishedEdit | null };
+
 export interface UpdateWorkoutResult {
   workout: WorkoutRecord;
   exerciseCount: number;
   /** Spec 07.0 §6.3: the records this workout holds after a finish — `[]`
    * for any non-finish PATCH. */
   newRecords: PersonalRecordRecord[];
+  /** Spec 07.4 §9: set iff a finished workout's title/notes changed (the route logs `workout_edited`). */
+  finishedEdit: FinishedEdit | null;
 }
 
 /**
@@ -284,7 +290,7 @@ export interface WorkoutRepository {
     actingUserId: string,
     workoutId: string,
     fields: AddWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord>>;
 
   /** Reorder and/or edit notes (§6.7). Throws `NotFoundError`,
    * `WorkoutFinishedError`, or `ValidationError` (422, out-of-range `position`). */
@@ -292,11 +298,11 @@ export interface WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WorkoutExerciseRecord>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }>;
 
   /** Delete + close the position gap (§6.7). Throws `NotFoundError` or
    * `WorkoutFinishedError`. */
-  deleteWorkoutExercise(actingUserId: string, id: string): Promise<void>;
+  deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }>;
 
   /**
    * Spec 05.1 §6.2/§6.3. Resolves the workout_exercise through its workout

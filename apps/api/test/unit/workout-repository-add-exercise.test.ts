@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { NotFoundError } from "../../src/errors/app-error.js";
 import { ExerciseRetiredError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { FakeExerciseRepository, makeExerciseRecord } from "../helpers/fakes.js";
@@ -57,30 +57,44 @@ describe("AC15 — addWorkoutExercise: workout ownership / malformed id", () => 
   });
 });
 
-describe("AC9 — addWorkoutExercise: finished-workout rejection at both checks", () => {
-  it("phase 1 (root-client) check: a workout already finished is 409 before opening the transaction", async () => {
-    const stub = new ScriptedPrisma();
-    const w = workoutRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
-    stub.queueRows([w]);
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-    await expect(
-      repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: uuidv7() }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
-    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(false);
+describe("AC9 (amended by 07.4) — addWorkoutExercise on a finished workout", () => {
+  const inserted = (workoutId: string) => ({
+    id: uuidv7(), workout_id: workoutId, position: 0, exercise_id: uuidv7(), exercise_name_snapshot: "x",
+    modality_snapshot: "weight_reps", notes: null, created_at: new Date(), updated_at: new Date(), planned_sets: [],
+    section_id: null, superset_group: null, target_sets: null, target_reps_low: null, target_reps_high: null, target_rpe: null, rest_seconds: null,
   });
 
-  it("phase 3 (FOR SHARE re-check) catches a finish that committed after phase 1", async () => {
+  it("07.4 AC2 / AC4 — phase 1 sees ended_at: the transaction opens with the PR lock, then adds the card", async () => {
+    const stub = new ScriptedPrisma();
+    const w = workoutRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    stub.queueRows([w]);
+    stub.queueRows([{ ended_at: w.ended_at }]); // FOR SHARE
+    stub.queueRows([{ n: 1 }]);
+    stub.queueRows([inserted(w.id)]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
+    const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
+    expect(result.finishedEdit).toMatchObject({ recordsRecomputed: false, rootCount: 0 });
+    const firstInTx = stub.calls.findIndex((c) => c.sql.includes("pg_advisory_xact_lock"));
+    expect(stub.calls[firstInTx]!.sql).toBe(stub.calls[1]!.sql); // the PR lock follows phase 1 directly
+  });
+
+  it("07.4 AC5 — a finish after phase 1 restarts once in finished mode instead of 409", async () => {
     const stub = new ScriptedPrisma();
     const w = workoutRow();
     const exerciseRepo = new FakeExerciseRepository();
     const exercise = makeExerciseRecord({ isActive: true });
     exerciseRepo.byId.set(exercise.id, exercise);
-    stub.queueRows([w]); // phase 1: still in progress
-    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // FOR SHARE re-check: now finished
+    stub.queueRows([w]); // phase 1: in progress
+    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // live FOR SHARE: now finished → restart
+    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // finished FOR SHARE
+    stub.queueRows([{ n: 0 }]);
+    stub.queueRows([inserted(w.id)]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
-    await expect(
-      repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+    const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
+    expect(result.workoutId).toBe(w.id);
   });
 
   it("a workout deleted between phase 1 and the lock is 404, not 500 (vanished-row rule, §6.7)", async () => {
@@ -97,7 +111,6 @@ describe("AC9 — addWorkoutExercise: finished-workout rejection at both checks"
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
-
 describe("AC10 — exercise resolution and snapshotting", () => {
   it("an exerciseId findVisibleById misses is 404", async () => {
     const stub = new ScriptedPrisma();

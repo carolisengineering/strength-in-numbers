@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, ValidationError, WorkoutFinishedError } from "../../src/errors/app-error.js";
+import { NotFoundError, ValidationError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { FakeExerciseRepository } from "../helpers/fakes.js";
 
@@ -70,61 +70,54 @@ describe("AC15 — updateWorkoutExercise ownership", () => {
   });
 });
 
-describe("AC9 — updateWorkoutExercise: 409 on a finished parent, both checks", () => {
-  it("phase-1 check: parent already finished, position patch", async () => {
+describe("AC9 (amended by 07.4) — updateWorkoutExercise on a finished parent", () => {
+  it("07.4 AC4 / AC7 — a reorder: PR lock first, then the move, then a recompute of the repeated roots only", async () => {
     const stub = new ScriptedPrisma();
     const row = ownedRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
     stub.queueRows([row]);
+    stub.queueRows([{ ended_at: row.ended_at }]); // FOR SHARE
+    stub.queueRows([{ id: row.id, position: 1, notes: null, superset_group: null }]); // FOR UPDATE
+    stub.queueRows([{ n: 3 }]);
+    stub.queueRows([exerciseRow({ id: row.id, position: 0 })]); // UPDATE … RETURNING
+    stub.queueRows([{ root_id: uuidv7() }]); // rootsRepeatedInWorkout
+    stub.queueRows([]); // recompute loader: no qualifying sets
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-    await expect(
-      repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
+    const result = await repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 });
+    expect(result.moved).toBe(true);
+    expect(result.finishedEdit).toMatchObject({ recordsRecomputed: true, rootCount: 1 });
+    expect(stub.calls[1]!.sql).toContain("pg_advisory_xact_lock");
+    expect(stub.calls.some((c) => c.sql.includes("HAVING count(*) > 1"))).toBe(true);
   });
 
-  it("phase-1 check: parent already finished, notes-only patch", async () => {
+  it("07.4 AC7 — a notes-only patch on a finished parent recomputes nothing", async () => {
     const stub = new ScriptedPrisma();
     const row = ownedRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
     stub.queueRows([row]);
+    stub.queueRows([{ ended_at: row.ended_at }]);
+    stub.queueRows([{ id: row.id, position: 1, notes: null, superset_group: null }]);
+    stub.queueRows([{ n: 3 }]);
+    stub.queueRows([exerciseRow({ id: row.id, position: 1, notes: "hi" })]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-    await expect(
-      repo.updateWorkoutExercise(row.user_id, row.id, { notes: "hi" }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
-    // A single ownership+finished query; the transaction never opens.
-    expect(stub.calls).toHaveLength(1);
+    const result = await repo.updateWorkoutExercise(row.user_id, row.id, { notes: "hi" });
+    expect(result.moved).toBe(false);
+    expect(result.finishedEdit).toMatchObject({ recordsRecomputed: false });
+    expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
   });
 
-  it("FOR SHARE re-check: parent finished after phase 1 (position patch)", async () => {
+  it("07.4 AC5 — a finish after phase 1 restarts once in finished mode instead of 409", async () => {
     const stub = new ScriptedPrisma();
     const row = ownedRow();
     stub.queueRows([row]); // phase 1: in progress
-    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // FOR SHARE: now finished
+    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // live FOR SHARE → restart
+    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]);
+    stub.queueRows([{ id: row.id, position: 1, notes: null, superset_group: null }]);
+    stub.queueRows([{ n: 3 }]);
+    stub.queueRows([exerciseRow({ id: row.id, position: 1, notes: "hi" })]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-    await expect(
-      repo.updateWorkoutExercise(row.user_id, row.id, { position: 0 }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
-  });
-
-  it("FOR SHARE re-check: parent finished after phase 1 (notes-only patch) — the race the old lightweight path was vulnerable to", async () => {
-    // Phase-1 read shows in-progress, but the in-transaction FOR SHARE
-    // re-check shows the workout was finished concurrently (e.g. a
-    // finishWorkout that committed between phase 1 and the lock). A
-    // notes-only patch must still raise WorkoutFinishedError -- proving the
-    // notes-only path is no longer a separate, unlocked code path that could
-    // sail past a concurrent finish.
-    const stub = new ScriptedPrisma();
-    const row = ownedRow();
-    stub.queueRows([row]); // phase 1: in progress
-    stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // FOR SHARE: now finished
-    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-    await expect(
-      repo.updateWorkoutExercise(row.user_id, row.id, { notes: "updated" }),
-    ).rejects.toBeInstanceOf(WorkoutFinishedError);
-    // The lock/FOR SHARE statements were actually issued (not skipped).
-    expect(stub.calls.some((c) => c.sql.includes("pg_advisory_xact_lock"))).toBe(true);
-    expect(stub.calls.some((c) => c.sql.includes("FOR SHARE"))).toBe(true);
+    const result = await repo.updateWorkoutExercise(row.user_id, row.id, { notes: "hi" });
+    expect(result.notes).toBe("hi");
   });
 });
-
 describe("AC7/AC11 — notes-only edit goes through the same lock/FOR-SHARE transaction", () => {
   it("succeeds on an in-progress workout, with the lock/FOR SHARE/deferred-constraint statements present", async () => {
     const stub = new ScriptedPrisma();

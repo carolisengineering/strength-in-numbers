@@ -143,17 +143,46 @@ describe("AC8 — finish transition and immutability", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("every schema-valid PATCH against a finished workout is 409 workout-finished, including {} and endedAt: null", async () => {
+  it("07.4 AC3 — a finished workout: title/notes edit is 200 via a restart in finished mode (PR lock first)", async () => {
     const finishedRow = baseRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    const stub = new ScriptedPrisma();
+    stub.queueRows([finishedRow]); // live attempt: FOR UPDATE finds it finished → restart
+    stub.queueRows([finishedRow]); // finished attempt: FOR UPDATE
+    stub.queueRows([{ ...finishedRow, title: "new title" }]); // UPDATE … RETURNING
+    stub.queueRows([{ n: 2 }]); // exercise count
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    const result = await repo.updateWorkout(finishedRow.user_id, finishedRow.id, { title: "new title" });
+    expect(result.workout.title).toBe("new title");
+    expect(result.finishedEdit).toMatchObject({ recordsRecomputed: false });
+    const lockAt = stub.calls.findIndex((c) => c.sql.includes("pg_advisory_xact_lock"));
+    const secondRowLock = stub.calls.map((c) => c.sql.includes("FOR UPDATE")).lastIndexOf(true);
+    expect(lockAt).toBeGreaterThan(0);
+    expect(lockAt).toBeLessThan(secondRowLock);
+  });
 
-    for (const patch of [{}, { endedAt: null }, { title: "new title" }]) {
+  it("07.4 AC3 — a finished workout: {} and endedAt: null are 200 no-ops returning the row unchanged", async () => {
+    const finishedRow = baseRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    for (const patch of [{}, { endedAt: null }]) {
       const stub = new ScriptedPrisma();
-      stub.queueRows([finishedRow]); // FOR UPDATE lock read
+      stub.queueRows([finishedRow]);
+      stub.queueRows([finishedRow]);
+      stub.queueRows([{ n: 0 }]);
       const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
-      await expect(
-        repo.updateWorkout(finishedRow.user_id, finishedRow.id, patch),
-      ).rejects.toBeInstanceOf(WorkoutFinishedError);
+      const result = await repo.updateWorkout(finishedRow.user_id, finishedRow.id, patch);
+      expect(result.workout.endedAt).toEqual(finishedRow.ended_at);
+      expect(result.finishedEdit).toBeNull();
+      expect(stub.calls.some((c) => c.sql.includes('UPDATE "workout"'))).toBe(false);
     }
+  });
+
+  it("07.4 AC3 / D17 — a finish against a finished workout is still 409 workout-finished", async () => {
+    const finishedRow = baseRow({ ended_at: new Date("2026-09-15T11:00:00.000Z") });
+    const stub = new ScriptedPrisma();
+    stub.queueRows([finishedRow]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+    await expect(
+      repo.updateWorkout(finishedRow.user_id, finishedRow.id, { endedAt: "2026-09-15T11:30:00.000Z" }),
+    ).rejects.toBeInstanceOf(WorkoutFinishedError);
   });
 
   it("{} and endedAt: null against an in-progress workout are 200 no-ops returning the row unchanged", async () => {
