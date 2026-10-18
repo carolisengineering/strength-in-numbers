@@ -459,7 +459,13 @@ eligible sets.
    ```
 
    (The `workout_planned_duration_live_only` CHECK makes this impossible; the query confirms the constraint is live.) No backfill, no `records:rebuild`.
-4. Rollback: revert the code only; the column stays (expand-only), old code ignores it, and a live workout's stored plan is simply never used.
+4. Rollback: revert the code; the column stays (expand-only). **Then clear every stored plan** as soon as the revert is live:
+
+   ```sql
+   UPDATE "workout" SET planned_duration_s = NULL WHERE planned_duration_s IS NOT NULL;
+   ```
+
+   Old code's finish does not clear `planned_duration_s`, so finishing a live workout that still has a plan breaks `workout_planned_duration_live_only` (a `500`), and the one-active rule then leaves the lifter stuck on that workout until it is discarded. Clearing loses only the "took" of workouts still in progress (the lifter's finish then uses "now", as before Phase B). Re-run step 3's query afterwards (expected `0`).
 
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
