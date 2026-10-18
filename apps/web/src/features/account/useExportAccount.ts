@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BlobResponse } from "../../api/client";
 import { useApi } from "../../auth/useApi";
 import { reportError } from "../../observability/reportError";
-import { isAccountDeleted, isSessionEnded, notifyIfAccountDeleted } from "./accountDeleted";
+import { isAccountDeleted, isSessionEnded, meTookOver, notifyIfAccountDeleted } from "./accountDeleted";
 import { EXPORT_FALLBACK_FILENAME } from "./messages";
 import { saveBlob } from "./saveBlob";
 
@@ -39,6 +39,7 @@ export function useExportAccount(): ExportAccount {
     networkMode: "always",
     mutationFn: (signal) =>
       api.requestBlob("/v1/account/export", { signal, fallbackFilename: EXPORT_FALLBACK_FILENAME }),
+    // Returned, so TanStack waits for the `me` refetch before the `mutate()` callbacks below run (BL-17).
     onError: (error) => notifyIfAccountDeleted(error, queryClient),
     onSettled: () => {
       inFlight.current = false;
@@ -75,17 +76,19 @@ export function useExportAccount(): ExportAccount {
       },
       onError: (error) => {
         if (abort.signal.aborted) return; // unmount: the client wraps AbortError in ApiError.network
-        // Neither shows a notice (AC10): a 403 account-deleted is handled by invalidating `me` (D7; the
-        // layout swaps this screen out), and an ended session by onAuthLost. Back to idle so the button is never stuck on "Preparing…" if the
-        // layout does not swap the screen (e.g. the `me` refetch comes back 200).
-        if (isAccountDeleted(error) || isSessionEnded(error)) {
+        // Neither shows a notice (AC10): an ended session is onAuthLost's, and a 403 account-deleted is
+        // handled by invalidating `me` (D7; the layout swaps this screen out). The `me` refetch has already
+        // answered here, so the 403 stays quiet only if that refetch confirmed the deletion or ended the
+        // session; otherwise nothing swaps the screen and a silent reset would look like an export that
+        // never ran (BL-17).
+        if (isSessionEnded(error) || (isAccountDeleted(error) && meTookOver(queryClient))) {
           setState({ status: "idle" });
           return;
         }
         setState({ status: "error", error });
       },
     });
-  }, [mutate]);
+  }, [mutate, queryClient]);
 
   const saveAgain = useCallback(() => {
     const current = held.current;

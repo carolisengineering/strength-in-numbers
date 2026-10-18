@@ -10,10 +10,11 @@ const auth = vi.hoisted(() => ({
   },
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
+vi.mock("./saveBlob", () => ({ saveBlob: vi.fn() }));
 
 import { server } from "../../test/msw/server";
 import {
-  ACCOUNT_URL, EXPORT_URL, ME, ME_URL, problem, renderProfile, stubAccountEnv, unstubAccountEnv,
+  ACCOUNT_URL, EXPORT_URL, ME, ME_URL, exportOk, problem, renderProfile, stubAccountEnv, unstubAccountEnv,
 } from "../../test/accountHarness";
 import { STEP_SETTLE_MS } from "./messages";
 
@@ -46,6 +47,21 @@ describe("12 AC23 — accessibility", () => {
     const busy = await data.findByRole("button", { name: "Preparing your data…" });
     expect(busy).toHaveAttribute("aria-busy", "true");
     expect(status).toHaveTextContent("Preparing your data…");
+  });
+
+  // BL-15: the section and the delete dialog share one exporter (D13), but ConfirmDialog renders its body
+  // only while open, so a closed dialog adds no second status region (no double "Saved…" announcement).
+  it("one export status region on the screen while the delete dialog is closed (BL-15)", async () => {
+    server.use(exportOk());
+    renderProfile();
+    const data = within(screen.getByRole("region", { name: "Your data" }));
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+
+    await userEvent.click(data.getByRole("button", { name: "Download my data" }));
+
+    expect(await data.findByRole("status")).toHaveTextContent(/^Saved /);
+    expect(screen.getAllByText(/^Saved /)).toHaveLength(1);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("the dialog is labeled by its title and errors are role=alert text, not color alone", async () => {

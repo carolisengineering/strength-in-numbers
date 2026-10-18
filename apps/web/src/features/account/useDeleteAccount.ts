@@ -29,7 +29,10 @@ export function useDeleteAccount() {
     gcTime: Number.POSITIVE_INFINITY,
     networkMode: "always",
     mutationFn: () => api.delete("/v1/account", AccountDeletedResponseSchema),
-    onError: (error) => notifyIfAccountDeleted(error, queryClient),
+    // Not awaited (unlike the export): a delete 403 is "done" either way (AC19), so the dialog need not stay busy for the `me` refetch.
+    onError: (error) => {
+      void notifyIfAccountDeleted(error, queryClient);
+    },
   });
 }
 

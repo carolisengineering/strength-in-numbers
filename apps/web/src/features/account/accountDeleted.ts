@@ -20,8 +20,20 @@ export const isSessionEnded = (error: unknown): boolean =>
 /**
  * Spec 12 D7 — a `403 account-deleted` from an account call means "already done". Nothing else in the
  * app recognizes it except `ProtectedLayout`'s branch on the `me` query, so invalidate that query: its
- * refetch is the same 403 and the layout renders `AccountDeleted`.
+ * refetch is the same 403 and the layout renders `AccountDeleted`. Returns the refetch, so the export
+ * mutation's `onError` can hold the mutation pending until the `me` query has answered (BL-17).
  */
-export function notifyIfAccountDeleted(error: unknown, queryClient: QueryClient): void {
-  if (isAccountDeleted(error)) void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+export async function notifyIfAccountDeleted(error: unknown, queryClient: QueryClient): Promise<void> {
+  if (isAccountDeleted(error)) await queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+}
+
+/**
+ * True once the `me` refetch has taken the screen out of this hook's hands (BL-17): it failed with
+ * `403 account-deleted` (the layout swaps to `AccountDeleted`) or ended the session (`onAuthLost` is
+ * logging out, AC10). Assumes `me` has an active observer (`ProtectedLayout` always has one): without
+ * one the invalidation only marks it stale, nothing refetches, and this stays false.
+ */
+export function meTookOver(queryClient: QueryClient): boolean {
+  const error = queryClient.getQueryState(ME_QUERY_KEY)?.error;
+  return isAccountDeleted(error) || isSessionEnded(error);
 }

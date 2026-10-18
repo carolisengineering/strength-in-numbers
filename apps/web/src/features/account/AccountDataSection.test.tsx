@@ -20,9 +20,9 @@ vi.mock("../../observability/reportError", () => ({ reportError: reporter.report
 
 import { server } from "../../test/msw/server";
 import {
-  EXPORT_FILENAME, EXPORT_URL, ME_URL, exportOk, makeQueryClient, problem, stubAccountEnv, unstubAccountEnv,
+  EXPORT_FILENAME, EXPORT_URL, ME, ME_URL, exportOk, makeQueryClient, problem, stubAccountEnv, unstubAccountEnv,
 } from "../../test/accountHarness";
-import { ME_QUERY_KEY } from "../me/useMe";
+import { ME_QUERY_KEY, useMe } from "../me/useMe";
 import { AccountDataSection } from "./AccountDataSection";
 import { useExportAccount } from "./useExportAccount";
 
@@ -30,9 +30,19 @@ function Harness() {
   const exporter = useExportAccount();
   return <AccountDataSection exporter={exporter} />;
 }
-function renderSection() {
+/** Stands in for `ProtectedLayout`'s `me` observer, so invalidating `["me"]` refetches it as in the app. */
+function MeObserver() {
+  useMe();
+  return null;
+}
+function renderSection({ observeMe = false } = {}) {
   const queryClient = makeQueryClient();
-  const view = render(<QueryClientProvider client={queryClient}><Harness /></QueryClientProvider>);
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      {observeMe ? <MeObserver /> : null}
+      <Harness />
+    </QueryClientProvider>,
+  );
   return { queryClient, ...view };
 }
 
@@ -146,21 +156,47 @@ describe("12 AC9 — failure copy and Try again", () => {
 });
 
 describe("12 AC10 — account and session errors are not this screen's to show", () => {
-  it("a 403 account-deleted shows no notice and invalidates the me query", async () => {
-    server.use(http.get(EXPORT_URL, () => problem(403, "account-deleted")), http.get(ME_URL, () => problem(403, "account-deleted")));
-    const { queryClient } = renderSection();
-    queryClient.setQueryData(ME_QUERY_KEY, { id: "u" });
+  it("a 403 account-deleted shows no notice once the me refetch confirms it, and invalidates the me query", async () => {
+    let meCalls = 0;
+    server.use(
+      http.get(EXPORT_URL, () => problem(403, "account-deleted")),
+      http.get(ME_URL, () => (++meCalls === 1 ? HttpResponse.json(ME) : problem(403, "account-deleted"))),
+    );
+    const { queryClient } = renderSection({ observeMe: true });
+    await waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeDefined());
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     await userEvent.click(section().getByRole("button", { name: "Download my data" }));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ME_QUERY_KEY }));
+    await waitFor(() => expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled());
+    expect(meCalls).toBe(2);
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(section().queryByText("Couldn't prepare your data.")).toBeNull();
   });
 
-  it("a 403 account-deleted leaves the button usable again (it is not stuck on Preparing)", async () => {
-    server.use(http.get(EXPORT_URL, () => problem(403, "account-deleted")), http.get(ME_URL, () => HttpResponse.json({ id: "u" })));
-    renderSection();
+  // BL-17: if the `me` refetch does not confirm the deletion (a race, a transient error), the layout never
+  // swaps the screen, so a silent reset would make the failed export look like one that never ran.
+  it("a 403 account-deleted shows the generic failure notice when the me refetch still answers 200 (BL-17)", async () => {
+    server.use(http.get(EXPORT_URL, () => problem(403, "account-deleted")), http.get(ME_URL, () => HttpResponse.json(ME)));
+    renderSection({ observeMe: true });
     await userEvent.click(section().getByRole("button", { name: "Download my data" }));
+    expect(await section().findByText("Couldn't prepare your data.")).toBeInTheDocument();
+    expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled();
+  });
+
+  // Code review: the export's error is the 403, but the session ended during the `me` refetch, so the
+  // logout is already running and the notice would flash over it.
+  it("a 403 account-deleted shows no notice when the me refetch ends the session (401)", async () => {
+    let meCalls = 0;
+    server.use(
+      http.get(EXPORT_URL, () => problem(403, "account-deleted")),
+      http.get(ME_URL, () => (++meCalls === 1 ? HttpResponse.json(ME) : problem(401, "invalid-token"))),
+    );
+    const { queryClient } = renderSection({ observeMe: true });
+    await waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeDefined());
+    await userEvent.click(section().getByRole("button", { name: "Download my data" }));
+    await waitFor(() => expect(auth.state.logout).toHaveBeenCalled());
     await waitFor(() => expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled());
+    expect(section().queryByText("Couldn't prepare your data.")).toBeNull();
   });
 
   it("a 401 shows no notice (the client's onAuthLost has started the logout)", async () => {

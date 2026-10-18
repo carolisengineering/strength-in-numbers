@@ -35,6 +35,39 @@ describe("12 AC2 — Content-Disposition filename parsing", () => {
     expect(out.endsWith(".json")).toBe(true);
   });
 
+  // BL-18: the cap counts code points, so a long UTF-8 name never ends in half a surrogate pair.
+  it("never splits a surrogate pair at the length cap", () => {
+    for (const pad of [110, 111, 112, 113]) {
+      const name = encodeURIComponent(`${"a".repeat(pad)}${"🏋️".repeat(40)}.json`);
+      const out = parse(`attachment; filename*=UTF-8''${name}`, "FALLBACK");
+      expect(out).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/); // no lone surrogate
+      expect([...out]).toHaveLength(120);
+      expect(out.endsWith(".json")).toBe(true);
+    }
+  });
+
+  it("drops trailing dots and spaces, which Windows strips (so the extension stays real)", () => {
+    expect(parse('attachment; filename="export.json. . "', "FALLBACK")).toBe("export.json");
+    expect(parse('attachment; filename="..."', "FALLBACK")).toBe("FALLBACK");
+  });
+
+  it.each(["CON", "con.json", "PRN.txt", "AUX", "NUL.tar.gz", "COM1.json", "lpt9", "COM¹.json", "CONIN$"])(
+    "falls back for the Windows reserved device name %s",
+    (name) => {
+      expect(parse(`attachment; filename="${name}"`, "FALLBACK")).toBe("FALLBACK");
+    },
+  );
+
+  it("trims whitespace at both ends alike, so a leading NBSP or tab cannot hide a reserved name", () => {
+    expect(parse('attachment; filename="\u00a0\texport.json"', "FALLBACK")).toBe("export.json");
+    expect(parse('attachment; filename="\u00a0CON.json"', "FALLBACK")).toBe("FALLBACK");
+  });
+
+  it("keeps names that only start like a reserved one", () => {
+    expect(parse('attachment; filename="console.json"', "FALLBACK")).toBe("console.json");
+    expect(parse('attachment; filename="COM10.json"', "FALLBACK")).toBe("COM10.json");
+  });
+
   it("never throws on garbage", () => {
     for (const header of ['filename="', "filename*=UTF-8''", ";;;", "filename=\u0000"]) {
       expect(() => parse(header, "FALLBACK")).not.toThrow();
