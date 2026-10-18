@@ -8,7 +8,7 @@
  * comparison is exact (D3). Magnitudes stay below 3.3e11, far inside
  * Number.MAX_SAFE_INTEGER, so no BigInt is needed.
  */
-import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type RecordType, type RecordUnit } from "./enums.js";
+import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type RecordType, type RecordUnit, type SetType } from "./enums.js";
 
 /** One qualifying set (working, in a finished workout), caller-sorted by
  * (workout started_at, workout id, workout_exercise position, set_number). */
@@ -209,4 +209,24 @@ export function progressPoints(sets: readonly RecordSet[]): ProgressPointMilli[]
     totalVolumeMilli: sumVolumeMilli(group),
     maxRepsMilli: bestOf("max_reps", group),
   }));
+}
+
+/** The only set fields personal records read (07.0 D5): `is_complete`, `rpe`, distance and duration are inert. */
+export interface RecordRelevantSet {
+  setType: SetType;
+  reps: number | null;
+  weightKgMilli: number | null;
+}
+
+/**
+ * Spec 07.4 §6.2 / AC8 — whether a finished-workout set write can change any record, so an
+ * edit that cannot (an rpe-only patch, a warm-up) skips the lineage recompute. `null` means the
+ * set does not exist on that side (a create or a delete).
+ */
+export function setChangeAffectsRecords(before: RecordRelevantSet | null, after: RecordRelevantSet | null): boolean {
+  const wasWorking = before?.setType === "working";
+  const isWorking = after?.setType === "working";
+  if (!wasWorking && !isWorking) return false;
+  if (before === null || after === null || wasWorking !== isWorking) return true;
+  return before.reps !== after.reps || before.weightKgMilli !== after.weightKgMilli;
 }

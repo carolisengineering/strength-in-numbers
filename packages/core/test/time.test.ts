@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localDateFor, offsetMinutesForZone } from "../src/time.js";
+import { clampInstantToSpan, localDateFor, offsetMinutesForZone } from "../src/time.js";
 
 describe("AC19/AC6 — time.ts", () => {
   describe("localDateFor", () => {
@@ -37,5 +37,23 @@ describe("AC19/AC6 — time.ts", () => {
     it("returns 0 for UTC (bare GMT parses as 0)", () => {
       expect(offsetMinutesForZone("2026-06-01T00:00:00.000Z", "UTC")).toBe(0);
     });
+  });
+});
+
+describe("07.4 — clampInstantToSpan", () => {
+  const start = new Date("2026-10-16T18:00:00.000Z");
+  const end = new Date("2026-10-16T19:00:00.000Z");
+  it("pulls an instant before the start up to the start", () => {
+    expect(clampInstantToSpan(new Date("2026-10-16T17:00:00.000Z"), start, end)).toEqual(start);
+  });
+  it("pulls an instant after the end down to the end", () => {
+    expect(clampInstantToSpan(new Date("2026-10-18T09:00:00.000Z"), start, end)).toEqual(end);
+  });
+  it("keeps an instant inside the span", () => {
+    const inside = new Date("2026-10-16T18:30:00.000Z");
+    expect(clampInstantToSpan(inside, start, end)).toEqual(inside);
+  });
+  it("a zero-length span returns that instant", () => {
+    expect(clampInstantToSpan(new Date("2026-10-18T09:00:00.000Z"), start, start)).toEqual(start);
   });
 });

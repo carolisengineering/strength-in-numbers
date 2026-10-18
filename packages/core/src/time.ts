@@ -47,3 +47,10 @@ export function offsetMinutesForZone(instantIso: string, ianaTimeZone: string): 
   const minutes = Number(match[3]);
   return sign * (hours * 60 + minutes);
 }
+
+/** Spec 07.4 §6.6 — `t` pulled into `[start, end]`: a finished workout's set never completes outside its span. */
+export function clampInstantToSpan(t: Date, start: Date, end: Date): Date {
+  if (t.getTime() < start.getTime()) return start;
+  if (t.getTime() > end.getTime()) return end;
+  return t;
+}
