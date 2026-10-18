@@ -24,6 +24,16 @@ export async function calendarFor(
   return { localDate: localDateFor(iso, offset), tzOffsetMinutes: offset };
 }
 
+/** AC25: a finished workout's start moved from `from` to `to` — every stamped set moves by the same Δ (gaps kept, NULL stays NULL). */
+export async function shiftSetTimes(tx: RawClient, workoutId: string, from: Date, to: Date): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE "set_entry"
+    SET completed_at = completed_at + (${to}::timestamptz - ${from}::timestamptz)
+    WHERE completed_at IS NOT NULL
+      AND workout_exercise_id IN (SELECT id FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid)
+  `;
+}
+
 /** AC25: pull every out-of-span `completed_at` into `[started_at, ended_at]`. Matches no row for a normal workout. */
 export async function clampSetTimes(tx: RawClient, workoutId: string): Promise<void> {
   await tx.$executeRaw`

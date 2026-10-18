@@ -24,6 +24,7 @@ import type {
   WorkoutDetailRecord,
   WorkoutExerciseDetailRecord,
   WorkoutExerciseRecord,
+  RetimeOutcome,
   WithFinishedEdit,
   WorkoutRecord,
   WorkoutSectionRecord,
@@ -35,7 +36,7 @@ import {
   computeAppendPosition,
   retimeOrThrow,
 } from "./workout-writes.js";
-import { calendarFor, clampSetTimes } from "./workout-retime.prisma.js";
+import { calendarFor, clampSetTimes, shiftSetTimes } from "./workout-retime.prisma.js";
 import {
   assertWorkingSetsComplete,
   assertWouldNotEmpty,
@@ -197,27 +198,77 @@ interface RoutineItemCopyRow {
   section_id: string | null;
 }
 
-/** Spec 07.4 AC3: a finished workout's PATCH without `endedAt` — `{}` / `endedAt: null` return the
- * row unchanged (no UPDATE); `title` / `notes` are written. Records never depend on them. */
-async function finishedDetailsEdit(tx: RawClient, current: WorkoutDbRow, patch: UpdateWorkoutFields): Promise<UpdateWorkoutResult> {
+/** Spec 07.4 §9: what a Change Time did, for the route's `workout_retimed` line; null when the
+ * patch carried neither `startedAt` nor `durationSeconds`. */
+function retimeOutcome(
+  patch: UpdateWorkoutFields,
+  wasFinished: boolean,
+  oldStart: Date,
+  next: { startedAt: Date; endedAt: Date | null; plannedDurationS: number | null; startChanged: boolean },
+  recordsRecomputed: boolean,
+): RetimeOutcome | null {
+  if (patch.startedAt === undefined && patch.durationSeconds === undefined) return null;
+  return {
+    wasFinished,
+    startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - oldStart.getTime()) / 1000) : null,
+    durationSeconds: next.endedAt !== null
+      ? Math.round((next.endedAt.getTime() - next.startedAt.getTime()) / 1000)
+      : next.plannedDurationS,
+    startedAt: next.startedAt,
+    recordsRecomputed,
+  };
+}
+
+/**
+ * Spec 07.4 §6.5, finished mode (the PR lock is already held): title / notes and Change Time on a
+ * finished workout. `{}` / `endedAt: null` change nothing and issue no UPDATE (AC3). A moved start
+ * shifts every set time by Δ (from the stored start, so a replay is Δ = 0, AC29), any time change
+ * clamps them into the new span (AC25), and only a start change recomputes records (AC26, D3).
+ */
+async function finishedPatch(
+  tx: RawClient,
+  userId: string,
+  current: WorkoutDbRow,
+  patch: UpdateWorkoutFields,
+): Promise<UpdateWorkoutResult> {
+  const next = retimeOrThrow(
+    { startedAt: current.started_at, endedAt: current.ended_at, plannedDurationS: null },
+    patch,
+    new Date(),
+  );
+  const detailsSent = "title" in patch || "notes" in patch;
   let row = current;
-  let finishedEdit: FinishedEdit | null = null;
-  if ("title" in patch || "notes" in patch) {
+  if (detailsSent || next.startChanged || next.endChanged) {
+    const calendar = next.startChanged
+      ? await calendarFor(tx, userId, next.startedAt, patch.tzOffsetMinutes)
+      : { localDate: current.local_date.toISOString().slice(0, 10), tzOffsetMinutes: current.tz_offset_minutes };
     const nextTitle = "title" in patch ? (patch.title ?? null) : current.title;
     const nextNotes = "notes" in patch ? (patch.notes ?? null) : current.notes;
     const updated = await tx.$queryRaw<WorkoutDbRow[]>`
-      UPDATE "workout" SET title = ${nextTitle}, notes = ${nextNotes}, updated_at = now()
+      UPDATE "workout"
+      SET title = ${nextTitle}, notes = ${nextNotes}, started_at = ${next.startedAt}, ended_at = ${next.endedAt},
+          local_date = ${calendar.localDate}::date, tz_offset_minutes = ${calendar.tzOffsetMinutes}, updated_at = now()
       WHERE id = ${current.id}::uuid
       RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
     `;
     row = updated[0]!;
-    finishedEdit = noRecompute(current.id);
   }
+  if (next.startChanged) await shiftSetTimes(tx, current.id, current.started_at, next.startedAt);
+  if (next.startChanged || next.endChanged) await clampSetTimes(tx, current.id);
+  const recompute = next.startChanged ? await recomputeTimed(tx, userId, current.id, await rootsForWorkout(tx, current.id)) : null;
   const countRows = await tx.$queryRaw<{ n: number }[]>`
     SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${current.id}::uuid
   `;
-  return { workout: toRecord(row), exerciseCount: countRows[0]!.n, newRecords: [], finishedEdit, hadPlannedDuration: false };
+  return {
+    workout: toRecord(row),
+    exerciseCount: countRows[0]!.n,
+    newRecords: [],
+    // Records never depend on title / notes; a re-time reports its recompute on `retime`.
+    finishedEdit: detailsSent ? noRecompute(current.id) : null,
+    hadPlannedDuration: false,
+    retime: retimeOutcome(patch, true, current.started_at, next, recompute?.recordsRecomputed ?? false),
+  };
 }
 
 export function createWorkoutRepository(
@@ -557,7 +608,7 @@ export function createWorkoutRepository(
           // Spec 07.4 D17: only a re-finish is refused ("already finished", the client's recovery path).
           if (patch.endedAt != null) throw new WorkoutFinishedError();
           assertStillLive(mode, current.ended_at); // a title/notes edit restarts in finished mode
-          return finishedDetailsEdit(tx, current, patch);
+          return finishedPatch(tx, actingUserId, current, patch);
         }
 
         // Spec 07.4 §6.4: one pure rule set decides the new start / end / plan (a non-null `endedAt`
@@ -616,6 +667,7 @@ export function createWorkoutRepository(
           newRecords,
           finishedEdit: null,
           hadPlannedDuration: finishing && (current.planned_duration_s ?? null) !== null,
+          retime: retimeOutcome(patch, false, current.started_at, next, false),
         };
       });
     },

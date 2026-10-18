@@ -615,6 +615,15 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return this.detail(this.ownedWorkoutOrThrow(actingUserId, id));
   }
 
+  /** Spec 07.4 AC25: the repository's `shiftSetTimes`, on the in-memory sets. */
+  private shiftSetTimes(workoutId: string, deltaMs: number): void {
+    for (const s of this.sets.values()) {
+      const we = this.exercises.get(s.workoutExerciseId);
+      if (we?.workoutId !== workoutId || s.completedAt === null) continue;
+      this.sets.set(s.id, { ...s, completedAt: new Date(s.completedAt.getTime() + deltaMs) });
+    }
+  }
+
   /** Spec 07.4 AC25: the repository's `clampSetTimes`, on the in-memory sets. */
   private clampSetTimes(workoutId: string, start: Date, end: Date): void {
     for (const s of this.sets.values()) {
@@ -634,15 +643,43 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       // Spec 07.4 AC3 / D17: only a re-finish is refused; {} / endedAt: null are no-ops.
       if (patch.endedAt != null) throw new WorkoutFinishedError();
       const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-      if (!("title" in patch) && !("notes" in patch)) return { workout: w, exerciseCount, newRecords: [], finishedEdit: null, hadPlannedDuration: false };
-      const edited: WorkoutRecord = {
-        ...w,
-        title: "title" in patch ? patch.title ?? null : w.title,
-        notes: "notes" in patch ? patch.notes ?? null : w.notes,
-        updatedAt: new Date(w.updatedAt.getTime() + 1000),
+      const next = retimeOrThrow({ startedAt: w.startedAt, endedAt: w.endedAt, plannedDurationS: null }, patch, new Date());
+      const detailsSent = "title" in patch || "notes" in patch;
+      const timeSent = patch.startedAt !== undefined || patch.durationSeconds !== undefined;
+      let edited = w;
+      if (detailsSent || next.startChanged || next.endChanged) {
+        const tzOffsetMinutes = next.startChanged ? (patch.tzOffsetMinutes ?? 0) : w.tzOffsetMinutes;
+        edited = {
+          ...w,
+          title: "title" in patch ? patch.title ?? null : w.title,
+          notes: "notes" in patch ? patch.notes ?? null : w.notes,
+          startedAt: next.startedAt,
+          endedAt: next.endedAt,
+          tzOffsetMinutes,
+          localDate: next.startChanged ? localDateFor(next.startedAt.toISOString(), tzOffsetMinutes) : w.localDate,
+          updatedAt: new Date(w.updatedAt.getTime() + 1000),
+        };
+        this.workouts.set(id, edited);
+      }
+      if (next.startChanged) this.shiftSetTimes(id, next.startedAt.getTime() - w.startedAt.getTime());
+      if (next.startChanged || next.endChanged) this.clampSetTimes(id, next.startedAt, next.endedAt!);
+      const retime = timeSent
+        ? {
+            wasFinished: true,
+            startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - w.startedAt.getTime()) / 1000) : null,
+            durationSeconds: Math.round((next.endedAt!.getTime() - next.startedAt.getTime()) / 1000),
+            startedAt: next.startedAt,
+            recordsRecomputed: next.startChanged,
+          }
+        : null;
+      return {
+        workout: edited,
+        exerciseCount,
+        newRecords: [],
+        finishedEdit: detailsSent ? FakeWorkoutRepository.edit(edited) : null,
+        hadPlannedDuration: false,
+        retime,
       };
-      this.workouts.set(id, edited);
-      return { workout: edited, exerciseCount, newRecords: [], finishedEdit: FakeWorkoutRepository.edit(edited), hadPlannedDuration: false };
     }
     // Spec 07.4 §6.4: the same pure rules as the repository. The fake has no profile zone, so a moved
     // start without `tzOffsetMinutes` takes offset 0; route tests that assert `localDate` send one.
@@ -674,7 +711,23 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(id, updated);
     if (endedAt !== null) this.clampSetTimes(id, updated.startedAt, endedAt);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
-    return { workout: updated, exerciseCount, newRecords: [], finishedEdit: null, hadPlannedDuration: endedAt !== null && w.plannedDurationS !== null };
+    const retime = patch.startedAt !== undefined || patch.durationSeconds !== undefined
+      ? {
+          wasFinished: false,
+          startShiftSeconds: next.startChanged ? Math.round((next.startedAt.getTime() - w.startedAt.getTime()) / 1000) : null,
+          durationSeconds: endedAt !== null ? Math.round((endedAt.getTime() - next.startedAt.getTime()) / 1000) : next.plannedDurationS,
+          startedAt: next.startedAt,
+          recordsRecomputed: false,
+        }
+      : null;
+    return {
+      workout: updated,
+      exerciseCount,
+      newRecords: [],
+      finishedEdit: null,
+      hadPlannedDuration: endedAt !== null && w.plannedDurationS !== null,
+      retime,
+    };
   }
 
   async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {

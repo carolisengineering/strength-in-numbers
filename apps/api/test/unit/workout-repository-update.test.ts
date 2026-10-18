@@ -251,6 +251,24 @@ describe("AC13 — a non-finish PATCH takes no PR lock and returns newRecords: [
     expect(stub.calls.some((c) => c.sql.includes("set_entry"))).toBe(false);
   });
 
+  it("07.4 AC4 / AC26 — a finished duration-only PATCH restarts with the PR lock first and recomputes nothing", async () => {
+    const stub = new ScriptedPrisma();
+    const started = new Date(Date.now() - 2 * 86_400_000);
+    const done = baseRow({ started_at: started, ended_at: new Date(started.getTime() + 3_600_000) });
+    stub.queueRows([done]); // live attempt's FOR UPDATE: finished -> restart
+    stub.queueRows([done]); // finished attempt's FOR UPDATE
+    stub.queueRows([{ ...done, ended_at: new Date(started.getTime() + 1_800_000) }]); // UPDATE ... RETURNING
+    stub.queueRows([{ n: 1 }]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
+
+    const result = await repo.updateWorkout(done.user_id, done.id, { durationSeconds: 1800 });
+
+    expect(result.retime).toMatchObject({ wasFinished: true, recordsRecomputed: false, durationSeconds: 1800 });
+    expect(stub.calls[1]!.sql).toContain("pg_advisory_xact_lock");
+    expect(stub.calls[2]!.sql).toContain("FOR UPDATE");
+    expect(stub.calls.some((c) => c.sql.includes("personal_record"))).toBe(false);
+  });
+
   it("a finish takes the PR lock first, before the row lock (D9, amended by AC18)", async () => {
     const stub = new ScriptedPrisma();
     const inProgress = baseRow();

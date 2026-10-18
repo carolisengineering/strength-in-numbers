@@ -226,6 +226,18 @@ export interface UpdateWorkoutResult {
   finishedEdit: FinishedEdit | null;
   /** Spec 07.4 §9: true iff this request finished a workout that had a planned duration (`workout_finished`). */
   hadPlannedDuration: boolean;
+  /** Spec 07.4 §9: set iff the patch carried `startedAt` or `durationSeconds` (the route logs `workout_retimed`). */
+  retime: RetimeOutcome | null;
+}
+
+/** Spec 07.4 §9 — a Change Time's effect. `startShiftSeconds` is null unless the start moved;
+ * `durationSeconds` is the resulting finished duration, or the stored plan on a live workout. */
+export interface RetimeOutcome {
+  wasFinished: boolean;
+  startShiftSeconds: number | null;
+  durationSeconds: number | null;
+  startedAt: Date;
+  recordsRecomputed: boolean;
 }
 
 /**

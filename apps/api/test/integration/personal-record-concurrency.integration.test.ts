@@ -189,6 +189,9 @@ describe.skipIf(!shouldRunIntegration())("AC18 — concurrent PR writers equal a
       ["another edit of the same workout", (c: Awaited<ReturnType<typeof scene>>) => repo().updateSet(c.user, c.w0.setIds[0]![1]!, { weight: 110 })],
       ["a live set create on the user's live workout", async (c: Awaited<ReturnType<typeof scene>>) =>
         repo().createSet(c.user, await cardOf(c.w1.workoutId), { reps: 5, weight: 99, weightUnit: "kg", isComplete: true })],
+      // 07.4 Phase B Review Focus 1: a re-time of the edited workout (moves it after W2, so records move too).
+      ["a Change Time of the same workout", (c: Awaited<ReturnType<typeof scene>>) =>
+        repo().updateWorkout(c.user, c.w0.workoutId, { startedAt: day(4).toISOString() })],
     ])("vs %s: no deadlock, only serial outcomes, the table equals a rebuild", async (_name, other) => {
       for (let i = 0; i < 10; i++) {
         const c = await scene();
