@@ -1310,7 +1310,7 @@ with rationale so the "why" survives.
   recomputes the touched lineages through the existing `recomputeRecordsForRoots`; the server refuses to leave a finished
   workout with no sets (`409 workout-would-be-empty`); Change Time is `startedAt` / `durationSeconds` on `PATCH /v1/workouts/{id}`
   for live and finished workouts, a live "took" is stored server-side (`planned_duration_s`) and the client sends the
-  resulting `endedAt` at Finish; a changed start is bounded to 5 minutes ahead and 366 days back; `local_date` is re-derived
+  resulting `endedAt` at Finish; a changed start is bounded to 5 minutes ahead and a fixed 2000-01-01 floor (no rolling window); `local_date` is re-derived
   with the start; a finished re-time shifts set `completed_at` by the start delta and keeps every set inside the workout's
   span; finished edits and Change Time are online-only.** Rationale: the PR engine was built so that "editing a finished
   workout will call the same recompute" (Q13), so the work is the envelope around it — lock order, a mode flip when a finish
