@@ -58,6 +58,11 @@ describe("12 AC2 — Content-Disposition filename parsing", () => {
     },
   );
 
+  it("trims whitespace at both ends alike, so a leading NBSP or tab cannot hide a reserved name", () => {
+    expect(parse('attachment; filename="\u00a0\texport.json"', "FALLBACK")).toBe("export.json");
+    expect(parse('attachment; filename="\u00a0CON.json"', "FALLBACK")).toBe("FALLBACK");
+  });
+
   it("keeps names that only start like a reserved one", () => {
     expect(parse('attachment; filename="console.json"', "FALLBACK")).toBe("console.json");
     expect(parse('attachment; filename="COM10.json"', "FALLBACK")).toBe("COM10.json");

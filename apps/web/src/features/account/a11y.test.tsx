@@ -55,13 +55,13 @@ describe("12 AC23 — accessibility", () => {
     server.use(exportOk());
     renderProfile();
     const data = within(screen.getByRole("region", { name: "Your data" }));
-    expect(document.querySelectorAll('[role="status"][aria-live]')).toHaveLength(1);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
 
     await userEvent.click(data.getByRole("button", { name: "Download my data" }));
 
     expect(await data.findByRole("status")).toHaveTextContent(/^Saved /);
     expect(screen.getAllByText(/^Saved /)).toHaveLength(1);
-    expect(document.querySelectorAll('[role="status"][aria-live]')).toHaveLength(1);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("the dialog is labeled by its title and errors are role=alert text, not color alone", async () => {

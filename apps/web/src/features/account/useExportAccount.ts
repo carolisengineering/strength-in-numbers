@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BlobResponse } from "../../api/client";
 import { useApi } from "../../auth/useApi";
 import { reportError } from "../../observability/reportError";
-import { isAccountDeleted, isSessionEnded, meConfirmsDeleted, notifyIfAccountDeleted } from "./accountDeleted";
+import { isAccountDeleted, isSessionEnded, meTookOver, notifyIfAccountDeleted } from "./accountDeleted";
 import { EXPORT_FALLBACK_FILENAME } from "./messages";
 import { saveBlob } from "./saveBlob";
 
@@ -78,9 +78,10 @@ export function useExportAccount(): ExportAccount {
         if (abort.signal.aborted) return; // unmount: the client wraps AbortError in ApiError.network
         // Neither shows a notice (AC10): an ended session is onAuthLost's, and a 403 account-deleted is
         // handled by invalidating `me` (D7; the layout swaps this screen out). The `me` refetch has already
-        // answered here, so the 403 stays quiet only if it confirmed the deletion; otherwise the layout will
-        // not swap and a silent reset would look like an export that never ran (BL-17).
-        if (isSessionEnded(error) || (isAccountDeleted(error) && meConfirmsDeleted(queryClient))) {
+        // answered here, so the 403 stays quiet only if that refetch confirmed the deletion or ended the
+        // session; otherwise nothing swaps the screen and a silent reset would look like an export that
+        // never ran (BL-17).
+        if (isSessionEnded(error) || (isAccountDeleted(error) && meTookOver(queryClient))) {
           setState({ status: "idle" });
           return;
         }

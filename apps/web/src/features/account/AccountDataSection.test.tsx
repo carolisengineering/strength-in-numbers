@@ -183,6 +183,22 @@ describe("12 AC10 — account and session errors are not this screen's to show",
     expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled();
   });
 
+  // Code review: the export's error is the 403, but the session ended during the `me` refetch, so the
+  // logout is already running and the notice would flash over it.
+  it("a 403 account-deleted shows no notice when the me refetch ends the session (401)", async () => {
+    let meCalls = 0;
+    server.use(
+      http.get(EXPORT_URL, () => problem(403, "account-deleted")),
+      http.get(ME_URL, () => (++meCalls === 1 ? HttpResponse.json(ME) : problem(401, "invalid-token"))),
+    );
+    const { queryClient } = renderSection({ observeMe: true });
+    await waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeDefined());
+    await userEvent.click(section().getByRole("button", { name: "Download my data" }));
+    await waitFor(() => expect(auth.state.logout).toHaveBeenCalled());
+    await waitFor(() => expect(section().getByRole("button", { name: "Download my data" })).toBeEnabled());
+    expect(section().queryByText("Couldn't prepare your data.")).toBeNull();
+  });
+
   it("a 401 shows no notice (the client's onAuthLost has started the logout)", async () => {
     server.use(http.get(EXPORT_URL, () => problem(401, "invalid-token")));
     renderSection();

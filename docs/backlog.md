@@ -423,10 +423,12 @@ case.
 
 **Status: Resolved (2026-10-18).** `notifyIfAccountDeleted` now returns the `me` invalidation, and
 the export mutation's `onError` returns it, so the `mutate()` callbacks run after the `me` refetch
-has answered. The 403 stays quiet only when `meConfirmsDeleted` (the `me` query itself failed with
-`403 account-deleted`); otherwise the generic "Couldn't prepare your data." notice shows. Tests in
-`AccountDataSection.test.tsx` (12 AC10 block). Side effect: the delete mutation also stays pending
-until that refetch answers, which keeps its dialog busy until the screen swaps.
+has answered. The 403 stays quiet only when `meTookOver` (the `me` refetch itself failed with
+`403 account-deleted`, or ended the session with a `401`); otherwise the generic "Couldn't prepare
+your data." notice shows. Tests in `AccountDataSection.test.tsx` (12 AC10 block). The delete keeps
+its old timing (it does not await the refetch): a delete 403 is "done" either way (AC19). Accepted:
+if the delete's `me` refetch still answers 200, the dialog closes with no message and no swap; a
+retry gets the same 403, and the next `me` fetch (reload) shows `AccountDeleted`.
 
 Original report (same source as BL-15):
 `useExportAccount` returns to `idle` on that failure and relies on the invalidated `me`
@@ -442,9 +444,12 @@ account is deleted, with a test for the "`me` still 200" case.
 **Spec 12: `contentDisposition.ts` truncates the download filename by UTF-16 code unit.**
 
 **Status: Resolved (2026-10-18).** The 120 cap counts code points (a surrogate pair is never split),
-trailing dots and whitespace are stripped (Windows drops them), and a Windows reserved device name
-(`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`/`LPT0-9` incl. `¹²³`, `CONIN$`, `CONOUT$`, any extension)
-falls back to the default name. Tests in `apps/web/src/api/contentDisposition.test.ts`.
+dots and whitespace are stripped at both ends (Windows drops trailing ones), and a Windows reserved
+device name (`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`/`LPT0-9` incl. `¹²³`, `CONIN$`, `CONOUT$`, any
+extension) falls back to the default name. Tests in `apps/web/src/api/contentDisposition.test.ts`.
+Accepted: the cut can still split a grapheme cluster (an emoji + VS16, a ZWJ sequence, a combining
+mark), leaving an odd-looking but valid name. The server names the export with ASCII only, so this
+needs a hostile or broken header.
 
 Original report (same source as BL-15, low):
 Cutting a long `filename*=UTF-8''…` value at the length limit can split a surrogate pair
