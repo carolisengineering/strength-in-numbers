@@ -98,4 +98,57 @@ describe("07.4 AC32 — workout_edit_refused", () => {
   });
 });
 
+describe("07.4 AC32 — workout_retimed and had_planned_duration", () => {
+  const retimed = (lines: Record<string, unknown>[]) => lines.filter((l) => l.msg === "workout_retimed");
+  const DAY_MS = 86_400_000;
+
+  async function liveSetup(startedAt: string) {
+    const { logger, lines } = capturingLogger();
+    const { app } = await buildTestApp({ logger });
+    const patch = (payload: object) => app.inject({ method: "PATCH", url: `/v1/workouts/${workoutId}`, headers: BEARER, payload });
+    const workoutId = (await app.inject({ method: "POST", url: "/v1/workouts", headers: BEARER, payload: { clientGeneratedId: uuidv7(), startedAt } })).json().id as string;
+    return { lines, patch, workoutId };
+  }
+
+  it("a live plan logs workout_retimed once: was_finished false, no shift, the plan, no days_back", async () => {
+    const ctx = await liveSetup(new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+    expect((await ctx.patch({ durationSeconds: 3600 })).statusCode).toBe(200);
+    const line = retimed(ctx.lines);
+    expect(line).toHaveLength(1);
+    expect(line[0]).toMatchObject({ workout_id: ctx.workoutId, was_finished: false, start_shift_seconds: null, duration_seconds: 3600, days_back: null });
+    expect(typeof line[0]!.user_id).toBe("string");
+  });
+
+  it("a finished start moved back three days logs the shift and days_back", async () => {
+    const ctx = await finishedSetup();
+    const moved = new Date(Date.parse(STARTED_AT) - 3 * DAY_MS).toISOString();
+    expect((await ctx.call("PATCH", `/v1/workouts/${ctx.workoutId}`, { startedAt: moved })).statusCode).toBe(200);
+    const line = retimed(ctx.lines);
+    expect(line).toHaveLength(1);
+    expect(line[0]).toMatchObject({ workout_id: ctx.workoutId, was_finished: true, start_shift_seconds: -259_200, days_back: 3 });
+    expect(edited(ctx.lines)).toHaveLength(0);
+  });
+
+  it("a finished start and title in one PATCH log both lines, and neither carries the title", async () => {
+    const ctx = await finishedSetup();
+    const moved = new Date(Date.parse(STARTED_AT) - DAY_MS).toISOString();
+    expect((await ctx.call("PATCH", `/v1/workouts/${ctx.workoutId}`, { startedAt: moved, title: SECRET_TITLE })).statusCode).toBe(200);
+    expect(retimed(ctx.lines)).toHaveLength(1);
+    expect(edited(ctx.lines).map((l) => l.edit)).toEqual(["details_changed"]);
+    expect(JSON.stringify(ctx.lines)).not.toContain(SECRET_TITLE);
+  });
+
+  it("workout_finished carries had_planned_duration", async () => {
+    const started = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const planned = await liveSetup(started.toISOString());
+    await planned.patch({ durationSeconds: 1800 });
+    await planned.patch({ endedAt: new Date(started.getTime() + 1_800_000).toISOString() });
+    expect(planned.lines.find((l) => l.msg === "workout_finished")).toMatchObject({ had_planned_duration: true, duration_seconds: 1800 });
+
+    const plain = await liveSetup(started.toISOString());
+    await plain.patch({ endedAt: new Date().toISOString() });
+    expect(plain.lines.find((l) => l.msg === "workout_finished")).toMatchObject({ had_planned_duration: false });
+  });
+});
+
 type Ctx = Awaited<ReturnType<typeof finishedSetup>> & { app: FastifyInstance };

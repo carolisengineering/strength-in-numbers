@@ -1,4 +1,4 @@
-import { exerciseEditKind, logFinishedEdit, withRefusalLogged } from "./finished-edit-log.js";
+import { exerciseEditKind, logFinishedEdit, logRetimed, withRefusalLogged } from "./finished-edit-log.js";
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -167,7 +167,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     async (request) => {
       const actingUserId = request.user!.id;
       const isFinishAttempt = request.body.endedAt !== undefined && request.body.endedAt !== null;
-      const { workout: updated, exerciseCount, newRecords, finishedEdit } = await deps.workoutRepository.updateWorkout(
+      const { workout: updated, exerciseCount, newRecords, finishedEdit, hadPlannedDuration, retime } = await deps.workoutRepository.updateWorkout(
         actingUserId,
         request.params.id,
         request.body,
@@ -181,12 +181,14 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
             duration_seconds: durationSeconds,
             exercise_count: exerciseCount,
             record_count: newRecords.length,
+            had_planned_duration: hadPlannedDuration,
           },
           "workout_finished",
         );
       }
       // Spec 07.0 §5: the finish summary rides on the PATCH response.
       logFinishedEdit(request.log, actingUserId, "details_changed", finishedEdit);
+      logRetimed(request.log, actingUserId, updated.id, retime, new Date());
       const body: UpdatedWorkout = { ...toWorkoutDto(updated), newRecords: newRecords.map(toPersonalRecordDto) };
       return body;
     },
