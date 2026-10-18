@@ -310,7 +310,9 @@ claims)`, not in the handler.
   schema bounds, unrecognised key names; no message, `input` or `params` — since
   a custom issue message can echo the parsed value (issue #11). A Fastify
   request-validation error is scrubbed the same way, to `instancePath` +
-  `keyword` per `validation[]` entry and a fixed message (issue #57); and every
+  `keyword` (+ the schema's bounds) per `validation[]` entry and a fixed message
+  (issue #57). In both, a path segment that is not an identifier or an index (a
+  record key the sender chose) is masked as `*`. And every
   Zod issue message in `@sin/core` must be static, because a `custom` message is
   also returned in the 422 body (`packages/core/test/static-issue-messages.test.ts`).
 - **Authorization boundary:** every `/v1` app route requires a valid token and a

@@ -16,8 +16,10 @@ import * as core from "../src/index.js";
  *   `.max(3, "…")`) or `{ message }` / `{ error }` — is stored as a `def.error` function. Each one
  *   found on an exported schema is called with an issue whose `input` is a sentinel.
  * - **Source scan:** a `superRefine`'s `ctx.addIssue({ message })` runs inside the refinement, out
- *   of the probe's reach, so those messages must be string literals (constant interpolations only),
- *   no issue carries `params`, and nothing sets `reportInput`.
+ *   of the probe's reach, so every `message:` in `src/` must be a string literal or a module constant
+ *   (constant interpolations only), no issue carries `params`, and nothing sets `reportInput`.
+ *
+ * Not covered: a schema built inside an exported *function* (a factory) is never probed; none exists.
  */
 
 const SENTINEL = "SENTINEL-57-value";
@@ -41,6 +43,7 @@ function collectErrorFns(root: unknown): ErrorFn[] {
       return;
     }
     if (typeof def.error === "function") found.push(def.error as ErrorFn);
+    if (def.type === "lazy" && typeof def.getter === "function") visit((def.getter as () => unknown)());
     for (const [key, value] of Object.entries(def)) {
       if (key !== "error") visit(value);
     }
@@ -103,46 +106,65 @@ describe("#57 — Zod messages on exported schemas never echo the value (probe)"
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../src");
 
-function zodSourceFiles(dir: string): string[] {
+/** Every source file: an issue list can be built in a helper that never imports zod (`exercise.ts`'s muscle rule). */
+function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) return zodSourceFiles(path);
-    if (!entry.name.endsWith(".ts")) return [];
-    return /from ["']zod(?:\/[^"']*)?["']/.test(readFileSync(path, "utf8")) ? [path] : [];
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.name.endsWith(".ts") ? [path] : [];
   });
 }
 
-/** A string literal, or a template whose `${…}` are all UPPER_SNAKE constants, and nothing after it (no `+ value`, no ternary). */
-const STATIC_MESSAGE = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`$\\]|\\.|\$\{[A-Z][A-Z0-9_]*\})*`)\s*[,}\n)]/;
+/** A string literal, or a template whose `${…}` are UPPER_SNAKE names, or a bare UPPER_SNAKE name — and nothing after it (no `+ value`, no ternary). The names are checked separately to be module constants. */
+const STATIC_MESSAGE = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`$\\]|\\.|\$\{[A-Z][A-Z0-9_]*\})*`|[A-Z][A-Z0-9_]*)\s*[,}\n)]/;
 
 /** Comments, so prose such as `// message: …` neither trips nor satisfies the scan. */
 const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
-/** `message:` values that are not literals but are checked elsewhere. */
-const ALLOWED_MESSAGE_EXPRESSIONS = new Set([
-  "string", // a type annotation (`message: string;`)
-  "issue.message", // exercise.ts re-issues its own literal-only issue list (scanned here too)
-]);
+/** An UPPER_SNAKE name counts as static only when it is a top-level `const` or an import in that file — not a loop variable or a destructured value. */
+function isModuleConstant(source: string, name: string): boolean {
+  return (
+    new RegExp(`^(?:export )?const ${name}\\b`, "m").test(source) ||
+    new RegExp(`^import [^;]*\\b${name}\\b[^;]*from`, "m").test(source)
+  );
+}
 
-describe("#57 — superRefine issue messages are static (source scan)", () => {
-  const files = zodSourceFiles(SRC);
+/** `message:` values that are not literals, per file, each checked elsewhere. `string` (a type annotation) is allowed everywhere. */
+const ALLOWED_MESSAGE_EXPRESSIONS: Record<string, readonly string[]> = {
+  "dto/exercise.ts": ["issue.message"], // re-issues `muscleIdCrossFieldIssues`, whose messages are literals scanned here
+  "supersets.ts": ["applied.cap"], // the editor's `LINK_CAP_MESSAGE`, never a Zod issue
+};
 
-  it("scans the Zod schema files", () => {
-    expect(files.length).toBeGreaterThan(5);
+describe("#57 — issue messages built in code are static (source scan)", () => {
+  const files = sourceFiles(SRC);
+
+  it("scans every source file, the Zod schema files among them", () => {
+    expect(files.filter((f) => /from ["']zod(?:\/[^"']*)?["']/.test(readFileSync(f, "utf8"))).length).toBeGreaterThan(5);
   });
 
-  it.each(files.map((f) => [f.slice(SRC.length + 1), f]))("%s", (_name, file) => {
+  it.each(files.map((f) => [f.slice(SRC.length + 1), f]))("%s", (name, file) => {
     const source = stripComments(readFileSync(file, "utf8"));
     expect(source).not.toMatch(/\breportInput\b/);
     expect(source).not.toMatch(/\bparams\s*:/);
     expect(source, "shorthand `{ message }` hides the value it carries").not.toMatch(/[{,]\s*message\s*[,}]/);
     expect(source, "addIssue must take an object literal, so its message is scanned here").not.toMatch(/\baddIssue\(\s*(?!\{)/);
+    expect(source, "a spread into addIssue can carry an unscanned message").not.toMatch(/\baddIssue\(\s*\{[^}]*\.\.\./);
+    expect(source, "`.check()`'s ctx.issues.push must take an object literal").not.toMatch(/\.issues\.push\(\s*(?!\{)/);
+    const allowed = new Set(["string", ...(ALLOWED_MESSAGE_EXPRESSIONS[name] ?? [])]);
     for (const match of source.matchAll(/\bmessage\s*:\s*/g)) {
       const rest = source.slice(match.index + match[0].length);
-      if (STATIC_MESSAGE.test(rest)) continue;
+      if (STATIC_MESSAGE.test(rest)) {
+        const literal = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`|[A-Z][A-Z0-9_]*)/.exec(rest)![0];
+        const names = [...literal.matchAll(/\$\{([A-Z][A-Z0-9_]*)\}/g)].map((m) => m[1]!);
+        if (/^[A-Z]/.test(literal)) names.push(literal);
+        for (const constant of names) {
+          expect(isModuleConstant(source, constant), `${constant} in ${name} is not a module constant`).toBe(true);
+        }
+        continue;
+      }
       const expression = /^[\w.]+/.exec(rest)?.[0] ?? rest.slice(0, 40);
-      expect(ALLOWED_MESSAGE_EXPRESSIONS, `non-static message in ${file}: ${expression}`).toContain(expression);
+      expect(allowed, `non-static message in ${name}: ${expression}`).toContain(expression);
     }
   });
 });

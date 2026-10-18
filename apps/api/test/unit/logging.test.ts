@@ -244,6 +244,13 @@ describe("createLogger — Zod issues in a logged error chain are scrubbed (#11)
     expect(out).toContain("FST_ERR_RESPONSE_SERIALIZATION");
   });
 
+  it("masks a path segment that is not an identifier or index (a record keyed by user data)", () => {
+    const schema = z.record(z.string(), z.number());
+    const out = logged(responseViolation(schema.safeParse({ [EMAIL]: "not a number" }).error!));
+    expect(out).toContain('"path":["*"]');
+    expect(out).not.toContain(EMAIL);
+  });
+
   it("caps the number of issues logged", () => {
     const schema = z.array(z.string().max(1));
     const out = logged(responseViolation(schema.safeParse(Array.from({ length: 25 }, () => "xx")).error!));
@@ -286,18 +293,39 @@ describe("createLogger — a request-validation error's `validation[]` and messa
     return err;
   }
 
-  it("keeps instancePath + keyword per entry and drops message, params and the joined message", () => {
+  it("keeps instancePath + keyword (+ schema bounds) per entry and drops message, input and the joined message", () => {
     const out = logged(
       fastifyValidationError([
         { keyword: "too_big", instancePath: "/displayName", schemaPath: "#/displayName/too_big", message: `${NAME} is too long`, params: { input: NAME, maximum: 3 } },
       ]),
     );
     expect(out).not.toContain(NAME);
-    expect(out).toContain('"validation":[{"instancePath":"/displayName","keyword":"too_big"}]');
+    expect(out).toContain('"validation":[{"instancePath":"/displayName","keyword":"too_big","params":{"maximum":3}}]');
     expect(out).toContain('"code":"FST_ERR_VALIDATION"');
     expect(out).toContain('"statusCode":400');
     expect(out).toContain('"validationContext":"body"');
     expect(out).toContain("[scrubbed validation error: 1 issue(s)]");
+  });
+
+  it("keeps the schema's own bounds from `params`, but not request-supplied key names", () => {
+    const out = logged(
+      fastifyValidationError([
+        { keyword: "too_big", instancePath: "/displayName", message: NAME, params: { origin: "string", maximum: 3, inclusive: true, input: NAME } },
+        { keyword: "unrecognized_keys", instancePath: "", message: NAME, params: { keys: [EMAIL] } },
+      ]),
+    );
+    expect(out).toContain('{"instancePath":"/displayName","keyword":"too_big","params":{"origin":"string","maximum":3,"inclusive":true}}');
+    expect(out).toContain('{"instancePath":"","keyword":"unrecognized_keys"}');
+    expect(out).not.toContain(NAME);
+    expect(out).not.toContain(EMAIL);
+  });
+
+  // Code review: `instancePath` is the issue path joined with `/`, so a key a client chose (a record keyed
+  // by email) would reach the log through it. Only identifier-shaped segments and indexes are kept.
+  it("masks path segments that are not identifiers or indexes (a request-chosen record key)", () => {
+    const out = logged(fastifyValidationError([{ keyword: "too_big", instancePath: `/byEmail/${EMAIL}/sets/0`, message: "x" }]));
+    expect(out).toContain('"instancePath":"/byEmail/*/sets/0"');
+    expect(out).not.toContain(EMAIL);
   });
 
   it("drops non-string instancePath / keyword rather than logging them", () => {
@@ -350,6 +378,7 @@ describe("createLogger — a request-validation error's `validation[]` and messa
     expect(out).toContain('"instancePath":"/email","keyword":"custom"');
     expect(out).not.toContain(NAME);
     expect(out).not.toContain(EMAIL);
+    await app.close();
   });
 });
 

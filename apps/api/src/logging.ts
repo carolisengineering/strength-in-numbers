@@ -34,8 +34,10 @@ import type { Config } from "./config.js";
  *    issue (`fastify-type-provider-zod`'s `createValidationError`: the issue's
  *    `message`, and every other issue field in `params`) and whose `message`
  *    joins those messages. It is not a Zod error, so step 3 never saw it. It is
- *    replaced by a stub that keeps `instancePath` + `keyword` per entry and
- *    Fastify's own `code` / `statusCode` / `validationContext`. The 422 body is
+ *    replaced by a stub that keeps `instancePath` + `keyword` per entry (plus
+ *    the schema's bounds from `params`) and Fastify's own `code` / `statusCode`
+ *    / `validationContext`. Paths in both stubs mask any segment that is not an
+ *    identifier or an index, since a record key is whatever the sender chose. The 422 body is
  *    built separately (`normalizeError`) and is unaffected.
  */
 
@@ -68,7 +70,8 @@ function isZodError(err: unknown): err is ZodErrorLike {
  * which check failed and where, type / format names, the schema's own bounds,
  * and the *names* of unrecognised keys (what you need to debug an over-wide
  * handler return). Everything else — `message`, `input`, `params`, `pattern`,
- * `values` — is dropped. */
+ * `values` — is dropped. A `path` keeps only identifier-shaped segments and
+ * indexes (`maskSegment`). */
 const KEPT_ZOD_ISSUE_FIELDS = [
   "code",
   "path",
@@ -81,20 +84,49 @@ const KEPT_ZOD_ISSUE_FIELDS = [
   "keys",
 ] as const;
 
+/** The schema-shaped fields of a request-validation entry's `params` (#57): the
+ * Zod list minus `code` / `path` (the entry's `keyword` / `instancePath`) and
+ * `keys`, which on a request are names the client chose. */
+const KEPT_VALIDATION_PARAMS = KEPT_ZOD_ISSUE_FIELDS.filter(
+  (field) => field !== "code" && field !== "path" && field !== "keys",
+);
+
 /** Bounds the log line for a large array that fails every element (Zod issues and validation entries). */
-const MAX_ZOD_ISSUES = 20;
+const MAX_LOGGED_ISSUES = 20;
+
+/** A path segment is a schema field name or an index — unless the schema takes
+ * arbitrary keys (`z.record`, `catchall`), where it is whatever the sender
+ * chose, e.g. an email. Anything not shaped like an identifier or an index is
+ * masked. */
+const SAFE_SEGMENT = /^(?:[A-Za-z_$][\w$]*|\d+)$/;
+
+function maskSegment(segment: unknown): unknown {
+  if (typeof segment === "number") return segment;
+  return typeof segment === "string" && SAFE_SEGMENT.test(segment) ? segment : "*";
+}
+
+/** `instancePath` is a JSON pointer (`/items/0/name`, or `""` for the root): mask each segment, not the leading empty one. */
+function maskPointer(pointer: string): string {
+  return pointer === "" ? "" : pointer.split("/").map((segment, i) => (i === 0 && segment === "" ? "" : maskSegment(segment))).join("/");
+}
+
+function pickFields(source: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (source[field] !== undefined) kept[field] = source[field];
+  }
+  return kept;
+}
 
 function scrubZodIssue(issue: unknown, depth: number): Record<string, unknown> {
   if (typeof issue !== "object" || issue === null) return {};
   const source = issue as Record<string, unknown>;
-  const kept: Record<string, unknown> = {};
-  for (const field of KEPT_ZOD_ISSUE_FIELDS) {
-    if (source[field] !== undefined) kept[field] = source[field];
-  }
+  const kept = pickFields(source, KEPT_ZOD_ISSUE_FIELDS);
+  if (Array.isArray(kept.path)) kept.path = kept.path.map(maskSegment);
   // `invalid_union` nests one issue list per branch; scrub those too, one level.
   if (depth === 0 && Array.isArray(source.errors)) {
     kept.errors = source.errors.map((branch: unknown) =>
-      Array.isArray(branch) ? branch.slice(0, MAX_ZOD_ISSUES).map((i) => scrubZodIssue(i, 1)) : [],
+      Array.isArray(branch) ? branch.slice(0, MAX_LOGGED_ISSUES).map((i) => scrubZodIssue(i, 1)) : [],
     );
   }
   return kept;
@@ -116,14 +148,37 @@ function isValidationError(err: unknown): err is ValidationErrorLike {
   return err instanceof Error && Array.isArray((err as { validation?: unknown }).validation);
 }
 
-/** Keeps where and which check failed; `message` and `params` may carry the value. */
-function scrubValidationEntry(entry: unknown): Record<string, string> {
+/** Keeps where and which check failed, and the schema's bounds; `message` and the rest of `params` may carry the value. */
+function scrubValidationEntry(entry: unknown): Record<string, unknown> {
   if (typeof entry !== "object" || entry === null) return {};
-  const { instancePath, keyword } = entry as { instancePath?: unknown; keyword?: unknown };
+  const { instancePath, keyword, params } = entry as { instancePath?: unknown; keyword?: unknown; params?: unknown };
+  const kept = typeof params === "object" && params !== null
+    ? pickFields(params as Record<string, unknown>, KEPT_VALIDATION_PARAMS)
+    : {};
   return {
-    ...(typeof instancePath === "string" ? { instancePath } : {}),
+    ...(typeof instancePath === "string" ? { instancePath: maskPointer(instancePath) } : {}),
     ...(typeof keyword === "string" ? { keyword } : {}),
+    ...(Object.keys(kept).length > 0 ? { params: kept } : {}),
   };
+}
+
+/** A fixed-message, fixed-stack stand-in carrying the first `MAX_LOGGED_ISSUES` scrubbed items under `field`. */
+function scrubbedStub(
+  name: string,
+  label: string,
+  field: string,
+  items: unknown[],
+  scrub: (item: unknown) => unknown,
+  extra: Record<string, unknown>,
+  cause: unknown,
+): Error {
+  const kept = items.slice(0, MAX_LOGGED_ISSUES).map(scrub);
+  const truncated = items.length - kept.length;
+  const stub = new Error(`[scrubbed ${label}: ${items.length} issue(s)]`);
+  stub.name = name;
+  stub.stack = `${name}: [scrubbed]`;
+  Object.assign(stub, { ...extra, [field]: kept, ...(truncated > 0 ? { issuesTruncated: truncated } : {}), cause });
+  return stub;
 }
 
 const MAX_CAUSE_DEPTH = 8;
@@ -142,29 +197,15 @@ function stubFor(err: Error | ZodErrorLike, cause: unknown): Error | undefined {
     return stub;
   }
   if (isZodError(err)) {
-    const issues = err.issues.slice(0, MAX_ZOD_ISSUES).map((i) => scrubZodIssue(i, 0));
-    const truncated = err.issues.length - issues.length;
-    const stub = new Error(`[scrubbed ${err.name}: ${err.issues.length} issue(s)]`);
-    stub.name = err.name;
-    stub.stack = `${err.name}: [scrubbed]`;
-    Object.assign(stub, { issues, ...(truncated > 0 ? { issuesTruncated: truncated } : {}), cause });
-    return stub;
+    return scrubbedStub(err.name, err.name, "issues", err.issues, (i) => scrubZodIssue(i, 0), {}, cause);
   }
   if (isValidationError(err)) {
-    const validation = err.validation.slice(0, MAX_ZOD_ISSUES).map(scrubValidationEntry);
-    const truncated = err.validation.length - validation.length;
-    const stub = new Error(`[scrubbed validation error: ${err.validation.length} issue(s)]`);
-    stub.name = err.name;
-    stub.stack = `${err.name}: [scrubbed]`;
-    Object.assign(stub, {
+    const extra = {
       code: typeof err.code === "string" ? err.code : undefined,
       statusCode: typeof err.statusCode === "number" ? err.statusCode : undefined,
       validationContext: typeof err.validationContext === "string" ? err.validationContext : undefined,
-      validation,
-      ...(truncated > 0 ? { issuesTruncated: truncated } : {}),
-      cause,
-    });
-    return stub;
+    };
+    return scrubbedStub(err.name, "validation error", "validation", err.validation, scrubValidationEntry, extra, cause);
   }
   return undefined;
 }
