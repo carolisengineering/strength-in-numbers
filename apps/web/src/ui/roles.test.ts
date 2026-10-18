@@ -23,6 +23,8 @@ const SIGNAL_ALLOWED = [
   "features/progress/ExerciseProgressScreen.module.css",
   "features/routines/UnitToggle.module.css",
   "features/routines/RoutinesSection.module.css",
+  // Issue #98: the preview's "Back to Workouts" text link above the <h1>, as on FinishedWorkoutScreen.
+  "features/routines/RoutinePreview.module.css",
   "features/routines/SupersetBracket.module.css",
   "features/catalog/ExercisePicker.module.css",
   "features/catalog/CreateExerciseForm.module.css",

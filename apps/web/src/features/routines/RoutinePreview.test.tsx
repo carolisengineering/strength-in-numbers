@@ -49,6 +49,50 @@ describe("10.0 AC18 — preview content", () => {
   });
 });
 
+/** True when `b` comes after `a` in document order. */
+const before = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+// Issue #98: on a phone the actions sat under the whole exercise list. Back leads the screen, then the
+// name, then Start / Edit / Delete (and any start or delete notice), then the notes and the exercises.
+describe("#98 — the preview's actions come before the exercises", () => {
+  it("orders Back, the h1, Start, Edit, Delete, the notes, then the exercise list", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushA] }) });
+    renderApp(`/app/workouts/routines/${routineId(1)}`);
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Push A" });
+    const order = [
+      screen.getByRole("link", { name: "Back to Workouts" }),
+      h1,
+      screen.getByRole("button", { name: "Start this routine" }),
+      screen.getByRole("link", { name: "Edit" }),
+      screen.getByRole("button", { name: "Delete" }),
+      screen.getByText("Heavy day"),
+      screen.getByRole("list", { name: "Exercises" }),
+    ];
+    for (let i = 1; i < order.length; i++) expect(before(order[i - 1]!, order[i]!), `item ${i - 1} before item ${i}`).toBe(true);
+    expect(screen.getAllByRole("link", { name: "Back to Workouts" })).toHaveLength(1);
+  });
+
+  it("a start failure shows its notice under the actions, above the exercises", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [pushA] });
+    fake.failNext({ method: "POST", path: /^\/v1\/workouts$/ }, () => problemResponse(500, "internal"));
+    prepareApp({ auth, catalog, fake });
+    const { user } = renderApp(`/app/workouts/routines/${routineId(1)}`);
+    await user.click(await screen.findByRole("button", { name: "Start this routine" }));
+    const alert = await screen.findByRole("alert");
+    expect(before(screen.getByRole("button", { name: "Delete" }), alert)).toBe(true);
+    expect(before(alert, screen.getByRole("list", { name: "Exercises" }))).toBe(true);
+  });
+
+  it.each([routineId(9)])("the gone screen (%s) also leads with Back", async (id) => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [pushA] }) });
+    renderApp(`/app/workouts/routines/${id}`);
+    const message = await screen.findByText("That routine no longer exists");
+    const back = screen.getByRole("link", { name: "Back to Workouts" });
+    expect(before(back, screen.getByRole("heading", { level: 1, name: "Routine" }))).toBe(true);
+    expect(before(back, message)).toBe(true);
+  });
+});
+
 describe("10.0 AC30 — retired and removed exercises on the preview", () => {
   it("after the catalog syncs, a retired or deleted exercise shows as Removed exercise with the marker", async () => {
     const routine = makeRoutine({
