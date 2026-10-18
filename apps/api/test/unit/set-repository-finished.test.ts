@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
-import { ValidationError, WorkoutWouldBeEmptyError } from "../../src/errors/app-error.js";
+import { NotFoundError, ValidationError, WorkoutWouldBeEmptyError } from "../../src/errors/app-error.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { FakeExerciseRepository } from "../helpers/fakes.js";
 
@@ -139,17 +139,24 @@ describe("07.4 AC4 — updateSet / deleteSet in finished mode", () => {
   });
 
   it("deleteSet: PR lock → workout FOR SHARE → set count → DELETE … RETURNING (a warm-up: no recompute)", async () => {
-    const stub = new ScriptedPrisma().queue_(owned()).queue_(1).queue_(lockedFinished()).queue_([{ n: 2 }]).queue_([{ set_type: "warmup", workout_exercise_id: uuidv7() }]);
+    const stub = new ScriptedPrisma().queue_(owned()).queue_(1).queue_(lockedFinished()).queue_([{ id: uuidv7() }]).queue_([{ n: 2 }]).queue_([{ set_type: "warmup", workout_exercise_id: uuidv7() }]);
     const result = await repoOver(stub).deleteSet(uuidv7(), uuidv7());
     expect(isPrLock(stub.calls[1]!, stub.values[1]!)).toBe(true);
-    expect(stub.calls[3]).toContain("count(*)");
-    expect(stub.calls[4]).toContain('DELETE FROM "set_entry"');
+    expect(stub.calls[3]).toMatch(/FROM "set_entry" WHERE .* FOR UPDATE/s);
+    expect(stub.calls[4]).toContain("count(*)");
+    expect(stub.calls[5]).toContain('DELETE FROM "set_entry"');
     expect(result.finishedEdit).toMatchObject({ recordsRecomputed: false });
   });
 
   it("07.4 AC10 — deleteSet of the last set is WorkoutWouldBeEmptyError, nothing deleted", async () => {
-    const stub = new ScriptedPrisma().queue_(owned()).queue_(1).queue_(lockedFinished()).queue_([{ n: 1 }]);
+    const stub = new ScriptedPrisma().queue_(owned()).queue_(1).queue_(lockedFinished()).queue_([{ id: uuidv7() }]).queue_([{ n: 1 }]);
     await expect(repoOver(stub).deleteSet(uuidv7(), uuidv7())).rejects.toBeInstanceOf(WorkoutWouldBeEmptyError);
     expect(stub.calls.some((s) => s.includes("DELETE"))).toBe(false);
+  });
+
+  it("final review #1 — a set already deleted by a concurrent duplicate request is 404, never would-be-empty", async () => {
+    const stub = new ScriptedPrisma().queue_(owned()).queue_(1).queue_(lockedFinished()).queue_([]);
+    await expect(repoOver(stub).deleteSet(uuidv7(), uuidv7())).rejects.toBeInstanceOf(NotFoundError);
+    expect(stub.calls.some((s) => s.includes("count(*)"))).toBe(false);
   });
 });

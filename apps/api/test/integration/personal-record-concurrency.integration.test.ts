@@ -154,6 +154,19 @@ describe.skipIf(!shouldRunIntegration())("AC18 — concurrent PR writers equal a
     }
   });
 
+  it("final review #1 — two concurrent deletes of the SAME set on a two-set finished workout: one 204, one 404 (never would-be-empty)", async () => {
+    for (let i = 0; i < 10; i++) {
+      const user = await insertUser(db);
+      const bench = await insertExercise(db);
+      const w = await logWorkout(db, user, { startedAt: day(1), exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }, { reps: 5, weight: 90 }] }] });
+      const same = w.setIds[0]![0]!;
+      const results = await Promise.allSettled([repo().deleteSet(user, same), repo().deleteSet(user, same)]);
+      expectNoDeadlock(results);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect((results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toBeInstanceOf(NotFoundError);
+    }
+  });
+
   describe("07.4 AC15 — a finished-mode set edit against each concurrent writer equals a serial result", () => {
     /** W0 finished (the edited one, record holder), W1 live, W2 finished; records seeded by a rebuild. */
     async function scene() {

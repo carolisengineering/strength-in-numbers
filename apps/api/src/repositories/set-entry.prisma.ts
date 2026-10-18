@@ -357,6 +357,12 @@ export function createSetEntryMethods(
           if (affected === 0) throw new NotFoundError(SET_NOT_FOUND);
           return { finishedEdit: null };
         }
+        // Final review #1: the set must still exist under its lock before the guard counts — a duplicate
+        // delete that lost the race is a 404 ("already done"), never a would-be-empty 409.
+        const target = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "set_entry" WHERE id = ${id}::uuid FOR UPDATE
+        `;
+        if (!target[0]) throw new NotFoundError(SET_NOT_FOUND);
         // 07.4 §6.3: refuse to empty a finished workout (under the PR lock: race-free, AC11).
         await assertWouldNotEmpty(tx, owner.workout_id, 1);
         const deleted = await tx.$queryRaw<{ set_type: string; workout_exercise_id: string }[]>`
