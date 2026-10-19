@@ -45,9 +45,9 @@
 
 
 
-/* #107: Back and the Workout menu share the top row; the menu's items follow it, full width. */
-.top,
-.menuItems {
+/* #107: Back and the Workout menu share the top row; the menu's items (and a delete's notice) follow it, full
+   width. A closed <dialog> is display: none, so it takes no gap. */
+.top {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

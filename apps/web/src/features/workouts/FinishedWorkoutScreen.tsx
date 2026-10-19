@@ -101,7 +101,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       leadFill
       lead={
         <SummaryTop home={home}>
-          <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
+          {(open) => <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} showButton={open} />}
         </SummaryTop>
       }
     >
@@ -138,9 +138,10 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
 /**
  * #107: the way back and the rare actions lead the screen, so a long workout needs no scroll to leave it. Back on
  * the left, the Workout menu on the right; its items (Delete workout) revealed below, full width, as on the live
- * session's menu (Spec 17.1 D13: an inline disclosure, no popover).
+ * session's menu (Spec 17.1 D13: an inline disclosure, no popover). Only the item follows `open`: the control's
+ * dialog, notice and in-flight lock stay mounted, so closing the menu never drops a failure or a pending delete.
  */
-function SummaryTop({ home, children }: { home: { to: string; label: string }; children: ReactNode }) {
+function SummaryTop({ home, children }: { home: { to: string; label: string }; children: (open: boolean) => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={styles.top}>
@@ -150,7 +151,7 @@ function SummaryTop({ home, children }: { home: { to: string; label: string }; c
           Workout menu
         </Button>
       </div>
-      {open ? <div className={styles.menuItems}>{children}</div> : null}
+      {children(open)}
     </div>
   );
 }
@@ -190,11 +191,14 @@ function DeleteWorkoutControl({
   workoutId,
   setCount,
   afterDelete,
+  showButton,
 }: {
   workoutId: string;
   setCount: number;
   /** Where a successful delete lands: the section the summary was opened from (Spec 08.0 AC20). */
   afterDelete: string;
+  /** #107: the Delete button shows only while the Workout menu is open; everything else stays mounted. */
+  showButton: boolean;
 }) {
   const navigate = useNavigate();
   const del = useDeleteWorkout();
@@ -230,9 +234,11 @@ function DeleteWorkoutControl({
           {error.text}
         </InlineNotice>
       ) : null}
-      <Button variant="danger" onClick={() => setOpen(true)}>
-        Delete workout
-      </Button>
+      {showButton ? (
+        <Button variant="danger" onClick={() => setOpen(true)}>
+          Delete workout
+        </Button>
+      ) : null}
       <ConfirmDialog
         open={open}
         title="Delete this workout?"

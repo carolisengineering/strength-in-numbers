@@ -99,6 +99,23 @@ describe("#107 — Back and the Workout menu lead the summary", () => {
     expect(after).toEqual([]);
   });
 
+  it("a failed delete's notice survives closing the menu, and Delete works again after reopening", async () => {
+    const { fake, user, router } = setup();
+    fake.failNext({ method: "DELETE", path: /\/v1\/workouts\// }, () => HttpResponse.error());
+    await screen.findByRole("heading", { name: "Workout summary" });
+    await user.click(await revealDelete(user));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete the workout — try again");
+
+    await user.click(screen.getByRole("button", { name: "Workout menu" })); // close
+    expect(screen.queryByRole("button", { name: "Delete workout" })).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't delete the workout — try again");
+
+    await user.click(await revealDelete(user));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+  });
+
   it("the load-failure screen also leads with the back link", async () => {
     const { fake, workout } = setup((id) => `/app/history/${id}`);
     fake.failNext({ method: "GET", path: new RegExp(`/v1/workouts/${workout.id}$`) }, () => problemResponse(500, "about:blank"));
