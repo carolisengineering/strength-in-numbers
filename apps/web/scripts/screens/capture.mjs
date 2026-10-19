@@ -557,7 +557,7 @@ try {
     }
     await anon.close();
 
-    // The smallest phone (Spec 17.3 AC19 / AC21): the landing only.
+    // The smallest phone (Spec 17.3 AC19 / AC21): the landing, and the sign-in error with a long detail (BL-20).
     if (device === "mobile") {
       const small = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
       await small.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
@@ -566,6 +566,10 @@ try {
       await sp.goto(BASE + "/");
       await shoot(sp, "mobile-320", "00-landing", "Landing at 320 x 568");
       await checkFrontDoor(sp, `${theme}/mobile-320/00-landing`);
+      await sp.goto(BASE + "/callback?error=unauthorized&error_description=" + encodeURIComponent("Your account has been blocked after multiple consecutive login attempts. We've sent you an email with instructions on how to unblock it."));
+      await sp.getByTestId("auth-error").waitFor();
+      await shoot(sp, "mobile-320", "00d-auth-error-long", "Sign-in error with a long detail at 320 x 568 (BL-20)");
+      await checkFrontDoor(sp, `${theme}/mobile-320/00d-auth-error-long`);
       await small.close();
     }
   }
