@@ -510,7 +510,16 @@ as a decision; the purge/export implications written down.
 
 **Restyle `AuthError` on the front door.**
 
-**Status: Open.** Deferred out of [Spec 17.3](specs/17.3-landing-page.md) (D14, owner
+**Status: Done (2026-10-19, `fix/bl-20-auth-error-front-door`).** Owner chose the title card
+(option A of the mockups): `AuthError` renders on `FrontDoor` with the name decorative
+(`aria-hidden`, not a heading), so the screen's `h1` is "Couldn't sign you in." in ink on the
+line, then "Your workouts are safe." in muted, then Auth0's `error_description` verbatim as
+"Details: …" in small muted text (any length, breaks anywhere; no line when absent), and "Try
+again" as the one block primary `Button`, still to `/?signin`. Test ids unchanged. The harness
+captures it as `00c-auth-error` (both themes and devices) plus `00d` long / `00e` no detail on
+the phone, and runs the front-door layout check on each.
+
+Deferred out of [Spec 17.3](specs/17.3-landing-page.md) (D14, owner
 2026-10-17). After 17.3, `Landing` and `ResumingSession` share the `FrontDoor` title card, but
 `screens/AuthError.tsx` ("Couldn't sign you in", Auth0's `error_description`, a "Try again"
 button to `/?signin`) is still the unstyled Spec 04.0 placeholder. It shows only after a
