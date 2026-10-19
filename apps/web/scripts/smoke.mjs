@@ -105,7 +105,7 @@ async function main() {
     // Not JSON: the rewrite served index.html.
   }
   assert(manifest.status === 200 && parsed?.name === "Strength in Numbers", "GET /manifest.webmanifest is the app manifest (#97)");
-  const icon = await fetch(`${BASE}/${parsed?.icons?.[0]?.src ?? "icon-192.png"}`);
+  const icon = await fetch(new URL(parsed?.icons?.[0]?.src ?? "icon-192.png", `${BASE}/manifest.webmanifest`));
   assert(icon.status === 200 && (icon.headers.get("content-type") ?? "").includes("image/png"), "the manifest's first icon is a PNG (#97)");
 
   process.stdout.write(failed ? "web-smoke: FAIL\n" : "web-smoke: PASS\n");

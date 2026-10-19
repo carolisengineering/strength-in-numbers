@@ -18,8 +18,6 @@ const PNGS = [
   { file: "icon-maskable-512.png", size: 512, safeZone: true },
 ];
 
-writeFileSync(join(PUBLIC, "icon.svg"), iconSvg({ rounded: true }));
-
 const browser = await chromium.launch();
 try {
   for (const { file, size, safeZone } of PNGS) {
@@ -33,3 +31,6 @@ try {
 } finally {
   await browser.close();
 }
+
+// Last, so a failed run never leaves a new favicon beside old PNGs (the stale-check test reads only this file).
+writeFileSync(join(PUBLIC, "icon.svg"), iconSvg({ rounded: true }));
