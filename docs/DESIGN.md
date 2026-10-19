@@ -1303,7 +1303,8 @@ with rationale so the "why" survives.
   it. The product name "Strength in Numbers" replaces the repo slug wherever a person reads it (the landing, `<title>`,
   the in-app header's fallback, the setup-error screen); export filenames keep the slug. No mark, no product page until
   launch (Spec 14), no request-access or waitlist (BL-19), and sign-up policy is an Auth0 tenant setting, not a page
-  decision. `AuthError` is BL-20. See Spec 17.3 §6, D1–D18.
+  decision. `AuthError` joined the front door in BL-20 (PR #113): its `h1` is the error, the name is decorative. See
+  Spec 17.3 §6, D1–D18.
 - **Q27 — Editing finished workouts and fixing workout times.** ✅ **Resolved (Spec 07.4, 2026-10-18; owner decisions in the
   approved design brief, builder choices D1–D19): finished workouts are editable, reusing the existing set, exercise and
   workout routes (no edit routes); every finished-mode write is one transaction that takes the per-user PR lock first and
