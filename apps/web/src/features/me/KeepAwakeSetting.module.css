@@ -1,0 +1,33 @@
+/* #108: one checkbox row under Theme, with the same muted hint. */
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.row:has(.box:disabled) {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.box {
+  width: var(--space-6);
+  height: var(--space-6);
+  margin: 0;
+  accent-color: var(--color-selected);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
