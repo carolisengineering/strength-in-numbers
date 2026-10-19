@@ -10,6 +10,8 @@
  *      render.yaml (AC15).
  *   2. GET <web>/app  (cold, a protected deep link, no auth) → 200 text/html
  *      containing `<div id="root">` — the SPA rewrite serves index.html (AC17).
+ *   3. GET <web>/manifest.webmanifest → 200 JSON naming the app, and the icon
+ *      it lists is a PNG — the files, not the SPA rewrite's index.html (#97).
  *
  * Run by the post-deploy `smoke` job in .github/workflows/ci.yml (enabled by
  * Spec 06.3).
@@ -93,6 +95,18 @@ async function main() {
   );
   const body = await deep.text();
   assert(body.includes('<div id="root">'), "GET /app body contains <div id=\"root\"> (AC17)");
+
+  const manifest = await fetch(`${BASE}/manifest.webmanifest`);
+  const text = await manifest.text();
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Not JSON: the rewrite served index.html.
+  }
+  assert(manifest.status === 200 && parsed?.name === "Strength in Numbers", "GET /manifest.webmanifest is the app manifest (#97)");
+  const icon = await fetch(`${BASE}/${parsed?.icons?.[0]?.src ?? "icon-192.png"}`);
+  assert(icon.status === 200 && (icon.headers.get("content-type") ?? "").includes("image/png"), "the manifest's first icon is a PNG (#97)");
 
   process.stdout.write(failed ? "web-smoke: FAIL\n" : "web-smoke: PASS\n");
   process.exit(failed ? 1 : 0);
