@@ -27,3 +27,8 @@
 .lead {
   align-self: flex-start;
 }
+
+/* #107: a full-width lead is a row (a back link and a control), never one full-width tap target itself. */
+.leadFill {
+  align-self: stretch;
+}

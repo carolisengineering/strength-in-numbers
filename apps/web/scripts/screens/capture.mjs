@@ -452,6 +452,9 @@ try {
     await shoot(page, device, "12-history", "History list (12 finished workouts: badges with counts, and rows with none)");
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
+    // #107: Back and the Workout menu lead the summary; open, the menu reveals Delete workout.
+    await page.getByRole("button", { name: "Workout menu" }).click();
+    await shoot(page, device, "13a-history-detail-menu", "History detail with the Workout menu open (#107)");
     // Spec 17.2 AC40: the summary in its other states.
     await tryStep("record-card summaries", async () => {
       await go(`/app/history/${D.ids.firstWorkout}`);
