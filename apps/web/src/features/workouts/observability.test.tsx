@@ -225,7 +225,8 @@ describe("AC35 — observability hygiene across the flows", () => {
     const fake = createWorkoutFake({ finished: [finished] });
     prepareApp({ auth, fake });
     const { user } = renderApp(`/app/workouts/${finished.id}`);
-    await user.click(await screen.findByRole("button", { name: "Delete workout" }));
+    await user.click(await screen.findByRole("button", { name: "Workout menu" })); // #107: Delete lives in the menu
+    await user.click(screen.getByRole("button", { name: "Delete workout" }));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
     await screen.findByRole("heading", { name: "Start a workout" });
   });

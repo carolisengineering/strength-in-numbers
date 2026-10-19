@@ -45,13 +45,67 @@ const finished = () =>
     ],
   });
 
-function setup(path?: string, options: { active?: ReturnType<typeof makeWorkoutDetail> | null } = {}) {
+function setup(path?: string | ((id: string) => string), options: { active?: ReturnType<typeof makeWorkoutDetail> | null } = {}) {
   const workout = finished();
   const fake = createWorkoutFake({ finished: [workout], active: options.active ?? null });
   prepareApp({ auth, fake });
-  const app = renderApp(path ?? `/app/workouts/${workout.id}`);
+  const app = renderApp(typeof path === "function" ? path(workout.id) : (path ?? `/app/workouts/${workout.id}`));
   return { fake, workout, ...app };
 }
+
+type User = ReturnType<typeof setup>["user"];
+
+/** #107: Delete workout lives in the Workout menu at the top; open it and return the revealed button. */
+async function revealDelete(user: User) {
+  await user.click(screen.getByRole("button", { name: "Workout menu" }));
+  return screen.getByRole("button", { name: "Delete workout" });
+}
+
+describe("#107 — Back and the Workout menu lead the summary", () => {
+  it("Back to History and the Workout menu come before the heading", async () => {
+    setup((id) => `/app/history/${id}`);
+    const heading = await screen.findByRole("heading", { name: "Workout summary" });
+    const back = screen.getByRole("link", { name: "Back to History" });
+    const menu = screen.getByRole("button", { name: "Workout menu" });
+    expect(back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(menu.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Delete workout shows only while the menu is open", async () => {
+    const { user } = setup();
+    await screen.findByRole("heading", { name: "Workout summary" });
+    const menu = screen.getByRole("button", { name: "Workout menu" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Delete workout" })).toBeNull();
+
+    await user.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    const del = screen.getByRole("button", { name: "Delete workout" });
+    expect(menu.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(del.compareDocumentPosition(screen.getByRole("heading", { name: "Workout summary" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Delete workout" })).toBeNull();
+  });
+
+  it("nothing follows the last exercise: no back link or delete at the bottom", async () => {
+    const { user } = setup();
+    await screen.findByRole("heading", { name: "Workout summary" });
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    const last = screen.getByRole("region", { name: "Pull-up" });
+    const controls = within(screen.getByRole("main")).queryAllByRole("link").concat(within(screen.getByRole("main")).queryAllByRole("button"));
+    const after = controls.filter((el) => !last.contains(el) && last.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(after).toEqual([]);
+  });
+
+  it("the load-failure screen also leads with the back link", async () => {
+    const { fake, workout } = setup((id) => `/app/history/${id}`);
+    fake.failNext({ method: "GET", path: new RegExp(`/v1/workouts/${workout.id}$`) }, () => problemResponse(500, "about:blank"));
+    await screen.findByText(/Couldn't load this workout/);
+    expect(screen.getByRole("link", { name: "Back to History" })).toHaveAttribute("href", "/app/history");
+  });
+});
 
 describe("AC30 — finished workout summary", () => {
   it("shows the date, duration and every exercise's sets, formatted", async () => {
@@ -91,7 +145,7 @@ describe("AC30 — finished workout summary", () => {
     const { fake, user, router } = setup();
     await screen.findByRole("heading", { name: "Workout summary" });
 
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
     const dialog = screen.getByRole("dialog", { name: "Delete this workout?" });
     expect(dialog).toHaveTextContent("3 logged sets");
     expect(fake.requests.filter((r) => r.method === "DELETE")).toHaveLength(0);
@@ -108,7 +162,7 @@ describe("AC30 — finished workout summary", () => {
     fake.failNext({ method: "DELETE", path: /\/v1\/workouts\// }, () => problemResponse(404, "not-found"));
     await screen.findByRole("heading", { name: "Workout summary" });
 
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
@@ -117,7 +171,7 @@ describe("AC30 — finished workout summary", () => {
   it("Cancel keeps the workout", async () => {
     const { fake, user } = setup();
     await screen.findByRole("heading", { name: "Workout summary" });
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
 
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Cancel" }));
 
@@ -129,7 +183,7 @@ describe("AC30 — finished workout summary", () => {
     const { fake, user, router } = setup();
     fake.failNext({ method: "DELETE", path: /\/v1\/workouts\// }, () => HttpResponse.error());
     await screen.findByRole("heading", { name: "Workout summary" });
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
 
     const alert = await screen.findByRole("alert");
@@ -175,12 +229,12 @@ describe("08.0 AC19 — the summary never waits on records", () => {
     const fake = createWorkoutFake({ finished: [workout] });
     fake.failNext({ method: "GET", path: /^\/v1\/personal-records$/ }, () => problemResponse(500, "internal"));
     prepareApp({ auth, fake });
-    renderApp(`/app/workouts/${workout.id}`);
+    const { user } = renderApp(`/app/workouts/${workout.id}`);
 
     expect(await screen.findByRole("region", { name: "Barbell bench press" })).toBeInTheDocument();
     const block = await screen.findByRole("region", { name: "Personal records" });
     expect(within(block).getByRole("alert")).toHaveTextContent("Couldn't load records");
-    expect(screen.getByRole("button", { name: "Delete workout" })).toBeEnabled();
+    expect(await revealDelete(user)).toBeEnabled();
     expect(screen.getByRole("link", { name: "Back to Workouts" })).toHaveAttribute("href", "/app/workouts");
   });
 
@@ -210,7 +264,7 @@ describe("08.0 AC20 — the section prop", () => {
 
     const back = await screen.findByRole("link", { name: "Back to History" });
     expect(back).toHaveAttribute("href", "/app/history");
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/history"));
@@ -222,7 +276,7 @@ describe("08.0 AC20 — the section prop", () => {
   it("from Workouts: Back to Workouts, and a delete lands on Workouts (unchanged)", async () => {
     const { user, router } = setup();
     expect(await screen.findByRole("link", { name: "Back to Workouts" })).toHaveAttribute("href", "/app/workouts");
-    await user.click(screen.getByRole("button", { name: "Delete workout" }));
+    await user.click(await revealDelete(user));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
   });

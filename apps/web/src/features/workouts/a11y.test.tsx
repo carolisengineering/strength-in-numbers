@@ -149,7 +149,7 @@ describe("AC33 — tap targets", () => {
     ["./SetFields.module.css", ".input"],
     ["./SetFields.module.css", ".select"],
     ["./SetFields.module.css", ".unit"],
-    ["./FinishedWorkoutScreen.module.css", ".back"],
+    ["../../ui/BackLink.module.css", ".back"], // the summary's back link (#107)
     ["../../ui/Button.module.css", ".button"],
     ["../../ui/Sheet.module.css", ".close"],
   ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {

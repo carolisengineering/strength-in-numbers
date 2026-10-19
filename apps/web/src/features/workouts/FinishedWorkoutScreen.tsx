@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail } from "@sin/core";
 
+import { BackLink } from "../../ui/BackLink";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -42,6 +43,7 @@ const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
  * `/app/history/:id` (`section="history"`) and adds the records the workout holds.
  */
 export function FinishedWorkoutScreen({ section = "workouts" }: { section?: SummarySection }) {
+  const home = SECTION_HOME[section];
   const { id = "" } = useParams();
   const detail = useWorkoutDetail(id);
   const queryClient = useQueryClient();
@@ -67,7 +69,7 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
     const failure = classifyWorkoutError(detail.error, { op: "load-workout" });
     if (failure.kind === "not-found") return <NotFound />;
     return (
-      <Screen title="Workout summary">
+      <Screen title="Workout summary" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice
           tone="error"
           requestId={failure.requestId}
@@ -94,7 +96,15 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   const segments = sectionSegments(supersetRows(workout.exercises), workout.sections);
 
   return (
-    <Screen title="Workout summary">
+    <Screen
+      title="Workout summary"
+      leadFill
+      lead={
+        <SummaryTop home={home}>
+          <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
+        </SummaryTop>
+      }
+    >
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
@@ -121,13 +131,27 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
           );
         })}
       </div>
-      <div className={styles.actions}>
-        <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} />
-        <Link className={styles.back} to={home.to}>
-          {home.label}
-        </Link>
-      </div>
     </Screen>
+  );
+}
+
+/**
+ * #107: the way back and the rare actions lead the screen, so a long workout needs no scroll to leave it. Back on
+ * the left, the Workout menu on the right; its items (Delete workout) revealed below, full width, as on the live
+ * session's menu (Spec 17.1 D13: an inline disclosure, no popover).
+ */
+function SummaryTop({ home, children }: { home: { to: string; label: string }; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={styles.top}>
+      <div className={styles.topRow}>
+        <BackLink to={home.to} label={home.label} />
+        <Button variant="secondary" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          Workout menu
+        </Button>
+      </div>
+      {open ? <div className={styles.menuItems}>{children}</div> : null}
+    </div>
   );
 }
 

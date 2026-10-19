@@ -190,6 +190,7 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
   });
 
   await test.step("delete the workout from the History summary, land on History, then Start", async () => {
+    await page.getByRole("button", { name: NAMES.workoutMenu }).click(); // #107: Delete lives in the Workout menu
     await page.getByRole("button", { name: NAMES.deleteWorkout }).click();
     await openDialog(page, NAMES.deleteDialog).getByRole("button", { name: NAMES.delete, exact: true }).click();
     await expect(page).toHaveURL(/\/app\/history$/);
