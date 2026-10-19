@@ -41,10 +41,10 @@ describe("17.3 AC1 — the old lines are gone and the tab says the name", () => 
 });
 
 describe("17.3 AC4 — Landing uses the shared Button, never a raw button", () => {
-  it("imports ui/Button and writes no <button", () => {
-    const landing = read("./Landing.tsx");
-    expect(landing).toMatch(/from "\.\.\/ui\/Button"/);
-    expect(landing).not.toMatch(/<button/);
+  it.each(["./Landing.tsx", "./AuthError.tsx"])("%s imports ui/Button and writes no <button", (file) => {
+    const source = read(file);
+    expect(source).toMatch(/from "\.\.\/ui\/Button"/);
+    expect(source).not.toMatch(/<button/);
   });
 });
 
@@ -54,7 +54,7 @@ describe("17.3 AC5 — one front door", () => {
       .filter(([, text]) => text.includes("<span>in Numbers</span>"))
       .map(([file]) => file);
     expect(withName).toEqual(["./FrontDoor.tsx"]);
-    for (const screen of ["./Landing.tsx", "./ResumingSession.tsx"]) {
+    for (const screen of ["./Landing.tsx", "./ResumingSession.tsx", "./AuthError.tsx"]) {
       expect(read(screen)).toMatch(/from "\.\/FrontDoor"/);
     }
   });

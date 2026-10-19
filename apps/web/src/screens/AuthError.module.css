@@ -1,0 +1,18 @@
+/* The sign-in error's line (BL-20): the error in ink, then the reassurance and Auth0's detail in muted. */
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.heading {
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Auth0's text is verbatim and may hold a long unbroken token, so it may break anywhere. */
+.detail {
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
