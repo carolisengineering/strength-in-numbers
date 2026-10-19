@@ -12,11 +12,19 @@ export function useKeepScreenAwake(enabled: boolean): void {
     if (!enabled || !wakeLockSupported()) return;
     let sentinel: WakeLockSentinel | null = null;
     let requesting = false;
+    // A show that arrived while a request was in flight: that request may fail (it was hidden meanwhile), so ask
+    // once more when it settles.
+    let missed = false;
     let done = false;
 
     const acquire = async () => {
-      if (document.visibilityState !== "visible" || requesting || (sentinel && !sentinel.released)) return;
+      if (document.visibilityState !== "visible" || (sentinel && !sentinel.released)) return;
+      if (requesting) {
+        missed = true;
+        return;
+      }
       requesting = true;
+      missed = false;
       try {
         const granted = await navigator.wakeLock.request("screen");
         if (done) void granted.release().catch(() => {});
@@ -25,6 +33,7 @@ export function useKeepScreenAwake(enabled: boolean): void {
         // Refused: nothing to hold.
       } finally {
         requesting = false;
+        if (missed && !done) void acquire();
       }
     };
 

@@ -85,15 +85,31 @@ describe("#108 — keep the screen awake during a workout", () => {
   });
 
   it("a refused request is quiet, and a browser without wake lock is a no-op", async () => {
-    installWakeLock({ reject: true });
+    const lock = installWakeLock({ reject: true });
     const refused = renderHook(() => useKeepScreenAwake(true));
     await flush();
-    refused.unmount();
+    expect(lock.request).toHaveBeenCalledTimes(1); // refused once, not retried in a loop
+    expect(() => refused.unmount()).not.toThrow();
 
     delete (navigator as { wakeLock?: unknown }).wakeLock;
     const none = renderHook(() => useKeepScreenAwake(true));
     await flush();
     expect(() => none.unmount()).not.toThrow();
+  });
+
+  it("a hide and show while a request is in flight asks again once it settles", async () => {
+    let refuse!: (reason: unknown) => void;
+    const lock = installWakeLock();
+    lock.request.mockImplementationOnce(() => new Promise((_, reject) => (refuse = reject)));
+    renderHook(() => useKeepScreenAwake(true));
+    setVisibility("hidden");
+    setVisibility("visible"); // skipped: the first request is still in flight
+    expect(lock.request).toHaveBeenCalledTimes(1);
+
+    await act(async () => refuse(new DOMException("Page hidden", "NotAllowedError")));
+    await flush();
+    expect(lock.request).toHaveBeenCalledTimes(2);
+    expect(lock.sentinels).toHaveLength(1);
   });
 
   it("a lock granted after unmount is released straight away", async () => {
