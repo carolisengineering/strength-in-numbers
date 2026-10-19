@@ -255,9 +255,11 @@ async function checkFrontDoor(page, label) {
     const rootPx = px(getComputedStyle(document.documentElement).fontSize);
     const main = document.querySelector("main");
     const column = main.firstElementChild;
-    const h1 = main.querySelector("h1");
-    const line = main.querySelector("p");
-    const control = main.querySelector("button, a");
+    // By position, not tag: on AuthError (BL-20) the name is a decorative <p> and the h1 sits in the line.
+    const [top, foot] = column.children;
+    const h1 = top.firstElementChild;
+    const line = foot.firstElementChild;
+    const control = foot.lastElementChild;
     const vh = window.innerHeight;
     const lines = (el) => {
       const range = document.createRange();
@@ -275,7 +277,7 @@ async function checkFrontDoor(page, label) {
       lineToControl: c.top - l.bottom,
       // The name's center against the midpoint of the space between the column's top and the hairline.
       nameOffset: (n.top + n.bottom) / 2 - (col.top + l.top) / 2,
-      spanLines: [...main.querySelectorAll("h1 span, p span")].map(lines),
+      spanLines: [...h1.querySelectorAll("span"), ...line.querySelectorAll(":scope > span")].map(lines),
       hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       nameTop: n.top,
       nameStyle: { stretch: name.fontStretch, weight: name.fontWeight, align: getComputedStyle(column).textAlign },
@@ -535,6 +537,23 @@ try {
         resuming.violations.push(`name ${drift.toFixed(1)}px off the landing's`);
         console.error(`  FRONT DOOR ${theme}/${device}/00b-resuming: name ${drift.toFixed(1)}px off the landing's`);
       }
+    }
+    // The sign-in error (BL-20): a short detail, then on the phone a long one and none.
+    await anon.clearCookies();
+    await ap.goto(BASE + "/callback?error=access_denied&error_description=Invalid%20state");
+    await ap.getByTestId("auth-error").waitFor();
+    await shoot(ap, device, "00c-auth-error", "Couldn't sign you in, on the front door (BL-20)");
+    await checkFrontDoor(ap, `${theme}/${device}/00c-auth-error`);
+    if (device === "mobile") {
+      const long = "Your account has been blocked after multiple consecutive login attempts. We've sent you an email with instructions on how to unblock it.";
+      await ap.goto(BASE + "/callback?error=unauthorized&error_description=" + encodeURIComponent(long));
+      await ap.getByTestId("auth-error").waitFor();
+      await shoot(ap, device, "00d-auth-error-long", "Sign-in error with a long Auth0 description (BL-20)");
+      await checkFrontDoor(ap, `${theme}/${device}/00d-auth-error-long`);
+      await ap.goto(BASE + "/callback?error=access_denied");
+      await ap.getByTestId("auth-error").waitFor();
+      await shoot(ap, device, "00e-auth-error-none", "Sign-in error with no description (BL-20)");
+      await checkFrontDoor(ap, `${theme}/${device}/00e-auth-error-none`);
     }
     await anon.close();
 

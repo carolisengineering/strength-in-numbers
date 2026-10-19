@@ -235,6 +235,7 @@ function makeWorkout(n, startMs, durationMin, exs, opts = {}) {
     notes: opts.notes ?? null,
     startedAt: iso(startMs),
     endedAt: opts.active ? null : iso(startMs + durationMin * MIN),
+    plannedDurationSeconds: opts.plannedDurationSeconds ?? null,
     localDate: localDate(startMs),
     tzOffsetMinutes: tzOffsetMinutes(startMs),
     clientGeneratedId: uuid("c0000000", n),
