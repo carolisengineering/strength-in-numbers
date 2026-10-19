@@ -536,3 +536,31 @@ Design questions to settle first:
 **Done looks like:** `AuthError` on the front-door design with its behavior and test ids
 unchanged, captured by the screenshot harness in both themes.
 
+
+## BL-21
+
+**Attacker text on the sign-in error screen.**
+
+**Status: Open.** Found by the BL-20 security review (2026-10-19); owner chose to log it and
+ship BL-20 as is. Pre-existing since Spec 04.0, but BL-20 makes it look more official.
+
+A crafted link such as `/callback?error=x&error_description=<any text>` with no `state`
+parameter shows the attacker's text on `AuthError` as "Details: …". Without `state`, the Auth0
+SDK's `hasAuthParams` is false, so `useAuth0().error` is never set and `Callback`
+(`apps/web/src/auth/Callback.tsx`) falls back to the raw URL parameter. With `state`, the SDK
+rejects the link and its own "Invalid state" message wins, so an attacker just leaves `state`
+off.
+
+Impact is text only: React renders it as plain text (no link, no script). The risk is a
+phishing-style sentence ("call support at …") shown under the app's name, right after "Your
+workouts are safe."
+
+Options:
+- Show the URL's `error_description` only when a `state` parameter came with it; keep showing
+  `useAuth0().error.message` as now.
+- Cap its length (about 200 characters).
+- Map known Auth0 `error` codes to fixed copy and drop the free text.
+
+**Done looks like:** a crafted `/callback` link without `state` cannot put arbitrary text on
+the screen, with a test that names BL-21; the `auth-error` / `auth-error-detail` test ids and
+the `/?signin` Try again are unchanged.
