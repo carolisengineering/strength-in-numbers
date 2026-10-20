@@ -59,6 +59,8 @@ export function useEditableWorkout(id: string): UseQueryResult<WorkoutDetail> {
   return useQuery({
     queryKey: WORKOUT_KEYS.detail(id),
     queryFn: () => client.getById(id),
+    // Stale at once, so a focus re-reads it (the app default staleTime would skip a focus within 30 s).
+    staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     retry: false,

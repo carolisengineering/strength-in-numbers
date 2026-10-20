@@ -6,6 +6,7 @@ import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow, type LoggedEvent } from "./EntryRow";
 import { NoteSheet } from "./NoteSheet";
+import { useScreenMode } from "./screenMode";
 import type { RowSync } from "./outbox/project";
 import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SetEditSheet } from "./SetEditSheet";
@@ -86,6 +87,8 @@ export function ExerciseCard({
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
+  // Spec 18.0 D3: on the edit screen the card keeps its header and set rows and drops the live-only parts.
+  const live = useScreenMode().kind === "live";
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
   const setNote = useSetExerciseNote();
@@ -108,33 +111,37 @@ export function ExerciseCard({
           <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
           {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
           {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
-          <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
-            <Button
-              variant="secondary"
-              aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
-              onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
-            >
-              {hasNote ? "Edit note" : "Add note"}
-            </Button>
-            {/* Text, not color alone, marks the state (as for set rows). */}
-            {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
-            {noteSync?.state === "failed" ? (
-              <>
-                <span className={styles.failedTag}>Couldn't save</span>
-                <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
-                  Discard
-                </Button>
-              </>
-            ) : null}
-          </div>
+          {live ? (
+            <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
+              <Button
+                variant="secondary"
+                aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
+                onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
+              >
+                {hasNote ? "Edit note" : "Add note"}
+              </Button>
+              {/* Text, not color alone, marks the state (as for set rows). */}
+              {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+              {noteSync?.state === "failed" ? (
+                <>
+                  <span className={styles.failedTag}>Couldn't save</span>
+                  <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
+                    Discard
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
-        <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
-          Options
-        </Button>
+        {live ? (
+          <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+            Options
+          </Button>
+        ) : null}
       </header>
 
-      {optionsOpen ? (
+      {live && optionsOpen ? (
         <div className={styles.options}>
           <Button variant="secondary" disabled={isFirst || structureBusy} {...(isFirst && moveReasons.up ? { "aria-describedby": `${reasonId}-up` } : {})} onClick={() => onMove("up")}>
             Move up
@@ -195,9 +202,11 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
-      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
+      {live ? (
+        <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
+      ) : null}
 
-      {noteSheet ? (
+      {live && noteSheet ? (
         <NoteSheet
           key={noteSheet.session}
           open={noteSheet.open}
@@ -208,14 +217,16 @@ export function ExerciseCard({
         />
       ) : null}
 
-      <SetEditSheet
-        set={editing}
-        modality={exercise.modalitySnapshot}
-        exerciseName={exercise.exerciseNameSnapshot}
-        unitPreference={unitPreference}
-        onClose={() => setEditing(null)}
-        onGone={onGone}
-      />
+      {live ? (
+        <SetEditSheet
+          set={editing}
+          modality={exercise.modalitySnapshot}
+          exerciseName={exercise.exerciseNameSnapshot}
+          unitPreference={unitPreference}
+          onClose={() => setEditing(null)}
+          onGone={onGone}
+        />
+      ) : null}
     </article>
   );
 }

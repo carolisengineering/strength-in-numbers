@@ -32,7 +32,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 /** Which nav section the summary was opened from (Spec 08.0 AC20): only the back link and the post-delete redirect differ. */
 export type SummarySection = "workouts" | "history";
 
-const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
+export const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
   workouts: { to: "/app/workouts", label: "Back to Workouts" },
   history: { to: "/app/history", label: "Back to History" },
 };
@@ -90,6 +90,7 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 
 function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {
   const { data: me } = useMe();
+  const navigate = useNavigate();
   const home = SECTION_HOME[section];
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
@@ -109,6 +110,12 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
       <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
+      {/* Spec 18.0 AC1 / D11: at the top, under the stats; navigation only, no request. */}
+      <div className={styles.editRow}>
+        <Button variant="secondary" onClick={() => void navigate(`/app/${section}/${workout.id}/edit`)}>
+          Edit workout
+        </Button>
+      </div>
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {

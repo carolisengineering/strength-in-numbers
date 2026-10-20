@@ -1,0 +1,36 @@
+/* Spec 18.0 AC3: a plain-text banner on a neutral tint (no teal, no brass). */
+.banner {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.header {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.vanished {
+  color: var(--color-muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* As on the live screen (Spec 10.1): a card, bracketed when it sits in a superset run. */
+.slot {
+  position: relative;
+}
+
+.grouped {
+  padding-left: var(--space-3);
+}
+
+.joint {
+  position: relative;
+  padding: var(--space-2) 0;
+}

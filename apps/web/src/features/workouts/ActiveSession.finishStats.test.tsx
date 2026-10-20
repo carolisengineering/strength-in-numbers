@@ -58,13 +58,13 @@ const openEndEarly = async (user: Awaited<ReturnType<typeof setup>>["user"]) => 
 const patches = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => r.method === "PATCH" && /\/v1\/workouts\/[^/]+$/.test(r.path));
 
 describe("17.2 AC1 / AC4 — the Finish dialog leads with what you did", () => {
-  it("shows duration, exercises and sets, then the can't-be-edited sentence; labels unchanged", async () => {
+  it("shows duration, exercises and sets; labels unchanged (amended by 18.0 D21: no can't-be-edited sentence)", async () => {
     const { user } = await setup([ex("A", { sets: working(2) }), ex("B", { sets: working(2) })]);
     await user.click(finishButton());
     const dialog = finishDialog();
     expect(statTexts(dialog)).toEqual(["41 minduration", "2exercises", "4sets"]);
     const text = dialog.textContent ?? "";
-    expect(text.indexOf("sets")).toBeLessThan(text.indexOf("A finished workout can't be edited."));
+    expect(text).not.toMatch(/can't be edited|can't edit/);
     expect(text).not.toMatch(/exercises? · \d+ sets?/);
     expect(within(dialog).getByRole("button", { name: "Finish" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Keep logging" })).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("17.2 AC2 — End workout early: stats, flag, list, then the note", () 
     await openEndEarly(user);
     const dialog = endEarlyDialog();
     const text = dialog.textContent ?? "";
-    const order = ["sets", "4 planned sets not logged", "Bench Press · 1 set", "Triceps Pushdown · 3 sets", "Unlogged sets aren't saved. You can't edit a workout after finishing it."].map((s) => text.indexOf(s));
+    const order = ["sets", "4 planned sets not logged", "Bench Press · 1 set", "Triceps Pushdown · 3 sets", "Unlogged sets aren't saved."].map((s) => text.indexOf(s));
     expect(order.every((n) => n >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(within(dialog).getByRole("button", { name: "End workout" })).toBeInTheDocument();
@@ -103,11 +103,11 @@ describe("17.2 AC3 — the flag is part of the shared body", () => {
   it("renders flag, list and then the note whenever unlogged.total > 0", () => {
     const stats = { minutes: 5, exercises: 1, sets: 1, volumeKg: null };
     const unlogged = { total: 2, planned: 2, byExercise: [{ id: "x", name: "Row", count: 2 }] };
-    const { container } = render(<FinishDialogBody stats={stats} unitPreference="kg" unlogged={unlogged} note="A finished workout can't be edited." />);
+    const { container } = render(<FinishDialogBody stats={stats} unitPreference="kg" unlogged={unlogged} note="Unlogged sets aren't saved." />);
     const text = container.textContent ?? "";
     expect(text.indexOf("2 planned sets not logged")).toBeGreaterThan(-1);
     expect(text.indexOf("2 planned sets not logged")).toBeLessThan(text.indexOf("Row · 2 sets"));
-    expect(text.indexOf("Row · 2 sets")).toBeLessThan(text.indexOf("A finished workout can't be edited."));
+    expect(text.indexOf("Row · 2 sets")).toBeLessThan(text.indexOf("Unlogged sets aren't saved."));
   });
 });
 
@@ -126,7 +126,8 @@ describe("17.2 AC3 — the plain Finish dialog shows the flag by construction", 
     const dialog = finishDialog();
     const text = dialog.textContent ?? "";
     expect(await within(dialog).findByText("1 planned set not logged")).toBeInTheDocument();
-    expect(text.indexOf("1 planned set not logged")).toBeLessThan(text.indexOf("A finished workout can't be edited."));
+    // Amended by 18.0 D21: the plain dialog has no note now; the flag follows the stats.
+    expect(text.indexOf("sets")).toBeLessThan(text.indexOf("1 planned set not logged"));
   });
 });
 
@@ -175,5 +176,24 @@ describe("17.2 AC7 — the finish call is unchanged", () => {
     await user.click(within(endEarlyDialog()).getByRole("button", { name: "End workout" }));
     await waitFor(() => expect(patches(fake)).toHaveLength(1));
     expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.objectContaining({ endedEarly: true, unloggedPlannedSets: 2 }));
+  });
+});
+
+describe("18.0 D21 — the Finish dialogs no longer say a finished workout can't be edited", () => {
+  it("Finish workout? has no such sentence; its title and buttons are unchanged (the 06.3 smoke)", async () => {
+    const { user } = await setup([ex("A", { sets: working(1) })]);
+    await user.click(finishButton());
+    const dialog = finishDialog();
+    expect(dialog.textContent).not.toMatch(/can't be edited|can't edit/);
+    expect(within(dialog).getByRole("button", { name: "Finish" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Keep logging" })).toBeInTheDocument();
+  });
+
+  it("End workout early says only that unlogged sets aren't saved", async () => {
+    const { user } = await setup([ex("A", { plannedSets: planned(2), sets: working(1) })]);
+    await openEndEarly(user);
+    const dialog = endEarlyDialog();
+    expect(within(dialog).getByText("Unlogged sets aren't saved.")).toBeInTheDocument();
+    expect(dialog.textContent).not.toMatch(/can't edit/);
   });
 });

@@ -2,6 +2,11 @@
   color: var(--color-muted);
 }
 
+/* Spec 18.0 AC1: Edit workout under the stats, its natural width. */
+.editRow {
+  display: flex;
+}
+
 .exercises {
   display: flex;
   flex-direction: column;

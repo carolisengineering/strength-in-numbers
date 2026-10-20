@@ -778,7 +778,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} note="A finished workout can't be edited." />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} />
       </ConfirmDialog>
       <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 

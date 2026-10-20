@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Modality } from "@sin/core";
 import { makeSet } from "../../test/workoutFixtures";
-import { formatDuration, formatLocalDate, formatSet, formatSetParts } from "./format";
+import { formatDuration, formatLocalDate, formatSet, formatSetParts, formatStartedAt } from "./format";
 
 describe("AC8 — formatSet and formatDuration", () => {
   const none = { reps: null, weight: null, weightUnit: null, durationS: null, distance: null, distanceUnit: null };
@@ -53,5 +53,12 @@ describe("17.1 AC39 — formatSetParts splits the type suffix", () => {
     expect(formatSetParts(set, "weight_reps")).toEqual({ core: "40 kg × 8", typeSuffix: " (Warm-up)" });
     expect(formatSetParts(makeSet({ weight: 60, reps: 5 }), "weight_reps").typeSuffix).toBe("");
     expect(formatSet(set, "weight_reps")).toBe("40 kg × 8 (Warm-up)");
+  });
+});
+
+describe("18.0 AC3 — formatStartedAt", () => {
+  it("is the en-GB short date and the 24-hour time in the given zone", () => {
+    expect(formatStartedAt("2026-10-14T17:05:00Z", { timeZone: "Europe/London" })).toBe("Wed 14 Oct, 18:05");
+    expect(formatStartedAt("2026-10-14T23:30:00Z", { timeZone: "Europe/London" })).toBe("Thu 15 Oct, 00:30");
   });
 });

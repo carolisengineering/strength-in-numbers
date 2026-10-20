@@ -26,6 +26,9 @@ export const logButton = (name: string): HTMLElement =>
 /** The card's Options toggle, "Options for {exercise}" (Spec 17.1 AC38); `name` is the card's name, so a superset card works too. */
 export const optionsButton = (name: string | RegExp): HTMLElement => within(card(name)).getByRole("button", { name: /^Options for / });
 
+/** Spec 18.0 AC3: the edit screen's bottom bar button, its one primary. */
+export const editDoneButton = (): HTMLElement => within(screen.getByTestId("edit-bar")).getByRole("button", { name: "Done" });
+
 /** The control that opens the Finish dialog. */
 export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });
 
