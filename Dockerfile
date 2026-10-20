@@ -53,4 +53,4 @@ USER appuser
 
 EXPOSE 3000
 # Compose overrides this to also run `prisma migrate deploy` first.
-CMD ["node", "apps/api/dist/server.js"]
+CMD ["node", "apps/api/dist/main.js"]

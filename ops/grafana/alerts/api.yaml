@@ -1,0 +1,92 @@
+# Spec 13.0 §6.9 — Grafana alert-rule provisioning format. Local Grafana loads
+# this file; Grafana Cloud imports it by hand (runbook), changing datasourceUid
+# from `prometheus` to the stack's Prometheus UID (e.g. grafanacloud-prom).
+# Every rule: no data → OK (Render free sleeps, §6.8); ≥20 requests in the window
+# so one cold start cannot fire it.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: si-api
+    folder: strength-in-numbers
+    interval: 1m
+    rules:
+      - uid: api-high-error-rate
+        title: API high error rate
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "5xx > 5% of requests over 10m (≥20 requests)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                (sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[10m]))
+                / sum(rate(http_server_request_duration_seconds_count[10m])))
+                and on() (sum(increase(http_server_request_duration_seconds_count[10m])) >= 20)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+      - uid: api-slow
+        title: API slow (p95 > 1s)
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 latency > 1s over 10m (≥20 requests)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[10m])))
+                and on() (sum(increase(http_server_request_duration_seconds_count[10m])) >= 20)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+      - uid: api-event-loop-blocked
+        title: API event loop blocked
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "event-loop delay p99 > 200ms for 5m"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              refId: A
+              instant: true
+              expr: max(nodejs_eventloop_delay_p99_seconds)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }

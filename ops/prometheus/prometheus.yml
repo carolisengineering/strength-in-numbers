@@ -1,0 +1,9 @@
+# Spec 13.0 §6.10 — pull model: Prometheus scrapes the API's OTel Prometheus exporter.
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: si-api
+    static_configs:
+      - targets:
+          - host.docker.internal:9464 # API via `pnpm --filter @sin/api run dev`
+          - api:9464                  # API via docker compose (when both files are up)

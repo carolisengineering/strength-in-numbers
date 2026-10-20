@@ -5,6 +5,7 @@ import Fastify, {
 } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
+import { trace } from "@opentelemetry/api";
 import fastifySwagger from "@fastify/swagger";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
@@ -117,6 +118,13 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     // X-Forwarded-* are never trusted. The client address behind Cloudflare is
     // `clientAddress()` in plugins/rate-limit.ts (CF-Connecting-IP).
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
+  });
+
+  // Spec 13.0 §7 — the random per-request id (already in every log line) on the
+  // active span, so a trace can be found from a log line and vice versa. No-op
+  // when telemetry is off (no active span).
+  app.addHook("onRequest", async (request) => {
+    trace.getActiveSpan()?.setAttribute("sin.request_id", request.id);
   });
 
   // Treat an empty `application/json` body as "no body" rather than letting

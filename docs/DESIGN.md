@@ -155,6 +155,7 @@ return at GA.*
 | Object storage | **S3-compatible bucket** (Cloudflare R2) — **deferred to GA** | Not used in the beta: export is a synchronous JSON response and the purge is a manual CLI (Spec 11, Q19). When added at GA: async data-export archives; reserved for post-v1 exercise images and form-check media. | Storing blobs in Postgres (don't). |
 | Auth | **Auth0** (managed OIDC provider) | Health-adjacent PII; do not want to own password storage, MFA, social login, or breach surface in v1. Standards-first (OIDC / PKCE / JWKS) so the integration is transferable knowledge, and the strongest resume signal of the options (portfolio goal, §1.4). API verifies JWTs against Auth0's JWKS; a `user` row is provisioned on first login keyed by the `sub`. | **Clerk** — better React DX, faster to integrate, but more frontend lock-in and a weaker "I know OIDC" story. **Cognito** — only competitive if hosting were AWS (Q4 → not AWS). Rolling our own — wrong risk solo, on health PII. |
 | Hosting (v1) | **Render** — API web service + managed Postgres (backups/PITR) + static SPA site, all native primitives, described in a checked-in `render.yaml` blueprint. A Render cron job (scheduled account purge) and **Cloudflare R2** (S3-compatible object storage, async export) join at GA — the beta needs neither (Spec 11, Q19). | Every component maps to a native primitive; predictable low cost (~$14–21/mo, near-zero on free tier); no VPC learning curve blocking app work. `render.yaml` is itself a portfolio artifact. | **Fly.io + Tigris** (more container depth, less battle-tested managed PG); **VPS/Coolify** (trades build time for ops time); **AWS** — see phase 2. |
+| Observability | **OpenTelemetry → Grafana Cloud** (staging), local Prometheus + Tempo + Grafana (dev) | Push fits a free instance that sleeps; one instrumentation layer re-pointable at AWS (AMP/ADOT) in Spec 15; real PromQL/Grafana skills. | `prom-client` scraped by Grafana Cloud (needs a public, token-protected `/metrics` and keeps the instance awake); self-hosted Prometheus/Grafana VM (ops burden, moves again at Spec 15). |
 | Hosting (phase 2, post-M2) | **Migrate to AWS** as a deliberate, self-contained DevOps portfolio project: ECS Fargate + RDS Postgres + S3 + CloudFront + EventBridge, defined in **AWS CDK or Terraform**, deployed by a GitHub Actions pipeline. Lean setup: **no NAT Gateway** (public subnet + tight SG), **no ALB** (CloudFront → service, or API Gateway HTTP API), single-AZ RDS. | DevOps roles are a career target (§1.4); the IaC repo + CI pipeline is the artifact. The app is 12-factor / container / Postgres / S3-compatible precisely so this is a swap, not a rewrite. ~free for 6–12 months on the AWS free tier, then ~$20–30/mo. | Staying on Render (fine functionally; weaker DevOps signal). |
 
 ### 3.3 Environments
@@ -846,10 +847,16 @@ DELETE /account                   → 202 { deletedAt, purgeEligibleAt }, soft-d
 
 - **Logs:** structured JSON, one line per request, with a request id propagated
   from the client (`X-Request-Id`).
-- **Traces:** OpenTelemetry; instrument HTTP + DB. Watch the finish-workout
-  transaction and the progress queries specifically.
-- **Metrics:** RED (rate/errors/duration) per endpoint; DB pool saturation;
-  business counters (workouts started/finished, sets logged).
+- **Metrics + traces:** OpenTelemetry SDK in the API (Spec 13.0). Staging pushes
+  both over OTLP to Grafana Cloud (free tier); locally Prometheus pulls
+  `:9464/metrics` and traces go to a local Tempo, with Grafana over both
+  (`docker-compose.observability.yml`). RED per route
+  (`http_server_request_duration_seconds`), Node runtime (event-loop p99, heap,
+  GC), business counters (workouts started/finished, sets logged by modality),
+  Prisma query spans under each request span. Span and metric attributes are an
+  **allowlist** (no IPs, user agents, ids, paths, bodies — §8.2). Off unless
+  configured. No uptime check on staging (Render free sleeps; Spec 01.1 adds it
+  for prod). DB pool gauges wait for a Prisma driver adapter (BL-25).
 - **Errors:** Sentry (or equivalent) on the web app and the API, releases tagged.
 - **Product analytics:** privacy-respecting (PostHog — cloud free tier or
   self-hosted); event on `set_logged` with latency, never with health values in

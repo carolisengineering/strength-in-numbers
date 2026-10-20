@@ -6,6 +6,7 @@ import { CreateSetSchema, SetEntrySchema, UpdateSetSchema } from "@sin/core";
 import { NotFoundError, WorkoutWouldBeEmptyError } from "../errors/app-error.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import { toSetEntryDto } from "./mappers.js";
+import { recordSetLogged } from "../telemetry/metrics.js";
 
 /**
  * `routes/sets.ts` — the three set-logging endpoints (Spec 05.1 §5, §6). Auth
@@ -59,6 +60,7 @@ export function registerSetRoutes(app: FastifyInstance, deps: SetRouteDeps): voi
         },
         "set_created",
       );
+      recordSetLogged(modalitySnapshot);
       logFinishedEdit(request.log, actingUserId, "set_added", finishedEdit);
       reply.code(201).header("location", `/v1/sets/${set.id}`);
       return toSetEntryDto(set);

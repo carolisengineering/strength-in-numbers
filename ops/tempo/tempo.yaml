@@ -1,0 +1,23 @@
+# Spec 13.0 §6.10 — monolithic Tempo, local disk, 24h retention. Tempo 3.x:
+# if it logs "field X not found" at startup, compare with the 3.x example at
+# https://grafana.com/docs/tempo/latest/configuration/ and adjust (AC14 manual check).
+stream_over_http_enabled: true
+server:
+  http_listen_port: 3200
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318 # default binds localhost since 2.7 (grafana/tempo#4465)
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+# Tempo 3 has no `compactor` block: the backend worker applies retention.
+backend_worker:
+  compaction:
+    block_retention: 24h

@@ -10,6 +10,7 @@ import { createRoutineRepository } from "./repositories/routine.prisma.js";
 import { createAccountExportRepository } from "./repositories/account-export.prisma.js";
 import { createPersonalRecordRepository } from "./repositories/personal-record.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
+import { getTelemetryHandle } from "./telemetry/handle.js";
 
 /**
  * Composition root (Spec 01 §6.4). Loads config fail-fast, wires the real
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
     accountExportRepository: createAccountExportRepository(prisma),
   });
 
-  const shutdown = createGracefulShutdown({ app, prisma, logger });
+  const shutdown = createGracefulShutdown({ app, prisma, logger, telemetry: getTelemetryHandle() });
   process.on("SIGTERM", (s) => void shutdown(s));
   process.on("SIGINT", (s) => void shutdown(s));
 

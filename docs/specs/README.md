@@ -52,7 +52,9 @@ spec small enough to finish in one work session.
 | 10.5 | [One-off routines UI](10.5-one-off-routines-ui.md) — a routine saved from text is a one-off: tagged "One-off" with "from text · until {date}" at the top of the Routines list (client order mirrors the server), a preview note and **Keep as a routine**, a line plus an unchecked **Keep it in my routines** checkbox in both Finish dialogs (via `FinishDialogBody`, riding on the finish as `keepRoutine`), the routines list invalidated after every finish, discard changes nothing; amends Spec 10.4's Save to send `oneOff: true` (listed in §11, 10.4 not edited); no API change | UI | web | 09.3, 10.4, 10.0, 17.1, 17.2, 08.0 | Approved |
 | 11 | [Account lifecycle API](11-account-lifecycle-api.md) — beta minimum: `GET /v1/account/export` (one synchronous JSON document composed of the read DTOs, consistent snapshot, per-user rate budget), `DELETE /v1/account` (soft delete, `202`, no undo), and an `account:purge` CLI (dry run default, `--confirm`, 30-day grace); no R2 bucket, no cron — both deferred to GA | API + CLI | endpoints + operator CLI (no migration) | 05.0, 05.1, 07.0, 09 | Implemented |
 | 12 | [Account lifecycle UI](12-account-lifecycle-ui.md) — Profile-screen "Your data" (one Download button via a new `requestBlob` API-client method; online-only, held Blob, 429/offline copy) and bottom "Delete account" (two-step `ConfirmDialog`, optional download first, no typing); after the `202` `ProtectedLayout` swaps the app for a "scheduled for deletion" screen with Sign out (`logoutAndClear`); no API change | UI | web | 04.1, 06.1, 11 | Implemented |
-| 13 | Observability & analytics — stand up Sentry + a trace backend + PostHog; dashboards for §1.3 metrics; alerts | ops | config + dashboards | 01, 04.0 | Not started |
+| 13.0 | [Observability — metrics & traces](13.0-observability-metrics-traces.md) — OTel SDK, route-templated RED metrics, runtime + business counters, Prisma spans, attribute allowlist; local Prometheus + Tempo + Grafana; Grafana Cloud for staging; 3 alert rules | API / ops | config + dashboards | 01, 05.1 | Implemented (PR pending); staging check (AC15) after the runbook |
+| 13.1 | Error tracking — Sentry on web + API, releases tagged | ops | config | 01, 04.0 | Not started |
+| 13.2 | Product analytics + browser performance — PostHog (`set_logged` with latency, never health values), Web Vitals | ops / UI | config | 04.0, 13.0 | Not started |
 | 14 | Marketing site (Next.js) | static | separate deploy | — | Not started |
 | 15 | AWS migration (phase 2) — `infra/` in CDK or Terraform | infra | replaces Render | 01–13 stable | Not started |
 | 16 | [Dev scenario tooling](16-dev-scenario-tooling.md) — scenario runner replaying typed fixtures against a running API (seed + assert), `.http` request collection, React-free HTTP client moved to `@sin/core/http` | dev tooling | none (local scripts) | 01, 03.1, 04.0, 05.0 | Draft |
@@ -75,6 +77,9 @@ spec small enough to finish in one work session.
   lays the foundation.
 - **Exercise catalog UI** (picker, create-custom) — Spec 06.0. A future
   "my exercises" management screen (edit/fork/delete) is not yet scheduled.
+- **Metric names, telemetry attribute allowlist** — Spec 13.0
+  (`apps/api/src/telemetry/views.ts`, `allowlist.ts`); later specs add
+  counters in `telemetry/metrics.ts`.
 - **CSP + web security headers** — Spec 04.0 (Render static-site response
   headers: `Content-Security-Policy`, `X-Content-Type-Options`,
   `Referrer-Policy`). The API-side CORS `WEB_ORIGIN` allowlist stays Spec 01;
@@ -102,7 +107,7 @@ ahead of their UIs. 09 needs 05.0 (the start transaction, `workout_exercise`, D3
 after 05.0; it is most useful before 06.1 starts.
 
 **Milestone mapping:** M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3,
-05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 · M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11, 12, 13 · GA = 14 ·
+05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 · M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3 · M4 = 11, 12, 13.0, 13.1, 13.2 · GA = 14 ·
 Phase 2 = 15 · Design refresh = 17.0, 17.1, 17.2, 17.3 (after M3; 17.0 first, then 17.1; 17.2 and 17.3 are independent of each other). Post-M4 improvements (issues #89 / #90, edit finished workouts and fix workout times) = 07.4 (API) and 18.0 (UI; 18.x is the family for post-M4 improvements). (`packages/core` (02) is a foundation both M0 clients import — an
 M0 prerequisite, not M1 work.)
 

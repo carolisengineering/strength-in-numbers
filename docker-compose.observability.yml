@@ -1,0 +1,49 @@
+# Spec 13.0 §6.10 — local Prometheus (pull) + Tempo (OTLP push) + Grafana.
+# Separate from docker-compose.yml so the default dev loop is unchanged.
+#   docker compose -f docker-compose.observability.yml up -d
+# then run the API with OTEL_METRICS_EXPORTER=prometheus and
+# OTEL_TRACES_EXPORTER=otlp (see apps/api/.env.example). Grafana: http://localhost:3001
+# Images: name:tag@sha256:<multi-arch index digest> (#9) — the image-pins test enforces it.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Linux; Docker Desktop provides it already
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  tempo:
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./ops/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:4318:4318" # OTLP/HTTP in
+      - "127.0.0.1:3200:3200" # query API
+
+  grafana:
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    depends_on: [prometheus, tempo]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./ops/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./ops/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./ops/grafana/alerts:/etc/grafana/provisioning/alerting:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000" # compose `api` owns 3000
+
+volumes:
+  prometheus-data:
+  tempo-data:
