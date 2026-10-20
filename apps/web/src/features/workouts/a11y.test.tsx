@@ -521,3 +521,49 @@ describe("17.2 AC30 — the record cards are accessible", () => {
     expect(within(block).getByText("+2.5 kg")).toBeInTheDocument(); // the gain is text, not a color
   });
 });
+
+describe("18.0 AC44 — the edit screen is accessible (component level)", () => {
+  async function editScreen(sets = [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 80, reps: 5 })]) {
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets }] });
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const app = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    return { fake, ...app };
+  }
+
+  it("one h1, the cards as h2; the banner is not a live region; one polite status line", async () => {
+    await editScreen();
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Edit workout"]);
+    expect(within(screen.getByRole("article", { name: "Bench Press" })).getByRole("heading", { level: 2, name: "Bench Press" })).toBeInTheDocument();
+    const banner = screen.getByText(/^Editing .* workout$/);
+    expect(banner).not.toHaveAttribute("role");
+    expect(banner).not.toHaveAttribute("aria-live");
+    expect(screen.getAllByRole("status")).toEqual([screen.getByTestId("edit-announcement")]);
+  });
+
+  it("the edit and Add set sheets label every control; a field error is an alert tied to its input", async () => {
+    const { user, fake } = await editScreen();
+    await user.click(within(card("Bench Press")).getByRole("button", { name: /80 kg × 5/ }));
+    const editSheet = screen.getByRole("dialog", { name: /^Set 2/ });
+    for (const control of editSheet.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
+    fake.failNext({ method: "PATCH", path: /\/v1\/sets\// }, () => problemResponse(422, "validation-error", { errors: [{ path: "reps", message: "Required" }] }));
+    await user.clear(within(editSheet).getByLabelText("Reps"));
+    await user.type(within(editSheet).getByLabelText("Reps"), "6");
+    await user.click(within(editSheet).getByRole("button", { name: "Save" }));
+    const reps = within(editSheet).getByLabelText("Reps");
+    await vi.waitFor(() => expect(reps).toHaveAccessibleDescription(/Required/));
+    await user.click(within(editSheet).getByRole("button", { name: "Close" }));
+    await user.click(within(card("Bench Press")).getByRole("button", { name: "Add set to Bench Press" }));
+    const addSheet = screen.getByRole("dialog", { name: "New set · Bench Press" });
+    for (const control of addSheet.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
+  });
+
+  it("the last-set dialog starts on Cancel (Keep it)", async () => {
+    const { user } = await editScreen([makeSet({ setNumber: 1, weight: 60, reps: 8 })]);
+    await user.click(within(card("Bench Press")).getByRole("button", { name: /60 kg × 8/ }));
+    await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete this whole workout instead?" });
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep it" }));
+  });
+});

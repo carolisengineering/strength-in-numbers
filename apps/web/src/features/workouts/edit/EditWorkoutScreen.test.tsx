@@ -101,7 +101,7 @@ describe("18.0 AC4 — what edit mode does not have", () => {
   });
 });
 
-describe("18.0 AC5 — the cards are the logging screen's", () => {
+describe("18.0 AC5 — the cards are those of the logging screen", () => {
   it("sections with notes, superset brackets, target lines; each card's set rows read as on the summary", async () => {
     const workout = structured();
     const { user } = open(workout);
