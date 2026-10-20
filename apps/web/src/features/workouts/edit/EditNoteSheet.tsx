@@ -4,6 +4,7 @@ import type { WorkoutExerciseDetail } from "@sin/core";
 import { NoteSheet } from "../NoteSheet";
 import { reportUnexpected } from "../reportUnexpected";
 import type { EditScreenMode } from "../screenMode";
+import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure } from "./editFailure";
 import { useEditSetNote } from "./useEditMutations";
 
@@ -44,7 +45,7 @@ export function EditNoteSheet({ open, exercise, onClose, mode }: { open: boolean
           setError(failure.fieldErrors[0]?.message ?? failure.fallback);
           return;
         default:
-          setError("Couldn't save the note — try again");
+          setError(EDIT_COPY.retry["update-note"]);
       }
     } finally {
       inFlight.current = false;

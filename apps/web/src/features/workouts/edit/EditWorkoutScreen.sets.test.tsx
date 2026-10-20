@@ -105,6 +105,48 @@ describe("18.0 AC7 — delete a set", () => {
   });
 });
 
+describe("18.0 AC6 — editing a warm-up keeps it a warm-up (/code-review #1)", () => {
+  it("an unchanged Save sends nothing; a reps change sends only { reps }", async () => {
+    const { fake, user } = open([{ modality: "weight_reps", name: "Bench Press", sets: [makeSet({ setNumber: 1, setType: "warmup", weight: 40, reps: 8 }), makeSet({ setNumber: 2 })] }]);
+    await ready();
+    await openSet(user, /40 kg × 8/);
+    expect(sheet(/^Set 1/).getByLabelText("Set type")).toHaveValue("warmup");
+    await user.click(sheet(/^Set 1/).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set 1/ })).toBeNull());
+    expect(writes(fake)).toEqual([]);
+    await openSet(user, /40 kg × 8/);
+    await user.clear(sheet(/^Set 1/).getByLabelText("Reps"));
+    await user.type(sheet(/^Set 1/).getByLabelText("Reps"), "6");
+    await user.click(sheet(/^Set 1/).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(writes(fake)).toHaveLength(1));
+    expect(writes(fake)[0]!.body).toEqual({ reps: 6 });
+  });
+});
+
+describe("18.0 AC14 — a sheet closed mid-save does not close the next one (/code-review #3)", () => {
+  it("a late success after Close leaves another sheet the lifter opened since alone", async () => {
+    const { fake, workout, user } = open();
+    await ready();
+    const held = deferred<void>();
+    fake.failNext({ method: "PATCH", path: /\/v1\/sets\// }, (async () => {
+      await held.promise;
+      return HttpResponse.json({ ...workout.exercises[0]!.sets[1]!, reps: 6 });
+    }) as unknown as () => Response);
+    await openSet(user, /80 kg × 5/);
+    await user.clear(sheet(/^Set 2/).getByLabelText("Reps"));
+    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "6");
+    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Save" }));
+    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Close" }));
+    await openSet(user, /60 kg × 8/);
+    await user.clear(sheet(/^Set 1/).getByLabelText("Reps"));
+    await user.type(sheet(/^Set 1/).getByLabelText("Reps"), "9");
+    held.resolve();
+    await waitFor(() => expect(within(card("Bench Press")).getByRole("button", { name: /80 kg × 6/, hidden: true })).toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: /^Set 1/ })).toBeInTheDocument();
+    expect(sheet(/^Set 1/).getByLabelText("Reps")).toHaveValue("9");
+  });
+});
+
 describe("18.0 AC44 — the same announcement twice is spoken twice (final review #5)", () => {
   it("two deletes in a row re-render the status line's text node", async () => {
     const { user } = open([{ ...bench(), sets: [...bench().sets!, makeSet({ setNumber: 3, weight: 85, reps: 3 })] }]);

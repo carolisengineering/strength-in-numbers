@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
 import type { Modality, SetEntry } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
@@ -50,11 +50,23 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
     target.kind === "add"
       ? seedDraft({ plannedSets: [], sets: target.sets, defaults, attemptKey: crypto.randomUUID() })
-      : draftFromSet(target.set, defaults, "edit"),
+      : // `draftFromSet` drafts a *new* set as working; an edit keeps the stored type (a warm-up stays a warm-up).
+        { ...draftFromSet(target.set, defaults, "edit"), setType: target.set.setType },
   );
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
+  // The sheet can be closed while a write is in flight: a late answer must not close a sheet opened since.
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
+  const close = () => {
+    if (mounted.current) onClose();
+  };
   const parsed = useMemo(() => parseDraft(modality, draft), [modality, draft]);
   const busy = create.isPending || update.isPending || del.isPending;
   const errors: Partial<Record<DraftField, string>> = { ...(parsed.ok ? {} : parsed.errors), ...serverErrors };
@@ -87,7 +99,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
       case "missing":
       case "last-set":
       case "vanished":
-        onClose();
+        close();
         mode.report(failure);
         return;
       default:
@@ -103,7 +115,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
     try {
       const announcement = await write();
       if (announcement === null) return;
-      onClose();
+      close();
       mode.report({ type: "saved", announcement });
     } catch (error) {
       failed(op, error);

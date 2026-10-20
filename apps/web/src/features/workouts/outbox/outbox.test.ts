@@ -147,7 +147,7 @@ describe("06.2 AC8 — ops belong to one user", () => {
   });
 });
 
-describe("06.2 — targetFor, discard, retainOnly", () => {
+describe("06.2 — targetFor, discard (retainOnly is now settle, Spec 18.0)", () => {
   it("targetFor names a set with a queued create by its key, any other id by id", () => {
     const outbox = make();
     outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
