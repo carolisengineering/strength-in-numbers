@@ -133,6 +133,9 @@ export function useEditSetNote(): UseMutationResult<WorkoutExercise, Error, { wo
     networkMode: "always",
     retry: false,
     mutationFn: ({ id, notes }) => client.setExerciseNote(id, notes),
+    // Final review #2: as for the set writes, a read in flight must not land on top of the saved note.
+    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
     onSuccess: (exercise, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => withExerciseNotes(d, exercise));
       editSucceeded(queryClient, "exercise_noted");
@@ -149,6 +152,8 @@ export function useEditDetails(): UseMutationResult<UpdatedWorkout, Error, { wor
     networkMode: "always",
     retry: false,
     mutationFn: ({ workoutId, body }) => client.updateWorkout(workoutId, body),
+    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
     onSuccess: (updated, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => mergeWorkout(d, updated));
       editSucceeded(queryClient, "details_changed");

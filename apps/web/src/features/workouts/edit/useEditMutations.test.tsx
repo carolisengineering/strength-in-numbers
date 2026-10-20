@@ -12,7 +12,7 @@ import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../../history/queries";
 import { WORKOUT_KEYS } from "../queries";
 import { useIsSetWritePending } from "../useWorkoutMutations";
-import { EDIT_MUTATION_KEY, useEditCreateSet, useEditDeleteSet, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
+import { EDIT_MUTATION_KEY, useEditCreateSet, useEditDeleteSet, useEditDetails, useEditSetNote, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
 
 afterEach(() => observability.track.mockReset());
 
@@ -114,5 +114,38 @@ describe("18.0 AC22 / AC14 / AC27 — the set hooks", () => {
     await act(async () => response.resolve({ ...set, reps: 6 }));
     await waitFor(() => expect(detailOf(qc, detail.id).exercises[0]!.sets[0]!.reps).toBe(6));
     expect(historyReset(qc)).toBe(true);
+  });
+});
+
+describe("18.0 AC14 — a stale read never lands on a saved note or details (final review #2)", () => {
+  /** A detail read is in flight (a focus refetch) when the write starts; it answers with the old copy after the write. */
+  function racing(saved: (d: WorkoutDetail) => WorkoutDetail) {
+    const { qc, detail } = seeded();
+    const stale = deferred<WorkoutDetail>();
+    const getById = vi.fn().mockReturnValueOnce(stale.promise).mockImplementation(async () => saved(detail));
+    void qc.fetchQuery({ queryKey: WORKOUT_KEYS.detail(detail.id), queryFn: () => getById(), staleTime: 0 });
+    return { qc, detail, stale, getById };
+  }
+
+  it("details: the stale GET is cancelled and the detail is re-read; the new title stays", async () => {
+    const { qc, detail, stale } = racing((d) => ({ ...d, title: "New" }));
+    const edit = fakeClient({ updateWorkout: vi.fn(async () => ({ ...detail, title: "New", newRecords: [] })) as never });
+    const { result } = renderHook(() => useEditDetails(), { wrapper: wrapperWith(qc, fakeClient(), edit) });
+    await act(() => result.current.mutateAsync({ workoutId: detail.id, body: { title: "New" } }));
+    await act(async () => stale.resolve(detail));
+    await waitFor(() => expect(detailOf(qc, detail.id).title).toBe("New"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(detailOf(qc, detail.id).title).toBe("New");
+  });
+
+  it("note: the stale GET is cancelled and the detail is re-read; the new note stays", async () => {
+    const { qc, detail, stale } = racing((d) => ({ ...d, exercises: d.exercises.map((e) => ({ ...e, notes: "Slow" })) }));
+    const exercise = detail.exercises[0]!;
+    const edit = fakeClient({ setExerciseNote: vi.fn(async () => ({ ...exercise, sets: undefined, notes: "Slow" })) as never });
+    const { result } = renderHook(() => useEditSetNote(), { wrapper: wrapperWith(qc, fakeClient(), edit) });
+    await act(() => result.current.mutateAsync({ workoutId: detail.id, id: exercise.id, notes: "Slow" }));
+    await act(async () => stale.resolve(detail));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(detailOf(qc, detail.id).exercises[0]!.notes).toBe("Slow");
   });
 });

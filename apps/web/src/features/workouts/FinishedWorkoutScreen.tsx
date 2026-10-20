@@ -66,7 +66,9 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
-  if (detail.isError) {
+  // Spec 18.0 (final review #1): a failed *refresh* keeps the cached workout on screen (the edit screen's re-reads on
+  // focus make that common); only a failure with nothing cached replaces the summary.
+  if (detail.isError && (detail.data === undefined || classifyWorkoutError(detail.error).kind === "not-found")) {
     const failure = classifyWorkoutError(detail.error, { op: "load-workout" });
     if (failure.kind === "not-found") return <NotFound />;
     return (
@@ -84,9 +86,11 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
   }
 
   // An in-progress workout belongs on the session screen.
-  if (detail.data.endedAt === null) return <Navigate to="/app/workouts" replace />;
+  const workout = detail.data;
+  if (workout === undefined) return null; // unreachable: no data with no error is the pending state above
+  if (workout.endedAt === null) return <Navigate to="/app/workouts" replace />;
 
-  return <Summary workout={detail.data} endedAt={detail.data.endedAt} section={section} />;
+  return <Summary workout={workout} endedAt={workout.endedAt} section={section} />;
 }
 
 function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {

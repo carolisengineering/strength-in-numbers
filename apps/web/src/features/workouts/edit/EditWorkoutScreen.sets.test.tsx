@@ -105,6 +105,21 @@ describe("18.0 AC7 — delete a set", () => {
   });
 });
 
+describe("18.0 AC44 — the same announcement twice is spoken twice (final review #5)", () => {
+  it("two deletes in a row re-render the status line's text node", async () => {
+    const { user } = open([{ ...bench(), sets: [...bench().sets!, makeSet({ setNumber: 3, weight: 85, reps: 3 })] }]);
+    await ready();
+    await openSet(user, /85 kg × 3/);
+    await user.click(sheet(/^Set 3/).getByRole("button", { name: "Delete set" }));
+    await waitFor(() => expect(announcement()).toHaveTextContent("Set deleted"));
+    const first = announcement().firstElementChild;
+    await openSet(user, /80 kg × 5/);
+    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    await waitFor(() => expect(announcement().firstElementChild).not.toBe(first));
+    expect(announcement()).toHaveTextContent("Set deleted");
+  });
+});
+
 describe("18.0 AC8 — add a set", () => {
   it("a New set sheet, copied forward, with no plan text and no Delete; one POST for two taps; the row appears", async () => {
     const plan = [1, 2, 3, 4].map(() => ({ setType: "working" as const, repsLow: 5, repsHigh: 5, weight: 100, weightUnit: "kg" as const }));

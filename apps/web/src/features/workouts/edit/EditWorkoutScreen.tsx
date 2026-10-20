@@ -132,7 +132,9 @@ function EditBody({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const writing = useIsEditWritePending();
-  const [announcement, setAnnouncement] = useState("");
+  // Each announcement gets a fresh node (the count is its key), so the same text twice is spoken twice (AC44).
+  const [announcement, setAnnouncementState] = useState({ text: "", count: 0 });
+  const setAnnouncement = useCallback((text: string) => setAnnouncementState((a) => ({ text, count: a.count + 1 })), []);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [lastSetOpen, setLastSetOpen] = useState(false);
   const deleteWorkout = useDeleteWorkout();
@@ -161,7 +163,7 @@ function EditBody({
           return;
       }
     },
-    [onVanished, queryClient, workoutId],
+    [onVanished, queryClient, setAnnouncement, workoutId],
   );
 
   function keepIt() {
@@ -448,7 +450,7 @@ function EditBody({
         </div>
 
         <p role="status" data-testid="edit-announcement">
-          <VisuallyHidden>{announcement}</VisuallyHidden>
+          <VisuallyHidden key={announcement.count}>{announcement.text}</VisuallyHidden>
         </p>
 
         {details ? (

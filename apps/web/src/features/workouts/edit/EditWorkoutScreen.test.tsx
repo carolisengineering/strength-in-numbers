@@ -18,7 +18,7 @@ vi.mock("../../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
-import { createWorkoutFake } from "../../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { editDoneButton } from "../../../test/sessionHelpers";
 import { formatStartedAt } from "../format";
@@ -150,6 +150,23 @@ describe("18.0 AC15 — offline open", () => {
     await ready();
     expect(await screen.findByText(EDIT_COPY.refreshFailed)).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(2);
+  });
+});
+
+describe("18.0 AC15 — a failed refresh does not hide the summary (final review #1)", () => {
+  it("Done after a failed edit-screen refresh shows the cached summary, not the load error", async () => {
+    const workout = simple();
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const { user } = renderApp(`/app/history/${workout.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () => problemResponse(500, "about:blank"), 3);
+    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    expect(await screen.findByText(EDIT_COPY.refreshFailed)).toBeInTheDocument();
+    await user.click(editDoneButton());
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(screen.queryByText(EDIT_COPY.loadFailed)).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "Bench Press" })).toBeInTheDocument();
   });
 });
 
