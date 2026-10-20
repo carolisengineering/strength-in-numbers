@@ -3,7 +3,7 @@ import type { CreateSet, SetEntry, UpdateSet, WorkoutDetail, WorkoutExercise } f
 import { ApiError } from "../../../api";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
-import { withSetRemoved, withSetUpserted } from "../cache";
+import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
 
 /**
@@ -118,6 +118,22 @@ export function useEditDeleteSet(): UseMutationResult<void, Error, { workoutId: 
     onSuccess: (_void, { workoutId, id }) => {
       writeDetail(queryClient, workoutId, (d) => withSetRemoved(d, id));
       editSucceeded(queryClient, "set_deleted");
+    },
+  });
+}
+
+/** Spec 18.0 AC12: an exercise note that waits for the server (live notes go through the outbox instead). */
+export function useEditSetNote(): UseMutationResult<WorkoutExercise, Error, { workoutId: string; id: string; notes: string | null }> {
+  const client = useEditWorkoutClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: EDIT_MUTATION_KEY,
+    networkMode: "always",
+    retry: false,
+    mutationFn: ({ id, notes }) => client.setExerciseNote(id, notes),
+    onSuccess: (exercise, { workoutId }) => {
+      writeDetail(queryClient, workoutId, (d) => withExerciseNotes(d, exercise));
+      editSucceeded(queryClient, "exercise_noted");
     },
   });
 }

@@ -11,10 +11,14 @@ export interface NoteSheetProps {
   initial: string | null;
   onSave: (notes: string | null) => void;
   onClose: () => void;
+  /** Spec 18.0 AC12 (edit mode): Save is busy while the server answers, and a second submit does nothing. */
+  saving?: boolean;
+  /** Spec 18.0 AC12: the failed save's text, shown under the field when there is no parse error. */
+  saveError?: string | null;
 }
 
 /** One exercise's note for THIS workout (Spec 10.3 AC27). Local state; Save parses, Cancel and Close discard. Keyed per opening by the card. */
-export function NoteSheet({ open, exerciseName, initial, onSave, onClose }: NoteSheetProps) {
+export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving = false, saveError = null }: NoteSheetProps) {
   const [text, setText] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
   return (
@@ -24,6 +28,7 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose }: Note
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          if (saving) return;
           const parsed = parseExerciseNote(text);
           if (!parsed.ok) {
             setError(parsed.message);
@@ -33,11 +38,13 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose }: Note
         }}
       >
         {/* The count is a hint; the error is its own text, so the count is never the only cue (AC37). */}
-        <Field id="exercise-note" label="Note" hint={`${Array.from(text).length} / ${EXERCISE_NOTE_MAX}`} {...(error ? { error } : {})}>
+        <Field id="exercise-note" label="Note" hint={`${Array.from(text).length} / ${EXERCISE_NOTE_MAX}`} {...(error ?? saveError ? { error: error ?? saveError ?? "" } : {})}>
           {(control) => <textarea {...control} className={styles.input} rows={5} value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
         <div className={styles.actions}>
-          <Button type="submit">Save</Button>
+          <Button type="submit" busy={saving}>
+            Save
+          </Button>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
