@@ -3,6 +3,8 @@ import type { Modality, SetEntry } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
+import { EditSetForm } from "./edit/EditSetForm";
+import { useScreenMode } from "./screenMode";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { SetFields, type DraftEditField } from "./SetFields";
@@ -29,22 +31,42 @@ export interface SetEditSheetProps {
   onClose: () => void;
   /** The workout is gone or finished elsewhere (§5.8 gone path); `reason` feeds `workout_conflict`. */
   onGone: (reason: "gone" | "finished") => void;
+  /** Spec 18.0 AC8 (edit mode only): open in add mode for this exercise; `session` keys each opening. */
+  adding?: { readonly session: number; readonly workoutExerciseId: string; readonly sets: readonly SetEntry[] } | null;
 }
 
 /**
  * Edit or delete a logged set in a `<Sheet>` (Spec 06.1 §5.5, D8): the same `SetFields` as the entry
  * row, prefilled from the stored set. Editing never offers "un-complete": a logged set is complete,
- * and the only way to remove a mistaken one is Delete.
+ * and the only way to remove a mistaken one is Delete. On the edit screen (Spec 18.0) the body is the
+ * pessimistic `EditSetForm`, which also adds a set; live, `adding` is ignored.
  */
-export function SetEditSheet({ set, ...rest }: SetEditSheetProps) {
+export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps) {
+  const mode = useScreenMode();
+  const add = mode.kind === "edit" && set === null ? adding : null;
   return (
     <Sheet
-      open={set !== null}
-      title={set ? `Set ${set.setNumber} · ${rest.exerciseName}` : "Edit set"}
+      open={set !== null || add !== null}
+      title={set ? `Set ${set.setNumber} · ${rest.exerciseName}` : add ? `New set · ${rest.exerciseName}` : "Edit set"}
       onClose={rest.onClose}
     >
-      {/* Keyed by set id so each open starts from that set's values. */}
-      {set ? <EditForm key={set.id} set={set} {...rest} /> : null}
+      {/* Keyed by set id (or the opening) so each open starts from that set's values. */}
+      {mode.kind === "edit" ? (
+        set ? (
+          <EditSetForm key={set.id} target={{ kind: "edit", set }} modality={rest.modality} unitPreference={rest.unitPreference} onClose={rest.onClose} mode={mode} />
+        ) : add ? (
+          <EditSetForm
+            key={`add-${add.session}`}
+            target={{ kind: "add", workoutExerciseId: add.workoutExerciseId, sets: add.sets }}
+            modality={rest.modality}
+            unitPreference={rest.unitPreference}
+            onClose={rest.onClose}
+            mode={mode}
+          />
+        ) : null
+      ) : set ? (
+        <EditForm key={set.id} set={set} {...rest} />
+      ) : null}
     </Sheet>
   );
 }
@@ -55,7 +77,7 @@ function EditForm({
   unitPreference,
   onClose,
   onGone,
-}: SetEditSheetProps & { set: SetEntry }) {
+}: Omit<SetEditSheetProps, "adding"> & { set: SetEntry }) {
   const update = useUpdateSet();
   const del = useDeleteSet();
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>

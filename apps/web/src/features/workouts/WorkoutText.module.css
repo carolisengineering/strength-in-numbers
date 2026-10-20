@@ -1,0 +1,13 @@
+/* Spec 18.0 AC51: the largest text of the summary's header block; wraps rather than overflowing at 320 px. */
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.notes {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -4,6 +4,8 @@ export type WorkoutErrorKind =
   | "not-found"
   | "workout-in-progress-exists"
   | "workout-finished"
+  /** Spec 07.4 / 18.0 AC18: a delete on a finished workout would leave it with no sets. */
+  | "workout-would-be-empty"
   | "incomplete-working-sets"
   | "exercise-retired"
   | "validation"
@@ -50,6 +52,7 @@ export function classifyWorkoutError(error: unknown, context?: { op: string }): 
       switch (error.type) {
         case "workout-in-progress-exists":
         case "workout-finished":
+        case "workout-would-be-empty":
         case "incomplete-working-sets":
         case "exercise-retired":
           return classified(error.type, op, error);

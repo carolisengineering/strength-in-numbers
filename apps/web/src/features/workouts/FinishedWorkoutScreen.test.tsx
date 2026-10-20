@@ -138,13 +138,14 @@ describe("AC30 — finished workout summary", () => {
     expect(within(screen.getByRole("region", { name: "Pull-up" })).getByText("12 reps")).toBeInTheDocument();
   });
 
-  it("is read-only: no input, select or textarea, and no edit affordance", async () => {
+  it("is read-only: no input, select or textarea, and no edit affordance (amended by 18.0 AC1: its one edit control is Edit workout, a link to the edit screen)", async () => {
     setup();
     await screen.findByRole("heading", { name: "Workout summary" });
 
     const main = screen.getByRole("main");
     expect(main.querySelector("input, select, textarea")).toBeNull();
-    expect(within(main).queryByRole("button", { name: /edit|log set|finish|add exercise/i })).not.toBeInTheDocument();
+    expect(within(main).getAllByRole("button", { name: /edit/i }).map((b) => b.textContent)).toEqual(["Edit workout"]);
+    expect(within(main).queryByRole("button", { name: /log set|finish|add exercise/i })).not.toBeInTheDocument();
     // The sets are plain text, not tappable rows.
     expect(within(screen.getByRole("region", { name: "Barbell bench press" })).queryByRole("button")).toBeNull();
   });
@@ -393,5 +394,34 @@ describe("17.0 AC8 — warm-up sets are marked on the summary too", () => {
     expect(warm).toHaveTextContent("(Warm-up)");
     expect(working).toHaveAttribute("data-set-type", "working");
     expect(working!.querySelector('[aria-hidden="true"]')?.textContent).toBe("");
+  });
+});
+
+describe("18.0 AC1 — Edit workout on the summary", () => {
+  it.each(["workouts", "history"] as const)("on /app/%s/:id: a secondary button after the stats, before the records; it navigates with no request", async (section) => {
+    const { fake, workout, user, router } = setup((id) => `/app/${section}/${id}`);
+    fake.state.records.push(makePersonalRecord({ workoutId: workout.id }));
+    const button = await screen.findByRole("button", { name: "Edit workout" });
+    expect(button.className).toMatch(/_secondary_/);
+    const stats = screen.getByText("duration");
+    const records = await screen.findByRole("region", { name: "Personal records" });
+    expect(stats.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button.compareDocumentPosition(records) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const writes = () => fake.requests.filter((r) => r.method !== "GET").length;
+    const before = writes();
+    await user.click(button);
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/${section}/${workout.id}/edit`));
+    expect(writes()).toBe(before);
+  });
+
+  it("is absent while the workout is loading and on the load-failed state", async () => {
+    const workout = finished();
+    const fake = createWorkoutFake({ finished: [workout] });
+    fake.failNext({ method: "GET", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(500, "internal"));
+    prepareApp({ auth, fake });
+    renderApp(`/app/history/${workout.id}`);
+    expect(screen.queryByRole("button", { name: "Edit workout" })).toBeNull();
+    await screen.findByText("Couldn't load this workout.");
+    expect(screen.queryByRole("button", { name: "Edit workout" })).toBeNull();
   });
 });

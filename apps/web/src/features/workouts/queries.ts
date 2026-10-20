@@ -37,6 +37,36 @@ export function useActiveWorkout(): UseQueryResult<WorkoutDetail | null> {
   });
 }
 
+/**
+ * Spec 18.0 D5: the plain REST client, for edit mode. Edits are pessimistic and never queued, so they
+ * must not go through the queued client (whose REST fall-through for a non-active workout is an accident
+ * of its `cached()` check, not a rule).
+ */
+export const EditWorkoutClientContext = createContext<WorkoutClient | null>(null);
+
+export function useEditWorkoutClient(): WorkoutClient {
+  const client = useContext(EditWorkoutClientContext);
+  if (client === null) throw new Error("useEditWorkoutClient() must be used inside <WorkoutClientProvider>");
+  return client;
+}
+
+/**
+ * The edit screen's workout (Spec 18.0 §6.1): the summary's key, but always re-read on mount and on
+ * focus so an edit starts from the server's truth. `retry: false`: the error notice's button is the retry.
+ */
+export function useEditableWorkout(id: string): UseQueryResult<WorkoutDetail> {
+  const client = useEditWorkoutClient();
+  return useQuery({
+    queryKey: WORKOUT_KEYS.detail(id),
+    queryFn: () => client.getById(id),
+    // Stale at once, so a focus re-reads it (the app default staleTime would skip a focus within 30 s).
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+}
+
 export function useWorkoutDetail(id: string): UseQueryResult<WorkoutDetail> {
   const client = useWorkoutClient();
   return useQuery({

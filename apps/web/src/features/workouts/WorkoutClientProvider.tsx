@@ -4,6 +4,7 @@ import type { SetEntry, WorkoutDetail, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
 import { localStorageAdapter, type StorageAdapter } from "../../storage/storage";
+import { applyEditedCaches } from "../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
@@ -14,7 +15,7 @@ import { OutboxContext } from "./outbox/OutboxContext";
 import type { NoteOp, OutboxOp } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
-import { WORKOUT_KEYS, WorkoutClientContext } from "./queries";
+import { EditWorkoutClientContext, WORKOUT_KEYS, WorkoutClientContext } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { createWorkoutClient } from "./workoutClient";
 
@@ -51,6 +52,16 @@ function applyNoteSynced(queryClient: QueryClient, outbox: Outbox, op: NoteOp, e
   });
 }
 
+/**
+ * Spec 18.0 AC24: an op that landed on a workout that is not the cached active one (finished on another
+ * device; 07.4 applies it and recomputes records) changed a finished workout: refresh what shows it.
+ */
+function refreshFinishedElsewhere(queryClient: QueryClient, workoutId: string): void {
+  if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workoutId) return;
+  applyEditedCaches(queryClient);
+  void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+}
+
 /** A discarded create's row goes at once; a discarded edit or delete needs the server's copy back. */
 function applyDiscarded(queryClient: QueryClient, ops: readonly OutboxOp[]): void {
   queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) =>
@@ -74,15 +85,22 @@ export interface WorkoutClientProviderProps {
 export function WorkoutClientProvider({ userId, storage, children }: WorkoutClientProviderProps) {
   const api = useApi();
   const queryClient = useQueryClient();
-  const { outbox, client, drafts, rest } = useMemo(() => {
+  // `rest` inside the memo is the REST client; the memo's returned `rest` is the rest-timer stores.
+  const { outbox, client, editClient, drafts, rest } = useMemo(() => {
     const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
     const outbox: Outbox = createOutbox({
       storage: adapter,
       rest,
       userId,
-      onSynced: (op, row) => applySynced(queryClient, outbox, op, row),
-      onNoteSynced: (op, exercise) => applyNoteSynced(queryClient, outbox, op, exercise),
+      onSynced: (op, row) => {
+        applySynced(queryClient, outbox, op, row);
+        refreshFinishedElsewhere(queryClient, op.workoutId);
+      },
+      onNoteSynced: (op, exercise) => {
+        applyNoteSynced(queryClient, outbox, op, exercise);
+        refreshFinishedElsewhere(queryClient, op.workoutId);
+      },
       onFailed: (op, error) => {
         reportUnexpected(REPORT_OP[op.kind], error);
         if (error instanceof ApiError && error.status === 404) {
@@ -96,7 +114,13 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     });
-    return { outbox, client, drafts: createDraftStores(adapter, userId), rest: createRestStores(adapter, userId) };
+    return {
+      outbox,
+      client,
+      editClient: rest, // Spec 18.0 D5: edit mode's plain REST client
+      drafts: createDraftStores(adapter, userId),
+      rest: createRestStores(adapter, userId),
+    };
   }, [api, queryClient, storage, userId]);
 
   useEffect(() => outbox.start(), [outbox]);
@@ -106,7 +130,9 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
     <OutboxContext.Provider value={outbox}>
       <DraftStoresContext.Provider value={drafts}>
         <RestStoresContext.Provider value={rest}>
-          <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+          <WorkoutClientContext.Provider value={client}>
+            <EditWorkoutClientContext.Provider value={editClient}>{children}</EditWorkoutClientContext.Provider>
+          </WorkoutClientContext.Provider>
         </RestStoresContext.Provider>
       </DraftStoresContext.Provider>
     </OutboxContext.Provider>

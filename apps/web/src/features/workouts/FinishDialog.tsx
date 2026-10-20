@@ -7,9 +7,10 @@ const sets = (n: number) => (n === 1 ? "1 set" : `${n} sets`);
 
 /**
  * Spec 17.2 AC1-AC3: the body of both Finish dialogs: what you did, then (when planned sets are unlogged) the flag and the
- * per-exercise list, then the note. The dialogs' call, lock and waits live in `ConfirmDialog`'s owner and are not here.
+ * per-exercise list, then the note (Spec 18.0 D21: optional; only End early has one). The dialogs' call, lock and waits
+ * live in `ConfirmDialog`'s owner and are not here.
  */
-export function FinishDialogBody({ stats, unitPreference, unlogged, note }: { stats: FinishStatsValue; unitPreference: "kg" | "lb"; unlogged?: UnloggedPlanned; note: string }) {
+export function FinishDialogBody({ stats, unitPreference, unlogged, note }: { stats: FinishStatsValue; unitPreference: "kg" | "lb"; unlogged?: UnloggedPlanned; note?: string }) {
   return (
     <div className={styles.body}>
       <FinishStats stats={stats} unitPreference={unitPreference} />
@@ -25,7 +26,7 @@ export function FinishDialogBody({ stats, unitPreference, unlogged, note }: { st
           </ul>
         </>
       ) : null}
-      <p>{note}</p>
+      {note ? <p>{note}</p> : null}
     </div>
   );
 }

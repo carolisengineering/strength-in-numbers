@@ -59,7 +59,7 @@ describe("AC26 — Finish: confirm and success", () => {
     expect(screen.getByText("Log at least one set to finish")).toBeInTheDocument();
   });
 
-  it("opens a confirmation stating the exercise and working-set counts and that a finished workout can't be edited (17.2 AC1)", async () => {
+  it("opens a confirmation stating the exercise and working-set counts (17.2 AC1; amended by 18.0 D21: no can't-be-edited sentence)", async () => {
     const { user } = await setup([
       { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 }), makeSet({ setNumber: 2 })] },
       { modality: "bodyweight_reps", name: "Y", sets: [makeSet({ setNumber: 1, weight: null, weightUnit: null })] },
@@ -70,7 +70,7 @@ describe("AC26 — Finish: confirm and success", () => {
     // Spec 17.2 AC1/AC4: a stats list (2 exercises, 3 working sets), then the sentence.
     expect(within(finishDialog()).getByText("exercises").previousElementSibling).toHaveTextContent("2");
     expect(within(finishDialog()).getByText("sets").previousElementSibling).toHaveTextContent("3");
-    expect(finishDialog()).toHaveTextContent("A finished workout can't be edited.");
+    expect(finishDialog()).not.toHaveTextContent(/can't be edited/);
   });
 
   it("shows one exercise and one set as figures (17.2 AC1)", async () => {
@@ -78,7 +78,7 @@ describe("AC26 — Finish: confirm and success", () => {
     await user.click(finishButton());
     expect(within(finishDialog()).getByText("exercises").previousElementSibling).toHaveTextContent("1");
     expect(within(finishDialog()).getByText("sets").previousElementSibling).toHaveTextContent("1");
-    expect(finishDialog()).toHaveTextContent("A finished workout can't be edited.");
+    expect(finishDialog()).not.toHaveTextContent(/can't be edited/);
   });
 
   it("Keep logging closes the dialog and sends nothing", async () => {

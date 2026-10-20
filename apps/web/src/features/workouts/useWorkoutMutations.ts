@@ -20,11 +20,12 @@ import { ApiError } from "../../api";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
+import { useOutbox } from "./outbox/OutboxContext";
 import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
-import type { WorkoutExercisePatch } from "./workoutClient";
+import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
 /**
  * Cache writes live in the hook-level `onSuccess`, never in a `mutate(vars, { onSuccess })` call:
@@ -132,12 +133,14 @@ export function useDeleteWorkout(): UseMutationResult<
   const queryClient = useQueryClient();
   const drafts = useDraftStores();
   const rest = useRestStores();
+  const outbox = useOutbox();
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
     onSuccess: (_void, { id, phase, setCount }) => {
       drafts?.clearWorkout(id); // Spec 06.5 AC10
       rest?.clearWorkout(id); // Spec 17.1 AC47
+      outbox?.dropWorkout(id); // Spec 18.0 AC25: an op for a workout the lifter just deleted must not be sent
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
       // An in-progress workout has no records and no History row (Spec 08.0 AC8).
       if (phase === "finished") applyDeletedCaches(queryClient, id);
@@ -167,9 +170,13 @@ export function useAddExercise(): UseMutationResult<
   });
 }
 
-/** One `PATCH /v1/workout-exercises/{id}` (Spec 10.1 AC12). Side-effect free: `useRegroup` sequences, refetches and tracks. */
-export function useUpdateWorkoutExercise(): UseMutationResult<WorkoutExercise, Error, { id: string; body: WorkoutExercisePatch }> {
-  const client = useWorkoutClient();
+/**
+ * One `PATCH /v1/workout-exercises/{id}` (Spec 10.1 AC12). Side-effect free: `useRegroup` sequences, refetches and tracks.
+ * Spec 18.0: the edit screen passes its plain REST client; live callers pass nothing.
+ */
+export function useUpdateWorkoutExercise(override?: WorkoutClient): UseMutationResult<WorkoutExercise, Error, { id: string; body: WorkoutExercisePatch }> {
+  const live = useWorkoutClient();
+  const client = override ?? live;
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, body }) => client.updateWorkoutExercise(id, body),

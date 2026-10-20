@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   SetEntrySchema,
   UpdatedWorkoutSchema,
@@ -8,6 +8,10 @@ import {
 } from "@sin/core";
 import { ApiError } from "../../api";
 import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { memoryStorageAdapter } from "../../storage/storage";
+import { fakeClient } from "../../test/workoutHarness";
+import { createOutbox } from "./outbox/outbox";
+import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
 import { createWorkoutClient } from "./workoutClient";
 
 describe("08.0 AC5 — finish keeps newRecords", () => {
@@ -169,5 +173,32 @@ describe("10.1 AC11 — updateWorkoutExercise", () => {
     const { api } = recordingApi();
     // @ts-expect-error — notes is not part of WorkoutExercisePatch
     await createWorkoutClient(api).updateWorkoutExercise("we1", { notes: "x" });
+  });
+});
+
+describe("18.0 AC54 — updateWorkout sends exactly the keys given", () => {
+  it("PATCH /v1/workouts/{id} with only the given keys, parsed with UpdatedWorkoutSchema", async () => {
+    const { api, calls } = recordingApi();
+    const client = createWorkoutClient(api);
+    await client.updateWorkout("w/1", { title: "T" });
+    await client.updateWorkout("w/1", { title: null });
+    await client.updateWorkout("w/1", { notes: "a\nb" });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["patch", "/v1/workouts/w%2F1", { title: "T" }],
+      ["patch", "/v1/workouts/w%2F1", { title: null }],
+      ["patch", "/v1/workouts/w%2F1", { notes: "a\nb" }],
+    ]);
+    expect(calls.every((c) => c.schema === UpdatedWorkoutSchema)).toBe(true);
+  });
+
+  it("the queued client hands it to REST and never enqueues", async () => {
+    const updateWorkout = vi.fn(async () => ({}) as never);
+    const rest = fakeClient({ updateWorkout });
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest, userId: "u1", isOnline: () => false });
+    const workout = makeWorkoutDetail();
+    const queued = createQueuedWorkoutClient({ rest, outbox, cached: () => workout });
+    await queued.updateWorkout(workout.id, { title: "T" });
+    expect(updateWorkout).toHaveBeenCalledWith(workout.id, { title: "T" });
+    expect(outbox.getState().ops).toEqual([]);
   });
 });

@@ -63,7 +63,7 @@ describe("17.1 AC33 — End workout early", () => {
     expect(within(dialog).getByText("Overhead Press · 3 sets")).toBeInTheDocument();
     expect(within(dialog).getByText("Row · 2 sets")).toBeInTheDocument();
     expect(within(dialog).getByText("5 planned sets not logged")).toBeInTheDocument();
-    expect(within(dialog).getByText("Unlogged sets aren't saved. You can't edit a workout after finishing it.")).toBeInTheDocument(); // 17.2 AC2
+    expect(within(dialog).getByText("Unlogged sets aren't saved.")).toBeInTheDocument(); // 17.2 AC2
     await user.click(within(dialog).getByRole("button", { name: "End workout" }));
     await waitFor(() => expect(finishes(fake)).toHaveLength(1));
   });

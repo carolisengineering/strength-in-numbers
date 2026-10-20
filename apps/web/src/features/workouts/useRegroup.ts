@@ -1,11 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { planSessionChange, type SessionOp, type SessionPatch, type SessionSlot } from "@sin/core";
 
 import { track } from "../../observability/track";
 import { WORKOUT_KEYS } from "./queries";
 import { useUpdateWorkoutExercise } from "./useWorkoutMutations";
-import type { WorkoutExercisePatch } from "./workoutClient";
+import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
 export const NO_FREE_GROUP_MESSAGE = "This workout has too many supersets";
 
@@ -33,11 +33,27 @@ export interface Regroup {
   busy: boolean;
 }
 
-export function useRegroup(): Regroup {
+/**
+ * Spec 18.0 AC11: the edit screen re-reads its own detail (`refresh`), sends on the plain REST `client`, and reports
+ * a finished plan to `onDone` (its own telemetry and cache refresh) instead of the live `exercise_moved`. With no
+ * options the behavior is the live screen's.
+ */
+export interface RegroupOptions {
+  refresh?: readonly unknown[];
+  client?: WorkoutClient;
+  onDone?: (op: SessionOp) => void;
+}
+
+export function useRegroup({ refresh = WORKOUT_KEYS.active, client, onDone }: RegroupOptions = {}): Regroup {
   const queryClient = useQueryClient();
-  const { mutateAsync } = useUpdateWorkoutExercise();
+  const { mutateAsync } = useUpdateWorkoutExercise(client);
   const inFlight = useRef(false); // synchronous: React state would not have updated before a second tap lands
   const [busy, setBusy] = useState(false);
+  // The latest options, read when a plan finishes (callers build the key array on every render).
+  const options = useRef({ refresh, onDone });
+  useEffect(() => {
+    options.current = { refresh, onDone };
+  });
 
   const execute = useCallback(
     async (patches: readonly SessionPatch[], op: SessionOp): Promise<RegroupOutcome> => {
@@ -47,12 +63,14 @@ export function useRegroup(): Regroup {
         try {
           for (const patch of patches) await mutateAsync({ id: patch.id, body: bodyOf(patch) });
         } catch (error) {
-          await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+          await queryClient.invalidateQueries({ queryKey: options.current.refresh });
           const only = patches.length === 1 ? patches[0]! : null;
           return { status: "failed", error, retry: only !== null && "position" in only ? only : null };
         }
-        await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
-        if (op.type === "move") track("exercise_moved", { direction: op.direction });
+        await queryClient.invalidateQueries({ queryKey: options.current.refresh });
+        const done = options.current.onDone;
+        if (done) done(op);
+        else if (op.type === "move") track("exercise_moved", { direction: op.direction });
         return { status: "done" };
       } finally {
         inFlight.current = false;

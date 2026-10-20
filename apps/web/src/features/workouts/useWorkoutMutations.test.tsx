@@ -9,7 +9,10 @@ import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/worko
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { RECORDS_KEYS } from "../records/queries";
+import { memoryStorageAdapter } from "../../storage/storage";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
+import { createOutbox } from "./outbox/outbox";
+import { OutboxContext } from "./outbox/OutboxContext";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import {
   SET_MUTATION_KEY,
@@ -316,5 +319,27 @@ describe("06.5 AC10 — finish and discard clear the workout's drafts", () => {
     const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWithDrafts(qc, fakeClient({ finish: async () => finished }), s) });
     await act(() => result.current.mutateAsync({ id: detail.id, endedAt }));
     expect(s.clearWorkout).toHaveBeenCalledWith(detail.id);
+  });
+});
+
+describe("18.0 AC25 — an own delete drops the workout's ops", () => {
+  it("a successful useDeleteWorkout leaves no op of that workout in the outbox", async () => {
+    const { qc, detail } = seeded();
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: fakeClient(), userId: "u1", isOnline: () => false });
+    outbox.enqueueCreate({
+      workoutId: detail.id,
+      workoutExerciseId: detail.exercises[0]!.id,
+      body: { clientGeneratedId: crypto.randomUUID(), reps: 8, isComplete: true },
+    });
+    outbox.enqueueCreate({ workoutId: "other", workoutExerciseId: "x", body: { clientGeneratedId: crypto.randomUUID(), reps: 1, isComplete: true } });
+    const Inner = wrapperWith(qc, fakeClient({ deleteWorkout: async () => undefined }));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Inner>
+        <OutboxContext.Provider value={outbox}>{children}</OutboxContext.Provider>
+      </Inner>
+    );
+    const { result } = renderHook(() => useDeleteWorkout(), { wrapper });
+    await act(() => result.current.mutateAsync({ id: detail.id, phase: "finished", setCount: 1 }));
+    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual(["other"]);
   });
 });

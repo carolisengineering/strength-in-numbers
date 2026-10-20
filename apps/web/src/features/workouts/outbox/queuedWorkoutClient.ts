@@ -41,7 +41,7 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
 
     async getActive() {
       const server = await rest.getActive();
-      outbox.retainOnly(server?.id ?? null);
+      outbox.settle(server?.id ?? null);
       return server === null ? null : view(server);
     },
 

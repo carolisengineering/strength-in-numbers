@@ -8,7 +8,7 @@ import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
 import { RoutineSchema } from "@sin/core";
 import { makePersonalRecord, makeProgressPoint, makeRoutine, makeSet, makeWorkoutDetail, routineId } from "./workoutFixtures";
-import { catalogHandlers, createWorkoutFake, problemResponse } from "./workoutFake";
+import { catalogHandlers, createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
 const squat = makeExercise({ id: exerciseId(2), name: "Back Squat", modality: "weight_reps" });
@@ -104,7 +104,7 @@ describe("the workout fake mirrors the API rules the screen depends on", () => {
     expect(forbidden.status).toBe(422);
   });
 
-  it("finish: blocked by an incomplete working set, allowed once fixed; then everything is workout-finished", async () => {
+  it("finish: blocked by an incomplete working set, allowed once fixed; then everything is workout-finished (amended by 18.0 §10: set writes on a finished workout succeed)", async () => {
     const { fake, weId } = await withExercise();
     const wid = fake.state.active!.id;
     const partial = await call("POST", `/workout-exercises/${weId}/sets`, { reps: 8, isComplete: false });
@@ -120,7 +120,7 @@ describe("the workout fake mirrors the API rules the screen depends on", () => {
 
     const again = await call("PATCH", `/workouts/${wid}`, { endedAt: new Date().toISOString() });
     expect([again.status, slugOf(again.json)]).toEqual([409, "workout-finished"]);
-    expect((await call("POST", `/workout-exercises/${weId}/sets`, { reps: 1, weight: 1, weightUnit: "kg", isComplete: true })).status).toBe(409);
+    expect((await call("POST", `/workout-exercises/${weId}/sets`, { reps: 1, weight: 1, weightUnit: "kg", isComplete: true })).status).toBe(201);
     const detail = await call("GET", `/workouts/${wid}`);
     expect([detail.status, detail.json!["endedAt"] !== null]).toEqual([200, true]);
     expect((await call("DELETE", `/workouts/${wid}`)).status).toBe(204);
@@ -497,5 +497,93 @@ describe("10.3 AC33 — the fake emits and copies the section fields", () => {
     expect(fake.state.active!.sections).toEqual([]);
     expect(fake.state.active!.routineNotes).toBeNull();
     expect(fake.state.active!.exercises[0]!.sectionId).toBeNull();
+  });
+});
+
+describe("18.0 §10 — the fake applies 07.4's finished-mode rules", () => {
+  function bootFinished(opts: { sets?: number; extraEmpty?: boolean; recordsFor?: WorkoutFakeOptions["recordsFor"] } = {}) {
+    const sets = Array.from({ length: opts.sets ?? 2 }, (_, i) => makeSet({ setNumber: i + 1 }));
+    const detail = makeWorkoutDetail({
+      endedAt: "2026-10-02T11:00:00.000Z",
+      exercises: [
+        { name: "Bench Press", modality: "weight_reps", sets },
+        ...(opts.extraEmpty ? [{ name: "Back Squat", modality: "weight_reps" as const }] : []),
+      ],
+    });
+    const fake = createWorkoutFake({ finished: [detail], catalog: [bench, squat], recordsFor: opts.recordsFor });
+    server.use(...fake.handlers);
+    return { fake, detail, weId: detail.exercises[0]!.id };
+  }
+
+  it("set create (201, key replay 200) and set PATCH (200) succeed on a finished workout", async () => {
+    const { fake, detail, weId } = bootFinished();
+    const body = { reps: 5, weight: 80, weightUnit: "kg", isComplete: true, clientGeneratedId: crypto.randomUUID() };
+    const created = await call("POST", `/workout-exercises/${weId}/sets`, body);
+    expect(created.status).toBe(201);
+    expect((await call("POST", `/workout-exercises/${weId}/sets`, body)).status).toBe(200);
+    expect((await call("PATCH", `/sets/${created.json!["id"]}`, { reps: 6 })).status).toBe(200);
+    expect(fake.state.active).toBeNull();
+    expect(fake.state.finished.get(detail.id)!.exercises[0]!.sets.map((s) => s.reps)).toEqual([8, 8, 6]);
+  });
+
+  it("set DELETE: one of two → 204; the last → 409 workout-would-be-empty and nothing changes", async () => {
+    const { fake, detail } = bootFinished();
+    const [first, second] = detail.exercises[0]!.sets;
+    expect((await call("DELETE", `/sets/${first!.id}`)).status).toBe(204);
+    const last = await call("DELETE", `/sets/${second!.id}`);
+    expect([last.status, slugOf(last.json)]).toEqual([409, "workout-would-be-empty"]);
+    expect(fake.state.finished.get(detail.id)!.exercises[0]!.sets.map((s) => s.id)).toEqual([second!.id]);
+  });
+
+  it("exercise add (201, stays finished), PATCH position / notes (200)", async () => {
+    const { fake, detail, weId } = bootFinished();
+    const added = await call("POST", `/workouts/${detail.id}/exercises`, { exerciseId: squat.id });
+    expect(added.status).toBe(201);
+    expect(fake.state.active).toBeNull();
+    expect(fake.state.finished.get(detail.id)!.exercises).toHaveLength(2);
+    expect((await call("PATCH", `/workout-exercises/${added.json!["id"]}`, { position: 0 })).status).toBe(200);
+    expect((await call("PATCH", `/workout-exercises/${weId}`, { notes: "Slow" })).status).toBe(200);
+    const stored = fake.state.finished.get(detail.id)!;
+    expect(stored.exercises.map((e) => e.exerciseNameSnapshot)).toEqual(["Back Squat", "Bench Press"]);
+    expect(stored.exercises[1]!.notes).toBe("Slow");
+  });
+
+  it("exercise DELETE: the only exercise with sets → 409 workout-would-be-empty; an empty one among others → 204", async () => {
+    const { fake, detail, weId } = bootFinished({ extraEmpty: true });
+    const refused = await call("DELETE", `/workout-exercises/${weId}`);
+    expect([refused.status, slugOf(refused.json)]).toEqual([409, "workout-would-be-empty"]);
+    expect((await call("DELETE", `/workout-exercises/${detail.exercises[1]!.id}`)).status).toBe(204);
+    expect(fake.state.finished.get(detail.id)!.exercises.map((e) => e.id)).toEqual([weId]);
+  });
+
+  it("on a workout with zero sets, deleting an empty exercise → 204 (the guard is ≥ 1 → 0)", async () => {
+    const { fake, detail, weId } = bootFinished({ sets: 0 });
+    expect((await call("DELETE", `/workout-exercises/${weId}`)).status).toBe(204);
+    expect(fake.state.finished.get(detail.id)!.exercises).toEqual([]);
+  });
+
+  it("PATCH /workouts/{id}: title / notes merge, null clears, {} unchanged, a new endedAt → 409 workout-finished", async () => {
+    const { fake, detail } = bootFinished();
+    const set = await call("PATCH", `/workouts/${detail.id}`, { title: "T", notes: "a\nb" });
+    expect([set.status, set.json!["title"], set.json!["notes"]]).toEqual([200, "T", "a\nb"]);
+    const cleared = await call("PATCH", `/workouts/${detail.id}`, { title: null });
+    expect([cleared.status, cleared.json!["title"], cleared.json!["notes"]]).toEqual([200, null, "a\nb"]);
+    const empty = await call("PATCH", `/workouts/${detail.id}`, {});
+    expect([empty.status, empty.json!["title"], empty.json!["notes"]]).toEqual([200, null, "a\nb"]);
+    const refinish = await call("PATCH", `/workouts/${detail.id}`, { endedAt: new Date().toISOString() });
+    expect([refinish.status, slugOf(refinish.json)]).toEqual([409, "workout-finished"]);
+    expect(fake.state.finished.get(detail.id)!.endedAt).toBe(detail.endedAt);
+  });
+
+  it("recordsFor: records are recomputed from the edited workout after a finished-mode write", async () => {
+    const other = makePersonalRecord();
+    const { fake, detail } = bootFinished({
+      recordsFor: (w) => [makePersonalRecord({ workoutId: w.id, value: Math.max(...w.exercises[0]!.sets.map((s) => s.reps ?? 0)) })],
+    });
+    fake.state.records.push(other);
+    expect((await call("PATCH", `/sets/${detail.exercises[0]!.sets[0]!.id}`, { reps: 12 })).status).toBe(200);
+    const served = await call("GET", `/personal-records?workoutId=${detail.id}`);
+    expect((served.json!["records"] as { value: number }[]).map((r) => r.value)).toEqual([12]);
+    expect(fake.state.records).toContainEqual(other);
   });
 });

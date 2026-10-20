@@ -32,6 +32,20 @@ export function formatStartedTime(iso: string, { timeZone }: { timeZone?: string
   }).format(new Date(iso));
 }
 
+/**
+ * Spec 18.0 AC3: a start as `"Wed 14 Oct, 18:05"` in the device zone (the live screen's "Started 18:05" plus
+ * the day). Unlike `formatLocalDate` this is a moment, so it follows the zone, not the stored `localDate`.
+ */
+export function formatStartedAt(iso: string, { timeZone }: { timeZone?: string } = {}): string {
+  const day = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(new Date(iso));
+  return `${day}, ${formatStartedTime(iso, { ...(timeZone ? { timeZone } : {}) })}`;
+}
+
 export function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

@@ -11,7 +11,7 @@ import { resetConfigCache } from "../config";
 import { catalogKey } from "../features/catalog/constants";
 import { clearUserData } from "../storage/clearUserData";
 import { localStorageAdapter } from "../storage/storage";
-import { WorkoutClientContext } from "../features/workouts/queries";
+import { EditWorkoutClientContext, WorkoutClientContext } from "../features/workouts/queries";
 import type { WorkoutClient } from "../features/workouts/workoutClient";
 import { API_BASE_URL, USER_ID, stubWebEnv } from "./catalogHarness";
 import { server } from "./msw/server";
@@ -44,16 +44,19 @@ export function fakeClient(overrides: Partial<WorkoutClient> = {}): WorkoutClien
     updateSet: unexpected("updateSet"),
     deleteSet: unexpected("deleteSet"),
     setExerciseNote: unexpected("setExerciseNote"),
+    updateWorkout: unexpected("updateWorkout"),
     ...overrides,
   } as WorkoutClient;
 }
 
-/** A hook/component wrapper: a QueryClient plus an injected `WorkoutClient`. */
-export function wrapperWith(queryClient: QueryClient, client: WorkoutClient) {
+/** A hook/component wrapper: a QueryClient plus an injected `WorkoutClient` (and edit mode's REST client, Spec 18.0). */
+export function wrapperWith(queryClient: QueryClient, client: WorkoutClient, editClient: WorkoutClient = client) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+        <WorkoutClientContext.Provider value={client}>
+          <EditWorkoutClientContext.Provider value={editClient}>{children}</EditWorkoutClientContext.Provider>
+        </WorkoutClientContext.Provider>
       </QueryClientProvider>
     );
   };

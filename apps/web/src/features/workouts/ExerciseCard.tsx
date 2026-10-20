@@ -5,7 +5,9 @@ import { Button } from "../../ui/Button";
 import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { EntryRow, type LoggedEvent } from "./EntryRow";
+import { EditNoteSheet } from "./edit/EditNoteSheet";
 import { NoteSheet } from "./NoteSheet";
+import { useScreenMode } from "./screenMode";
 import type { RowSync } from "./outbox/project";
 import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SetEditSheet } from "./SetEditSheet";
@@ -86,8 +88,14 @@ export function ExerciseCard({
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
+  // Spec 18.0 D3: on the edit screen the card keeps its header and set rows and drops the live-only parts.
+  const screenMode = useScreenMode();
+  const live = screenMode.kind === "live";
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
+  // Spec 18.0 AC8: each opening of the Add set sheet is a new session (a new form, a new idempotency key).
+  const [addSession, setAddSession] = useState(0);
+  const [adding, setAdding] = useState(false);
   const setNote = useSetExerciseNote();
   const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
   const noteSync = sync.get(exercise.id);
@@ -108,6 +116,7 @@ export function ExerciseCard({
           <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
           {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
           {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
+          {/* Spec 18.0 AC12: the note button stays in edit mode; its sheet waits for the server (no sync tags there). */}
           <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
             <Button
               variant="secondary"
@@ -195,9 +204,35 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
-      <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
+      {live ? null : (
+        <div className={styles.addSet}>
+          <Button
+            variant="secondary"
+            aria-label={`Add set to ${exercise.exerciseNameSnapshot}`}
+            onClick={() => {
+              setAddSession((n) => n + 1);
+              setAdding(true);
+            }}
+          >
+            Add set
+          </Button>
+        </div>
+      )}
 
-      {noteSheet ? (
+      {live ? (
+        <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
+      ) : null}
+
+      {screenMode.kind === "edit" && noteSheet ? (
+        <EditNoteSheet
+          key={noteSheet.session}
+          open={noteSheet.open}
+          exercise={exercise}
+          onClose={() => setNoteSheet((s) => s && { ...s, open: false })}
+          mode={screenMode}
+        />
+      ) : null}
+      {live && noteSheet ? (
         <NoteSheet
           key={noteSheet.session}
           open={noteSheet.open}
@@ -210,10 +245,14 @@ export function ExerciseCard({
 
       <SetEditSheet
         set={editing}
+        adding={adding ? { session: addSession, workoutExerciseId: exercise.id, sets: exercise.sets } : null}
         modality={exercise.modalitySnapshot}
         exerciseName={exercise.exerciseNameSnapshot}
         unitPreference={unitPreference}
-        onClose={() => setEditing(null)}
+        onClose={() => {
+          setEditing(null);
+          setAdding(false);
+        }}
         onGone={onGone}
       />
     </article>

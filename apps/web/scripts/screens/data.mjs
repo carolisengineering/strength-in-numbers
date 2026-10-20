@@ -265,7 +265,7 @@ const pushItems = push.items;
 const pullItems = pull.items;
 const lowerItems = lower.items;
 
-function pushSession(n, daysAgo, bench, ohp, incline, lat, push2 = true) {
+function pushSession(n, daysAgo, bench, ohp, incline, lat, push2 = true, details = {}) {
   const sm = uuid("f3000000", n * 10 + 1), sa = uuid("f3000000", n * 10 + 2);
   return makeWorkout(n, at(daysAgo), 68, [
     { key: "bench_press", sectionId: sm, routineItem: pushItems[0], sets: [WU(8, 40), WU(5, 60), W(5, bench), W(5, bench), W(5, bench, { rpe: 8.5 })] },
@@ -273,7 +273,7 @@ function pushSession(n, daysAgo, bench, ohp, incline, lat, push2 = true) {
     { key: "incline_db_press", sectionId: sa, routineItem: pushItems[2], sets: [W(10, incline), W(9, incline), W(8, incline)] },
     { key: "lateral_raise", sectionId: sa, routineItem: pushItems[3], sets: [W(15, lat), W(13, lat), W(12, lat)] },
     ...(push2 ? [{ key: "triceps_pushdown", sectionId: sa, superset: null, routineItem: { ...pushItems[4], supersetGroup: null }, sets: [W(12, 32.5), W(11, 32.5), W(10, 32.5)] }] : []),
-  ], { routine: push, sections: [
+  ], { ...details, routine: push, sections: [
     { id: sm, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set." },
     { id: sa, position: 1, name: "Accessories", notes: null },
   ] });
@@ -317,7 +317,10 @@ export const finished = [
     { key: "weighted_dip", sets: [W(8, 10), W(8, 10), W(6, 15)] },
     { key: "plank", sets: [{ durationS: 75 }, { durationS: 60 }] },
   ], { title: "Hotel gym", notes: "Only dumbbells to 25 kg. Short session." }),
-  pushSession(8, 4, 82.5, 47.5, 26, 10),
+  // Spec 18.0 AC49: the newest Push Day carries a title and two-line notes (the summary, the edit screen's Details panel).
+  pushSession(8, 4, 82.5, 47.5, 26, 10, true, { title: "Heavy bench day", notes: "Shoulder felt tight on set 3.\nDropped the last lateral set." }),
+  // Spec 18.0 AC49: a one-set workout, so deleting its set shows "Delete this whole workout instead?".
+  makeWorkout(13, at(3), 9, [{ key: "bench_press", sets: [W(5, 60)] }], { title: "Quick single" }),
   lowerSession(9, 2, 117.5, 95, 200),
 ].sort(byStart);
 
@@ -477,6 +480,7 @@ export const ids = {
   noRecords: finished.find((w) => w.title === null && w.routineName === push.name && w.exercises[0].sets.some((s) => s.weight === 70)).id,
   volumeOnly: finished.find((w) => w.title === "Bench volume day").id,
   plankOnly: finished.find((w) => w.title === "Plank only").id,
+  oneSet: finished.find((w) => w.title === "Quick single").id,
   activeId: active.id,
 };
 

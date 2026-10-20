@@ -127,3 +127,23 @@ describe("10.1 AC15 — refusals are surfaced, not sent", () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+describe("18.0 AC11 — regroup options", () => {
+  it("refresh re-reads the given key; client gets the PATCHes; onDone replaces the live exercise_moved", async () => {
+    const qc = makeQueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const live = fakeClient();
+    const edit = fakeClient({ updateWorkoutExercise: vi.fn(async () => ({}) as never) });
+    const onDone = vi.fn();
+    const { result } = renderHook(() => useRegroup({ refresh: WORKOUT_KEYS.detail("w"), client: edit, onDone }), { wrapper: wrapperWith(qc, live) });
+    let outcome!: Awaited<ReturnType<typeof result.current.run>>;
+    await act(async () => {
+      outcome = await result.current.run(slots(null, null), { type: "move", id: "we0", direction: "down" });
+    });
+    expect(outcome).toEqual({ status: "done" });
+    expect(edit.updateWorkoutExercise).toHaveBeenCalledWith("we0", { position: 1 });
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([WORKOUT_KEYS.detail("w")]);
+    expect(onDone).toHaveBeenCalledWith({ type: "move", id: "we0", direction: "down" });
+    expect(tracked.track).not.toHaveBeenCalled();
+  });
+});

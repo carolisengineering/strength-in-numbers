@@ -118,7 +118,7 @@ describe("08.0 AC10 — routes and navigation", () => {
 });
 
 describe("08.0 AC11 — a history row", () => {
-  it("shows date, names with +N, sets and volume; links to /app/history/<id>; never notes or title", async () => {
+  it("shows date, names with +N, sets and volume; links to /app/history/<id>; never notes (amended by 18.0 AC56: the title is shown)", async () => {
     const [w] = finishedWorkouts(1, () => ({
       exercises: [
         {
@@ -141,7 +141,7 @@ describe("08.0 AC11 — a history row", () => {
     expect(row).toHaveTextContent("Bench Press, Pull-up, Dip +2");
     expect(row).toHaveTextContent("2 sets · 1,000 kg");
     expect(screen.queryByText(/Shoulder felt tight/)).toBeNull();
-    expect(screen.queryByText(/Push day/)).toBeNull();
+    expect(row).toHaveTextContent("Push day");
   });
 
   it("omits the volume and its separator when totalVolume is null; 1 set is singular", async () => {
@@ -159,6 +159,23 @@ describe("08.0 AC11 — a history row", () => {
     const [row] = rows();
     expect(row).toHaveTextContent(/1 set$/);
     expect(row).not.toHaveTextContent("·");
+  });
+});
+
+describe("18.0 AC56 — History shows the title", () => {
+  it("a title takes the routine name's place on the first line; without one the routine name stays; notes never show", async () => {
+    const ws = finishedWorkouts(2, (i) =>
+      i === 0 ? { routineName: "Push Day", title: "Heavy day", notes: "Shoulder felt tight" } : { routineName: "Pull Day" },
+    );
+    setup(ws, { records: [makePersonalRecord({ workoutId: ws[0]!.id })] });
+    await screen.findByRole("list", { name: "Finished workouts" });
+    const titled = rows().find((r) => r.getAttribute("href")?.endsWith(ws[0]!.id))!;
+    const plain = rows().find((r) => r.getAttribute("href")?.endsWith(ws[1]!.id))!;
+    expect(titled).toHaveTextContent(/^Tue 1 Sept? · Heavy day/);
+    expect(titled).not.toHaveTextContent("Push Day");
+    expect(plain).toHaveTextContent(/^Wed 2 Sept? · Pull Day/);
+    expect(screen.queryByText(/Shoulder felt tight/)).toBeNull();
+    expect(within(titled).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
   });
 });
 

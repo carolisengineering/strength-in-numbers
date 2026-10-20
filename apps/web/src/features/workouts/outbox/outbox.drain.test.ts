@@ -202,27 +202,6 @@ describe("06.2 AC5 — retry with backoff; permanent failures stop", () => {
     expect(onSynced).toHaveBeenCalledWith(expect.objectContaining({ kind: "delete" }), null);
   });
 
-  it("409 workout-finished fails that op and every later op of the workout, once each in telemetry (06.2 AC17, 06.2 AC18)", async () => {
-    const { outbox, rest, onFailed } = setup();
-    rest.createSet.mockRejectedValueOnce(api(409, "workout-finished"));
-    add(outbox);
-    add(outbox, KEY2);
-    outbox.enqueueCreate({ workoutId: "other", workoutExerciseId: "we2", body: body(KEY3) });
-    await settle();
-    const ofW = outbox.getState().ops.filter((o) => o.workoutId === "w");
-    expect(ofW.map((o) => [o.status, o.failure?.type])).toEqual([
-      ["failed", "workout-finished"],
-      ["failed", "workout-finished"],
-    ]);
-    // The other workout's op is untouched by the cascade (it is sent next and may already be gone).
-    expect(outbox.getState().ops.filter((o) => o.workoutId === "other" && o.status === "failed")).toEqual([]);
-    expect(onFailed).toHaveBeenCalledTimes(1);
-    expect(observability.track.mock.calls.filter(([e]) => e === "set_sync_failed")).toEqual([
-      ["set_sync_failed", { status: 409 }],
-      ["set_sync_failed", { status: 409 }],
-    ]);
-  });
-
   it("06.2 AC18 — a slow sync (> 2 s) tracks set_sync_delayed with the duration only; a fast one does not", async () => {
     const { outbox, rest } = setup();
     add(outbox, KEY2);
@@ -285,5 +264,38 @@ describe("06.2 AC6 — drain triggers", () => {
     window.dispatchEvent(new Event("online"));
     await settle();
     expect(rest.createSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
+  it("409 workout-finished fails that op and every later op of the workout, once each in telemetry (06.2 AC17, 06.2 AC18)", async () => {
+    const { outbox, rest, onFailed } = setup();
+    rest.createSet.mockRejectedValueOnce(api(409, "workout-finished"));
+    add(outbox);
+    add(outbox, KEY2);
+    outbox.enqueueCreate({ workoutId: "other", workoutExerciseId: "we2", body: body(KEY3) });
+    await settle();
+    const ofW = outbox.getState().ops.filter((o) => o.workoutId === "w");
+    expect(ofW.map((o) => [o.status, o.failure?.type])).toEqual([
+      ["failed", "workout-finished"],
+      ["failed", "workout-finished"],
+    ]);
+    // The other workout's op is untouched by the cascade (it is sent next and may already be gone).
+    expect(outbox.getState().ops.filter((o) => o.workoutId === "other" && o.status === "failed")).toEqual([]);
+    expect(onFailed).toHaveBeenCalledTimes(1);
+    expect(observability.track.mock.calls.filter(([e]) => e === "set_sync_failed")).toEqual([
+      ["set_sync_failed", { status: 409 }],
+      ["set_sync_failed", { status: 409 }],
+    ]);
+  });
+
+  it("a 422 on drain fails the op (failure.status 422) and schedules no retry", async () => {
+    const { outbox, rest } = setup();
+    rest.createSet.mockRejectedValueOnce(api(422, "validation-error"));
+    add(outbox);
+    await settle();
+    expect(outbox.getState().ops.map((o) => [o.status, o.failure?.status])).toEqual([["failed", 422]]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rest.createSet).toHaveBeenCalledTimes(1);
   });
 });

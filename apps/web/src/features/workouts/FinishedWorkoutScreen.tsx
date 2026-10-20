@@ -26,13 +26,14 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
+import { WorkoutText } from "./WorkoutText";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Which nav section the summary was opened from (Spec 08.0 AC20): only the back link and the post-delete redirect differ. */
 export type SummarySection = "workouts" | "history";
 
-const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
+export const SECTION_HOME: Record<SummarySection, { to: string; label: string }> = {
   workouts: { to: "/app/workouts", label: "Back to Workouts" },
   history: { to: "/app/history", label: "Back to History" },
 };
@@ -65,7 +66,9 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
-  if (detail.isError) {
+  // Spec 18.0 (final review #1): a failed *refresh* keeps the cached workout on screen (the edit screen's re-reads on
+  // focus make that common); only a failure with nothing cached replaces the summary.
+  if (detail.isError && (detail.data === undefined || classifyWorkoutError(detail.error).kind === "not-found")) {
     const failure = classifyWorkoutError(detail.error, { op: "load-workout" });
     if (failure.kind === "not-found") return <NotFound />;
     return (
@@ -83,13 +86,16 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
   }
 
   // An in-progress workout belongs on the session screen.
-  if (detail.data.endedAt === null) return <Navigate to="/app/workouts" replace />;
+  const workout = detail.data;
+  if (workout === undefined) return null; // unreachable: no data with no error is the pending state above
+  if (workout.endedAt === null) return <Navigate to="/app/workouts" replace />;
 
-  return <Summary workout={detail.data} endedAt={detail.data.endedAt} section={section} />;
+  return <Summary workout={workout} endedAt={workout.endedAt} section={section} />;
 }
 
 function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {
   const { data: me } = useMe();
+  const navigate = useNavigate();
   const home = SECTION_HOME[section];
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
@@ -105,10 +111,24 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
         </SummaryTop>
       }
     >
+      {/* Spec 18.0 AC50: the workout's own title and notes, only when set (no placeholder here). */}
+      {workout.title === null ? null : <WorkoutText text={workout.title} variant="title" />}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
+      {workout.notes === null ? null : (
+        <section className={styles.workoutNotes} aria-label="Workout notes">
+          <p className={styles.notesLabel}>Notes</p>
+          <WorkoutText text={workout.notes} variant="notes" />
+        </section>
+      )}
       <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
+      {/* Spec 18.0 AC1 / D11: at the top, under the stats; navigation only, no request. */}
+      <div className={styles.editRow}>
+        <Button variant="secondary" onClick={() => void navigate(`/app/${section}/${workout.id}/edit`)}>
+          Edit workout
+        </Button>
+      </div>
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {

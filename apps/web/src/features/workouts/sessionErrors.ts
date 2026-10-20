@@ -60,6 +60,8 @@ const UNCONFIRMED_TEXT =
 export function resolveFailure(op: Operation, error: unknown): FailureAction {
   const { kind, requestId, fieldErrors } = classifyWorkoutError(error, { op });
   const retry: FailureAction = { type: "retry", text: RETRY_TEXT[op], requestId };
+  // The `workout-finished` → gone rows below are rollback-only since 07.4 (Spec 18.0 AC26): no live write
+  // can meet `workout-finished` unless the API is rolled back. The finish row's check is not affected.
   const finished: FailureAction = { type: "gone", reason: "finished" };
 
   switch (op) {

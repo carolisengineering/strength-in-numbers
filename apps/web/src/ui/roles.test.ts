@@ -83,6 +83,7 @@ describe("AC12 — panels separate by tint, not outline", () => {
     ["features/workouts/FinishedWorkoutScreen.module.css", ".exercise"],
     ["ui/ConfirmDialog.module.css", ".dialog"],
     ["features/workouts/EntryRow.module.css", ".row"],
+    ["features/workouts/edit/EditWorkoutScreen.module.css", ".banner"],
   ];
 
   it.each(PANELS)("%s %s has no control outline", (path, selector) => {
@@ -103,5 +104,13 @@ describe("17.1 AC40 — the current-set panel is the one new teal use", () => {
   it("EntryRow.module.css is allow-listed and on the tint-not-outline list", () => {
     expect(SIGNAL_ALLOWED).toContain("features/workouts/EntryRow.module.css");
     expect(users(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/)).toContain("features/workouts/EntryRow.module.css");
+  });
+});
+
+describe("18.0 AC45 — no brass on the edit screen", () => {
+  it("no stylesheet under features/workouts/edit names --color-pr", () => {
+    const edit = sheets.filter((s) => s.path.startsWith("features/workouts/edit/"));
+    expect(edit.length).toBeGreaterThan(0);
+    expect(edit.filter((s) => /--color-pr\b|--color-pr-soft/.test(s.css)).map((s) => s.path)).toEqual([]);
   });
 });

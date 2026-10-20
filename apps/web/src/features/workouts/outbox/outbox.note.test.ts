@@ -91,19 +91,6 @@ describe("10.3 AC12 — draining note ops", () => {
     expect(onFailed).not.toHaveBeenCalled();
   });
 
-  it("409 workout-finished fails the note and every later op of that workout; only the set op is a set_sync_failed", async () => {
-    const ctx = setup();
-    ctx.setOnline(false);
-    note(ctx.outbox, "a");
-    ctx.outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { clientGeneratedId: KEY, reps: 8, isComplete: false } });
-    ctx.rest.setExerciseNote.mockRejectedValueOnce(api(409, "workout-finished"));
-    ctx.setOnline(true);
-    await ctx.outbox.drain();
-    expect(ctx.outbox.getState().ops.map((o) => o.status)).toEqual(["failed", "failed"]);
-    expect(observability.track.mock.calls.filter(([name]) => name === "set_sync_failed")).toHaveLength(1);
-    expect(observability.track.mock.calls.some(([name]) => name === "set_sync_delayed")).toBe(false);
-  });
-
   it("a failed set create does not fail a note op of the same exercise", async () => {
     const ctx = setup();
     ctx.setOnline(false);
@@ -162,5 +149,20 @@ describe("10.3 AC30 — persistence", () => {
     const { outbox, rest } = setup({}, storage);
     expect(outbox.getState().ops).toEqual([]);
     expect(rest.setExerciseNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
+  it("10.3 AC12 — 409 workout-finished fails the note and every later op of that workout; only the set op is a set_sync_failed", async () => {
+    const ctx = setup();
+    ctx.setOnline(false);
+    note(ctx.outbox, "a");
+    ctx.outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { clientGeneratedId: KEY, reps: 8, isComplete: false } });
+    ctx.rest.setExerciseNote.mockRejectedValueOnce(api(409, "workout-finished"));
+    ctx.setOnline(true);
+    await ctx.outbox.drain();
+    expect(ctx.outbox.getState().ops.map((o) => o.status)).toEqual(["failed", "failed"]);
+    expect(observability.track.mock.calls.filter(([name]) => name === "set_sync_failed")).toHaveLength(1);
+    expect(observability.track.mock.calls.some(([name]) => name === "set_sync_delayed")).toBe(false);
   });
 });

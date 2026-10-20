@@ -8,7 +8,7 @@ import styles from "./HistoryScreen.module.css";
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One finished workout (Spec 08.0 AC11, AC12): three lines, the whole row one link; never notes. The
- * first line ends with the routine name (Spec 10.1 AC25). */
+ * first line ends with the workout's title (Spec 18.0 AC56), else the routine name (Spec 10.1 AC25). */
 export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummary; unitPreference: UnitPreference }) {
   const more = workout.exerciseCount - workout.exerciseNames.length;
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
@@ -18,7 +18,7 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
       <span className={styles.top}>
         <span className={styles.date}>
           {formatLocalDate(workout.localDate)}
-          {workout.routineName === null ? null : ` · ${workout.routineName}`}
+          {(workout.title ?? workout.routineName) === null ? null : ` · ${workout.title ?? workout.routineName}`}
         </span>
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={plural(workout.recordCount, "personal record", "personal records")}>

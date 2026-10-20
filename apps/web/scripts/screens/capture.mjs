@@ -69,6 +69,16 @@ function makeHandler(state) {
       const to = url.searchParams.get("to");
       series.points = series.points.filter((pt) => (!from || pt.localDate >= from) && (!to || pt.localDate <= to));
       res = json(series);
+    } else if (m === "PATCH" && (seg = /^\/v1\/sets\/([^/]+)$/.exec(p))) {
+      // Spec 18.0: an edit-screen save answers the stored set merged with the change.
+      const id = decodeURIComponent(seg[1]);
+      const set = D.allWorkouts.flatMap((w) => w.exercises.flatMap((e) => e.sets)).find((s) => s.id === id);
+      res = set ? json({ ...set, ...JSON.parse(req.postData() ?? "{}"), updatedAt: new Date().toISOString() }) : problem(404, "not-found", "Not found");
+    } else if (m === "DELETE" && (seg = /^\/v1\/sets\/([^/]+)$/.exec(p))) {
+      // Spec 18.0 AC18: the one-set workout's only set cannot go; the API refuses with workout-would-be-empty.
+      const id = decodeURIComponent(seg[1]);
+      const owner = D.allWorkouts.find((w) => w.exercises.some((e) => e.sets.some((s) => s.id === id)));
+      res = owner?.id === D.ids.oneSet ? problem(409, "workout-would-be-empty", "Workout would be empty") : { status: 204, body: "" };
     } else if (m === "POST" && (seg = /^\/v1\/workout-exercises\/([^/]+)\/sets$/.exec(p))) {
       const b = JSON.parse(req.postData() ?? "{}");
       const we = D.active.exercises.find((e) => e.id === decodeURIComponent(seg[1]));
@@ -465,6 +475,33 @@ try {
       await shoot(page, device, "29-summary-volume-only", "Only a set-volume record: the section is hidden and History shows no badge for it");
       await go(`/app/history/${D.ids.plankOnly}`);
       await shoot(page, device, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records");
+    });
+
+    // Spec 18.0 AC49: the summary's Edit workout, the edit screen, its sheets and the last-set dialog.
+    await tryStep("edit past workouts", async () => {
+      await go(`/app/history/${D.ids.latestPush}`);
+      await shoot(page, device, "31-summary-edit", "Summary with a title, two-line notes and Edit workout under the stats (Spec 18.0)");
+      await go(`/app/history/${D.ids.latestPush}/edit`);
+      await shoot(page, device, "32-edit-screen", "Edit screen: banner, header, Details panel, sectioned cards with a superset, Done (Spec 18.0)");
+      await page.getByRole("button", { name: /^Add set to Bench/ }).first().click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "33-edit-add-set", "Add set sheet, copied forward from the last set (Spec 18.0 AC8)");
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Edit details" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await page.getByLabel("Title").fill("x".repeat(121));
+      await page.getByRole("button", { name: "Save details" }).click();
+      await page.waitForTimeout(200);
+      await shoot(page, device, "34-edit-details-error", "Details sheet with a too-long title (Spec 18.0 AC53)");
+      await page.keyboard.press("Escape");
+      await go(`/app/history/${D.ids.oneSet}/edit`);
+      await page.getByRole("article").first().getByRole("listitem").first().getByRole("button").click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await page.getByRole("button", { name: "Delete set" }).click();
+      await page.getByRole("dialog", { name: "Delete this whole workout instead?" }).waitFor({ timeout: 4000 });
+      await page.waitForTimeout(200);
+      await shoot(page, device, "35-edit-last-set", "Delete the only set: Delete this whole workout instead? (Spec 18.0 AC18)");
+      await page.keyboard.press("Escape");
     });
 
     await go("/app/progress");

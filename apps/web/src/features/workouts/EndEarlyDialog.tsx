@@ -20,7 +20,7 @@ export interface EndEarlyDialogProps {
 export function EndEarlyDialog({ open, unlogged, stats, unitPreference, busy, onConfirm, onCancel }: EndEarlyDialogProps) {
   return (
     <ConfirmDialog open={open} title="End workout early?" confirmLabel="End workout" cancelLabel="Keep logging" busy={busy} onConfirm={onConfirm} onCancel={onCancel}>
-      <FinishDialogBody stats={stats} unitPreference={unitPreference} unlogged={unlogged} note="Unlogged sets aren't saved. You can't edit a workout after finishing it." />
+      <FinishDialogBody stats={stats} unitPreference={unitPreference} unlogged={unlogged} note="Unlogged sets aren't saved." />
     </ConfirmDialog>
   );
 }

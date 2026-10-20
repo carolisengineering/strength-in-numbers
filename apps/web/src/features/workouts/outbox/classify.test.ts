@@ -16,7 +16,6 @@ describe("06.2 AC5 — one table classifies every outcome", () => {
     ["delete", api(404), "done"],
     ["create", api(404), "fail"],
     ["update", api(404), "fail"],
-    ["update", api(409, "https://x/problems/workout-finished"), "fail"],
     ["create", api(422, "https://x/problems/validation-error"), "fail"],
     ["create", api(400), "fail"],
     ["create", badBody, "fail"],
@@ -47,5 +46,15 @@ describe("06.2 AC5 — one table classifies every outcome", () => {
       requestId: "req-1",
     });
     expect(failureOf(new Error("x"))).toEqual({ status: 0, type: "unknown", requestId: null });
+  });
+});
+
+describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
+  // Since Spec 07.4 no op can meet `workout-finished` unless the API is rolled back; the row is kept for that case.
+  it.each([
+    ["update", api(409, "https://x/problems/workout-finished"), "fail"],
+    ["create", api(422, "https://x/problems/validation-error"), "fail"],
+  ] as const)("06.2 AC5 — %s + %o → %s", (kind, error, verdict) => {
+    expect(classify(kind, error)).toBe(verdict);
   });
 });
