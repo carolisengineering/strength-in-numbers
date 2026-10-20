@@ -91,6 +91,9 @@ export function ExerciseCard({
   const live = useScreenMode().kind === "live";
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<SetEntry | null>(null);
+  // Spec 18.0 AC8: each opening of the Add set sheet is a new session (a new form, a new idempotency key).
+  const [addSession, setAddSession] = useState(0);
+  const [adding, setAdding] = useState(false);
   const setNote = useSetExerciseNote();
   const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
   const noteSync = sync.get(exercise.id);
@@ -202,6 +205,21 @@ export function ExerciseCard({
         </ol>
       ) : null}
 
+      {live ? null : (
+        <div className={styles.addSet}>
+          <Button
+            variant="secondary"
+            aria-label={`Add set to ${exercise.exerciseNameSnapshot}`}
+            onClick={() => {
+              setAddSession((n) => n + 1);
+              setAdding(true);
+            }}
+          >
+            Add set
+          </Button>
+        </div>
+      )}
+
       {live ? (
         <EntryRow exercise={exercise} unitPreference={unitPreference} onGone={onGone} {...(onLogged ? { onLogged } : {})} {...(logExtra ? { logExtra } : {})} />
       ) : null}
@@ -217,16 +235,18 @@ export function ExerciseCard({
         />
       ) : null}
 
-      {live ? (
-        <SetEditSheet
-          set={editing}
-          modality={exercise.modalitySnapshot}
-          exerciseName={exercise.exerciseNameSnapshot}
-          unitPreference={unitPreference}
-          onClose={() => setEditing(null)}
-          onGone={onGone}
-        />
-      ) : null}
+      <SetEditSheet
+        set={editing}
+        adding={adding ? { session: addSession, workoutExerciseId: exercise.id, sets: exercise.sets } : null}
+        modality={exercise.modalitySnapshot}
+        exerciseName={exercise.exerciseNameSnapshot}
+        unitPreference={unitPreference}
+        onClose={() => {
+          setEditing(null);
+          setAdding(false);
+        }}
+        onGone={onGone}
+      />
     </article>
   );
 }

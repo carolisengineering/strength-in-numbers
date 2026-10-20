@@ -1,15 +1,17 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail } from "@sin/core";
 
 import { track } from "../../../observability/track";
 import { NotFound } from "../../../screens/NotFound";
-import { ActionBar } from "../../../ui/ActionBar";
+import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
 import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { Spinner } from "../../../ui/Spinner";
+import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { useMe } from "../../me/useMe";
 import { SupersetBracket } from "../../routines/SupersetBracket";
 import { classifyWorkoutError } from "../errors";
@@ -17,7 +19,7 @@ import { ExerciseCard } from "../ExerciseCard";
 import { formatMinutes, workoutMinutes } from "../finishStats";
 import { SECTION_HOME, type SummarySection } from "../FinishedWorkoutScreen";
 import { formatLocalDate, formatStartedAt } from "../format";
-import { useEditableWorkout } from "../queries";
+import { WORKOUT_KEYS, useEditableWorkout } from "../queries";
 import { reportUnexpected } from "../reportUnexpected";
 import { ScreenModeContext, type EditOutcome, type EditScreenMode } from "../screenMode";
 import { sectionSegments } from "../sectionSegments";
@@ -25,6 +27,7 @@ import { SessionSection } from "../SessionSectionHeading";
 import { supersetRows } from "../supersetRows";
 import { EDIT_COPY } from "./editCopy";
 import styles from "./EditWorkoutScreen.module.css";
+import { useIsEditWritePending } from "./useEditMutations";
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
 const noop = () => {};
@@ -48,10 +51,8 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
     if (detail.error) reportUnexpected("load-workout", detail.error);
   }, [detail.error]);
 
-  const report = useCallback((outcome: EditOutcome) => {
-    // Once the workout is gone it stays gone: no write is attempted afterwards (AC20).
-    if (outcome.type === "vanished") setVanished(true);
-  }, []);
+  // Once the workout is gone it stays gone: no write is attempted afterwards (AC20).
+  const onVanished = useCallback(() => setVanished(true), []);
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
@@ -86,7 +87,7 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
       endedAt={detail.data.endedAt}
       section={section}
       refreshFailed={failure !== null}
-      report={report}
+      onVanished={onVanished}
     />
   );
 }
@@ -96,19 +97,46 @@ function EditBody({
   endedAt,
   section,
   refreshFailed,
-  report,
+  onVanished,
 }: {
   workout: WorkoutDetail;
   endedAt: string;
   section: SummarySection;
   refreshFailed: boolean;
-  report: (outcome: EditOutcome) => void;
+  onVanished: () => void;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const writing = useIsEditWritePending();
+  const [announcement, setAnnouncement] = useState("");
+  const [banner, setBanner] = useState<string | null>(null);
+  const workoutId = workout.id;
+
+  const report = useCallback(
+    (outcome: EditOutcome) => {
+      switch (outcome.type) {
+        case "saved":
+          setBanner(null);
+          setAnnouncement(outcome.announcement);
+          return;
+        case "missing":
+          // Re-read: a 404 here turns the screen into the vanished view (the parent's refetch-404 path).
+          setBanner(outcome.text);
+          void queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+          return;
+        case "vanished":
+          onVanished();
+          return;
+        case "last-set":
+          return;
+      }
+    },
+    [onVanished, queryClient, workoutId],
+  );
   const { data: me } = useMe();
   const unitPreference = me?.unitPreference ?? "kg";
   const segments = useMemo(() => sectionSegments(supersetRows(workout.exercises), workout.sections), [workout.exercises, workout.sections]);
-  const mode = useMemo<EditScreenMode>(() => ({ kind: "edit", workoutId: workout.id, report }), [workout.id, report]);
+  const mode = useMemo<EditScreenMode>(() => ({ kind: "edit", workoutId, report }), [workoutId, report]);
 
   return (
     <ScreenModeContext.Provider value={mode}>
@@ -119,6 +147,11 @@ function EditBody({
         </p>
 
         {refreshFailed ? <InlineNotice tone="warning">{EDIT_COPY.refreshFailed}</InlineNotice> : null}
+        {banner ? (
+          <InlineNotice tone="warning" onDismiss={() => setBanner(null)}>
+            {banner}
+          </InlineNotice>
+        ) : null}
 
         <div className={styles.cards}>
           {segments.map((segment) => {
@@ -157,8 +190,15 @@ function EditBody({
           })}
         </div>
 
+        <p role="status" data-testid="edit-announcement">
+          <VisuallyHidden>{announcement}</VisuallyHidden>
+        </p>
+
         <ActionBar data-testid="edit-bar">
-          <Button onClick={() => void navigate(`/app/${section}/${workout.id}`, { replace: true })}>Done</Button>
+          <Button disabled={writing} onClick={() => void navigate(`/app/${section}/${workoutId}`, { replace: true })}>
+            Done
+          </Button>
+          {writing ? <ActionBarHint>{EDIT_COPY.saving}</ActionBarHint> : null}
         </ActionBar>
       </Screen>
     </ScreenModeContext.Provider>

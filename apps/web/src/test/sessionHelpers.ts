@@ -29,6 +29,9 @@ export const optionsButton = (name: string | RegExp): HTMLElement => within(card
 /** Spec 18.0 AC3: the edit screen's bottom bar button, its one primary. */
 export const editDoneButton = (): HTMLElement => within(screen.getByTestId("edit-bar")).getByRole("button", { name: "Done" });
 
+/** Spec 18.0 AC8: a card's Add set button, named "Add set to {exercise}". */
+export const addSetButton = (name: string | RegExp): HTMLElement => within(card(name)).getByRole("button", { name: /^Add set to / });
+
 /** The control that opens the Finish dialog. */
 export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });
 
