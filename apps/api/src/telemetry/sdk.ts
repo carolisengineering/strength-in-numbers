@@ -13,10 +13,12 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ExportResultCode } from "@opentelemetry/core";
 import {
   AlwaysOffSampler,
+  AlwaysOnSampler,
   BatchSpanProcessor,
   ParentBasedSampler,
   SimpleSpanProcessor,
   TraceIdRatioBasedSampler,
+  type Sampler,
   type SpanExporter,
   type SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
@@ -73,6 +75,20 @@ function reportingSpanExporter(
   };
 }
 
+/**
+ * §8 — `always_on` / `always_off` ignore an inbound `traceparent`'s sampled
+ * flag; only `parentbased_traceidratio` follows the remote parent. With traces
+ * off the provider still exists (context propagation) but samples nothing.
+ */
+export function buildSampler(
+  traces: Pick<TelemetryConfig["traces"], "sampler" | "samplerRatio">,
+  tracingOn: boolean,
+): Sampler {
+  if (!tracingOn || traces.sampler === "always_off") return new AlwaysOffSampler();
+  if (traces.sampler === "always_on") return new AlwaysOnSampler();
+  return new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(traces.samplerRatio) });
+}
+
 const pathOf = (url: string | undefined): string => {
   const raw = url ?? "/";
   const q = raw.indexOf("?");
@@ -120,9 +136,7 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   }
   const tracerProvider = new NodeTracerProvider({
     resource,
-    sampler: traceExporter
-      ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(config.traces.samplerRatio) })
-      : new AlwaysOffSampler(),
+    sampler: buildSampler(config.traces, traceExporter !== undefined),
     spanProcessors,
   });
   tracerProvider.register();

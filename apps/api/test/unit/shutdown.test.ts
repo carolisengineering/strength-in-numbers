@@ -79,6 +79,34 @@ describe("createGracefulShutdown (Criterion 13)", () => {
 });
 
 describe("AC12 — telemetry flush on shutdown", () => {
+  it("still flushes telemetry when the drain times out, then exits 1", async () => {
+    const app = { close: vi.fn(() => new Promise<void>(() => {})) };
+    const prisma = { $disconnect: vi.fn(async () => {}) };
+    const telemetry = { shutdown: vi.fn(async () => {}) };
+    const exit = vi.fn<(code: number) => void>();
+
+    await createGracefulShutdown({ app, prisma, telemetry, exit, drainTimeoutMs: 25 })("SIGTERM");
+
+    expect(telemetry.shutdown).toHaveBeenCalledOnce();
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("still flushes telemetry when draining throws, then exits 1", async () => {
+    const app = {
+      close: vi.fn(async () => {
+        throw new Error("drain failed");
+      }),
+    };
+    const prisma = { $disconnect: vi.fn(async () => {}) };
+    const telemetry = { shutdown: vi.fn(async () => {}) };
+    const exit = vi.fn<(code: number) => void>();
+
+    await createGracefulShutdown({ app, prisma, telemetry, exit })("SIGTERM");
+
+    expect(telemetry.shutdown).toHaveBeenCalledOnce();
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
   it("flushes telemetry after the drain and the pool close, then exits 0", async () => {
     const order: string[] = [];
     const app = { close: vi.fn(async () => void order.push("app.close")) };

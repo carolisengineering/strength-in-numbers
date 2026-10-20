@@ -29,6 +29,8 @@ export interface TelemetryConfig {
     readonly exporter: TracesExporterKind;
     /** Full URL including /v1/traces. */
     readonly otlpUrl: string | undefined;
+    /** OTEL_TRACES_SAMPLER; always_on / always_off ignore the remote parent. */
+    readonly sampler: SamplerKind;
     /** 0..1 */
     readonly samplerRatio: number;
   };
@@ -38,6 +40,7 @@ export interface TelemetryConfig {
 const METRICS_EXPORTERS: readonly MetricsExporterKind[] = ["prometheus", "otlp", "none"];
 const TRACES_EXPORTERS: readonly TracesExporterKind[] = ["otlp", "none"];
 const SAMPLERS = ["parentbased_traceidratio", "always_on", "always_off"] as const;
+export type SamplerKind = (typeof SAMPLERS)[number];
 
 const str = (env: Record<string, unknown>, key: string): string | undefined => {
   const v = env[key];
@@ -117,9 +120,12 @@ export function parseTelemetryEnv(
     else otlpHeaders = parsed;
   }
 
-  const sampler = str(env, "OTEL_TRACES_SAMPLER") ?? "parentbased_traceidratio";
+  const rawSampler = str(env, "OTEL_TRACES_SAMPLER") ?? "parentbased_traceidratio";
+  const sampler: SamplerKind = (SAMPLERS as readonly string[]).includes(rawSampler)
+    ? (rawSampler as SamplerKind)
+    : "parentbased_traceidratio";
   let samplerRatio = 1;
-  if (!(SAMPLERS as readonly string[]).includes(sampler)) {
+  if (sampler !== rawSampler) {
     issues.push(`OTEL_TRACES_SAMPLER: must be one of ${SAMPLERS.join(", ")}`);
   } else if (sampler === "always_off") {
     samplerRatio = 0;
@@ -142,7 +148,12 @@ export function parseTelemetryEnv(
   }
 
   const rawResource = str(env, "OTEL_RESOURCE_ATTRIBUTES");
-  const resourceAttrs = rawResource !== undefined ? (parseKeyValueList(rawResource) ?? {}) : {};
+  let resourceAttrs: Record<string, string> = {};
+  if (rawResource !== undefined) {
+    const parsed = parseKeyValueList(rawResource);
+    if (parsed === undefined) issues.push("OTEL_RESOURCE_ATTRIBUTES: must be a comma-separated key=value list");
+    else resourceAttrs = parsed;
+  }
 
   return {
     issues,
@@ -157,7 +168,7 @@ export function parseTelemetryEnv(
         otlpUrl: metricsUrl,
         exportIntervalMs: interval,
       }),
-      traces: Object.freeze({ exporter: tracesExporter, otlpUrl: tracesUrl, samplerRatio }),
+      traces: Object.freeze({ exporter: tracesExporter, otlpUrl: tracesUrl, sampler, samplerRatio }),
       otlpHeaders: Object.freeze(otlpHeaders),
     }),
   };

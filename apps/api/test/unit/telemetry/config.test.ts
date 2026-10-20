@@ -74,6 +74,17 @@ describe("AC2 — valid telemetry config", () => {
     expect(ok({ OTEL_TRACES_SAMPLER: "parentbased_traceidratio", OTEL_TRACES_SAMPLER_ARG: "0.25" }).traces.samplerRatio).toBe(0.25);
   });
 
+  it("keeps the sampler kind so always_on / always_off are honored exactly", () => {
+    expect(ok({}).traces.sampler).toBe("parentbased_traceidratio");
+    expect(ok({ OTEL_TRACES_SAMPLER: "always_off" }).traces.sampler).toBe("always_off");
+    expect(ok({ OTEL_TRACES_SAMPLER: "always_on" }).traces.sampler).toBe("always_on");
+  });
+
+  it("AC2 — a malformed OTEL_RESOURCE_ATTRIBUTES is refused, not ignored", () => {
+    const { issues } = parseTelemetryEnv({ OTEL_RESOURCE_ATTRIBUTES: "deployment.environment staging" });
+    expect(issues).toEqual(["OTEL_RESOURCE_ATTRIBUTES: must be a comma-separated key=value list"]);
+  });
+
   it("reads service identity", () => {
     const c = ok({
       SERVICE_NAME: "si-api-x",

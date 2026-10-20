@@ -4,9 +4,9 @@
  * On SIGTERM/SIGINT: stop accepting, drain in-flight requests (`app.close()`)
  * with a bounded timeout, close the DB pool (`prisma.$disconnect()`), flush
  * telemetry (bounded, Spec 13.0 AC12), exit 0.
- * If the drain overruns the timeout, or a second signal arrives while draining,
- * force an immediate non-zero exit rather than waiting for the platform's
- * SIGKILL.
+ * If the drain overruns the timeout or fails, flush telemetry (still bounded)
+ * and exit non-zero; a second signal while draining forces an immediate
+ * non-zero exit. Either way we exit before the platform's SIGKILL.
  */
 
 export interface ClosableApp {
@@ -82,6 +82,15 @@ export function createGracefulShutdown(
     }
     draining = true;
 
+    const flush = async (): Promise<void> => {
+      if (!deps.telemetry) return;
+      await flushTelemetry(
+        deps.telemetry,
+        deps.telemetryTimeoutMs ?? DEFAULT_TELEMETRY_TIMEOUT_MS,
+        deps.logger,
+      );
+    };
+
     let timer: NodeJS.Timeout | undefined;
     const drainDeadline = new Promise<"timeout">((resolve) => {
       timer = setTimeout(() => resolve("timeout"), drainTimeoutMs);
@@ -99,22 +108,19 @@ export function createGracefulShutdown(
           { signal, drainTimeoutMs },
           "drain timed out — forcing exit",
         );
+        // The spans of the requests that hung are the ones most worth keeping.
+        await flush();
         exit(1);
         return;
       }
 
       await deps.prisma.$disconnect();
-      if (deps.telemetry) {
-        await flushTelemetry(
-          deps.telemetry,
-          deps.telemetryTimeoutMs ?? DEFAULT_TELEMETRY_TIMEOUT_MS,
-          deps.logger,
-        );
-      }
+      await flush();
       deps.logger?.info({ signal }, "graceful shutdown complete");
       exit(0);
     } catch (err) {
       deps.logger?.error({ err, signal }, "graceful shutdown failed");
+      await flush();
       exit(1);
     } finally {
       if (timer) clearTimeout(timer);
