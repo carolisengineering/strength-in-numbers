@@ -18,7 +18,7 @@ const LIVE_MACHINERY =
 
 describe("18.0 AC46 — edit modules stay off the live machinery", () => {
   it("found the sources it is meant to scan", () => {
-    expect(Object.keys(editSources).length).toBeGreaterThanOrEqual(5);
+    expect(Object.keys(editSources).length).toBeGreaterThanOrEqual(9); // incl. DetailsSheet, details, EditNoteSheet, editCache
   });
 
   it("no edit module names the outbox, drafts, rest store, log action, the live set key, the active key or browser storage", () => {
