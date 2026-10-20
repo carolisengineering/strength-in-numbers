@@ -12,7 +12,7 @@ export default defineConfig({
       provider: "v8",
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/server.ts", "src/**/*.d.ts"],
+      exclude: ["src/server.ts", "src/main.ts", "src/**/*.d.ts"],
       thresholds: {
         // Spec 01 §2 criterion 19: auth plugin + user repo held >= 90%.
         "src/auth/**/*.ts": { lines: 90, functions: 90 },

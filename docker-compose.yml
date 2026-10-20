@@ -37,7 +37,7 @@ services:
       WEB_ORIGIN: http://localhost:5173
       LOG_LEVEL: debug
     command: >
-      sh -c "pnpm --filter @sin/api exec prisma migrate deploy && node apps/api/dist/server.js"
+      sh -c "pnpm --filter @sin/api exec prisma migrate deploy && node apps/api/dist/main.js"
     ports:
       - "3000:3000"
 
