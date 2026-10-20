@@ -3,7 +3,7 @@ import type { WorkoutDetail } from "@sin/core";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { fakeClient } from "../../../test/workoutHarness";
-import { createOutbox } from "./outbox";
+import { createOutbox, type TestableOutbox } from "./outbox";
 import { createQueuedWorkoutClient } from "./queuedWorkoutClient";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
@@ -85,21 +85,27 @@ describe("06.2 AC10 — QueuedWorkoutClient", () => {
     expect(rest.deleteSet).toHaveBeenCalledTimes(1);
   });
 
-  it("getActive overlays pending ops and drops ops for any other workout", async () => {
+  it("getActive overlays pending ops and drops ops for any other workout (amended by 18.0 AC25: the other workout's queued op stays)", async () => {
     const { we, outbox, client } = setup();
     outbox.enqueueCreate({ workoutId: "other", workoutExerciseId: "x", body: { clientGeneratedId: OTHER_KEY, reps: 1, isComplete: true } });
     await client.createSet(we.id, { clientGeneratedId: KEY, reps: 8, isComplete: true });
     const active = await client.getActive();
     expect(active!.exercises[0]!.sets.map((s) => s.setNumber)).toEqual([1, 2]);
-    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual([active!.id]);
+    expect(outbox.getState().ops.map((o) => o.workoutId).sort()).toEqual([active!.id, "other"].sort());
   });
 
-  it("getActive with no active workout drops every op and returns null", async () => {
+  it("getActive with no active workout drops every op and returns null (amended by 18.0 AC25: a queued op stays, a failed one goes)", async () => {
     const { we, rest, outbox, client } = setup();
     await client.createSet(we.id, { clientGeneratedId: KEY, reps: 8, isComplete: true });
+    await client.createSet(we.id, { clientGeneratedId: OTHER_KEY, reps: 9, isComplete: true });
+    const [queued, failed] = outbox.getState().ops;
+    (outbox as TestableOutbox).__setForTests([
+      queued!,
+      { ...failed!, status: "failed", failure: { status: 500, type: "about:blank", requestId: null } },
+    ]);
     vi.mocked(rest.getActive).mockResolvedValueOnce(null);
     await expect(client.getActive()).resolves.toBeNull();
-    expect(outbox.getState().ops).toEqual([]);
+    expect(outbox.getState().ops.map((o) => o.id)).toEqual([queued!.id]);
   });
 
   it("every other method passes through", async () => {

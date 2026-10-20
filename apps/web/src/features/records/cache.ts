@@ -32,6 +32,17 @@ export function applyDeletedCaches(queryClient: QueryClient, workoutId: string):
   invalidateOthers(queryClient, own);
 }
 
+/**
+ * The cache effects of any successful write to a finished workout (Spec 18.0 AC22): History restarts
+ * at page 1 (an edit can move or change rows), every progress series and records family is stale.
+ * The workout's own detail is left to the caller (written from a response, or invalidated).
+ */
+export function applyEditedCaches(queryClient: QueryClient): void {
+  void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+  void queryClient.invalidateQueries({ queryKey: PROGRESS_KEYS.all });
+  void queryClient.invalidateQueries({ queryKey: RECORDS_KEYS.all });
+}
+
 function invalidateOthers(queryClient: QueryClient, own: readonly unknown[]): void {
   const ownHash = hashKey(own);
   void queryClient.invalidateQueries({ queryKey: HISTORY_KEYS.all });

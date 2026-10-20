@@ -203,15 +203,6 @@ describe("06.2 — targetFor, discard, retainOnly", () => {
     expect(onDiscarded).not.toHaveBeenCalled();
   });
 
-  it("retainOnly drops ops for every other workout", () => {
-    const outbox = make();
-    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body() });
-    outbox.enqueueCreate({ workoutId: "w2", workoutExerciseId: "we", body: body(KEY2) });
-    outbox.retainOnly("w2");
-    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual(["w2"]);
-    outbox.retainOnly(null);
-    expect(outbox.getState().ops).toEqual([]);
-  });
 
   it("discardFailed removes only failed ops of that workout", () => {
     const onDiscarded = vi.fn();
@@ -225,5 +216,79 @@ describe("06.2 — targetFor, discard, retainOnly", () => {
     expect(onDiscarded).toHaveBeenCalledTimes(1);
     outbox.discardFailed("w");
     expect(onDiscarded).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("18.0 AC25 — settle keeps unsent ops of other workouts", () => {
+  const KEY3 = "30000000-0000-4000-8000-000000000003";
+
+  it("keeps queued and sending ops of another workout, drops its failed ops, keeps every op of the active one", () => {
+    const outbox = make();
+    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body() });
+    outbox.enqueueUpdate({ workoutId: "w1", workoutExerciseId: "we", target: { setId: "s1" }, body: { reps: 9 } });
+    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body(KEY2) });
+    outbox.enqueueCreate({ workoutId: "w2", workoutExerciseId: "we", body: body(KEY3) });
+    const [queued, sending, failed, active] = outbox.getState().ops;
+    outbox.__setForTests([queued!, { ...sending!, status: "sending" }, failedAs(failed!), failedAs(active!)]);
+    const onDiscarded = vi.fn();
+    outbox.subscribe(onDiscarded);
+    outbox.settle("w2");
+    expect(outbox.getState().ops.map((o) => o.id)).toEqual([queued!.id, sending!.id, active!.id]);
+  });
+
+  it("settle(null) keeps queued ops and drops failed ones", () => {
+    const outbox = make();
+    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body() });
+    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body(KEY2) });
+    const [a, b] = outbox.getState().ops;
+    outbox.__setForTests([a!, failedAs(b!)]);
+    outbox.settle(null);
+    expect(outbox.getState().ops.map((o) => o.id)).toEqual([a!.id]);
+  });
+
+  it("drops an id-map entry of another workout no op needs, keeps one a kept op targets, keeps the active one's", () => {
+    const storage = memoryStorageAdapter();
+    storage.set(
+      OUTBOX_KEY,
+      JSON.stringify({
+        v: 1,
+        userId: "u1",
+        ops: [],
+        idMap: {
+          [KEY]: { setId: "s-1", workoutId: "w1" },
+          [KEY2]: { setId: "s-2", workoutId: "w1" },
+          [KEY3]: { setId: "s-3", workoutId: "w2" },
+        },
+      }),
+    );
+    const outbox = make({ storage });
+    outbox.__setForTests([
+      {
+        id: "op-u",
+        kind: "update",
+        workoutId: "w1",
+        workoutExerciseId: "we",
+        userId: "u1",
+        status: "queued",
+        attempted: false,
+        attempts: 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 0,
+        target: { clientGeneratedId: KEY2 },
+        body: { reps: 9 },
+      },
+    ]);
+    outbox.settle("w2");
+    expect(Object.keys(outbox.getState().idMap).sort()).toEqual([KEY2, KEY3].sort());
+  });
+
+  it("dropWorkout removes every op and id-map entry of one workout and leaves the others", () => {
+    const onDiscarded = vi.fn();
+    const outbox = make({ onDiscarded });
+    outbox.enqueueCreate({ workoutId: "w1", workoutExerciseId: "we", body: body() });
+    outbox.enqueueCreate({ workoutId: "w2", workoutExerciseId: "we", body: body(KEY2) });
+    outbox.dropWorkout("w1");
+    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual(["w2"]);
+    expect(onDiscarded).not.toHaveBeenCalled();
   });
 });

@@ -56,8 +56,14 @@ export interface Outbox {
   targetFor(setId: string): OpTarget;
   discard(opId: string): void;
   discardFailed(workoutId: string): void;
-  /** Drop every op (and id-map entry) for any workout other than `workoutId` — the gone path. */
-  retainOnly(workoutId: string | null): void;
+  /**
+   * The gone path (Spec 18.0 AC25): keep every op of `activeWorkoutId` and the queued / sending ops of
+   * other workouts (the server applies them to a finished workout, or 404s them for a deleted one);
+   * remove failed ops of other workouts and every id-map entry no remaining op needs. No callback.
+   */
+  settle(activeWorkoutId: string | null): void;
+  /** Remove every op and id-map entry of one workout (an own delete or discard). No callback. */
+  dropWorkout(workoutId: string): void;
   retryNow(): void;
   /** Attach the online / visibility / cross-tab listeners and drain. Returns `stop`. */
   start(): () => void;
@@ -228,6 +234,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
    */
   function fail(op: OutboxOp, failure: OpFailure, error: unknown): void {
     const index = state.ops.findIndex((o) => o.id === op.id);
+    // Rollback-only since 07.4 (Spec 18.0 AC26): no op can meet `workout-finished` unless the API is rolled back.
     const finished = failure.status === 409 && failure.type === "workout-finished";
     const key = op.kind === "create" ? op.target : null;
     const failing = new Set<string>([op.id]);
@@ -331,9 +338,19 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       );
       if (removed.length > 0) deps.onDiscarded?.(removed);
     },
-    retainOnly: (workoutId) => {
-      const ops = state.ops.filter((o) => o.workoutId === workoutId);
-      const idMap = Object.fromEntries(Object.entries(state.idMap).filter(([, e]) => e.workoutId === workoutId));
+    settle: (activeWorkoutId) => {
+      const ops = state.ops.filter((o) => o.workoutId === activeWorkoutId || o.status !== "failed");
+      const targeted = new Set(ops.flatMap((o) => (isSetOp(o) && "clientGeneratedId" in o.target ? [o.target.clientGeneratedId] : [])));
+      const idMap = Object.fromEntries(
+        Object.entries(state.idMap).filter(([key, e]) => e.workoutId === activeWorkoutId || targeted.has(key)),
+      );
+      if (ops.length !== state.ops.length || Object.keys(idMap).length !== Object.keys(state.idMap).length) {
+        set({ ops, idMap });
+      }
+    },
+    dropWorkout: (workoutId) => {
+      const ops = state.ops.filter((o) => o.workoutId !== workoutId);
+      const idMap = Object.fromEntries(Object.entries(state.idMap).filter(([, e]) => e.workoutId !== workoutId));
       if (ops.length !== state.ops.length || Object.keys(idMap).length !== Object.keys(state.idMap).length) {
         set({ ops, idMap });
       }

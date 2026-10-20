@@ -3,7 +3,7 @@ import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
-import { applyDeletedCaches, applyFinishedCaches } from "./cache";
+import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches } from "./cache";
 import { RECORDS_KEYS } from "./queries";
 
 const W = "40000000-0000-4000-8000-000000000001";
@@ -74,5 +74,31 @@ describe("08.1 AC8 — finish and delete invalidate every progress series", () =
     const qc = seeded();
     applyDeletedCaches(qc, W);
     expect(invalidated(qc, PROGRESS_KEYS.series("e", "3m"))).toBe(true);
+  });
+});
+
+describe("18.0 AC22 — applyEditedCaches", () => {
+  it("resets the history list, invalidates progress and every records family, and leaves the workout keys alone", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(["history", "list"], { pages: [{ items: [], next: null }], pageParams: [null] });
+    qc.setQueryData(["progress", "ex-1", "3m"], { exerciseId: "ex-1", points: [] });
+    qc.setQueryData(["records", "all"], []);
+    qc.setQueryData(["records", { workoutId: "w" }], []);
+    qc.setQueryData(["records", { exerciseId: "e" }], []);
+    const detail = { id: "w" };
+    const active = { id: "live" };
+    qc.setQueryData(["workouts", "detail", "w"], detail);
+    qc.setQueryData(["workouts", "active"], active);
+
+    applyEditedCaches(qc);
+
+    expect(qc.getQueryState(["history", "list"])?.data).toBeUndefined();
+    for (const key of [["progress", "ex-1", "3m"], ["records", "all"], ["records", { workoutId: "w" }], ["records", { exerciseId: "e" }]]) {
+      expect(invalidated(qc, key)).toBe(true);
+    }
+    expect(qc.getQueryData(["workouts", "detail", "w"])).toBe(detail);
+    expect(invalidated(qc, ["workouts", "detail", "w"])).toBe(false);
+    expect(qc.getQueryData(["workouts", "active"])).toBe(active);
+    expect(invalidated(qc, ["workouts", "active"])).toBe(false);
   });
 });

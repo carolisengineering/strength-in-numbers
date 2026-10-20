@@ -292,13 +292,40 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
   });
 
-  it("a refetch that finds no active workout drops that workout's ops", async () => {
+  it("a refetch that finds no active workout drops that workout's ops (amended by 18.0 AC25: the 404'd op fails, then settle removes it)", async () => {
     const { fake, user } = await setup();
     goOffline(fake);
     await logSet(user, "5");
-    fake.state.active = null; // finished or deleted elsewhere while offline
-    goOnline(fake); // the POST answers 404 ⇒ refetch ⇒ no active workout ⇒ its ops are dropped
+    fake.state.active = null; // deleted elsewhere while offline
+    goOnline(fake); // the POST answers 404 ⇒ the op fails ⇒ refetch ⇒ no active workout ⇒ settle drops the failed op
     await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).toBeNull());
+  });
+});
+
+describe("18.0 AC25 / AC24 — a set logged offline lands on a workout finished elsewhere", () => {
+  it("the POST reaches the finished workout and the outbox empties", async () => {
+    const { fake, user } = await setup();
+    goOffline(fake);
+    await logSet(user, "5");
+    const live = fake.state.active!;
+    fake.state.finished.set(live.id, { ...live, endedAt: new Date().toISOString() });
+    fake.state.active = null; // finished on another device while this phone was offline
+    goOnline(fake);
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    expect(setPosts(fake)).toHaveLength(1);
+    expect(fake.state.finished.get(live.id)!.exercises[0]!.sets.map((s) => s.reps)).toEqual([8, 5]);
+  });
+});
+
+describe("18.0 AC26 — a 422 on a live set write is an ordinary failure", () => {
+  it("the row shows Couldn't save with Edit and Discard", async () => {
+    const { fake, user } = await setup();
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-error", { errors: [{ path: "reps", message: "Required" }] }));
+    await logSet(user, "5");
+    const row = await failedRow();
+    expect(within(row).getByRole("button", { name: /^Edit set / })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /^Discard set / })).toBeInTheDocument();
+    expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 422 });
   });
 });
 

@@ -4,6 +4,7 @@ import type { SetEntry, WorkoutDetail, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
 import { localStorageAdapter, type StorageAdapter } from "../../storage/storage";
+import { applyEditedCaches } from "../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
@@ -51,6 +52,16 @@ function applyNoteSynced(queryClient: QueryClient, outbox: Outbox, op: NoteOp, e
   });
 }
 
+/**
+ * Spec 18.0 AC24: an op that landed on a workout that is not the cached active one (finished on another
+ * device; 07.4 applies it and recomputes records) changed a finished workout: refresh what shows it.
+ */
+function refreshFinishedElsewhere(queryClient: QueryClient, workoutId: string): void {
+  if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workoutId) return;
+  applyEditedCaches(queryClient);
+  void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+}
+
 /** A discarded create's row goes at once; a discarded edit or delete needs the server's copy back. */
 function applyDiscarded(queryClient: QueryClient, ops: readonly OutboxOp[]): void {
   queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) =>
@@ -81,8 +92,14 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       storage: adapter,
       rest,
       userId,
-      onSynced: (op, row) => applySynced(queryClient, outbox, op, row),
-      onNoteSynced: (op, exercise) => applyNoteSynced(queryClient, outbox, op, exercise),
+      onSynced: (op, row) => {
+        applySynced(queryClient, outbox, op, row);
+        refreshFinishedElsewhere(queryClient, op.workoutId);
+      },
+      onNoteSynced: (op, exercise) => {
+        applyNoteSynced(queryClient, outbox, op, exercise);
+        refreshFinishedElsewhere(queryClient, op.workoutId);
+      },
       onFailed: (op, error) => {
         reportUnexpected(REPORT_OP[op.kind], error);
         if (error instanceof ApiError && error.status === 404) {
