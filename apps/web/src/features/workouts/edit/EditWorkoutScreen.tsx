@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail } from "@sin/core";
@@ -25,11 +25,22 @@ import { ScreenModeContext, type EditOutcome, type EditScreenMode } from "../scr
 import { sectionSegments } from "../sectionSegments";
 import { SessionSection } from "../SessionSectionHeading";
 import { supersetRows } from "../supersetRows";
+import { useDeleteWorkout } from "../useWorkoutMutations";
 import { EDIT_COPY } from "./editCopy";
+import { resolveEditFailure } from "./editFailure";
+import { LastSetDialog } from "./LastSetDialog";
 import styles from "./EditWorkoutScreen.module.css";
 import { useIsEditWritePending } from "./useEditMutations";
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
+
+/** The screen's one banner: a warning (a missing set or exercise) or a failure with an optional Try again. */
+interface Banner {
+  readonly text: string;
+  readonly tone: "warning" | "error";
+  readonly requestId?: string | null;
+  readonly retry?: () => void;
+}
 const noop = () => {};
 
 /**
@@ -109,8 +120,13 @@ function EditBody({
   const queryClient = useQueryClient();
   const writing = useIsEditWritePending();
   const [announcement, setAnnouncement] = useState("");
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null);
+  const [lastSetOpen, setLastSetOpen] = useState(false);
+  const deleteWorkout = useDeleteWorkout();
+  const deleteLock = useRef(false);
   const workoutId = workout.id;
+  const home = SECTION_HOME[section].to;
+  const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
 
   const report = useCallback(
     (outcome: EditOutcome) => {
@@ -121,18 +137,49 @@ function EditBody({
           return;
         case "missing":
           // Re-read: a 404 here turns the screen into the vanished view (the parent's refetch-404 path).
-          setBanner(outcome.text);
+          setBanner({ text: outcome.text, tone: "warning" });
           void queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
           return;
         case "vanished":
           onVanished();
           return;
         case "last-set":
+          setLastSetOpen(true);
           return;
       }
     },
     [onVanished, queryClient, workoutId],
   );
+
+  function keepIt() {
+    setLastSetOpen(false);
+    track("workout_edit_refused", { reason: "would_be_empty", choice: "kept" });
+  }
+
+  /** AC19: the dialog's confirm, and the failure banner's Try again. A 404 is done (`useDeleteWorkout`). */
+  async function deleteWholeWorkout(fromDialog: boolean) {
+    if (deleteLock.current) return;
+    deleteLock.current = true;
+    if (fromDialog) track("workout_edit_refused", { reason: "would_be_empty", choice: "deleted" });
+    setBanner(null);
+    try {
+      await deleteWorkout.mutateAsync({ id: workoutId, phase: "finished", setCount });
+      setLastSetOpen(false);
+      void navigate(home, { replace: true });
+    } catch (error) {
+      setLastSetOpen(false);
+      reportUnexpected("discard", error);
+      const failure = resolveEditFailure("delete-workout", error);
+      setBanner({
+        text: failure.type === "message" ? failure.text : EDIT_COPY.deleteFailed,
+        tone: "error",
+        requestId: failure.type === "message" ? failure.requestId : null,
+        retry: () => void deleteWholeWorkout(false),
+      });
+    } finally {
+      deleteLock.current = false;
+    }
+  }
   const { data: me } = useMe();
   const unitPreference = me?.unitPreference ?? "kg";
   const segments = useMemo(() => sectionSegments(supersetRows(workout.exercises), workout.sections), [workout.exercises, workout.sections]);
@@ -148,8 +195,12 @@ function EditBody({
 
         {refreshFailed ? <InlineNotice tone="warning">{EDIT_COPY.refreshFailed}</InlineNotice> : null}
         {banner ? (
-          <InlineNotice tone="warning" onDismiss={() => setBanner(null)}>
-            {banner}
+          <InlineNotice
+            tone={banner.tone}
+            requestId={banner.requestId ?? null}
+            {...(banner.retry ? { actionLabel: "Try again", onAction: banner.retry } : { onDismiss: () => setBanner(null) })}
+          >
+            {banner.text}
           </InlineNotice>
         ) : null}
 
@@ -193,6 +244,8 @@ function EditBody({
         <p role="status" data-testid="edit-announcement">
           <VisuallyHidden>{announcement}</VisuallyHidden>
         </p>
+
+        <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
 
         <ActionBar data-testid="edit-bar">
           <Button disabled={writing} onClick={() => void navigate(`/app/${section}/${workoutId}`, { replace: true })}>
