@@ -183,7 +183,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     return f ? { kind: "finished", detail: f } : null;
   };
   /** Spec 07.4: writes land on a live or a finished workout alike; store each where it lives. */
-  const store = (detail: WorkoutDetail) => {
+  const store = (detail: unknown) => {
     const parsed = WorkoutDetailSchema.parse(detail);
     if (parsed.endedAt === null) {
       state.active = parsed;

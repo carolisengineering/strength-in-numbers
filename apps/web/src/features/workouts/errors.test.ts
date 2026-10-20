@@ -60,3 +60,12 @@ describe("AC2 — classifyWorkoutError", () => {
     expect(classifyWorkoutError(misleading).kind).toBe("exercise-retired");
   });
 });
+
+describe("18.0 AC18 — the would-be-empty slug is its own kind", () => {
+  it.each<[number, string, WorkoutErrorKind]>([[409, "workout-would-be-empty", "workout-would-be-empty"]])(
+    "status %i slug %s → %s",
+    (status, slug, kind) => {
+      expect(classifyWorkoutError(problem(status, slug)).kind).toBe(kind);
+    },
+  );
+});

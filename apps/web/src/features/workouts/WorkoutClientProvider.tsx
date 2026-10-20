@@ -15,7 +15,7 @@ import { OutboxContext } from "./outbox/OutboxContext";
 import type { NoteOp, OutboxOp } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
-import { WORKOUT_KEYS, WorkoutClientContext } from "./queries";
+import { EditWorkoutClientContext, WORKOUT_KEYS, WorkoutClientContext } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { createWorkoutClient } from "./workoutClient";
 
@@ -85,7 +85,8 @@ export interface WorkoutClientProviderProps {
 export function WorkoutClientProvider({ userId, storage, children }: WorkoutClientProviderProps) {
   const api = useApi();
   const queryClient = useQueryClient();
-  const { outbox, client, drafts, rest } = useMemo(() => {
+  // `rest` inside the memo is the REST client; the memo's returned `rest` is the rest-timer stores.
+  const { outbox, client, editClient, drafts, rest } = useMemo(() => {
     const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
     const outbox: Outbox = createOutbox({
@@ -113,7 +114,13 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     });
-    return { outbox, client, drafts: createDraftStores(adapter, userId), rest: createRestStores(adapter, userId) };
+    return {
+      outbox,
+      client,
+      editClient: rest, // Spec 18.0 D5: edit mode's plain REST client
+      drafts: createDraftStores(adapter, userId),
+      rest: createRestStores(adapter, userId),
+    };
   }, [api, queryClient, storage, userId]);
 
   useEffect(() => outbox.start(), [outbox]);
@@ -123,7 +130,9 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
     <OutboxContext.Provider value={outbox}>
       <DraftStoresContext.Provider value={drafts}>
         <RestStoresContext.Provider value={rest}>
-          <WorkoutClientContext.Provider value={client}>{children}</WorkoutClientContext.Provider>
+          <WorkoutClientContext.Provider value={client}>
+            <EditWorkoutClientContext.Provider value={editClient}>{children}</EditWorkoutClientContext.Provider>
+          </WorkoutClientContext.Provider>
         </RestStoresContext.Provider>
       </DraftStoresContext.Provider>
     </OutboxContext.Provider>
