@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseTelemetryEnv, type TelemetryConfig } from "./telemetry/config.js";
 
 /**
  * Typed, fail-fast configuration (Spec 01 §8).
@@ -106,8 +107,6 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
 
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
-
   SERVICE_NAME: z.string().min(1).default("si-api"),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
@@ -147,16 +146,19 @@ export interface Config {
   };
   readonly webOrigins: readonly string[];
   readonly logLevel: (typeof LOG_LEVELS)[number];
-  readonly otelExporterUrl: string | undefined;
+  readonly telemetry: TelemetryConfig;
   readonly serviceName: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Config {
   const parsed = schema.safeParse(env);
+  // Spec 13.0 AC2: telemetry issues join the same ConfigError, so one boot
+  // reports every bad variable.
+  const telemetry = parseTelemetryEnv(env as Record<string, unknown>);
 
-  if (!parsed.success) {
+  if (!parsed.success || telemetry.issues.length > 0) {
     const env0 = env as Record<string, unknown>;
-    const issues = parsed.error.issues.map((issue) => {
+    const issues = (parsed.success ? [] : parsed.error.issues).map((issue) => {
       const varName = String(issue.path[0] ?? "(config)");
       // A var absent from the environment gets a uniform "is required",
       // regardless of which Zod issue code the missing key produced
@@ -164,7 +166,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
       const absent = varName !== "(config)" && env0[varName] === undefined;
       return `${varName}: ${absent ? "is required" : issue.message}`;
     });
-    throw new ConfigError([...new Set(issues)]);
+    throw new ConfigError([...new Set([...issues, ...telemetry.issues])]);
   }
 
   const c = parsed.data;
@@ -181,7 +183,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
     }),
     webOrigins: Object.freeze(c.WEB_ORIGIN),
     logLevel: c.LOG_LEVEL,
-    otelExporterUrl: c.OTEL_EXPORTER_OTLP_ENDPOINT,
     serviceName: c.SERVICE_NAME,
+    telemetry: telemetry.config,
   });
 }

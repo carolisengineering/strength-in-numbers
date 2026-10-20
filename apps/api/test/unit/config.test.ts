@@ -40,7 +40,7 @@ describe("loadConfig — happy path (Criterion 2)", () => {
     const cfg = loadConfig(base);
     expect(cfg.logLevel).toBe("info");
     expect(cfg.serviceName).toBe("si-api");
-    expect(cfg.otelExporterUrl).toBeUndefined();
+    expect(cfg.telemetry.enabled).toBe(false);
   });
 
   it("honours provided optionals", () => {
@@ -48,11 +48,20 @@ describe("loadConfig — happy path (Criterion 2)", () => {
       ...base,
       LOG_LEVEL: "debug",
       SERVICE_NAME: "si-api-test",
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
     });
     expect(cfg.logLevel).toBe("debug");
     expect(cfg.serviceName).toBe("si-api-test");
-    expect(cfg.otelExporterUrl).toBe("http://otel:4318");
+  });
+
+  it("AC2 — merges telemetry issues into one ConfigError", () => {
+    expect(() => loadConfig({ ...base, OTEL_TRACES_EXPORTER: "otlp", PORT: "x" })).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.stringMatching(/^PORT:/),
+          expect.stringMatching(/^OTEL_EXPORTER_OTLP_ENDPOINT:/),
+        ]),
+      }),
+    );
   });
 
   it("coerces PORT to a number", () => {
