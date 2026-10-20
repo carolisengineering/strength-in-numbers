@@ -77,3 +77,56 @@ describe("createGracefulShutdown (Criterion 13)", () => {
     expect(exit).toHaveBeenCalledWith(1);
   });
 });
+
+describe("AC12 — telemetry flush on shutdown", () => {
+  it("flushes telemetry after the drain and the pool close, then exits 0", async () => {
+    const order: string[] = [];
+    const app = { close: vi.fn(async () => void order.push("app.close")) };
+    const prisma = { $disconnect: vi.fn(async () => void order.push("prisma.$disconnect")) };
+    const telemetry = { shutdown: vi.fn(async () => void order.push("telemetry.shutdown")) };
+    const exit = vi.fn<(code: number) => void>();
+
+    await createGracefulShutdown({ app, prisma, telemetry, exit })("SIGTERM");
+
+    expect(order).toEqual(["app.close", "prisma.$disconnect", "telemetry.shutdown"]);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  it("a hung flush is abandoned after telemetryTimeoutMs; still exits 0 with a warn (Review Focus 5)", async () => {
+    const app = { close: vi.fn(async () => {}) };
+    const prisma = { $disconnect: vi.fn(async () => {}) };
+    const telemetry = { shutdown: vi.fn(() => new Promise<void>(() => {})) };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const exit = vi.fn<(code: number) => void>();
+
+    await createGracefulShutdown({ app, prisma, telemetry, logger, exit, telemetryTimeoutMs: 20 })("SIGTERM");
+
+    expect(exit).toHaveBeenCalledWith(0);
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ telemetryTimeoutMs: 20 }), expect.stringMatching(/telemetry/));
+  });
+
+  it("a failing flush still exits 0 with a warn", async () => {
+    const telemetry = { shutdown: vi.fn(async () => { throw new Error("export failed"); }) };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const exit = vi.fn<(code: number) => void>();
+    await createGracefulShutdown({
+      app: { close: vi.fn(async () => {}) },
+      prisma: { $disconnect: vi.fn(async () => {}) },
+      telemetry, logger, exit,
+    })("SIGTERM");
+    expect(exit).toHaveBeenCalledWith(0);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("without telemetry the sequence is unchanged", async () => {
+    const order: string[] = [];
+    const exit = vi.fn<(code: number) => void>();
+    await createGracefulShutdown({
+      app: { close: vi.fn(async () => void order.push("app.close")) },
+      prisma: { $disconnect: vi.fn(async () => void order.push("prisma.$disconnect")) },
+      exit,
+    })("SIGTERM");
+    expect(order).toEqual(["app.close", "prisma.$disconnect"]);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+});
