@@ -1,0 +1,68 @@
+{
+  "uid": "sin-api-overview",
+  "title": "si-api — overview",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [{ "name": "datasource", "type": "datasource", "query": "prometheus", "current": {} }]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Restarts",
+        "enable": true,
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "expr": "changes(sin_process_start_time_seconds[2m]) > 0",
+        "iconColor": "orange"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries", "title": "Request rate by route", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count[$__rate_interval]))", "legendFormat": "{{http_route}}" }]
+    },
+    {
+      "type": "timeseries", "title": "5xx ratio", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "(sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count[$__rate_interval]))", "legendFormat": "5xx / all" }]
+    },
+    {
+      "type": "timeseries", "title": "Latency p50 / p95 / p99", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "p95 latency by route", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "{{http_route}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Event-loop delay p99", "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "max(nodejs_eventloop_delay_p99_seconds)", "legendFormat": "p99" }]
+    },
+    {
+      "type": "timeseries", "title": "Heap used", "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum(v8js_memory_heap_used_bytes)", "legendFormat": "heap used" }]
+    },
+    {
+      "type": "timeseries", "title": "GC time per second", "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (v8js_gc_type) (rate(v8js_gc_duration_seconds_sum[$__rate_interval]))", "legendFormat": "{{v8js_gc_type}}" }]
+    }
+  ]
+}

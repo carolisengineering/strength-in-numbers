@@ -51,3 +51,17 @@ describe("#9 — container images are digest-pinned", () => {
     expect(POSTGRES_IMAGE).toBe(composeDbImage());
   });
 });
+
+// Spec 13.0 AC14 — observability images: upstream tags have no distro suffix
+// (prom/prometheus:v3.15.0, grafana/grafana:13.2.3), so a looser tag pattern.
+const PINNED_PLAIN = /^[a-z0-9./-]+:v?\d+\.\d+\.\d+(-[a-z0-9-]+)?@sha256:[0-9a-f]{64}$/;
+
+describe("Spec 13.0 AC14 — observability compose images are digest-pinned", () => {
+  it("pins prometheus, tempo and grafana", () => {
+    const images = (read("docker-compose.observability.yml").match(/^\s+image:\s*(\S+)\s*$/gm) ?? []).map((l) =>
+      l.replace(/^\s+image:\s*/, "").trim(),
+    );
+    expect(images.map((i) => i.split(":")[0]).sort()).toEqual(["grafana/grafana", "grafana/tempo", "prom/prometheus"]);
+    for (const i of images) expect(i).toMatch(PINNED_PLAIN);
+  });
+});

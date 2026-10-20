@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: sin
+    folder: strength-in-numbers
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
