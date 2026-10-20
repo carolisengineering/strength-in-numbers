@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { ResponseSerializationError } from "fastify-type-provider-zod";
-import { createLogger } from "../../src/logging.js";
+import { createLogger, loggerOptions } from "../../src/logging.js";
 import { InternalError } from "../../src/errors/app-error.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
 import { FakeUserRepository, authContext } from "../helpers/fakes.js";
@@ -437,5 +437,12 @@ describe("error handler + real logger — end to end (#7)", () => {
     expect(out).toContain('"name":"$ZodError"');
     expect(out).toContain('"path":["email"]');
     expect(out).not.toContain(EMAIL);
+  });
+});
+
+describe("AC9 — log ↔ trace correlation mixin", () => {
+  it("adds nothing when there is no active sampled span", () => {
+    const opts = loggerOptions(testConfig());
+    expect(opts.mixin!({}, 30, undefined as never)).toEqual({});
   });
 });

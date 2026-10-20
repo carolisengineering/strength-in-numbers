@@ -7,19 +7,22 @@ export interface WarnSink {
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 
-const signalOf = (message: string): "metrics" | "traces" | "other" =>
+export type TelemetrySignal = "metrics" | "traces" | "other";
+
+const signalOf = (message: string): TelemetrySignal =>
   /metric/i.test(message) ? "metrics" : /span|trace/i.test(message) ? "traces" : "other";
 
 export function createThrottledReporter(
   sink: WarnSink,
   opts: { intervalMs?: number; now?: () => number } = {},
-): { report(message: string, err?: unknown): void; diagLogger: DiagLogger } {
+): { report(message: string, err?: unknown, signal?: TelemetrySignal): void; diagLogger: DiagLogger } {
   const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
   const now = opts.now ?? Date.now;
   const last = new Map<string, number>();
 
-  const report = (message: string, err?: unknown): void => {
-    const signal = signalOf(message);
+  // `signal` defaults to a guess from the text; a caller that knows the
+  // signal passes it (an OTLP error like "connect ECONNREFUSED" names none).
+  const report = (message: string, err?: unknown, signal: TelemetrySignal = signalOf(message)): void => {
     const t = now();
     const prev = last.get(signal);
     if (prev !== undefined && t - prev < intervalMs) return;

@@ -27,4 +27,13 @@ describe("AC11 — export failures are logged at warn, throttled per signal", ()
     expect(sink.warn).toHaveBeenCalledTimes(1);
     expect(sink.warn.mock.calls[0]![0]).toMatchObject({ signal: "traces" });
   });
+
+  it("an explicit signal wins over the message text", () => {
+    const sink = { warn: vi.fn() };
+    const r = createThrottledReporter(sink, { now: () => 0 });
+    r.report("connect ECONNREFUSED 127.0.0.1:4318", new Error("x"), "traces");
+    r.report("connect ECONNREFUSED 127.0.0.1:4318", new Error("x"), "traces");
+    expect(sink.warn).toHaveBeenCalledTimes(1);
+    expect(sink.warn.mock.calls[0]![0]).toMatchObject({ signal: "traces" });
+  });
 });

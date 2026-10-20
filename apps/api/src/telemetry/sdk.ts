@@ -10,6 +10,7 @@ import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { MeterProvider, PeriodicExportingMetricReader, type MetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
+import { ExportResultCode } from "@opentelemetry/core";
 import {
   AlwaysOffSampler,
   BatchSpanProcessor,
@@ -47,6 +48,31 @@ export interface StartTelemetryDeps {
 /** AC4 — not measured, not traced. `/metrics` is the Prometheus exporter's own server (Review Focus 3). */
 export const IGNORED_PATHS: ReadonlySet<string> = new Set(["/healthz", "/readyz", "/metrics"]);
 
+/**
+ * AC11 — reports a failed span export as "traces". The batch processor hands
+ * the exporter's raw error (e.g. "connect ECONNREFUSED …") to the global error
+ * handler, and that text names no signal; `reported` lets the handler skip it.
+ */
+function reportingSpanExporter(
+  inner: SpanExporter,
+  report: (message: string, err: unknown) => void,
+  reported: WeakSet<object>,
+): SpanExporter {
+  return {
+    export: (spans, done) =>
+      inner.export(spans, (result) => {
+        if (result.code !== ExportResultCode.SUCCESS) {
+          const err = result.error ?? new Error("span export failed");
+          reported.add(err);
+          report(`span export failed: ${err.message}`, err);
+        }
+        done(result);
+      }),
+    shutdown: () => inner.shutdown(),
+    forceFlush: () => inner.forceFlush?.() ?? Promise.resolve(),
+  };
+}
+
 const pathOf = (url: string | undefined): string => {
   const raw = url ?? "/";
   const q = raw.indexOf("?");
@@ -62,7 +88,11 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
 
   const reporter = createThrottledReporter(deps.logger, { now: deps.now });
   diag.setLogger(reporter.diagLogger, DiagLogLevel.WARN);
-  setGlobalErrorHandler((err) => reporter.report(err instanceof Error ? err.message : String(err), err));
+  const reportedSpanErrors = new WeakSet<object>();
+  setGlobalErrorHandler((err) => {
+    if (typeof err === "object" && err !== null && reportedSpanErrors.has(err)) return;
+    reporter.report(err instanceof Error ? err.message : String(err), err);
+  });
 
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: config.serviceName,
@@ -80,7 +110,12 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const spanProcessors: SpanProcessor[] = [];
   if (traceExporter) {
     const kind = deps.spanProcessor ?? (deps.spanExporter ? "simple" : "batch");
-    const inner = kind === "simple" ? new SimpleSpanProcessor(traceExporter) : new BatchSpanProcessor(traceExporter);
+    const exporter = reportingSpanExporter(
+      traceExporter,
+      (message, err) => reporter.report(message, err, "traces"),
+      reportedSpanErrors,
+    );
+    const inner = kind === "simple" ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter);
     spanProcessors.push(new AllowlistSpanProcessor(inner));
   }
   const tracerProvider = new NodeTracerProvider({

@@ -1,3 +1,4 @@
+import { trace, TraceFlags } from "@opentelemetry/api";
 import { pino, stdSerializers, type DestinationStream, type Logger, type LoggerOptions } from "pino";
 import type { Config } from "./config.js";
 
@@ -260,6 +261,13 @@ export function loggerOptions(config: Config): LoggerOptions {
     level: config.logLevel,
     base: { service: config.serviceName },
     serializers: { err: errSerializer },
+    // Spec 13.0 §6.2 / AC9 (D16): correlate log lines with the active trace.
+    // Only sampled spans — an unsampled id would point at nothing.
+    mixin() {
+      const ctx = trace.getActiveSpan()?.spanContext();
+      if (!ctx || (ctx.traceFlags & TraceFlags.SAMPLED) === 0) return {};
+      return { trace_id: ctx.traceId, span_id: ctx.spanId };
+    },
     redact: {
       paths: [
         "req.headers",

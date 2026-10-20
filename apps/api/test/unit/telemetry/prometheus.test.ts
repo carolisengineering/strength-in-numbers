@@ -1,0 +1,57 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createServer } from "node:net";
+import type { FastifyInstance } from "fastify";
+import { context, diag, metrics, propagation, trace } from "@opentelemetry/api";
+import { parseTelemetryEnv } from "../../../src/telemetry/config.js";
+import { startTelemetry, type TelemetryHandle } from "../../../src/telemetry/sdk.js";
+
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const s = createServer().listen(0, "127.0.0.1", () => {
+      const port = (s.address() as { port: number }).port;
+      s.close(() => resolve(port));
+    });
+  });
+
+let handle: TelemetryHandle;
+let app: FastifyInstance;
+let apiBase: string;
+let promPort: number;
+
+beforeAll(async () => {
+  promPort = await freePort();
+  const { config } = parseTelemetryEnv({ OTEL_METRICS_EXPORTER: "prometheus", OTEL_EXPORTER_PROMETHEUS_PORT: String(promPort) });
+  handle = startTelemetry(config, { logger: { warn: () => {} } })!;
+  const { buildTestApp } = await import("../../helpers/build-test-app.js");
+  ({ app } = await buildTestApp());
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const addr = app.server.address();
+  apiBase = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
+  await new Promise((r) => setTimeout(r, 100)); // exporter server bind
+});
+afterAll(async () => {
+  await app?.close();
+  await handle?.shutdown();
+  trace.disable(); metrics.disable(); context.disable(); propagation.disable(); diag.disable();
+});
+
+describe("AC13 — Prometheus endpoint is local-only and off the API port", () => {
+  it("serves the route-templated histogram on its own port", async () => {
+    await fetch(`${apiBase}/v1/me`, { headers: { authorization: "Bearer test-token" } });
+    const text = await (await fetch(`http://127.0.0.1:${promPort}/metrics`)).text();
+    expect(text).toMatch(/http_server_request_duration_seconds_bucket\{[^}]*http_route="\/v1\/me"/);
+  });
+
+  it("scraping /metrics is not itself measured (Review Focus 3)", async () => {
+    await fetch(`http://127.0.0.1:${promPort}/metrics`);
+    const text = await (await fetch(`http://127.0.0.1:${promPort}/metrics`)).text();
+    expect(text).not.toMatch(/http_route="\/metrics"/);
+    expect(text).not.toMatch(/http_server_request_duration_seconds_count\{(?![^}]*http_route)[^}]*\}/);
+  });
+
+  it("GET /metrics on the API port is the normal problem+json 404", async () => {
+    const res = await fetch(`${apiBase}/metrics`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("application/problem+json");
+  });
+});
