@@ -137,14 +137,12 @@ export function ExerciseCard({
           ) : null}
         </div>
         {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
-        {live ? (
-          <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
-            Options
-          </Button>
-        ) : null}
+        <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
+          Options
+        </Button>
       </header>
 
-      {live && optionsOpen ? (
+      {optionsOpen ? (
         <div className={styles.options}>
           <Button variant="secondary" disabled={isFirst || structureBusy} {...(isFirst && moveReasons.up ? { "aria-describedby": `${reasonId}-up` } : {})} onClick={() => onMove("up")}>
             Move up

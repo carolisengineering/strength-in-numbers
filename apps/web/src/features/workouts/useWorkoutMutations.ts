@@ -25,7 +25,7 @@ import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
-import type { WorkoutExercisePatch } from "./workoutClient";
+import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
 /**
  * Cache writes live in the hook-level `onSuccess`, never in a `mutate(vars, { onSuccess })` call:
@@ -170,9 +170,13 @@ export function useAddExercise(): UseMutationResult<
   });
 }
 
-/** One `PATCH /v1/workout-exercises/{id}` (Spec 10.1 AC12). Side-effect free: `useRegroup` sequences, refetches and tracks. */
-export function useUpdateWorkoutExercise(): UseMutationResult<WorkoutExercise, Error, { id: string; body: WorkoutExercisePatch }> {
-  const client = useWorkoutClient();
+/**
+ * One `PATCH /v1/workout-exercises/{id}` (Spec 10.1 AC12). Side-effect free: `useRegroup` sequences, refetches and tracks.
+ * Spec 18.0: the edit screen passes its plain REST client; live callers pass nothing.
+ */
+export function useUpdateWorkoutExercise(override?: WorkoutClient): UseMutationResult<WorkoutExercise, Error, { id: string; body: WorkoutExercisePatch }> {
+  const live = useWorkoutClient();
+  const client = override ?? live;
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, body }) => client.updateWorkoutExercise(id, body),

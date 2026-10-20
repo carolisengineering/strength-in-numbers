@@ -43,4 +43,7 @@ export const EDIT_COPY = Object.freeze({
   setAdded: (n: number) => `Set ${n} added`,
   setSaved: (n: number) => `Set ${n} saved`,
   setDeleted: "Set deleted",
+  exerciseAdded: (name: string) => `Exercise added: ${name}`,
+  exerciseRemoved: "Exercise removed",
+  firstExercise: "Add your first exercise",
 });

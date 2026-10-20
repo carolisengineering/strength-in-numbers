@@ -1,5 +1,5 @@
 import { useIsMutating, useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
-import type { CreateSet, SetEntry, UpdateSet, WorkoutDetail } from "@sin/core";
+import type { CreateSet, SetEntry, UpdateSet, WorkoutDetail, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../../api";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
@@ -118,6 +118,36 @@ export function useEditDeleteSet(): UseMutationResult<void, Error, { workoutId: 
     onSuccess: (_void, { workoutId, id }) => {
       writeDetail(queryClient, workoutId, (d) => withSetRemoved(d, id));
       editSucceeded(queryClient, "set_deleted");
+    },
+  });
+}
+
+// ---- exercise structure: siblings' positions shift, so re-read; the returned promise keeps `isPending` until it lands
+
+export function useEditAddExercise(): UseMutationResult<WorkoutExercise, Error, { workoutId: string; exerciseId: string }> {
+  const client = useEditWorkoutClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: ({ workoutId, exerciseId }) => client.addExercise(workoutId, { exerciseId }),
+    onSuccess: (_row, { workoutId }) => {
+      editSucceeded(queryClient, "exercise_added");
+      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+    },
+  });
+}
+
+export function useEditRemoveExercise(): UseMutationResult<void, Error, { workoutId: string; id: string }> {
+  const client = useEditWorkoutClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    networkMode: "always",
+    retry: false,
+    mutationFn: ({ id }) => ignoreNotFound(() => client.removeExercise(id)),
+    onSuccess: (_void, { workoutId }) => {
+      editSucceeded(queryClient, "exercise_removed");
+      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
     },
   });
 }

@@ -34,3 +34,27 @@
   position: relative;
   padding: var(--space-2) 0;
 }
+
+.hint {
+  color: var(--color-muted);
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+}
+
+.placeholder {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+}
+
+/* Add exercise after the last card, full width (as the live screen's list end). */
+.listEnd {
+  display: flex;
+  margin-top: var(--space-4);
+}
+
+.listEnd > button {
+  flex: 1;
+}
