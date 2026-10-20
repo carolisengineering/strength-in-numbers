@@ -28,6 +28,7 @@ import {
 import { toWorkoutDetailDto, toWorkoutDto, toWorkoutExerciseDto } from "./mappers.js";
 import { toPersonalRecordDto } from "./personal-records.js";
 import { assertStartedAtInBounds } from "../repositories/workout-writes.js";
+import { recordWorkoutFinished, recordWorkoutStarted } from "../telemetry/metrics.js";
 import type {
   WorkoutRepository,
   WorkoutSummaryRecord,
@@ -101,6 +102,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
 
       if (created) {
         request.log.info({ workout_id: workout.id, user_id: actingUserId }, "workout_started");
+        recordWorkoutStarted();
         if (request.body.routineId !== undefined) {
           // Spec 09 §9: ids and counts only.
           request.log.info(
@@ -185,6 +187,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
           },
           "workout_finished",
         );
+        recordWorkoutFinished();
       }
       // Spec 07.0 §5: the finish summary rides on the PATCH response.
       logFinishedEdit(request.log, actingUserId, "details_changed", finishedEdit);

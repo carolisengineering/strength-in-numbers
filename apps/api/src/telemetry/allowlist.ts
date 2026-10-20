@@ -19,6 +19,10 @@ export const SPAN_ATTRIBUTE_ALLOWLIST: ReadonlySet<string> = new Set([
   // opt-in for values that we never enable). Both names: semconv is renaming it.
   "db.statement",
   "db.query.text",
+  // Prisma's `prisma:client:operation` span: the model and client method names
+  // (e.g. "User", "findUnique") — schema names, never data.
+  "model",
+  "method",
   "sin.request_id",
 ]);
 

@@ -28,6 +28,9 @@ const ALLOWED: Attributes = {
   "db.system": "postgresql",
   "db.statement": 'SELECT "id" FROM "workout" WHERE "id" = $1',
   "sin.request_id": "req-1",
+  // prisma:client:operation (seen on real spans, Task 7 Step 5)
+  model: "User",
+  method: "findUnique",
 };
 
 function harness() {
