@@ -21,6 +21,12 @@ export interface WorkoutExercisePatch {
   readonly supersetGroup?: number | null;
 }
 
+/** Spec 18.0 AC54: a finished workout's title and notes (Phase B adds the Change Time keys). */
+export interface WorkoutUpdate {
+  readonly title?: string | null;
+  readonly notes?: string | null;
+}
+
 /**
  * The REST seam for the workout screen (Spec 06.1 §6.1). React-free. Every write the screen makes
  * goes through this object so Spec 06.2 can replace it with a queue-backed one; the mutation hooks
@@ -47,6 +53,8 @@ export interface WorkoutClient {
    * `notes`, so a regroup can never overwrite a note (Spec 10.1 AC11).
    */
   setExerciseNote(id: string, notes: string | null): Promise<WorkoutExercise>;
+  /** Spec 18.0 AC54: `PATCH /v1/workouts/{id}` with exactly the keys given. Online-only: the queued client passes it through. */
+  updateWorkout(id: string, body: WorkoutUpdate): Promise<UpdatedWorkout>;
 }
 
 /** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
@@ -88,6 +96,12 @@ export function createWorkoutClient(
       await api.delete(`/v1/sets/${seg(id)}`);
     },
     setExerciseNote: (id, notes) => api.patch(`/v1/workout-exercises/${seg(id)}`, { notes }, WorkoutExerciseSchema),
+    updateWorkout: (id, body) => {
+      const wire: { title?: string | null; notes?: string | null } = {};
+      if (body.title !== undefined) wire.title = body.title;
+      if (body.notes !== undefined) wire.notes = body.notes;
+      return api.patch(`/v1/workouts/${seg(id)}`, wire, UpdatedWorkoutSchema);
+    },
   };
   return client;
 }

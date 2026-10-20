@@ -44,6 +44,22 @@ export const EDIT_COPY = Object.freeze({
   setSaved: (n: number) => `Set ${n} saved`,
   setDeleted: "Set deleted",
   exerciseAdded: (name: string) => `Exercise added: ${name}`,
+  detailsSaved: "Details saved",
+
+  /** §5.7, the workout's title and notes. */
+  details: Object.freeze({
+    heading: "Details",
+    edit: "Edit details",
+    noTitle: "No title",
+    noNotes: "No notes",
+    title: "Title",
+    notes: "Notes",
+    save: "Save details",
+    titleTooLong: "Title can be at most 120 characters.",
+    notesTooLong: "Notes can be at most 4000 characters.",
+    control: "Remove characters that can't be saved.",
+    other: "Check the details and try again.",
+  }),
   exerciseRemoved: "Exercise removed",
   firstExercise: "Add your first exercise",
 });

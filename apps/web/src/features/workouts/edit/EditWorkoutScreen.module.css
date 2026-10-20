@@ -11,6 +11,23 @@
   font-size: var(--font-size-sm);
 }
 
+/* Spec 18.0 AC52: the Details panel. */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detailsHeading {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-muted);
+}
+
 .vanished {
   color: var(--color-muted);
 }

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
@@ -32,6 +32,8 @@ import { supersetRows, type SupersetRow } from "../supersetRows";
 import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
 import { useDeleteWorkout } from "../useWorkoutMutations";
+import { WorkoutText } from "../WorkoutText";
+import { DetailsSheet } from "./DetailsSheet";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure, type EditOperation } from "./editFailure";
 
@@ -210,6 +212,8 @@ function EditBody({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState<{ name: string } | null>(null);
   const [removing, setRemoving] = useState<WorkoutExerciseDetail | null>(null);
+  const [details, setDetails] = useState<{ session: number; open: boolean } | null>(null);
+  const detailsHeadingId = useId();
   const structureBusy = add.isPending || remove.isPending || regroup.busy || pending !== null;
 
   // A tap plans from the segment last committed to the screen (as on the live screen).
@@ -394,6 +398,20 @@ function EditBody({
           Started {formatStartedAt(workout.startedAt)} · Took {formatMinutes(workoutMinutes(workout.startedAt, endedAt))}
         </p>
 
+        {/* AC52: the workout's own title and notes, shown in full; the edit screen is where an empty value is worth seeing. */}
+        <section className={styles.details} aria-labelledby={detailsHeadingId}>
+          <h2 className={styles.detailsHeading} id={detailsHeadingId}>
+            {EDIT_COPY.details.heading}
+          </h2>
+          {workout.title === null ? <p className={styles.empty}>{EDIT_COPY.details.noTitle}</p> : <WorkoutText text={workout.title} variant="title" />}
+          {workout.notes === null ? <p className={styles.empty}>{EDIT_COPY.details.noNotes}</p> : <WorkoutText text={workout.notes} variant="notes" />}
+          <div>
+            <Button variant="secondary" onClick={() => setDetails((d) => ({ session: (d?.session ?? 0) + 1, open: true }))}>
+              {EDIT_COPY.details.edit}
+            </Button>
+          </div>
+        </section>
+
         {refreshFailed ? <InlineNotice tone="warning">{EDIT_COPY.refreshFailed}</InlineNotice> : null}
         {banner ? (
           <InlineNotice
@@ -433,6 +451,9 @@ function EditBody({
           <VisuallyHidden>{announcement}</VisuallyHidden>
         </p>
 
+        {details ? (
+          <DetailsSheet key={details.session} open={details.open} workout={workout} onClose={() => setDetails((d) => d && { ...d, open: false })} mode={mode} />
+        ) : null}
         <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
         <ConfirmDialog
           open={removing !== null}

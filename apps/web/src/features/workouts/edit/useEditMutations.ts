@@ -1,10 +1,12 @@
 import { useIsMutating, useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
-import type { CreateSet, SetEntry, UpdateSet, WorkoutDetail, WorkoutExercise } from "@sin/core";
+import type { CreateSet, SetEntry, UpdateSet, UpdatedWorkout, WorkoutDetail, WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../../api";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
+import type { WorkoutUpdate } from "../workoutClient";
+import { mergeWorkout } from "./editCache";
 
 /**
  * Spec 18.0's edit-mode writes (§6.2, D5): pessimistic, online-only, on the plain REST client.
@@ -134,6 +136,22 @@ export function useEditSetNote(): UseMutationResult<WorkoutExercise, Error, { wo
     onSuccess: (exercise, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => withExerciseNotes(d, exercise));
       editSucceeded(queryClient, "exercise_noted");
+    },
+  });
+}
+
+/** Spec 18.0 AC54: the workout's title and notes; the response's fields are merged into the detail. */
+export function useEditDetails(): UseMutationResult<UpdatedWorkout, Error, { workoutId: string; body: WorkoutUpdate }> {
+  const client = useEditWorkoutClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: EDIT_MUTATION_KEY,
+    networkMode: "always",
+    retry: false,
+    mutationFn: ({ workoutId, body }) => client.updateWorkout(workoutId, body),
+    onSuccess: (updated, { workoutId }) => {
+      writeDetail(queryClient, workoutId, (d) => mergeWorkout(d, updated));
+      editSucceeded(queryClient, "details_changed");
     },
   });
 }

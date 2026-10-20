@@ -522,6 +522,33 @@ describe("17.2 AC30 — the record cards are accessible", () => {
   });
 });
 
+describe("18.0 AC57 — Details accessible", () => {
+  it("the sheet labels both fields and ties an error to its control; long text wraps on the summary", async () => {
+    const notes = "x".repeat(4000);
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", title: "T".repeat(120), notes, exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const { user } = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    await user.click(screen.getByRole("button", { name: "Edit details" }));
+    const sheet = screen.getByRole("dialog", { name: "Details" });
+    const title = within(sheet).getByLabelText("Title");
+    expect(within(sheet).getByLabelText("Notes")).toHaveAccessibleName("Notes");
+    await user.type(title, "x");
+    await user.click(within(sheet).getByRole("button", { name: "Save details" }));
+    expect(title).toHaveAccessibleDescription(/Title can be at most 120 characters\./);
+    await user.click(within(sheet).getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await screen.findByRole("heading", { name: "Workout summary" });
+    const shownTitle = screen.getByText("T".repeat(120));
+    const shownNotes = screen.getByText(notes);
+    expect(shownTitle.className).toMatch(/title/);
+    expect(shownNotes.className).toMatch(/notes/);
+    expect(css["WorkoutText.module.css"]).toMatch(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/);
+    expect(css["WorkoutText.module.css"]).toMatch(/\.notes\s*\{[^}]*white-space:\s*pre-wrap[^}]*overflow-wrap:\s*anywhere/);
+  });
+});
+
 describe("18.0 AC44 — the edit screen is accessible (component level)", () => {
   async function editScreen(sets = [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 80, reps: 5 })]) {
     const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets }] });
