@@ -79,6 +79,9 @@ export interface WorkoutDetailOptions {
   /** Spec 10.3: the workout's snapshotted sections (ids minted) and the routine note. */
   sections?: { name: string; notes?: string | null }[];
   routineNotes?: string | null;
+  /** Spec 18.0: the workout's own title and notes. */
+  title?: string | null;
+  notes?: string | null;
 }
 
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
@@ -87,8 +90,8 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
   const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null }));
   return WorkoutDetailSchema.parse({
     id,
-    title: null,
-    notes: null,
+    title: opts.title ?? null,
+    notes: opts.notes ?? null,
     startedAt: opts.startedAt ?? T0,
     endedAt: opts.endedAt ?? null,
     localDate: opts.localDate ?? "2026-10-02",

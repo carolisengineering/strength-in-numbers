@@ -94,6 +94,8 @@ export interface WorkoutFakeOptions {
   progress?: Record<string, ProgressPoint[]>;
   /** Routines served by /v1/routines (Spec 10.0). */
   routines?: Routine[];
+  /** Spec 18.0 §10: after every successful write to a finished workout, its records become `recordsFor(updated)` (07.4: recomputed in the write's transaction). */
+  recordsFor?: (workout: WorkoutDetail) => PersonalRecord[];
 }
 
 export function problemResponse(
@@ -180,10 +182,27 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     const f = state.finished.get(id);
     return f ? { kind: "finished", detail: f } : null;
   };
+  /** Spec 07.4: writes land on a live or a finished workout alike; store each where it lives. */
+  const store = (detail: WorkoutDetail) => {
+    const parsed = WorkoutDetailSchema.parse(detail);
+    if (parsed.endedAt === null) {
+      state.active = parsed;
+      return parsed;
+    }
+    state.finished.set(parsed.id, parsed);
+    if (options.recordsFor) {
+      state.records = [...state.records.filter((r) => r.workoutId !== parsed.id), ...options.recordsFor(parsed)];
+    }
+    return parsed;
+  };
+  const setCount = (detail: WorkoutDetail) => detail.exercises.reduce((n, e) => n + e.sets.length, 0);
+  /** 07.4 §6.3: on a finished workout, a delete that takes the set count from ≥ 1 to 0 is refused. */
+  const wouldBeEmpty = (before: WorkoutDetail, after: WorkoutDetail) =>
+    before.endedAt !== null && setCount(before) >= 1 && setCount(after) === 0;
   const locateExercise = (id: string) => {
     for (const detail of [state.active, ...state.finished.values()]) {
       const exercise = detail?.exercises.find((e) => e.id === id);
-      if (detail && exercise) return { detail, exercise, finished: detail.endedAt !== null };
+      if (detail && exercise) return { detail, exercise };
     }
     return null;
   };
@@ -191,7 +210,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     for (const detail of [state.active, ...state.finished.values()]) {
       for (const exercise of detail?.exercises ?? []) {
         const set = exercise.sets.find((s) => s.id === id);
-        if (detail && set) return { detail, exercise, set, finished: detail.endedAt !== null };
+        if (detail && set) return { detail, exercise, set };
       }
     }
     return null;
@@ -500,11 +519,21 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("patch", "/workouts/:id", ({ params, body }) => {
       const found = locateWorkout(params["id"]!);
       if (!found) return notFound();
-      if (found.kind === "finished") return finishedConflict();
       const parsed = parseBody(UpdateWorkoutSchema, body);
       if (!parsed.ok) return parsed.response;
       const input = parsed.data;
       const detail = found.detail;
+      if (found.kind === "finished") {
+        // 07.4: only a re-finish is refused; title / notes edits apply.
+        if (input.endedAt != null) return finishedConflict();
+        const edited = store({
+          ...detail,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          updatedAt: now(),
+        });
+        return HttpResponse.json(UpdatedWorkoutSchema.parse({ ...workoutOf(edited), newRecords: [] }));
+      }
       if (input.endedAt != null) {
         if (Date.parse(input.endedAt) < Date.parse(detail.startedAt)) return validation([{ path: "endedAt", message: "Before startedAt" }]);
         const blocked = detail.exercises.some((e) =>
@@ -543,7 +572,6 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("post", "/workouts/:id/exercises", ({ params, body }) => {
       const found = locateWorkout(params["id"]!);
       if (!found) return notFound();
-      if (found.kind === "finished") return finishedConflict();
       const parsed = parseBody(AddWorkoutExerciseSchema, body);
       if (!parsed.ok) return parsed.response;
       const exercise = catalog.find((e) => e.id === parsed.data.exerciseId);
@@ -569,51 +597,50 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         plannedSets: [],
         sectionId: null,
       };
-      state.active = WorkoutDetailSchema.parse({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
+      store({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
       return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });
     }),
     handle("patch", "/workout-exercises/:id", ({ params, body }) => {
       const found = locateExercise(params["id"]!);
       if (!found) return notFound();
-      if (found.finished) return finishedConflict();
       const parsed = parseBody(UpdateWorkoutExerciseSchema, body);
       if (!parsed.ok) return parsed.response;
       const { detail, exercise } = found;
+      let current = detail;
       const target = parsed.data.position;
       if (target !== undefined) {
         if (target < 0 || target >= detail.exercises.length) return validation([{ path: "position", message: "Out of range" }]);
         const without = detail.exercises.filter((e) => e.id !== exercise.id);
         without.splice(target, 0, exercise);
-        state.active = WorkoutDetailSchema.parse({ ...detail, exercises: without.map((e, i) => ({ ...e, position: i })) });
+        current = { ...current, exercises: without.map((e, i) => ({ ...e, position: i })) };
       }
       const { supersetGroup, notes } = parsed.data;
       if (supersetGroup !== undefined || notes !== undefined) {
-        const current = state.active!;
-        state.active = WorkoutDetailSchema.parse({
+        current = {
           ...current,
           exercises: current.exercises.map((e) =>
             e.id === exercise.id
               ? { ...e, ...(supersetGroup !== undefined ? { supersetGroup } : {}), ...(notes !== undefined ? { notes } : {}) }
               : e,
           ),
-        });
+        };
       }
-      const moved = state.active!.exercises.find((e) => e.id === exercise.id)!;
+      const moved = store(current).exercises.find((e) => e.id === exercise.id)!;
       return HttpResponse.json(WorkoutExerciseSchema.parse(moved)); // strips `sets`
     }),
     handle("delete", "/workout-exercises/:id", ({ params }) => {
       const found = locateExercise(params["id"]!);
       if (!found) return notFound();
-      if (found.finished) return finishedConflict();
       const remaining = found.detail.exercises.filter((e) => e.id !== found.exercise.id).map((e, i) => ({ ...e, position: i }));
-      state.active = WorkoutDetailSchema.parse({ ...found.detail, exercises: remaining });
+      const after = { ...found.detail, exercises: remaining };
+      if (wouldBeEmpty(found.detail, after)) return problemResponse(409, "workout-would-be-empty");
+      store(after);
       return new HttpResponse(null, { status: 204 });
     }),
 
     handle("post", "/workout-exercises/:id/sets", ({ params, body }) => {
       const found = locateExercise(params["id"]!);
       if (!found) return notFound();
-      if (found.finished) return finishedConflict();
       const parsed = parseBody(CreateSetSchema, body);
       if (!parsed.ok) return parsed.response;
       const input = parsed.data;
@@ -628,7 +655,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         { workoutExerciseId: exercise.id, setNumber: Math.max(0, ...exercise.sets.map((s) => s.setNumber)) + 1, clientGeneratedId: input.clientGeneratedId ?? null },
         input as Record<string, unknown>,
       );
-      state.active = WorkoutDetailSchema.parse({
+      store({
         ...detail,
         exercises: detail.exercises.map((e) => (e.id === exercise.id ? { ...e, sets: [...e.sets, set] } : e)),
       });
@@ -637,7 +664,6 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("patch", "/sets/:id", ({ params, body }) => {
       const found = locateSet(params["id"]!);
       if (!found) return notFound();
-      if (found.finished) return finishedConflict();
       const parsed = parseBody(UpdateSetSchema, body);
       if (!parsed.ok) return parsed.response;
       const { detail, exercise, set } = found;
@@ -645,7 +671,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       const errors = setErrors(exercise.modalitySnapshot, merged, merged["isComplete"] === true);
       if (errors.length > 0) return validation(errors);
       const next = buildSet(set, merged);
-      state.active = WorkoutDetailSchema.parse({
+      store({
         ...detail,
         exercises: detail.exercises.map((e) => (e.id === exercise.id ? { ...e, sets: e.sets.map((s) => (s.id === set.id ? next : s)) } : e)),
       });
@@ -654,12 +680,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("delete", "/sets/:id", ({ params }) => {
       const found = locateSet(params["id"]!);
       if (!found) return notFound();
-      if (found.finished) return finishedConflict();
       const { detail, exercise, set } = found;
-      state.active = WorkoutDetailSchema.parse({
+      const after = {
         ...detail,
         exercises: detail.exercises.map((e) => (e.id === exercise.id ? { ...e, sets: e.sets.filter((s) => s.id !== set.id) } : e)),
-      });
+      };
+      if (wouldBeEmpty(detail, after)) return problemResponse(409, "workout-would-be-empty");
+      store(after);
       return new HttpResponse(null, { status: 204 });
     }),
   ];
