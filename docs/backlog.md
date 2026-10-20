@@ -564,3 +564,54 @@ Options:
 **Done looks like:** a crafted `/callback` link without `state` cannot put arbitrary text on
 the screen, with a test that names BL-21; the `auth-error` / `auth-error-detail` test ids and
 the `/?signin` Try again are unchanged.
+
+
+## BL-22
+
+**Logs are not in Loki, so trace → logs is a manual search.**
+
+**Status: Open.** Deferred by Spec 13.0 (D9, 2026-10-20). pino keeps writing to stdout and
+Render's log stream; Spec 13.0 only adds `trace_id` / `span_id` to each line. To go from a
+trace to its logs you copy the trace id and search the terminal or Render's logs.
+
+**Why deferred:** shipping logs needs an OTLP log pipeline (pino → OTLP) or a Render log stream
+into Loki, which did not fit Spec 13.0's one session.
+
+**Done looks like:** API log lines reach Loki (Grafana Cloud on staging, a Loki container in the
+local stack), and a Grafana trace → logs link opens the request's lines from a Tempo span.
+
+## BL-23
+
+**Grafana Cloud dashboards and alert rules are imported by hand.**
+
+**Status: Open.** Deferred by Spec 13.0 (D8, 2026-10-20). `ops/grafana/` is provisioned from
+files locally, but Grafana Cloud has no file provisioning, so the runbook imports the two
+dashboards and recreates the three alert rules by hand. A later edit to `ops/grafana/` must be
+re-imported.
+
+**Done looks like:** dashboards, alert rules and the contact point are managed as code (the
+Terraform `grafana` provider) in Spec 15, applied by CI.
+
+## BL-24
+
+**No synthetic uptime check on staging.**
+
+**Status: Open.** Deferred by Spec 13.0 (D7, 2026-10-20). A frequent check would keep Render's
+free instance awake about 730 of the workspace's 750 free hours. Until then, the CI
+post-deploy smoke is the "deployed and up" signal, and no alert says "API is down".
+
+**Done looks like:** Grafana Synthetic Monitoring (or an equivalent) checks `/healthz` on the
+non-sleeping prod service, with an alert, in Spec 01.1.
+
+## BL-25
+
+**No DB connection-pool gauge.**
+
+**Status: Open.** Deferred by Spec 13.0 (D11, 2026-10-20). Prisma's `$metrics` preview was
+deprecated in 6.14 and removed in 7.0, so building on it is a dead end. The supported route is
+observable gauges over a `pg.Pool`, which needs a Prisma driver adapter the API does not use.
+Interim proxy: `prisma:engine:connection` span durations in traces.
+
+**Done looks like:** once the API uses a Prisma driver adapter (or Prisma 7), `pg.Pool`
+observable gauges for busy (`totalCount − idleCount`) and waiting (`waitingCount`)
+connections, with a View allowlist entry and a dashboard panel.

@@ -17,6 +17,25 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false # set in the Render dashboard = the Neon connection string
+      # Spec 13.0 §8 — telemetry. Ships OFF (§11 step 1); the runbook
+      # (docs/runbooks/observability.md) flips both exporters to otlp after
+      # OTEL_EXPORTER_OTLP_HEADERS is set in the dashboard.
+      - key: OTEL_METRICS_EXPORTER
+        value: none
+      - key: OTEL_TRACES_EXPORTER
+        value: none
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: https://otlp-gateway-prod-us-east-0.grafana.net/otlp # replace the zone per the runbook
+      - key: OTEL_EXPORTER_OTLP_HEADERS
+        sync: false # secret: Authorization=Basic%20<base64(instanceId:token)>, write-only token
+      - key: OTEL_METRIC_EXPORT_INTERVAL
+        value: "60000"
+      - key: OTEL_TRACES_SAMPLER
+        value: parentbased_traceidratio
+      - key: OTEL_TRACES_SAMPLER_ARG
+        value: "1"
+      - key: OTEL_RESOURCE_ATTRIBUTES
+        value: deployment.environment=staging
 
   # Spec 04.0 §11 — the Vite/React SPA (@sin/web) as a Render static site.
   # `@sin/core` is built before `@sin/web` (its `dist` is a runtime import of the
