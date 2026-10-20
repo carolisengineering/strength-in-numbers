@@ -7,6 +7,7 @@ const editSources = import.meta.glob(["./**/*.ts", "./**/*.tsx", "!./**/*.test.t
   eager: true,
 }) as Record<string, string>;
 const activeSession = import.meta.glob("../ActiveSession.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const liveScreens = import.meta.glob(["../ActiveSession.tsx", "../StartWorkout.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const corsMethods = import.meta.glob("../../../../../api/src/plugins/cors-methods.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Code only: a comment that explains why something is avoided is not a use of it. */
@@ -35,5 +36,14 @@ describe("18.0 AC46 — edit modules stay off the live machinery", () => {
   it("the CORS method list already holds PATCH, POST and DELETE (no change needed)", () => {
     const source = Object.values(corsMethods)[0]!;
     for (const method of ["PATCH", "POST", "DELETE"]) expect(source).toContain(`"${method}"`);
+  });
+});
+
+describe("18.0 AC58 — the live screen is unchanged", () => {
+  it("ActiveSession and the Start screen read no workout title or notes", () => {
+    expect(Object.keys(liveScreens)).toHaveLength(2);
+    for (const [path, source] of Object.entries(liveScreens)) {
+      expect([path, /\bworkout\.(title|notes)\b/.test(stripComments(source))]).toEqual([path, false]);
+    }
   });
 });

@@ -26,6 +26,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
+import { WorkoutText } from "./WorkoutText";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -106,9 +107,17 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
         </SummaryTop>
       }
     >
+      {/* Spec 18.0 AC50: the workout's own title and notes, only when set (no placeholder here). */}
+      {workout.title === null ? null : <WorkoutText text={workout.title} variant="title" />}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
+      {workout.notes === null ? null : (
+        <section className={styles.workoutNotes} aria-label="Workout notes">
+          <p className={styles.notesLabel}>Notes</p>
+          <WorkoutText text={workout.notes} variant="notes" />
+        </section>
+      )}
       <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
       {/* Spec 18.0 AC1 / D11: at the top, under the stats; navigation only, no request. */}
       <div className={styles.editRow}>

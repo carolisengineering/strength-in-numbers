@@ -2,6 +2,19 @@
   color: var(--color-muted);
 }
 
+/* Spec 18.0 AC50: the workout's notes, under a small muted label. */
+.workoutNotes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.notesLabel {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
 /* Spec 18.0 AC1: Edit workout under the stats, its natural width. */
 .editRow {
   display: flex;
