@@ -5,18 +5,18 @@ import { ConfigError } from "../../../src/config.js";
 import { TEST_ENV } from "../../helpers/build-test-app.js";
 
 describe("AC1 — off by default", () => {
-  it("constructs nothing when no exporter is configured", () => {
+  it("constructs nothing when no exporter is configured", async () => {
     const start = vi.fn();
-    expect(bootstrapTelemetry({ ...TEST_ENV }, start)).toBeUndefined();
+    expect(await bootstrapTelemetry({ ...TEST_ENV }, start)).toBeUndefined();
     expect(start).not.toHaveBeenCalled();
     expect(getTelemetryHandle()).toBeUndefined();
   });
 
-  it("starts and publishes the handle when an exporter is configured", () => {
+  it("starts and publishes the handle when an exporter is configured", async () => {
     const handle = { forceFlush: vi.fn(), shutdown: vi.fn() };
     const start = vi.fn(() => handle);
     const env = { ...TEST_ENV, OTEL_TRACES_EXPORTER: "otlp", OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://localhost:4318/v1/traces" };
-    expect(bootstrapTelemetry(env, start)).toBe(handle);
+    expect(await bootstrapTelemetry(env, start)).toBe(handle);
     expect(start).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }), expect.anything());
     expect(getTelemetryHandle()).toBe(handle);
     setTelemetryHandle(undefined);
@@ -24,9 +24,9 @@ describe("AC1 — off by default", () => {
 });
 
 describe("AC2 — bootstrap fails fast", () => {
-  it("throws ConfigError before starting anything", () => {
+  it("throws ConfigError before starting anything", async () => {
     const start = vi.fn();
-    expect(() => bootstrapTelemetry({ ...TEST_ENV, OTEL_TRACES_EXPORTER: "otlp" }, start)).toThrow(ConfigError);
+    await expect(bootstrapTelemetry({ ...TEST_ENV, OTEL_TRACES_EXPORTER: "otlp" }, start)).rejects.toThrow(ConfigError);
     expect(start).not.toHaveBeenCalled();
   });
 });
