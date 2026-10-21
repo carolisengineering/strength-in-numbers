@@ -30,6 +30,8 @@ const SIGNAL_ALLOWED = [
   "features/catalog/CreateExerciseForm.module.css",
   // Spec 10.4 D13: the create-exercise fields moved into ExerciseFields (the checked choice is a selection).
   "features/catalog/ExerciseFields.module.css",
+  // Spec 10.4 AC28: "Go to the first one" beside a disabled Continue is an interactive text link.
+  "features/routines/import/ImportNames.module.css",
   "features/history/HistoryScreen.module.css",
   "features/workouts/FinishedWorkoutScreen.module.css",
   "features/workouts/RestLine.module.css",

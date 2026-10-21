@@ -1,18 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 
 import { ExercisePicker } from "../../catalog/ExercisePicker";
 import { useEquipment, useMuscleGroups } from "../../catalog/referenceData";
 import { useCatalog } from "../../catalog/useCatalog";
 import { BackLink } from "../../../ui/BackLink";
+import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
+import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
-import { IMPORT_PATH } from "../paths";
+import { IMPORT_EDIT_PATH, IMPORT_PATH } from "../paths";
 import { cardNames, cardProblems, initialCards } from "./cards";
 import styles from "./ImportNames.module.css";
 import { useImportSession } from "./ImportSession";
-import { BACK_TO_TEXT, CATALOG_FAILED, CATALOG_LOADING, NAMES_TITLE, summaryLine } from "./messages";
+import { buildHandoff } from "./handoff";
+import {
+  BACK_TO_TEXT,
+  CATALOG_FAILED,
+  CATALOG_LOADING,
+  CONTINUE,
+  GO_TO_FIRST,
+  NAMES_TITLE,
+  needAttention,
+  summaryLine,
+} from "./messages";
 import { NameCard } from "./NameCard";
+
+const REASON_ID = "import-continue-reason";
 
 /**
  * Spec 10.4 §5.3, AC23–AC28: one card per exercise name, decided against a synced catalog. Nothing is
@@ -28,6 +42,7 @@ export function ImportNames() {
 function NamesBody() {
   const session = useImportSession();
   const read = session.read!.result;
+  const navigate = useNavigate();
   const { state, visible, refresh } = useCatalog();
   const muscles = useMuscleGroups();
   const equipment = useEquipment();
@@ -55,6 +70,20 @@ function NamesBody() {
 
   const cards = session.cards;
   const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map()), [cards, visible]);
+  const blocked = cards?.filter((card) => problems.has(card.key)) ?? [];
+
+  const goToFirst = () => {
+    const first = blocked[0];
+    if (!first) return;
+    const target = document.getElementById(`import-card-${first.index}-new-name`) ?? selectedRadios.current.get(first.key);
+    target?.focus();
+  };
+
+  const continueToEditor = () => {
+    if (cards === null || blocked.length > 0) return;
+    session.setHandoff(buildHandoff({ read, cards, rows: state.rows, placeholderFor: session.placeholderFor }));
+    navigate(IMPORT_EDIT_PATH);
+  };
 
   return (
     <Screen title={NAMES_TITLE} titleRef={titleRef} lead={<BackLink to={IMPORT_PATH} label={BACK_TO_TEXT} />}>
@@ -90,6 +119,19 @@ function NamesBody() {
               />
             ))}
           </div>
+          <ActionBar>
+            <Button disabled={blocked.length > 0} aria-describedby={blocked.length > 0 ? REASON_ID : undefined} onClick={continueToEditor}>
+              {CONTINUE}
+            </Button>
+            {blocked.length > 0 ? (
+              <ActionBarHint>
+                <span id={REASON_ID}>{needAttention(blocked.length)}</span>{" "}
+                <button type="button" className={styles.linkButton} onClick={goToFirst}>
+                  {GO_TO_FIRST}
+                </button>
+              </ActionBarHint>
+            ) : null}
+          </ActionBar>
         </>
       ) : null}
       <ExercisePicker

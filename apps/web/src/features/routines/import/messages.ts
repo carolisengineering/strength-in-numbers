@@ -55,3 +55,8 @@ export const TYPE_LABEL = "Type";
 export const alreadyInList = (name: string) => `${name} is already in your list.`;
 export const USE_IT_INSTEAD = "Use it instead";
 export const SAME_NEW = "Another new exercise has this name";
+
+// Continue (AC28).
+export const CONTINUE = "Continue";
+export const GO_TO_FIRST = "Go to the first one";
+export const needAttention = (n: number) => (n === 1 ? "1 card needs attention" : `${n} cards need attention`);
