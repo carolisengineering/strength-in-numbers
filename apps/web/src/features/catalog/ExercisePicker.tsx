@@ -19,6 +19,8 @@ export interface ExercisePickerProps {
   /** Receives the full exercise. The picker does not close itself. */
   onPick: (exercise: Exercise) => void;
   onClose: () => void;
+  /** Spec 10.4 AC25: `false` removes the create row, so this picker never creates an exercise. Default `true`. */
+  allowCreate?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ export interface ExercisePickerProps {
  * Not mounted anywhere by Spec 06.0 — Spec 06.1 renders it from "Add
  * exercise", inside a `<CatalogProvider>`.
  */
-export function ExercisePicker({ open, onPick, onClose }: ExercisePickerProps) {
+export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: ExercisePickerProps) {
   const { state, visible, recents, refresh, recordPick } = useCatalog();
   const muscles = useMuscleGroups();
   const equipment = useEquipment();
@@ -169,11 +171,13 @@ export function ExercisePicker({ open, onPick, onClose }: ExercisePickerProps) {
           {listed.length === 0 ? <p className={styles.empty}>No exercises match</p> : null}
           <ul className={styles.list}>
             {listed.map((exercise) => row(exercise, narrowing ? "search" : "list"))}
-            <li>
-              <button type="button" className={styles.createRow} onClick={() => setView("create")}>
-                {query === "" ? "Create a custom exercise" : `Can't find it? Create "${query}"`}
-              </button>
-            </li>
+            {allowCreate ? (
+              <li>
+                <button type="button" className={styles.createRow} onClick={() => setView("create")}>
+                  {query === "" ? "Create a custom exercise" : `Can't find it? Create "${query}"`}
+                </button>
+              </li>
+            ) : null}
           </ul>
         </section>
       </div>
