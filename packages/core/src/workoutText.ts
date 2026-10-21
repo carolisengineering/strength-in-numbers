@@ -120,3 +120,180 @@ export function cleanWorkoutText(raw: string): CleanResult {
   }
   return { lines: kept.flat(), chunks: kept.length, input, furniture, overlap };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Reading (AC5–AC13): one pass over the cleaned lines with a small state machine.
+
+export const HEADING_WORDS: readonly string[] = [
+  "Warmup", "Warm-up", "Warm up", "Strength", "Accessory", "Accessories", "Conditioning", "Metcon", "Finisher",
+  "Cooldown", "Cool down", "Core", "Skill", "Mobility", "Gymnastics",
+];
+
+/** Name uncut; notes "\n"-joined, "" = none. */
+export interface ReadSection {
+  readonly name: string;
+  readonly notes: string;
+  readonly warmup: boolean;
+}
+export interface ReadRow {
+  readonly repsLow: number | null;
+  readonly repsHigh: number | null;
+}
+export interface ReadItem {
+  /** The exercise text as written. */
+  readonly name: string;
+  readonly nameKey: string;
+  /** Index into `sections`; null = loose (preamble). */
+  readonly section: number | null;
+  /** null = rowless (a bare bulleted line). */
+  readonly rows: readonly ReadRow[] | null;
+  /** Rowless only: the line's rep range. */
+  readonly quickReps: ReadRow | null;
+  /** The reps as written: "21-15-9", "10", "10-15", "10/10"; set lines "6-6-4-4-10-10". */
+  readonly repsText: string | null;
+  readonly noteLines: readonly string[];
+  /** Items sharing a run id are a superset candidate. */
+  readonly run: number | null;
+}
+export interface ReadName {
+  readonly key: string;
+  readonly written: string;
+  /** Names of the sections using it (loose omitted). */
+  readonly sections: readonly string[];
+}
+export type LinePlacement = "heading" | "set-line" | "scheme" | "lead-in" | "separator" | "movement" | "note";
+export interface ReadResult {
+  /** Routine name, uncut. */
+  readonly name: string | null;
+  /** Routine note (preamble), "" = none. */
+  readonly notes: string;
+  readonly sections: readonly ReadSection[];
+  readonly items: readonly ReadItem[];
+  /** Distinct by key, first appearance. */
+  readonly names: readonly ReadName[];
+  readonly chunks: number;
+  readonly lines: {
+    readonly input: number;
+    readonly furniture: number;
+    readonly overlap: number;
+    readonly placed: readonly { readonly text: string; readonly as: LinePlacement }[];
+  };
+}
+
+const WORKOUT_TITLE = /^workout\s*:\s*["“”]\s*(.+?)\s*["“”]$/i;
+const HEADING_SET = new Set(HEADING_WORDS.map((w) => w.toLowerCase()));
+const WARMUP = /^warm[\s-]?up$/i;
+const TITLE_PUNCTUATION = /[:.!?,;]/;
+const DIGIT = /\d/;
+const LETTER = /\p{L}/u;
+const UPPER_START = /^\p{Lu}/u;
+const LEADING_BULLET_MARK = /^[-•*]/;
+
+interface MutableSection {
+  name: string;
+  notes: string[];
+  warmup: boolean;
+  strength: MutableItem | null;
+}
+interface MutableItem {
+  name: string;
+  nameKey: string;
+  section: number | null;
+  rows: ReadRow[] | null;
+  quickReps: ReadRow | null;
+  repsText: string | null;
+  noteLines: string[];
+  run: number | null;
+}
+type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number };
+
+/** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
+function isGenericTitle(line: string): boolean {
+  if (line.length > 40 || !LETTER.test(line) || DIGIT.test(line) || TITLE_PUNCTUATION.test(line) || LEADING_BULLET_MARK.test(line)) return false;
+  const words = line.split(" ");
+  if (words.length > 5) return false;
+  if (line === line.toUpperCase()) return true;
+  const firstLetter = line.match(/\p{L}/u)![0];
+  if (!UPPER_START.test(firstLetter)) return false;
+  return words.every((w) => (w.match(/\p{L}/gu)?.length ?? 0) < 4 || UPPER_START.test(w));
+}
+
+/** The section a heading line starts, or null. `listOpen` turns off generic titles (AC5). */
+function headingOf(line: string, last: boolean, listOpen: boolean): { name: string; workout: boolean } | null {
+  const titled = WORKOUT_TITLE.exec(line);
+  if (titled) return { name: titled[1]!, workout: true };
+  const bare = line.endsWith(":") ? line.slice(0, -1).trimEnd() : line;
+  if (HEADING_SET.has(bare.toLowerCase())) return { name: bare, workout: false };
+  if (!last && !listOpen && isGenericTitle(line)) return { name: line, workout: false };
+  return null;
+}
+
+interface ReadState {
+  sections: MutableSection[];
+  items: MutableItem[];
+  routineNotes: string[];
+  section: number | null;
+  run: Run | null;
+  runs: number;
+}
+
+/** Steps 3–8 (Task 4): place the line as a construct; false leaves it to the note. */
+function readConstruct(_line: string, _s: ReadState): LinePlacement | null {
+  return null;
+}
+
+export function readWorkoutText(raw: string): ReadResult {
+  const clean = cleanWorkoutText(raw);
+  const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0 };
+  const placed: { text: string; as: LinePlacement }[] = [];
+  let name: string | null = null;
+  let nameFromWorkout = false;
+
+  clean.lines.forEach((line, i) => {
+    const heading = headingOf(line, i === clean.lines.length - 1, s.run !== null);
+    if (heading) {
+      s.run = null;
+      const warmup = WARMUP.test(heading.name);
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null });
+      s.section = s.sections.length - 1;
+      if (heading.workout && !nameFromWorkout) {
+        name = heading.name;
+        nameFromWorkout = true;
+      } else if (name === null && !warmup) name = heading.name;
+      placed.push({ text: line, as: "heading" });
+      return;
+    }
+    const current = s.section === null ? null : s.sections[s.section]!;
+    if (current?.warmup) {
+      current.notes.push(line);
+      placed.push({ text: line, as: "note" });
+      return;
+    }
+    const as = readConstruct(line, s);
+    if (as) {
+      placed.push({ text: line, as });
+      return;
+    }
+    s.run = null;
+    (current ? current.notes : s.routineNotes).push(line);
+    placed.push({ text: line, as: "note" });
+  });
+
+  const names: { key: string; written: string; sections: string[] }[] = [];
+  for (const item of s.items) {
+    let entry = names.find((n) => n.key === item.nameKey);
+    if (!entry) names.push((entry = { key: item.nameKey, written: item.name, sections: [] }));
+    const sectionName = item.section === null ? null : s.sections[item.section]!.name;
+    if (sectionName !== null && !entry.sections.includes(sectionName)) entry.sections.push(sectionName);
+  }
+
+  return {
+    name,
+    notes: s.routineNotes.join("\n"),
+    sections: s.sections.map(({ name: n, notes, warmup }) => ({ name: n, notes: notes.join("\n"), warmup })),
+    items: s.items.map((it) => ({ ...it })),
+    names,
+    chunks: clean.chunks,
+    lines: { input: clean.input, furniture: clean.furniture, overlap: clean.overlap, placed },
+  };
+}
