@@ -1,4 +1,4 @@
-/* Spec 17.1 §5.1: clock · started on the left, the Workout menu on the right; its items revealed below, full width. */
+/* Spec 17.1 §5.1, amended by 18.0 D22: the clock (or Took) and the Workout menu; then Started and Change Time; the items revealed below, full width. */
 .top {
   display: flex;
   flex-direction: column;

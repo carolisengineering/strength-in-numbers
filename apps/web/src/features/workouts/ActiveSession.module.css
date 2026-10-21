@@ -3,6 +3,24 @@
   font-size: var(--font-size-sm);
 }
 
+/* Spec 18.0 AC34: the static "Took …" in the clock's place (the SessionClock figure). */
+.took {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-figure);
+  font-stretch: var(--font-stretch-figure);
+}
+
+/* Spec 18.0 D22: row 2, Started and Change Time. */
+.startedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .cards {
   display: flex;
   flex-direction: column;

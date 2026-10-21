@@ -36,14 +36,20 @@ export function formatStartedTime(iso: string, { timeZone }: { timeZone?: string
  * Spec 18.0 AC3: a start as `"Wed 14 Oct, 18:05"` in the device zone (the live screen's "Started 18:05" plus
  * the day). Unlike `formatLocalDate` this is a moment, so it follows the zone, not the stored `localDate`.
  */
-export function formatStartedAt(iso: string, { timeZone }: { timeZone?: string } = {}): string {
+export function formatStartedAt(iso: string, { timeZone, today }: { timeZone?: string; today?: Date } = {}): string {
+  const zone = timeZone ? { timeZone } : {};
+  // Spec 18.0 AC34: a start on `today`'s calendar day (in the same zone) is the time alone.
+  if (today) {
+    const dayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", ...zone });
+    if (dayKey.format(new Date(iso)) === dayKey.format(today)) return formatStartedTime(iso, zone);
+  }
   const day = new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
     day: "numeric",
     month: "short",
-    ...(timeZone ? { timeZone } : {}),
+    ...zone,
   }).format(new Date(iso));
-  return `${day}, ${formatStartedTime(iso, { ...(timeZone ? { timeZone } : {}) })}`;
+  return `${day}, ${formatStartedTime(iso, zone)}`;
 }
 
 export function formatDuration(totalSeconds: number): string {

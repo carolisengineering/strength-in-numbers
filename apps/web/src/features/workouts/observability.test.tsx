@@ -1,5 +1,5 @@
 import { MODALITY_VALUES, SET_TYPE_VALUES } from "@sin/core";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,8 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   // Spec 06.2 AC18: the outbox reports a status code and a duration only.
   set_sync_failed: { status: "number" },
   set_sync_delayed: { ms: "number" },
+  // Spec 18.0 AC43: Change Time.
+  workout_retimed: { where: "string", changed: "string", daysBack: "number" },
 };
 const ENUMS: Record<string, readonly string[]> = {
   modality: MODALITY_VALUES,
@@ -57,9 +59,11 @@ const ENUMS: Record<string, readonly string[]> = {
   direction: ["up", "down"],
   phase: ["active", "finished"],
   kind: ["gone", "finished", "retired", "unavailable", "stale-position", "clock"],
+  where: ["live", "edit"],
+  changed: ["start", "duration", "both"],
 };
 const OPERATIONS = [
-  "add-exercise", "move-exercise", "remove-exercise", "create-set", "update-set", "delete-set", "finish", "discard", "start-workout", "load-active", "load-workout",
+  "add-exercise", "move-exercise", "remove-exercise", "create-set", "update-set", "delete-set", "finish", "discard", "start-workout", "load-active", "load-workout", "change-time",
 ];
 
 const seen = new Set<string>();
@@ -275,6 +279,17 @@ describe("AC35 — observability hygiene across the flows", () => {
     await user.click(await screen.findByRole("button", { name: "Retry now" }));
     await waitFor(() => expect(fake.requests.filter((r) => r.path.endsWith("/sets"))).toHaveLength(2));
     expect(observability.reportError).not.toHaveBeenCalled();
+  });
+});
+
+describe("18.0 AC43 — Change Time's event in the hygiene scan", () => {
+  it("a live Change Time emits workout_retimed with scalars only", async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Change Time" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Change Time" }));
+    fireEvent.change(sheet.getByLabelText("Day"), { target: { value: "2000-06-01" } });
+    await user.click(sheet.getByRole("button", { name: "Save time" }));
+    await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_retimed", expect.objectContaining({ where: "live", changed: "start" })));
   });
 });
 
