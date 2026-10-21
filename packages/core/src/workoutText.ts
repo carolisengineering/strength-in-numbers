@@ -67,9 +67,6 @@ function isPrefixFragment(line: string, frag: string): boolean {
 function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number; dropB: number } | null {
   for (let k = Math.min(a.length, b.length); k >= 1; k--) {
     const off = a.length - k;
-    let middle = true;
-    for (let j = 1; j < k - 1 && middle; j++) middle = a[off + j] === b[j];
-    if (!middle) continue;
     const firstA = a[off]!;
     const firstB = b[0]!;
     const lastA = a[a.length - 1]!;
@@ -79,8 +76,11 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
       if (isPrefixFragment(firstB, firstA)) return { dropA: 1, dropB: 0 };
       continue;
     }
-    const firstOk = firstA === firstB || isSuffixFragment(firstA, firstB);
-    if (!firstOk) continue;
+    // The first pair is the cheap check, so most k fail before the O(k) middle scan.
+    if (firstA !== firstB && !isSuffixFragment(firstA, firstB)) continue;
+    let middle = true;
+    for (let j = 1; j < k - 1 && middle; j++) middle = a[off + j] === b[j];
+    if (!middle) continue;
     if (lastA === lastB) return { dropA: 0, dropB: k };
     if (isPrefixFragment(lastB, lastA)) return { dropA: 1, dropB: k - 1 };
   }

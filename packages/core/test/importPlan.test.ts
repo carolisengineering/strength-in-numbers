@@ -12,7 +12,7 @@ describe("10.4 AC17 — reps follow the exercise type", () => {
     const p = plan(["Engine", "21-15-9", "Row", "Ski", "x."], () => m);
     expect(p.items[0]).toMatchObject({ form: { kind: "quick", targetSets: 3, targetRepsLow: null, targetRepsHigh: null }, notes: "21-15-9 reps as written" });
   });
-  it("a/b on a rep-less type", () => expect(plan(["A", "3 Sets:", "10/10 Hold Thing", "x."], () => "duration").items[0]!.notes).toBe("10/10\n10/10 reps as written"));
+  it("a/b on a rep-less type", () => expect(plan(["A", "3 Sets:", "10/10 Hold Thing", "x."], () => "duration").items[0]!.notes).toBe("10/10 reps as written"));
   it("a rep outside 1–100 drops the item's reps into the note", () =>
     expect(plan(["Engine", "150-100-50", "Row", "Ski", "x."]).items[0]).toMatchObject({ form: { kind: "quick", targetSets: 3, targetRepsLow: null, targetRepsHigh: null }, notes: "150-100-50 reps as written" }));
   it("weights, RPE and rest are never set", () => {

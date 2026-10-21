@@ -27,6 +27,11 @@ describe("10.4 AC15 — at most one similar suggestion, tuned on the built-ins",
     expect(matchExerciseName("Strict Press", rows)).toMatchObject({ row: { id: "2" } });
     expect(matchExerciseName("Strict Press", [...rows].reverse())).toMatchObject({ row: { id: "2" } });
   });
+  it("a possessive 's leaves no empty word: Farmer's Carry ≡ Farmers Carry, and apostrophes share nothing", () => {
+    expect(normalizeExerciseName("Farmer's Carry")).toBe(normalizeExerciseName("Farmers Carry"));
+    expect(matchExerciseName("Bob's Lift", [{ id: "w", name: "Tom's Jump", ownerUserId: null }])).toEqual({ kind: "none" });
+    expect(matchExerciseName("Bob's", [{ id: "w", name: "Tom's", ownerUserId: null }])).toEqual({ kind: "none" });
+  });
   it("a name of only numbers and units has no tokens → none", () => expect(matchExerciseName("400 m", BUILT_INS)).toEqual({ kind: "none" }));
 });
 

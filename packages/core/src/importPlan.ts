@@ -101,18 +101,23 @@ interface Shaped {
 /** Step 3: rows cut to 20, reps refused by the type or out of range, quick vs plan. */
 function shape(item: ReadItem, modality: Modality): Shaped {
   const refusesReps = forbiddenMeasuresFor(modality).includes("reps");
-  const noteLines = [...item.noteLines];
+  let noteLines = [...item.noteLines];
+  // A refused `a/b` says it once: "10/10 reps as written" replaces the reader's "10/10" line.
+  const asWritten = (text: string) => {
+    noteLines = noteLines.filter((l) => l !== text);
+    noteLines.push(`${text} reps as written`);
+  };
   if (item.rows === null) {
     const reps = item.quickReps ?? NO_REPS;
     const refused = refusesReps || !rowOk(reps);
-    if (refused && item.repsText !== null) noteLines.push(`${item.repsText} reps as written`);
+    if (refused && item.repsText !== null) asWritten(item.repsText);
     const r = refused ? NO_REPS : reps;
     return { form: { kind: "quick", targetSets: null, targetRepsLow: r.repsLow, targetRepsHigh: r.repsHigh }, noteLines, setsCut: false };
   }
   const setsCut = item.rows.length > PLANNED_SETS_PER_ITEM_MAX;
   const kept = item.rows.slice(0, PLANNED_SETS_PER_ITEM_MAX);
   const refused = refusesReps || !kept.every(rowOk);
-  if (refused && item.repsText !== null) noteLines.push(`${item.repsText} reps as written`);
+  if (refused && item.repsText !== null) asWritten(item.repsText);
   const rows = kept.map((r) => (refused ? NO_REPS : { repsLow: r.repsLow, repsHigh: r.repsHigh }));
   const first = rows[0] ?? NO_REPS;
   const uniform = rows.every((r) => r.repsLow === first.repsLow && r.repsHigh === first.repsHigh);

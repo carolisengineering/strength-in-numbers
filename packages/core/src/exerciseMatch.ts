@@ -33,6 +33,7 @@ function words(name: string): string[] {
     let w = raw;
     if (ES_PLURAL.test(w)) w = w.slice(0, -2);
     else if (w.endsWith("s") && !w.endsWith("ss") && before + w.length - 1 >= 3) w = w.slice(0, -1);
+    if (w === "") continue; // a possessive "'s" leaves nothing
     out.push(w);
     before += w.length;
   }
