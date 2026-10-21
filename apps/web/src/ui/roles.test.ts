@@ -28,6 +28,8 @@ const SIGNAL_ALLOWED = [
   "features/routines/SupersetBracket.module.css",
   "features/catalog/ExercisePicker.module.css",
   "features/catalog/CreateExerciseForm.module.css",
+  // Spec 10.4 D13: the create-exercise fields moved into ExerciseFields (the checked choice is a selection).
+  "features/catalog/ExerciseFields.module.css",
   "features/history/HistoryScreen.module.css",
   "features/workouts/FinishedWorkoutScreen.module.css",
   "features/workouts/RestLine.module.css",
