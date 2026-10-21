@@ -10,7 +10,7 @@ describe("10.4 AC5 — headings make sections", () => {
     ["Strength", "Strength"], ["Accessories", "Accessories"], ["Cool down", "Cool down"], ["Accessory:", "Accessory"],
     ["Strict Press", "Strict Press"], ["STRICT PRESS", "STRICT PRESS"], ["Front Rack Carry", "Front Rack Carry"],
   ])("%s → section %s", (line, name) => expect(read([line, "a note."]).sections[0]?.name).toBe(name));
-  it.each(["Heavy 10", "For Time:", "Push the pace.", "Hello, world", "Strict press with pause and tempo now", "strict press", 'Workout: ""', "- Strict Press", "x"])("%s is not a heading", (line) => expect(read([line, "a note."]).sections).toEqual([]));
+  it.each(["Heavy 10", "For Time:", "Push the pace.", "Hello, world", "Strict press with pause and tempo now", "strict press", 'Workout: ""', 'Workout: " "', 'Workout: "\t"', "- Strict Press", "x"])("%s is not a heading", (line) => expect(read([line, "a note."]).sections).toEqual([]));
   it("not the last line", () => expect(read(["intro.", "Strict Press"]).sections).toEqual([]));
   it("no generic title while a movement list is open", () => {
     const r = read(["Engine", "21-15-9", "Power Clean", "Thrusters"]);

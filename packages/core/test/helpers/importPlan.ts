@@ -18,6 +18,7 @@ export function toWrite(plan: ImportPlan): Record<string, unknown> {
       : { sets: it.form.rows.map((r) => ({ setType: "working", repsLow: r.repsLow, repsHigh: r.repsHigh })) }),
   }));
   return {
+    // An empty name is a legitimate "no title found" read (the editor asks for one); it is not a schema failure.
     name: plan.name === "" ? "n" : plan.name,
     ...(plan.notes === null ? {} : { notes: plan.notes }),
     ...(plan.sections.length === 0

@@ -73,5 +73,10 @@ describe("10.4 AC17 — limits are cut and reported (§6.6)", () => {
     expect(p.sections[0]!.name).toBe("É".repeat(40));
     expect(RoutineWriteSchema.safeParse(toWrite(p)).success).toBe(true);
   });
+  it.each(['Workout: " "', 'Workout: "   "', "Workout: “ ”"])("a title of only spaces (%s) never names the routine or a section", (title) => {
+    const p = plan([title, "Strength", "x."]);
+    expect(p.name).toBe("Strength");
+    expect(RoutineWriteSchema.safeParse(toWrite(p)).success).toBe(true);
+  });
   it("nothing is cut without a notice", () => expect(plan(["Strength", "3 Sets:", "10 Curl", "x."]).notices).toEqual([]));
 });

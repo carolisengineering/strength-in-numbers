@@ -182,7 +182,8 @@ export interface ReadResult {
   };
 }
 
-const WORKOUT_TITLE = /^workout\s*:\s*["“”]\s*(.+?)\s*["“”]$/i;
+// The title must hold a non-space character: `Workout: " "` is a note, like `Workout: ""`.
+const WORKOUT_TITLE = /^workout\s*:\s*["“”]\s*(\S(?:.*\S)?)\s*["“”]$/i;
 const HEADING_SET = new Set(HEADING_WORDS.map((w) => w.toLowerCase()));
 const WARMUP = /^warm[\s-]?up$/i;
 const TITLE_PUNCTUATION = /[:.!?,;]/;
