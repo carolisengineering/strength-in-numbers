@@ -17,7 +17,8 @@ export const NAV_LINES: readonly string[] = ["Home", "Schedule", "Workouts", "So
 
 const FURNITURE = new Set([...BADGE_LINES, ...GYM_LINES, ...NAV_LINES].map((l) => l.toLowerCase()));
 // C0 controls, DEL, C1 controls and the zero-width space / word joiner; `\s` covers NBSP and BOM.
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f​⁠]/g;
+// eslint-disable-next-line no-control-regex -- turning control characters into spaces is the point
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060]/g;
 const LINE_BREAK = /\r\n|\r|\n/;
 const ALNUM = /[\p{L}\p{N}]/u;
 

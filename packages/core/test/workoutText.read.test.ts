@@ -10,8 +10,7 @@ describe("10.4 AC5 — headings make sections", () => {
     ["Strength", "Strength"], ["Accessories", "Accessories"], ["Cool down", "Cool down"], ["Accessory:", "Accessory"],
     ["Strict Press", "Strict Press"], ["STRICT PRESS", "STRICT PRESS"], ["Front Rack Carry", "Front Rack Carry"],
   ])("%s → section %s", (line, name) => expect(read([line, "a note."]).sections[0]?.name).toBe(name));
-  it.each(["Heavy 10", "For Time:", "Push the pace.", "Hello, world", "Strict press with pause and tempo now", "strict press", 'Workout: ""', "- Strict Press", "x"])
-    ("%s is not a heading", (line) => expect(read([line, "a note."]).sections).toEqual([]));
+  it.each(["Heavy 10", "For Time:", "Push the pace.", "Hello, world", "Strict press with pause and tempo now", "strict press", 'Workout: ""', "- Strict Press", "x"])("%s is not a heading", (line) => expect(read([line, "a note."]).sections).toEqual([]));
   it("not the last line", () => expect(read(["intro.", "Strict Press"]).sections).toEqual([]));
   it("no generic title while a movement list is open", () => {
     const r = read(["Engine", "21-15-9", "Power Clean", "Thrusters"]);
@@ -78,8 +77,7 @@ describe("10.4 AC9 — lead-ins and rep forms", () => {
       ["Face Pull", { repsLow: null, repsHigh: null }, null, []],
     ]);
   });
-  it.each([["150 Double Unders", "150 Double Unders"], ["15-10 Curl", "15-10 Curl"], ["60/60 Step Ups", "60/60 Step Ups"], ["0 Curl", "0 Curl"]])
-    ("%s keeps its number in the name", (l, name) => expect(read(["Accessory", "3 Sets:", l, "x."]).items[0]!.name).toBe(name));
+  it.each([["150 Double Unders", "150 Double Unders"], ["15-10 Curl", "15-10 Curl"], ["60/60 Step Ups", "60/60 Step Ups"], ["0 Curl", "0 Curl"]])("%s keeps its number in the name", (l, name) => expect(read(["Accessory", "3 Sets:", l, "x."]).items[0]!.name).toBe(name));
   it("a lead-in count outside 1–99 is not a lead-in", () => expect(read(["Accessory", "1000 Sets:", "- 10 Curl", "x."]).items[0]!.rows).toBeNull());
   it("a 9-movement run keeps one run id (the plan splits it, AC17)", () => {
     const r = read(["Circuit", "2 Rounds", ...Array.from({ length: 9 }, (_, k) => `Move ${String.fromCharCode(65 + k)}x`), "x."]);

@@ -9,8 +9,7 @@ describe("10.4 AC14 — normalization and exact match", () => {
     ["Hand release pushups", "Hand-release push-up"], ["Presses", "press"], ["Raises", "raise"], ["Boxes", "box"],
     ["Pull-Ups", "pull up"], ["- Café Squats", "cafe squat"], ["Push  Press", "push-press"],
   ])("%s ≡ %s", (a, b) => expect(normalizeExerciseName(a)).toBe(normalizeExerciseName(b)));
-  it.each([["Press", "press"], ["Abs", "abs"], ["Pass", "pass"], ["Hand release pushups", "handreleasepushup"]])
-    ("%s → %s", (a, key) => expect(normalizeExerciseName(a)).toBe(key));
+  it.each([["Press", "press"], ["Abs", "abs"], ["Pass", "pass"], ["Hand release pushups", "handreleasepushup"]])("%s → %s", (a, key) => expect(normalizeExerciseName(a)).toBe(key));
   it("a name with no letter or digit has the empty key", () => expect(normalizeExerciseName("- • !")).toBe(""));
   it("an exact key match", () => expect(matchExerciseName("pull ups", BUILT_INS)).toEqual({ kind: "exact", row: BUILT_INS[6] }));
   it("ties: the custom row wins, then the lowest name", () => {
@@ -20,10 +19,8 @@ describe("10.4 AC14 — normalization and exact match", () => {
 });
 
 describe("10.4 AC15 — at most one similar suggestion, tuned on the built-ins", () => {
-  it.each([["Strict Press", "Overhead press"], ["DB Lateral Lunge", "Dumbbell lunge"], ["400 Meter Run", "Treadmill run"]])
-    ("%s → %s", (w, name) => expect(matchExerciseName(w, BUILT_INS)).toMatchObject({ kind: "similar", row: { name } }));
-  it.each(["Power Clean", "Hand Release Pushups", "Front Raise", "Reverse Fly"])
-    ("%s → none", (w) => expect(matchExerciseName(w, BUILT_INS)).toEqual({ kind: "none" }));
+  it.each([["Strict Press", "Overhead press"], ["DB Lateral Lunge", "Dumbbell lunge"], ["400 Meter Run", "Treadmill run"]])("%s → %s", (w, name) => expect(matchExerciseName(w, BUILT_INS)).toMatchObject({ kind: "similar", row: { name } }));
+  it.each(["Power Clean", "Hand Release Pushups", "Front Raise", "Reverse Fly"])("%s → none", (w) => expect(matchExerciseName(w, BUILT_INS)).toEqual({ kind: "none" }));
   it("kb / bb expand", () => expect(matchExerciseName("KB Swing", [{ id: "k", name: "Kettlebell swing", ownerUserId: null }])).toMatchObject({ kind: "exact" }));
   it("ties: shorter name, then alphabetical; deterministic", () => {
     const rows = [{ id: "1", name: "Zed press", ownerUserId: null }, { id: "2", name: "Ab press", ownerUserId: null }];

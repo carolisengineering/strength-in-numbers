@@ -191,6 +191,27 @@ const EXPECTED = [
   "normalizeSupersetGroups",
   "rpeToTenths",
   "tenthsToRpe",
+  // workoutText.ts, exerciseMatch.ts, importPlan.ts (Spec 10.4 §6.7)
+  "IMPORT_TEXT_MAX",
+  "CLOCK_LINE",
+  "RESULTS_LINE",
+  "BADGE_LINES",
+  "GYM_LINES",
+  "NAV_LINES",
+  "HEADING_WORDS",
+  "collapseLine",
+  "isFurnitureLine",
+  "cleanWorkoutText",
+  "readWorkoutText",
+  "SIMILAR_THRESHOLD",
+  "HEAD_NOUN_BONUS",
+  "normalizeExerciseName",
+  "matchExerciseName",
+  "guessModality",
+  "IMPORT_NOTICE_ORDER",
+  "cutNote",
+  "cutName",
+  "buildImportPlan",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

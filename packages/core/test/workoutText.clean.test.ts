@@ -8,10 +8,8 @@ const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2
 
 describe("10.4 AC2 — furniture lines are dropped by exact whole-line match", () => {
   it.each(["11:41", "7:05 PM", "07:05pm", "  no   score ", "Weight", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD",
-           "RESULTS (5)", "results (12)", "Log result", "HIRAYA TRAINING HOUSE", "Hiraya", "TRAINING HOUSE", "Home", "schedule", "Workouts", "Social"])
-    ("%s is furniture", (line) => expect(isFurnitureLine(line)).toBe(true));
-  it.each(["For Time:", "Push Press", "Weight training", "Time under tension 3:00", "Home stretch", "Results are mixed", "RESULTS", "11:41 Run"])
-    ("%s survives", (line) => expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(collapseLine(line)));
+           "RESULTS (5)", "results (12)", "Log result", "HIRAYA TRAINING HOUSE", "Hiraya", "TRAINING HOUSE", "Home", "schedule", "Workouts", "Social"])("%s is furniture", (line) => expect(isFurnitureLine(line)).toBe(true));
+  it.each(["For Time:", "Push Press", "Weight training", "Time under tension 3:00", "Home stretch", "Results are mixed", "RESULTS", "11:41 Run"])("%s survives", (line) => expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(collapseLine(line)));
 });
 
 describe("10.4 AC3 — screenshot boundaries at clock lines", () => {
