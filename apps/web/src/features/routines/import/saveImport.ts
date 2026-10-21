@@ -59,26 +59,38 @@ export async function prepareImportBody(
     record: SaveRecord;
     /** The routine list is at ROUTINES_PER_USER_MAX: say so and create nothing (no leftovers). */
     atLimit: boolean;
+    /** Aborted when the owner leaves the editor mid-Save: no further exercise is created. */
+    signal?: AbortSignal;
   },
   deps: SaveImportDeps,
 ): Promise<PreparedBody> {
-  const { body, draft, pending, record, atLimit } = args;
+  const { body, draft, pending, record, atLimit, signal } = args;
   if (atLimit) return { ok: false, message: LIMIT_MESSAGE, requestId: null };
   const retry = record.attempts > 0;
   record.attempts += 1;
   // An earlier attempt's response may have been lost: look at the list again before creating anything.
   if (retry) await deps.refresh(true);
+  // On a retry, what is in the list now: a recorded exercise deleted elsewhere is not reused, and a create
+  // whose response was lost is found by its name.
+  const visible = retry ? deps.visibleRows() : [];
+  const visibleIds = new Set<string>(visible.map((row) => row.id));
+  const byName = new Map<string, Exercise>();
+  for (const row of visible) {
+    const key = normalizeExerciseName(row.name);
+    if (!byName.has(key)) byName.set(key, row);
+  }
 
   const ids = new Map<string, string>();
   for (const placeholder of referencedPending(draft, pending)) {
+    if (signal?.aborted) return { ok: false, message: "", requestId: null };
     const { input } = pending.get(placeholder)!;
     const nameKey = normalizeExerciseName(input.name);
     const earlier = record.created.get(placeholder);
-    if (earlier && earlier.nameKey === nameKey) {
+    if (earlier && earlier.nameKey === nameKey && (!retry || visibleIds.has(earlier.id))) {
       ids.set(placeholder, earlier.id);
       continue;
     }
-    const found = retry ? deps.visibleRows().find((row) => normalizeExerciseName(row.name) === nameKey) : undefined;
+    const found = retry ? byName.get(nameKey) : undefined;
     if (found) {
       record.created.set(placeholder, { id: found.id, nameKey });
       ids.set(placeholder, found.id);

@@ -103,7 +103,7 @@ export interface EditorStart {
   /** Rendered above the form, before any error notice. */
   readonly notices?: ReactNode;
   /** Awaited by Save before the routine write (an import creates its pending exercises here). */
-  readonly prepareBody?: (body: RoutineWriteInput, draft: Draft) => Promise<PreparedBody>;
+  readonly prepareBody?: (body: RoutineWriteInput, draft: Draft, signal: AbortSignal) => Promise<PreparedBody>;
 }
 
 export function RoutineEditor({ routine, initial }: { routine: Routine | null; initial?: EditorStart }) {
@@ -195,6 +195,14 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
   const [saved, setSaved] = useState(false);
   /** Spec 10.4 AC31: `initial.prepareBody` is running (an import creating its exercises): Save is busy, the form locked. */
   const [preparing, setPreparing] = useState(false);
+  /** Aborted when the editor unmounts, so a discarded Save stops between `prepareBody`'s steps. */
+  const prepareAbort = useRef(new AbortController());
+  useEffect(() => {
+    // A fresh controller per mount: StrictMode's dev re-mount must not leave Save with an aborted signal.
+    const controller = new AbortController();
+    prepareAbort.current = controller;
+    return () => controller.abort();
+  }, []);
   const saving = create.isPending || replace.isPending || saved || preparing;
   const [focusName, setFocusName] = useState(false);
   useEffect(() => {
@@ -218,7 +226,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
         setPreparing(true);
         let prepared: PreparedBody;
         try {
-          prepared = await initial.prepareBody(body, sent);
+          prepared = await initial.prepareBody(body, sent, prepareAbort.current.signal);
         } finally {
           if (mounted.current) setPreparing(false);
         }

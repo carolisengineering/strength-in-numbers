@@ -1,5 +1,9 @@
 import type { RoutineWrite } from "@sin/core";
-import { screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +26,8 @@ import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { importCatalog, toEditor } from "../../../test/importFixtures";
 import { server } from "../../../test/msw/server";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
-import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
+import { routes } from "../../../app/router";
+import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { OFFLINE_SAVE, SAVE_FAILED } from "../messages";
 import { IMPORT_PATH } from "../paths";
 import { EXERCISE_LIMIT, createFailed } from "./messages";
@@ -157,5 +162,25 @@ describe("10.4 AC36 — observability", () => {
     const names = observability.track.mock.calls.map((c) => c[0] as string);
     expect(names.filter((n) => n === "custom_exercise_created")).toHaveLength(3);
     for (const name of names) expect(["custom_exercise_created", "catalog_reset", "exercise_picked", "routine_saved"]).toContain(name);
+  });
+});
+
+describe("10.4 AC31 — Save works under React StrictMode (the app's root)", () => {
+  it("the double-mounted editor still creates the exercises and the routine", async () => {
+    const fake = createWorkoutFake({ catalog: [...importCatalog], serveExercises: true });
+    prepareApp({ auth, fake, catalog: [...importCatalog] });
+    const router = createMemoryRouter(routes, { initialEntries: [IMPORT_PATH] });
+    render(
+      <StrictMode>
+        <QueryClientProvider client={makeQueryClient()}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    const user = userEvent.setup();
+    await toEditor(user);
+    await user.click(save());
+    expect(await screen.findByRole("heading", { level: 1, name: "Second Shift" })).toBeInTheDocument();
+    expect(fake.requests.filter((r) => r.method === "POST").map((r) => r.path)).toEqual(["/v1/exercises", "/v1/exercises", "/v1/exercises", "/v1/routines"]);
   });
 });

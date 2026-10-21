@@ -157,6 +157,25 @@ describe("10.4 AC32 — failure and retry never create twice", () => {
     expect(f.calls).toEqual(["create:Hand Release Pushups", "create:Front Raise", "refresh:true", "create:Reverse Fly"]);
   });
 
+  it("a Save cancelled mid-sequence creates nothing more", async () => {
+    const f = fakeDeps({ hold: true });
+    const controller = new AbortController();
+    const p = prepareImportBody({ body, draft, pending, record: newRecord(), atLimit: false, signal: controller.signal }, f.deps);
+    await vi.waitFor(() => expect(f.calls).toEqual(["create:Hand Release Pushups"]));
+    controller.abort();
+    f.releaseNext();
+    expect((await p).ok).toBe(false);
+    expect(f.calls).toEqual(["create:Hand Release Pushups"]);
+  });
+
+  it("a recorded exercise that has left the list since is created afresh on the retry", async () => {
+    const record: SaveRecord = { created: new Map([[phOf("Hand Release Pushups"), { id: exerciseId(77), nameKey: normalizeExerciseName("Hand Release Pushups") }]]), attempts: 1 };
+    const f = fakeDeps();
+    const r = await prepareImportBody({ body, draft, pending, record, atLimit: false }, f.deps);
+    expect(f.calls[1]).toBe("create:Hand Release Pushups");
+    expect(r.ok && r.body.items.some((i) => i.exerciseId === exerciseId(77))).toBe(false);
+  });
+
   it("at the routine limit nothing is created", async () => {
     const f = fakeDeps();
     expect(await prepareImportBody({ body, draft, pending, record: newRecord(), atLimit: true }, f.deps)).toEqual({ ok: false, message: LIMIT_MESSAGE, requestId: null });

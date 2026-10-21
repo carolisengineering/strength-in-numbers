@@ -1,5 +1,5 @@
-import { ROUTINES_PER_USER_MAX, type Routine } from "@sin/core";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { ROUTINES_PER_USER_MAX } from "@sin/core";
+import { useCallback, useMemo, useState } from "react";
 import { Navigate } from "react-router";
 
 import { useCatalogStore } from "../../catalog/CatalogProvider";
@@ -30,10 +30,7 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
   const routines = useRoutines();
   // At the routine limit, say so and create no exercise (no leftovers): Save reads the list afresh, because
   // another device may have added the 50th routine since this tab last fetched it.
-  const routinesNow = useRef<readonly Routine[] | undefined>(routines.data);
-  routinesNow.current = routines.data;
-  const refetchRoutines = useRef(routines.refetch);
-  refetchRoutines.current = routines.refetch;
+  const { refetch: refetchRoutines } = routines;
   // Built once per arrival: the draft is the editor's from here on.
   const [draft] = useState(() => draftFromImport(handoff.plan, (key) => handoff.exerciseIdOf.get(key)!));
   const pending = useMemo(
@@ -41,16 +38,15 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
     [handoff],
   );
   const prepareBody = useCallback(
-    async (body: RoutineWriteInput, sent: Draft): Promise<PreparedBody> => {
-      // A failed read (offline) falls back to the cached list; the creates then fail offline anyway.
-      const fresh = await refetchRoutines.current();
-      const list = fresh.data ?? routinesNow.current;
+    async (body: RoutineWriteInput, sent: Draft, signal: AbortSignal): Promise<PreparedBody> => {
+      // A failed read keeps the cached list (TanStack keeps `data`); the creates then fail offline anyway.
+      const { data: list } = await refetchRoutines();
       return prepareImportBody(
-        { body, draft: sent, pending: handoff.pending, record: saveRecord, atLimit: (list?.length ?? 0) >= ROUTINES_PER_USER_MAX },
+        { body, draft: sent, pending: handoff.pending, record: saveRecord, atLimit: (list?.length ?? 0) >= ROUTINES_PER_USER_MAX, signal },
         { createCustom: store.createCustom, refresh: store.refresh, visibleRows: () => visibleRows(store.getState().rows) },
       );
     },
-    [handoff, saveRecord, store],
+    [handoff, saveRecord, store, refetchRoutines],
   );
   return (
     <PendingExercisesContext.Provider value={pending}>

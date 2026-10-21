@@ -114,6 +114,8 @@ describe("10.4 AC33 — backing out leaves nothing", () => {
     await waitFor(() => expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/exercises").length).toBeGreaterThan(0));
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(fake.requests.filter((r) => r.path === "/v1/routines" && r.method === "POST")).toEqual([]);
+    // Only the create already on the wire when the owner left; the rest are never sent.
+    expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/exercises")).toHaveLength(1);
   });
 
   it("removing every item of a pending exercise means it is never created", async () => {
