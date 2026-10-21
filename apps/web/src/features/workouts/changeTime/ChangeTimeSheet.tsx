@@ -36,7 +36,7 @@ const TOOK_ERROR_ID = "change-time-took-error";
 /**
  * Spec 18.0 AC30–AC33, AC41–AC42: Day, Started at and Took, committed once on Save time. Only the
  * changed groups are sent; a client error (or the `resolveRetime` pre-check) blocks the request; a
- * failure keeps the typed values. The owner keys it per opening, so each opening starts from the
+ * failure keeps the typed values, and the sheet cannot be closed while a save is in flight. The owner keys it per opening, so each opening starts from the
  * stored workout.
  */
 export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onVanished }: ChangeTimeSheetProps) {
@@ -45,6 +45,8 @@ export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onV
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
   const [requestId, setRequestId] = useState<string | null>(null);
   const inFlight = useRef(false);
+  // Took inputs the browser cannot read as a number (`badInput`) report "", which must not count as blank.
+  const [unreadable, setUnreadable] = useState({ hours: false, minutes: false });
   const live = workout.endedAt === null;
   const bounds = dayBounds(openedAt);
 
@@ -58,6 +60,10 @@ export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onV
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (inFlight.current) return;
+    if (unreadable.hours || unreadable.minutes) {
+      setErrors({ took: EDIT_COPY.tookWhole });
+      return;
+    }
     const built = buildPatch(workout, form);
     if (!built.ok) {
       setErrors(built.errors);
@@ -109,12 +115,20 @@ export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onV
       step={1}
       className={styles.input}
       value={form[key]}
-      onChange={(e) => change(key, e.target.value)}
+      onChange={(e) => {
+        setUnreadable((u) => ({ ...u, [key]: e.target.validity.badInput }));
+        change(key, e.target.value);
+      }}
     />
   );
 
+  // A save in flight keeps the sheet open, so its failure is shown where the lifter can see it.
+  const close = () => {
+    if (!inFlight.current) onClose();
+  };
+
   return (
-    <Sheet open={open} title="Change Time" onClose={onClose}>
+    <Sheet open={open} title="Change Time" onClose={close}>
       <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
         <Field id="change-time-day" label="Day" {...(errors.day ? { error: errors.day } : {})}>
           {(control) => (

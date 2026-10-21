@@ -160,7 +160,7 @@ describe("18.0 AC35 — a read in flight when the save lands cannot overwrite it
     );
     await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
     await act(() => result.current.retime.mutateAsync({ workout: detail, patch: { startedAt: response.startedAt, tzOffsetMinutes: 60 } }));
-    stale.resolve(detail); // the cancelled read answers late with the old start
+    stale.resolve(detail); // the canceled read answers late with the old start
     await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.read.isFetching).toBe(false));
     expect(cached(qc).startedAt).toBe("2026-10-16T17:00:00.000Z");

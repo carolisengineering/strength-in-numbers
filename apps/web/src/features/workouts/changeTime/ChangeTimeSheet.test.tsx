@@ -168,3 +168,34 @@ describe("18.0 AC42 — one request at a time", () => {
     await act(async () => held.resolve(updatedOf(w)));
   });
 });
+
+describe("18.0 AC41 — a save in flight keeps the sheet open", () => {
+  it("Close and Escape do nothing until the answer; a failure then shows in the open sheet", async () => {
+    const held = deferred<UpdatedWorkout>();
+    const w = liveWorkout();
+    const { user, onClose } = setup(w, vi.fn(() => held.promise));
+    fireEvent.change(day(), { target: { value: "2026-10-16" } });
+    await user.click(save());
+    await user.click(sheet().getByRole("button", { name: "Close" }));
+    fireEvent(screen.getByRole("dialog", { name: "Change Time" }), new Event("cancel", { cancelable: true }));
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => held.reject(new TypeError("Failed to fetch")));
+    expect(sheet().getByRole("alert")).toBeInTheDocument();
+    await user.click(sheet().getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("18.0 AC33 — a Took the browser cannot read", () => {
+  it("shows the whole-numbers copy and sends nothing (it never counts as blank)", async () => {
+    const w = makeWorkoutDetail({ startedAt: "2026-10-18T09:05:00.000Z", localDate: "2026-10-18", tzOffsetMinutes: 60, plannedDurationSeconds: 3600 });
+    const { user, updateWorkout } = setup(w);
+    const input = hours();
+    Object.defineProperty(input, "validity", { configurable: true, value: { badInput: true } });
+    fireEvent.change(input, { target: { value: "" } });
+    await user.clear(minutes());
+    await user.click(save());
+    expect(updateWorkout).not.toHaveBeenCalled();
+    expect(sheet().getByText(EDIT_COPY.tookWhole)).toBeInTheDocument();
+  });
+});

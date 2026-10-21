@@ -6,6 +6,7 @@ import {
   type Workout,
 } from "@sin/core";
 import { ApiError } from "../../../api";
+import { todayLocal } from "../../progress/dates";
 import { EDIT_COPY } from "../edit/editCopy";
 import { workoutMinutes } from "../finishStats";
 import { startWorkoutFields } from "../timestamps";
@@ -29,7 +30,6 @@ export type ChangeTimeField = "day" | "time" | "took";
 export type ChangeTimeErrors = Partial<Record<ChangeTimeField | "form", string>>;
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME = /^(\d{2}):(\d{2})$/;
@@ -46,7 +46,7 @@ export function initialValues(w: TimedWorkout): ChangeTimeForm {
   const start = new Date(w.startedAt);
   const m = initialMinutes(w);
   return {
-    day: localDay(start),
+    day: todayLocal(start),
     time: localTime(start),
     hours: m === null ? "" : String(Math.floor(m / 60)),
     minutes: m === null ? "" : String(m % 60),
@@ -54,7 +54,7 @@ export function initialValues(w: TimedWorkout): ChangeTimeForm {
 }
 
 export function dayBounds(now: Date): { min: string; max: string } {
-  return { min: WORKOUT_START_EDIT_FLOOR.slice(0, 10), max: localDay(now) };
+  return { min: WORKOUT_START_EDIT_FLOOR.slice(0, 10), max: todayLocal(now) };
 }
 
 /** The device-zone instant of a Day and a Started at (AC32); JS moves a spring-forward gap forward. */
