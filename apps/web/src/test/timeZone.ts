@@ -26,7 +26,7 @@ export function inTimeZone<T>(tz: string, run: () => T): T {
   }
 }
 
-export function useTimeZone(tz: string): void {
+export function pinTimeZone(tz: string): void {
   let previous: string | undefined;
   beforeAll(() => {
     previous = process.env["TZ"];
