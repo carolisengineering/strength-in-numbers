@@ -3,6 +3,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Exercise } from "@sin/core";
+import { screen } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
+
+import { READ_BUTTON, TEXT_LABEL } from "../features/routines/import/messages";
 
 import { exerciseId, makeExercise } from "./catalogFixtures";
 
@@ -38,4 +42,21 @@ export function trackPaths(router: { subscribe: (fn: (state: { location: { pathn
   const seen: string[] = [];
   router.subscribe((state) => seen.push(state.location.pathname));
   return seen;
+}
+
+/** On the paste screen: paste the example and Read workout. */
+export async function readHiraya(user: UserEvent, text: string = HIRAYA_TEXT): Promise<void> {
+  await user.click(await screen.findByLabelText(TEXT_LABEL));
+  await user.paste(text);
+  await user.click(screen.getByRole("button", { name: READ_BUTTON }));
+}
+
+/** A name card on the Check screen, by its written name (the fieldset's legend). */
+export function cardGroup(written: string): Promise<HTMLElement> {
+  return screen.findByRole("group", { name: written });
+}
+
+/** The name cards on screen, in order. */
+export function cardGroups(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("fieldset[data-card]")];
 }

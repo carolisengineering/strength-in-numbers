@@ -1,0 +1,81 @@
+import { useEffect, useMemo, useRef } from "react";
+import { Navigate } from "react-router";
+
+import { useEquipment, useMuscleGroups } from "../../catalog/referenceData";
+import { useCatalog } from "../../catalog/useCatalog";
+import { BackLink } from "../../../ui/BackLink";
+import { InlineNotice } from "../../../ui/InlineNotice";
+import { Screen } from "../../../ui/Screen";
+import { IMPORT_PATH } from "../paths";
+import { cardNames, cardProblems, initialCards } from "./cards";
+import styles from "./ImportNames.module.css";
+import { useImportSession } from "./ImportSession";
+import { BACK_TO_TEXT, CATALOG_FAILED, CATALOG_LOADING, NAMES_TITLE, summaryLine } from "./messages";
+import { NameCard } from "./NameCard";
+
+/**
+ * Spec 10.4 §5.3, AC23–AC28: one card per exercise name, decided against a synced catalog. Nothing is
+ * created here; Continue hands the choices to the editor.
+ */
+export function ImportNames() {
+  const session = useImportSession();
+  const read = session.read?.result ?? null;
+  if (read === null || read.items.length === 0) return <Navigate to={IMPORT_PATH} replace />;
+  return <NamesBody />;
+}
+
+function NamesBody() {
+  const session = useImportSession();
+  const read = session.read!.result;
+  const { state, visible, refresh } = useCatalog();
+  const muscles = useMuscleGroups();
+  const equipment = useEquipment();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  // AC23: classify only against a synced catalog (or cached rows); an empty, never-synced store waits.
+  const waiting = state.rows.length === 0 && state.lastRefreshAt === null;
+
+  useEffect(() => titleRef.current?.focus(), []);
+
+  useEffect(() => {
+    if (!waiting && session.cards === null) session.setCards(initialCards(cardNames(read), visible));
+  }, [waiting, session, read, visible]);
+
+  const cards = session.cards;
+  const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map()), [cards, visible]);
+
+  return (
+    <Screen title={NAMES_TITLE} titleRef={titleRef} lead={<BackLink to={IMPORT_PATH} label={BACK_TO_TEXT} />}>
+      {waiting && state.status === "error" ? (
+        <InlineNotice tone="error" actionLabel="Retry" onAction={() => void refresh(true)}>
+          {CATALOG_FAILED}
+        </InlineNotice>
+      ) : null}
+      {waiting && state.status !== "error" ? (
+        <p role="status" className={styles.status}>
+          {CATALOG_LOADING}
+        </p>
+      ) : null}
+      {!waiting && cards !== null ? (
+        <>
+          <p className={styles.summary}>{summaryLine(read.sections.length, cards.length, read.chunks)}</p>
+          <div className={styles.cards}>
+            {cards.map((card) => (
+              <NameCard
+                key={card.key}
+                card={card}
+                problem={problems.get(card.key)}
+                visible={visible}
+                rows={state.rows}
+                muscleGroups={muscles.data}
+                equipment={equipment.data}
+                onChange={(change) => session.updateCard(card.key, change)}
+                onChooseAnother={() => undefined}
+                registerSelected={() => undefined}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </Screen>
+  );
+}

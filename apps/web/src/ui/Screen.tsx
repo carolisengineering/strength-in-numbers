@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 
 import styles from "./Screen.module.css";
 
@@ -9,6 +9,8 @@ export interface ScreenProps {
   /** The lead spans the screen's width: for a row that pairs a back link with a control at the far edge (#107). */
   leadFill?: boolean;
   children?: ReactNode;
+  /** Spec 10.4: a screen that moves focus to its title on arrival passes a ref; the `<h1>` then takes `tabIndex={-1}`. */
+  titleRef?: Ref<HTMLHeadingElement>;
 }
 
 /**
@@ -17,13 +19,13 @@ export interface ScreenProps {
  * can jump to it by name. Width is capped at `--measure-max` and centred; on a
  * phone that is simply full width with the standard gutter.
  */
-export function Screen({ title, lead, leadFill = false, children }: ScreenProps) {
+export function Screen({ title, lead, leadFill = false, children, titleRef }: ScreenProps) {
   const headingId = useId();
 
   return (
     <section className={styles.screen} aria-labelledby={headingId}>
       {lead ? <div className={leadFill ? styles.leadFill : styles.lead}>{lead}</div> : null}
-      <h1 className={styles.title} id={headingId}>
+      <h1 className={styles.title} id={headingId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
         {title}
       </h1>
       {children}

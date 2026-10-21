@@ -31,3 +31,24 @@ export function foundLine(sections: readonly string[]): string {
   if (sections.length === 0) return "Found a note, but no sections.";
   return `Found ${sections.length} ${sections.length === 1 ? "section" : "sections"}: ${sections.join(", ")}`;
 }
+
+// Check exercise names (AC23–AC24, §5.3).
+export const NAMES_TITLE = "Check exercise names";
+export const BACK_TO_TEXT = "Back to text";
+export const CATALOG_LOADING = "Loading your exercises…";
+export const CATALOG_FAILED = "Couldn't load your exercises";
+/** "Found 4 sections and 8 exercises from 5 screenshots"; "from K screenshots" only when K ≥ 2. */
+export function summaryLine(sections: number, exercises: number, screenshots: number): string {
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const from = screenshots >= 2 ? ` from ${screenshots} screenshots` : "";
+  return `Found ${count(sections, "section", "sections")} and ${count(exercises, "exercise", "exercises")}${from}`;
+}
+export const IN_YOUR_LIST = "In your list";
+export const SIMILAR = "Similar";
+export const NOTHING_SIMILAR = "Nothing similar in your list.";
+/** The card's current New name, else the written name when blank. */
+export const newOption = (name: string) => `New: ${name}`;
+export const usedIn = (sections: readonly string[]) => `Used in ${sections.join(", ")}`;
+export const CHOOSE_ANOTHER = "Choose another exercise";
+export const CHANGE = "Change";
+export const TYPE_LABEL = "Type";
