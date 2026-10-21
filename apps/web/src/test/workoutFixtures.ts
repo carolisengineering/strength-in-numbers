@@ -82,6 +82,9 @@ export interface WorkoutDetailOptions {
   /** Spec 18.0: the workout's own title and notes. */
   title?: string | null;
   notes?: string | null;
+  /** Spec 18.0 Phase B: a live workout's "took" (Change Time) and the recorded offset. */
+  plannedDurationSeconds?: number | null;
+  tzOffsetMinutes?: number;
 }
 
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
@@ -95,13 +98,13 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     startedAt: opts.startedAt ?? T0,
     endedAt: opts.endedAt ?? null,
     localDate: opts.localDate ?? "2026-10-02",
-    tzOffsetMinutes: 0,
+    tzOffsetMinutes: opts.tzOffsetMinutes ?? 0,
     clientGeneratedId: nextId(),
     source: "manual",
     createdAt: T0,
     updatedAt: T0,
     routineName: opts.routineName ?? null,
-    plannedDurationSeconds: null,
+    plannedDurationSeconds: opts.plannedDurationSeconds ?? null,
     routineNotes: opts.routineNotes ?? null,
     sections,
     exercises: (opts.exercises ?? []).map((spec, position) => {

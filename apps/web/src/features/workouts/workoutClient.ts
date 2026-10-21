@@ -21,10 +21,14 @@ export interface WorkoutExercisePatch {
   readonly supersetGroup?: number | null;
 }
 
-/** Spec 18.0 AC54: a finished workout's title and notes (Phase B adds the Change Time keys). */
+/** Spec 18.0 AC54: a finished workout's title and notes; AC29: Change Time's keys. */
 export interface WorkoutUpdate {
   readonly title?: string | null;
   readonly notes?: string | null;
+  readonly startedAt?: string;
+  /** Only with `startedAt` (07.4). */
+  readonly tzOffsetMinutes?: number;
+  readonly durationSeconds?: number | null;
 }
 
 /**
@@ -97,9 +101,12 @@ export function createWorkoutClient(
     },
     setExerciseNote: (id, notes) => api.patch(`/v1/workout-exercises/${seg(id)}`, { notes }, WorkoutExerciseSchema),
     updateWorkout: (id, body) => {
-      const wire: { title?: string | null; notes?: string | null } = {};
+      const wire: { -readonly [K in keyof WorkoutUpdate]: WorkoutUpdate[K] } = {};
       if (body.title !== undefined) wire.title = body.title;
       if (body.notes !== undefined) wire.notes = body.notes;
+      if (body.startedAt !== undefined) wire.startedAt = body.startedAt;
+      if (body.tzOffsetMinutes !== undefined) wire.tzOffsetMinutes = body.tzOffsetMinutes;
+      if (body.durationSeconds !== undefined) wire.durationSeconds = body.durationSeconds;
       return api.patch(`/v1/workouts/${seg(id)}`, wire, UpdatedWorkoutSchema);
     },
   };
