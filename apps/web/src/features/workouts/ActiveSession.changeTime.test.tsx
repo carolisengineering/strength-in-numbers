@@ -73,7 +73,7 @@ async function changeTime(user: ReturnType<typeof renderApp>["user"], values: { 
   await user.click(sheet().getByRole("button", { name: "Save time" }));
 }
 
-describe("18.0 AC34 — the header's two rows", () => {
+describe("18.0 AC34 — the header has two rows", () => {
   it("row 1: the clock and Workout menu; row 2: Started and a secondary Change Time; the menu items come after", async () => {
     const { user } = await setup();
     const menu = screen.getByRole("button", { name: "Workout menu" });

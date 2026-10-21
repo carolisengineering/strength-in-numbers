@@ -161,7 +161,7 @@ describe("18.0 AC42 — Done waits", () => {
   });
 });
 
-describe("18.0 AC31 — a traveler's workout: changing only Took keeps the day and the offset", () => {
+describe("18.0 AC31 — a traveler workout: changing only Took keeps the day and the offset", () => {
   it("New York workout on a London phone: the body is the duration alone", async () => {
     const { user, fake, workout } = await open({ startedAt: "2026-10-14T22:05:37.000Z", endedAt: "2026-10-14T22:57:37.000Z", tzOffsetMinutes: -240 });
     await user.click(changeTimeButton());

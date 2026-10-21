@@ -51,7 +51,7 @@ const cached = (qc: ReturnType<typeof makeQueryClient>) => qc.getQueryData<Worko
 const historyReset = (qc: ReturnType<typeof makeQueryClient>) => qc.getQueryState(HISTORY_KEYS.list)?.data === undefined;
 const recordsInvalidated = (qc: ReturnType<typeof makeQueryClient>) => qc.getQueryState(RECORDS)?.isInvalidated === true;
 
-describe("18.0 AC35 — a live save merges into the caller's key only", () => {
+describe("18.0 AC35 — a live save merges into the key the caller passes, only", () => {
   it("the response's times land in the cached entry; exercises, History and records are untouched", async () => {
     const { qc, detail } = seeded();
     const response = updatedOf(detail, {

@@ -282,7 +282,7 @@ describe("AC35 — observability hygiene across the flows", () => {
   });
 });
 
-describe("18.0 AC43 — Change Time's event in the hygiene scan", () => {
+describe("18.0 AC43 — the Change Time event in the hygiene scan", () => {
   it("a live Change Time emits workout_retimed with scalars only", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Change Time" }));

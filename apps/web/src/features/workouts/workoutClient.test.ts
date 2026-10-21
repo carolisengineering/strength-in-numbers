@@ -203,7 +203,7 @@ describe("18.0 AC54 — updateWorkout sends exactly the keys given", () => {
   });
 });
 
-describe("18.0 AC29 — updateWorkout carries Change Time's keys", () => {
+describe("18.0 AC29 — updateWorkout carries the Change Time keys", () => {
   it("sends exactly the given time keys, null included", async () => {
     const { api, calls } = recordingApi();
     const client = createWorkoutClient(api);

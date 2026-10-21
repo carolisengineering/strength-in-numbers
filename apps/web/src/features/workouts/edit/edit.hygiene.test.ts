@@ -6,6 +6,12 @@ const editSources = import.meta.glob(["./**/*.ts", "./**/*.tsx", "!./**/*.test.t
   import: "default",
   eager: true,
 }) as Record<string, string>;
+// Spec 18.0 Phase B: the Change Time modules are held to the same rules, plus no `useNow` (17.1 AC49).
+const changeTimeSources = import.meta.glob(["../changeTime/**/*.ts", "../changeTime/**/*.tsx", "!../changeTime/**/*.test.ts", "!../changeTime/**/*.test.tsx"], {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 const activeSession = import.meta.glob("../ActiveSession.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const liveScreens = import.meta.glob(["../ActiveSession.tsx", "../StartWorkout.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const corsMethods = import.meta.glob("../../../../../api/src/plugins/cors-methods.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -24,6 +30,14 @@ describe("18.0 AC46 — edit modules stay off the live machinery", () => {
   it("no edit module names the outbox, drafts, rest store, log action, the live set key, the active key or browser storage", () => {
     const offenders = Object.entries(editSources)
       .filter(([, source]) => LIVE_MACHINERY.test(stripComments(source)))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
+  it("the Change Time modules name none of them, nor useNow", () => {
+    expect(Object.keys(changeTimeSources).length).toBeGreaterThanOrEqual(3);
+    const offenders = Object.entries(changeTimeSources)
+      .filter(([, source]) => LIVE_MACHINERY.test(stripComments(source)) || /\buseNow\b/.test(stripComments(source)))
       .map(([path]) => path);
     expect(offenders).toEqual([]);
   });

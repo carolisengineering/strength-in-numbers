@@ -63,7 +63,7 @@ describe("18.0 AC3 — formatStartedAt", () => {
   });
 });
 
-describe("18.0 AC34 — formatStartedAt's today form", () => {
+describe("18.0 AC34 — the today form of formatStartedAt", () => {
   const london = { timeZone: "Europe/London" };
   it("today in the zone is the time alone; another day is the full form", () => {
     expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe("18:00");

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -592,5 +592,33 @@ describe("18.0 AC44 — the edit screen is accessible (component level)", () => 
     await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this whole workout instead?" });
     expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep it" }));
+  });
+});
+
+describe("18.0 AC44 — Change Time is accessible (component level)", () => {
+  it("live: one Change Time button; every sheet input is named; Hours and Minutes sit in the group Took; a Took error is an alert tied to both", async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Change Time" }));
+    expect(screen.getAllByRole("button", { name: "Change Time" })).toHaveLength(1);
+    const sheet = screen.getByRole("dialog", { name: "Change Time" });
+    for (const control of sheet.querySelectorAll("input")) expect(control).toHaveAccessibleName();
+    const took = within(sheet).getByRole("group", { name: "Took" });
+    const inputs = [within(took).getByLabelText("Hours"), within(took).getByLabelText("Minutes")];
+    fireEvent.change(inputs[0]!, { target: { value: "1.5" } });
+    await user.click(within(sheet).getByRole("button", { name: "Save time" }));
+    const error = within(sheet).getByText("Use whole numbers: hours 0–24, minutes 0–59.");
+    expect(error).toHaveAttribute("role", "alert");
+    for (const input of inputs) expect(input.getAttribute("aria-describedby")?.split(" ")).toContain(error.id);
+  });
+
+  it("edit: one Change Time button; with the sheet open the screen still has one status line", async () => {
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet({ setNumber: 1 })] }] });
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const { user } = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    expect(screen.getAllByRole("button", { name: "Change Time" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Change Time" }));
+    expect(screen.getAllByRole("status")).toEqual([screen.getByTestId("edit-announcement")]);
   });
 });
