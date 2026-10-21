@@ -48,7 +48,7 @@ import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
 import { FinishDialogBody } from "./FinishDialog";
-import { finishTimestamp } from "./timestamps";
+import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
@@ -239,9 +239,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const openedAt = useMemo(() => new Date(), [dialogOpen]);
   // Dialogs show three stats (no volume, AC9); the projected list counts a queued set (06.2).
   const dialogStats = useMemo(
-    () => ({ ...finishStatsFor({ startedAt: workout.startedAt, exercises }, finishTimestamp(workout.startedAt, openedAt)), volumeKg: null }),
-    [workout.startedAt, exercises, openedAt],
+    () => ({
+      ...finishStatsFor({ startedAt: workout.startedAt, exercises }, finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, openedAt)),
+      volumeKg: null,
+    }),
+    [workout.startedAt, workout.plannedDurationSeconds, exercises, openedAt],
   );
+  // Spec 18.0 AC38: with a plan, both dialogs say where the workout ends.
+  const endsAt = workout.plannedDurationSeconds === null ? undefined : finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, openedAt);
   const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null || retime.isPending;
 
   // A flag lasts only while the set is still incomplete: fixing or deleting it clears the marker.
@@ -475,6 +480,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         viaReplay: true,
         endedEarly,
         unloggedPlannedSets: unlogged.total,
+        hadPlannedDuration: workout.plannedDurationSeconds !== null,
       });
       afterFinished();
     } catch {
@@ -501,7 +507,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
+      await finish.mutateAsync({ id: workout.id, endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
       setFinishOpen(false);
       setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
@@ -809,9 +815,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} />
       </ConfirmDialog>
-      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
+      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} {...(endsAt ? { endsAt } : {})} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 
       <ConfirmDialog
         open={discardOpen}

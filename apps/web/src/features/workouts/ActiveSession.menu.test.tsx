@@ -97,7 +97,7 @@ describe("17.1 AC33 — End workout early", () => {
 });
 
 describe("17.1 AC53 — workout_finished gains endedEarly and unloggedPlannedSets", () => {
-  it("an early end reports true and the count; no other prop is added", async () => {
+  it("an early end reports true and the count; no other prop is added (amended by 18.0 AC43)", async () => {
     const { user } = await setup([ex("A", { plannedSets: planned(3), sets: logged(1) })]);
     await openMenu(user);
     await user.click(screen.getByRole("button", { name: "End workout early" }));
@@ -105,7 +105,7 @@ describe("17.1 AC53 — workout_finished gains endedEarly and unloggedPlannedSet
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.anything()));
     const props = observability.track.mock.calls.find(([e]) => e === "workout_finished")![1];
     expect(props).toMatchObject({ endedEarly: true, unloggedPlannedSets: 2 });
-    expect(Object.keys(props).sort()).toEqual(["durationMin", "endedEarly", "exerciseCount", "setCount", "unloggedPlannedSets"]);
+    expect(Object.keys(props).sort()).toEqual(["durationMin", "endedEarly", "exerciseCount", "hadPlannedDuration", "setCount", "unloggedPlannedSets"]);
   });
 
   it("a normal finish reports false and 0", async () => {

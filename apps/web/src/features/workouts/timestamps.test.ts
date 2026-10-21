@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateWorkoutSchema } from "@sin/core";
-import { finishTimestamp, startWorkoutFields } from "./timestamps";
+import { finishEndedAt, finishTimestamp, startWorkoutFields } from "./timestamps";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -29,5 +29,18 @@ describe("AC3 — start and finish timestamps", () => {
     const started = "2026-10-02T10:00:00.000Z";
     expect(finishTimestamp(started, new Date("2026-10-02T10:30:00Z"))).toBe("2026-10-02T10:30:00.000Z");
     expect(finishTimestamp(started, new Date("2026-10-02T09:00:00Z"))).toBe(started);
+  });
+});
+
+describe("18.0 AC37 — finishEndedAt", () => {
+  const started = "2026-10-16T17:00:00.000Z";
+  it("without a plan it is finishTimestamp: now, clamped up to the start", () => {
+    expect(finishEndedAt(started, null, new Date("2026-10-18T10:00:00Z"))).toBe("2026-10-18T10:00:00.000Z");
+    expect(finishEndedAt(started, null, new Date("2026-10-16T16:00:00Z"))).toBe(started);
+  });
+  it("with a plan it is start + plan, whatever now is", () => {
+    for (const now of ["2026-10-16T17:30:00Z", "2026-10-18T10:00:00Z", "2030-01-01T00:00:00Z"]) {
+      expect(finishEndedAt(started, 3600, new Date(now))).toBe("2026-10-16T18:00:00.000Z");
+    }
   });
 });

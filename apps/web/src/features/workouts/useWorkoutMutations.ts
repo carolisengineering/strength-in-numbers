@@ -118,6 +118,8 @@ export function useFinishWorkout(): UseMutationResult<
         // Spec 17.1 AC53: scalars only.
         endedEarly: endedEarly ?? false,
         unloggedPlannedSets: unloggedPlannedSets ?? 0,
+        // Spec 18.0 AC43: the cached entry is still the pre-finish one (this hook only seeds the summary).
+        hadPlannedDuration: cached?.plannedDurationSeconds != null,
         ...(viaReplay ? { viaReplay: true } : {}),
       });
     },
