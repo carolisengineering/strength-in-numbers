@@ -58,12 +58,13 @@ describe("10.4 AC20 — nothing persists, nothing in a URL or router state", () 
 });
 
 describe("10.4 AC35 — import sources render text as text (Phase B files)", () => {
-  it("no markup injection, inline style or storage names", () => {
+  it("no markup injection, inline style, storage names or console output", () => {
     const sources = importSources();
     expect(sources.length).toBeGreaterThanOrEqual(7);
     for (const [file, src] of sources) {
       expect(src, file).not.toMatch(/dangerouslySetInnerHTML|innerHTML|\bstyle\s*=|<style/);
       expect(src, file).not.toMatch(/localStorage|sessionStorage/);
+      expect(src, file).not.toMatch(/\bconsole\./);
     }
   });
 });
