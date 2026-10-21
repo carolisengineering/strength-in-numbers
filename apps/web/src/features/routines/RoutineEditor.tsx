@@ -222,6 +222,11 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
         } finally {
           if (mounted.current) setPreparing(false);
         }
+        // Discarded while the exercises were being created: write no routine (what was created stays, Spec 10.4 D5).
+        if (!mounted.current) {
+          inFlight.current = false;
+          return;
+        }
         if (!prepared.ok) {
           inFlight.current = false;
           setFormError({ text: prepared.message, requestId: prepared.requestId });

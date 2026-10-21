@@ -1,5 +1,6 @@
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -14,10 +15,12 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
+import { API_BASE_URL } from "../../../test/catalogHarness";
 import { cardGroups, importCatalog, readHiraya, toEditor } from "../../../test/importFixtures";
+import { server } from "../../../test/msw/server";
 import { createWorkoutFake, type WorkoutFake } from "../../../test/workoutFake";
 import { makeRoutine, routineId } from "../../../test/workoutFixtures";
-import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
+import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { LIMIT_MESSAGE } from "../messages";
 import { IMPORT_EDIT_PATH, IMPORT_NAMES_PATH, IMPORT_PATH } from "../paths";
 import { ROUTINE_KEYS } from "../queries";
@@ -89,6 +92,30 @@ describe("10.4 AC33 — backing out leaves nothing", () => {
     expect(writesOf(fake)).toEqual([]);
   });
 
+  it("Discard while the exercises are being created: the routine is never written", async () => {
+    const { user, fake } = start();
+    const held = deferred<void>();
+    let first = true;
+    server.use(
+      http.post(`${API_BASE_URL}/v1/exercises`, async () => {
+        if (!first) return undefined;
+        first = false;
+        await held.promise;
+        return undefined; // falls through to the fake
+      }),
+    );
+    await toEditor(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("aria-busy", "true"));
+    await user.click(screen.getByRole("link", { name: "History" }));
+    await user.click(await screen.findByRole("button", { name: "Discard" }));
+    await screen.findByRole("heading", { level: 1, name: "History" });
+    held.resolve();
+    await waitFor(() => expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/exercises").length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(fake.requests.filter((r) => r.path === "/v1/routines" && r.method === "POST")).toEqual([]);
+  });
+
   it("removing every item of a pending exercise means it is never created", async () => {
     const { user, fake } = start();
     await toEditor(user);
@@ -103,6 +130,16 @@ describe("10.4 AC33 — backing out leaves nothing", () => {
 });
 
 describe("10.4 AC32 — the routine limit at Save creates nothing", () => {
+  it("a 50th routine from another device that this tab has not seen: still nothing is created", async () => {
+    const { user, fake } = start(ROUTINES_PER_USER_MAX - 1);
+    await toEditor(user);
+    const extra = makeRoutine({ id: routineId(ROUTINES_PER_USER_MAX), name: "From another device" });
+    fake.state.routines.set(extra.id, extra); // no refetch: the cached list still says 49
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(LIMIT_MESSAGE)).toBeInTheDocument();
+    expect(writesOf(fake)).toEqual([]);
+  });
+
   it("50 routines by Save time: LIMIT_MESSAGE, no POST at all", async () => {
     const { user, fake, queryClient } = start(ROUTINES_PER_USER_MAX - 1);
     await toEditor(user);

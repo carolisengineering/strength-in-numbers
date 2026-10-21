@@ -28,9 +28,12 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
   const { saveRecord } = useImportSession();
   const store = useCatalogStore();
   const routines = useRoutines();
-  // The latest list at Save time: at the routine limit, say so and create no exercise (no leftovers).
+  // At the routine limit, say so and create no exercise (no leftovers): Save reads the list afresh, because
+  // another device may have added the 50th routine since this tab last fetched it.
   const routinesNow = useRef<readonly Routine[] | undefined>(routines.data);
   routinesNow.current = routines.data;
+  const refetchRoutines = useRef(routines.refetch);
+  refetchRoutines.current = routines.refetch;
   // Built once per arrival: the draft is the editor's from here on.
   const [draft] = useState(() => draftFromImport(handoff.plan, (key) => handoff.exerciseIdOf.get(key)!));
   const pending = useMemo(
@@ -38,11 +41,15 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
     [handoff],
   );
   const prepareBody = useCallback(
-    (body: RoutineWriteInput, sent: Draft): Promise<PreparedBody> =>
-      prepareImportBody(
-        { body, draft: sent, pending: handoff.pending, record: saveRecord, atLimit: (routinesNow.current?.length ?? 0) >= ROUTINES_PER_USER_MAX },
+    async (body: RoutineWriteInput, sent: Draft): Promise<PreparedBody> => {
+      // A failed read (offline) falls back to the cached list; the creates then fail offline anyway.
+      const fresh = await refetchRoutines.current();
+      const list = fresh.data ?? routinesNow.current;
+      return prepareImportBody(
+        { body, draft: sent, pending: handoff.pending, record: saveRecord, atLimit: (list?.length ?? 0) >= ROUTINES_PER_USER_MAX },
         { createCustom: store.createCustom, refresh: store.refresh, visibleRows: () => visibleRows(store.getState().rows) },
-      ),
+      );
+    },
     [handoff, saveRecord, store],
   );
   return (
