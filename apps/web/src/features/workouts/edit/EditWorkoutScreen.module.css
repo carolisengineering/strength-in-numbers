@@ -11,6 +11,14 @@
   font-size: var(--font-size-sm);
 }
 
+/* Spec 18.0 D22: Change Time after the header line; it wraps under it at phone width. */
+.headerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
 /* Spec 18.0 AC52: the Details panel. */
 .details {
   display: flex;
