@@ -88,7 +88,8 @@ export function buildPatch(
   const took = typedMinutes(form);
   const tookChanged = took === "invalid" || took.total !== initialMinutes(w);
   if (tookChanged) {
-    if (took === "invalid" || took.hours > 24 || took.minutes > 59) errors.took = EDIT_COPY.tookWhole;
+    // §5.6: anything above 24 h (hours 25 included) is "at most 24 hours"; "whole numbers" is for the rest.
+    if (took === "invalid" || took.minutes > 59) errors.took = EDIT_COPY.tookWhole;
     else if (took.total !== null && took.total > MAX_MINUTES) errors.took = EDIT_COPY.tookMax;
     else if (took.total === null && w.endedAt !== null) errors.took = EDIT_COPY.tookRequired;
   }

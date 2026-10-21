@@ -95,9 +95,10 @@ describe("18.0 AC33 — client errors", () => {
     ["blank Day", form("", "18:00", "1", "0"), { day: EDIT_COPY.pickDay }],
     ["blank Started at", form("2026-10-16", "", "1", "0"), { time: EDIT_COPY.pickTime }],
     ["Hours 1.5", form("2026-10-16", "18:00", "1.5", "0"), { took: EDIT_COPY.tookWhole }],
-    ["Hours 25", form("2026-10-16", "18:00", "25", "0"), { took: EDIT_COPY.tookWhole }],
+    ["Hours 25", form("2026-10-16", "18:00", "25", "0"), { took: EDIT_COPY.tookMax }],
     ["Minutes 60", form("2026-10-16", "18:00", "1", "60"), { took: EDIT_COPY.tookWhole }],
     ["24 h 1 min", form("2026-10-16", "18:00", "24", "1"), { took: EDIT_COPY.tookMax }],
+    ["24 h 60 min", form("2026-10-16", "18:00", "24", "60"), { took: EDIT_COPY.tookWhole }],
     ["blank Took on a finished workout", form("2026-10-16", "18:00"), { took: EDIT_COPY.tookRequired }],
   ])("%s", (_, f, errors) => {
     expect(errorsOf(hour, f)).toEqual({ ok: false, errors });
