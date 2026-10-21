@@ -8,6 +8,7 @@ import styles from "./ImportNames.module.css";
 import {
   CHANGE,
   CHOOSE_ANOTHER,
+  EXERCISE_GONE,
   IN_YOUR_LIST,
   NOTHING_SIMILAR,
   SAME_NEW,
@@ -70,7 +71,7 @@ export function NameCard({ card, problem, rows, muscleGroups, equipment, onChang
 
   const nameNotice =
     problem?.kind === "exists" ? (
-      <div className={styles.notice}>
+      <div className={styles.notice} role="status">
         <p>{alreadyInList(problem.exercise.name)}</p>
         <Button
           variant="secondary"
@@ -84,7 +85,9 @@ export function NameCard({ card, problem, rows, muscleGroups, equipment, onChang
         </Button>
       </div>
     ) : problem?.kind === "same-new" ? (
-      <p className={styles.notice}>{SAME_NEW}</p>
+      <p className={styles.notice} role="status">
+        {SAME_NEW}
+      </p>
     ) : null;
 
   return (
@@ -92,6 +95,11 @@ export function NameCard({ card, problem, rows, muscleGroups, equipment, onChang
       <legend className={styles.written}>{card.written}</legend>
       {card.usedIn.length > 0 ? <p className={styles.usedIn}>{usedIn(card.usedIn)}</p> : null}
       {card.match === null ? <p className={styles.usedIn}>{NOTHING_SIMILAR}</p> : null}
+      {problem?.kind === "gone" ? (
+        <p className={styles.notice} role="status">
+          {EXERCISE_GONE}
+        </p>
+      ) : null}
       <div className={styles.options}>
         {card.match !== null && matchName !== null ? (
           <label className={styles.option}>
@@ -111,7 +119,7 @@ export function NameCard({ card, problem, rows, muscleGroups, equipment, onChang
             </Button>
           </div>
         ) : null}
-        {card.match?.kind !== "exact" ? (
+        {card.match?.kind !== "exact" || card.match.chosen || matchName === null ? (
           <label className={styles.option}>
             <input {...radio("new")} />
             <span>{newOption(newName)}</span>

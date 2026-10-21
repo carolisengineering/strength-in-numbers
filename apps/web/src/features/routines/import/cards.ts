@@ -26,7 +26,8 @@ export interface CardState {
   readonly written: string;
   /** Section names; [] for loose-only. */
   readonly usedIn: readonly string[];
-  readonly match: { readonly kind: "exact" | "similar"; readonly exerciseId: string } | null;
+  /** `chosen`: set by "Use it instead", so the card still offers New (a tap can be undone). */
+  readonly match: { readonly kind: "exact" | "similar"; readonly exerciseId: string; readonly chosen?: boolean } | null;
   readonly pickedId: string | null;
   readonly selected: "match" | "picked" | "new";
   readonly newValue: ExerciseFieldValues;
@@ -68,7 +69,9 @@ export type CardProblem =
   /** Equals another card's New name (every such card). */
   | { readonly kind: "same-new" }
   /** CreateExerciseSchema refuses the rest. */
-  | { readonly kind: "invalid" };
+  | { readonly kind: "invalid" }
+  /** The matched or picked exercise has left the list (a sync dropped it). */
+  | { readonly kind: "gone" };
 
 function nameProblem(name: string): string | null {
   const trimmed = name.trim();
@@ -77,9 +80,17 @@ function nameProblem(name: string): string | null {
   return CatalogName.safeParse(trimmed).success ? null : NEW_NAME_INVALID;
 }
 
-/** AC27–AC28: only New cards, only those with a problem. Recomputed on the current `visible` rows. */
+/**
+ * AC27–AC28: only cards with a problem. Recomputed on the current `visible` rows, so a New name that now
+ * exists, or a chosen exercise that a sync dropped, blocks Continue.
+ */
 export function cardProblems(cards: readonly CardState[], visible: readonly Exercise[]): ReadonlyMap<string, CardProblem> {
   const problems = new Map<string, CardProblem>();
+  const visibleIds = new Set<string>(visible.map((row) => row.id));
+  for (const card of cards) {
+    const id = card.selected === "picked" ? card.pickedId : card.selected === "match" ? (card.match?.exerciseId ?? null) : undefined;
+    if (id !== undefined && (id === null || !visibleIds.has(id))) problems.set(card.key, { kind: "gone" });
+  }
   const fresh = cards.filter((card) => card.selected === "new");
   if (fresh.length === 0) return problems;
   const byKey = new Map<string, Exercise>();
@@ -102,5 +113,5 @@ export function cardProblems(cards: readonly CardState[], visible: readonly Exer
 
 /** AC27 "Use it instead": the card takes that exercise as its exact match. */
 export function chooseExisting(card: CardState, exercise: Exercise): CardState {
-  return { ...card, match: { kind: "exact", exerciseId: exercise.id }, selected: "match" };
+  return { ...card, match: { kind: "exact", exerciseId: exercise.id, chosen: true }, selected: "match" };
 }

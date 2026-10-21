@@ -60,3 +60,4 @@ export const SAME_NEW = "Another new exercise has this name";
 export const CONTINUE = "Continue";
 export const GO_TO_FIRST = "Go to the first one";
 export const needAttention = (n: number) => (n === 1 ? "1 card needs attention" : `${n} cards need attention`);
+export const EXERCISE_GONE = "That exercise is no longer in your list";

@@ -108,6 +108,23 @@ describe("10.4 AC27 — names that already exist, on screen", () => {
     expect(chosen).toBeChecked();
     expect(chosen).toHaveFocus();
     expect(within(hand).getByText(IN_YOUR_LIST)).toBeInTheDocument();
+    // A tap can be undone: New stays on the card, with the typed name.
+    await user.click(within(hand).getByRole("radio", { name: newOption("overhead presses") }));
+    expect(within(hand).getByLabelText("Name")).toHaveValue("overhead presses");
+  });
+
+  it("the blocking notices are announced", async () => {
+    const { user } = await openNames();
+    const hand = await cardGroup("Hand Release Pushups");
+    await user.clear(within(hand).getByLabelText("Name"));
+    await user.type(within(hand).getByLabelText("Name"), "Overhead press");
+    expect(within(hand).getByRole("status")).toHaveTextContent(alreadyInList("Overhead press"));
+    for (const written of ["Front Raise", "Reverse Fly"]) {
+      const card = await cardGroup(written);
+      await user.clear(within(card).getByLabelText("Name"));
+      await user.type(within(card).getByLabelText("Name"), "Raise");
+    }
+    expect(within(await cardGroup("Front Raise")).getByRole("status")).toHaveTextContent(SAME_NEW);
   });
 
   it("two New cards with one name both say so, with no button", async () => {

@@ -51,6 +51,12 @@ describe("10.4 AC27 — names that already exist", () => {
     const later = [...importCatalog, makeExercise({ id: exerciseId(99), name: "Hand-release push-up" })];
     expect(cardProblems([cards[2]!], later).get(cards[2]!.key)).toMatchObject({ kind: "exists" });
   });
+  it("a matched or picked exercise that has left the list blocks the card", () => {
+    const without = importCatalog.filter((e) => e.name !== "Power Clean");
+    expect(cardProblems(cards, without).get(cards[1]!.key)).toEqual({ kind: "gone" });
+    const picked = { ...cards[5]!, selected: "picked" as const, pickedId: exerciseId(77) };
+    expect(cardProblems([picked], importCatalog).get(picked.key)).toEqual({ kind: "gone" });
+  });
   it("chooseExisting selects that exercise as exact", () =>
     expect(chooseExisting(cards[2]!, importCatalog[0]!)).toMatchObject({ selected: "match", match: { kind: "exact", exerciseId: importCatalog[0]!.id } }));
 });
