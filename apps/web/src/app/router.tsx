@@ -9,7 +9,6 @@ import { ImportEditRoute } from "../features/routines/import/ImportEdit";
 import { ImportNames } from "../features/routines/import/ImportNames";
 import { ImportPaste } from "../features/routines/import/ImportPaste";
 import { ImportLayout } from "../features/routines/import/ImportSession";
-import { IMPORT_PATH } from "../features/routines/paths";
 import { RoutineEditorRoute } from "../features/routines/RoutineEditor";
 import { RoutinePreviewRoute } from "../features/routines/RoutinePreview";
 import { EditWorkoutScreen } from "../features/workouts/edit/EditWorkoutScreen";
