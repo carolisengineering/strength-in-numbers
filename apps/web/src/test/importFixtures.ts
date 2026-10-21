@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildImportPlan, readWorkoutText, type Exercise, type ImportPlan } from "@sin/core";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { expect } from "vitest";
 import type { UserEvent } from "@testing-library/user-event";
 
 import { READ_BUTTON, TEXT_LABEL } from "../features/routines/import/messages";
@@ -84,4 +85,13 @@ export function randomPlan(seed: number): ImportPlan {
   const rnd = prng(seed);
   const lines = Array.from({ length: 10 + Math.floor(rnd() * 40) }, () => RANDOM_LINES[Math.floor(rnd() * RANDOM_LINES.length)]!);
   return buildImportPlan(readWorkoutText([...lines, "x."].join("\n")), () => "weight_reps");
+}
+
+/** From the paste screen to the editor: paste (the example by default), Read workout, Continue. */
+export async function toEditor(user: UserEvent, text: string = HIRAYA_TEXT): Promise<void> {
+  await readHiraya(user, text);
+  const button = await screen.findByRole("button", { name: "Continue" });
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+  await screen.findByRole("heading", { level: 1, name: "New routine" });
 }

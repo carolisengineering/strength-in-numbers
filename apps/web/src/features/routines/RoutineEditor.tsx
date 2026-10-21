@@ -193,7 +193,9 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
   const duplicateWarning =
     routines.data !== undefined && nameTaken(draft.name, routines.data, routine?.id) ? NAME_TAKEN : null;
   const [saved, setSaved] = useState(false);
-  const saving = create.isPending || replace.isPending || saved;
+  /** Spec 10.4 AC31: `initial.prepareBody` is running (an import creating its exercises): Save is busy, the form locked. */
+  const [preparing, setPreparing] = useState(false);
+  const saving = create.isPending || replace.isPending || saved || preparing;
   const [focusName, setFocusName] = useState(false);
   useEffect(() => {
     if (!focusName || saving) return;
@@ -207,11 +209,26 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
     if (!validation.ok || gone || inFlight.current) return;
     inFlight.current = true;
     const sent = draft;
-    const body = toRoutineInput(sent, { modalityOf: (id) => lookupExercise(id).modality });
+    let body = toRoutineInput(sent, { modalityOf: (id) => lookupExercise(id).modality });
     const keys = sent.items.map((i) => i.key);
     setFormError(null);
     setServerIssues(null);
     try {
+      if (initial?.prepareBody) {
+        setPreparing(true);
+        let prepared: PreparedBody;
+        try {
+          prepared = await initial.prepareBody(body, sent);
+        } finally {
+          if (mounted.current) setPreparing(false);
+        }
+        if (!prepared.ok) {
+          inFlight.current = false;
+          setFormError({ text: prepared.message, requestId: prepared.requestId });
+          return;
+        }
+        body = prepared.body;
+      }
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
       leaving.current = true; // disarm the leave guard before navigating (AC34)
       // The latch stays closed: until the editor unmounts, a late second tap must not send a second write.

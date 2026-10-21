@@ -1,9 +1,11 @@
 import { http, HttpResponse, type RequestHandler } from "msw";
 import {
   AddWorkoutExerciseSchema,
+  CreateExerciseSchema,
   CreateSetSchema,
   CreateWorkoutSchema,
   ExerciseIdSchema,
+  ExerciseSchema,
   PersonalRecordsResponseSchema,
   ProgressSeriesSchema,
   SetEntrySchema,
@@ -39,7 +41,7 @@ import {
   type SetEntry,
   type WorkoutDetail,
 } from "@sin/core";
-import { API_BASE_URL } from "./catalogHarness";
+import { API_BASE_URL, USER_ID } from "./catalogHarness";
 
 /**
  * A stateful, in-memory stand-in for the Spec 05.0 / 05.1 workout API, just rich enough to be a real
@@ -70,7 +72,14 @@ export interface FailMatch {
 
 export interface WorkoutFake {
   handlers: RequestHandler[];
-  state: { active: WorkoutDetail | null; finished: Map<string, WorkoutDetail>; records: PersonalRecord[]; routines: Map<string, Routine> };
+  state: {
+    active: WorkoutDetail | null;
+    finished: Map<string, WorkoutDetail>;
+    records: PersonalRecord[];
+    routines: Map<string, Routine>;
+    /** The catalog (a copy of `options.catalog`); `serveExercises` creates into it. */
+    catalog: Exercise[];
+  };
   /** Every request seen, in order (including ones answered by `failNext`). */
   requests: RecordedRequest[];
   /** Answer the next `times` requests matching `match` with `response()` instead of the normal handler. */
@@ -97,6 +106,11 @@ export interface WorkoutFakeOptions {
   routines?: Routine[];
   /** Spec 18.0 §10: after every successful write to a finished workout, its records become `recordsFor(updated)` (07.4: recomputed in the write's transaction). */
   recordsFor?: (workout: WorkoutDetail) => PersonalRecord[];
+  /**
+   * Spec 10.4: the fake also answers `GET /v1/exercises` (its growing catalog) and `POST /v1/exercises`
+   * (a custom row, recorded and subject to `failNext` / `loseNextResponse` / `setOffline`).
+   */
+  serveExercises?: boolean;
 }
 
 export function problemResponse(
@@ -167,8 +181,9 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     finished: new Map<string, WorkoutDetail>((options.finished ?? []).map((w) => [w.id, w])),
     records: [...(options.records ?? [])],
     routines: new Map((options.routines ?? []).map((r) => [r.id as string, r])),
+    catalog: [...(options.catalog ?? [])],
   };
-  const catalog = options.catalog ?? [];
+  const catalog = state.catalog;
   const requests: RecordedRequest[] = [];
   const failures: { match: FailMatch; response: () => Response; remaining: number; skip: number }[] = [];
   const losses: FailMatch[] = [];
@@ -480,6 +495,28 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }),
     // Spec 07.2: one lineage's series; from/to inclusive on localDate; 422 malformed id, 404 unseen.
     // Spec 09 routines (Spec 10.0's screens).
+    ...(options.serveExercises
+      ? [
+          handle("get", "/exercises", () => HttpResponse.json({ exercises: catalog, syncToken: `1.${200 + catalog.length}` })),
+          handle("post", "/exercises", ({ body }) => {
+            const parsed = parseBody(CreateExerciseSchema, body);
+            if (!parsed.ok) return parsed.response;
+            const at = now();
+            const row = ExerciseSchema.parse({
+              ...parsed.data,
+              id: uuid(),
+              catalogKey: null,
+              ownerUserId: USER_ID,
+              isActive: true,
+              forkedFromExerciseId: null,
+              createdAt: at,
+              updatedAt: at,
+            });
+            catalog.push(row);
+            return HttpResponse.json(row, { status: 201 });
+          }),
+        ]
+      : []),
     handle("get", "/routines", () => HttpResponse.json({ routines: sortedRoutines() })),
     handle("post", "/routines", ({ body }) => {
       if (state.routines.size >= ROUTINES_PER_USER_MAX) return problemResponse(409, "routine-limit");

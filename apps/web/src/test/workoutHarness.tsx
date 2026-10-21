@@ -109,8 +109,9 @@ export function prepareApp({ auth, fake, catalog = [], unitPreference = "kg" }: 
   auth.state.logout = vi.fn();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
   server.use(
-    ...catalogHandlers(catalog),
+    // The fake first: with `serveExercises` it answers /v1/exercises itself (no other overlap).
     ...fake.handlers,
+    ...catalogHandlers(catalog),
     http.get(`${API_BASE_URL}/v1/me`, () =>
       HttpResponse.json({
         id: USER_ID,
