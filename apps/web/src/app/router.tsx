@@ -5,6 +5,7 @@ import { HistoryScreen } from "../features/history/HistoryScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
 import { ExerciseProgressRoute } from "../features/progress/ExerciseProgressScreen";
 import { ProgressScreen } from "../features/progress/ProgressScreen";
+import { ImportEditRoute } from "../features/routines/import/ImportEdit";
 import { ImportNames } from "../features/routines/import/ImportNames";
 import { ImportPaste } from "../features/routines/import/ImportPaste";
 import { ImportLayout } from "../features/routines/import/ImportSession";
@@ -83,7 +84,7 @@ export const routes: RouteObject[] = [
                 children: [
                   { index: true, element: <ImportPaste /> },
                   { path: "names", element: <ImportNames /> },
-                  { path: "edit", element: <Navigate to={IMPORT_PATH} replace /> },
+                  { path: "edit", element: <ImportEditRoute /> },
                 ],
               },
               { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },

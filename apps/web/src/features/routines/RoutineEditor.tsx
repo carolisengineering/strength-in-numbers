@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
@@ -36,7 +36,7 @@ import {
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
-import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine } from "./routineDraft";
+import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine, type Draft } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { BackToWorkouts, RoutineGone } from "./RoutinePreview";
 import { fieldMessagesFor, itemMessage, rowMessagesFor, sectionError, sectionMessagesFor } from "./sheetIssues";
@@ -50,6 +50,7 @@ import {
   toRoutineInput,
   validateDraft,
   type DraftIssue,
+  type RoutineWriteInput,
 } from "./validateDraft";
 
 export function RoutineEditorRoute({ mode }: { mode: "create" | "edit" }) {
@@ -91,8 +92,22 @@ function issueFor(issues: readonly DraftIssue[], scope: DraftIssue["scope"], ite
   return found ? found.message : null;
 }
 
-export function RoutineEditor({ routine }: { routine: Routine | null }) {
-  const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : initialDraft()));
+/** Spec 10.4 AC31: what Save sends after `prepareBody`, or why it stopped (a form-level message). */
+export type PreparedBody =
+  | { readonly ok: true; readonly body: RoutineWriteInput }
+  | { readonly ok: false; readonly message: string; readonly requestId: string | null };
+
+/** Spec 10.4 AC30: a "New routine" editor that starts from a given draft (an import). Only with `routine === null`. */
+export interface EditorStart {
+  readonly draft: Draft;
+  /** Rendered above the form, before any error notice. */
+  readonly notices?: ReactNode;
+  /** Awaited by Save before the routine write (an import creates its pending exercises here). */
+  readonly prepareBody?: (body: RoutineWriteInput, draft: Draft) => Promise<PreparedBody>;
+}
+
+export function RoutineEditor({ routine, initial }: { routine: Routine | null; initial?: EditorStart }) {
+  const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : (initial?.draft ?? initialDraft())));
   const navigate = useNavigate();
   const { user } = useSession();
   const queryClient = useQueryClient();
@@ -338,6 +353,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
 
   return (
     <Screen title={routine ? "Edit routine" : "New routine"}>
+      {initial?.notices}
       {gone ? (
         <InlineNotice tone="error">
           {ROUTINE_GONE}{" "}
