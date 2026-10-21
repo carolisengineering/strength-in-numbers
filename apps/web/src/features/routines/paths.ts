@@ -12,3 +12,8 @@ export const cameFromBack = (state: unknown): boolean =>
   typeof state === "object" && state !== null && (state as Record<string, unknown>)["back"] === true;
 
 export const routineEditPath = (id: string): string => `${routinePath(id)}/edit`;
+
+/** Spec 10.4 AC20: the import screens (paste, check names, editor), under one layout route that holds the session. */
+export const IMPORT_PATH = "/app/workouts/routines/import";
+export const IMPORT_NAMES_PATH = `${IMPORT_PATH}/names`;
+export const IMPORT_EDIT_PATH = `${IMPORT_PATH}/edit`;

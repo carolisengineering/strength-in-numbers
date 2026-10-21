@@ -5,6 +5,10 @@ import { HistoryScreen } from "../features/history/HistoryScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
 import { ExerciseProgressRoute } from "../features/progress/ExerciseProgressScreen";
 import { ProgressScreen } from "../features/progress/ProgressScreen";
+import { ImportNames } from "../features/routines/import/ImportNames";
+import { ImportPaste } from "../features/routines/import/ImportPaste";
+import { ImportLayout } from "../features/routines/import/ImportSession";
+import { IMPORT_PATH } from "../features/routines/paths";
 import { RoutineEditorRoute } from "../features/routines/RoutineEditor";
 import { RoutinePreviewRoute } from "../features/routines/RoutinePreview";
 import { EditWorkoutScreen } from "../features/workouts/edit/EditWorkoutScreen";
@@ -30,6 +34,9 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/workouts/:id/edit                                            > EditWorkoutScreen section="workouts" (Spec 18.0)
  *   /app/workouts/routines                                            > redirect (replace) to /app/workouts (Spec 10.0)
  *   /app/workouts/routines/new                                        > RoutineEditor, create (Spec 10.0)
+ *   /app/workouts/routines/import                                     > ImportLayout (session) > ImportPaste (Spec 10.4)
+ *   /app/workouts/routines/import/names                               > ImportLayout > Check exercise names (Spec 10.4)
+ *   /app/workouts/routines/import/edit                                > ImportLayout > the editor (Spec 10.4 Phase C)
  *   /app/workouts/routines/:id                                        > RoutinePreview (Spec 10.0)
  *   /app/workouts/routines/:id/edit                                   > RoutineEditor, edit (Spec 10.0)
  *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
@@ -69,6 +76,16 @@ export const routes: RouteObject[] = [
               // Spec 10.0 §6.1: the bare path would otherwise match `workouts/:id` with id "routines".
               { path: "workouts/routines", element: <Navigate to="/app/workouts" replace /> },
               { path: "workouts/routines/new", element: <RoutineEditorRoute mode="create" /> },
+              // Spec 10.4 AC20: static segments outrank `workouts/routines/:id` (and `:id/edit`).
+              {
+                path: "workouts/routines/import",
+                element: <ImportLayout />,
+                children: [
+                  { index: true, element: <ImportPaste /> },
+                  { path: "names", element: <ImportNames /> },
+                  { path: "edit", element: <Navigate to={IMPORT_PATH} replace /> },
+                ],
+              },
               { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },
               { path: "workouts/routines/:id/edit", element: <RoutineEditorRoute mode="edit" /> },
               { path: "history", element: <HistoryScreen /> },

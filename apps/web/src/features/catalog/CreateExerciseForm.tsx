@@ -1,17 +1,10 @@
-import {
-  MODALITY_VALUES,
-  type Equipment,
-  type Exercise,
-  type Modality,
-  type MuscleGroup,
-} from "@sin/core";
+import type { Equipment, Exercise, MuscleGroup } from "@sin/core";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
-import { Field } from "../../ui/Field";
 import styles from "./CreateExerciseForm.module.css";
-import { MODALITY_LABELS } from "./labels";
+import { EMPTY_EXERCISE_FIELDS, ExerciseFields, toCreateExerciseInput, type ExerciseFieldValues } from "./ExerciseFields";
 import { useCatalog } from "./useCatalog";
 
 const FIELD_NAMES = [
@@ -27,8 +20,6 @@ const isFieldName = (value: string): value is FieldName =>
 
 /** The fields rendered inside "More details". */
 const DETAIL_FIELDS: readonly FieldName[] = ["primaryMuscleId", "secondaryMuscleIds", "equipmentId"];
-
-const MAX_SECONDARY_MUSCLES = 4;
 
 export interface CreateExerciseFormProps {
   /** Prefill for the name — the picker passes its search text. */
@@ -55,11 +46,7 @@ export function CreateExerciseForm({
   onCancel,
 }: CreateExerciseFormProps) {
   const { createCustom } = useCatalog();
-  const [name, setName] = useState(initialName.trim());
-  const [modality, setModality] = useState<Modality | null>(null);
-  const [primaryMuscleId, setPrimaryMuscleId] = useState("");
-  const [secondaryMuscleIds, setSecondaryMuscleIds] = useState<string[]>([]);
-  const [equipmentId, setEquipmentId] = useState("");
+  const [values, setValues] = useState<ExerciseFieldValues>({ ...EMPTY_EXERCISE_FIELDS, name: initialName.trim() });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
@@ -76,35 +63,18 @@ export function CreateExerciseForm({
     };
   }, []);
 
-  const canSave = name.trim() !== "" && modality !== null;
-
-  const choosePrimary = (id: string) => {
-    setPrimaryMuscleId(id);
-    // The API rejects a secondary that restates the primary.
-    setSecondaryMuscleIds((ids) => ids.filter((other) => other !== id));
-  };
-
-  const toggleSecondary = (id: string) => {
-    setSecondaryMuscleIds((ids) =>
-      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id],
-    );
-  };
+  const canSave = values.name.trim() !== "" && values.modality !== null;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSave || saving || modality === null) return;
+    const input = toCreateExerciseInput(values);
+    if (!canSave || saving || input.modality === null) return;
     setSaving(true);
     setFormError(undefined);
     setFieldErrors({});
 
     try {
-      const created = await createCustom({
-        name: name.trim(),
-        modality,
-        primaryMuscleId: primaryMuscleId === "" ? null : primaryMuscleId,
-        secondaryMuscleIds,
-        equipmentId: equipmentId === "" ? null : equipmentId,
-      });
+      const created = await createCustom({ ...input, modality: input.modality });
       if (mounted.current) onCreated(created);
     } catch (error) {
       if (!mounted.current) return;
@@ -140,119 +110,15 @@ export function CreateExerciseForm({
 
   return (
     <form className={styles.form} onSubmit={(event) => void onSubmit(event)} noValidate>
-      <Field id="exercise-name" label="Name" error={fieldErrors.name}>
-        {(control) => (
-          <input
-            {...control}
-            type="text"
-            maxLength={120}
-            autoComplete="off"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        )}
-      </Field>
-
-      <fieldset className={styles.modality}>
-        <legend className={styles.legend}>Modality</legend>
-        <div className={styles.choices}>
-          {MODALITY_VALUES.map((value) => (
-            <label key={value} className={styles.choice}>
-              <input
-                type="radio"
-                name="modality"
-                value={value}
-                checked={modality === value}
-                onChange={() => setModality(value)}
-              />
-              {MODALITY_LABELS[value]}
-            </label>
-          ))}
-        </div>
-        {fieldErrors.modality ? (
-          <p className={styles.fieldError} role="alert">
-            {fieldErrors.modality}
-          </p>
-        ) : null}
-      </fieldset>
-
-      {muscleGroups !== undefined && equipment !== undefined ? (
-        <details
-          className={styles.details}
-          open={detailsOpen}
-          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
-        >
-          <summary className={styles.summary}>More details</summary>
-          <div className={styles.detailsBody}>
-            <Field
-              id="exercise-primary-muscle"
-              label="Primary muscle"
-              error={fieldErrors.primaryMuscleId}
-            >
-              {(control) => (
-                <select
-                  {...control}
-                  value={primaryMuscleId}
-                  onChange={(event) => choosePrimary(event.target.value)}
-                >
-                  <option value="">—</option>
-                  {muscleGroups.map((muscle) => (
-                    <option key={muscle.id} value={muscle.id}>
-                      {muscle.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-
-            <fieldset className={styles.modality}>
-              <legend className={styles.legend}>Secondary muscles (up to 4)</legend>
-              <div className={styles.choices}>
-                {muscleGroups
-                  .filter((muscle) => muscle.id !== primaryMuscleId)
-                  .map((muscle) => {
-                    const checked = secondaryMuscleIds.includes(muscle.id);
-                    return (
-                      <label key={muscle.id} className={styles.choice}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={
-                            !checked && secondaryMuscleIds.length >= MAX_SECONDARY_MUSCLES
-                          }
-                          onChange={() => toggleSecondary(muscle.id)}
-                        />
-                        {muscle.name}
-                      </label>
-                    );
-                  })}
-              </div>
-              {fieldErrors.secondaryMuscleIds ? (
-                <p className={styles.fieldError} role="alert">
-                  {fieldErrors.secondaryMuscleIds}
-                </p>
-              ) : null}
-            </fieldset>
-
-            <Field id="exercise-equipment" label="Equipment" error={fieldErrors.equipmentId}>
-              {(control) => (
-                <select
-                  {...control}
-                  value={equipmentId}
-                  onChange={(event) => setEquipmentId(event.target.value)}
-                >
-                  <option value="">—</option>
-                  {equipment.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-          </div>
-        </details>
-      ) : null}
+      <ExerciseFields
+        values={values}
+        onChange={setValues}
+        errors={fieldErrors}
+        muscleGroups={muscleGroups}
+        equipment={equipment}
+        detailsOpen={detailsOpen}
+        onDetailsOpenChange={setDetailsOpen}
+      />
 
       {formError ? (
         <p className={styles.formError} role="alert">
