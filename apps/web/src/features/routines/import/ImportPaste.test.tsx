@@ -14,13 +14,25 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { HIRAYA_TEXT } from "../../../test/importFixtures";
+import { HIRAYA_TEXT, trackPaths } from "../../../test/importFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { makeRoutine, routineId } from "../../../test/workoutFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { LIMIT_MESSAGE } from "../messages";
-import { IMPORT_PATH, WORKOUTS_PATH } from "../paths";
-import { HOW_TO_INTRO, HOW_TO_STEPS, PASTE_TITLE, PRIVACY_LINE, READ_BUTTON, TEXT_LABEL, TOO_LONG } from "./messages";
+import { IMPORT_EDIT_PATH, IMPORT_PATH, WORKOUTS_PATH } from "../paths";
+import {
+  HOW_TO_INTRO,
+  HOW_TO_STEPS,
+  NO_EXERCISES,
+  NOTHING_TO_READ,
+  OPEN_ANYWAY,
+  PASTE_TITLE,
+  PRIVACY_LINE,
+  READ_BUTTON,
+  TEXT_LABEL,
+  TOO_LONG,
+  foundLine,
+} from "./messages";
 
 afterEach(() => cleanupApp());
 
@@ -63,5 +75,48 @@ describe("10.4 AC19 — the paste screen at the routine limit", () => {
     await user.paste(HIRAYA_TEXT);
     expect(screen.getByRole("button", { name: READ_BUTTON })).toBeDisabled();
     expect(screen.getByRole("button", { name: READ_BUTTON })).toHaveAccessibleDescription(LIMIT_MESSAGE);
+  });
+});
+
+describe("10.4 AC22 — read outcomes with no exercises", () => {
+  async function readText(text: string) {
+    const fake = createWorkoutFake();
+    prepareApp({ auth, fake });
+    const app = renderApp(IMPORT_PATH);
+    const seen = trackPaths(app.router);
+    await app.user.click(await screen.findByLabelText(TEXT_LABEL));
+    await app.user.paste(text);
+    await app.user.click(screen.getByRole("button", { name: READ_BUTTON }));
+    return { ...app, fake, seen };
+  }
+
+  it("sections or notes but no exercises: the panel names what was found and offers the editor", async () => {
+    const { user, fake, seen } = await readText("11:41\nWarmup\n400m easy Run\nthen 2 Rounds\n- 10 Arm Circles\nCooldown\nWalk it off.\nHome");
+    expect(await screen.findByText(NO_EXERCISES)).toBeInTheDocument();
+    expect(screen.getByText("Found 2 sections: Warmup, Cooldown")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: OPEN_ANYWAY }));
+    expect(seen).toContain(IMPORT_EDIT_PATH); // Phase B's edit route redirects back; Phase C lands in the editor
+    expect(fake.requests.filter((r) => r.method !== "GET")).toEqual([]);
+  });
+
+  it("nothing after cleaning: no continue", async () => {
+    const { seen } = await readText("11:41\nHome\nNO SCORE");
+    expect(await screen.findByText(NOTHING_TO_READ)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: OPEN_ANYWAY })).toBeNull();
+    expect(seen).toEqual([]);
+  });
+
+  it("reading never throws on hostile text", async () => {
+    await readText("\u0000\ud800" + "-".repeat(39_000));
+    expect(await screen.findByText(NO_EXERCISES)).toBeInTheDocument();
+    expect(screen.getByText("Found a note, but no sections.")).toBeInTheDocument();
+  });
+
+  it("foundLine counts sections", () => {
+    expect([foundLine([]), foundLine(["Warmup"]), foundLine(["Warmup", "Cooldown"])]).toEqual([
+      "Found a note, but no sections.",
+      "Found 1 section: Warmup",
+      "Found 2 sections: Warmup, Cooldown",
+    ]);
   });
 });

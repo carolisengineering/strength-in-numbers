@@ -1,18 +1,32 @@
-import { IMPORT_TEXT_MAX, ROUTINES_PER_USER_MAX, readWorkoutText } from "@sin/core";
+import { IMPORT_TEXT_MAX, ROUTINES_PER_USER_MAX, readWorkoutText, type ReadResult } from "@sin/core";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { ActionBar } from "../../../ui/ActionBar";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
+import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { LIMIT_MESSAGE } from "../messages";
-import { IMPORT_NAMES_PATH } from "../paths";
+import { IMPORT_EDIT_PATH, IMPORT_NAMES_PATH } from "../paths";
 import { useRoutines } from "../queries";
 import { BackToWorkouts } from "../RoutinePreview";
 import styles from "./ImportPaste.module.css";
+import { emptyHandoff } from "./handoff";
 import { useImportSession } from "./ImportSession";
-import { HOW_TO_INTRO, HOW_TO_STEPS, PASTE_TITLE, PRIVACY_LINE, READ_BUTTON, TEXT_LABEL, TOO_LONG } from "./messages";
+import {
+  HOW_TO_INTRO,
+  HOW_TO_STEPS,
+  NO_EXERCISES,
+  NOTHING_TO_READ,
+  OPEN_ANYWAY,
+  PASTE_TITLE,
+  PRIVACY_LINE,
+  READ_BUTTON,
+  TEXT_LABEL,
+  TOO_LONG,
+  foundLine,
+} from "./messages";
 
 const LIMIT_ID = "import-limit-text";
 const HOW_TO_ID = "import-how-to";
@@ -23,6 +37,8 @@ export function ImportPaste() {
   const navigate = useNavigate();
   const routines = useRoutines();
   const [tooLong, setTooLong] = useState(false);
+  /** AC22: the last read found no exercises (null = no such read on screen). */
+  const [empty, setEmpty] = useState<ReadResult | null>(null);
   const atLimit = routines.data !== undefined && routines.data.length >= ROUTINES_PER_USER_MAX;
   const blank = session.text.trim() === "";
 
@@ -35,6 +51,12 @@ export function ImportPaste() {
     const result = readWorkoutText(text);
     session.commitRead(text, result);
     if (result.items.length > 0) navigate(IMPORT_NAMES_PATH);
+    else setEmpty(result);
+  };
+
+  const openAnyway = (result: ReadResult) => {
+    session.setHandoff(emptyHandoff(result));
+    navigate(IMPORT_EDIT_PATH);
   };
 
   return (
@@ -48,6 +70,7 @@ export function ImportPaste() {
             onChange={(event) => {
               session.setText(event.target.value);
               setTooLong(false);
+              setEmpty(null);
             }}
           />
         )}
@@ -56,6 +79,13 @@ export function ImportPaste() {
         <p className={styles.alert} role="alert">
           {TOO_LONG}
         </p>
+      ) : null}
+      {empty !== null && empty.lines.placed.length === 0 ? <InlineNotice tone="info">{NOTHING_TO_READ}</InlineNotice> : null}
+      {empty !== null && empty.lines.placed.length > 0 ? (
+        <InlineNotice tone="info" actionLabel={OPEN_ANYWAY} onAction={() => openAnyway(empty)}>
+          <span className={styles.line}>{NO_EXERCISES}</span>
+          <span className={styles.line}>{foundLine(empty.sections.map((section) => section.name))}</span>
+        </InlineNotice>
       ) : null}
       <div className={styles.howTo}>
         <p id={HOW_TO_ID}>{HOW_TO_INTRO}</p>

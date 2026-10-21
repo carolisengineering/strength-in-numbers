@@ -21,3 +21,13 @@ export const HOW_TO_STEPS = [
 export const PRIVACY_LINE = "Your text is read on this phone. Nothing is saved until you tap Save in the editor.";
 export const READ_BUTTON = "Read workout";
 export const TOO_LONG = "That is a lot of text (over 40,000 characters). Paste fewer screenshots at a time.";
+
+// Read outcomes with no exercises (AC22).
+export const NO_EXERCISES = "No exercises found in this text";
+export const NOTHING_TO_READ = "Nothing to read in this text";
+export const OPEN_ANYWAY = "Open in the editor anyway";
+/** Names only sections (a count and section names already on screen in the editor). */
+export function foundLine(sections: readonly string[]): string {
+  if (sections.length === 0) return "Found a note, but no sections.";
+  return `Found ${sections.length} ${sections.length === 1 ? "section" : "sections"}: ${sections.join(", ")}`;
+}

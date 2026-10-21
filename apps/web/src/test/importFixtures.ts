@@ -32,3 +32,10 @@ export const importCatalog: readonly Exercise[] = [
   ),
   makeExercise({ id: exerciseId(15), name: "Power Clean", modality: "weight_reps", primaryMuscleId: null, equipmentId: null }),
 ];
+
+/** Every pathname the router passes through (a redirect's target included), for asserting a navigation happened. */
+export function trackPaths(router: { subscribe: (fn: (state: { location: { pathname: string } }) => void) => unknown }): string[] {
+  const seen: string[] = [];
+  router.subscribe((state) => seen.push(state.location.pathname));
+  return seen;
+}
