@@ -4,6 +4,7 @@
  * between consecutive screenshots. Every function is total and linear: anchored patterns, no
  * nested quantifiers. No I/O, no DOM, no Node APIs.
  */
+import { normalizeExerciseName } from "./exerciseMatch.js";
 
 /** The paste box's limit (Phase B); the reader itself accepts any length. */
 export const IMPORT_TEXT_MAX = 40_000;
@@ -237,8 +238,139 @@ interface ReadState {
   runs: number;
 }
 
-/** Steps 3–8 (Task 4): place the line as a construct; false leaves it to the note. */
-function readConstruct(_line: string, _s: ReadState): LinePlacement | null {
+const SET_LINE = /^set\s+(\d{1,3})\s*:\s*(\d{1,4})\s+reps?(?:\s*@\s*(.+))?$/i;
+const SCHEME = /^\d{1,4}(?:\s*[-–]\s*\d{1,4})+$/;
+const LEAD_IN_SETS = /^(\d{1,2})\s+sets?:?$/i;
+const LEAD_IN_ROUNDS = /^(?:then,?\s+)?(\d{1,2})\s+rounds?:?$/i;
+const SEPARATOR = /^(?:directly into|into|then):$/i;
+const BULLET = /^[-•*]\s*/;
+const MOVEMENT_PUNCTUATION = /[:.!?;]/;
+const RANGE_FORM = /^(\d{1,3})\s*[-–]\s*(\d{1,3})\s+(.+)$/;
+const SPLIT_FORM = /^(\d{1,3})\/(\d{1,3})\s+(.+)$/;
+const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
+const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?)$/i;
+const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+
+/** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
+interface RepForm {
+  readonly reps: ReadRow;
+  readonly text: string;
+  readonly name: string;
+  readonly note: string | null;
+}
+
+function repFormOf(text: string): RepForm | null {
+  const named = (rest: string) => LETTER.test(rest) && !UNIT_WORD.test(rest.split(" ")[0]!);
+  const range = RANGE_FORM.exec(text);
+  if (range) {
+    const [lo, hi, rest] = [Number(range[1]), Number(range[2]), range[3]!];
+    return lo >= 1 && lo <= hi && hi <= 100 && named(rest) ? { reps: { repsLow: lo, repsHigh: hi }, text: `${lo}-${hi}`, name: rest, note: null } : null;
+  }
+  const split = SPLIT_FORM.exec(text);
+  if (split) {
+    const [a, b, rest] = [Number(split[1]), Number(split[2]), split[3]!];
+    const t = `${a}/${b}`;
+    return a >= 1 && b >= 1 && a + b <= 100 && named(rest) ? { reps: { repsLow: a + b, repsHigh: a + b }, text: t, name: rest, note: t } : null;
+  }
+  const one = REPS_FORM.exec(text);
+  if (one) {
+    const [r, rest] = [Number(one[1]), one[2]!];
+    return r >= 1 && r <= 100 && named(rest) ? { reps: { repsLow: r, repsHigh: r }, text: String(r), name: rest, note: null } : null;
+  }
+  return null;
+}
+
+function leadInCount(line: string): number | null {
+  const m = LEAD_IN_SETS.exec(line) ?? LEAD_IN_ROUNDS.exec(line);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n >= 1 && n <= 99 ? n : null;
+}
+
+/** AC8: ≤ 6 words, ≤ 60 characters, a letter, no colon or sentence punctuation, not a lead-in or scheme. */
+function isMovementText(text: string): boolean {
+  return (
+    text.length <= 60 && text.split(" ").length <= 6 && LETTER.test(text) && !MOVEMENT_PUNCTUATION.test(text) &&
+    leadInCount(text) === null && !SCHEME.test(text)
+  );
+}
+
+function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">): void {
+  s.items.push({ ...item, nameKey: normalizeExerciseName(item.name), section: s.section });
+}
+
+/** Steps 3–8: place the line as a construct, or null to leave it to the note. */
+function readConstruct(line: string, s: ReadState): LinePlacement | null {
+  const section = s.section === null ? null : s.sections[s.section]!;
+
+  // 3. Set lines: one strength item per section, named by the section's title (AC7).
+  const set = section ? SET_LINE.exec(line) : null;
+  if (set && section) {
+    s.run = null;
+    const reps = Number(set[2]);
+    if (!section.strength) {
+      pushItem(s, { name: section.name, rows: [], quickReps: null, repsText: null, noteLines: [], run: null });
+      section.strength = s.items[s.items.length - 1]!;
+    }
+    const item = section.strength;
+    item.rows!.push({ repsLow: reps, repsHigh: reps });
+    item.repsText = item.rows!.map((r) => r.repsLow).join("-");
+    if (set[3] !== undefined) item.noteLines.push(`Set ${Number(set[1])} @ ${set[3]}`);
+    return "set-line";
+  }
+
+  // 4. A scheme opens a run (AC8).
+  if (SCHEME.test(line)) {
+    const reps = line.split(/\s*[-–]\s*/).map(Number);
+    s.run = { id: ++s.runs, kind: "scheme", reps, text: reps.join("-") };
+    return "scheme";
+  }
+
+  // 5. A lead-in opens a run of N sets (AC9).
+  const n = leadInCount(line);
+  if (n !== null) {
+    s.run = { id: ++s.runs, kind: "lead-in", n };
+    return "lead-in";
+  }
+
+  // 6. A separator closes the open run.
+  if (SEPARATOR.test(line)) {
+    if (s.run === null) return null;
+    s.run = null;
+    return "separator";
+  }
+
+  // 7. A movement under an open run (AC8–AC11).
+  if (s.run !== null) {
+    const text = line.replace(BULLET, "");
+    if (!isMovementText(text)) return null;
+    const form = repFormOf(text);
+    const noteLines: string[] = [];
+    let name = text;
+    if (form) {
+      name = form.name;
+      if (s.run.kind === "scheme") noteLines.push(form.text);
+      else if (form.note) noteLines.push(form.note);
+    } else {
+      const measure = LEADING_MEASURE.exec(text);
+      if (measure) noteLines.push(measure[1]!);
+    }
+    const run = s.run;
+    const rows =
+      run.kind === "scheme"
+        ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
+        : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
+    pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+    return "movement";
+  }
+
+  // 8. A bare bullet with a rep form is a rowless item (AC10).
+  if (BULLET.test(line)) {
+    const form = repFormOf(line.replace(BULLET, ""));
+    if (!form) return null;
+    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null });
+    return "movement";
+  }
   return null;
 }
 
