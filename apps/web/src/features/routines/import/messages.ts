@@ -100,3 +100,8 @@ export function importNoticeText(notice: ImportNotice): string {
       return plural(notice.count, "A superset", "N supersets") + ` of more than ${SUPERSET_GROUP_MEMBERS_MAX} exercises ` + plural(notice.count, "was", "were") + " split.";
   }
 }
+
+// Save (AC32).
+export const EXERCISE_LIMIT = "You've reached the maximum number of custom exercises.";
+/** Names the exercise the owner chose on its card (already on screen), never other pasted text. */
+export const createFailed = (name: string) => `Couldn't create “${name}”. Nothing else was saved.`;

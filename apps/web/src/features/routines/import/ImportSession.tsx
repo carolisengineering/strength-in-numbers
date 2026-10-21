@@ -4,6 +4,7 @@ import { Outlet } from "react-router";
 
 import type { CardState } from "./cards";
 import type { ImportHandoff } from "./handoff";
+import type { SaveRecord } from "./saveImport";
 
 /**
  * Spec 10.4 §6.2, AC20: the import session — the pasted text, the read, the cards and the hand-off. Plain
@@ -23,6 +24,8 @@ export interface ImportSessionValue {
   readonly placeholderFor: (cardKey: string) => string;
   readonly handoff: ImportHandoff | null;
   readonly setHandoff: (handoff: ImportHandoff) => void;
+  /** Spec 10.4 AC32: what Save created so far, so a retry never creates an exercise twice. One per session. */
+  readonly saveRecord: SaveRecord;
 }
 
 const ImportSessionContext = createContext<ImportSessionValue | null>(null);
@@ -33,6 +36,7 @@ export function ImportSessionProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<readonly CardState[] | null>(null);
   const [handoff, setHandoff] = useState<ImportHandoff | null>(null);
   const placeholders = useRef(new Map<string, string>());
+  const saveRecord = useRef<SaveRecord>({ created: new Map(), attempts: 0 });
 
   const readText = useRef<string | null>(null);
 
@@ -59,7 +63,7 @@ export function ImportSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<ImportSessionValue>(
-    () => ({ text, setText, read, commitRead, cards, setCards, updateCard, placeholderFor, handoff, setHandoff }),
+    () => ({ text, setText, read, commitRead, cards, setCards, updateCard, placeholderFor, handoff, setHandoff, saveRecord: saveRecord.current }),
     [text, read, commitRead, cards, updateCard, placeholderFor, handoff],
   );
   return <ImportSessionContext.Provider value={value}>{children}</ImportSessionContext.Provider>;
