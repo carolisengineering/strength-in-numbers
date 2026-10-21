@@ -35,7 +35,7 @@ const REASON_ID = "import-continue-reason";
 export function ImportNames() {
   const session = useImportSession();
   const read = session.read?.result ?? null;
-  if (read === null || read.items.length === 0) return <Navigate to={IMPORT_PATH} replace />;
+  if (read === null || cardNames(read).length === 0) return <Navigate to={IMPORT_PATH} replace />;
   return <NamesBody />;
 }
 
@@ -75,7 +75,10 @@ function NamesBody() {
   const goToFirst = () => {
     const first = blocked[0];
     if (!first) return;
-    const target = document.getElementById(`import-card-${first.index}-new-name`) ?? selectedRadios.current.get(first.key);
+    const target =
+      document.getElementById(`import-card-${first.index}-new-name`) ??
+      selectedRadios.current.get(first.key) ??
+      document.querySelector<HTMLInputElement>(`#import-card-${first.index} input`);
     target?.focus();
   };
 

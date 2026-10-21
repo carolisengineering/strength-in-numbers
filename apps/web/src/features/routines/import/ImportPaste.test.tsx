@@ -99,6 +99,13 @@ describe("10.4 AC22 — read outcomes with no exercises", () => {
     expect(fake.requests.filter((r) => r.method !== "GET")).toEqual([]);
   });
 
+  it("exercises only in sections the routine leaves out count as none", async () => {
+    const notes = Array.from({ length: 8 }, (_, k) => `Block ${String.fromCharCode(65 + k)}x\nA note.`);
+    const { seen } = await readText([...notes, "Block Ix", "- 5 Curl", "x."].join("\n"));
+    expect(await screen.findByText(NO_EXERCISES)).toBeInTheDocument();
+    expect(seen).not.toContain(IMPORT_PATH + "/names");
+  });
+
   it("nothing after cleaning: no continue", async () => {
     const { seen } = await readText("11:41\nHome\nNO SCORE");
     expect(await screen.findByText(NOTHING_TO_READ)).toBeInTheDocument();

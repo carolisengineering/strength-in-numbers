@@ -12,6 +12,7 @@ import { IMPORT_EDIT_PATH, IMPORT_NAMES_PATH } from "../paths";
 import { useRoutines } from "../queries";
 import { BackToWorkouts } from "../RoutinePreview";
 import styles from "./ImportPaste.module.css";
+import { cardNames } from "./cards";
 import { emptyHandoff } from "./handoff";
 import { useImportSession } from "./ImportSession";
 import {
@@ -50,7 +51,8 @@ export function ImportPaste() {
     }
     const result = readWorkoutText(text);
     session.commitRead(text, result);
-    if (result.items.length > 0) navigate(IMPORT_NAMES_PATH);
+    // AC22: exercises the routine would leave out (past the section or item caps) do not count.
+    if (cardNames(result).length > 0) navigate(IMPORT_NAMES_PATH);
     else setEmpty(result);
   };
 
@@ -89,7 +91,7 @@ export function ImportPaste() {
       ) : null}
       <div className={styles.howTo}>
         <p id={HOW_TO_ID}>{HOW_TO_INTRO}</p>
-        <ol className={styles.steps} aria-label={HOW_TO_INTRO}>
+        <ol className={styles.steps} aria-labelledby={HOW_TO_ID}>
           {HOW_TO_STEPS.map((step) => (
             <li key={step}>{step}</li>
           ))}
