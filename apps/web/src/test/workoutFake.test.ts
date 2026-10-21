@@ -6,7 +6,7 @@ import { resetConfigCache } from "../config";
 import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
-import { RoutineSchema } from "@sin/core";
+import { RETIME_MESSAGES, RoutineSchema, type WorkoutDetail } from "@sin/core";
 import { makePersonalRecord, makeProgressPoint, makeRoutine, makeSet, makeWorkoutDetail, routineId } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "./workoutFake";
 
@@ -585,5 +585,102 @@ describe("18.0 §10 — the fake applies 07.4's finished-mode rules", () => {
     const served = await call("GET", `/personal-records?workoutId=${detail.id}`);
     expect((served.json!["records"] as { value: number }[]).map((r) => r.value)).toEqual([12]);
     expect(fake.state.records).toContainEqual(other);
+  });
+});
+describe("18.0 §10 — the fake applies Change Time through resolveRetime", () => {
+  const NOW = new Date("2026-10-18T10:00:00Z");
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true, now: NOW });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  async function bootLive() {
+    const fake = boot();
+    await call("POST", "/workouts", { clientGeneratedId: crypto.randomUUID(), startedAt: "2026-10-18T09:05:00.000Z", tzOffsetMinutes: 60 });
+    return { fake, id: fake.state.active!.id };
+  }
+
+  it("live, all three keys: start, offset, localDate and plan are written", async () => {
+    const { fake, id } = await bootLive();
+    const res = await call("PATCH", `/workouts/${id}`, { startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60, durationSeconds: 3600 });
+    expect(res.status).toBe(200);
+    const picked = (w: Record<string, unknown>) => [w["startedAt"], w["tzOffsetMinutes"], w["localDate"], w["plannedDurationSeconds"]];
+    const expected = ["2026-10-16T17:00:00.000Z", 60, "2026-10-16", 3600];
+    expect(picked(res.json!)).toEqual(expected);
+    expect(picked(fake.state.active as unknown as Record<string, unknown>)).toEqual(expected);
+  });
+
+  it("live, durationSeconds only: start, offset and localDate are unchanged", async () => {
+    const { fake, id } = await bootLive();
+    const res = await call("PATCH", `/workouts/${id}`, { durationSeconds: 1800 });
+    expect(res.status).toBe(200);
+    const a = fake.state.active!;
+    expect([a.startedAt, a.tzOffsetMinutes, a.localDate, a.plannedDurationSeconds]).toEqual(["2026-10-18T09:05:00.000Z", 60, "2026-10-18", 1800]);
+  });
+
+  it("live, ends in the future → 422 on durationSeconds", async () => {
+    const { id } = await bootLive();
+    const res = await call("PATCH", `/workouts/${id}`, { startedAt: new Date(NOW.getTime() - 30 * 60_000).toISOString(), durationSeconds: 3600 });
+    expect(res.status).toBe(422);
+    expect(res.json!["errors"]).toEqual([{ path: "durationSeconds", message: RETIME_MESSAGES.endsInFuture }]);
+  });
+
+  it("a start before the floor → 422 on startedAt", async () => {
+    const { id } = await bootLive();
+    const res = await call("PATCH", `/workouts/${id}`, { startedAt: "1999-12-31T12:00:00.000Z" });
+    expect(res.status).toBe(422);
+    expect(res.json!["errors"]).toEqual([{ path: "startedAt", message: RETIME_MESSAGES.floor }]);
+  });
+
+  it("the same start with a new offset is no change: offset and localDate stay", async () => {
+    const { fake, id } = await bootLive();
+    const res = await call("PATCH", `/workouts/${id}`, { startedAt: "2026-10-18T09:05:00.000Z", tzOffsetMinutes: -240 });
+    expect(res.status).toBe(200);
+    expect([fake.state.active!.tzOffsetMinutes, fake.state.active!.localDate]).toEqual([60, "2026-10-18"]);
+  });
+
+  it("finished, start only: endedAt moves by the same Δ; null duration → 422; records recomputed", async () => {
+    const detail = makeWorkoutDetail({
+      startedAt: "2026-10-14T17:05:00.000Z",
+      endedAt: "2026-10-14T17:57:00.000Z",
+      localDate: "2026-10-14",
+      exercises: [{ name: "Bench Press", modality: "weight_reps", sets: [makeSet()] }],
+    });
+    const recordsFor = vi.fn((w: WorkoutDetail) => [makePersonalRecord({ workoutId: w.id })]);
+    const fake = createWorkoutFake({ finished: [detail], recordsFor });
+    server.use(...fake.handlers);
+    const res = await call("PATCH", `/workouts/${detail.id}`, { startedAt: "2026-10-16T17:05:00.000Z", tzOffsetMinutes: 60 });
+    expect(res.status).toBe(200);
+    const stored = fake.state.finished.get(detail.id)!;
+    expect([stored.startedAt, stored.endedAt, stored.localDate, stored.tzOffsetMinutes]).toEqual([
+      "2026-10-16T17:05:00.000Z", "2026-10-16T17:57:00.000Z", "2026-10-16", 60,
+    ]);
+    expect(recordsFor).toHaveBeenCalled();
+    expect(fake.state.records.map((r) => r.workoutId)).toEqual([detail.id]);
+    const refused = await call("PATCH", `/workouts/${detail.id}`, { durationSeconds: null });
+    expect(refused.status).toBe(422);
+    expect(refused.json!["errors"]).toEqual([{ path: "durationSeconds", message: RETIME_MESSAGES.finishedDurationNull }]);
+  });
+
+  it("finishing a planned live workout stores plannedDurationSeconds: null", async () => {
+    const { fake, id } = await bootLive();
+    await call("PATCH", `/workouts/${id}`, { startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60, durationSeconds: 3600 });
+    const finished = await call("PATCH", `/workouts/${id}`, { endedAt: "2026-10-16T18:00:00.000Z" });
+    expect(finished.status).toBe(200);
+    expect(finished.json!["plannedDurationSeconds"]).toBeNull();
+    expect(fake.state.finished.get(id)!.plannedDurationSeconds).toBeNull();
+  });
+
+  it("History lists a backdated finish in start order", async () => {
+    const sat = makeWorkoutDetail({ startedAt: "2026-10-17T09:00:00.000Z", endedAt: "2026-10-17T10:00:00.000Z", localDate: "2026-10-17" });
+    const thu = makeWorkoutDetail({ startedAt: "2026-10-15T09:00:00.000Z", endedAt: "2026-10-15T10:00:00.000Z", localDate: "2026-10-15" });
+    const fake = createWorkoutFake({ finished: [sat, thu] });
+    server.use(...fake.handlers);
+    await call("POST", "/workouts", { clientGeneratedId: crypto.randomUUID(), startedAt: NOW.toISOString(), tzOffsetMinutes: 60 });
+    const id = fake.state.active!.id;
+    await call("PATCH", `/workouts/${id}`, { startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60, durationSeconds: 3600 });
+    await call("PATCH", `/workouts/${id}`, { endedAt: "2026-10-16T18:00:00.000Z" });
+    const list = await call("GET", "/workouts");
+    expect((list.json!["items"] as { localDate: string }[]).map((w) => w.localDate)).toEqual(["2026-10-17", "2026-10-16", "2026-10-15"]);
   });
 });

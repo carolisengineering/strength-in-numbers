@@ -24,7 +24,10 @@ import { restAfterLog } from "./restTimer";
 import { useRestStore, useRestStores } from "./useRestTimer";
 import type { LoggedEvent } from "./EntryRow";
 import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
-import { formatStartedTime } from "./format";
+import { EDIT_COPY } from "./edit/editCopy";
+import { ChangeTimeSheet } from "./changeTime/ChangeTimeSheet";
+import { useChangeTime } from "./changeTime/useChangeTime";
+import { formatStartedAt } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
 import { EndEarlyDialog } from "./EndEarlyDialog";
 import { LogBarButton, type BarAction } from "./LogBarButton";
@@ -43,9 +46,9 @@ import { SessionClock } from "./SessionClock";
 import { SessionSection } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
-import { finishStatsFor } from "./finishStats";
+import { finishStatsFor, formatMinutes } from "./finishStats";
 import { FinishDialogBody } from "./FinishDialog";
-import { finishTimestamp } from "./timestamps";
+import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
@@ -106,6 +109,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const remove = useRemoveExercise();
   const finish = useFinishWorkout();
   const discard = useDeleteWorkout();
+  const retime = useChangeTime({ where: "live", client, cacheKey: WORKOUT_KEYS.active });
+  const [changeTimeOpen, setChangeTimeOpen] = useState(false);
+  const [changeTimeKey, setChangeTimeKey] = useState(0);
   const setWritePending = useIsSetWritePending();
   const drafts = useDraftStores();
   const restStores = useRestStores();
@@ -233,10 +239,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const openedAt = useMemo(() => new Date(), [dialogOpen]);
   // Dialogs show three stats (no volume, AC9); the projected list counts a queued set (06.2).
   const dialogStats = useMemo(
-    () => ({ ...finishStatsFor({ startedAt: workout.startedAt, exercises }, finishTimestamp(workout.startedAt, openedAt)), volumeKg: null }),
-    [workout.startedAt, exercises, openedAt],
+    () => ({
+      ...finishStatsFor({ startedAt: workout.startedAt, exercises }, finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, openedAt)),
+      volumeKg: null,
+    }),
+    [workout.startedAt, workout.plannedDurationSeconds, exercises, openedAt],
   );
-  const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null;
+  // Spec 18.0 AC38: with a plan, both dialogs say where the workout ends.
+  const endsAt = workout.plannedDurationSeconds === null ? undefined : finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, openedAt);
+  const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null || retime.isPending;
 
   // A flag lasts only while the set is still incomplete: fixing or deleting it clears the marker.
   const flagged = useMemo(() => {
@@ -469,6 +480,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         viaReplay: true,
         endedEarly,
         unloggedPlannedSets: unlogged.total,
+        hadPlannedDuration: workout.plannedDurationSeconds !== null,
       });
       afterFinished();
     } catch {
@@ -495,7 +507,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({ id: workout.id, endedAt: finishTimestamp(workout.startedAt, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
+      await finish.mutateAsync({ id: workout.id, endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
       setFinishOpen(false);
       setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
@@ -664,10 +676,26 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       <RestLine workoutId={workout.id} />
       <WorkoutMenu
         leading={
-          <>
+          workout.plannedDurationSeconds === null ? (
             <SessionClock startedAt={workout.startedAt} />
-            <p className={styles.started}>Started {formatStartedTime(workout.startedAt)}</p>
-          </>
+          ) : (
+            <p className={styles.took}>Took {formatMinutes(Math.round(workout.plannedDurationSeconds / 60))}</p>
+          )
+        }
+        below={
+          <div className={styles.startedRow}>
+            <p className={styles.started}>Started {formatStartedAt(workout.startedAt, { today: new Date() })}</p>
+            <Button
+              variant="secondary"
+              disabled={structureBusy}
+              onClick={() => {
+                setChangeTimeKey((k) => k + 1);
+                setChangeTimeOpen(true);
+              }}
+            >
+              Change Time
+            </Button>
+          </div>
         }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
@@ -757,6 +785,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       </ActionBar>
 
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
+      <ChangeTimeSheet
+        key={changeTimeKey}
+        open={changeTimeOpen}
+        workout={workout}
+        mutation={retime}
+        onClose={() => setChangeTimeOpen(false)}
+        onSaved={() => setAnnouncement(EDIT_COPY.timeChanged)}
+        onVanished={() => gone("gone")}
+      />
 
       <ConfirmDialog
         open={removing !== null}
@@ -778,9 +815,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} />
       </ConfirmDialog>
-      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
+      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} {...(endsAt ? { endsAt } : {})} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
 
       <ConfirmDialog
         open={discardOpen}

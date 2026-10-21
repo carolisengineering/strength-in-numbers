@@ -4,8 +4,10 @@ import { Button } from "../../ui/Button";
 import styles from "./WorkoutMenu.module.css";
 
 export interface WorkoutMenuProps {
-  /** The row's left side: the elapsed clock and "Started 10:15". */
+  /** Row 1's left side: the elapsed clock, or "Took …" when the workout has a plan (Spec 18.0 AC34). */
   leading: ReactNode;
+  /** Row 2, under row 1 and above the revealed items (Spec 18.0 D22): "Started …" and Change Time. */
+  below?: ReactNode;
   endItem: {
     label: "End workout early" | "Finish workout";
     disabled: boolean;
@@ -20,7 +22,7 @@ export interface WorkoutMenuProps {
  * Spec 17.1 D13: the rare, away-from-the-thumb actions share one inline disclosure (the Options pattern, no popover).
  * The items stay revealed while their dialog is open, so the dialog can hand focus back to the item that opened it.
  */
-export function WorkoutMenu({ leading, endItem, onDiscard }: WorkoutMenuProps) {
+export function WorkoutMenu({ leading, below, endItem, onDiscard }: WorkoutMenuProps) {
   const [open, setOpen] = useState(false);
   const reasonId = useId();
   const described = endItem.disabled && endItem.reason !== null;
@@ -32,6 +34,7 @@ export function WorkoutMenu({ leading, endItem, onDiscard }: WorkoutMenuProps) {
           Workout menu
         </Button>
       </div>
+      {below}
       {open ? (
         <div className={styles.items}>
           <Button variant="secondary" disabled={endItem.disabled} {...(described ? { "aria-describedby": reasonId } : {})} onClick={endItem.onClick}>

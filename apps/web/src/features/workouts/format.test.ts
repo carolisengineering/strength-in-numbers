@@ -62,3 +62,14 @@ describe("18.0 AC3 — formatStartedAt", () => {
     expect(formatStartedAt("2026-10-14T23:30:00Z", { timeZone: "Europe/London" })).toBe("Thu 15 Oct, 00:30");
   });
 });
+
+describe("18.0 AC34 — the today form of formatStartedAt", () => {
+  const london = { timeZone: "Europe/London" };
+  it("today in the zone is the time alone; another day is the full form", () => {
+    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe("18:00");
+    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-18T09:00:00Z") })).toBe("Fri 16 Oct, 18:00");
+  });
+  it("compares local days, not UTC days", () => {
+    expect(formatStartedAt("2026-10-16T23:30:00Z", { ...london, today: new Date("2026-10-17T08:00:00Z") })).toBe("00:30");
+  });
+});

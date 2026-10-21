@@ -12,6 +12,7 @@ import {
   UpdateWorkoutExerciseSchema,
   UpdateWorkoutSchema,
   WorkoutDetailSchema,
+  resolveRetime,
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
   WorkoutSchema,
@@ -523,13 +524,41 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       if (!parsed.ok) return parsed.response;
       const input = parsed.data;
       const detail = found.detail;
+      if (found.kind === "finished" && input.endedAt != null) return finishedConflict();
+      // Spec 18.0 §10: Change Time goes through the shared rule set, as the API does (07.4 §6.4).
+      let times: Partial<Pick<WorkoutDetail, "startedAt" | "endedAt" | "tzOffsetMinutes" | "localDate" | "plannedDurationSeconds">> = {};
+      if (input.startedAt !== undefined || input.durationSeconds !== undefined) {
+        const retime = resolveRetime(
+          {
+            startedAt: new Date(detail.startedAt),
+            endedAt: detail.endedAt === null ? null : new Date(detail.endedAt),
+            plannedDurationS: detail.plannedDurationSeconds,
+          },
+          {
+            ...(input.startedAt !== undefined ? { startedAt: input.startedAt } : {}),
+            ...(input.durationSeconds !== undefined ? { durationSeconds: input.durationSeconds } : {}),
+          },
+          new Date(),
+        );
+        if (!retime.ok) return validation([{ path: retime.path, message: retime.message }]);
+        const offset = input.tzOffsetMinutes ?? detail.tzOffsetMinutes;
+        times = {
+          startedAt: retime.startedAt.toISOString(),
+          ...(retime.startChanged
+            ? { tzOffsetMinutes: offset, localDate: new Date(retime.startedAt.getTime() + offset * 60_000).toISOString().slice(0, 10) }
+            : {}),
+          ...(found.kind === "finished"
+            ? { endedAt: retime.endedAt!.toISOString() }
+            : { plannedDurationSeconds: retime.plannedDurationS }),
+        };
+      }
       if (found.kind === "finished") {
-        // 07.4: only a re-finish is refused; title / notes edits apply.
-        if (input.endedAt != null) return finishedConflict();
+        // 07.4: only a re-finish is refused; title / notes and time edits apply.
         const edited = store({
           ...detail,
           ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          ...times,
           updatedAt: now(),
         });
         return HttpResponse.json(UpdatedWorkoutSchema.parse({ ...workoutOf(edited), newRecords: [] }));
@@ -545,7 +574,9 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         ...detail,
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
-        ...(input.endedAt !== undefined ? { endedAt: input.endedAt } : {}),
+        ...times,
+        // 07.4: the finish clears the plan.
+        ...(input.endedAt != null ? { endedAt: input.endedAt, plannedDurationSeconds: null } : {}),
         updatedAt: now(),
       });
       if (next.endedAt !== null) {

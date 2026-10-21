@@ -60,3 +60,6 @@ export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promi
   const toggle = within(scope).getByRole("button", { name: "Set options" });
   if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
 }
+
+/** Spec 18.0 AC34 / AC40: the header's Change Time button (live row 2, or the edit header). */
+export const changeTimeButton = (): HTMLElement => screen.getByRole("button", { name: "Change Time" });

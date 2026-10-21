@@ -62,4 +62,18 @@ export const EDIT_COPY = Object.freeze({
   }),
   exerciseRemoved: "Exercise removed",
   firstExercise: "Add your first exercise",
+
+  /** §5.6, Change Time (Phase B). */
+  timeFuture: "The start can't be in the future.",
+  timeFloor: "The start can't be before 2000.",
+  timeEndsInFuture: "That would end in the future. Choose an earlier start or a shorter time.",
+  tookRequired: "Enter how long it took.",
+  tookWhole: "Use whole numbers: hours 0–24, minutes 0–59.",
+  tookMax: "Took can be at most 24 hours.",
+  pickDay: "Pick a day.",
+  pickTime: "Pick a time.",
+  timeGeneric: "Check the time and try again.",
+  changeTimeFailed: "Couldn't change the time — try again",
+  timeChanged: "Time changed",
+  tookHint: "Leave empty and Finish ends the workout when you tap it.",
 });

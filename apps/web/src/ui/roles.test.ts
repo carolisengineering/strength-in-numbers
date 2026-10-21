@@ -114,3 +114,17 @@ describe("18.0 AC45 — no brass on the edit screen", () => {
     expect(edit.filter((s) => /--color-pr\b|--color-pr-soft/.test(s.css)).map((s) => s.path)).toEqual([]);
   });
 });
+
+describe("18.0 AC45 — Change Time styles", () => {
+  it("the sheet and the changed headers use neither brass nor teal", () => {
+    const changed = [
+      "features/workouts/changeTime/ChangeTimeSheet.module.css",
+      "features/workouts/ActiveSession.module.css",
+      "features/workouts/WorkoutMenu.module.css",
+      "features/workouts/edit/EditWorkoutScreen.module.css",
+    ];
+    const found = sheets.filter((s) => changed.includes(s.path));
+    expect(found.map((s) => s.path).sort()).toEqual([...changed].sort());
+    expect(found.filter((s) => /--color-pr\b|--color-pr-|--color-signal/.test(s.css)).map((s) => s.path)).toEqual([]);
+  });
+});

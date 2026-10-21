@@ -202,3 +202,36 @@ describe("18.0 AC54 — updateWorkout sends exactly the keys given", () => {
     expect(outbox.getState().ops).toEqual([]);
   });
 });
+
+describe("18.0 AC29 — updateWorkout carries the Change Time keys", () => {
+  it("sends exactly the given time keys, null included", async () => {
+    const { api, calls } = recordingApi();
+    const client = createWorkoutClient(api);
+    await client.updateWorkout("w1", { startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60 });
+    await client.updateWorkout("w1", { durationSeconds: null });
+    await client.updateWorkout("w1", { durationSeconds: 3600 });
+    expect(calls.map((c) => c.body)).toEqual([
+      { startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60 },
+      { durationSeconds: null },
+      { durationSeconds: 3600 },
+    ]);
+    expect(calls.every((c) => c.schema === UpdatedWorkoutSchema)).toBe(true);
+  });
+
+  it("the queued client hands a time change to REST and never enqueues", async () => {
+    const updateWorkout = vi.fn(async () => ({}) as never);
+    const rest = fakeClient({ updateWorkout });
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest, userId: "u1", isOnline: () => false });
+    const workout = makeWorkoutDetail();
+    const queued = createQueuedWorkoutClient({ rest, outbox, cached: () => workout });
+    await queued.updateWorkout(workout.id, { durationSeconds: 1800 });
+    expect(updateWorkout).toHaveBeenCalledWith(workout.id, { durationSeconds: 1800 });
+    expect(outbox.getState().ops).toEqual([]);
+  });
+
+  it("finish still sends endedAt only", async () => {
+    const { api, calls } = recordingApi();
+    await createWorkoutClient(api).finish("w1", { endedAt: "2026-10-16T18:00:00.000Z" });
+    expect(Object.keys(calls[0]!.body as object)).toEqual(["endedAt"]);
+  });
+});

@@ -54,7 +54,7 @@ function makeHandler(state) {
       const r = D.routines.find((x) => x.id === decodeURIComponent(seg[1]));
       res = r ? json(r) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/workouts/active") {
-      res = state.active ? json(state.done ? D.activeDone : D.active) : problem(404, "not-found", "No active workout");
+      res = state.active ? json(state.planned ? D.activePlanned : state.done ? D.activeDone : D.active) : problem(404, "not-found", "No active workout");
     } else if (m === "GET" && p === "/v1/workouts") res = json(D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const w = D.allWorkouts.find((x) => x.id === decodeURIComponent(seg[1]));
@@ -432,6 +432,35 @@ try {
       state.done = false;
     });
 
+    // Spec 18.0 AC49 (Phase B): the live header with and without a took, the Change Time sheet and the "Ends …" line.
+    await tryStep("change time (live)", async () => {
+      await go("/app/workouts");
+      await shoot(page, device, "36-live-header", "Live header: the clock and Workout menu; Started and Change Time on row 2 (Spec 18.0 AC34)");
+      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "37-change-time-live", "Change Time sheet on a live workout: Day, Started at, Took, the hint (Spec 18.0 AC30)");
+      const ahead = await page.evaluate(() => {
+        const d = new Date(Date.now() + 60 * 60_000);
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      });
+      await page.getByLabel("Started at").fill(ahead);
+      await page.getByRole("button", { name: "Save time" }).click();
+      await page.waitForTimeout(200);
+      await shoot(page, device, "38-change-time-error", "Change Time with a start an hour ahead: The start can't be in the future. (Spec 18.0 AC33)");
+      await page.keyboard.press("Escape");
+    });
+    await tryStep("took and ends", async () => {
+      state.planned = true;
+      await go("/app/workouts");
+      await shoot(page, device, "39-live-header-took", "A back-dated live workout with a took: Took 1 h in place of the clock (Spec 18.0 AC34–AC35)");
+      await page.getByRole("button", { name: "Workout menu" }).click();
+      await page.getByRole("button", { name: "End workout early" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "40-finish-ends", "End workout early with a took: Ends …, as set in Change Time (Spec 18.0 AC38)");
+      await page.keyboard.press("Escape");
+      state.planned = false;
+    });
+
     // No active workout: start screen + routines.
     state.active = false;
     await page.evaluate(() => { try { window.localStorage.clear(); } catch { /* storage blocked */ } });
@@ -501,6 +530,11 @@ try {
       await page.getByRole("dialog", { name: "Delete this whole workout instead?" }).waitFor({ timeout: 4000 });
       await page.waitForTimeout(200);
       await shoot(page, device, "35-edit-last-set", "Delete the only set: Delete this whole workout instead? (Spec 18.0 AC18)");
+      await page.keyboard.press("Escape");
+      await go(`/app/history/${D.ids.latestPush}/edit`);
+      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "41-change-time-edit", "Change Time on a finished workout: Took required, no hint (Spec 18.0 AC40)");
       await page.keyboard.press("Escape");
     });
 

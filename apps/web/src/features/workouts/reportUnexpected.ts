@@ -3,7 +3,7 @@ import { classifyWorkoutError } from "./errors";
 import type { Operation } from "./sessionErrors";
 
 /** The write operations of §5.8 plus the reads (including Spec 08.0's history and records, Spec 08.1's progress list and series) and the start, all static names. */
-export type ReportOp = Operation | "update-details" | "start-workout" | "load-active" | "load-workout" | "load-history" | "load-records" | "load-progress-list" | "load-progress-series";
+export type ReportOp = Operation | "update-details" | "change-time" | "start-workout" | "load-active" | "load-workout" | "load-history" | "load-records" | "load-progress-list" | "load-progress-series";
 
 /**
  * Report a failure the lifter cannot act on and we did not predict (Spec 06.1 §9): an unrecognised

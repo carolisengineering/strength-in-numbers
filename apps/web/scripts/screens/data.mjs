@@ -353,6 +353,17 @@ export const active = makeWorkout(ACTIVE_N, activeStart, 0, [
 }
 
 // Spec 17.1 AC57: every planned set logged, for the Finish-mode capture (the bar reads "Finish workout").
+// Spec 18.0 AC49: the same live workout, back-dated two days with a "took" of 1 h (Change Time), so the
+// header reads "Took 1 h" and the Finish dialogs say where it ends.
+const plannedStart = at(2);
+export const activePlanned = {
+  ...active,
+  startedAt: iso(plannedStart),
+  localDate: localDate(plannedStart),
+  tzOffsetMinutes: tzOffsetMinutes(plannedStart),
+  plannedDurationSeconds: 3600,
+};
+
 export const activeDone = (() => {
   const done = structuredClone(active);
   let t = Date.parse(done.startedAt) + 30 * MIN;
@@ -499,6 +510,7 @@ export function payloadChecks() {
     ["records", "PersonalRecordsResponseSchema", { records }],
     ...allWorkouts.map((w) => [`workout ${w.id}`, "WorkoutDetailSchema", w]),
     ["active, all planned logged", "WorkoutDetailSchema", activeDone],
+    ["active, back-dated with a took", "WorkoutDetailSchema", activePlanned],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
   ];
 }

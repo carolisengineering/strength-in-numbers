@@ -33,6 +33,8 @@ import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
 import { useDeleteWorkout } from "../useWorkoutMutations";
 import { WorkoutText } from "../WorkoutText";
+import { ChangeTimeSheet } from "../changeTime/ChangeTimeSheet";
+import { useChangeTime } from "../changeTime/useChangeTime";
 import { DetailsSheet } from "./DetailsSheet";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure, type EditOperation } from "./editFailure";
@@ -216,6 +218,9 @@ function EditBody({
   const [removing, setRemoving] = useState<WorkoutExerciseDetail | null>(null);
   const [details, setDetails] = useState<{ session: number; open: boolean } | null>(null);
   const detailsHeadingId = useId();
+  // Spec 18.0 AC40: Change Time on the REST client, keyed EDIT_MUTATION_KEY (so Done waits); one sheet per opening.
+  const retime = useChangeTime({ where: "edit", client: editClient, cacheKey: WORKOUT_KEYS.detail(workoutId) });
+  const [changeTime, setChangeTime] = useState<{ session: number; open: boolean } | null>(null);
   const structureBusy = add.isPending || remove.isPending || regroup.busy || pending !== null;
 
   // A tap plans from the segment last committed to the screen (as on the live screen).
@@ -396,9 +401,18 @@ function EditBody({
     <ScreenModeContext.Provider value={mode}>
       <Screen title="Edit workout">
         <p className={styles.banner}>Editing {formatLocalDate(workout.localDate)} workout</p>
-        <p className={styles.header}>
-          Started {formatStartedAt(workout.startedAt)} · Took {formatMinutes(workoutMinutes(workout.startedAt, endedAt))}
-        </p>
+        <div className={styles.headerRow}>
+          <p className={styles.header}>
+            Started {formatStartedAt(workout.startedAt)} · Took {formatMinutes(workoutMinutes(workout.startedAt, endedAt))}
+          </p>
+          <Button
+            variant="secondary"
+            disabled={writing || structureBusy}
+            onClick={() => setChangeTime((c) => ({ session: (c?.session ?? 0) + 1, open: true }))}
+          >
+            Change Time
+          </Button>
+        </div>
 
         {/* AC52: the workout's own title and notes, shown in full; the edit screen is where an empty value is worth seeing. */}
         <section className={styles.details} aria-labelledby={detailsHeadingId}>
@@ -455,6 +469,17 @@ function EditBody({
 
         {details ? (
           <DetailsSheet key={details.session} open={details.open} workout={workout} onClose={() => setDetails((d) => d && { ...d, open: false })} mode={mode} />
+        ) : null}
+        {changeTime ? (
+          <ChangeTimeSheet
+            key={changeTime.session}
+            open={changeTime.open}
+            workout={workout}
+            mutation={retime}
+            onClose={() => setChangeTime((c) => c && { ...c, open: false })}
+            onSaved={() => report({ type: "saved", announcement: EDIT_COPY.timeChanged })}
+            onVanished={() => report({ type: "vanished" })}
+          />
         ) : null}
         <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
         <ConfirmDialog
