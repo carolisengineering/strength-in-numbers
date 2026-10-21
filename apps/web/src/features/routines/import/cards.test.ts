@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog } from "../../../test/importFixtures";
-import { cardNames, cardProblems, initialCards, useInstead, type CardState } from "./cards";
+import { cardNames, cardProblems, initialCards, chooseExisting, type CardState } from "./cards";
 import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messages";
 
 const read = readWorkoutText(HIRAYA_TEXT);
@@ -51,6 +51,6 @@ describe("10.4 AC27 — names that already exist", () => {
     const later = [...importCatalog, makeExercise({ id: exerciseId(99), name: "Hand-release push-up" })];
     expect(cardProblems([cards[2]!], later).get(cards[2]!.key)).toMatchObject({ kind: "exists" });
   });
-  it("useInstead selects that exercise as exact", () =>
-    expect(useInstead(cards[2]!, importCatalog[0]!)).toMatchObject({ selected: "match", match: { kind: "exact", exerciseId: importCatalog[0]!.id } }));
+  it("chooseExisting selects that exercise as exact", () =>
+    expect(chooseExisting(cards[2]!, importCatalog[0]!)).toMatchObject({ selected: "match", match: { kind: "exact", exerciseId: importCatalog[0]!.id } }));
 });

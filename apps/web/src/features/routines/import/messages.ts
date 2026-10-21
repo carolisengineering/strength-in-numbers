@@ -52,3 +52,6 @@ export const usedIn = (sections: readonly string[]) => `Used in ${sections.join(
 export const CHOOSE_ANOTHER = "Choose another exercise";
 export const CHANGE = "Change";
 export const TYPE_LABEL = "Type";
+export const alreadyInList = (name: string) => `${name} is already in your list.`;
+export const USE_IT_INSTEAD = "Use it instead";
+export const SAME_NEW = "Another new exercise has this name";

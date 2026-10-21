@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 
+import { ExercisePicker } from "../../catalog/ExercisePicker";
 import { useEquipment, useMuscleGroups } from "../../catalog/referenceData";
 import { useCatalog } from "../../catalog/useCatalog";
 import { BackLink } from "../../../ui/BackLink";
@@ -33,6 +34,18 @@ function NamesBody() {
   const titleRef = useRef<HTMLHeadingElement>(null);
   // AC23: classify only against a synced catalog (or cached rows); an empty, never-synced store waits.
   const waiting = state.rows.length === 0 && state.lastRefreshAt === null;
+
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const selectedRadios = useRef(new Map<string, HTMLInputElement>());
+  // The picker's <dialog> restores focus to its opener on close; a pick moves it to the card's new checked
+  // radio instead, so this runs after the Sheet's own effect (child effects run first).
+  const focusAfterPick = useRef<string | null>(null);
+  useEffect(() => {
+    const key = focusAfterPick.current;
+    if (key === null) return;
+    focusAfterPick.current = null;
+    selectedRadios.current.get(key)?.focus();
+  });
 
   useEffect(() => titleRef.current?.focus(), []);
 
@@ -69,13 +82,28 @@ function NamesBody() {
                 muscleGroups={muscles.data}
                 equipment={equipment.data}
                 onChange={(change) => session.updateCard(card.key, change)}
-                onChooseAnother={() => undefined}
-                registerSelected={() => undefined}
+                onChooseAnother={() => setPickerFor(card.key)}
+                registerSelected={(el) => {
+                  if (el) selectedRadios.current.set(card.key, el);
+                  else selectedRadios.current.delete(card.key);
+                }}
               />
             ))}
           </div>
         </>
       ) : null}
+      <ExercisePicker
+        open={pickerFor !== null}
+        allowCreate={false}
+        onPick={(exercise) => {
+          const key = pickerFor;
+          if (key === null) return;
+          session.updateCard(key, (c) => ({ ...c, pickedId: exercise.id, selected: "picked" }));
+          focusAfterPick.current = key;
+          setPickerFor(null);
+        }}
+        onClose={() => setPickerFor(null)}
+      />
     </Screen>
   );
 }

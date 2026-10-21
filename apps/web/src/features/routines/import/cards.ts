@@ -101,6 +101,6 @@ export function cardProblems(cards: readonly CardState[], visible: readonly Exer
 }
 
 /** AC27 "Use it instead": the card takes that exercise as its exact match. */
-export function useInstead(card: CardState, exercise: Exercise): CardState {
+export function chooseExisting(card: CardState, exercise: Exercise): CardState {
   return { ...card, match: { kind: "exact", exerciseId: exercise.id }, selected: "match" };
 }

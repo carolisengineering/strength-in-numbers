@@ -1,8 +1,23 @@
 import type { Equipment, Exercise, MuscleGroup } from "@sin/core";
+import { useEffect, useRef } from "react";
 
-import type { CardProblem, CardState } from "./cards";
+import { ExerciseFields } from "../../catalog/ExerciseFields";
+import { Button } from "../../../ui/Button";
+import { chooseExisting, type CardProblem, type CardState } from "./cards";
 import styles from "./ImportNames.module.css";
-import { IN_YOUR_LIST, NOTHING_SIMILAR, SIMILAR, newOption, usedIn } from "./messages";
+import {
+  CHANGE,
+  CHOOSE_ANOTHER,
+  IN_YOUR_LIST,
+  NOTHING_SIMILAR,
+  SAME_NEW,
+  SIMILAR,
+  TYPE_LABEL,
+  USE_IT_INSTEAD,
+  alreadyInList,
+  newOption,
+  usedIn,
+} from "./messages";
 
 export interface NameCardProps {
   card: CardState;
@@ -20,21 +35,57 @@ export interface NameCardProps {
 
 /**
  * Spec 10.4 AC24–AC27, §5.3: one card per name — the name as written, where it is used, and its choice
- * as radios (the tag is text inside the label, never color alone). DOM ids come from the card's index.
+ * as radios (the tag is text inside the label, never color alone). New shows the create-exercise fields;
+ * nothing is created here. DOM ids come from the card's index, never from the pasted text.
  */
-export function NameCard({ card, rows, onChange, registerSelected }: NameCardProps) {
+export function NameCard({ card, problem, rows, muscleGroups, equipment, onChange, onChooseAnother, registerSelected }: NameCardProps) {
   const radioName = `import-card-${card.index}-choice`;
   const nameOf = (id: string | null) => (id === null ? null : (rows.find((row) => row.id === id)?.name ?? null));
   const matchName = nameOf(card.match?.exerciseId ?? null);
+  const pickedName = card.selected === "picked" ? nameOf(card.pickedId) : null;
   const newName = card.newValue.name.trim() === "" ? card.written : card.newValue.name.trim();
-  const select = (selected: CardState["selected"]) => onChange((c) => ({ ...c, selected }));
+  const checked = useRef<HTMLInputElement | null>(null);
+  const focusChecked = useRef(false);
+
+  // After "Use it instead" the checked radio is a different element; focus it once it exists.
+  useEffect(() => {
+    if (!focusChecked.current) return;
+    focusChecked.current = false;
+    checked.current?.focus();
+  });
+
   const radio = (selected: CardState["selected"]) => ({
     type: "radio" as const,
     name: radioName,
     checked: card.selected === selected,
-    onChange: () => select(selected),
-    ref: card.selected === selected ? registerSelected : undefined,
+    onChange: () => onChange((c) => ({ ...c, selected })),
+    ref:
+      card.selected === selected
+        ? (el: HTMLInputElement | null) => {
+            checked.current = el;
+            registerSelected(el);
+          }
+        : undefined,
   });
+
+  const nameNotice =
+    problem?.kind === "exists" ? (
+      <div className={styles.notice}>
+        <p>{alreadyInList(problem.exercise.name)}</p>
+        <Button
+          variant="secondary"
+          aria-label={`${USE_IT_INSTEAD}: ${problem.exercise.name}`}
+          onClick={() => {
+            focusChecked.current = true;
+            onChange((c) => chooseExisting(c, problem.exercise));
+          }}
+        >
+          {USE_IT_INSTEAD}
+        </Button>
+      </div>
+    ) : problem?.kind === "same-new" ? (
+      <p className={styles.notice}>{SAME_NEW}</p>
+    ) : null;
 
   return (
     <fieldset className={styles.card} data-card={card.index} id={`import-card-${card.index}`}>
@@ -49,6 +100,17 @@ export function NameCard({ card, rows, onChange, registerSelected }: NameCardPro
             <span className={styles.tag}>{card.match.kind === "exact" ? IN_YOUR_LIST : SIMILAR}</span>
           </label>
         ) : null}
+        {card.pickedId !== null && pickedName !== null ? (
+          <div className={styles.picked}>
+            <label className={styles.option}>
+              <input {...radio("picked")} />
+              <span>{pickedName}</span>
+            </label>
+            <Button variant="secondary" aria-label={`${CHANGE}: ${pickedName}`} onClick={onChooseAnother}>
+              {CHANGE}
+            </Button>
+          </div>
+        ) : null}
         {card.match?.kind !== "exact" ? (
           <label className={styles.option}>
             <input {...radio("new")} />
@@ -56,6 +118,25 @@ export function NameCard({ card, rows, onChange, registerSelected }: NameCardPro
           </label>
         ) : null}
       </div>
+      {card.selected === "new" ? (
+        <div className={styles.fields}>
+          <ExerciseFields
+            values={card.newValue}
+            onChange={(newValue) => onChange((c) => ({ ...c, newValue }))}
+            errors={problem?.kind === "name" ? { name: problem.message } : {}}
+            idPrefix={`import-card-${card.index}-new`}
+            modalityLabel={TYPE_LABEL}
+            muscleGroups={muscleGroups}
+            equipment={equipment}
+            detailsOpen={card.detailsOpen}
+            onDetailsOpenChange={(detailsOpen) => onChange((c) => ({ ...c, detailsOpen }))}
+            nameNotice={nameNotice}
+          />
+        </div>
+      ) : null}
+      <Button variant="secondary" aria-label={`${CHOOSE_ANOTHER} for ${card.written}`} onClick={onChooseAnother}>
+        {CHOOSE_ANOTHER}
+      </Button>
     </fieldset>
   );
 }
