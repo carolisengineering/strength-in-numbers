@@ -294,7 +294,8 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           line={line}
           notes={item.notes}
           position={position}
-          accessibleName={itemAccessibleName(exercise.name, group, line, unavailable)}
+          accessibleName={itemAccessibleName(exercise.isNew ? `${exercise.name} (New)` : exercise.name, group, line, unavailable)}
+          isNew={exercise.isNew === true}
           unavailable={unavailable}
           error={itemMessage(issues, item.key)}
           errorId={`row-${item.key}-error`}
