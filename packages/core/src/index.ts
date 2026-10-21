@@ -31,3 +31,4 @@ export * from "./plannedSets.js";
 export * from "./supersets.js";
 export * from "./sections.js";
 export * from "./workoutText.js";
+export * from "./exerciseMatch.js";
