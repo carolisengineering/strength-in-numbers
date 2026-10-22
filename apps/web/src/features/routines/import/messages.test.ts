@@ -1,7 +1,7 @@
 import type { ImportNotice } from "@sin/core";
 import { describe, expect, it } from "vitest";
 
-import { importNoticeText } from "./messages";
+import { createFailed, importNoticeText } from "./messages";
 
 describe("10.4 AC34 — overflow notices have static copy", () => {
   it.each<[ImportNotice, string]>([
@@ -21,4 +21,10 @@ describe("10.4 AC34 — overflow notices have static copy", () => {
     [{ code: "superset-split", count: 1 }, "A superset of more than 8 exercises was split."],
     [{ code: "superset-split", count: 2 }, "2 supersets of more than 8 exercises were split."],
   ])("%j", (notice, text) => expect(importNoticeText(notice)).toBe(text));
+});
+
+describe("10.4 AC32 — a failed create says the routine wasn't saved", () => {
+  it("names the exercise and makes no claim about earlier creates", () => {
+    expect(createFailed("Front Raise")).toBe("Couldn't create “Front Raise”. The routine wasn't saved.");
+  });
 });
