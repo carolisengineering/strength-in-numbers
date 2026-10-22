@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { AppError, NotFoundError, WorkoutFinishedError, WorkoutInProgressExistsError } from "../../src/errors/app-error.js";
+import { NotFoundError, WorkoutFinishedError, WorkoutInProgressExistsError, type AppError } from "../../src/errors/app-error.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { sweepExpiredOneOffs } from "../../src/repositories/routine-one-off.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
