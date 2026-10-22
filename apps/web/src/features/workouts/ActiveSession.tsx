@@ -683,7 +683,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
   const oneOff: FinishOneOff | undefined =
     workout.routineIsOneOff && workout.routineName !== null
-      ? { name: workout.routineName, keep: keepOneOff, onKeepChange: setKeepOneOff }
+      ? { name: workout.routineName, keep: keepOneOff, onKeepChange: setKeepOneOff, disabled: finish.isPending }
       : undefined;
   const endItem = {
     label: unlogged.total > 0 ? ("End workout early" as const) : ("Finish workout" as const),

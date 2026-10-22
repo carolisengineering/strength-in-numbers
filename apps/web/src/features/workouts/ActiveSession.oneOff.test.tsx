@@ -164,6 +164,28 @@ describe("10.5 AC13 — the request", () => {
   });
 });
 
+describe("10.5 AC13 — the choice is fixed once Finish is tapped", () => {
+  it("the box is disabled while the finish is in flight, so what is shown is what was sent", async () => {
+    const { fake, user } = await setup();
+    let release!: () => void;
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ }, () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(problemResponse(500, "about:blank"));
+      }) as unknown as Response,
+    );
+    await user.click(finishButton());
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(patches(fake)).toHaveLength(1));
+    const box = keepBox(finishDialog());
+    expect(box).toBeDisabled();
+    await user.click(box);
+    expect(box).not.toBeChecked();
+    release();
+    await screen.findByRole("button", { name: "Try again" });
+    expect(patches(fake)[0]!.body).toStrictEqual({ endedAt: expect.any(String) });
+  });
+});
+
 describe("10.5 AC14 — discard and cancel change nothing", () => {
   it("discard sends no routine request; the one-off is still listed with its date", async () => {
     const { fake, user } = await setup();

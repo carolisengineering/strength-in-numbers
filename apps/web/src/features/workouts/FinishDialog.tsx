@@ -12,6 +12,8 @@ export interface FinishOneOff {
   readonly name: string;
   readonly keep: boolean;
   readonly onKeepChange: (keep: boolean) => void;
+  /** While the finish is in flight: the choice was read when Finish was tapped, so it can't change. */
+  readonly disabled?: boolean;
 }
 
 /**
@@ -54,7 +56,7 @@ export function FinishDialogBody({
         <>
           <p className={styles.oneOffLine}>{oneOffFinishLine(oneOff.name)}</p>
           <label className={styles.keep}>
-            <input className={styles.keepBox} type="checkbox" checked={oneOff.keep} onChange={(e) => oneOff.onKeepChange(e.currentTarget.checked)} />
+            <input className={styles.keepBox} type="checkbox" checked={oneOff.keep} disabled={oneOff.disabled} onChange={(e) => oneOff.onKeepChange(e.currentTarget.checked)} />
             {KEEP_IN_ROUTINES}
           </label>
         </>
