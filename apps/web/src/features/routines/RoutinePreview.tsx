@@ -281,7 +281,7 @@ function PreviewBody({
             {KEEP_AS_ROUTINE}
           </Button>
         ) : null}
-        <Button variant="danger" onClick={() => setConfirmOpen(true)}>
+        <Button variant="danger" disabled={keep.isPending} onClick={() => setConfirmOpen(true)}>
           Delete
         </Button>
       </div>

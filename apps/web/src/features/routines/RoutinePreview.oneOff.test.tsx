@@ -211,6 +211,17 @@ describe("10.5 AC10 — Keep beside Delete and Edit", () => {
     expect(screen.queryByRole("link", { name: /Class Fri 16 Oct/ })).toBeNull();
   });
 
+  it("Delete is disabled while a Keep is in flight", async () => {
+    const fake = boot();
+    const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
+    const hold = holdKeep(fake);
+    await user.click(await screen.findByRole("button", { name: KEEP_AS_ROUTINE }));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    hold.release();
+    await screen.findByText(KEPT_STATUS);
+    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
+  });
+
   it("Edit and Save keep it a one-off; the PUT carries no oneOff", async () => {
     const fake = boot();
     const { user } = renderApp(`/app/workouts/routines/${cls.id}`);

@@ -133,7 +133,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const [discardOpen, setDiscardOpen] = useState(false);
   const [endEarlyOpen, setEndEarlyOpen] = useState(false);
   // Spec 10.5 AC12 / D7: one choice for both dialogs, unchecked on every open, never persisted.
-  const [keepOneOff, setKeepOneOff] = useState(false);
+  const [keepOneOff, setKeepOneOffState] = useState(false);
+  // `confirmFinish` reads the choice through this ref: a banner's Try again is a closure from an earlier
+  // render, and must send the choice as it stands now (a reopened dialog has reset it).
+  const keepOneOffRef = useRef(false);
+  const setKeepOneOff = (keep: boolean) => {
+    keepOneOffRef.current = keep;
+    setKeepOneOffState(keep);
+  };
   const openFinish = () => {
     setKeepOneOff(false);
     setFinishOpen(true);
@@ -523,7 +530,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         endedEarly,
         unloggedPlannedSets: unlogged.total,
         // Spec 10.5 AC13: only a one-off's checked box adds the key; a Retry uses the choice as it stands.
-        keepRoutine: workout.routineIsOneOff && keepOneOff,
+        keepRoutine: workout.routineIsOneOff && keepOneOffRef.current,
       });
       setFinishOpen(false);
       setEndEarlyOpen(false);

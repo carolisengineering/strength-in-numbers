@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, type QueryClient, type UseMutationResult }
 import type { Routine } from "@sin/core";
 import { ApiError } from "../../api";
 import { WORKOUT_KEYS } from "../workouts/queries";
+import { isOneOff } from "./oneOff";
 import { ROUTINE_KEYS, useRoutineClient } from "./queries";
 import type { RoutineWriteInput } from "./validateDraft";
 
@@ -17,8 +18,8 @@ import type { RoutineWriteInput } from "./validateDraft";
  */
 export function sortRoutines(list: readonly Routine[]): Routine[] {
   return [...list].sort((x, y) => {
-    const xOneOff = x.oneOffUntil !== null;
-    if (xOneOff !== (y.oneOffUntil !== null)) return xOneOff ? -1 : 1;
+    const xOneOff = isOneOff(x);
+    if (xOneOff !== isOneOff(y)) return xOneOff ? -1 : 1;
     if (xOneOff) {
       const byCreated = Date.parse(y.createdAt) - Date.parse(x.createdAt);
       if (byCreated !== 0) return byCreated;

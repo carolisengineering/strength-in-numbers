@@ -164,6 +164,23 @@ describe("10.5 AC13 — the request", () => {
   });
 });
 
+describe("10.5 AC13 — Try again sends the choice as it stands", () => {
+  it("checked, failed, then reopened (reset) and canceled: Try again sends no keepRoutine", async () => {
+    const { fake, user } = await setup();
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(500, "about:blank"));
+    await user.click(finishButton());
+    await user.click(keepBox(finishDialog()));
+    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+    const tryAgain = await screen.findByRole("button", { name: "Try again" });
+    await user.click(finishButton());
+    expect(keepBox(finishDialog())).not.toBeChecked();
+    await user.click(within(finishDialog()).getByRole("button", { name: "Keep logging" }));
+    await user.click(tryAgain);
+    await waitFor(() => expect(patches(fake)).toHaveLength(2));
+    expect(patches(fake)[1]!.body).toStrictEqual({ endedAt: expect.any(String) });
+  });
+});
+
 describe("10.5 AC13 — the choice is fixed once Finish is tapped", () => {
   it("the box is disabled while the finish is in flight, so what is shown is what was sent", async () => {
     const { fake, user } = await setup();
