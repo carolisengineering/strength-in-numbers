@@ -97,6 +97,7 @@ import type {
   CreateSetResult,
   SetEntryRecord,
   UpdateSetFields,
+  OneOffOutcome,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 import type { FinishedEdit } from "../../src/repositories/write-mode.js";
@@ -693,6 +694,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         finishedEdit: detailsSent ? (recompute ?? FakeWorkoutRepository.edit(edited)) : null,
         hadPlannedDuration: false,
         retime,
+        oneOff: "none",
       };
     }
     // Spec 07.4 §6.4: the same pure rules as the repository. The fake has no profile zone, so a moved
@@ -726,6 +728,19 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     if (endedAt !== null) this.clampSetTimes(id, updated.startedAt, endedAt);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
     const retime = retimeOutcome(patch, false, w.startedAt, next, false);
+    // Spec 09.3 §6.2: a finish removes the workout's one-off, or keeps it with `keepRoutine`.
+    let oneOff: OneOffOutcome = "none";
+    const routineId = this.sectionsByWorkout.get(id)?.routineId ?? null;
+    const routine = routineId === null ? undefined : this.routineRepository?.routines.get(routineId);
+    if (endedAt !== null && routine && routine.userId === actingUserId && routine.oneOffUntil !== null) {
+      if (patch.keepRoutine === true) {
+        this.routineRepository!.routines.set(routine.id, { ...routine, oneOffUntil: null, updatedAt: new Date() });
+        oneOff = "kept";
+      } else {
+        this.routineRepository!.routines.delete(routine.id);
+        oneOff = "removed";
+      }
+    }
     return {
       workout: updated,
       exerciseCount,
@@ -733,6 +748,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       finishedEdit: null,
       hadPlannedDuration: endedAt !== null && w.plannedDurationS !== null,
       retime,
+      oneOff,
     };
   }
 

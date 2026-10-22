@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { RawClient } from "./set-entry.prisma.js";
+import type { OneOffOutcome } from "./workout.js";
 
 /**
  * Spec 09.3 — every statement that removes or keeps a one-off routine lives here, so the guard
@@ -45,4 +46,43 @@ export async function deleteExpiredOneOffs(tx: RawClient, userId: string): Promi
     RETURNING r.id
   `;
   return removed.length;
+}
+
+/**
+ * §6.2 step 2 — on a live finish, after the PR lock and BEFORE the workout row lock: lock the workout's routine
+ * row iff it is a one-off. The hand `DELETE /v1/routines/{id}` holds routine → workout (the FK's SET NULL), so
+ * the finish must take them in that order too (D10). An ordinary routine, a manual workout and a re-finish
+ * (`ended_at IS NULL` fails) match no row and lock nothing. Returns the routine id, or null.
+ */
+export async function lockOneOffForFinish(tx: RawClient, userId: string, workoutId: string): Promise<string | null> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT r.id FROM "routine" r
+    WHERE r.id = (SELECT w.routine_id FROM "workout" w
+                  WHERE w.id = ${workoutId}::uuid AND w.user_id = ${userId}::uuid AND w.ended_at IS NULL)
+      AND r.user_id = ${userId}::uuid AND r.one_off_until IS NOT NULL
+    FOR UPDATE
+  `;
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * §6.2 step 4 — after the finish UPDATE and the record recompute, so any earlier failure leaves the routine
+ * alone (AC15): keep clears the mark, otherwise the routine is deleted (its children cascade, and this
+ * workout's `routine_id` goes NULL). Both repeat the guard, so an ordinary routine is never touched (AC14).
+ */
+export async function settleOneOff(tx: RawClient, userId: string, routineId: string, keep: boolean): Promise<OneOffOutcome> {
+  if (keep) {
+    const kept = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE "routine" SET one_off_until = NULL, updated_at = now()
+      WHERE id = ${routineId}::uuid AND user_id = ${userId}::uuid AND one_off_until IS NOT NULL
+      RETURNING id
+    `;
+    return kept.length > 0 ? "kept" : "none";
+  }
+  const removed = await tx.$queryRaw<{ id: string }[]>`
+    DELETE FROM "routine"
+    WHERE id = ${routineId}::uuid AND user_id = ${userId}::uuid AND one_off_until IS NOT NULL
+    RETURNING id
+  `;
+  return removed.length > 0 ? "removed" : "none";
 }

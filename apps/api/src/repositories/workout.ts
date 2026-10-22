@@ -115,6 +115,8 @@ export interface UpdateWorkoutFields {
   startedAt?: string;
   tzOffsetMinutes?: number;
   durationSeconds?: number | null;
+  /** Spec 09.3 — on a finish from a one-off, keep the routine instead of removing it. Only with `endedAt`. */
+  keepRoutine?: boolean;
 }
 
 /** `POST /v1/workouts/{id}/exercises` body (§5, §6.6). */
@@ -230,7 +232,12 @@ export interface UpdateWorkoutResult {
   hadPlannedDuration: boolean;
   /** Spec 07.4 §9: set iff the patch carried `startedAt` or `durationSeconds` (the route logs `workout_retimed`). */
   retime: RetimeOutcome | null;
+  /** Spec 09.3 §6.2: what this finish did to a one-off routine; `"none"` on every other path. */
+  oneOff: OneOffOutcome;
 }
+
+/** Spec 09.3 — a finish removed the workout's one-off, kept it (`keepRoutine`), or touched no routine. */
+export type OneOffOutcome = "removed" | "kept" | "none";
 
 /** Spec 07.4 §9 — a Change Time's effect. `startShiftSeconds` is null unless the start moved;
  * `durationSeconds` is the resulting finished duration, or the stored plan on a live workout. */

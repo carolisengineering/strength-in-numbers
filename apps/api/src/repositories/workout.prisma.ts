@@ -45,6 +45,7 @@ import {
   type RawClient,
 } from "./set-entry.prisma.js";
 import type { PersonalRecordRecord } from "./personal-record.js";
+import { lockOneOffForFinish, settleOneOff } from "./routine-one-off.prisma.js";
 import {
   lockUserRecords,
   recomputeRecordsForRoots,
@@ -254,6 +255,7 @@ async function finishedPatch(
     finishedEdit: detailsSent ? (recompute ?? noRecompute(current.id)) : null,
     hadPlannedDuration: false,
     retime: retimeOutcome(patch, true, current.started_at, next, recompute?.recordsRecomputed ?? false),
+    oneOff: "none",
   };
 }
 
@@ -578,8 +580,12 @@ export function createWorkoutRepository(
         // that holds the PR lock (found by AC18). PR lock → row locks,
         // everywhere. A live non-finish PATCH never takes it (AC13); a finished-mode
         // one already holds it (withWriteMode, 07.4 AC4).
+        // Spec 09.3 §6.2: then the one-off routine row (if any), still before the workout row — the
+        // routine `DELETE` route holds routine → workout through the FK's SET NULL (D10).
+        let oneOffId: string | null = null;
         if (mode === "live" && patch.endedAt != null) {
           await lockUserRecords(tx, actingUserId);
+          oneOffId = await lockOneOffForFinish(tx, actingUserId, id);
         }
         // The row lock is the first data-touching statement, ahead of every
         // check (Global Constraints; §6.5's ordering rule) —
@@ -652,6 +658,8 @@ export function createWorkoutRepository(
           const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
           newRecords = written.filter((r) => r.workoutId === id);
         }
+        // Spec 09.3 §6.2 step 4: last, once nothing before it can fail the finish (AC15).
+        const oneOff = finishing && oneOffId ? await settleOneOff(tx, actingUserId, oneOffId, patch.keepRoutine === true) : "none";
         return {
           workout: toRecord(updatedRows[0]!),
           exerciseCount: countRows[0]!.n,
@@ -659,6 +667,7 @@ export function createWorkoutRepository(
           finishedEdit: null,
           hadPlannedDuration: finishing && (current.planned_duration_s ?? null) !== null,
           retime: retimeOutcome(patch, false, current.started_at, next, false),
+          oneOff,
         };
       });
     },

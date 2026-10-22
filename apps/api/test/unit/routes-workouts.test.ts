@@ -629,3 +629,21 @@ describe("07.4 AC19 — PATCH /v1/workouts/{id} Change Time validation", () => {
     expect(paths(res)).toEqual([expect.objectContaining({ path: "startedAt", message: "must not be before 2000-01-01" })]);
   });
 });
+
+describe("09.3 AC11 — keepRoutine needs a finish", () => {
+  it.each([{ keepRoutine: true }, { keepRoutine: false }, { title: "x", keepRoutine: true }])("%j is 422 on keepRoutine", async (payload) => {
+    const { app } = await buildTestApp();
+    const created = await app.inject({ method: "POST", url: "/v1/workouts", headers: BEARER, payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/workouts/${created.json().id}`, headers: BEARER, payload });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().errors).toEqual([{ path: "keepRoutine", message: "requires endedAt" }]);
+  });
+
+  it("a finish with keepRoutine: false behaves like one without it", async () => {
+    const { app } = await buildTestApp();
+    const created = await app.inject({ method: "POST", url: "/v1/workouts", headers: BEARER, payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT } });
+    const res = await app.inject({ method: "PATCH", url: `/v1/workouts/${created.json().id}`, headers: BEARER, payload: { endedAt: ENDED_AT, keepRoutine: false } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().endedAt).not.toBeNull();
+  });
+});
