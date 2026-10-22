@@ -622,3 +622,57 @@ describe("18.0 AC44 — Change Time is accessible (component level)", () => {
     expect(screen.getAllByRole("status")).toEqual([screen.getByTestId("edit-announcement")]);
   });
 });
+
+describe("10.5 AC24 — one-off controls, accessibly", () => {
+  const oneOff = makeRoutine({
+    id: routineId(50),
+    name: "Class Fri 16 Oct",
+    oneOffUntil: "2099-10-30T12:00:00.000Z",
+    items: [makeRoutineItem({ exerciseId: catalog[0]!.id })],
+  });
+
+  it("the tag is text inside the row link and inside the preview's region", async () => {
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [oneOff] }) });
+    const { user } = renderApp("/app/workouts");
+    const link = await screen.findByRole("link", { name: /One-off/ });
+    expect(within(link).getByText("One-off")).toBeInTheDocument();
+    await user.click(link);
+    const region = await screen.findByRole("region", { name: "Class Fri 16 Oct" });
+    expect(within(region).getByText("One-off")).toBeInTheDocument();
+  });
+
+  it("the checkbox is native, labeled and keyboard-togglable; Cancel still takes focus first", async () => {
+    const active = makeWorkoutDetail({ routineName: oneOff.name, routineIsOneOff: true, exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [oneOff], active, activeRoutineId: oneOff.id }) });
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    await user.click(finishButton());
+    const dialog = screen.getByRole("dialog", { name: "Finish workout?" });
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep logging" }));
+    const box = within(dialog).getByRole("checkbox", { name: "Keep it in my routines" });
+    expect(box.tagName).toBe("INPUT");
+    expect(box.closest("label")).not.toBeNull();
+    for (let i = 0; i < 10 && document.activeElement !== box; i += 1) await user.tab({ shift: true });
+    expect(box).toHaveFocus();
+    await user.keyboard(" ");
+    expect(box).toBeChecked();
+  });
+
+  it("Keep's busy, disabled and status states are exposed", async () => {
+    const fake = createWorkoutFake({ catalog, routines: [oneOff] });
+    prepareApp({ auth, catalog, fake });
+    const { user } = renderApp(`/app/workouts/routines/${oneOff.id}`);
+    const keep = await screen.findByRole("button", { name: "Keep as a routine" });
+    let release!: () => void;
+    fake.failNext({ method: "POST", path: /\/keep$/ }, () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(new Response(null, { status: 204 }));
+      }) as unknown as Response,
+    );
+    await user.click(keep);
+    expect(keep).toHaveAttribute("aria-busy", "true");
+    expect(keep).toBeDisabled();
+    release();
+    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent("Kept in your routines.");
+  });
+});

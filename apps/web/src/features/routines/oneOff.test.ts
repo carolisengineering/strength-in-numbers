@@ -16,7 +16,7 @@ function routineWith(n: number, groups: number[]) {
   });
 }
 
-describe("10.5 AC3 — the expiry day is the instant in the device's zone", () => {
+describe("10.5 AC3 — the expiry day is the instant in the device time zone", () => {
   it.each([
     ["2026-10-30T12:00:00.000Z", "Europe/London", "Fri 30 Oct"],
     ["2026-10-30T23:30:00.000Z", "Europe/London", "Fri 30 Oct"], // GMT after the clocks change
