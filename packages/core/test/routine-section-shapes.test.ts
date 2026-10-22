@@ -9,7 +9,7 @@ const item = {
 };
 const routine = {
   id: G(3), name: "R", notes: null, sections: [{ id: G(4), position: 0, name: "Main", notes: null }],
-  items: [item], createdAt: "2026-10-13T10:00:00.000Z", updatedAt: "2026-10-13T10:00:00.000Z",
+  items: [item], createdAt: "2026-10-13T10:00:00.000Z", updatedAt: "2026-10-13T10:00:00.000Z", oneOffUntil: null,
 };
 
 describe("AC1 — routine response shapes", () => {
@@ -17,7 +17,8 @@ describe("AC1 — routine response shapes", () => {
     expect(Object.keys(RoutineSectionSchema.shape)).toEqual(["id", "position", "name", "notes"]);
   });
   it("Routine key order puts sections between notes and items; RoutineItem ends with sectionId", () => {
-    expect(Object.keys(RoutineSchema.shape)).toEqual(["id", "name", "notes", "sections", "items", "createdAt", "updatedAt"]);
+    // Amended by Spec 09.3 AC1: `oneOffUntil` is the new last key.
+    expect(Object.keys(RoutineSchema.shape)).toEqual(["id", "name", "notes", "sections", "items", "createdAt", "updatedAt", "oneOffUntil"]);
     const keys = Object.keys(RoutineItemSchema.shape);
     expect(keys[keys.length - 1]).toBe("sectionId");
   });
