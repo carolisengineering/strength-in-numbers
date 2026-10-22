@@ -102,3 +102,24 @@ describe("18.0 AC22 — applyEditedCaches", () => {
     expect(invalidated(qc, ["workouts", "active"])).toBe(false);
   });
 });
+
+describe("10.5 AC15 — a finish refreshes the routines", () => {
+  const routinesSeeded = () => {
+    const qc = seeded();
+    qc.setQueryData(["routines", "list"], []);
+    qc.setQueryData(["routines", "detail", "r1"], {});
+    return qc;
+  };
+  it.each([["with newRecords", [] as never[]], ["on the recovery path (null)", null]])("%s: the list and every detail are invalidated", (_, records) => {
+    const qc = routinesSeeded();
+    applyFinishedCaches(qc, W, records);
+    expect(invalidated(qc, ["routines", "list"])).toBe(true);
+    expect(invalidated(qc, ["routines", "detail", "r1"])).toBe(true);
+  });
+  it("deleting a finished workout leaves them valid", () => {
+    const qc = routinesSeeded();
+    applyDeletedCaches(qc, W);
+    expect(invalidated(qc, ["routines", "list"])).toBe(false);
+    expect(invalidated(qc, ["routines", "detail", "r1"])).toBe(false);
+  });
+});

@@ -69,7 +69,7 @@ const openEndEarly = async (user: User) => {
   if (menu.getAttribute("aria-expanded") !== "true") await user.click(menu);
   await user.click(screen.getByRole("button", { name: "End workout early" }));
 };
-const finished = () => screen.findByRole("heading", { level: 1, name: /Class Fri 16 Oct|Workout/ });
+const finished = () => screen.findByRole("heading", { level: 1, name: "Workout summary" });
 
 describe("10.5 AC12 — both dialogs, one state, reset on each open", () => {
   it("End workout early shows the line and an unchecked box", async () => {
