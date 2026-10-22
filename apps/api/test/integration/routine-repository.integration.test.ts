@@ -190,7 +190,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     // then the routines are still read in ONE statement.
     const listed = statements.slice(afterGet);
     expect(listed, statements.join("\n")).toHaveLength(2);
-    expect(listed[0], statements.join("\n")).toMatch(/one_off_until <= now\(\)\s+LIMIT 1/);
+    expect(listed[0], statements.join("\n")).toMatch(/one_off_until <= now\(\)[\s\S]*LIMIT 1/);
   });
 
   it("AC3 / AC28 — getById: absent, non-UUID and another user's routine all throw NotFoundError", async () => {

@@ -9,12 +9,15 @@ import type { OneOffOutcome } from "./workout.js";
 
 /**
  * §6.1 — the lazy expiry sweep, run by `list` (and, inside its own transaction, by `create`). With nothing
- * expired it is one read and opens no transaction (AC21). Returns how many routines it removed.
+ * sweepable it is one read and opens no transaction (AC21). An expired one-off a live workout holds is not
+ * sweepable, so the probe skips it too: a list read during that workout takes no lock on it. The delete below
+ * still re-checks under the lock. Returns how many routines it removed.
  */
 export async function sweepExpiredOneOffs(prisma: PrismaClient, userId: string): Promise<number> {
   const probe = await prisma.$queryRaw<{ one: number }[]>`
-    SELECT 1 AS one FROM "routine"
-    WHERE user_id = ${userId}::uuid AND one_off_until IS NOT NULL AND one_off_until <= now()
+    SELECT 1 AS one FROM "routine" r
+    WHERE r.user_id = ${userId}::uuid AND r.one_off_until IS NOT NULL AND r.one_off_until <= now()
+      AND NOT EXISTS (SELECT 1 FROM "workout" w WHERE w.routine_id = r.id AND w.ended_at IS NULL)
     LIMIT 1
   `;
   if (probe.length === 0) return 0;
@@ -85,4 +88,9 @@ export async function settleOneOff(tx: RawClient, userId: string, routineId: str
     RETURNING id
   `;
   return removed.length > 0 ? "removed" : "none";
+}
+
+/** §6.4 — Keep: clear the mark if it is still set. True iff a row changed (the caller decides 204 vs 404). */
+export async function keepOneOff(client: RawClient, userId: string, routineId: string): Promise<boolean> {
+  return (await settleOneOff(client, userId, routineId, true)) === "kept";
 }

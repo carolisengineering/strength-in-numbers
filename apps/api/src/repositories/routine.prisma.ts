@@ -20,7 +20,7 @@ import {
 } from "../errors/app-error.js";
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
-import { deleteExpiredOneOffs, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
+import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -359,12 +359,7 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
 
     async keep(actingUserId, id) {
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
-      const kept = await prisma.$queryRaw<{ id: string }[]>`
-        UPDATE "routine" SET one_off_until = NULL, updated_at = now()
-        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid AND one_off_until IS NOT NULL
-        RETURNING id
-      `;
-      if (kept[0]) return { changed: true };
+      if (await keepOneOff(prisma, actingUserId, id)) return { changed: true };
       const owned = await prisma.$queryRaw<{ one: number }[]>`
         SELECT 1 AS one FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
       `;

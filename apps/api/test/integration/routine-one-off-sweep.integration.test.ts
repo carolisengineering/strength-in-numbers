@@ -124,6 +124,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       expect(seen.join("\n")).not.toMatch(/BEGIN|DELETE/i);
     });
 
+    it("an expired one-off a live workout holds is not sweepable: still two statements, no lock, no DELETE (/code-review)", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const held = await oneOff(u, ex, "held");
+      await ageOneOff(db, held.id, 20);
+      await liveFrom(u, ex, held.id);
+      const seen = captureStatements(db);
+      seen.length = 0;
+      expect((await routines().list(u)).map((r) => r.id)).toEqual([held.id]);
+      expect(seen).toHaveLength(2);
+      expect(seen.join("\n")).not.toMatch(/BEGIN|DELETE|SKIP LOCKED/i);
+    });
+
     it("get-one, PUT, start-from-routine and DELETE never sweep; a PUT keeps the past expiry (Review Focus 2)", async () => {
       const u = await insertUser(db);
       const ex = await insertExercise(db, { ownerUserId: u });
