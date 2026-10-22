@@ -20,6 +20,7 @@ import {
 } from "../errors/app-error.js";
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
+import { deleteExpiredOneOffs, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -264,7 +265,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
   }
 
   return {
-    async list(actingUserId) {
+    async list(actingUserId, onSwept) {
+      const removed = await sweepExpiredOneOffs(prisma, actingUserId);
+      if (removed > 0) onSwept?.(removed);
       const rows = await prisma.$queryRaw<RoutineDbRow[]>(
         ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, ROUTINE_ONE_OFF_ORDER),
       );
@@ -276,16 +279,21 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
       return loadOne(prisma, actingUserId, id);
     },
 
-    async create(actingUserId, fields) {
+    async create(actingUserId, fields, onSwept) {
       const id = uuidv7();
-      return prisma.$transaction(async (tx) => {
+      let removed = 0;
+      const created = await prisma.$transaction(async (tx) => {
         // The 03.2 cap idiom (insertWithCap): the lock is its own statement so
         // the count's snapshot is taken after the lock is held. The key is
         // prefixed so it never collides with the custom-exercise cap's
         // `hashtext(user_id)`.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"routine:" + actingUserId}))`;
+        // Spec 09.3 §6.1: a swept one-off frees its slot and its name for this very insert; the count then
+        // ignores an expired one-off a live workout still holds (≤ 1, so at most 51 rows exist, AC7).
+        removed = await deleteExpiredOneOffs(tx, actingUserId);
         const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "routine" WHERE user_id = ${actingUserId}::uuid
+          SELECT count(*)::int AS n FROM "routine"
+          WHERE user_id = ${actingUserId}::uuid AND (one_off_until IS NULL OR one_off_until > now())
         `;
         if (countRows[0]!.n >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
         try {
@@ -308,6 +316,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
+      // Reported only once the sweep has committed with the create.
+      if (removed > 0) onSwept?.(removed);
+      return created;
     },
 
     async replace(actingUserId, id, fields) {

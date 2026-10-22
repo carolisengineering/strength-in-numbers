@@ -51,7 +51,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
     for (const r of results) expect([sigA, sigB]).toContain(signature(r));
   });
 
-  it("AC30 — 50 routines × 30 items × 20 rows × 8 sections are read in ONE statement within the bound", async () => {
+  it("AC30 — 50 routines × 30 items × 20 rows × 8 sections are read in ONE statement (plus the 09.3 sweep probe; amended by 09.3 AC30) within the bound", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
     await db.prisma.$executeRawUnsafe(`INSERT INTO "routine" (id, user_id, name) SELECT gen_random_uuid(), $1::uuid, 'R' || g FROM generate_series(1, 50) g`, u);
@@ -76,7 +76,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
     expect(list.every((r) => r.sections.length === 8)).toBe(true);
     expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);
     expect(list[0]!.items.every((i) => i.sectionId !== null)).toBe(true);
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(2); // amended by 09.3 AC30: the sweep probe, then the one list statement
     expect(ms).toBeLessThan(LIST_BOUND_MS);
   });
 });

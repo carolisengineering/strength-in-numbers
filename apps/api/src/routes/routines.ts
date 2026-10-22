@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
@@ -36,6 +36,11 @@ export interface RoutineRouteDeps {
 
 const plannedSetCount = (r: RoutineRecord): number => r.items.reduce((n, it) => n + it.sets.length, 0);
 
+/** Spec 09.3 §9 — ids and counts only, once per read or create that removed ≥ 1 expired one-off. */
+function logOneOffsExpired(log: FastifyBaseLogger, userId: string, count: number): void {
+  log.info({ user_id: userId, routine_count: count }, "routine_one_offs_expired");
+}
+
 export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDeps): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
   const idParams = z.object({ id: z.string() });
@@ -47,7 +52,11 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
       config: { published: true, problems: [], httpCache: "revalidate" },
     },
     async (request, reply) => {
-      const routines = (await deps.routineRepository.list(request.user!.id)).map(toRoutineDto);
+      const actingUserId = request.user!.id;
+      let swept = 0;
+      const routines = (await deps.routineRepository.list(actingUserId, (n) => (swept = n))).map(toRoutineDto);
+      if (swept > 0) logOneOffsExpired(request.log, actingUserId, swept);
+      // Hashed over the post-sweep document, so a sweep that removed rows never answers 304 (09.3 AC22).
       const etag = strongEtag("routines", JSON.stringify(routines));
       reply.header("etag", etag);
       if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
@@ -90,7 +99,9 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
     async (request, reply) => {
       const actingUserId = request.user!.id;
       try {
-        const created = await deps.routineRepository.create(actingUserId, request.body);
+        let swept = 0;
+        const created = await deps.routineRepository.create(actingUserId, request.body, (n) => (swept = n));
+        if (swept > 0) logOneOffsExpired(request.log, actingUserId, swept);
         request.log.info(
           {
             routine_id: created.id,

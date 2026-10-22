@@ -25,7 +25,7 @@ async function setup() {
     routineRepository: routineRepo,
     rateLimits: GENEROUS_LIMITS,
   });
-  return { app, lines };
+  return { app, lines, routineRepo };
 }
 
 describe("AC30 — routine log lines carry ids and counts only", () => {
@@ -61,6 +61,24 @@ describe("AC30 — routine log lines carry ids and counts only", () => {
     await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "A", items: [{ exerciseId: EX.id }], oneOff: true } });
     await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
     expect(lines.filter((l) => l.msg === "routine_created").map((l) => l.one_off)).toEqual([true, false]);
+  });
+
+  it("09.3 AC29 — a list read that sweeps logs routine_one_offs_expired once with the count; none when nothing expired", async () => {
+    const { app, lines, routineRepo } = await setup();
+    for (const name of ["A", "B", "C"]) {
+      await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name, items: [{ exerciseId: EX.id }], oneOff: true } });
+    }
+    await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    expect(lines.filter((l) => l.msg === "routine_one_offs_expired")).toEqual([]);
+    const [a, b] = [...routineRepo.routines.values()].filter((r) => r.name !== "C");
+    for (const r of [a!, b!]) r.oneOffUntil = new Date(Date.now() - 60_000);
+    const res = await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    expect(res.json().routines.map((r: { name: string }) => r.name)).toEqual(["C"]);
+    const swept = lines.filter((l) => l.msg === "routine_one_offs_expired");
+    expect(swept).toHaveLength(1);
+    expect(swept[0]).toMatchObject({ routine_count: 2 });
+    expect(typeof swept[0]!.user_id).toBe("string");
+    expect(Object.keys(swept[0]!)).not.toContain("routine_id");
   });
 
   it("routine_limit_hit fires once at info when the cap is reached", async () => {
