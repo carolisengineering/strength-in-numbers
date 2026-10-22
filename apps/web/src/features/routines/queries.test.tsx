@@ -78,7 +78,7 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: async () => created })),
     });
-    await act(() => result.current.mutateAsync(body));
+    await act(() => result.current.mutateAsync({ body }));
     expect(qc.getQueryData(ROUTINE_KEYS.list)).toEqual([created, b, a]);
     expect(qc.getQueryData(ROUTINE_KEYS.detail(routineId(3)))).toEqual(created);
   });
@@ -120,7 +120,7 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result, unmount } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: () => gate.promise })),
     });
-    const pending = result.current.mutateAsync(body);
+    const pending = result.current.mutateAsync({ body });
     unmount();
     gate.resolve(a);
     await pending;
@@ -133,7 +133,7 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: () => Promise.reject(ApiError.network("r", null)) })),
     });
-    await expect(result.current.mutateAsync(body)).rejects.toBeInstanceOf(ApiError);
+    await expect(result.current.mutateAsync({ body })).rejects.toBeInstanceOf(ApiError);
     vi.restoreAllMocks();
   });
 });
