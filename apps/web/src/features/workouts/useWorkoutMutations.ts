@@ -90,7 +90,7 @@ export function useStartWorkout(): UseMutationResult<Workout, Error, { body: Cre
 export function useFinishWorkout(): UseMutationResult<
   UpdatedWorkout,
   Error,
-  { id: string; endedAt: string; viaReplay?: boolean; endedEarly?: boolean; unloggedPlannedSets?: number }
+  { id: string; endedAt: string; viaReplay?: boolean; endedEarly?: boolean; unloggedPlannedSets?: number; keepRoutine?: boolean }
 > {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
@@ -98,7 +98,8 @@ export function useFinishWorkout(): UseMutationResult<
   const rest = useRestStores();
   return useMutation({
     networkMode: "always",
-    mutationFn: ({ id, endedAt }) => client.finish(id, { endedAt }),
+    // Spec 10.5 AC13: `keepRoutine` goes on the wire only as `true`; otherwise the body is exactly `{ endedAt }`.
+    mutationFn: ({ id, endedAt, keepRoutine }) => client.finish(id, keepRoutine ? { endedAt, keepRoutine: true } : { endedAt }),
     // Seed the summary only. Removing the active entry here would leave the Workouts screen's observer
     // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
     // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),

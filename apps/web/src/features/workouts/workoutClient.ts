@@ -42,7 +42,7 @@ export interface WorkoutClient {
   getById(id: string): Promise<WorkoutDetail>;
   start(body: CreateWorkout): Promise<Workout>;
   /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `UpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5). */
-  finish(id: string, body: { endedAt: string }): Promise<UpdatedWorkout>;
+  finish(id: string, body: { endedAt: string; keepRoutine?: true }): Promise<UpdatedWorkout>;
   deleteWorkout(id: string): Promise<void>;
   addExercise(workoutId: string, body: { exerciseId: string }): Promise<WorkoutExercise>;
   /** Spec 10.1 AC11: exactly the keys given go on the wire. No `notes` — a regroup must never overwrite a note copied from the routine (Spec 09 D22). */

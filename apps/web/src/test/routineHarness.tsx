@@ -14,6 +14,7 @@ export function fakeRoutineClient(overrides: Partial<RoutineClient> = {}): Routi
     create: unexpected("create"),
     replace: unexpected("replace"),
     remove: unexpected("remove"),
+    keep: unexpected("keep"),
     ...overrides,
   } as RoutineClient;
 }

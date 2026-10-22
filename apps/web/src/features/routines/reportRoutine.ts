@@ -2,7 +2,7 @@ import { reportError } from "../../observability/reportError";
 import { classifyRoutineError } from "./routineErrors";
 
 /** Static operation names — the only context a report carries (AC38). */
-export type RoutineReportOp = "load-routines" | "load-routine" | "save-routine" | "delete-routine" | "validate-draft";
+export type RoutineReportOp = "load-routines" | "load-routine" | "save-routine" | "delete-routine" | "validate-draft" | "keep-routine";
 
 /**
  * Report what we did not predict (Spec 10.0 AC11): an unrecognised problem, a non-`ApiError`, and a

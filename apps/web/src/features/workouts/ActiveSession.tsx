@@ -47,7 +47,7 @@ import { SessionSection } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
-import { FinishDialogBody } from "./FinishDialog";
+import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
@@ -132,6 +132,23 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const [finishOpen, setFinishOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [endEarlyOpen, setEndEarlyOpen] = useState(false);
+  // Spec 10.5 AC12 / D7: one choice for both dialogs, unchecked on every open, never persisted.
+  const [keepOneOff, setKeepOneOffState] = useState(false);
+  // `confirmFinish` reads the choice through this ref: a banner's Try again is a closure from an earlier
+  // render, and must send the choice as it stands now (a reopened dialog has reset it).
+  const keepOneOffRef = useRef(false);
+  const setKeepOneOff = (keep: boolean) => {
+    keepOneOffRef.current = keep;
+    setKeepOneOffState(keep);
+  };
+  const openFinish = () => {
+    setKeepOneOff(false);
+    setFinishOpen(true);
+  };
+  const openEndEarly = () => {
+    setKeepOneOff(false);
+    setEndEarlyOpen(true);
+  };
   const [flaggedIds, setFlaggedIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
   const [banner, setBanner] = useState<Banner | null>(null);
   // Synchronous guards: React state would not have updated before a second tap lands.
@@ -507,7 +524,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({ id: workout.id, endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()), endedEarly, unloggedPlannedSets: unlogged.total });
+      await finish.mutateAsync({
+        id: workout.id,
+        endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()),
+        endedEarly,
+        unloggedPlannedSets: unlogged.total,
+        // Spec 10.5 AC13: only a one-off's checked box adds the key; a Retry uses the choice as it stands.
+        keepRoutine: workout.routineIsOneOff && keepOneOffRef.current,
+      });
       setFinishOpen(false);
       setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
@@ -659,15 +683,20 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     mode === "add"
       ? { kind: "add", disabled: structureBusy, onClick: () => setPickerOpen(true) }
       : mode === "finish"
-        ? { kind: "finish", disabled: finishDisabled, onClick: () => setFinishOpen(true) }
+        ? { kind: "finish", disabled: finishDisabled, onClick: openFinish }
         : { kind: "log" };
   const endReason =
     totalSets === 0 ? "Log a set first" : unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null;
+  // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
+  const oneOff: FinishOneOff | undefined =
+    workout.routineIsOneOff && workout.routineName !== null
+      ? { name: workout.routineName, keep: keepOneOff, onKeepChange: setKeepOneOff, disabled: finish.isPending }
+      : undefined;
   const endItem = {
     label: unlogged.total > 0 ? ("End workout early" as const) : ("Finish workout" as const),
     disabled: finishDisabled,
     reason: endReason,
-    onClick: () => (unlogged.total > 0 ? setEndEarlyOpen(true) : setFinishOpen(true)),
+    onClick: () => (unlogged.total > 0 ? openEndEarly() : openFinish()),
   };
 
   return (
@@ -755,7 +784,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             </Button>
             {/* D14: a workout with no plan has no Finish mode, so Finish lives here. */}
             {freeForm ? (
-              <Button variant="secondary" disabled={finishDisabled} onClick={() => setFinishOpen(true)}>
+              <Button variant="secondary" disabled={finishDisabled} onClick={openFinish}>
                 Finish workout
               </Button>
             ) : null}
@@ -815,9 +844,19 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} {...(oneOff ? { oneOff } : {})} />
       </ConfirmDialog>
-      <EndEarlyDialog open={endEarlyOpen} unlogged={unlogged} stats={dialogStats} unitPreference={unitPreference} busy={finish.isPending} {...(endsAt ? { endsAt } : {})} onConfirm={() => void confirmFinish(true)} onCancel={() => setEndEarlyOpen(false)} />
+      <EndEarlyDialog
+        open={endEarlyOpen}
+        unlogged={unlogged}
+        stats={dialogStats}
+        unitPreference={unitPreference}
+        busy={finish.isPending}
+        {...(endsAt ? { endsAt } : {})}
+        {...(oneOff ? { oneOff } : {})}
+        onConfirm={() => void confirmFinish(true)}
+        onCancel={() => setEndEarlyOpen(false)}
+      />
 
       <ConfirmDialog
         open={discardOpen}

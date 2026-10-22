@@ -2,6 +2,7 @@ import { hashKey, type QueryClient } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
+import { ROUTINE_KEYS } from "../routines/queries";
 import { RECORDS_KEYS } from "./queries";
 
 /**
@@ -23,6 +24,9 @@ export function applyFinishedCaches(
   if (newRecords) queryClient.setQueryData<PersonalRecord[]>(own, [...newRecords]);
   else queryClient.removeQueries({ queryKey: own, exact: true });
   invalidateOthers(queryClient, own);
+  // Spec 10.5 AC15 / D6: a finish may remove or keep a one-off routine. Always, because on the recovery
+  // path the refetched detail already reads `routineIsOneOff: false`, so no flag can gate it.
+  void queryClient.invalidateQueries({ queryKey: ROUTINE_KEYS.all });
 }
 
 /** The cache effects of deleting a finished workout: its records go; another workout may regain one. */

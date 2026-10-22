@@ -21,8 +21,9 @@ export function useRoutineClient(): RoutineClient {
 
 /**
  * Every routine, in the server's order (Spec 10.0 AC12, D10). `networkMode: "always"`: offline fails as
- * a `network` error instead of pausing (D11). Routines change only from this device in v1, so no focus
- * refetch. `retry: false`: the notice's Retry is the retry.
+ * a `network` error instead of pausing (D11). Spec 10.5: a finish on another device or the server's expiry
+ * sweep can now remove a one-off, so — unlike the app default — a stale list refetches when the app regains
+ * focus (a `304` when nothing changed). `retry: false`: the notice's Retry is the retry.
  */
 export function useRoutines(): UseQueryResult<Routine[]> {
   const client = useRoutineClient();
@@ -31,7 +32,7 @@ export function useRoutines(): UseQueryResult<Routine[]> {
     queryFn: () => client.list(),
     retry: false,
     networkMode: "always",
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -235,3 +235,16 @@ describe("18.0 AC29 — updateWorkout carries the Change Time keys", () => {
     expect(Object.keys(calls[0]!.body as object)).toEqual(["endedAt"]);
   });
 });
+
+describe("10.5 AC13 — finish forwards the body as given", () => {
+  it("{ endedAt } and { endedAt, keepRoutine: true } go to the wire unchanged", async () => {
+    const { api, calls } = recordingApi();
+    const client = createWorkoutClient(api);
+    await client.finish("w1", { endedAt: "2026-10-16T18:00:00.000Z" });
+    await client.finish("w1", { endedAt: "2026-10-16T18:00:00.000Z", keepRoutine: true });
+    expect(calls.map((c) => c.body)).toStrictEqual([
+      { endedAt: "2026-10-16T18:00:00.000Z" },
+      { endedAt: "2026-10-16T18:00:00.000Z", keepRoutine: true },
+    ]);
+  });
+});

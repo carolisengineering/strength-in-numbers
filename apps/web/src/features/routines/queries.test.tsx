@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api";
 import { exerciseId } from "../../test/catalogFixtures";
@@ -78,7 +79,7 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: async () => created })),
     });
-    await act(() => result.current.mutateAsync(body));
+    await act(() => result.current.mutateAsync({ body }));
     expect(qc.getQueryData(ROUTINE_KEYS.list)).toEqual([created, b, a]);
     expect(qc.getQueryData(ROUTINE_KEYS.detail(routineId(3)))).toEqual(created);
   });
@@ -120,7 +121,7 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result, unmount } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: () => gate.promise })),
     });
-    const pending = result.current.mutateAsync(body);
+    const pending = result.current.mutateAsync({ body });
     unmount();
     gate.resolve(a);
     await pending;
@@ -133,7 +134,29 @@ describe("10.0 AC12 — mutations write the caches in hook-level onSuccess", () 
     const { result } = renderHook(() => useCreateRoutine(), {
       wrapper: routineWrapper(qc, fakeRoutineClient({ create: () => Promise.reject(ApiError.network("r", null)) })),
     });
-    await expect(result.current.mutateAsync(body)).rejects.toBeInstanceOf(ApiError);
+    await expect(result.current.mutateAsync({ body })).rejects.toBeInstanceOf(ApiError);
     vi.restoreAllMocks();
+  });
+});
+
+describe("10.5 AC15 — the routines list refetches on focus once stale", () => {
+  it("a finish or expiry on another device shows up when the app comes back", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const list = vi.fn().mockResolvedValue([a]);
+      const qc = makeQueryClient();
+      const { result } = renderHook(() => useRoutines(), { wrapper: routineWrapper(qc, fakeRoutineClient({ list })) });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(list).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(Date.now() + 31_000);
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+      });
+      await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    } finally {
+      focusManager.setFocused(undefined);
+      vi.useRealTimers();
+    }
   });
 });

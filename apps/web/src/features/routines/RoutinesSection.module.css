@@ -46,6 +46,22 @@
   font-weight: 600;
 }
 
+/* Spec 10.5 AC2: a one-off's name and its muted tag (teal is interactive, brass is records). */
+.nameLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.tag {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
 .summary {
   color: var(--color-muted);
   font-size: var(--font-size-sm);

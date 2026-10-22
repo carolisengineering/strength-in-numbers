@@ -49,15 +49,26 @@ function makeHandler(state) {
     else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: D.exercises, syncToken: "1.100" });
     else if (m === "GET" && p === "/v1/muscle-groups") res = json({ muscleGroups: D.muscleGroups });
     else if (m === "GET" && p === "/v1/equipment") res = json({ equipment: D.equipment });
-    else if (m === "GET" && p === "/v1/routines") res = json({ routines: D.routines });
+    // Spec 10.5 AC26: the one-off is listed only while `showClass` is on, until the one-off finish removes it.
+    else if (m === "GET" && p === "/v1/routines") res = json({ routines: state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines });
     else if (m === "GET" && (seg = /^\/v1\/routines\/([^/]+)$/.exec(p))) {
-      const r = D.routines.find((x) => x.id === decodeURIComponent(seg[1]));
+      const listed = state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines;
+      const r = listed.find((x) => x.id === decodeURIComponent(seg[1]));
       res = r ? json(r) : problem(404, "not-found", "Not found");
+    } else if (m === "POST" && /^\/v1\/routines\/[^/]+\/keep$/.test(p)) {
+      res = { status: 204, body: "" };
     } else if (m === "GET" && p === "/v1/workouts/active") {
-      res = state.active ? json(state.planned ? D.activePlanned : state.done ? D.activeDone : D.active) : problem(404, "not-found", "No active workout");
+      const live = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
+      res = state.active ? json(live) : problem(404, "not-found", "No active workout");
+    } else if (m === "PATCH" && state.oneOffActive && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
+      // The one-off finish: the server removes the routine (Spec 09.3); the detail no longer reads as one-off.
+      state.finishedOneOff = { ...D.activeOneOff, endedAt: new Date().toISOString(), plannedDurationSeconds: null, routineIsOneOff: false };
+      state.classGone = true;
+      res = json({ ...state.finishedOneOff, newRecords: [] });
     } else if (m === "GET" && p === "/v1/workouts") res = json(D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
-      const w = D.allWorkouts.find((x) => x.id === decodeURIComponent(seg[1]));
+      const id = decodeURIComponent(seg[1]);
+      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : D.allWorkouts.find((x) => x.id === id);
       res = w ? json(w) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/personal-records") {
       const ex = url.searchParams.get("exerciseId");
@@ -483,6 +494,28 @@ try {
 
     await go(`/app/workouts/routines/new`);
     await shoot(page, device, "10-routine-new", "Routine editor, create mode (empty)");
+
+    // Spec 10.5 AC26: a one-off on the list and preview, the Finish dialog's line and box, the list after a finish.
+    await tryStep("one-off routines", async () => {
+      state.showClass = true;
+      await go("/app/workouts");
+      await shoot(page, device, "48-routines-one-off", "Routines list: the one-off first, tagged, with from text · until {date} (Spec 10.5 AC1–AC2)");
+      await go(`/app/workouts/routines/${D.CLASS.id}`);
+      await shoot(page, device, "49-routine-preview-one-off", "One-off preview: the tag, the note above Start, Keep as a routine (Spec 10.5 AC6–AC7)");
+      state.active = state.oneOffActive = true;
+      await go("/app/workouts");
+      await page.getByTestId("session-bar").getByRole("button", { name: "Finish workout" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "50-finish-dialog-one-off", "Finish dialog from a one-off: the line and the unchecked Keep it in my routines (Spec 10.5 AC11)");
+      await page.locator("dialog[open]").getByRole("button", { name: "Finish", exact: true }).click();
+      await page.getByRole("heading", { level: 1, name: "Workout summary" }).waitFor({ timeout: 4000 });
+      state.active = state.oneOffActive = false;
+      await go("/app/workouts");
+      await shoot(page, device, "51-routines-after-finish", "Routines list after that finish: the one-off is gone (Spec 10.5 AC15)");
+    });
+    state.active = state.oneOffActive = false;
+    state.showClass = state.classGone = false;
+    state.finishedOneOff = null;
 
     // Spec 10.4 AC39: routine from text, typed from the committed fixture (the session is in memory: no reloads).
     await tryStep("routine from text", async () => {

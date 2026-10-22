@@ -21,3 +21,7 @@ export function unsavedMessage({ sets, notes }: Unsaved): string {
     ? `${subject} hasn't saved. If you sign out now it'll be lost.`
     : `${subject} haven't saved. If you sign out now they'll be lost.`;
 }
+
+/** Spec 10.5 AC11 / AC20: the one-off line and checkbox in both Finish dialogs (straight single quotes). */
+export const KEEP_IN_ROUTINES = "Keep it in my routines";
+export const oneOffFinishLine = (name: string): string => `'${name}' is a one-off: it leaves your routines when you finish.`;

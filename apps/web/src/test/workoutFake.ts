@@ -24,6 +24,8 @@ import {
   normalizeSupersetGroups,
   plannedSetViolations,
   ROUTINES_PER_USER_MAX,
+  ROUTINE_ONE_OFF_DAYS,
+  RoutineCreateSchema,
   RoutineSchema,
   RoutineWriteSchema,
   type Routine,
@@ -79,6 +81,8 @@ export interface WorkoutFake {
     routines: Map<string, Routine>;
     /** The catalog (a copy of `options.catalog`); `serveExercises` creates into it. */
     catalog: Exercise[];
+    /** Spec 10.5: workout id → the routine it was started from, while that workout is live. */
+    links: Map<string, string>;
   };
   /** Every request seen, in order (including ones answered by `failNext`). */
   requests: RecordedRequest[];
@@ -111,6 +115,10 @@ export interface WorkoutFakeOptions {
    * (a custom row, recorded and subject to `failNext` / `loseNextResponse` / `setOffline`).
    */
   serveExercises?: boolean;
+  /** Spec 10.5: the routine the seeded `active` workout was started from. */
+  activeRoutineId?: string;
+  /** Spec 10.5: the fake's clock for `oneOffUntil`. Default `Date.now`. */
+  now?: () => number;
 }
 
 export function problemResponse(
@@ -182,8 +190,18 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     records: [...(options.records ?? [])],
     routines: new Map((options.routines ?? []).map((r) => [r.id as string, r])),
     catalog: [...(options.catalog ?? [])],
+    links: new Map<string, string>(
+      options.active && options.activeRoutineId ? [[options.active.id, options.activeRoutineId]] : [],
+    ),
   };
   const catalog = state.catalog;
+  const clock = options.now ?? Date.now;
+  /** Spec 09.3: a linked live workout reads the mark from its routine; otherwise the stored flag stands. */
+  const detailOut = (detail: WorkoutDetail) => {
+    const link = state.links.get(detail.id);
+    const routineIsOneOff = link === undefined ? detail.routineIsOneOff : (state.routines.get(link)?.oneOffUntil ?? null) !== null;
+    return WorkoutDetailSchema.parse({ ...detail, routineIsOneOff });
+  };
   const requests: RecordedRequest[] = [];
   const failures: { match: FailMatch; response: () => Response; remaining: number; skip: number }[] = [];
   const losses: FailMatch[] = [];
@@ -315,8 +333,16 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     });
   }
 
+  /** Spec 09.3 AC3: one-offs first, newest created first; then lowercase name, then id. */
   const sortedRoutines = () =>
     [...state.routines.values()].sort((x, y) => {
+      const xo = x.oneOffUntil !== null;
+      const yo = y.oneOffUntil !== null;
+      if (xo !== yo) return xo ? -1 : 1;
+      if (xo) {
+        const byCreated = Date.parse(y.createdAt) - Date.parse(x.createdAt);
+        if (byCreated !== 0) return byCreated;
+      }
       const a = x.name.toLowerCase();
       const b = y.name.toLowerCase();
       return a !== b ? (a < b ? -1 : 1) : x.id < y.id ? -1 : 1;
@@ -339,10 +365,15 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   }
 
   /** Spec 09 §6.2 order: schema 422 → visibility 422 → retired 409 (first offending index) → name 409. */
-  function routineWrite(body: unknown, selfId: string | null): { ok: true; routine: Routine } | { ok: false; response: Response } {
-    const parsed = parseBody(RoutineWriteSchema, body);
+  function routineWrite(
+    body: unknown,
+    selfId: string | null,
+    schema: typeof RoutineWriteSchema | typeof RoutineCreateSchema,
+  ): { ok: true; routine: Routine } | { ok: false; response: Response } {
+    const parsed = parseBody(schema, body);
     if (!parsed.ok) return parsed;
     const input = parsed.data;
+    const oneOff = "oneOff" in input && input.oneOff === true;
     for (const [i, item] of input.items.entries()) {
       const exercise = catalog.find((e) => e.id === item.exerciseId);
       if (!exercise) return { ok: false, response: validation([{ path: `items.${i}.exerciseId`, message: "Unknown exercise" }]) };
@@ -387,10 +418,14 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
           sectionId: item.sectionKey ? (sectionIdOfKey.get(item.sectionKey) ?? null) : null,
         };
       }),
-      createdAt: existing?.createdAt ?? now(),
+      createdAt: existing?.createdAt ?? new Date(clock()).toISOString(),
       updatedAt: now(),
-      // Spec 09.3: a PUT never changes the mark; the web sends no `oneOff` until Spec 10.5.
-      oneOffUntil: existing?.oneOffUntil ?? null,
+      // Spec 09.3: a create with `oneOff: true` marks it for 14 days; a PUT never changes the mark.
+      oneOffUntil: existing
+        ? existing.oneOffUntil
+        : oneOff
+          ? new Date(clock() + ROUTINE_ONE_OFF_DAYS * 86_400_000).toISOString()
+          : null,
     });
     return { ok: true, routine };
   }
@@ -415,6 +450,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         if (retired) return problemResponse(409, "exercise-retired", { errors: [{ path: "routineId", message: "Exercise retired" }] });
       }
       const workoutIdForStart = uuid();
+      if (routine) state.links.set(workoutIdForStart, routine.id);
       const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes }));
       // Spec 09.2 §6.4: the join is on section position (each copy keeps its routine section's position).
       const startSectionOf = (routineSectionId: string | null): string | null => {
@@ -469,7 +505,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
 
     // `/workouts/active` must precede `/workouts/:id`.
     handle("get", "/workouts/active", () =>
-      state.active ? HttpResponse.json(WorkoutDetailSchema.parse(state.active)) : notFound(),
+      state.active ? HttpResponse.json(detailOut(state.active)) : notFound(),
     ),
     // Spec 07.1: finished workouts, newest first, keyset-like paging with an opaque cursor.
     handle("get", "/workouts", ({ query }) => {
@@ -523,7 +559,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     handle("get", "/routines", () => HttpResponse.json({ routines: sortedRoutines() })),
     handle("post", "/routines", ({ body }) => {
       if (state.routines.size >= ROUTINES_PER_USER_MAX) return problemResponse(409, "routine-limit");
-      const result = routineWrite(body, null);
+      const result = routineWrite(body, null, RoutineCreateSchema);
       if (!result.ok) return result.response;
       state.routines.set(result.routine.id, result.routine);
       return HttpResponse.json(result.routine, { status: 201 });
@@ -534,10 +570,17 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }),
     handle("put", "/routines/:id", ({ params, body }) => {
       if (!state.routines.has(params["id"]!)) return notFound();
-      const result = routineWrite(body, params["id"]!);
+      const result = routineWrite(body, params["id"]!, RoutineWriteSchema);
       if (!result.ok) return result.response;
       state.routines.set(result.routine.id, result.routine);
       return HttpResponse.json(result.routine);
+    }),
+    // Spec 09.3: Keep clears the mark; 204, no body.
+    handle("post", "/routines/:id/keep", ({ params }) => {
+      const routine = state.routines.get(params["id"]!);
+      if (!routine) return notFound();
+      state.routines.set(routine.id, RoutineSchema.parse({ ...routine, oneOffUntil: null, updatedAt: now() }));
+      return new HttpResponse(null, { status: 204 });
     }),
     handle("delete", "/routines/:id", ({ params }) =>
       state.routines.delete(params["id"]!) ? new HttpResponse(null, { status: 204 }) : notFound(),
@@ -555,7 +598,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }),
     handle("get", "/workouts/:id", ({ params }) => {
       const found = locateWorkout(params["id"]!);
-      return found ? HttpResponse.json(WorkoutDetailSchema.parse(found.detail)) : notFound();
+      return found ? HttpResponse.json(detailOut(found.detail)) : notFound();
     }),
     handle("patch", "/workouts/:id", ({ params, body }) => {
       const found = locateWorkout(params["id"]!);
@@ -620,8 +663,16 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         updatedAt: now(),
       });
       if (next.endedAt !== null) {
+        // Spec 09.3: the finish removes a one-off routine, or keeps it with `keepRoutine: true`; the link goes either way.
+        const link = state.links.get(next.id);
+        const routine = link === undefined ? undefined : state.routines.get(link);
+        if (routine && routine.oneOffUntil !== null) {
+          if (input.keepRoutine === true) state.routines.set(routine.id, RoutineSchema.parse({ ...routine, oneOffUntil: null, updatedAt: now() }));
+          else state.routines.delete(routine.id);
+        }
+        state.links.delete(next.id);
         state.active = null;
-        state.finished.set(next.id, next);
+        state.finished.set(next.id, { ...next, routineIsOneOff: false });
       } else {
         state.active = next;
       }
@@ -635,8 +686,10 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }),
     handle("delete", "/workouts/:id", ({ params }) => {
       const id = params["id"]!;
-      if (state.active?.id === id) state.active = null;
-      else if (!state.finished.delete(id)) return notFound();
+      if (state.active?.id === id) {
+        state.active = null;
+        state.links.delete(id);
+      } else if (!state.finished.delete(id)) return notFound();
       return new HttpResponse(null, { status: 204 });
     }),
 
