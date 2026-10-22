@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine, RoutineItem } from "@sin/core";
+import { ApiError } from "../../api";
 import { BackLink } from "../../ui/BackLink";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -12,7 +13,21 @@ import { START_CLOCK_MESSAGE, START_FAILED_MESSAGE, useBeginWorkout } from "../w
 import type { WorkoutsLocationState } from "../workouts/WorkoutsScreen";
 import { useExerciseLookup } from "./exerciseLookup";
 import { ItemLine } from "./ItemLine";
-import { ACTIVE_BLOCKS_START, DELETE_FAILED, LOAD_ONE_FAILED, OFFLINE_DELETE, RATE_LIMITED, ROUTINE_GONE, START_RETIRED } from "./messages";
+import {
+  ACTIVE_BLOCKS_START,
+  DELETE_FAILED,
+  KEEP_AS_ROUTINE,
+  KEEP_FAILED,
+  KEPT_STATUS,
+  LOAD_ONE_FAILED,
+  OFFLINE_DELETE,
+  OFFLINE_KEEP,
+  ONE_OFF_TAG,
+  RATE_LIMITED,
+  ROUTINE_GONE,
+  START_RETIRED,
+} from "./messages";
+import { isOneOff, oneOffNote } from "./oneOff";
 import { EDITOR_FROM_BACK, routineEditPath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
@@ -21,7 +36,7 @@ import { routineGroups } from "./routineSections";
 import { classifyRoutineError, type ClassifiedRoutineError } from "./routineErrors";
 import styles from "./RoutinePreview.module.css";
 import { itemAccessibleName, targetLine } from "./targetFormat";
-import { useDeleteRoutine } from "./useRoutineMutations";
+import { useDeleteRoutine, useKeepRoutine } from "./useRoutineMutations";
 
 /** `/app/workouts/routines/:id` — keyed by id, so moving between routines mounts a fresh preview (one start key each). */
 export function RoutinePreviewRoute() {
@@ -31,14 +46,18 @@ export function RoutinePreviewRoute() {
 
 function RoutinePreview({ id }: { id: string }) {
   const remove = useDeleteRoutine();
+  const keep = useKeepRoutine();
+  // Spec 10.5 AC8: a Keep answered 404 means a finish removed the routine — show it gone.
+  const keepGone = keep.error instanceof ApiError && keep.error.status === 404;
   // While deleting / deleted the id is about to vanish: never fall back to a detail read for it (§6.4).
-  const lookup = useRoutine(id, { suspend: remove.isPending || remove.isSuccess });
+  const lookup = useRoutine(id, { suspend: remove.isPending || remove.isSuccess || keepGone });
   const error = lookup.status === "error" ? lookup.error : null;
 
   useEffect(() => {
     if (error) reportRoutineUnexpected("load-routine", error);
   }, [error]);
 
+  if (keepGone) return <RoutineGone />;
   if (lookup.status === "pending") {
     return (
       <Screen title="Routine" lead={<BackToWorkouts />}>
@@ -58,7 +77,7 @@ function RoutinePreview({ id }: { id: string }) {
       </Screen>
     );
   }
-  return <PreviewBody routine={lookup.routine} remove={remove} />;
+  return <PreviewBody routine={lookup.routine} remove={remove} keep={keep} />;
 }
 
 export function RoutineGone() {
@@ -126,7 +145,21 @@ function deleteMessage(failure: ClassifiedRoutineError): string {
   return DELETE_FAILED;
 }
 
-function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType<typeof useDeleteRoutine> }) {
+function keepMessage(failure: ClassifiedRoutineError): string {
+  if (failure.kind === "network") return OFFLINE_KEEP;
+  if (failure.kind === "rate-limited") return RATE_LIMITED;
+  return KEEP_FAILED;
+}
+
+function PreviewBody({
+  routine,
+  remove,
+  keep,
+}: {
+  routine: Routine;
+  remove: ReturnType<typeof useDeleteRoutine>;
+  keep: ReturnType<typeof useKeepRoutine>;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const active = useActiveWorkout();
@@ -135,6 +168,40 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
   const [deleteFailure, setDeleteFailure] = useState<ClassifiedRoutineError | null>(null);
   const forgetOnUnmount = useRef<(() => void) | null>(null);
   useEffect(() => () => forgetOnUnmount.current?.(), []);
+
+  // Spec 10.5 AC6–AC9: the one-off note and Keep as a routine.
+  const oneOff = isOneOff(routine);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Spec 10.5 AC4: read once per routine data change
+  const now = useMemo(() => Date.now(), [routine]);
+  const [kept, setKept] = useState(false);
+  const [keepFailure, setKeepFailure] = useState<ClassifiedRoutineError | null>(null);
+  const keepLock = useRef(false);
+  const editLink = useRef<HTMLAnchorElement>(null);
+  const focusEdit = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusEdit.current || oneOff) return;
+    focusEdit.current = false;
+    // The Keep button it came from has unmounted.
+    editLink.current?.focus();
+  });
+
+  async function onKeep() {
+    if (keepLock.current) return;
+    keepLock.current = true;
+    setKeepFailure(null);
+    try {
+      await keep.mutateAsync(routine.id);
+      focusEdit.current = true;
+      setKept(true);
+    } catch (caught) {
+      reportRoutineUnexpected("keep-routine", caught);
+      const classified = classifyRoutineError(caught);
+      // A 404 renders the gone state from the parent.
+      if (classified.kind !== "not-found") setKeepFailure(classified);
+    } finally {
+      keepLock.current = false;
+    }
+  }
 
   const goToWorkouts = (state?: WorkoutsLocationState) =>
     navigate(WORKOUTS_PATH, state === undefined ? { replace: true } : { replace: true, state });
@@ -179,6 +246,20 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
   // #98: the actions (and their notices) lead, so Start is reachable without scrolling past the exercises.
   return (
     <Screen title={routine.name} lead={<BackToWorkouts />}>
+      {oneOff || kept ? (
+        <div className={styles.oneOff}>
+          {oneOff ? (
+            <>
+              <span className={styles.tag}>{ONE_OFF_TAG}</span>
+              <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
+            </>
+          ) : null}
+          {/* Present before success, so the confirmation is announced when it fills (AC7). */}
+          <p role="status" className={styles.status}>
+            {kept ? KEPT_STATUS : ""}
+          </p>
+        </div>
+      ) : null}
       <div className={styles.actions}>
         {active.data ? (
           <p className={styles.blocked}>
@@ -192,9 +273,14 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
             Start this routine
           </Button>
         )}
-        <Link className={styles.secondary} to={routineEditPath(routine.id)} state={EDITOR_FROM_BACK}>
+        <Link ref={editLink} className={styles.secondary} to={routineEditPath(routine.id)} state={EDITOR_FROM_BACK}>
           Edit
         </Link>
+        {oneOff ? (
+          <Button variant="secondary" busy={keep.isPending} disabled={remove.isPending} onClick={() => void onKeep()}>
+            {KEEP_AS_ROUTINE}
+          </Button>
+        ) : null}
         <Button variant="danger" onClick={() => setConfirmOpen(true)}>
           Delete
         </Button>
@@ -213,6 +299,17 @@ function PreviewBody({ routine, remove }: { routine: Routine; remove: ReturnType
         <InlineNotice tone="error" requestId={deleteFailure.kind === "network" ? null : deleteFailure.requestId}>
           {deleteMessage(deleteFailure)}
         </InlineNotice>
+      ) : null}
+      {keepFailure ? (
+        keepFailure.kind === "network" || keepFailure.kind === "rate-limited" ? (
+          <InlineNotice tone="error" requestId={null}>
+            {keepMessage(keepFailure)}
+          </InlineNotice>
+        ) : (
+          <InlineNotice tone="error" requestId={keepFailure.requestId} actionLabel="Retry" onAction={() => void onKeep()}>
+            {keepMessage(keepFailure)}
+          </InlineNotice>
+        )
       ) : null}
       {routine.notes ? <p className={styles.notes}>{routine.notes}</p> : null}
       <RoutineItems routine={routine} />

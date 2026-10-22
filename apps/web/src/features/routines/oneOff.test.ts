@@ -75,9 +75,11 @@ describe("10.5 AC6 / AC20 — the copy, exactly", () => {
 
 describe("10.5 AC21 — the fields are required", () => {
   it("RoutineSchema / WorkoutDetailSchema reject a body without them", () => {
-    const { oneOffUntil: _r, ...routine } = makeRoutine();
+    const routine: Record<string, unknown> = { ...makeRoutine() };
+    delete routine["oneOffUntil"];
     expect(RoutineSchema.safeParse(routine).success).toBe(false);
-    const { routineIsOneOff: _w, ...detail } = makeWorkoutDetail();
+    const detail: Record<string, unknown> = { ...makeWorkoutDetail() };
+    delete detail["routineIsOneOff"];
     expect(WorkoutDetailSchema.safeParse(detail).success).toBe(false);
   });
 });
