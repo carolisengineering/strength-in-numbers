@@ -11,6 +11,7 @@ import {
   WORKOUT_NOTES_MAX,
   WORKOUT_STARTED_AT_PAST_MAX_MS,
   WORKOUT_TITLE_MAX,
+  REQUIRES_FINISH,
   noControlCharsExceptWhitespace,
 } from "../src/dto/workout.js";
 
@@ -268,5 +269,35 @@ describe("07.4 AC19 — UpdateWorkoutSchema Change Time keys", () => {
     expect(issue({ durationSeconds: 86_401 })).not.toBeNull();
     expect(issue({ durationSeconds: -1 })).not.toBeNull();
     expect(issue({ durationSeconds: 1.5 })).not.toBeNull();
+  });
+});
+
+describe("09.3 AC11 — keepRoutine needs a finish", () => {
+  const ENDED = "2026-10-22T10:00:00Z";
+  const errors = (b: Record<string, unknown>) => {
+    const r = UpdateWorkoutSchema.safeParse(b);
+    return r.success ? [] : r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }));
+  };
+
+  it.each([true, false])("keepRoutine: %j without a non-null endedAt is one issue on keepRoutine", (keepRoutine) => {
+    for (const rest of [{}, { endedAt: null }, { title: "x" }]) {
+      expect(errors({ ...rest, keepRoutine })).toEqual([{ path: "keepRoutine", message: REQUIRES_FINISH }]);
+    }
+  });
+
+  it.each([true, false])("keepRoutine: %j with endedAt set is accepted", (keepRoutine) => {
+    expect(UpdateWorkoutSchema.safeParse({ endedAt: ENDED, keepRoutine }).data).toEqual({ endedAt: ENDED, keepRoutine });
+  });
+
+  it("absent keepRoutine changes nothing", () => {
+    for (const b of [{}, { endedAt: null }, { endedAt: ENDED }]) expect(UpdateWorkoutSchema.safeParse(b).success).toBe(true);
+  });
+
+  it("a non-boolean is rejected on keepRoutine", () => {
+    expect(errors({ endedAt: ENDED, keepRoutine: "yes" }).map((e) => e.path)).toEqual(["keepRoutine"]);
+  });
+
+  it("the message is the static constant", () => {
+    expect(REQUIRES_FINISH).toBe("requires endedAt");
   });
 });
