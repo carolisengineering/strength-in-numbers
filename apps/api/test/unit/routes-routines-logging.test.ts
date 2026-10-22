@@ -143,3 +143,45 @@ describe("AC33 — workout_started_from_routine never carries item-note text", (
     expect(JSON.stringify(lines)).not.toMatch(/distinctive-|test-token/);
   });
 });
+
+describe("09.3 AC29 — one-off log lines carry ids, counts and booleans only", () => {
+  it("create → sweep → Keep → start → finish with removal: the new fields are present and no text leaks", async () => {
+    const { logger, lines } = capturingLogger();
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const workoutRepo = new FakeWorkoutRepository(exerciseRepo, routineRepo);
+    const { app } = await buildTestApp({ logger, exerciseRepository: exerciseRepo, routineRepository: routineRepo, workoutRepository: workoutRepo, rateLimits: GENEROUS_LIMITS });
+    const doc = (name: string) => ({
+      name,
+      notes: "distinctive-notes-wvu",
+      sections: [{ key: "s", name: "distinctive-section-mno", notes: "distinctive-section-note-pqr" }],
+      items: [{ exerciseId: EX.id, sectionKey: "s", notes: "distinctive-item-note-tsr" }],
+      oneOff: true,
+    });
+    const stale = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: doc("distinctive-stale-abc") })).json().id as string;
+    const kept = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: doc("distinctive-kept-def") })).json().id as string;
+    const used = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: doc("distinctive-used-ghi") })).json().id as string;
+    routineRepo.routines.get(stale)!.oneOffUntil = new Date(Date.now() - 60_000);
+    await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    await app.inject({ method: "POST", url: `/v1/routines/${kept}/keep`, headers: BEARER });
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 3_600_000).toISOString(), title: "distinctive-title-jkl", routineId: used },
+    });
+    await app.inject({ method: "PATCH", url: `/v1/workouts/${started.json().id}`, headers: BEARER, payload: { endedAt: new Date().toISOString() } });
+
+    const one = (msg: string) => {
+      const found = lines.filter((l) => l.msg === msg);
+      expect(found.length, msg).toBeGreaterThan(0);
+      return found[0]!;
+    };
+    expect(typeof one("routine_created").one_off).toBe("boolean");
+    expect(one("routine_kept").changed).toBe(true);
+    expect(one("routine_one_offs_expired").routine_count).toBe(1);
+    expect(one("workout_finished")).toMatchObject({ one_off_removed: true, one_off_kept: false });
+    expect(JSON.stringify(lines)).not.toMatch(/distinctive-|test-token/);
+  });
+});

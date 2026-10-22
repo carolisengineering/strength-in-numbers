@@ -467,6 +467,26 @@ eligible sets.
 
    Old code's finish does not clear `planned_duration_s`, so finishing a live workout that still has a plan breaks `workout_planned_duration_live_only` (a `500`), and the one-active rule then leaves the lifter stuck on that workout until it is discarded. Clearing loses only the "took" of workouts still in progress (the lifter's finish then uses "now", as before Phase B). Re-run step 3's query afterwards (expected `0`).
 
+### 0013 — routine one-off (Spec 09.3)
+
+1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.3; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `one_off_until`, so the migration safely precedes it.
+2. Merge 09.3 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `oneOffUntil` and `routineIsOneOff`, which the old API does not send — accepted on staging, as in 0010 / 0011 / 0012).
+3. Verify: `GET $BASE/v1/routines` shows `oneOffUntil: null` everywhere; `GET $BASE/v1/workouts/active` (or any workout) shows `routineIsOneOff: false`; `POST $BASE/v1/routines/{id}/keep` on an ordinary routine answers `204`. Consistency query — expected `0`:
+
+   ```sql
+   SELECT count(*) FROM "routine" WHERE one_off_until IS NOT NULL AND one_off_until <= created_at;
+   ```
+
+   (The CHECK makes this impossible; the query confirms the constraint is live.) No backfill, no `records:rebuild`.
+4. Spec 10.5 (the UI) may merge only after step 3 is clean, and after Spec 10.4.
+5. Rollback: revert the code; the column and CHECK stay, inert (one-offs become ordinary routines: never swept, never removed by a finish). If 10.5 is merged, revert it first. **Before reverting 10.5, convert every one-off**, so none keeps removing itself on finish with no tag and no Finish-dialog line:
+
+   ```sql
+   UPDATE "routine" SET one_off_until = NULL, updated_at = now() WHERE one_off_until IS NOT NULL;
+   ```
+
+   Then revert 10.5, then 09.3 if needed.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
