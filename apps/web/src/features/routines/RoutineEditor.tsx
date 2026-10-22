@@ -104,6 +104,8 @@ export interface EditorStart {
   readonly notices?: ReactNode;
   /** Awaited by Save before the routine write (an import creates its pending exercises here). */
   readonly prepareBody?: (body: RoutineWriteInput, draft: Draft, signal: AbortSignal) => Promise<PreparedBody>;
+  /** Spec 10.5 AC17 / D8: an import's create is a one-off, with or without pending exercises. Set only by `ImportEditRoute`. */
+  readonly oneOff?: true;
 }
 
 export function RoutineEditor({ routine, initial }: { routine: Routine | null; initial?: EditorStart }) {
@@ -242,7 +244,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
         }
         body = prepared.body;
       }
-      const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync({ body });
+      const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(initial?.oneOff ? { body, oneOff: true } : { body });
       leaving.current = true; // disarm the leave guard before navigating (AC34)
       // The latch stays closed: until the editor unmounts, a late second tap must not send a second write.
       setSaved(true);

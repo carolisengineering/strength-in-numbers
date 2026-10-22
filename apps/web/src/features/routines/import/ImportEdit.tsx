@@ -50,7 +50,7 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
   );
   return (
     <PendingExercisesContext.Provider value={pending}>
-      <RoutineEditor key="import" routine={null} initial={{ draft, notices: <ImportNotices notices={handoff.plan.notices} />, prepareBody }} />
+      <RoutineEditor key="import" routine={null} initial={{ draft, notices: <ImportNotices notices={handoff.plan.notices} />, prepareBody, oneOff: true }} />
     </PendingExercisesContext.Provider>
   );
 }

@@ -170,7 +170,7 @@ function PreviewBody({
   useEffect(() => () => forgetOnUnmount.current?.(), []);
 
   // Spec 10.5 AC6–AC9: the one-off note and Keep as a routine.
-  const oneOff = isOneOff(routine);
+  const markedOneOff = isOneOff(routine);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Spec 10.5 AC4: read once per routine data change
   const now = useMemo(() => Date.now(), [routine]);
   const [kept, setKept] = useState(false);
@@ -179,7 +179,7 @@ function PreviewBody({
   const editLink = useRef<HTMLAnchorElement>(null);
   const focusEdit = useRef(false);
   useLayoutEffect(() => {
-    if (!focusEdit.current || oneOff) return;
+    if (!focusEdit.current || markedOneOff) return;
     focusEdit.current = false;
     // The Keep button it came from has unmounted.
     editLink.current?.focus();
@@ -246,9 +246,9 @@ function PreviewBody({
   // #98: the actions (and their notices) lead, so Start is reachable without scrolling past the exercises.
   return (
     <Screen title={routine.name} lead={<BackToWorkouts />}>
-      {oneOff || kept ? (
-        <div className={styles.oneOff}>
-          {oneOff ? (
+      {markedOneOff || kept ? (
+        <div className={styles.oneOffBlock}>
+          {markedOneOff ? (
             <>
               <span className={styles.tag}>{ONE_OFF_TAG}</span>
               <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
@@ -276,7 +276,7 @@ function PreviewBody({
         <Link ref={editLink} className={styles.secondary} to={routineEditPath(routine.id)} state={EDITOR_FROM_BACK}>
           Edit
         </Link>
-        {oneOff ? (
+        {markedOneOff ? (
           <Button variant="secondary" busy={keep.isPending} disabled={remove.isPending} onClick={() => void onKeep()}>
             {KEEP_AS_ROUTINE}
           </Button>

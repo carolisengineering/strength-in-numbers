@@ -19,7 +19,7 @@
 }
 
 /* Spec 10.5 AC6: the one-off tag and note lead the actions (read before Start). */
-.oneOff {
+.oneOffBlock {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
