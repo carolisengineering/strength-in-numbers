@@ -1,6 +1,7 @@
 // apps/api/src/repositories/routine.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
+  ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
   isRoutineId,
   normalizeSupersetGroups,
@@ -19,6 +20,7 @@ import {
 } from "../errors/app-error.js";
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
+import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -70,6 +72,8 @@ export interface RoutineDbRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  /** Spec 09.3 — the one-off expiry; NULL = ordinary. */
+  one_off_until: Date | null;
   /** `json_agg(json_build_object(…) ORDER BY position)`, `[]` when empty. */
   items: ItemDbRow[];
   /** Spec 09.2 — ordered by position, `[]` when none. */
@@ -81,7 +85,7 @@ const ITEM_COLS = Prisma.sql`id, routine_id, position, exercise_id, target_sets,
 /** The routine header plus its items in one statement; `ORDER BY` and the
  * `WHERE` are the caller's (`${where}` is a bound-parameter fragment). */
 const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sql`
-  SELECT r.id, r.user_id, r.name, r.notes, r.created_at, r.updated_at,
+  SELECT r.id, r.user_id, r.name, r.notes, r.created_at, r.updated_at, r.one_off_until,
          COALESCE((
            SELECT json_agg(json_build_object(
                     'id', ri.id, 'routine_id', ri.routine_id, 'position', ri.position,
@@ -102,6 +106,12 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
   WHERE ${where}
   ${orderBy}
 `;
+
+/** Spec 09.3 §5 / AC3 — one-offs first, newest created first, then today's order. Spec 10.5 mirrors it. */
+export const ROUTINE_ONE_OFF_ORDER = Prisma.sql`
+  ORDER BY (r.one_off_until IS NULL),
+           (CASE WHEN r.one_off_until IS NOT NULL THEN r.created_at END) DESC NULLS LAST,
+           lower(r.name), r.id`;
 
 const NOT_FOUND = "routine not found or not owned by the acting user";
 
@@ -131,6 +141,7 @@ function toRoutine(r: RoutineDbRow): RoutineRecord {
     notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    oneOffUntil: r.one_off_until,
     sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes })),
     items: r.items.map(toItem),
   };
@@ -254,9 +265,11 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
   }
 
   return {
-    async list(actingUserId) {
+    async list(actingUserId, onSwept) {
+      const removed = await sweepExpiredOneOffs(prisma, actingUserId);
+      if (removed > 0) onSwept?.(removed);
       const rows = await prisma.$queryRaw<RoutineDbRow[]>(
-        ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, Prisma.sql`ORDER BY lower(r.name), r.id`),
+        ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, ROUTINE_ONE_OFF_ORDER),
       );
       return rows.map(toRoutine);
     },
@@ -266,22 +279,28 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
       return loadOne(prisma, actingUserId, id);
     },
 
-    async create(actingUserId, fields) {
+    async create(actingUserId, fields, onSwept) {
       const id = uuidv7();
-      return prisma.$transaction(async (tx) => {
+      let removed = 0;
+      const created = await prisma.$transaction(async (tx) => {
         // The 03.2 cap idiom (insertWithCap): the lock is its own statement so
         // the count's snapshot is taken after the lock is held. The key is
         // prefixed so it never collides with the custom-exercise cap's
         // `hashtext(user_id)`.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"routine:" + actingUserId}))`;
+        // Spec 09.3 §6.1: a swept one-off frees its slot and its name for this very insert; the count then
+        // ignores an expired one-off a live workout still holds (≤ 1, so at most 51 rows exist, AC7).
+        removed = await deleteExpiredOneOffs(tx, actingUserId);
         const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "routine" WHERE user_id = ${actingUserId}::uuid
+          SELECT count(*)::int AS n FROM "routine"
+          WHERE user_id = ${actingUserId}::uuid AND (one_off_until IS NULL OR one_off_until > now())
         `;
         if (countRows[0]!.n >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
         try {
           await tx.$executeRaw`
-            INSERT INTO "routine" (id, user_id, name, notes, created_at, updated_at)
-            VALUES (${id}::uuid, ${actingUserId}::uuid, ${fields.name}, ${fields.notes ?? null}, now(), now())
+            INSERT INTO "routine" (id, user_id, name, notes, created_at, updated_at, one_off_until)
+            VALUES (${id}::uuid, ${actingUserId}::uuid, ${fields.name}, ${fields.notes ?? null}, now(), now(),
+                    CASE WHEN ${fields.oneOff === true} THEN now() + make_interval(hours => ${ROUTINE_ONE_OFF_DAYS * 24}::int) END)
           `;
         } catch (err) {
           if (nameTaken(err)) throw new RoutineNameTakenError();
@@ -297,6 +316,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
+      // Reported only once the sweep has committed with the create.
+      if (removed > 0) onSwept?.(removed);
+      return created;
     },
 
     async replace(actingUserId, id, fields) {
@@ -333,6 +355,16 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
+    },
+
+    async keep(actingUserId, id) {
+      if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
+      if (await keepOneOff(prisma, actingUserId, id)) return { changed: true };
+      const owned = await prisma.$queryRaw<{ one: number }[]>`
+        SELECT 1 AS one FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+      `;
+      if (!owned[0]) throw new NotFoundError(NOT_FOUND);
+      return { changed: false };
     },
 
     async delete(actingUserId, id) {

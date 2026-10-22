@@ -150,6 +150,7 @@ export const routines = [
     ],
     createdAt: iso(NOW - 60 * DAY),
     updatedAt: iso(NOW - 3 * DAY),
+    oneOffUntil: null,
   },
   {
     id: LOWER_ID,
@@ -164,6 +165,7 @@ export const routines = [
     ],
     createdAt: iso(NOW - 58 * DAY),
     updatedAt: iso(NOW - 58 * DAY),
+    oneOffUntil: null,
   },
   {
     id: PULL_ID,
@@ -179,6 +181,7 @@ export const routines = [
     ],
     createdAt: iso(NOW - 55 * DAY),
     updatedAt: iso(NOW - 10 * DAY),
+    oneOffUntil: null,
   },
 ];
 
@@ -260,6 +263,7 @@ function makeWorkout(n, startMs, durationMin, exs, opts = {}) {
     routineName: opts.routine?.name ?? null,
     routineNotes: opts.routine?.notes ?? null,
     sections: opts.sections ?? [],
+    routineIsOneOff: false,
     exercises: exercisesOut,
   };
 }
@@ -474,9 +478,9 @@ export function progressFor(exerciseId) {
 export function summaryOf(w) {
   const working = w.exercises.flatMap((we) => we.sets.filter((s) => s.setType === "working"));
   const vol = working.reduce((a, s) => a + (s.weightKg && s.reps ? s.weightKg * s.reps : 0), 0);
-  // Summaries carry no sections or routine notes; drop them from the detail shape.
+  // Summaries carry no sections, routine notes or one-off flag; drop them from the detail shape.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { exercises: exs, sections, routineNotes, ...base } = w;
+  const { exercises: exs, sections, routineNotes, routineIsOneOff, ...base } = w;
   return {
     ...base,
     exerciseCount: exs.length,

@@ -169,7 +169,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
     async (request) => {
       const actingUserId = request.user!.id;
       const isFinishAttempt = request.body.endedAt !== undefined && request.body.endedAt !== null;
-      const { workout: updated, exerciseCount, newRecords, finishedEdit, hadPlannedDuration, retime } = await deps.workoutRepository.updateWorkout(
+      const { workout: updated, exerciseCount, newRecords, finishedEdit, hadPlannedDuration, retime, oneOff } = await deps.workoutRepository.updateWorkout(
         actingUserId,
         request.params.id,
         request.body,
@@ -184,6 +184,8 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
             exercise_count: exerciseCount,
             record_count: newRecords.length,
             had_planned_duration: hadPlannedDuration,
+            one_off_removed: oneOff === "removed",
+            one_off_kept: oneOff === "kept",
           },
           "workout_finished",
         );

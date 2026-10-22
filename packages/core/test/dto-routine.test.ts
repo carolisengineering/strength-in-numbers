@@ -136,6 +136,7 @@ describe("AC24-adjacent — RoutineSchema response shape", () => {
         notes: null,
         createdAt: now,
         updatedAt: now,
+        oneOffUntil: null, // Spec 09.3
         sections: [],
         items: [
           {

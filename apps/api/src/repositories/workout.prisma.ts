@@ -45,6 +45,7 @@ import {
   type RawClient,
 } from "./set-entry.prisma.js";
 import type { PersonalRecordRecord } from "./personal-record.js";
+import { lockOneOffForFinish, settleOneOff } from "./routine-one-off.prisma.js";
 import {
   lockUserRecords,
   recomputeRecordsForRoots,
@@ -140,6 +141,14 @@ export function workoutSectionsJson(parentRef: string): Prisma.Sql {
                     ORDER BY s.position)
     FROM "workout_section" s WHERE s.workout_id = ${parentRef}
   ), '[]'::json)`);
+}
+
+/** Spec 09.3 §6.4 — true iff the workout's routine exists and is a one-off now. `workoutRef` is a SQL
+ * column reference (`'w'`, `'"workout"'`), never user input. Used by the detail and the export. */
+export function ROUTINE_IS_ONE_OFF(workoutRef: string): Prisma.Sql {
+  return Prisma.raw(
+    `EXISTS (SELECT 1 FROM "routine" r WHERE r.id = ${workoutRef}.routine_id AND r.one_off_until IS NOT NULL)`,
+  );
 }
 
 /** A correlated sub-select over `"workout_exercise"` (Spec 09.1 §6.5). */
@@ -246,6 +255,7 @@ async function finishedPatch(
     finishedEdit: detailsSent ? (recompute ?? noRecompute(current.id)) : null,
     hadPlannedDuration: false,
     retime: retimeOutcome(patch, true, current.started_at, next, recompute?.recordsRecomputed ?? false),
+    oneOff: "none",
   };
 }
 
@@ -397,15 +407,22 @@ export function createWorkoutRepository(
     return rows.map(toExerciseRecord);
   }
 
-  /** One statement: the routine's note snapshot and the workout's sections. Only the detail path reads
-   * `routine_notes_snapshot`; every other `workout` SELECT is untouched (AC1, D14). */
+  /** One statement: the routine's note snapshot, the workout's sections and (Spec 09.3) whether its routine is a
+   * one-off. Only the detail path reads these; every other `workout` SELECT is untouched (AC1, D14). */
   async function loadSectionSnapshot(workoutId: string) {
-    const rows = await prisma.$queryRaw<{ routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[] }[]>`
-      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections
+    const rows = await prisma.$queryRaw<
+      { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
+    >`
+      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
+             ${ROUTINE_IS_ONE_OFF("w")} AS routine_is_one_off
       FROM "workout" w WHERE w.id = ${workoutId}::uuid
     `;
     const row = rows[0];
-    return { routineNotes: row?.routine_notes_snapshot ?? null, sections: (row?.sections ?? []).map(toWorkoutSectionRecord) };
+    return {
+      routineNotes: row?.routine_notes_snapshot ?? null,
+      sections: (row?.sections ?? []).map(toWorkoutSectionRecord),
+      routineIsOneOff: row?.routine_is_one_off ?? false,
+    };
   }
 
   async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
@@ -563,8 +580,12 @@ export function createWorkoutRepository(
         // that holds the PR lock (found by AC18). PR lock → row locks,
         // everywhere. A live non-finish PATCH never takes it (AC13); a finished-mode
         // one already holds it (withWriteMode, 07.4 AC4).
+        // Spec 09.3 §6.2: then the one-off routine row (if any), still before the workout row — the
+        // routine `DELETE` route holds routine → workout through the FK's SET NULL (D10).
+        let oneOffId: string | null = null;
         if (mode === "live" && patch.endedAt != null) {
           await lockUserRecords(tx, actingUserId);
+          oneOffId = await lockOneOffForFinish(tx, actingUserId, id);
         }
         // The row lock is the first data-touching statement, ahead of every
         // check (Global Constraints; §6.5's ordering rule) —
@@ -637,6 +658,8 @@ export function createWorkoutRepository(
           const written = await recomputeRecordsForRoots(tx, actingUserId, roots);
           newRecords = written.filter((r) => r.workoutId === id);
         }
+        // Spec 09.3 §6.2 step 4: last, once nothing before it can fail the finish (AC15).
+        const oneOff = finishing && oneOffId ? await settleOneOff(tx, actingUserId, oneOffId, patch.keepRoutine === true) : "none";
         return {
           workout: toRecord(updatedRows[0]!),
           exerciseCount: countRows[0]!.n,
@@ -644,6 +667,7 @@ export function createWorkoutRepository(
           finishedEdit: null,
           hadPlannedDuration: finishing && (current.planned_duration_s ?? null) !== null,
           retime: retimeOutcome(patch, false, current.started_at, next, false),
+          oneOff,
         };
       });
     },

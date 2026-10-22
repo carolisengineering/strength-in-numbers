@@ -19,6 +19,8 @@ export const ROUTINES_PER_USER_MAX = 50;
 export const ROUTINE_ITEMS_MAX = 30;
 export const SUPERSET_GROUP_MEMBERS_MAX = 8;
 export const SUPERSET_GROUP_VALUE_MAX = 99;
+/** Spec 09.3 — a one-off expires this many days after it is created (the server adds `× 24` hours). */
+export const ROUTINE_ONE_OFF_DAYS = 14;
 
 const TargetFields = {
   targetSets: z.number().int().min(1).max(20).nullable().optional(),
@@ -47,148 +49,159 @@ export const RoutineItemInputSchema = z.strictObject({
 });
 export type RoutineItemInput = z.infer<typeof RoutineItemInputSchema>;
 
-/** POST /v1/routines and PUT /v1/routines/{id} body — the whole routine, replaced as one (D2). */
-export const RoutineWriteSchema = z
-  .strictObject({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(ROUTINE_NAME_MAX)
-      .refine(noControlChars, "control characters not allowed"),
-    notes: z
-      .string()
-      .min(1)
-      .max(ROUTINE_NOTES_MAX)
-      .refine(noControlCharsExceptWhitespace, "control characters not allowed")
-      .nullable()
-      .optional(),
-    /** Spec 09.2 — the routine's whole section list (D6). NOT nullable; absent = none. */
-    sections: z.array(RoutineSectionInputSchema).max(ROUTINE_SECTIONS_MAX).optional(),
-    items: z.array(RoutineItemInputSchema).min(1).max(ROUTINE_ITEMS_MAX),
-  })
-  .superRefine((doc, ctx) => {
-    // Per item: reps both-or-neither, low ≤ high (§6.2 step 2).
-    doc.items.forEach((it, i) => {
-      const low = it.targetRepsLow ?? null;
-      const high = it.targetRepsHigh ?? null;
-      if (low !== null && high === null) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "targetRepsHigh"],
-          message: "required when targetRepsLow is set",
-        });
-      } else if (low === null && high !== null) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "targetRepsLow"],
-          message: "required when targetRepsHigh is set",
-        });
-      } else if (low !== null && high !== null && low > high) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "targetRepsLow"],
-          message: "must be at most targetRepsHigh",
-        });
-      }
-    });
-    // Spec 09.1 AC7 / AC4: one form per item; per-row pair rules.
-    doc.items.forEach((it, i) => {
-      if (it.sets === undefined) return;
-      if (QUICK_LINE_KEYS.some((k) => Object.hasOwn(it, k))) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "sets"],
-          message: "send either sets or the quick-line fields (targetSets, targetRepsLow, targetRepsHigh), not both",
-        });
-      }
-      it.sets.forEach((row, j) => {
-        const lo = row.repsLow ?? null;
-        const hi = row.repsHigh ?? null;
-        if (lo !== null && hi === null) {
-          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsHigh"], message: "required when repsLow is set" });
-        } else if (lo === null && hi !== null) {
-          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "required when repsHigh is set" });
-        } else if (lo !== null && hi !== null && lo > hi) {
-          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "must be at most repsHigh" });
-        }
-        const w = row.weight ?? null;
-        const u = row.weightUnit ?? null;
-        if (w !== null && u === null) {
-          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weightUnit"], message: "required when weight is set" });
-        } else if (w === null && u !== null) {
-          ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weight"], message: "required when weightUnit is set" });
-        }
-      });
-    });
-    // Across items: every distinct group has 2..8 members (D9).
-    const members = new Map<number, number[]>();
-    doc.items.forEach((it, i) => {
-      const g = it.supersetGroup ?? null;
-      if (g === null) return;
-      const list = members.get(g) ?? [];
-      list.push(i);
-      members.set(g, list);
-    });
-    for (const indexes of members.values()) {
-      if (indexes.length === 1) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", indexes[0]!, "supersetGroup"],
-          message: "a superset group needs at least 2 members",
-        });
-      }
-      for (const i of indexes.slice(SUPERSET_GROUP_MEMBERS_MAX)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "supersetGroup"],
-          message: `a superset group has at most ${SUPERSET_GROUP_MEMBERS_MAX} members`,
-        });
-      }
-    }
-    // Spec 09.2 AC5–AC8. Keys resolve through a Map: `constructor` / `__proto__` match the key pattern.
-    const keyIndex = new Map<string, number>();
-    (doc.sections ?? []).forEach((s, j) => {
-      if (keyIndex.has(s.key)) {
-        ctx.addIssue({ code: "custom", path: ["sections", j, "key"], message: "must be unique within the routine" });
-      } else {
-        keyIndex.set(s.key, j);
-      }
-    });
-    // refs[i]: section index, null (loose), or undefined (unresolved — already reported once).
-    const refs: (number | null | undefined)[] = doc.items.map((it, i) => {
-      const key = it.sectionKey ?? null;
-      if (key === null) return null;
-      const j = keyIndex.get(key);
-      // A key that fails the pattern was already reported by the field schema; don't report it twice.
-      if (j === undefined && SECTION_KEY_PATTERN.test(key)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["items", i, "sectionKey"],
-          message: "must name a section declared in sections",
-        });
-      }
-      return j;
-    });
-    const resolved = doc.items.flatMap((_, i) => (refs[i] === undefined ? [] : [i]));
-    const resolvedRefs = resolved.map((i) => refs[i] as number | null);
-    for (const k of sectionOrderViolations(resolvedRefs)) {
+/** The whole routine's keys (D2). Split from its refinement so the create body can `.extend()` it (09.3 D12). */
+const routineWriteBase = z.strictObject({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(ROUTINE_NAME_MAX)
+    .refine(noControlChars, "control characters not allowed"),
+  notes: z
+    .string()
+    .min(1)
+    .max(ROUTINE_NOTES_MAX)
+    .refine(noControlCharsExceptWhitespace, "control characters not allowed")
+    .nullable()
+    .optional(),
+  /** Spec 09.2 — the routine's whole section list (D6). NOT nullable; absent = none. */
+  sections: z.array(RoutineSectionInputSchema).max(ROUTINE_SECTIONS_MAX).optional(),
+  items: z.array(RoutineItemInputSchema).min(1).max(ROUTINE_ITEMS_MAX),
+});
+type RoutineWriteBase = z.infer<typeof routineWriteBase>;
+
+/** The cross-item rules, shared by the PUT and POST bodies. */
+function refineRoutineDocument<T extends RoutineWriteBase>(doc: T, ctx: z.RefinementCtx<T>): void {
+  // Per item: reps both-or-neither, low ≤ high (§6.2 step 2).
+  doc.items.forEach((it, i) => {
+    const low = it.targetRepsLow ?? null;
+    const high = it.targetRepsHigh ?? null;
+    if (low !== null && high === null) {
       ctx.addIssue({
         code: "custom",
-        path: ["items", resolved[k]!, "sectionKey"],
-        message: "list loose exercises first, then each section in order",
+        path: ["items", i, "targetRepsHigh"],
+        message: "required when targetRepsLow is set",
       });
-    }
-    const resolvedGroups = resolved.map((i) => doc.items[i]!.supersetGroup ?? null);
-    for (const k of sectionSpanViolations(resolvedGroups, resolvedRefs)) {
+    } else if (low === null && high !== null) {
       ctx.addIssue({
         code: "custom",
-        path: ["items", resolved[k]!, "supersetGroup"],
-        message: "a superset can't span sections",
+        path: ["items", i, "targetRepsLow"],
+        message: "required when targetRepsHigh is set",
+      });
+    } else if (low !== null && high !== null && low > high) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", i, "targetRepsLow"],
+        message: "must be at most targetRepsHigh",
       });
     }
   });
+  // Spec 09.1 AC7 / AC4: one form per item; per-row pair rules.
+  doc.items.forEach((it, i) => {
+    if (it.sets === undefined) return;
+    if (QUICK_LINE_KEYS.some((k) => Object.hasOwn(it, k))) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", i, "sets"],
+        message: "send either sets or the quick-line fields (targetSets, targetRepsLow, targetRepsHigh), not both",
+      });
+    }
+    it.sets.forEach((row, j) => {
+      const lo = row.repsLow ?? null;
+      const hi = row.repsHigh ?? null;
+      if (lo !== null && hi === null) {
+        ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsHigh"], message: "required when repsLow is set" });
+      } else if (lo === null && hi !== null) {
+        ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "required when repsHigh is set" });
+      } else if (lo !== null && hi !== null && lo > hi) {
+        ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "repsLow"], message: "must be at most repsHigh" });
+      }
+      const w = row.weight ?? null;
+      const u = row.weightUnit ?? null;
+      if (w !== null && u === null) {
+        ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weightUnit"], message: "required when weight is set" });
+      } else if (w === null && u !== null) {
+        ctx.addIssue({ code: "custom", path: ["items", i, "sets", j, "weight"], message: "required when weightUnit is set" });
+      }
+    });
+  });
+  // Across items: every distinct group has 2..8 members (D9).
+  const members = new Map<number, number[]>();
+  doc.items.forEach((it, i) => {
+    const g = it.supersetGroup ?? null;
+    if (g === null) return;
+    const list = members.get(g) ?? [];
+    list.push(i);
+    members.set(g, list);
+  });
+  for (const indexes of members.values()) {
+    if (indexes.length === 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", indexes[0]!, "supersetGroup"],
+        message: "a superset group needs at least 2 members",
+      });
+    }
+    for (const i of indexes.slice(SUPERSET_GROUP_MEMBERS_MAX)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", i, "supersetGroup"],
+        message: `a superset group has at most ${SUPERSET_GROUP_MEMBERS_MAX} members`,
+      });
+    }
+  }
+  // Spec 09.2 AC5–AC8. Keys resolve through a Map: `constructor` / `__proto__` match the key pattern.
+  const keyIndex = new Map<string, number>();
+  (doc.sections ?? []).forEach((s, j) => {
+    if (keyIndex.has(s.key)) {
+      ctx.addIssue({ code: "custom", path: ["sections", j, "key"], message: "must be unique within the routine" });
+    } else {
+      keyIndex.set(s.key, j);
+    }
+  });
+  // refs[i]: section index, null (loose), or undefined (unresolved — already reported once).
+  const refs: (number | null | undefined)[] = doc.items.map((it, i) => {
+    const key = it.sectionKey ?? null;
+    if (key === null) return null;
+    const j = keyIndex.get(key);
+    // A key that fails the pattern was already reported by the field schema; don't report it twice.
+    if (j === undefined && SECTION_KEY_PATTERN.test(key)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items", i, "sectionKey"],
+        message: "must name a section declared in sections",
+      });
+    }
+    return j;
+  });
+  const resolved = doc.items.flatMap((_, i) => (refs[i] === undefined ? [] : [i]));
+  const resolvedRefs = resolved.map((i) => refs[i] as number | null);
+  for (const k of sectionOrderViolations(resolvedRefs)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["items", resolved[k]!, "sectionKey"],
+      message: "list loose exercises first, then each section in order",
+    });
+  }
+  const resolvedGroups = resolved.map((i) => doc.items[i]!.supersetGroup ?? null);
+  for (const k of sectionSpanViolations(resolvedGroups, resolvedRefs)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["items", resolved[k]!, "supersetGroup"],
+      message: "a superset can't span sections",
+    });
+  }
+}
+
+/** PUT /v1/routines/{id} body — the whole routine, replaced as one (D2). Never carries the one-off mark (09.3 AC5). */
+export const RoutineWriteSchema = routineWriteBase.superRefine(refineRoutineDocument);
 export type RoutineWrite = z.infer<typeof RoutineWriteSchema>;
+
+/** POST /v1/routines body — the write body plus `oneOff: true` (Spec 09.3 AC5); the expiry is server-written. */
+export const RoutineCreateSchema = routineWriteBase
+  .extend({ oneOff: z.literal(true).optional() })
+  .superRefine(refineRoutineDocument);
+export type RoutineCreate = z.infer<typeof RoutineCreateSchema>;
 
 export const RoutineItemSchema = z.object({
   id: RoutineItemIdSchema,
@@ -219,6 +232,8 @@ export const RoutineSchema = z.object({
   items: z.array(RoutineItemSchema),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  /** Spec 09.3 — when a one-off expires; `null` = an ordinary routine. Required-nullable, always last (the ETag). */
+  oneOffUntil: z.iso.datetime({ offset: true }).nullable(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
 

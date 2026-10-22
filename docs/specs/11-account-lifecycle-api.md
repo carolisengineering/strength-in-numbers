@@ -223,6 +223,8 @@ Setting `deleted_at` is the whole of "token revocation" (DESIGN §4.9): `resolve
 | 6 | `workout_exercise WHERE workout_id IN (SELECT id FROM workout WHERE user_id = $1)` | `ORDER BY workout_id, position` |
 | 7 | `set_entry WHERE workout_exercise_id IN (…)` | `ORDER BY workout_exercise_id, set_number`; `SET_ENTRY_COLUMNS` (numeric → `float8`) |
 
+> **Row 5 — amended by Spec 09.3 (2026-10-22):** the workout `SELECT` gains the `routine_is_one_off` expression (`routineIsOneOff` on the exported workout).
+
 Rows 5–7 are grouped in memory (`Map` by `workout_id` / `workout_exercise_id`) and assembled into `WorkoutDetailRecord`s. A heavy user (a couple of years: ~400 workouts, ~8,000 sets) is ~2–3 MB of JSON — fine as one response for the beta (D15).
 
 **Which existing code is shared (answer to "is there a whole-workout read to reuse?").** A whole-workout detail read exists — `WorkoutRepository.getWorkoutById` → `toDetail` in `repositories/workout.prisma.ts` — but it is **per workout** (header query, `loadExercises`, `loadSetsForWorkout` = three statements each), so looping it would be exactly the N+1 the brief rules out. The export therefore shares the **mappers, not the queries**:

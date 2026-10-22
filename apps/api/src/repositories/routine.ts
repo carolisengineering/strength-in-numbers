@@ -46,6 +46,8 @@ export interface RoutineRecord {
   items: RoutineItemRecord[];
   createdAt: Date;
   updatedAt: Date;
+  /** Spec 09.3 — the one-off mark and expiry; `null` = an ordinary routine. */
+  oneOffUntil: Date | null;
 }
 
 /** POST / PUT body, already schema-validated by `RoutineWriteSchema`: targets
@@ -72,9 +74,18 @@ export interface RoutineWriteFields {
   }[];
 }
 
+/** POST body, validated by `RoutineCreateSchema` (Spec 09.3): the write fields plus the one-off choice. */
+export interface RoutineCreateFields extends RoutineWriteFields {
+  oneOff?: true | undefined;
+}
+
+/** Spec 09.3 §6.1 — told how many expired one-offs the sweep removed; called once, only when ≥ 1. */
+export type SweepObserver = (removedCount: number) => void;
+
 export interface RoutineRepository {
-  /** The caller's routines ordered by `lower(name)`, `id`, items by position (AC2). */
-  list(actingUserId: string): Promise<RoutineRecord[]>;
+  /** The caller's routines: one-offs first, newest created first, then by `lower(name)`, `id` (AC2; Spec 09.3 AC3); items by position.
+   * Sweeps the caller's expired one-offs first (Spec 09.3 §6.1). */
+  list(actingUserId: string, onSwept?: SweepObserver): Promise<RoutineRecord[]>;
 
   /** Throws `NotFoundError` on a miss, a foreign row, or a malformed id (AC3). */
   getById(actingUserId: string, id: string): Promise<RoutineRecord>;
@@ -84,13 +95,18 @@ export interface RoutineRepository {
    * insert (`RoutineNameTakenError` on the unique index), one batched exercise
    * check (`ValidationError` 422 for absent / invisible, `ExerciseRetiredError`
    * with `errors[]` for retired), then the items with normalised groups.
+   * Spec 09.3: sweeps expired one-offs after the lock, and the cap counts no expired one-off.
    */
-  create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord>;
+  create(actingUserId: string, fields: RoutineCreateFields, onSwept?: SweepObserver): Promise<RoutineRecord>;
 
   /** §6.3 whole replace under a `FOR UPDATE` row lock; item ids are not stable
    * (D2). Throws `NotFoundError`, `RoutineNameTakenError`, `ValidationError`,
    * `ExerciseRetiredError`. */
   replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord>;
+
+  /** Spec 09.3 §6.4 — clear the one-off mark (and bump `updated_at`). `changed: false` for an ordinary routine
+   * or a repeat. Throws `NotFoundError` for a malformed, missing or foreign id (AC9). Never checks the cap. */
+  keep(actingUserId: string, id: string): Promise<{ changed: boolean }>;
 
   /** Hard delete; the FK cascades items and nulls `workout.routine_id`.
    * Throws `NotFoundError` on a miss, a foreign row, or a repeat. */

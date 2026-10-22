@@ -39,3 +39,14 @@ describe("AC1 / AC26 — the five routine operations are published with their pr
     expect(doc.paths["/v1/routines/{id}"]!.delete!.responses["404"]).toBeDefined();
   });
 });
+
+describe("09.3 AC10 — Keep is published", () => {
+  it("POST /v1/routines/{id}/keep has 204 and a 404 not-found problem", async () => {
+    const { app } = await buildTestApp();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json();
+    const keep = doc.paths["/v1/routines/{id}/keep"];
+    expect(Object.keys(keep).sort()).toEqual(["post"]);
+    expect(keep.post.responses["204"]).toBeDefined();
+    expect(slugs(keep.post.responses["404"].content["application/problem+json"].schema.allOf[1].properties.type.enum)).toEqual(["not-found"]);
+  });
+});

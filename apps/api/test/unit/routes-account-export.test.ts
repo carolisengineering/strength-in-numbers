@@ -52,7 +52,7 @@ describe("AC11 — export logging", () => {
     const users = new FakeUserRepository();
     const exportRepo = new FakeAccountExportRepository(users, {
       exercises: [makeExerciseRecord({ name: "distinctive-name-qzx" })],
-      workouts: [{ ...makeWorkoutRecord({ notes: "distinctive-note-wvu" }), exercises: [], routineNotes: null, sections: [] }],
+      workouts: [{ ...makeWorkoutRecord({ notes: "distinctive-note-wvu" }), exercises: [], routineNotes: null, sections: [], routineIsOneOff: false }],
     });
     const { app } = await buildTestApp({ logger, userRepository: users, accountExportRepository: exportRepo, rateLimits: GENEROUS_LIMITS });
     await app.inject({ method: "GET", url: "/v1/account/export", headers: BEARER });

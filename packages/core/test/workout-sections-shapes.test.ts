@@ -11,7 +11,7 @@ const exercise = {
 const detail = {
   id: G(2), title: null, notes: null, startedAt: T, endedAt: null, localDate: "2026-10-13", tzOffsetMinutes: 0,
   clientGeneratedId: G(9), source: "manual", createdAt: T, updatedAt: T, routineName: null, plannedDurationSeconds: null,
-  exercises: [exercise], routineNotes: null, sections: [],
+  exercises: [exercise], routineNotes: null, sections: [], routineIsOneOff: false,
 };
 
 describe("AC1 — workout response shapes", () => {
@@ -22,8 +22,9 @@ describe("AC1 — workout response shapes", () => {
     const keys = Object.keys(WorkoutExerciseSchema.shape);
     expect(keys.slice(-2)).toEqual(["plannedSets", "sectionId"]);
   });
-  it("WorkoutDetail adds exercises, routineNotes, sections in that order", () => {
-    expect(Object.keys(WorkoutDetailSchema.shape).slice(-3)).toEqual(["exercises", "routineNotes", "sections"]);
+  // Amended by Spec 09.3 AC1: `routineIsOneOff` follows sections.
+  it("WorkoutDetail adds exercises, routineNotes, sections, routineIsOneOff in that order", () => {
+    expect(Object.keys(WorkoutDetailSchema.shape).slice(-4)).toEqual(["exercises", "routineNotes", "sections", "routineIsOneOff"]);
   });
   // Amended by 07.4 AC19: `plannedDurationSeconds` is the one key added since; still no section fields (D14).
   it("WorkoutSchema and WorkoutSummary are UNCHANGED (D14)", () => {

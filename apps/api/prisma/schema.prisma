@@ -178,6 +178,8 @@ model Routine {
   notes     String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  /// Spec 09.3 — the one-off mark and its expiry; NULL = ordinary. CHECK (> created_at) is in 0013.
+  oneOffUntil DateTime? @map("one_off_until") @db.Timestamptz(6)
   items     RoutineItem[]
   sections  RoutineSection[]
   workouts  Workout[]

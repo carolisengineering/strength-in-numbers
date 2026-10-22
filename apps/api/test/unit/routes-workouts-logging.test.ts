@@ -3,7 +3,7 @@ import { pino } from "pino";
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { buildTestApp } from "../helpers/build-test-app.js";
-import { FakeExerciseRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
+import { FakeExerciseRepository, FakeRoutineRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 
@@ -191,5 +191,50 @@ describe("AC18 — the four business log lines, no free text", () => {
     const allText = JSON.stringify(lines) + invalid.body;
     expect(allText).not.toContain(secretTitle);
     expect(allText).not.toContain(secretNotes);
+  });
+});
+
+describe("09.3 AC29 — workout_finished carries one_off_removed and one_off_kept", () => {
+  async function finishFrom(oneOff: boolean, keepRoutine?: boolean) {
+    const { logger, lines } = capturingLogger();
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord({ name: "Squat" });
+    exerciseRepo.byId.set(ex.id, ex);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const workoutRepo = new FakeWorkoutRepository(exerciseRepo, routineRepo);
+    const { app } = await buildTestApp({ logger, exerciseRepository: exerciseRepo, routineRepository: routineRepo, workoutRepository: workoutRepo });
+    const routine = await app.inject({
+      method: "POST",
+      url: "/v1/routines",
+      headers: BEARER,
+      payload: { name: "distinctive-routine-qzx", items: [{ exerciseId: ex.id }], ...(oneOff ? { oneOff: true } : {}) },
+    });
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT, routineId: routine.json().id },
+    });
+    const finish = await app.inject({
+      method: "PATCH",
+      url: `/v1/workouts/${started.json().id}`,
+      headers: BEARER,
+      payload: { endedAt: ENDED_AT, ...(keepRoutine === undefined ? {} : { keepRoutine }) },
+    });
+    expect(finish.statusCode).toBe(200);
+    const listed = await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    return { line: lines.find((l) => l.msg === "workout_finished")!, routines: listed.json().routines as unknown[], lines };
+  }
+
+  it("a removal, a keep and an ordinary finish", async () => {
+    const removed = await finishFrom(true);
+    expect(removed.line).toMatchObject({ one_off_removed: true, one_off_kept: false });
+    expect(removed.routines).toHaveLength(0);
+    const kept = await finishFrom(true, true);
+    expect(kept.line).toMatchObject({ one_off_removed: false, one_off_kept: true });
+    expect(kept.routines).toHaveLength(1);
+    const ordinary = await finishFrom(false, true);
+    expect(ordinary.line).toMatchObject({ one_off_removed: false, one_off_kept: false });
+    expect(JSON.stringify(removed.lines)).not.toMatch(/distinctive-/);
   });
 });

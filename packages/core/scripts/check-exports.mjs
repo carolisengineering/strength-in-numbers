@@ -101,6 +101,7 @@ const EXPECTED = [
   "WORKOUT_START_EDIT_FLOOR",
   "REQUIRES_START",
   "NOT_WITH_ENDED_AT",
+  "REQUIRES_FINISH",
   // workout-retime.ts (Spec 07.4 §6.4)
   "resolveRetime",
   "RETIME_MESSAGES",
@@ -182,6 +183,8 @@ const EXPECTED = [
   "ROUTINE_ITEMS_MAX",
   "SUPERSET_GROUP_MEMBERS_MAX",
   "SUPERSET_GROUP_VALUE_MAX",
+  "ROUTINE_ONE_OFF_DAYS",
+  "RoutineCreateSchema",
   "RoutineItemInputSchema",
   "RoutineWriteSchema",
   "RoutineItemSchema",

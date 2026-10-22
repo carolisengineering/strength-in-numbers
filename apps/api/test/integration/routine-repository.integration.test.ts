@@ -186,7 +186,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const all = await repo().list(u);
     expect(all.map((r) => r.items.length)).toEqual([2, 1]);
     expect(statements.slice(0, afterGet), statements.join("\n")).toHaveLength(1);
-    expect(statements.slice(afterGet), statements.join("\n")).toHaveLength(1);
+    // Amended by Spec 09.3 AC21 / AC30: the list first runs the sweep's one probe (nothing is expired here),
+    // then the routines are still read in ONE statement.
+    const listed = statements.slice(afterGet);
+    expect(listed, statements.join("\n")).toHaveLength(2);
+    expect(listed[0], statements.join("\n")).toMatch(/one_off_until <= now\(\)[\s\S]*LIMIT 1/);
   });
 
   it("AC3 / AC28 — getById: absent, non-UUID and another user's routine all throw NotFoundError", async () => {

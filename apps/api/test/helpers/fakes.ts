@@ -7,6 +7,7 @@ import {
   isWorkoutId,
   localDateFor,
   normalizeSupersetGroups,
+  ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
   rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
@@ -57,7 +58,9 @@ import type {
   RoutineRecord,
   RoutineRepository,
   RoutineSectionRecord,
+  RoutineCreateFields,
   RoutineWriteFields,
+  SweepObserver,
 } from "../../src/repositories/routine.js";
 import {
   assertAddPositionInRange,
@@ -94,6 +97,7 @@ import type {
   CreateSetResult,
   SetEntryRecord,
   UpdateSetFields,
+  OneOffOutcome,
 } from "../../src/repositories/workout.js";
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 import type { FinishedEdit } from "../../src/repositories/write-mode.js";
@@ -425,14 +429,27 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   exercises = new Map<string, WorkoutExerciseRecord>();
   sets = new Map<string, SetEntryRecord>();
   private byClientKey = new Map<string, string>();
-  /** Spec 09.2 — per workout: the routine note snapshot and the copied sections. */
-  sectionsByWorkout = new Map<string, { routineNotes: string | null; sections: WorkoutSectionRecord[] }>();
+  /** Spec 09.2 — per workout: the routine note snapshot and the copied sections; Spec 09.3 adds the routine it
+   * came from, for `routineIsOneOff` and the sweep's "held by a live workout" rule. */
+  sectionsByWorkout = new Map<
+    string,
+    { routineNotes: string | null; sections: WorkoutSectionRecord[]; routineId?: string | null }
+  >();
 
   constructor(
     private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository(),
     /** Spec 09: the routine source for `createWorkout({ routineId })`. */
     private readonly routineRepository?: FakeRoutineRepository,
-  ) {}
+  ) {
+    if (routineRepository) {
+      routineRepository.liveRoutineIds = () =>
+        new Set(
+          [...this.sectionsByWorkout.entries()]
+            .filter(([workoutId, snap]) => snap.routineId && this.workouts.get(workoutId)?.endedAt === null)
+            .map(([, snap]) => snap.routineId!),
+        );
+    }
+  }
 
   private ownedWorkoutOrThrow(actingUserId: string, id: string): WorkoutRecord {
     const w = isWorkoutId(id) ? this.workouts.get(id) : undefined;
@@ -451,7 +468,9 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           .sort((a, b) => a.setNumber - b.setNumber),
       }));
     const snap = this.sectionsByWorkout.get(w.id);
-    return { ...w, exercises, routineNotes: snap?.routineNotes ?? null, sections: snap?.sections ?? [] };
+    const routineId = snap?.routineId ?? null;
+    const routineIsOneOff = routineId !== null && this.routineRepository?.routines.get(routineId)?.oneOffUntil != null;
+    return { ...w, exercises, routineNotes: snap?.routineNotes ?? null, sections: snap?.sections ?? [], routineIsOneOff };
   }
 
   /** Canonical columns the way Postgres generates them (numeric(…,3) rounding). */
@@ -551,7 +570,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
     for (const e of copied) this.exercises.set(e.id, e);
-    this.sectionsByWorkout.set(workout.id, { routineNotes, sections: sectionRecords });
+    this.sectionsByWorkout.set(workout.id, { routineNotes, sections: sectionRecords, routineId: fields.routineId ?? null });
     return {
       workout,
       created: true,
@@ -675,6 +694,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
         finishedEdit: detailsSent ? (recompute ?? FakeWorkoutRepository.edit(edited)) : null,
         hadPlannedDuration: false,
         retime,
+        oneOff: "none",
       };
     }
     // Spec 07.4 §6.4: the same pure rules as the repository. The fake has no profile zone, so a moved
@@ -708,6 +728,19 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     if (endedAt !== null) this.clampSetTimes(id, updated.startedAt, endedAt);
     const exerciseCount = [...this.exercises.values()].filter((e) => e.workoutId === id).length;
     const retime = retimeOutcome(patch, false, w.startedAt, next, false);
+    // Spec 09.3 §6.2: a finish removes the workout's one-off, or keeps it with `keepRoutine`.
+    let oneOff: OneOffOutcome = "none";
+    const routineId = this.sectionsByWorkout.get(id)?.routineId ?? null;
+    const routine = routineId === null ? undefined : this.routineRepository?.routines.get(routineId);
+    if (endedAt !== null && routine && routine.userId === actingUserId && routine.oneOffUntil !== null) {
+      if (patch.keepRoutine === true) {
+        this.routineRepository!.routines.set(routine.id, { ...routine, oneOffUntil: null, updatedAt: new Date() });
+        oneOff = "kept";
+      } else {
+        this.routineRepository!.routines.delete(routine.id);
+        oneOff = "removed";
+      }
+    }
     return {
       workout: updated,
       exerciseCount,
@@ -715,6 +748,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       finishedEdit: null,
       hadPlannedDuration: endedAt !== null && w.plannedDurationS !== null,
       retime,
+      oneOff,
     };
   }
 
@@ -995,6 +1029,22 @@ export class FakePersonalRecordRepository implements PersonalRecordRepository {
  */
 export class FakeRoutineRepository implements RoutineRepository {
   routines = new Map<string, RoutineRecord>();
+  /** Spec 09.3 — routines a live workout was started from; a `FakeWorkoutRepository` built on this fake sets it. */
+  liveRoutineIds: () => Set<string> = () => new Set();
+
+  /** Spec 09.3 §6.1 — drop the caller's expired one-offs that no live workout holds; returns how many. */
+  private sweep(actingUserId: string): number {
+    const now = Date.now();
+    const held = this.liveRoutineIds();
+    let removed = 0;
+    for (const r of [...this.routines.values()]) {
+      if (r.userId === actingUserId && r.oneOffUntil !== null && r.oneOffUntil.getTime() <= now && !held.has(r.id)) {
+        this.routines.delete(r.id);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
 
   constructor(private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository()) {}
 
@@ -1065,18 +1115,32 @@ export class FakeRoutineRepository implements RoutineRepository {
     );
   }
 
-  async list(actingUserId: string): Promise<RoutineRecord[]> {
+  /** Spec 09.3 AC3 — the same keys as `ROUTINE_ONE_OFF_ORDER`: one-offs first, newest created first, then by name. */
+  async list(actingUserId: string, onSwept?: SweepObserver): Promise<RoutineRecord[]> {
+    const removed = this.sweep(actingUserId);
+    if (removed > 0) onSwept?.(removed);
     return [...this.routines.values()]
       .filter((r) => r.userId === actingUserId)
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id));
+      .sort(
+        (a, b) =>
+          Number(a.oneOffUntil === null) - Number(b.oneOffUntil === null) ||
+          (a.oneOffUntil !== null && b.oneOffUntil !== null ? b.createdAt.getTime() - a.createdAt.getTime() : 0) ||
+          a.name.toLowerCase().localeCompare(b.name.toLowerCase()) ||
+          a.id.localeCompare(b.id),
+      );
   }
 
   async getById(actingUserId: string, id: string): Promise<RoutineRecord> {
     return this.owned(actingUserId, id);
   }
 
-  async create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
-    if ((await this.list(actingUserId)).length >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
+  async create(actingUserId: string, fields: RoutineCreateFields, onSwept?: SweepObserver): Promise<RoutineRecord> {
+    const removed = this.sweep(actingUserId);
+    const now0 = Date.now();
+    const counted = [...this.routines.values()].filter(
+      (r) => r.userId === actingUserId && (r.oneOffUntil === null || r.oneOffUntil.getTime() > now0),
+    );
+    if (counted.length >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
     if (this.nameClash(actingUserId, fields.name, null)) throw new RoutineNameTakenError();
     const modalities = await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
     assertPlannedSetsFitModalities(fields.items, modalities);
@@ -1092,9 +1156,18 @@ export class FakeRoutineRepository implements RoutineRepository {
       items: this.buildItems(id, fields.items, idByKey),
       createdAt: now,
       updatedAt: now,
+      oneOffUntil: fields.oneOff ? new Date(now.getTime() + ROUTINE_ONE_OFF_DAYS * 86_400_000) : null,
     };
     this.routines.set(id, r);
+    if (removed > 0) onSwept?.(removed);
     return r;
+  }
+
+  async keep(actingUserId: string, id: string): Promise<{ changed: boolean }> {
+    const r = this.owned(actingUserId, id);
+    if (r.oneOffUntil === null) return { changed: false };
+    this.routines.set(id, { ...r, oneOffUntil: null, updatedAt: new Date(Math.max(Date.now(), r.updatedAt.getTime() + 1)) });
+    return { changed: true };
   }
 
   async replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord> {

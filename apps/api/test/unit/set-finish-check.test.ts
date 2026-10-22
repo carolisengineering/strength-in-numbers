@@ -46,20 +46,23 @@ describe("AC13 — the finish runs the integrity check after the lock, before th
     const w = workoutRow();
     const stub = new ScriptedPrisma()
       .queue_(1) // Spec 07.0 D9: PR advisory lock ($executeRaw) is the first statement of a finish
+      .queue_([]) // Spec 09.3 §6.2: then the one-off routine lock — this workout has none
       .queue_([w])
       .queue_([{ modality_snapshot: "weight_reps", reps: null, weight: 100, distance: null, duration_s: null }]);
     await expect(repoOver(stub).updateWorkout(w.user_id, w.id, { endedAt: ENDED })).rejects.toBeInstanceOf(
       IncompleteWorkingSetsError,
     );
     expect(stub.calls[0]).toContain("pg_advisory_xact_lock");
-    expect(stub.calls[1]).toContain("FOR UPDATE");
-    expect(stub.calls[2]).toContain("se.set_type = 'working'");
+    expect(stub.calls[1]).toContain('FROM "routine" r'); // Spec 09.3 §6.2: the one-off lock, before the workout's
+    expect(stub.calls[2]).toContain("FOR UPDATE");
+    expect(stub.calls[3]).toContain("se.set_type = 'working'");
     expect(stub.calls.some((s) => s.includes('UPDATE "workout"'))).toBe(false);
   });
   it("all working sets complete ⇒ the finish proceeds", async () => {
     const w = workoutRow();
     const stub = new ScriptedPrisma()
       .queue_(1) // Spec 07.0 D9: PR advisory lock ($executeRaw) is the first statement of a finish
+      .queue_([]) // Spec 09.3 §6.2: then the one-off routine lock — this workout has none
       .queue_([w])
       .queue_([{ modality_snapshot: "weight_reps", reps: 5, weight: 100, distance: null, duration_s: null }])
       .queue_([{ ...w, ended_at: new Date(ENDED) }])
@@ -71,11 +74,12 @@ describe("AC13 — the finish runs the integrity check after the lock, before th
   });
   it("05.0's own endedAt checks still run first: endedAt < startedAt is ValidationError with no set query", async () => {
     const w = workoutRow();
-    const stub = new ScriptedPrisma().queue_(1).queue_([w]); // PR lock, then the row lock read
+    // PR lock, the one-off routine lock (Spec 09.3: none here), then the row lock read
+    const stub = new ScriptedPrisma().queue_(1).queue_([]).queue_([w]);
     await expect(
       repoOver(stub).updateWorkout(w.user_id, w.id, { endedAt: "2026-09-15T09:00:00.000Z" }),
     ).rejects.toBeInstanceOf(ValidationError);
-    expect(stub.calls).toHaveLength(2);
+    expect(stub.calls).toHaveLength(3);
     expect(stub.calls.some((s) => s.includes("set_entry"))).toBe(false);
   });
   it("a title-only PATCH (not a finish) never runs the integrity query", async () => {
@@ -91,6 +95,7 @@ describe("AC14 — non-working sets are never inspected", () => {
     const w = workoutRow();
     const stub = new ScriptedPrisma()
       .queue_(1) // Spec 07.0 D9: PR advisory lock ($executeRaw) is the first statement of a finish
+      .queue_([]) // Spec 09.3 §6.2: then the one-off routine lock — this workout has none
       .queue_([w])
       .queue_([])
       .queue_([{ ...w, ended_at: new Date(ENDED) }])
@@ -98,7 +103,7 @@ describe("AC14 — non-working sets are never inspected", () => {
       .queue_(1) // 07.4 AC25 (amended): the finish's set-time clamp ($executeRaw)
       .queue_([]); // Spec 07.0: touched lineage roots — none
     await repoOver(stub).updateWorkout(w.user_id, w.id, { endedAt: ENDED });
-    expect(stub.calls[2]).toMatch(/WHERE .*se\.set_type = 'working'/s);
+    expect(stub.calls[3]).toMatch(/WHERE .*se\.set_type = 'working'/s); // after the PR, one-off and row locks
   });
 });
 

@@ -1,7 +1,5 @@
-// Spec 07.4 AC18 — migration 0012 (workout.planned_duration_s), real Postgres. Owns the whole-schema
-// `prisma migrate diff` no-drift check (moved here from routine-sections-migration, CLAUDE.md).
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+// Spec 07.4 AC18 — migration 0012 (workout.planned_duration_s), real Postgres. The whole-schema
+// `prisma migrate diff` no-drift check moved on to routine-one-off-migration with 0013 (Spec 09.3 AC27).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
@@ -56,21 +54,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.4 — migration 0012 (real Pos
     await x(`UPDATE "workout" SET planned_duration_s = 60 WHERE id = $1::uuid`, ids.live);
     await checkViolation(x(`UPDATE "workout" SET ended_at = now() WHERE id = $1::uuid`, ids.live));
     await x(`UPDATE "workout" SET ended_at = now(), planned_duration_s = NULL WHERE id = $1::uuid`, ids.live);
-  });
-
-  it("07.4 AC18 — prisma migrate diff reports no difference beyond the two generated set_entry columns", () => {
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2);
-    const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });

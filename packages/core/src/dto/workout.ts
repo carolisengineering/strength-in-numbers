@@ -30,6 +30,8 @@ export const WORKOUT_START_EDIT_FLOOR = "2000-01-01T00:00:00Z";
 /** Spec 07.4 §5.1 — the request schema's two cross-key messages, shared with `RETIME_MESSAGES` (#57: static). */
 export const REQUIRES_START = "requires startedAt";
 export const NOT_WITH_ENDED_AT = "cannot be combined with endedAt";
+/** Spec 09.3 AC11 — `keepRoutine` only means something on a finish. */
+export const REQUIRES_FINISH = "requires endedAt";
 
 /** Like `noControlChars`, but permits TAB, LF, CR — notes are multi-line
  * prose, a title is a single line. Still rejects every other C0 char and DEL. */
@@ -130,6 +132,8 @@ export const WorkoutDetailSchema = WorkoutSchema.extend({
   routineNotes: z.string().nullable(),
   /** Spec 09.2 — ordered by position; `[]` for a manual start, a routine without sections, and pre-0011 workouts. */
   sections: z.array(WorkoutSectionSchema),
+  /** Spec 09.3 — the routine this workout came from exists and is a one-off now (finishing removes it). Detail only (D11). */
+  routineIsOneOff: z.boolean(),
 });
 export type WorkoutDetail = z.infer<typeof WorkoutDetailSchema>;
 
@@ -156,6 +160,8 @@ export const UpdateWorkoutSchema = z
     startedAt: z.iso.datetime({ offset: true }).optional(),
     tzOffsetMinutes: TzOffsetMinutes.optional(),
     durationSeconds: z.number().int().min(0).max(WORKOUT_DURATION_MAX_S).nullable().optional(),
+    /** Spec 09.3 — on a finish from a one-off, keep the routine instead of removing it. */
+    keepRoutine: z.boolean().optional(),
   })
   .refine((b) => b.tzOffsetMinutes === undefined || b.startedAt !== undefined, {
     path: ["tzOffsetMinutes"],
@@ -164,6 +170,10 @@ export const UpdateWorkoutSchema = z
   .refine((b) => b.durationSeconds === undefined || b.endedAt == null, {
     path: ["durationSeconds"],
     message: NOT_WITH_ENDED_AT,
+  })
+  .refine((b) => b.keepRoutine === undefined || b.endedAt != null, {
+    path: ["keepRoutine"],
+    message: REQUIRES_FINISH,
   });
 export type UpdateWorkout = z.infer<typeof UpdateWorkoutSchema>;
 

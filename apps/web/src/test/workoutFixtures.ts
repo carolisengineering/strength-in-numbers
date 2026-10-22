@@ -107,6 +107,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     plannedDurationSeconds: opts.plannedDurationSeconds ?? null,
     routineNotes: opts.routineNotes ?? null,
     sections,
+    routineIsOneOff: false,
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
@@ -229,6 +230,7 @@ export function makeRoutine(overrides: Record<string, unknown> = {}): Routine {
     items: [makeRoutineItem()],
     createdAt: "2026-10-01T10:00:00.000Z",
     updatedAt: "2026-10-01T10:00:00.000Z",
+    oneOffUntil: null,
     ...overrides,
   });
 }

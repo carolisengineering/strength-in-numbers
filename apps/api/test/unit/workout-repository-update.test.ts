@@ -13,7 +13,11 @@ class ScriptedPrisma {
     this.queue.push(() => rows);
   }
   $queryRaw = (strings: TemplateStringsArray): Promise<unknown[]> => {
-    this.calls.push({ sql: strings.join("?") });
+    const sql = strings.join("?");
+    this.calls.push({ sql });
+    // Spec 09.3 §6.2: every live finish attempt first locks its one-off routine, if any. These workouts
+    // come from no one-off, so it matches nothing and needs no queued row.
+    if (sql.includes('FROM "routine" r') && sql.includes("FOR UPDATE")) return Promise.resolve([]);
     const next = this.queue.shift();
     if (!next) throw new Error("ScriptedPrisma: no queued response");
     return Promise.resolve(next());
