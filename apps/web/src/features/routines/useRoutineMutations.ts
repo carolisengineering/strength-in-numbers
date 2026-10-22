@@ -10,9 +10,18 @@ import type { RoutineWriteInput } from "./validateDraft";
  * offline fails at once with a message instead of pausing (D11).
  */
 
-/** The server's order: lowercase name, then id (O7: non-ASCII may differ until the next refetch). */
+/**
+ * The server's order (Spec 09.3 AC3): one-offs first, newest created first; then lowercase name, then id
+ * (O7: non-ASCII may differ until the next refetch, and so may a sub-millisecond `createdAt` tie, 10.5 §6.2).
+ */
 export function sortRoutines(list: readonly Routine[]): Routine[] {
   return [...list].sort((x, y) => {
+    const xOneOff = x.oneOffUntil !== null;
+    if (xOneOff !== (y.oneOffUntil !== null)) return xOneOff ? -1 : 1;
+    if (xOneOff) {
+      const byCreated = Date.parse(y.createdAt) - Date.parse(x.createdAt);
+      if (byCreated !== 0) return byCreated;
+    }
     const a = x.name.toLowerCase();
     const b = y.name.toLowerCase();
     if (a !== b) return a < b ? -1 : 1;
