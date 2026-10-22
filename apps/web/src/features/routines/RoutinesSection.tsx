@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
-import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, REFRESH_LIST_FAILED } from "./messages";
+import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, ONE_OFF_TAG, REFRESH_LIST_FAILED } from "./messages";
+import { isOneOff, oneOffMeta } from "./oneOff";
 import { EDITOR_FROM_BACK, IMPORT_PATH, NEW_ROUTINE_PATH, routinePath } from "./paths";
 import { useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
@@ -15,6 +16,8 @@ import { routineSummary } from "./targetFormat";
 export function RoutinesSection() {
   const routines = useRoutines();
   const list = routines.data;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Spec 10.5 AC4: read once per list data change, never on a timer
+  const now = useMemo(() => Date.now(), [list]);
 
   useEffect(() => {
     if (routines.error) reportRoutineUnexpected("load-routines", routines.error);
@@ -49,8 +52,20 @@ export function RoutinesSection() {
           {list.map((routine) => (
             <li key={routine.id}>
               <Link className={styles.row} to={routinePath(routine.id)}>
-                <span className={styles.name}>{routine.name}</span>
-                <span className={styles.summary}>{routineSummary(routine)}</span>
+                {isOneOff(routine) ? (
+                  // Spec 10.5 AC2: the tag is text on the name line, inside the link (not color alone).
+                  <>
+                    <span className={styles.nameLine}>
+                      <span className={styles.name}>{routine.name}</span> <span className={styles.tag}>{ONE_OFF_TAG}</span>
+                    </span>
+                    <span className={styles.summary}>{oneOffMeta(routine, now)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className={styles.name}>{routine.name}</span>
+                    <span className={styles.summary}>{routineSummary(routine)}</span>
+                  </>
+                )}
               </Link>
             </li>
           ))}
