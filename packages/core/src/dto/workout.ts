@@ -132,6 +132,8 @@ export const WorkoutDetailSchema = WorkoutSchema.extend({
   routineNotes: z.string().nullable(),
   /** Spec 09.2 — ordered by position; `[]` for a manual start, a routine without sections, and pre-0011 workouts. */
   sections: z.array(WorkoutSectionSchema),
+  /** Spec 09.3 — the routine this workout came from exists and is a one-off now (finishing removes it). Detail only (D11). */
+  routineIsOneOff: z.boolean(),
 });
 export type WorkoutDetail = z.infer<typeof WorkoutDetailSchema>;
 

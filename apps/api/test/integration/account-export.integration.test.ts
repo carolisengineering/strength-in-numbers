@@ -83,7 +83,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
       for (const s of r.sections) expect(keys(s)).toEqual(shape(RoutineSectionSchema));
     }
     for (const w of body.workouts) {
-      expect(keys(w)).toEqual([...shape(WorkoutSchema), "exercises", "routineNotes", "sections"].sort());
+      expect(keys(w)).toEqual([...shape(WorkoutSchema), "exercises", "routineNotes", "sections", "routineIsOneOff"].sort());
       for (const s of w.sections) expect(keys(s)).toEqual(shape(WorkoutSectionSchema));
       for (const e of w.exercises) {
         expect(keys(e)).toEqual([...shape(WorkoutExerciseSchema), "sets"].sort());
@@ -128,6 +128,20 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     }
     const lb = body.workouts.flatMap((w) => w.exercises.flatMap((e) => e.sets)).find((x) => x.weightUnit === "lb")!;
     expect(lb.rpe).toBe(8.5);
+  });
+
+  it("09.3 AC28 — a one-off and the workout started from it are exported equal to the read routes", async () => {
+    app = await makeAccountApp(db);
+    const { routine, activeId } = await seed("exp-a");
+    await db.prisma.$executeRawUnsafe(`UPDATE "routine" SET one_off_until = created_at + interval '336 hours' WHERE id = $1::uuid`, routine.id);
+    const body = AccountExportSchema.parse((await exportOf("exp-a")).json());
+    const exported = body.routines.find((r) => r.id === routine.id)!;
+    expect(exported.oneOffUntil).not.toBeNull();
+    expect(exported).toEqual((await app.inject({ method: "GET", url: `/v1/routines/${routine.id}`, headers: bearer("exp-a") })).json());
+    const live = body.workouts.find((w) => w.id === activeId)!;
+    expect(live.routineIsOneOff).toBe(true);
+    expect(live).toEqual((await app.inject({ method: "GET", url: `/v1/workouts/${activeId}`, headers: bearer("exp-a") })).json());
+    for (const w of body.workouts.filter((w) => w.id !== activeId)) expect(w.routineIsOneOff).toBe(false);
   });
 
   it("AC5 — two users with identically named rows each see only their own ids", async () => {

@@ -389,6 +389,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       }),
       createdAt: existing?.createdAt ?? now(),
       updatedAt: now(),
+      // Spec 09.3: a PUT never changes the mark; the web sends no `oneOff` until Spec 10.5.
+      oneOffUntil: existing?.oneOffUntil ?? null,
     });
     return { ok: true, routine };
   }
@@ -436,6 +438,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         plannedDurationSeconds: null,
         routineNotes: routine?.notes ?? null,
         sections: startSections,
+        routineIsOneOff: false,
         exercises: (routine?.items ?? []).map((item, position) => {
           const exercise = catalog.find((e) => e.id === item.exerciseId);
           return {

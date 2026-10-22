@@ -46,6 +46,8 @@ export interface RoutineRecord {
   items: RoutineItemRecord[];
   createdAt: Date;
   updatedAt: Date;
+  /** Spec 09.3 — the one-off mark and expiry; `null` = an ordinary routine. */
+  oneOffUntil: Date | null;
 }
 
 /** POST / PUT body, already schema-validated by `RoutineWriteSchema`: targets

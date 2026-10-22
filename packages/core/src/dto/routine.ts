@@ -232,6 +232,8 @@ export const RoutineSchema = z.object({
   items: z.array(RoutineItemSchema),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  /** Spec 09.3 — when a one-off expires; `null` = an ordinary routine. Required-nullable, always last (the ETag). */
+  oneOffUntil: z.iso.datetime({ offset: true }).nullable(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
 

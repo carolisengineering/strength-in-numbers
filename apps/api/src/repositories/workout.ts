@@ -90,6 +90,8 @@ export interface WorkoutDetailRecord extends WorkoutRecord {
   routineNotes: string | null;
   /** Spec 09.2 — ordered by position ascending. */
   sections: WorkoutSectionRecord[];
+  /** Spec 09.3 — the workout's routine exists and is a one-off now. */
+  routineIsOneOff: boolean;
 }
 
 /** The fields a caller supplies on create (Spec 05.0 §5, §6.1, §6.3). */

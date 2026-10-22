@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeRoutineRepository, makeExerciseRecord } from "../helpers/fakes.js";
+import { strongEtag } from "../../src/routes/http-cache.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 const EX = makeExerciseRecord({ name: "Bench" });
@@ -50,7 +51,7 @@ describe("AC5 / AC11 / AC12 — POST /v1/routines", () => {
       [1, null, 1],
     ]);
     expect(res.json().notes).toBeNull();
-    expect(Object.keys(res.json())).toEqual(["id", "name", "notes", "sections", "items", "createdAt", "updatedAt"]);
+    expect(Object.keys(res.json())).toEqual(["id", "name", "notes", "sections", "items", "createdAt", "updatedAt", "oneOffUntil"]); // 09.3 AC1: the new key is last
   });
   it("AC11 — a position key on an item is a 422 naming the item", async () => {
     const { app } = await appWithExercise();
@@ -156,6 +157,39 @@ describe("AC3 / AC4 — reads, ETag, 304, cache policy", () => {
     expect(put.headers["cache-control"]).toBe("no-store");
     const list2 = await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
     expect(list2.headers.etag).not.toBe(list1.headers.etag);
+  });
+});
+
+describe("09.3 AC1 / AC2 — every routine read carries oneOffUntil, last", () => {
+  it("list, get-one, POST and PUT bodies end with \"oneOffUntil\":null", async () => {
+    const { app } = await appWithExercise();
+    const created = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body() });
+    const id = created.json().id as string;
+    const one = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    const put = await app.inject({ method: "PUT", url: `/v1/routines/${id}`, headers: BEARER, payload: body({ name: "Push B" }) });
+    const list = await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    for (const raw of [created.body, one.body, put.body]) expect(raw.endsWith(`"oneOffUntil":null}`)).toBe(true);
+    expect(list.body.endsWith(`"oneOffUntil":null}]}`)).toBe(true);
+  });
+
+  it("the first conditional GET after the deploy is 200, not 304; the current ETag is 304", async () => {
+    const { app } = await appWithExercise();
+    const created = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body() });
+    const id = created.json().id as string;
+    const one = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    const list = await app.inject({ method: "GET", url: "/v1/routines", headers: BEARER });
+    const withoutKey = (r: Record<string, unknown>) => {
+      const copy = { ...r };
+      delete copy.oneOffUntil;
+      return copy;
+    };
+    const oldOne = strongEtag(`routine:${id}`, JSON.stringify(withoutKey(one.json())));
+    const oldList = strongEtag("routines", JSON.stringify((list.json().routines as Record<string, unknown>[]).map(withoutKey)));
+    const get = (url: string, inm: string) => app.inject({ method: "GET", url, headers: { ...BEARER, "if-none-match": inm } });
+    expect((await get(`/v1/routines/${id}`, oldOne)).statusCode).toBe(200);
+    expect((await get("/v1/routines", oldList)).statusCode).toBe(200);
+    expect((await get(`/v1/routines/${id}`, one.headers.etag as string)).statusCode).toBe(304);
+    expect((await get("/v1/routines", list.headers.etag as string)).statusCode).toBe(304);
   });
 });
 

@@ -70,6 +70,8 @@ export interface RoutineDbRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  /** Spec 09.3 — the one-off expiry; NULL = ordinary. */
+  one_off_until: Date | null;
   /** `json_agg(json_build_object(…) ORDER BY position)`, `[]` when empty. */
   items: ItemDbRow[];
   /** Spec 09.2 — ordered by position, `[]` when none. */
@@ -81,7 +83,7 @@ const ITEM_COLS = Prisma.sql`id, routine_id, position, exercise_id, target_sets,
 /** The routine header plus its items in one statement; `ORDER BY` and the
  * `WHERE` are the caller's (`${where}` is a bound-parameter fragment). */
 const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sql`
-  SELECT r.id, r.user_id, r.name, r.notes, r.created_at, r.updated_at,
+  SELECT r.id, r.user_id, r.name, r.notes, r.created_at, r.updated_at, r.one_off_until,
          COALESCE((
            SELECT json_agg(json_build_object(
                     'id', ri.id, 'routine_id', ri.routine_id, 'position', ri.position,
@@ -131,6 +133,7 @@ function toRoutine(r: RoutineDbRow): RoutineRecord {
     notes: r.notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    oneOffUntil: r.one_off_until,
     sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes })),
     items: r.items.map(toItem),
   };

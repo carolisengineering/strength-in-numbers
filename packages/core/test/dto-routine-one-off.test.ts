@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ROUTINE_ONE_OFF_DAYS, RoutineCreateSchema, RoutineWriteSchema } from "../src/dto/routine.js";
+import { ROUTINE_ONE_OFF_DAYS, RoutineCreateSchema, RoutineSchema, RoutineWriteSchema } from "../src/dto/routine.js";
+import { UpdatedWorkoutSchema, WorkoutDetailSchema, WorkoutSchema, WorkoutSummarySchema } from "../src/dto/workout.js";
 
 const EX = "018fcb3e-3b8a-7d6e-9c1a-000000000010";
 const body = (over: Record<string, unknown> = {}) => ({ name: "Push A", items: [{ exerciseId: EX }], ...over });
@@ -44,5 +45,34 @@ describe("09.3 AC5 — RoutineWriteSchema stays closed", () => {
 
   it("still accepts today's body", () => {
     expect(RoutineWriteSchema.safeParse(body()).success).toBe(true);
+  });
+});
+
+describe("09.3 AC1 — the new response fields are required and placed", () => {
+  const routine = {
+    id: "018fcb3e-3b8a-7d6e-9c1a-000000000001",
+    name: "Push A",
+    notes: null,
+    sections: [],
+    items: [],
+    createdAt: "2026-10-22T10:00:00.000Z",
+    updatedAt: "2026-10-22T10:00:00.000Z",
+  };
+
+  it("Routine.oneOffUntil is required-nullable and the last key", () => {
+    expect(RoutineSchema.safeParse(routine).success).toBe(false);
+    expect(RoutineSchema.safeParse({ ...routine, oneOffUntil: null }).success).toBe(true);
+    expect(RoutineSchema.safeParse({ ...routine, oneOffUntil: "2026-11-05T10:00:00.000Z" }).success).toBe(true);
+    expect(Object.keys(RoutineSchema.shape).at(-1)).toBe("oneOffUntil");
+  });
+
+  it("WorkoutDetail.routineIsOneOff is a required boolean, on the detail only", () => {
+    const shape: Record<string, { safeParse: (v: unknown) => { success: boolean } }> = WorkoutDetailSchema.shape;
+    expect(shape.routineIsOneOff?.safeParse(undefined).success).toBe(false);
+    expect(shape.routineIsOneOff?.safeParse(null).success).toBe(false);
+    expect(shape.routineIsOneOff?.safeParse(true).success).toBe(true);
+    expect("routineIsOneOff" in WorkoutSchema.shape).toBe(false);
+    expect("routineIsOneOff" in UpdatedWorkoutSchema.shape).toBe(false);
+    expect("routineIsOneOff" in WorkoutSummarySchema.shape).toBe(false);
   });
 });

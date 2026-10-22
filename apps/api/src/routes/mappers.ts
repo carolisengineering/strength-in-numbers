@@ -100,6 +100,7 @@ export function toRoutineDto(r: RoutineRecord): Routine {
     items: r.items.map(toRoutineItemDto),
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    oneOffUntil: r.oneOffUntil?.toISOString() ?? null,
   };
 }
 
@@ -183,5 +184,6 @@ export function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
     ),
     routineNotes: r.routineNotes,
     sections: r.sections.map(toWorkoutSectionDto),
+    routineIsOneOff: r.routineIsOneOff,
   };
 }

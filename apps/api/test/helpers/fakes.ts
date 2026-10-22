@@ -426,7 +426,11 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   sets = new Map<string, SetEntryRecord>();
   private byClientKey = new Map<string, string>();
   /** Spec 09.2 — per workout: the routine note snapshot and the copied sections. */
-  sectionsByWorkout = new Map<string, { routineNotes: string | null; sections: WorkoutSectionRecord[] }>();
+  /** The start's snapshot, plus (Spec 09.3) the routine it came from, for `routineIsOneOff`. */
+  sectionsByWorkout = new Map<
+    string,
+    { routineNotes: string | null; sections: WorkoutSectionRecord[]; routineId?: string | null }
+  >();
 
   constructor(
     private readonly exerciseRepository: ExerciseRepository = new FakeExerciseRepository(),
@@ -451,7 +455,9 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           .sort((a, b) => a.setNumber - b.setNumber),
       }));
     const snap = this.sectionsByWorkout.get(w.id);
-    return { ...w, exercises, routineNotes: snap?.routineNotes ?? null, sections: snap?.sections ?? [] };
+    const routineId = snap?.routineId ?? null;
+    const routineIsOneOff = routineId !== null && this.routineRepository?.routines.get(routineId)?.oneOffUntil != null;
+    return { ...w, exercises, routineNotes: snap?.routineNotes ?? null, sections: snap?.sections ?? [], routineIsOneOff };
   }
 
   /** Canonical columns the way Postgres generates them (numeric(…,3) rounding). */
@@ -551,7 +557,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     this.workouts.set(workout.id, workout);
     this.byClientKey.set(key, workout.id);
     for (const e of copied) this.exercises.set(e.id, e);
-    this.sectionsByWorkout.set(workout.id, { routineNotes, sections: sectionRecords });
+    this.sectionsByWorkout.set(workout.id, { routineNotes, sections: sectionRecords, routineId: fields.routineId ?? null });
     return {
       workout,
       created: true,
@@ -1092,6 +1098,7 @@ export class FakeRoutineRepository implements RoutineRepository {
       items: this.buildItems(id, fields.items, idByKey),
       createdAt: now,
       updatedAt: now,
+      oneOffUntil: null,
     };
     this.routines.set(id, r);
     return r;

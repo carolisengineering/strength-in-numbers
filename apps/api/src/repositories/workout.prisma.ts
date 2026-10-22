@@ -142,6 +142,14 @@ export function workoutSectionsJson(parentRef: string): Prisma.Sql {
   ), '[]'::json)`);
 }
 
+/** Spec 09.3 §6.4 — true iff the workout's routine exists and is a one-off now. `workoutRef` is a SQL
+ * column reference (`'w'`, `'"workout"'`), never user input. Used by the detail and the export. */
+export function ROUTINE_IS_ONE_OFF(workoutRef: string): Prisma.Sql {
+  return Prisma.raw(
+    `EXISTS (SELECT 1 FROM "routine" r WHERE r.id = ${workoutRef}.routine_id AND r.one_off_until IS NOT NULL)`,
+  );
+}
+
 /** A correlated sub-select over `"workout_exercise"` (Spec 09.1 §6.5). */
 const WE_PLANNED_SETS = plannedSetsJson("workout_planned_set", "workout_exercise_id", '"workout_exercise".id');
 
@@ -397,15 +405,22 @@ export function createWorkoutRepository(
     return rows.map(toExerciseRecord);
   }
 
-  /** One statement: the routine's note snapshot and the workout's sections. Only the detail path reads
-   * `routine_notes_snapshot`; every other `workout` SELECT is untouched (AC1, D14). */
+  /** One statement: the routine's note snapshot, the workout's sections and (Spec 09.3) whether its routine is a
+   * one-off. Only the detail path reads these; every other `workout` SELECT is untouched (AC1, D14). */
   async function loadSectionSnapshot(workoutId: string) {
-    const rows = await prisma.$queryRaw<{ routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[] }[]>`
-      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections
+    const rows = await prisma.$queryRaw<
+      { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
+    >`
+      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
+             ${ROUTINE_IS_ONE_OFF("w")} AS routine_is_one_off
       FROM "workout" w WHERE w.id = ${workoutId}::uuid
     `;
     const row = rows[0];
-    return { routineNotes: row?.routine_notes_snapshot ?? null, sections: (row?.sections ?? []).map(toWorkoutSectionRecord) };
+    return {
+      routineNotes: row?.routine_notes_snapshot ?? null,
+      sections: (row?.sections ?? []).map(toWorkoutSectionRecord),
+      routineIsOneOff: row?.routine_is_one_off ?? false,
+    };
   }
 
   async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {

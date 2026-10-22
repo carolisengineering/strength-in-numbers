@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
+import { UpdatedWorkoutSchema, WorkoutSummarySchema } from "@sin/core";
 import { buildTestApp } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeRoutineRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
@@ -93,6 +94,44 @@ describe("AC4 — GET /v1/workouts/active", () => {
     expect(res.statusCode).toBe(409);
     expect(res.json().type).toContain("workout-in-progress-exists");
     expect(JSON.stringify(res.json())).not.toContain('"id"');
+  });
+});
+
+describe("09.3 AC1 / AC4 — routineIsOneOff is on the workout detail only", () => {
+  it("the detail and active carry it; the finish response, a History row and exercise writes do not", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ name: "Bench Press", modality: "weight_reps", isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    const workoutRepo = new FakeWorkoutRepository(exerciseRepo);
+    const { app } = await buildTestApp({ workoutRepository: workoutRepo });
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: STARTED_AT },
+    });
+    expect(created.json()).not.toHaveProperty("routineIsOneOff");
+    const id = created.json().id as string;
+
+    const active = await app.inject({ method: "GET", url: "/v1/workouts/active", headers: BEARER });
+    expect(active.json().routineIsOneOff).toBe(false);
+    const detail = await app.inject({ method: "GET", url: `/v1/workouts/${id}`, headers: BEARER });
+    expect(detail.json().routineIsOneOff).toBe(false);
+
+    const add = await app.inject({ method: "POST", url: `/v1/workouts/${id}/exercises`, headers: BEARER, payload: { exerciseId: exercise.id } });
+    expect(add.json()).not.toHaveProperty("routineIsOneOff");
+    const patch = await app.inject({ method: "PATCH", url: `/v1/workout-exercises/${add.json().id}`, headers: BEARER, payload: { position: 0 } });
+    expect(patch.json()).not.toHaveProperty("routineIsOneOff");
+
+    const finish = await app.inject({ method: "PATCH", url: `/v1/workouts/${id}`, headers: BEARER, payload: { endedAt: ENDED_AT } });
+    expect(finish.statusCode).toBe(200);
+    expect(Object.keys(finish.json()).sort()).toEqual(Object.keys(UpdatedWorkoutSchema.shape).sort());
+
+    const history = await app.inject({ method: "GET", url: "/v1/workouts", headers: BEARER });
+    expect(history.statusCode).toBe(200);
+    const row = history.json().items[0] as Record<string, unknown>;
+    expect(Object.keys(row).sort()).toEqual(Object.keys(WorkoutSummarySchema.shape).sort());
+    expect(row).not.toHaveProperty("routineIsOneOff");
   });
 });
 
