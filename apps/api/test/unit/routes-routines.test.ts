@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
+import { buildTestApp, GENEROUS_LIMITS, limitsWith } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeRoutineRepository, makeExerciseRecord } from "../helpers/fakes.js";
 import { strongEtag } from "../../src/routes/http-cache.js";
 
@@ -32,6 +32,7 @@ describe("AC1 — contract & auth", () => {
     ["POST", "/v1/routines"],
     ["PUT", `/v1/routines/${uuidv7()}`],
     ["DELETE", `/v1/routines/${uuidv7()}`],
+    ["POST", `/v1/routines/${uuidv7()}/keep`],
   ])("%s %s is 401 problem+json without a token", async (method, url) => {
     const { app } = await appWithExercise();
     const res = await app.inject({ method: method as "GET", url });
@@ -218,6 +219,73 @@ describe("09.3 AC5 — oneOff only on POST, only true", () => {
     const put = await app.inject({ method: "PUT", url: `/v1/routines/${created.json().id}`, headers: BEARER, payload: body({ oneOff: true }) });
     expect(put.statusCode).toBe(422);
     expect(pathsOf(put)).toEqual(["oneOff"]);
+  });
+});
+
+describe("09.3 AC8 – AC10 — POST /v1/routines/{id}/keep", () => {
+  const keep = (app: Awaited<ReturnType<typeof appWithExercise>>["app"], id: string, extra: Record<string, unknown> = {}) =>
+    app.inject({ method: "POST", url: `/v1/routines/${id}/keep`, headers: BEARER, ...extra });
+
+  it("a body-less, content-type-less request keeps a one-off: 204, then oneOffUntil is null and the ETag moved", async () => {
+    const { app } = await appWithExercise();
+    const id = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOff: true }) })).json().id as string;
+    const before = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    const res = await keep(app, id);
+    expect(res.statusCode).toBe(204);
+    expect(res.body).toBe("");
+    const after = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    expect(after.json().oneOffUntil).toBeNull();
+    expect(after.headers.etag).not.toBe(before.headers.etag);
+    // A repeat is a no-op: still 204, and the ETag does not move again.
+    expect((await keep(app, id)).statusCode).toBe(204);
+    const again = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    expect(again.headers.etag).toBe(after.headers.etag);
+  });
+
+  it("keeping an ordinary routine is a 204 no-op with the same ETag", async () => {
+    const { app } = await appWithExercise();
+    const id = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body() })).json().id as string;
+    const before = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    expect((await keep(app, id)).statusCode).toBe(204);
+    const after = await app.inject({ method: "GET", url: `/v1/routines/${id}`, headers: BEARER });
+    expect(after.headers.etag).toBe(before.headers.etag);
+  });
+
+  it("a missing or malformed id is 404 not-found problem+json", async () => {
+    const { app } = await appWithExercise();
+    for (const id of [uuidv7(), "not-a-uuid"]) {
+      const res = await keep(app, id);
+      expect(res.statusCode).toBe(404);
+      expect(res.headers["content-type"]).toContain("application/problem+json");
+      expect(res.json().type).toContain("not-found");
+    }
+  });
+
+  // The app reads an empty `application/json` body as no body (app.ts), so that is a 204 like `{}`;
+  // only a malformed body is refused, as the app's usual 422 problem — never a 500.
+  it("Review Focus 1 — JSON {} and an empty JSON body are 204; malformed JSON is the app's 422 problem, never a 500", async () => {
+    const { app } = await appWithExercise();
+    const id = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOff: true }) })).json().id as string;
+    const json = { ...BEARER, "content-type": "application/json" };
+    expect((await keep(app, id, { headers: json, payload: "{}" })).statusCode).toBe(204);
+    expect((await keep(app, id, { headers: json, payload: "" })).statusCode).toBe(204);
+    const malformed = await keep(app, id, { headers: json, payload: "{" });
+    expect(malformed.statusCode).toBe(422);
+    expect(malformed.headers["content-type"]).toContain("application/problem+json");
+  });
+
+  it("shares the routines write budget: the second write in the window is 429", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      rateLimits: limitsWith({ groups: { routines: 1 } }),
+    });
+    const id = (await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOff: true }) })).json().id as string;
+    const res = await app.inject({ method: "POST", url: `/v1/routines/${id}/keep`, headers: BEARER });
+    expect(res.statusCode).toBe(429);
   });
 });
 

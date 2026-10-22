@@ -104,6 +104,10 @@ export interface RoutineRepository {
    * `ExerciseRetiredError`. */
   replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord>;
 
+  /** Spec 09.3 §6.4 — clear the one-off mark (and bump `updated_at`). `changed: false` for an ordinary routine
+   * or a repeat. Throws `NotFoundError` for a malformed, missing or foreign id (AC9). Never checks the cap. */
+  keep(actingUserId: string, id: string): Promise<{ changed: boolean }>;
+
   /** Hard delete; the FK cascades items and nulls `workout.routine_id`.
    * Throws `NotFoundError` on a miss, a foreign row, or a repeat. */
   delete(actingUserId: string, id: string): Promise<void>;

@@ -357,6 +357,21 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
       });
     },
 
+    async keep(actingUserId, id) {
+      if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
+      const kept = await prisma.$queryRaw<{ id: string }[]>`
+        UPDATE "routine" SET one_off_until = NULL, updated_at = now()
+        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid AND one_off_until IS NOT NULL
+        RETURNING id
+      `;
+      if (kept[0]) return { changed: true };
+      const owned = await prisma.$queryRaw<{ one: number }[]>`
+        SELECT 1 AS one FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
+      `;
+      if (!owned[0]) throw new NotFoundError(NOT_FOUND);
+      return { changed: false };
+    },
+
     async delete(actingUserId, id) {
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
       const rows = await prisma.$queryRaw<{ id: string }[]>`

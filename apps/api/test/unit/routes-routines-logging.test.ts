@@ -81,6 +81,20 @@ describe("AC30 — routine log lines carry ids and counts only", () => {
     expect(Object.keys(swept[0]!)).not.toContain("routine_id");
   });
 
+  it("09.3 AC29 — routine_kept carries changed: true, then false on a repeat, and no name text", async () => {
+    const { app, lines } = await setup();
+    const id = (
+      await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "distinctive-name-qzx", items: [{ exerciseId: EX.id }], oneOff: true } })
+    ).json().id as string;
+    await app.inject({ method: "POST", url: `/v1/routines/${id}/keep`, headers: BEARER });
+    await app.inject({ method: "POST", url: `/v1/routines/${id}/keep`, headers: BEARER });
+    const kept = lines.filter((l) => l.msg === "routine_kept");
+    expect(kept.map((l) => l.changed)).toEqual([true, false]);
+    expect(kept[0]).toMatchObject({ routine_id: id });
+    expect(typeof kept[0]!.user_id).toBe("string");
+    expect(JSON.stringify(kept)).not.toMatch(/distinctive-/);
+  });
+
   it("routine_limit_hit fires once at info when the cap is reached", async () => {
     const { app, lines } = await setup();
     for (let i = 0; i <= 50; i += 1) {

@@ -1,4 +1,9 @@
+import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ROUTINES_PER_USER_MAX } from "@sin/core";
+import { NotFoundError } from "../../src/errors/app-error.js";
+import { bearer, makeAccountApp } from "./account-helpers.js";
+import { ageOneOff } from "./one-off-helpers.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
@@ -8,6 +13,7 @@ import { routineFixture, TRUNCATE_ROUTINES } from "./routine-helpers.js";
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real Postgres)", () => {
   let db: IntegrationDb;
+  let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
@@ -16,6 +22,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
     await db?.stop();
   });
   afterEach(async () => {
+    await app?.close();
+    app = undefined;
     if (!db) return;
     await db.prisma.$executeRawUnsafe(TRUNCATE_ROUTINES);
   });
@@ -96,6 +104,107 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
         `UPDATE "routine" SET created_at = '2026-10-20T10:00:00Z', one_off_until = '2026-11-03T10:00:00Z' WHERE id = ANY($1::uuid[])`,
         [z.id, y.id]);
       expect((await routines().list(u)).map((r) => r.name)).toEqual(["Yak", "zed"]);
+    });
+  });
+
+  /** Every child row of a routine as one JSON text, ordered (ids included). */
+  const childSnapshot = async (id: string) =>
+    JSON.stringify(
+      await q(
+        `SELECT
+           (SELECT json_agg(to_jsonb(i) ORDER BY i.position) FROM "routine_item" i WHERE i.routine_id = $1::uuid) AS items,
+           (SELECT json_agg(to_jsonb(s) ORDER BY s.position) FROM "routine_section" s WHERE s.routine_id = $1::uuid) AS sections,
+           (SELECT json_agg(to_jsonb(p) ORDER BY p.id) FROM "routine_item_set" p
+              JOIN "routine_item" i ON i.id = p.routine_item_id WHERE i.routine_id = $1::uuid) AS sets`,
+        id,
+      ),
+    );
+  const header = async (id: string) =>
+    (await q<{ name: string; one_off_until: Date | null; updated_at: Date }>(
+      `SELECT name, one_off_until, updated_at FROM "routine" WHERE id = $1::uuid`, id))[0];
+  /** A one-off with a section and planned rows. */
+  const richOneOff = (u: string, ex: string, name: string) =>
+    routines().create(u, {
+      ...routineFixture([ex], { name, oneOff: true, sections: [{ key: "s", name: "Main", notes: "n" }] }),
+      items: [{ exerciseId: ex, sectionKey: "s", sets: [{ setType: "working", repsLow: 5, repsHigh: 5 }] }],
+    });
+
+  describe("09.3 AC8 — Keep", () => {
+    it("clears the mark and bumps updated_at; children, id and name untouched; never swept afterwards", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const r = await richOneOff(u, ex, "Keep me");
+      const children = await childSnapshot(r.id);
+      const before = await header(r.id);
+      expect(await routines().keep(u, r.id)).toEqual({ changed: true });
+      const after = await header(r.id);
+      expect(after!.one_off_until).toBeNull();
+      expect(after!.updated_at.getTime()).toBeGreaterThan(before!.updated_at.getTime());
+      expect(after!.name).toBe("Keep me");
+      expect(await childSnapshot(r.id)).toBe(children);
+      expect((await routines().getById(u, r.id)).oneOffUntil).toBeNull();
+      await x(`UPDATE "routine" SET created_at = created_at - interval '30 days' WHERE id = $1::uuid`, r.id);
+      expect((await routines().list(u)).map((x) => x.id)).toEqual([r.id]);
+    });
+  });
+
+  describe("09.3 AC9 — Keep is idempotent and total", () => {
+    it("a repeat and an ordinary routine are no-ops; an expired unswept one-off is rescued", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const r = await richOneOff(u, ex, "Twice");
+      await routines().keep(u, r.id);
+      const once = await header(r.id);
+      expect(await routines().keep(u, r.id)).toEqual({ changed: false });
+      expect((await header(r.id))!.updated_at.getTime()).toBe(once!.updated_at.getTime());
+
+      const plain = await routines().create(u, routineFixture([ex], { name: "Plain" }));
+      const plainBefore = await header(plain.id);
+      expect(await routines().keep(u, plain.id)).toEqual({ changed: false });
+      expect((await header(plain.id))!.updated_at.getTime()).toBe(plainBefore!.updated_at.getTime());
+
+      const stale = await richOneOff(u, ex, "Stale");
+      await ageOneOff(db, stale.id, 20);
+      expect(await routines().keep(u, stale.id)).toEqual({ changed: true });
+      expect((await routines().list(u)).map((x) => x.name)).toContain("Stale");
+    });
+
+    it("a foreign, missing, malformed or swept id is NotFoundError, and the owner's mark is untouched", async () => {
+      const a = await insertUser(db);
+      const b = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: a });
+      const r = await richOneOff(a, ex, "A's");
+      const mark = (await header(r.id))!.one_off_until!.getTime();
+      await expect(routines().keep(b, r.id)).rejects.toBeInstanceOf(NotFoundError);
+      expect((await header(r.id))!.one_off_until!.getTime()).toBe(mark);
+      await expect(routines().keep(a, "018fcb3e-3b8a-7d6e-9c1a-00000000ffff")).rejects.toBeInstanceOf(NotFoundError);
+      await expect(routines().keep(a, "not-a-uuid")).rejects.toBeInstanceOf(NotFoundError);
+      await ageOneOff(db, r.id, 20);
+      await routines().list(a);
+      await expect(routines().keep(a, r.id)).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  describe("09.3 Review Focus 5 — 51 routines after a rescue", () => {
+    it("49 + an expired held one-off + a create; Keep is 204; the list shows 51; the next create is 409 routine-limit", async () => {
+      app = await makeAccountApp(db);
+      const token = bearer("rescue-a");
+      await app.inject({ method: "GET", url: "/v1/me", headers: token });
+      const u = (await q<{ id: string }>(`SELECT id FROM "user" WHERE auth_sub = 'auth0|rescue-a'`))[0]!.id;
+      const ex = await insertExercise(db, { ownerUserId: u });
+      for (let i = 0; i < ROUTINES_PER_USER_MAX - 1; i += 1) await routines().create(u, routineFixture([ex], { name: `R${i}` }));
+      const held = await richOneOff(u, ex, "held");
+      await ageOneOff(db, held.id, 20);
+      await liveFrom(u, ex, held.id);
+      const post = (name: string) =>
+        app!.inject({ method: "POST", url: "/v1/routines", headers: token, payload: { name, items: [{ exerciseId: ex }] } });
+      expect((await post("the 51st")).statusCode).toBe(201);
+      expect((await app.inject({ method: "POST", url: `/v1/routines/${held.id}/keep`, headers: token })).statusCode).toBe(204);
+      const list = await app.inject({ method: "GET", url: "/v1/routines", headers: token });
+      expect(list.json().routines).toHaveLength(ROUTINES_PER_USER_MAX + 1);
+      const refused = await post("the 52nd");
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().type).toContain("routine-limit");
     });
   });
 

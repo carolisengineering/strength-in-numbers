@@ -151,6 +151,22 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
     },
   );
 
+  // Spec 09.3 §5 — no body: the web sends none and no content-type (AC10).
+  r.post(
+    "/routines/:id/keep",
+    {
+      schema: { params: idParams, response: { 204: z.undefined() } },
+      config: { published: true, problems: [NotFoundError], writeGroup: "routines" },
+    },
+    async (request, reply) => {
+      const actingUserId = request.user!.id;
+      const { changed } = await deps.routineRepository.keep(actingUserId, request.params.id);
+      request.log.info({ routine_id: request.params.id, user_id: actingUserId, changed }, "routine_kept");
+      reply.code(204).send();
+      return reply;
+    },
+  );
+
   r.delete(
     "/routines/:id",
     {

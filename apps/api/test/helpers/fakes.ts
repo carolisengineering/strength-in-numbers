@@ -1147,6 +1147,13 @@ export class FakeRoutineRepository implements RoutineRepository {
     return r;
   }
 
+  async keep(actingUserId: string, id: string): Promise<{ changed: boolean }> {
+    const r = this.owned(actingUserId, id);
+    if (r.oneOffUntil === null) return { changed: false };
+    this.routines.set(id, { ...r, oneOffUntil: null, updatedAt: new Date(Math.max(Date.now(), r.updatedAt.getTime() + 1)) });
+    return { changed: true };
+  }
+
   async replace(actingUserId: string, id: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
     const current = this.owned(actingUserId, id);
     if (this.nameClash(actingUserId, fields.name, id)) throw new RoutineNameTakenError();

@@ -213,6 +213,19 @@ describe("CORS (Criterion 15)", () => {
     );
   });
 
+  it("09.3 AC10 — the preflight for Keep (POST /v1/routines/{id}/keep) allows POST", async () => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/routines/00000000-0000-4000-8000-000000000001/keep",
+      headers: { origin: "http://localhost:5173", "access-control-request-method": "POST" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    const methods = String(res.headers["access-control-allow-methods"] ?? "").split(",").map((m) => m.trim());
+    expect(methods).toContain("POST");
+  });
+
   it("a PUT preflight from an unlisted origin still gets no allow-origin header", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({
