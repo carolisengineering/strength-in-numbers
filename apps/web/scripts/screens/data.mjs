@@ -185,6 +185,28 @@ export const routines = [
   },
 ];
 
+/**
+ * Spec 10.5 AC26: a routine saved from text (a one-off), served only by the one-off captures so every
+ * other routines shot stays as it was.
+ */
+export const CLASS = {
+  id: uuid("b0000000", 9),
+  name: "Class Fri 16 Oct",
+  notes: null,
+  sections: [],
+  items: [
+    item("back_squat", 0, { supersetGroup: 1, sets: rep(3, ps("working", 10, 10, null)) }),
+    item("barbell_row", 1, { supersetGroup: 1, sets: rep(3, ps("working", 10, 10, null)) }),
+    item("bench_press", 2, { supersetGroup: 2, sets: rep(3, ps("working", 8, 8, null)) }),
+    item("lateral_raise", 3, { supersetGroup: 2, sets: rep(3, ps("working", 12, 12, null)) }),
+    item("romanian_deadlift", 4, { sets: rep(3, ps("working", 10, 10, null)) }),
+    item("plank", 5, { targetSets: 3, sets: rep(3, ps("working", null, null, null)) }),
+  ],
+  createdAt: iso(NOW - 5 * MIN),
+  updatedAt: iso(NOW - 5 * MIN),
+  oneOffUntil: iso(NOW - 5 * MIN + 14 * DAY),
+};
+
 // ---------------------------------------------------------------- workouts
 let weN = 0;
 let setN = 0;
@@ -405,6 +427,9 @@ export const activeDone = (() => {
   return done;
 })();
 
+/** Spec 10.5 AC26: the same all-logged session, started from the one-off (its Finish dialog shows the line). */
+export const activeOneOff = { ...activeDone, routineName: CLASS.name, routineIsOneOff: true };
+
 // ---------------------------------------------------------------- records + progress
 const epley = (w, r) => (r === 1 ? w : r >= 1 && r <= 12 ? w * (1 + r / 30) : null);
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -525,10 +550,12 @@ export function payloadChecks() {
     ["muscle-groups", "MuscleGroupsResponse", { muscleGroups }],
     ["equipment", "EquipmentResponse", { equipment }],
     ["routines", "RoutineListResponseSchema", { routines }],
+    ["routines with the one-off", "RoutineListResponseSchema", { routines: [CLASS, ...routines] }],
     ["history", "WorkoutHistoryResponseSchema", history],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ...allWorkouts.map((w) => [`workout ${w.id}`, "WorkoutDetailSchema", w]),
     ["active, all planned logged", "WorkoutDetailSchema", activeDone],
+    ["active, from a one-off", "WorkoutDetailSchema", activeOneOff],
     ["active, back-dated with a took", "WorkoutDetailSchema", activePlanned],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
   ];
