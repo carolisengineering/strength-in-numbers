@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   RoutineListResponseSchema,
   RoutineSchema,
+  RoutineCreateSchema,
   RoutineWriteSchema,
 } from "@sin/core";
 import {
@@ -79,7 +80,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
     "/routines",
     {
       bodyLimit: ROUTINE_BODY_LIMIT_BYTES,
-      schema: { body: RoutineWriteSchema, response: { 201: RoutineSchema } },
+      schema: { body: RoutineCreateSchema, response: { 201: RoutineSchema } },
       config: {
         published: true,
         problems: [RoutineNameTakenError, RoutineLimitError, ExerciseRetiredError],
@@ -97,6 +98,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
             item_count: created.items.length,
             section_count: created.sections.length,
             planned_set_count: plannedSetCount(created),
+            one_off: created.oneOffUntil !== null,
           },
           "routine_created",
         );

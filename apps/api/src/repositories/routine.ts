@@ -74,8 +74,13 @@ export interface RoutineWriteFields {
   }[];
 }
 
+/** POST body, validated by `RoutineCreateSchema` (Spec 09.3): the write fields plus the one-off choice. */
+export interface RoutineCreateFields extends RoutineWriteFields {
+  oneOff?: true | undefined;
+}
+
 export interface RoutineRepository {
-  /** The caller's routines ordered by `lower(name)`, `id`, items by position (AC2). */
+  /** The caller's routines: one-offs first, newest created first, then by `lower(name)`, `id` (AC2; Spec 09.3 AC3); items by position. */
   list(actingUserId: string): Promise<RoutineRecord[]>;
 
   /** Throws `NotFoundError` on a miss, a foreign row, or a malformed id (AC3). */
@@ -87,7 +92,7 @@ export interface RoutineRepository {
    * check (`ValidationError` 422 for absent / invisible, `ExerciseRetiredError`
    * with `errors[]` for retired), then the items with normalised groups.
    */
-  create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord>;
+  create(actingUserId: string, fields: RoutineCreateFields): Promise<RoutineRecord>;
 
   /** §6.3 whole replace under a `FOR UPDATE` row lock; item ids are not stable
    * (D2). Throws `NotFoundError`, `RoutineNameTakenError`, `ValidationError`,

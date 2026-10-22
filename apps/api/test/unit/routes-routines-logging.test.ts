@@ -56,6 +56,13 @@ describe("AC30 — routine log lines carry ids and counts only", () => {
     expect(JSON.stringify(lines)).not.toMatch(/distinctive-|test-token/);
   });
 
+  it("09.3 AC29 — routine_created carries one_off", async () => {
+    const { app, lines } = await setup();
+    await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "A", items: [{ exerciseId: EX.id }], oneOff: true } });
+    await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
+    expect(lines.filter((l) => l.msg === "routine_created").map((l) => l.one_off)).toEqual([true, false]);
+  });
+
   it("routine_limit_hit fires once at info when the cap is reached", async () => {
     const { app, lines } = await setup();
     for (let i = 0; i <= 50; i += 1) {

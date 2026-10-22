@@ -7,6 +7,7 @@ import {
   isWorkoutId,
   localDateFor,
   normalizeSupersetGroups,
+  ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
   rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
@@ -57,6 +58,7 @@ import type {
   RoutineRecord,
   RoutineRepository,
   RoutineSectionRecord,
+  RoutineCreateFields,
   RoutineWriteFields,
 } from "../../src/repositories/routine.js";
 import {
@@ -1071,17 +1073,24 @@ export class FakeRoutineRepository implements RoutineRepository {
     );
   }
 
+  /** Spec 09.3 AC3 — the same keys as `ROUTINE_ONE_OFF_ORDER`: one-offs first, newest created first, then by name. */
   async list(actingUserId: string): Promise<RoutineRecord[]> {
     return [...this.routines.values()]
       .filter((r) => r.userId === actingUserId)
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id));
+      .sort(
+        (a, b) =>
+          Number(a.oneOffUntil === null) - Number(b.oneOffUntil === null) ||
+          (a.oneOffUntil !== null && b.oneOffUntil !== null ? b.createdAt.getTime() - a.createdAt.getTime() : 0) ||
+          a.name.toLowerCase().localeCompare(b.name.toLowerCase()) ||
+          a.id.localeCompare(b.id),
+      );
   }
 
   async getById(actingUserId: string, id: string): Promise<RoutineRecord> {
     return this.owned(actingUserId, id);
   }
 
-  async create(actingUserId: string, fields: RoutineWriteFields): Promise<RoutineRecord> {
+  async create(actingUserId: string, fields: RoutineCreateFields): Promise<RoutineRecord> {
     if ((await this.list(actingUserId)).length >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
     if (this.nameClash(actingUserId, fields.name, null)) throw new RoutineNameTakenError();
     const modalities = await this.checkExercises(actingUserId, fields.items.map((i) => i.exerciseId));
@@ -1098,7 +1107,7 @@ export class FakeRoutineRepository implements RoutineRepository {
       items: this.buildItems(id, fields.items, idByKey),
       createdAt: now,
       updatedAt: now,
-      oneOffUntil: null,
+      oneOffUntil: fields.oneOff ? new Date(now.getTime() + ROUTINE_ONE_OFF_DAYS * 86_400_000) : null,
     };
     this.routines.set(id, r);
     return r;

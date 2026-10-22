@@ -1,11 +1,12 @@
-import type { RoutineWriteFields } from "../../src/repositories/routine.js";
+import type { RoutineCreateFields } from "../../src/repositories/routine.js";
 
 /** Spec 09 §10 — a routine body with items from the given exercise ids. */
 export function routineFixture(
   exerciseIds: string[],
-  over: Partial<RoutineWriteFields> & { sectionKeys?: (string | null)[] } = {},
-): RoutineWriteFields {
+  over: Partial<RoutineCreateFields> & { sectionKeys?: (string | null)[] } = {},
+): RoutineCreateFields {
   return {
+    ...(over.oneOff ? { oneOff: true as const } : {}),
     name: over.name ?? "Push A",
     notes: over.notes ?? null,
     ...(over.sections ? { sections: over.sections } : {}),

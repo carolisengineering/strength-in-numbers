@@ -193,6 +193,34 @@ describe("09.3 AC1 / AC2 — every routine read carries oneOffUntil, last", () =
   });
 });
 
+describe("09.3 AC5 — oneOff only on POST, only true", () => {
+  const pathsOf = (res: { json: () => { errors?: { path: string }[] } }) => (res.json().errors ?? []).map((e) => e.path);
+
+  it.each([false, null, "true"])("POST with oneOff: %j is 422 on oneOff", async (oneOff) => {
+    const { app } = await appWithExercise();
+    const res = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOff }) });
+    expect(res.statusCode).toBe(422);
+    expect(pathsOf(res)).toEqual(["oneOff"]);
+  });
+
+  it("POST with oneOffUntil is 422 (a client never sends the expiry)", async () => {
+    const { app } = await appWithExercise();
+    const res = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOffUntil: "2026-11-05T00:00:00Z" }) });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("POST with oneOff: true is 201 with an expiry 14 days out; PUT with oneOff is 422 on oneOff", async () => {
+    const { app } = await appWithExercise();
+    const created = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: body({ oneOff: true }) });
+    expect(created.statusCode).toBe(201);
+    const until = Date.parse(created.json().oneOffUntil as string) - Date.parse(created.json().createdAt as string);
+    expect(until).toBe(14 * 24 * 3_600_000);
+    const put = await app.inject({ method: "PUT", url: `/v1/routines/${created.json().id}`, headers: BEARER, payload: body({ oneOff: true }) });
+    expect(put.statusCode).toBe(422);
+    expect(pathsOf(put)).toEqual(["oneOff"]);
+  });
+});
+
 describe("AC13 / AC15 — PUT and DELETE", () => {
   it("PUT 200 replaces with new item ids; 404 for absent; DELETE 204 then 404", async () => {
     const { app } = await appWithExercise();

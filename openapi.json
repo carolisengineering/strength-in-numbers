@@ -8972,6 +8972,12 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "oneOff": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
                   }
                 },
                 "required": [

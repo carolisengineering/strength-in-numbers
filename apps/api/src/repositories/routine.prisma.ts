@@ -1,6 +1,7 @@
 // apps/api/src/repositories/routine.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
+  ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
   isRoutineId,
   normalizeSupersetGroups,
@@ -104,6 +105,12 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
   WHERE ${where}
   ${orderBy}
 `;
+
+/** Spec 09.3 §5 / AC3 — one-offs first, newest created first, then today's order. Spec 10.5 mirrors it. */
+export const ROUTINE_ONE_OFF_ORDER = Prisma.sql`
+  ORDER BY (r.one_off_until IS NULL),
+           (CASE WHEN r.one_off_until IS NOT NULL THEN r.created_at END) DESC NULLS LAST,
+           lower(r.name), r.id`;
 
 const NOT_FOUND = "routine not found or not owned by the acting user";
 
@@ -259,7 +266,7 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
   return {
     async list(actingUserId) {
       const rows = await prisma.$queryRaw<RoutineDbRow[]>(
-        ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, Prisma.sql`ORDER BY lower(r.name), r.id`),
+        ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, ROUTINE_ONE_OFF_ORDER),
       );
       return rows.map(toRoutine);
     },
@@ -283,8 +290,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         if (countRows[0]!.n >= ROUTINES_PER_USER_MAX) throw new RoutineLimitError();
         try {
           await tx.$executeRaw`
-            INSERT INTO "routine" (id, user_id, name, notes, created_at, updated_at)
-            VALUES (${id}::uuid, ${actingUserId}::uuid, ${fields.name}, ${fields.notes ?? null}, now(), now())
+            INSERT INTO "routine" (id, user_id, name, notes, created_at, updated_at, one_off_until)
+            VALUES (${id}::uuid, ${actingUserId}::uuid, ${fields.name}, ${fields.notes ?? null}, now(), now(),
+                    CASE WHEN ${fields.oneOff === true} THEN now() + make_interval(hours => ${ROUTINE_ONE_OFF_DAYS * 24}::int) END)
           `;
         } catch (err) {
           if (nameTaken(err)) throw new RoutineNameTakenError();
