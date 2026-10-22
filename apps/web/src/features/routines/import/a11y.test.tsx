@@ -14,12 +14,13 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { cardGroup, cardGroups, importCatalog, readHiraya } from "../../../test/importFixtures";
+import { cardGroup, cardGroups, importCatalog, readHiraya, toEditor } from "../../../test/importFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { makeRoutine, routineId } from "../../../test/workoutFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { LIMIT_MESSAGE } from "../messages";
 import { IMPORT_PATH } from "../paths";
+import { IMPORTED_NOTICE, importNoticeText } from "./messages";
 import { CHOOSE_ANOTHER, CONTINUE, HOW_TO_INTRO, NAMES_TITLE, NEW_NAME_REQUIRED, READ_BUTTON, TEXT_LABEL, USE_IT_INSTEAD, needAttention } from "./messages";
 
 afterEach(() => cleanupApp());
@@ -64,5 +65,16 @@ describe("10.4 AC37 — accessibility (Phase B screens)", () => {
     const button = screen.getByRole("button", { name: CONTINUE });
     expect(button).toHaveAttribute("disabled");
     expect(button).toHaveAccessibleDescription(needAttention(1));
+  });
+});
+
+describe("10.4 AC37 — accessibility (editor side)", () => {
+  it("the editor's first notice is a polite status; New is text; warnings are alerts", async () => {
+    prepareApp({ auth, fake: createWorkoutFake({ catalog: [...importCatalog] }), catalog: [...importCatalog] });
+    const { user } = renderApp(IMPORT_PATH);
+    await toEditor(user, `Workout: "${"N".repeat(81)}"\n3 Sets:\n10 Hand Release Pushups\nx.`);
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent(IMPORTED_NOTICE);
+    expect(within(screen.getByRole("button", { name: /^Hand Release Pushups \(New\)/ })).getByText("New")).toBeInTheDocument();
+    expect(screen.getAllByRole("alert").map((a) => a.textContent)).toContain(importNoticeText({ code: "name-cut" }));
   });
 });

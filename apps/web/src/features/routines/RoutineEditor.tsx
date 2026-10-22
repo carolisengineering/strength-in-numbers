@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
@@ -36,7 +36,7 @@ import {
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
-import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine } from "./routineDraft";
+import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine, type Draft } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { BackToWorkouts, RoutineGone } from "./RoutinePreview";
 import { fieldMessagesFor, itemMessage, rowMessagesFor, sectionError, sectionMessagesFor } from "./sheetIssues";
@@ -50,6 +50,7 @@ import {
   toRoutineInput,
   validateDraft,
   type DraftIssue,
+  type RoutineWriteInput,
 } from "./validateDraft";
 
 export function RoutineEditorRoute({ mode }: { mode: "create" | "edit" }) {
@@ -91,8 +92,22 @@ function issueFor(issues: readonly DraftIssue[], scope: DraftIssue["scope"], ite
   return found ? found.message : null;
 }
 
-export function RoutineEditor({ routine }: { routine: Routine | null }) {
-  const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : initialDraft()));
+/** Spec 10.4 AC31: what Save sends after `prepareBody`, or why it stopped (a form-level message). */
+export type PreparedBody =
+  | { readonly ok: true; readonly body: RoutineWriteInput }
+  | { readonly ok: false; readonly message: string; readonly requestId: string | null };
+
+/** Spec 10.4 AC30: a "New routine" editor that starts from a given draft (an import). Only with `routine === null`. */
+export interface EditorStart {
+  readonly draft: Draft;
+  /** Rendered above the form, before any error notice. */
+  readonly notices?: ReactNode;
+  /** Awaited by Save before the routine write (an import creates its pending exercises here). */
+  readonly prepareBody?: (body: RoutineWriteInput, draft: Draft, signal: AbortSignal) => Promise<PreparedBody>;
+}
+
+export function RoutineEditor({ routine, initial }: { routine: Routine | null; initial?: EditorStart }) {
+  const [draft, dispatch] = useReducer(reduce, routine, (r) => (r ? draftFromRoutine(r) : (initial?.draft ?? initialDraft())));
   const navigate = useNavigate();
   const { user } = useSession();
   const queryClient = useQueryClient();
@@ -178,7 +193,17 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
   const duplicateWarning =
     routines.data !== undefined && nameTaken(draft.name, routines.data, routine?.id) ? NAME_TAKEN : null;
   const [saved, setSaved] = useState(false);
-  const saving = create.isPending || replace.isPending || saved;
+  /** Spec 10.4 AC31: `initial.prepareBody` is running (an import creating its exercises): Save is busy, the form locked. */
+  const [preparing, setPreparing] = useState(false);
+  /** Aborted when the editor unmounts, so a discarded Save stops between `prepareBody`'s steps. */
+  const prepareAbort = useRef(new AbortController());
+  useEffect(() => {
+    // A fresh controller per mount: StrictMode's dev re-mount must not leave Save with an aborted signal.
+    const controller = new AbortController();
+    prepareAbort.current = controller;
+    return () => controller.abort();
+  }, []);
+  const saving = create.isPending || replace.isPending || saved || preparing;
   const [focusName, setFocusName] = useState(false);
   useEffect(() => {
     if (!focusName || saving) return;
@@ -192,11 +217,31 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
     if (!validation.ok || gone || inFlight.current) return;
     inFlight.current = true;
     const sent = draft;
-    const body = toRoutineInput(sent, { modalityOf: (id) => lookupExercise(id).modality });
+    let body = toRoutineInput(sent, { modalityOf: (id) => lookupExercise(id).modality });
     const keys = sent.items.map((i) => i.key);
     setFormError(null);
     setServerIssues(null);
     try {
+      if (initial?.prepareBody) {
+        setPreparing(true);
+        let prepared: PreparedBody;
+        try {
+          prepared = await initial.prepareBody(body, sent, prepareAbort.current.signal);
+        } finally {
+          if (mounted.current) setPreparing(false);
+        }
+        // Discarded while the exercises were being created: write no routine (what was created stays, Spec 10.4 D5).
+        if (!mounted.current) {
+          inFlight.current = false;
+          return;
+        }
+        if (!prepared.ok) {
+          inFlight.current = false;
+          setFormError({ text: prepared.message, requestId: prepared.requestId });
+          return;
+        }
+        body = prepared.body;
+      }
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(body);
       leaving.current = true; // disarm the leave guard before navigating (AC34)
       // The latch stays closed: until the editor unmounts, a late second tap must not send a second write.
@@ -294,7 +339,8 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
           line={line}
           notes={item.notes}
           position={position}
-          accessibleName={itemAccessibleName(exercise.name, group, line, unavailable)}
+          accessibleName={itemAccessibleName(exercise.isNew ? `${exercise.name} (New)` : exercise.name, group, line, unavailable)}
+          isNew={exercise.isNew === true}
           unavailable={unavailable}
           error={itemMessage(issues, item.key)}
           errorId={`row-${item.key}-error`}
@@ -337,6 +383,7 @@ export function RoutineEditor({ routine }: { routine: Routine | null }) {
 
   return (
     <Screen title={routine ? "Edit routine" : "New routine"}>
+      {initial?.notices}
       {gone ? (
         <InlineNotice tone="error">
           {ROUTINE_GONE}{" "}

@@ -23,6 +23,8 @@ export interface EditorRowProps {
   /** Spec 10.3: only when the routine has sections — adds "Move to section…" to Options. */
   onMoveToSection?: () => void;
   onRemove: () => void;
+  /** Spec 10.4 AC30: the exercise is created at Save; the row shows a "New" tag (text). */
+  isNew?: boolean;
 }
 
 /** One editor row (Spec 10.0 AC27): main control → item sheet; Options → Move up / Move down / Remove (06.1 pattern). */
@@ -42,6 +44,7 @@ export function EditorRow(props: EditorRowProps) {
           onClick={props.onOpen}
         >
           <ItemLine name={props.name} line={props.line} notes={props.notes} position={props.position} unavailable={props.unavailable} />
+          {props.isNew ? <span className={styles.newTag}>New</span> : null}
         </button>
         {shownError ? (
           <p id={props.errorId} className={styles.reason}>

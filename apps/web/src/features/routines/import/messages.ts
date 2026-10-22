@@ -1,3 +1,16 @@
+import {
+  PLANNED_SETS_PER_ITEM_MAX,
+  ROUTINE_ITEM_NOTES_MAX,
+  ROUTINE_ITEMS_MAX,
+  ROUTINE_NAME_MAX,
+  ROUTINE_NOTES_MAX,
+  ROUTINE_SECTIONS_MAX,
+  SECTION_NAME_MAX,
+  SECTION_NOTES_MAX,
+  SUPERSET_GROUP_MEMBERS_MAX,
+  type ImportNotice,
+} from "@sin/core";
+
 /**
  * Spec 10.4 — every piece of the import screens' copy. Fixed text, tested by exact match; a message may
  * include a count or a name already on screen, never other pasted text (§6.6).
@@ -61,3 +74,34 @@ export const CONTINUE = "Continue";
 export const GO_TO_FIRST = "Go to the first one";
 export const needAttention = (n: number) => (n === 1 ? "1 card needs attention" : `${n} cards need attention`);
 export const EXERCISE_GONE = "That exercise is no longer in your list";
+
+// The editor after import (AC30, AC34). Counts and caps come from the @sin/core constants.
+export const IMPORTED_NOTICE = "Read from your text. Check the sections and notes, then add weights.";
+export function importNoticeText(notice: ImportNotice): string {
+  const plural = (n: number, one: string, many: string) => (n === 1 ? one : many.replace("N", String(n)));
+  switch (notice.code) {
+    case "name-cut":
+      return `The routine name was cut to ${ROUTINE_NAME_MAX} characters.`;
+    case "routine-note-cut":
+      return `The routine note was cut to ${ROUTINE_NOTES_MAX} characters.`;
+    case "section-name-cut":
+      return plural(notice.count, "A section name was", "N section names were") + ` cut to ${SECTION_NAME_MAX} characters.`;
+    case "section-note-cut":
+      return plural(notice.count, "A section note was", "N section notes were") + ` cut to ${SECTION_NOTES_MAX} characters.`;
+    case "item-note-cut":
+      return plural(notice.count, "A note was", "N notes were") + ` cut to ${ROUTINE_ITEM_NOTES_MAX} characters.`;
+    case "sections-left-out":
+      return `Only the first ${ROUTINE_SECTIONS_MAX} sections were kept. Left out: ${notice.names.join(", ")}.`;
+    case "items-left-out":
+      return `Only the first ${ROUTINE_ITEMS_MAX} exercises were kept. ` + plural(notice.count, "1 more was left out.", "N more were left out.");
+    case "sets-cut":
+      return `Only the first ${PLANNED_SETS_PER_ITEM_MAX} sets were kept for ${notice.names.join(", ")}.`;
+    case "superset-split":
+      return plural(notice.count, "A superset", "N supersets") + ` of more than ${SUPERSET_GROUP_MEMBERS_MAX} exercises ` + plural(notice.count, "was", "were") + " split.";
+  }
+}
+
+// Save (AC32).
+export const EXERCISE_LIMIT = "You've reached the maximum number of custom exercises.";
+/** Names the exercise the owner chose on its card (already on screen), never other pasted text. */
+export const createFailed = (name: string) => `Couldn't create “${name}”. The routine wasn't saved.`;

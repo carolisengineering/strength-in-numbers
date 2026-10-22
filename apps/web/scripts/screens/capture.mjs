@@ -465,7 +465,7 @@ try {
     state.active = false;
     await page.evaluate(() => { try { window.localStorage.clear(); } catch { /* storage blocked */ } });
     await go("/app/workouts");
-    await shoot(page, device, "05-workout-start", "Workouts tab with no active workout (Start + routines list)");
+    await shoot(page, device, "05-workout-start", "Workouts tab with no active workout (Start + routines list, New routine and New from text)");
 
     await go(`/app/workouts/routines/${D.ids.PUSH_ID}`);
     await shoot(page, device, "06-routine-preview", "Routine preview: Push Day (sections, supersets, planned sets)");
@@ -483,6 +483,29 @@ try {
 
     await go(`/app/workouts/routines/new`);
     await shoot(page, device, "10-routine-new", "Routine editor, create mode (empty)");
+
+    // Spec 10.4 AC39: routine from text, typed from the committed fixture (the session is in memory: no reloads).
+    await tryStep("routine from text", async () => {
+      const text = fs.readFileSync(path.join(repoRoot, "packages/core/test/fixtures/hiraya-2026-10-19.txt"), "utf8");
+      await go("/app/workouts/routines/import");
+      await shoot(page, device, "42-import-paste-empty", "New routine from text: the paste screen, empty (Spec 10.4 AC21)");
+      await page.getByLabel("Workout text").fill(text);
+      await shoot(page, device, "43-import-paste-filled", "The paste screen with the five screenshots' text (Spec 10.4 AC21)");
+      await page.getByRole("button", { name: "Read workout" }).click();
+      await page.getByRole("heading", { level: 1, name: "Check exercise names" }).waitFor({ timeout: 4000 });
+      await page.locator("fieldset[data-card]").first().waitFor({ timeout: 4000 });
+      await shoot(page, device, "44-import-names", "Check exercise names: exact (Push Press), similar and New cards (Spec 10.4 AC24)");
+      const hand = page.getByRole("group", { name: "Hand Release Pushups" });
+      await hand.getByText("More details").click();
+      await shoot(page, device, "45-import-new-details", "A New card with More details open (Spec 10.4 AC26)");
+      await hand.getByLabel("Name").fill("Bench Press");
+      await hand.getByRole("button", { name: /^Use it instead/ }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "46-import-duplicate", "A New name already in the list: Use it instead (Spec 10.4 AC27)");
+      await hand.getByLabel("Name").fill("Hand Release Pushups");
+      await page.getByRole("button", { name: "Continue" }).click();
+      await page.getByRole("heading", { level: 1, name: "New routine" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "47-import-editor", "The editor after import: the info notice and New tags (Spec 10.4 AC30)");
+    });
 
     await go(`/app/workouts/${D.ids.latestPush}`);
     await shoot(page, device, "11-workout-finished", "Finished workout (Push Day, 4 days ago) under the Workouts tab");

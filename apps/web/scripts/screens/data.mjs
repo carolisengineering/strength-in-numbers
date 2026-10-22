@@ -74,6 +74,21 @@ export const exercises = EX.map(([key, name, modality, primary, secondary, equip
   createdAt: iso(NOW - 200 * DAY),
   updatedAt: iso(NOW - 200 * DAY),
 }));
+// Spec 10.4 AC39: one custom exercise, so the import's Check screen shows an exact card ("Push Press").
+exercises.push({
+  id: uuid("e0000000", EX.length + 1),
+  catalogKey: null,
+  ownerUserId: me.id,
+  name: "Push Press",
+  modality: "weight_reps",
+  primaryMuscleId: "shoulders",
+  secondaryMuscleIds: ["triceps"],
+  equipmentId: "barbell",
+  isActive: true,
+  forkedFromExerciseId: null,
+  createdAt: iso(NOW - 30 * DAY),
+  updatedAt: iso(NOW - 30 * DAY),
+});
 const exByKey = Object.fromEntries(exercises.map((e) => [e.catalogKey, e]));
 
 // ---------------------------------------------------------------- routines

@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Exercise } from "@sin/core";
-import { screen } from "@testing-library/react";
+import { buildImportPlan, readWorkoutText, type Exercise, type ImportPlan } from "@sin/core";
+import { screen, waitFor } from "@testing-library/react";
+import { expect } from "vitest";
 import type { UserEvent } from "@testing-library/user-event";
 
 import { READ_BUTTON, TEXT_LABEL } from "../features/routines/import/messages";
@@ -59,4 +60,38 @@ export function cardGroup(written: string): Promise<HTMLElement> {
 /** The name cards on screen, in order. */
 export function cardGroups(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("fieldset[data-card]")];
+}
+
+/** A seeded PRNG (mulberry32), copied from `packages/core/test/helpers/history-generator.ts` (the web cannot import core's test helpers). */
+function prng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const RANDOM_LINES = [
+  "Strength", "Accessory", "Conditioning", "Warmup", "Engine Block", "21-15-9", "10-8-6-4", "3 Sets:", "2 Rounds", "Directly into:",
+  "- 10 Curl", "- 8-12 Goblet Squat", "10/10 Lunge", "Power Clean", "Push Press", "400 Meter Run", "Set 1: 5 Reps", "Set 2: 3 Reps @ 80%",
+  "A note about pacing.", "Rest as needed.", "Front Raise", "Row",
+];
+
+/** Spec 10.4 property tests: a seeded mix of headings, schemes, lead-ins, bullets and notes, read and planned. */
+export function randomPlan(seed: number): ImportPlan {
+  const rnd = prng(seed);
+  const lines = Array.from({ length: 10 + Math.floor(rnd() * 40) }, () => RANDOM_LINES[Math.floor(rnd() * RANDOM_LINES.length)]!);
+  return buildImportPlan(readWorkoutText([...lines, "x."].join("\n")), () => "weight_reps");
+}
+
+/** From the paste screen to the editor: paste (the example by default), Read workout, Continue. */
+export async function toEditor(user: UserEvent, text: string = HIRAYA_TEXT): Promise<void> {
+  await readHiraya(user, text);
+  const button = await screen.findByRole("button", { name: "Continue" });
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+  await screen.findByRole("heading", { level: 1, name: "New routine" });
 }

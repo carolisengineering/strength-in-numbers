@@ -4,7 +4,7 @@ import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, REFRESH_LIST_FAILED } from "./messages";
-import { EDITOR_FROM_BACK, NEW_ROUTINE_PATH, routinePath } from "./paths";
+import { EDITOR_FROM_BACK, IMPORT_PATH, NEW_ROUTINE_PATH, routinePath } from "./paths";
 import { useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
 import { classifyRoutineError } from "./routineErrors";
@@ -58,17 +58,28 @@ export function RoutinesSection() {
       ) : null}
       {routines.isPending ? null : atLimit ? (
         <div className={styles.limit}>
-          <Button variant="secondary" disabled aria-describedby="routine-limit-text">
-            New routine
-          </Button>
+          <div className={styles.newRow}>
+            <Button variant="secondary" disabled aria-describedby="routine-limit-text">
+              New routine
+            </Button>
+            <Button variant="secondary" disabled aria-describedby="routine-limit-text">
+              New from text
+            </Button>
+          </div>
           <p id="routine-limit-text" className={styles.status}>
             {LIMIT_MESSAGE}
           </p>
         </div>
       ) : (
-        <Link className={styles.newLink} to={NEW_ROUTINE_PATH} state={EDITOR_FROM_BACK}>
-          New routine
-        </Link>
+        <div className={styles.newRow}>
+          <Link className={styles.newLink} to={NEW_ROUTINE_PATH} state={EDITOR_FROM_BACK}>
+            New routine
+          </Link>
+          {/* Spec 10.4 AC19: paste a gym app's workout text and turn it into a routine. */}
+          <Link className={styles.newLink} to={IMPORT_PATH} state={EDITOR_FROM_BACK}>
+            New from text
+          </Link>
+        </div>
       )}
     </section>
   );
