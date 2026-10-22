@@ -13,3 +13,15 @@
   margin: 0;
   padding-inline-start: var(--space-4);
 }
+
+/* Spec 10.5 AC11: a long routine name wraps instead of widening the dialog. */
+.oneOffLine {
+  overflow-wrap: anywhere;
+}
+
+.keep {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target-min);
+}
