@@ -85,6 +85,8 @@ export interface WorkoutDetailOptions {
   /** Spec 18.0 Phase B: a live workout's "took" (Change Time) and the recorded offset. */
   plannedDurationSeconds?: number | null;
   tzOffsetMinutes?: number;
+  /** Spec 10.5: the workout was started from a one-off routine. */
+  routineIsOneOff?: boolean;
 }
 
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
@@ -107,7 +109,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
     plannedDurationSeconds: opts.plannedDurationSeconds ?? null,
     routineNotes: opts.routineNotes ?? null,
     sections,
-    routineIsOneOff: false,
+    routineIsOneOff: opts.routineIsOneOff ?? false,
     exercises: (opts.exercises ?? []).map((spec, position) => {
       const weId = spec.id ?? nextId();
       return {
