@@ -19,9 +19,15 @@
   overflow-wrap: anywhere;
 }
 
+/* The whole label is the tap target; the native box keeps its look (no appearance override). */
 .keep {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: var(--tap-target-min);
+}
+
+.keepBox {
+  flex: none;
+  margin: 0;
 }

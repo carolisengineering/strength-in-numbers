@@ -54,7 +54,7 @@ export function FinishDialogBody({
         <>
           <p className={styles.oneOffLine}>{oneOffFinishLine(oneOff.name)}</p>
           <label className={styles.keep}>
-            <input type="checkbox" checked={oneOff.keep} onChange={(e) => oneOff.onKeepChange(e.currentTarget.checked)} />
+            <input className={styles.keepBox} type="checkbox" checked={oneOff.keep} onChange={(e) => oneOff.onKeepChange(e.currentTarget.checked)} />
             {KEEP_IN_ROUTINES}
           </label>
         </>
