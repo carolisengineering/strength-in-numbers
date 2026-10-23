@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.0 AC11/AC12/AC13/AC14 — real-Postgres proof of the dense-position
@@ -26,17 +26,6 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
     );
   });
 
-  async function insertUser(): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-      id,
-      `auth0|${id}`,
-      "u@ex.com",
-    );
-    return id;
-  }
-
   async function insertGlobalExercise(name: string): Promise<string> {
     const id = uuidv7();
     await db.prisma.$executeRawUnsafe(
@@ -56,7 +45,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   }
 
   it("AC11: a table-driven append/insert/reorder/delete sequence always leaves 0..n-1 dense with no gap or duplicate", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseRepo = createExerciseRepository(db.prisma);
     const repo = createWorkoutRepository(db.prisma, exerciseRepo);
     const exerciseIds = await Promise.all(
@@ -81,7 +70,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   });
 
   it("AC11: position above the smallint ceiling is 422, never a Postgres 22003 500", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const exerciseId = await insertGlobalExercise("Solo");
     const { workout } = await repo.createWorkout(
@@ -95,7 +84,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   });
 
   it("AC12: a two-row swap commits through a colliding intermediate state and leaves a dense sequence", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const e0 = await insertGlobalExercise("Zero");
     const e1 = await insertGlobalExercise("One");
@@ -122,7 +111,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   });
 
   it("AC12: six concurrent adds to the same workout all succeed, none is 500, final sequence is dense with no duplicate", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const exerciseIds = await Promise.all(
       Array.from({ length: 6 }, (_, i) => insertGlobalExercise(`Concurrent ${i}`)),
@@ -144,7 +133,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   });
 
   it("AC13: the advisory lock is the first non-SET-CONSTRAINTS statement; the count read is later and separate (captured from the real driver)", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = await insertGlobalExercise("Query-captured");
     const { workout } = await createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)).createWorkout(
       userId,
@@ -171,7 +160,7 @@ describe.skipIf(!shouldRunIntegration())("AC11/AC12/AC13/AC14 — positions (rea
   });
 
   it("AC14: the create path issues no advisory lock, confirmed against the real driver", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const captured: string[] = [];
     // @ts-expect-error -- see the note above.
     db.prisma.$on("query", (e: { query: string }) => captured.push(e.query));

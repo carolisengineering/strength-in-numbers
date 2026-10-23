@@ -11,11 +11,7 @@ import {
   seedCatalog,
   type SeedLogger,
 } from "../../src/seed/catalog.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.3 §10 AC2 — every write path stamps `change_xid` through the trigger,
@@ -107,18 +103,9 @@ describe.skipIf(!shouldRunIntegration())(
         )[0]!.h,
       );
 
-    async function insertUser(id: string): Promise<void> {
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-    }
-
     it("createExercise / updateExercise / forkExercise / deleteExercise each stamp change_xid >= the horizon sampled just before", async () => {
       const u = uuidv7();
-      await insertUser(u);
+      await insertUser(db, { id: u });
       const globalId = uuidv7();
       await db.prisma.$executeRawUnsafe(
         `INSERT INTO "exercise" ("id","catalog_key","name","modality")

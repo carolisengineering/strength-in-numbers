@@ -3,7 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { WorkoutFinishedError } from "../../src/errors/app-error.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.0 AC8/AC9 — the finish transaction's `FOR UPDATE` lock (on
@@ -34,17 +34,6 @@ describe.skipIf(!shouldRunIntegration())(
       );
     });
 
-    async function insertUser(): Promise<string> {
-      const id = uuidv7();
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-      return id;
-    }
-
     async function insertGlobalExercise(): Promise<string> {
       const id = uuidv7();
       await db.prisma.$executeRawUnsafe(
@@ -55,7 +44,7 @@ describe.skipIf(!shouldRunIntegration())(
     }
 
     it("(amended by 07.4) a concurrent finish and add-exercise both succeed: the card lands before the finish, or after it in finished mode", async () => {
-      const userId = await insertUser();
+      const userId = await insertUser(db);
       const exerciseId = await insertGlobalExercise();
       const exerciseRepo = createExerciseRepository(db.prisma);
       const repo = createWorkoutRepository(db.prisma, exerciseRepo);
@@ -82,7 +71,7 @@ describe.skipIf(!shouldRunIntegration())(
     });
 
     it("AC8 — 10 concurrent finish attempts on the same workout: the FOR UPDATE lock serializes them, none silently double-applies", async () => {
-      const userId = await insertUser();
+      const userId = await insertUser(db);
       const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
       const { workout } = await repo.createWorkout(
         userId,

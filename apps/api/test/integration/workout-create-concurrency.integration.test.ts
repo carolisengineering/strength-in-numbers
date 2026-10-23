@@ -3,7 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { WorkoutInProgressExistsError } from "../../src/errors/app-error.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.0 AC3/AC4/AC5/AC14 — genuine concurrent load against a real
@@ -41,19 +41,8 @@ describe.skipIf(!shouldRunIntegration())(
       await db.prisma.$executeRawUnsafe('TRUNCATE "workout", "workout_exercise", "user" CASCADE');
     });
 
-    async function insertUser(): Promise<string> {
-      const id = uuidv7();
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-      return id;
-    }
-
     it("AC3 — ~10 concurrent creates with one identical clientGeneratedId: exactly one 201, the rest 200, never a 409", async () => {
-      const userId = await insertUser();
+      const userId = await insertUser(db);
       const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
       const clientGeneratedId = uuidv7();
       const startedAt = new Date();
@@ -82,7 +71,7 @@ describe.skipIf(!shouldRunIntegration())(
     });
 
     it("AC4 — a concurrent burst of creates (distinct clientGeneratedIds) for a user with no active session admits exactly one row", async () => {
-      const userId = await insertUser();
+      const userId = await insertUser(db);
       const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
 
       const results = await Promise.allSettled(
@@ -117,7 +106,7 @@ describe.skipIf(!shouldRunIntegration())(
     });
 
     it("AC5 — a real 23505 on workout_user_active_key is shaped P2010 + meta.code 23505 (pins the idiom Task 10's stub assumed)", async () => {
-      const userId = await insertUser();
+      const userId = await insertUser(db);
       const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
       await repo.createWorkout(
         userId,

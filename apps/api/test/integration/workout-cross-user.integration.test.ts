@@ -12,7 +12,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 const TOKEN_A = "cross-user-a-token";
 const TOKEN_B = "cross-user-b-token";
@@ -37,17 +37,6 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
       'TRUNCATE "workout", "workout_exercise", "exercise", "user" CASCADE',
     );
   });
-
-  async function insertUser(): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-      id,
-      `auth0|${id}`,
-      "u@ex.com",
-    );
-    return id;
-  }
 
   /**
    * A real app (`buildApp`), real repositories against the Testcontainers
@@ -299,7 +288,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
   });
 
   it("a workout deleted between the handler's read and the add-exercise transaction's lock is reliably 404, never 500", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'X', 'weight_reps', true)`,
@@ -347,7 +336,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
   });
 
   it("a workout deleted between the handler's read and a workout-exercise reorder transaction's lock is reliably 404, never 500", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'X', 'weight_reps', true)`,

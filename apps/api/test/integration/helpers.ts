@@ -5,6 +5,7 @@ import {
   type StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { PrismaClient } from "@prisma/client";
+import { uuidv7 } from "uuidv7";
 import { POSTGRES_IMAGE } from "./postgres-image.js";
 
 /**
@@ -69,4 +70,45 @@ export function applyMigrationFile(url: string, migrationDir: string): void {
     ["exec", "prisma", "db", "execute", "--url", url, "--file", file],
     { stdio: "inherit" },
   );
+}
+
+/** #21 — the one user fixture: a fresh id unless the test needs a known one; the column default timezone is UTC. */
+export async function insertUser(db: IntegrationDb, opts: { id?: string; timezone?: string } = {}): Promise<string> {
+  const id = opts.id ?? uuidv7();
+  await db.prisma.$executeRawUnsafe(
+    `INSERT INTO "user" ("id","auth_sub","email","timezone") VALUES ($1::uuid,$2,'u@ex.com',$3)`,
+    id,
+    `auth0|${id}`,
+    opts.timezone ?? "UTC",
+  );
+  return id;
+}
+
+/** #21 — the one exercise fixture: active, global and uncurated unless the options say otherwise. Returns the id. */
+export async function insertExercise(
+  db: IntegrationDb,
+  opts: {
+    id?: string;
+    name?: string;
+    modality?: string;
+    ownerUserId?: string | null;
+    forkedFrom?: string;
+    catalogKey?: string | null;
+    isActive?: boolean;
+  } = {},
+): Promise<string> {
+  const id = opts.id ?? uuidv7();
+  // Positional params bind as text; uuid columns need an explicit cast.
+  await db.prisma.$executeRawUnsafe(
+    `INSERT INTO "exercise" ("id","catalog_key","owner_user_id","forked_from_exercise_id","name","modality","is_active")
+     VALUES ($1::uuid,$2,$3::uuid,$4::uuid,$5,$6,$7)`,
+    id,
+    opts.catalogKey ?? null,
+    opts.ownerUserId ?? null,
+    opts.forkedFrom ?? null,
+    opts.name ?? `Exercise ${id.slice(-4)}`,
+    opts.modality ?? "weight_reps",
+    opts.isActive ?? true,
+  );
+  return id;
 }

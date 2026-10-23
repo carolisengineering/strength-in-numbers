@@ -4,11 +4,7 @@ import { uuidv7 } from "uuidv7";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { parseSyncToken } from "../../src/repositories/sync-token.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.3 §10 AC5 / AC6 — the regression tests for #23 / BL-1. Each interleaving
@@ -52,32 +48,6 @@ describe.skipIf(!shouldRunIntegration())(
       await db.prisma.$executeRawUnsafe('TRUNCATE "exercise", "user" CASCADE');
     });
 
-    async function insertUser(id: string): Promise<void> {
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-    }
-
-    function insertExercise(opts: {
-      id: string;
-      name: string;
-      ownerUserId?: string | null;
-      catalogKey?: string | null;
-    }): Promise<number> {
-      const { id, name, ownerUserId = null, catalogKey = null } = opts;
-      return db.prisma.$executeRawUnsafe(
-        `INSERT INTO "exercise" ("id","catalog_key","owner_user_id","name","modality")
-         VALUES ($1::uuid, $2, $3::uuid, $4, 'weight_reps')`,
-        id,
-        catalogKey,
-        ownerUserId,
-        name,
-      );
-    }
-
     /** Polls until some session is waiting on an advisory lock. */
     async function waitForBlockedAdvisoryLock(): Promise<void> {
       for (let i = 0; i < 200; i++) {
@@ -93,8 +63,8 @@ describe.skipIf(!shouldRunIntegration())(
     it("AC5 (#23): a create blocked behind the per-user advisory lock is delivered by the NEXT delta", async () => {
       const u = uuidv7();
       const bId = uuidv7();
-      await insertUser(u);
-      await insertExercise({ id: bId, name: "B", ownerUserId: u });
+      await insertUser(db, { id: u });
+      await insertExercise(db, { id: bId, name: "B", ownerUserId: u });
       const t0 = parseSyncToken((await repo.findCatalog(u)).syncToken);
 
       // Connection L holds the same advisory lock insertWithCap takes.
@@ -140,9 +110,9 @@ describe.skipIf(!shouldRunIntegration())(
       const u = uuidv7();
       const bId = uuidv7();
       const globalId = uuidv7();
-      await insertUser(u);
-      await insertExercise({ id: bId, name: "B", ownerUserId: u });
-      await insertExercise({ id: globalId, name: "Global", catalogKey: "global-one" });
+      await insertUser(db, { id: u });
+      await insertExercise(db, { id: bId, name: "B", ownerUserId: u });
+      await insertExercise(db, { id: globalId, name: "Global", catalogKey: "global-one" });
       const t0 = parseSyncToken((await repo.findCatalog(u)).syncToken);
 
       // The seed's shape: write a global row, then stay open past the statement.

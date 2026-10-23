@@ -7,32 +7,8 @@ import type { IntegrationDb } from "./helpers.js";
  * and choose whether the workout is finished.
  */
 
-export async function insertUser(db: IntegrationDb): Promise<string> {
-  const id = uuidv7();
-  await db.prisma.$executeRawUnsafe(
-    `INSERT INTO "user" ("id","auth_sub","email") VALUES ($1::uuid,$2,'u@ex.com')`,
-    id,
-    `auth0|${id}`,
-  );
-  return id;
-}
-
-export async function insertExercise(
-  db: IntegrationDb,
-  opts: { modality?: string; ownerUserId?: string; forkedFrom?: string; name?: string } = {},
-): Promise<string> {
-  const id = uuidv7();
-  await db.prisma.$executeRawUnsafe(
-    `INSERT INTO "exercise" ("id","owner_user_id","forked_from_exercise_id","name","modality","is_active")
-     VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,true)`,
-    id,
-    opts.ownerUserId ?? null,
-    opts.forkedFrom ?? null,
-    opts.name ?? `Exercise ${id.slice(-4)}`,
-    opts.modality ?? "weight_reps",
-  );
-  return id;
-}
+// #21: the user and exercise fixtures live in helpers.ts; re-exported so the existing imports keep working.
+export { insertExercise, insertUser } from "./helpers.js";
 
 export interface SetSpec {
   setType?: "warmup" | "working" | "drop" | "failure";

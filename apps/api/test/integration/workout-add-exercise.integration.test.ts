@@ -3,7 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { ExerciseRetiredError } from "../../src/errors/app-error.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.0 AC10 — `exercise_name_snapshot`/`modality_snapshot` are captured
@@ -28,19 +28,8 @@ describe.skipIf(!shouldRunIntegration())("AC10 — add-exercise snapshotting (re
     );
   });
 
-  async function insertUser(): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-      id,
-      `auth0|${id}`,
-      "u@ex.com",
-    );
-    return id;
-  }
-
   it("a later rename or soft-delete of the exercise leaves the snapshot unchanged", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'Original Name', 'weight_reps', true)`,
@@ -66,7 +55,7 @@ describe.skipIf(!shouldRunIntegration())("AC10 — add-exercise snapshotting (re
   });
 
   it("adding the same exerciseId twice creates a second row at a distinct position", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'Squat', 'weight_reps', true)`,
@@ -87,7 +76,7 @@ describe.skipIf(!shouldRunIntegration())("AC10 — add-exercise snapshotting (re
   });
 
   it("adding a retired (is_active=false) exercise is rejected with ExerciseRetiredError and no snapshot is created", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const exerciseId = uuidv7();
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'Dead Lift', 'weight_reps', false)`,
