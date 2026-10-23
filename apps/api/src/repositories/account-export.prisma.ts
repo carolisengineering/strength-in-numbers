@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AccountExportRepository, AccountSnapshot } from "./account-export.js";
-import { toExerciseRecord, type ExerciseDbRow } from "./exercise.prisma.js";
+import { exerciseColumns, toExerciseRecord, type ExerciseDbRow } from "./exercise.prisma.js";
 import { ROUTINE_WITH_ITEMS, toRoutine, type RoutineDbRow } from "./routine.prisma.js";
 import { SET_ENTRY_COLUMNS, toSetRecord, type RawClient, type SetEntryDbRow } from "./set-entry.prisma.js";
 import { toUserRecord } from "./user.prisma.js";
@@ -62,9 +62,7 @@ export function createAccountExportRepository(
           const [clock] = await tx.$queryRaw<{ exported_at: Date }[]>`SELECT clock_timestamp() AS exported_at`;
           const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
           const exerciseRows = await tx.$queryRaw<ExerciseDbRow[]>`
-            SELECT id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
-                   secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
-                   created_at, updated_at
+            SELECT ${exerciseColumns()}
             FROM "exercise" WHERE owner_user_id = ${userId}::uuid
             ORDER BY created_at, id`;
           await hooks.afterExercises?.(tx);

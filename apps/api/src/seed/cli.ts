@@ -17,7 +17,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
-import { prismaFor, resolveDatabaseUrl } from "../db.js";
+import { prismaFor } from "../db.js";
 import { loadCatalog, seedCatalog, SeedError } from "./catalog.js";
 
 const DEFAULT_CATALOG_DIR = fileURLToPath(
@@ -46,7 +46,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
       "catalog files validated",
     );
 
-    prisma = prismaFor(resolveDatabaseUrl(databaseUrl));
+    prisma = prismaFor(databaseUrl);
     const summary = await seedCatalog(prisma, catalog, log);
     log.info(summary, "catalog seed complete");
     return 0;

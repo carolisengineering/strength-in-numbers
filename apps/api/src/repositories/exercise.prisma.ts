@@ -55,8 +55,8 @@ const EXERCISE_DB_COLUMNS = [
 const everyColumnListed: Exclude<keyof ExerciseDbRow, (typeof EXERCISE_DB_COLUMNS)[number]> extends never ? true : never = true;
 void everyColumnListed;
 
-/** The column list for a SELECT or RETURNING; `alias` is a SQL table alias literal (`"e"`), never user input. */
-function exerciseColumns(alias?: string): Prisma.Sql {
+/** The column list for a SELECT or RETURNING (also the account export's); `alias` is a SQL table alias literal (`"e"`), never user input. */
+export function exerciseColumns(alias?: string): Prisma.Sql {
   return Prisma.raw(EXERCISE_DB_COLUMNS.map((c) => (alias ? `${alias}.${c}` : c)).join(", "));
 }
 
