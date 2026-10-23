@@ -675,6 +675,20 @@ describe("#26 — PATCH / fork / DELETE at the route boundary (Spec 03.2 AC4–A
     expect(res.json().type).toContain("exercise-retired");
   });
 
+  it("AC5 / #25 — PATCH on a retired global row → 409 exercise-retired, not use-fork (fork would refuse it too)", async () => {
+    const app = await appWith(row({ ownerUserId: null, isActive: false }));
+    const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { name: "New" } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-retired");
+  });
+
+  it("AC5 — PATCH on an active global row is still 409 exercise-immutable-use-fork", async () => {
+    const app = await appWith(row({ ownerUserId: null, isActive: true }));
+    const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { name: "New" } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-immutable-use-fork");
+  });
+
   it("AC4 — PATCH whose merged result restates the stored primary as a secondary → 422 on secondaryMuscleIds", async () => {
     const app = await appWith(row({ ownerUserId: caller.id, primaryMuscleId: "chest" }));
     const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { secondaryMuscleIds: ["chest"] } });
