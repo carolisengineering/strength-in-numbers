@@ -92,6 +92,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.4 — moving an exercise betwe
     });
   });
 
+  describe("09.4 AC11 — the stored section re-sent in upper case is a no-op", () => {
+    it("nothing moves and the superset is kept (ids compare case-insensitively)", async () => {
+      const { u, workoutId, sectionIds, exerciseIds } = await fixture(["W"], [0, 0, null]);
+      await db.prisma.$executeRawUnsafe(`UPDATE "workout_exercise" SET superset_group = 3 WHERE id = $1::uuid`, exerciseIds[0]);
+      const r = await workouts().updateWorkoutExercise(u, exerciseIds[0]!, { sectionId: sectionIds[0]!.toUpperCase() });
+      expect([r.moved, r.sectioned, r.leftSuperset, r.supersetGroup, r.position]).toEqual([false, false, false, 3, 0]);
+      expect(await exerciseIdsOf(db, workoutId)).toEqual(exerciseIds);
+    });
+  });
+
   describe("09.4 AC13 — superset", () => {
     it("a member moved across leaves its group; the other member keeps it", async () => {
       const { u, workoutId, sectionIds, exerciseIds } = await fixture(["W", "S"], [0, 0, 1]);

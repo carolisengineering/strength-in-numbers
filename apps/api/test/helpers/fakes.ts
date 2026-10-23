@@ -856,7 +856,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
     const n = [...this.exercises.values()].filter((e) => e.workoutId === we.workoutId).length;
     // Spec 09.4 §6.3: a changed section is placed by `insertIndexForSection`, as the repository does.
-    const nextSection = patch.sectionId === undefined ? we.sectionId : patch.sectionId;
+    const nextSection = patch.sectionId === undefined ? we.sectionId : (patch.sectionId?.toLowerCase() ?? null);
     const sectioned = nextSection !== we.sectionId;
     let requested = patch.position;
     if (sectioned) {

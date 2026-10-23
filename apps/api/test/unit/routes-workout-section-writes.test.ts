@@ -127,6 +127,8 @@ describe("09.4 AC21 — workout_exercise_sectioned", () => {
 
     expect((await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId })).json()).toMatchObject({ sectionId, supersetGroup: null });
     await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId }); // same section: no line
+    const upper = await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId: sectionId.toUpperCase() }); // same, upper case: no line
+    expect([upper.statusCode, upper.json().sectionId]).toEqual([200, sectionId]);
     await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId: null });
     const sectioned = lines.filter((l) => l.msg === "workout_exercise_sectioned");
     const pick = (l: Record<string, unknown>) =>

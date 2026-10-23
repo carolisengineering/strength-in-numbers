@@ -884,7 +884,8 @@ export function createWorkoutRepository(
         }
 
         // Spec 09.4 §6.3: a changed section is placed by the server (the schema refuses `position` beside it).
-        const nextSection = patch.sectionId === undefined ? target.section_id : patch.sectionId;
+        // Ids compare in Postgres's lower-case text form (the schema also accepts upper-case hex).
+        const nextSection = patch.sectionId === undefined ? target.section_id : (patch.sectionId?.toLowerCase() ?? null);
         const sectioned = nextSection !== target.section_id;
         if (sectioned) {
           let rank = -1;
