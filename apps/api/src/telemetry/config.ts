@@ -10,7 +10,7 @@ export type TracesExporterKind = "otlp" | "none";
 export interface TelemetryConfig {
   /** Metrics or traces exporter is not "none". */
   readonly enabled: boolean;
-  /** From SERVICE_NAME (default "si-api"), shared with the log `service` field (D17). */
+  /** `Config.serviceName`, passed in by `loadConfig`: the same value as the log `service` field (D17, #127). */
   readonly serviceName: string;
   /** SERVICE_VERSION ?? RENDER_GIT_COMMIT. */
   readonly serviceVersion: string | undefined;
@@ -73,8 +73,13 @@ function parseKeyValueList(raw: string): Record<string, string> | undefined {
   return out;
 }
 
+/** The SERVICE_NAME default, shared with `Config`'s schema. */
+export const DEFAULT_SERVICE_NAME = "si-api";
+
+/** `serviceName` comes from `Config` (#127); this parser never reads SERVICE_NAME itself. */
 export function parseTelemetryEnv(
   env: Record<string, unknown>,
+  serviceName: string = DEFAULT_SERVICE_NAME,
 ): { config: TelemetryConfig; issues: string[] } {
   const issues: string[] = [];
 
@@ -159,7 +164,7 @@ export function parseTelemetryEnv(
     issues,
     config: Object.freeze({
       enabled: metricsExporter !== "none" || tracesExporter !== "none",
-      serviceName: str(env, "SERVICE_NAME") ?? "si-api",
+      serviceName,
       serviceVersion: str(env, "SERVICE_VERSION") ?? str(env, "RENDER_GIT_COMMIT"),
       environment: resourceAttrs["deployment.environment"],
       metrics: Object.freeze({

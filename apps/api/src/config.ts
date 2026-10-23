@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseTelemetryEnv, type TelemetryConfig } from "./telemetry/config.js";
+import { DEFAULT_SERVICE_NAME, parseTelemetryEnv, type TelemetryConfig } from "./telemetry/config.js";
 
 /**
  * Typed, fail-fast configuration (Spec 01 §8).
@@ -107,7 +107,8 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
 
-  SERVICE_NAME: z.string().min(1).default("si-api"),
+  // #127: trimmed here, and this one value is the log `service` and the trace resource name (D17).
+  SERVICE_NAME: z.string().trim().min(1).default(DEFAULT_SERVICE_NAME),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
 
@@ -154,7 +155,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
   const parsed = schema.safeParse(env);
   // Spec 13.0 AC2: telemetry issues join the same ConfigError, so one boot
   // reports every bad variable.
-  const telemetry = parseTelemetryEnv(env as Record<string, unknown>);
+  const telemetry = parseTelemetryEnv(env as Record<string, unknown>, parsed.success ? parsed.data.SERVICE_NAME : DEFAULT_SERVICE_NAME);
 
   if (!parsed.success || telemetry.issues.length > 0) {
     const env0 = env as Record<string, unknown>;

@@ -348,7 +348,7 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
 | `WEB_ORIGIN` | yes | `http://localhost:5173` (local) · `https://si-web-staging.onrender.com` (staging) | Comma-separated exact origins for the CORS allowlist (§5.5). No wildcard. Prod gets the real app origin(s). |
 | `LOG_LEVEL` | no | `info` | default `info` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | unset → tracing is a no-op |
-| `SERVICE_NAME` | no | `si-api` | resource attribute |
+| `SERVICE_NAME` | no | `si-api` | resource attribute and the log `service` field; trimmed, a blank value fails boot (#127) |
 
 **Postgres connection budget (Q9).** Render's managed Postgres plans cap total
 connections low (tens on the smaller plans). Prisma's default pool

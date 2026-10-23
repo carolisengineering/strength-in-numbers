@@ -1,4 +1,4 @@
-import { loadConfig, ConfigError } from "./config.js";
+import { loadConfig } from "./config.js";
 import { buildApp } from "./app.js";
 import { createLogger } from "./logging.js";
 import { createPrisma, checkDatabaseReady } from "./db.js";
@@ -10,6 +10,7 @@ import { createRoutineRepository } from "./repositories/routine.prisma.js";
 import { createAccountExportRepository } from "./repositories/account-export.prisma.js";
 import { createPersonalRecordRepository } from "./repositories/personal-record.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
+import { startupFailureMessage } from "./startup-failure.js";
 import { getTelemetryHandle } from "./telemetry/handle.js";
 
 /**
@@ -51,13 +52,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  if (err instanceof ConfigError) {
-    // Fail-fast, before a port is bound (Spec 01 criterion 2).
-    process.stderr.write(`${err.message}\n`);
-    process.exit(1);
-  }
-  process.stderr.write(
-    `Fatal startup error: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`,
-  );
+  // A ConfigError fails fast, before a port is bound (Spec 01 criterion 2).
+  process.stderr.write(startupFailureMessage(err));
   process.exit(1);
 });

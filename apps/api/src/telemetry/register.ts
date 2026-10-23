@@ -1,5 +1,6 @@
-import { ConfigError, loadConfig } from "../config.js";
+import { loadConfig } from "../config.js";
 import { createLogger } from "../logging.js";
+import { startupFailureMessage } from "../startup-failure.js";
 import { setTelemetryHandle } from "./handle.js";
 import type { startTelemetry, TelemetryHandle } from "./sdk.js";
 
@@ -29,10 +30,7 @@ if (process.env.SIN_TELEMETRY_AUTOSTART === "1") {
   try {
     await bootstrapTelemetry(process.env);
   } catch (err) {
-    if (err instanceof ConfigError) {
-      process.stderr.write(`${err.message}\n`);
-      process.exit(1);
-    }
-    throw err;
+    process.stderr.write(startupFailureMessage(err));
+    process.exit(1);
   }
 }

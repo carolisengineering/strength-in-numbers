@@ -85,12 +85,12 @@ describe("AC2 — valid telemetry config", () => {
     expect(issues).toEqual(["OTEL_RESOURCE_ATTRIBUTES: must be a comma-separated key=value list"]);
   });
 
-  it("reads service identity", () => {
-    const c = ok({
-      SERVICE_NAME: "si-api-x",
-      RENDER_GIT_COMMIT: "abc123",
-      OTEL_RESOURCE_ATTRIBUTES: "team=me,deployment.environment=staging",
-    });
+  it("reads service identity; the name is the one passed in, never SERVICE_NAME re-read (#127)", () => {
+    const { config: c, issues } = parseTelemetryEnv(
+      { SERVICE_NAME: " other ", RENDER_GIT_COMMIT: "abc123", OTEL_RESOURCE_ATTRIBUTES: "team=me,deployment.environment=staging" },
+      "si-api-x",
+    );
+    expect(issues).toEqual([]);
     expect(c.serviceName).toBe("si-api-x");
     expect(c.serviceVersion).toBe("abc123");
     expect(c.environment).toBe("staging");
