@@ -168,21 +168,21 @@ export type UpdateExercise = z.infer<typeof UpdateExerciseSchema>;
  */
 export const MAX_CUSTOM_EXERCISES_PER_USER = 500;
 
-/** A muscle-group reference row (`GET /v1/muscle-groups`). */
-export const MuscleGroupSchema = z.object({
+/** One reference row: muscle groups and equipment share this shape (§5). */
+export const ReferenceRowSchema = z.object({
   id: z.string(),
   name: z.string(),
   displayOrder: z.number().int(),
 });
-export type MuscleGroup = z.infer<typeof MuscleGroupSchema>;
+export type ReferenceRow = z.infer<typeof ReferenceRowSchema>;
+
+/** A muscle-group reference row (`GET /v1/muscle-groups`). */
+export const MuscleGroupSchema = ReferenceRowSchema;
+export type MuscleGroup = ReferenceRow;
 
 /** An equipment reference row (`GET /v1/equipment`). */
-export const EquipmentSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  displayOrder: z.number().int(),
-});
-export type Equipment = z.infer<typeof EquipmentSchema>;
+export const EquipmentSchema = ReferenceRowSchema;
+export type Equipment = ReferenceRow;
 
 /**
  * `GET /v1/exercises` 200 body (Spec 03.3). `syncToken` is an **opaque** string

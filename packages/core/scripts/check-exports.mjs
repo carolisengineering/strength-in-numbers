@@ -75,6 +75,7 @@ const EXPECTED = [
   "noControlChars",
   "CatalogName",
   "ExerciseSchema",
+  "ReferenceRowSchema",
   "MuscleGroupSchema",
   "EquipmentSchema",
   "ExercisesResponse",
