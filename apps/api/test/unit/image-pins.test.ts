@@ -53,7 +53,7 @@ describe("#9 — container images are digest-pinned", () => {
 });
 
 // Spec 13.0 AC14 — observability images: upstream tags have no distro suffix
-// (prom/prometheus:v3.15.0, grafana/grafana:13.2.3), so a looser tag pattern.
+// (prom/prometheus:v3.15.0, grafana/grafana:13.2.4), so a looser tag pattern.
 const PINNED_PLAIN = /^[a-z0-9./-]+:v?\d+\.\d+\.\d+(-[a-z0-9-]+)?@sha256:[0-9a-f]{64}$/;
 
 describe("Spec 13.0 AC14 — observability compose images are digest-pinned", () => {
