@@ -61,6 +61,21 @@ describe("10.4 AC25 — Choose another exercise", () => {
     expect(within(card).getByRole("button", { name: `${CHANGE}: Barbell row` })).toBeInTheDocument();
     expect(fake.requests.filter((r) => r.method === "POST")).toEqual([]);
   });
+
+  it("DM-26 — picking the exercise the card already matched selects the match; it is not listed twice", async () => {
+    const { user } = await openNames();
+    const card = await cardGroup("Strict Press");
+    await user.click(within(card).getByRole("radio", { name: newOption("Strict Press") }));
+    await user.click(within(card).getByRole("button", { name: `${CHOOSE_ANOTHER} for Strict Press` }));
+    const dialog = await screen.findByRole("dialog", { name: "Add exercise" });
+    await user.click(within(within(dialog).getByRole("region", { name: "All exercises" })).getByRole("button", { name: /Overhead press/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const matches = within(card).getAllByRole("radio", { name: /Overhead press/ });
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toBeChecked();
+    expect(matches[0]).toHaveFocus();
+    expect(within(card).queryByRole("button", { name: `${CHANGE}: Overhead press` })).toBeNull();
+  });
 });
 
 describe("10.4 AC26 — the New card reuses the create fields", () => {
