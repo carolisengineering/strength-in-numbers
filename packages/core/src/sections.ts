@@ -58,3 +58,31 @@ export function groupBySection<T>(
   }
   return runs;
 }
+
+/**
+ * Spec 09.4 §6.5 — the section a plain "Add exercise" (no position) joins: the last section (highest
+ * position) iff it was added during the workout, else null. The input order is not assumed.
+ */
+export function sectionForNewExercise<S extends { position: number; addedInWorkout: boolean }>(
+  sections: readonly S[],
+): S | null {
+  let last: S | null = null;
+  for (const section of sections) if (last === null || section.position > last.position) last = section;
+  return last !== null && last.addedInWorkout ? last : null;
+}
+
+/**
+ * Spec 09.4 §6.2 — the final index for an exercise of `rank` (-1 = loose, otherwise its section's
+ * position) among `ranks`, the OTHER exercises' ranks in position order: after the last other whose
+ * rank is >= 0 and <= `rank`; else at the first other with rank >= 0; else at the end. Loose
+ * exercises never anchor, so an exercise lands before a loose tail.
+ */
+export function insertIndexForSection(ranks: readonly number[], rank: number): number {
+  let after = -1;
+  ranks.forEach((r, i) => {
+    if (r >= 0 && r <= rank) after = i;
+  });
+  if (after >= 0) return after + 1;
+  const first = ranks.findIndex((r) => r >= 0);
+  return first >= 0 ? first : ranks.length;
+}

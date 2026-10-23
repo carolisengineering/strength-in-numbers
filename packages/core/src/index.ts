@@ -21,6 +21,7 @@ export * from "./dto/personal-record.js";
 export * from "./dto/progress.js";
 export * from "./dto/routine.js";
 export * from "./dto/routine-section.js";
+export * from "./dto/workout-section.js";
 export * from "./dto/account.js";
 export * from "./dto/planned-set.js";
 export * from "./time.js";

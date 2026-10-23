@@ -176,6 +176,13 @@ const EXPECTED = [
   "sectionOrderViolations",
   "sectionSpanViolations",
   "groupBySection",
+  // workout sections (Spec 09.4 §5)
+  "SectionNameSchema",
+  "SectionNotesSchema",
+  "CreateWorkoutSectionSchema",
+  "UpdateWorkoutSectionSchema",
+  "sectionForNewExercise",
+  "insertIndexForSection",
   // dto — routines (Spec 09 §5)
   "ROUTINE_NAME_MAX",
   "ROUTINE_NOTES_MAX",
