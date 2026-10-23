@@ -13,7 +13,12 @@ export type FinishedEditKind =
   | "exercise_moved"
   | "exercise_regrouped"
   | "exercise_noted"
-  | "details_changed";
+  | "details_changed"
+  // Spec 09.4 §9 — a workout's own sections, and an exercise moved between them.
+  | "section_added"
+  | "section_changed"
+  | "section_removed"
+  | "exercise_sectioned";
 
 /** `workout_edited`, after commit, iff the write ran in finished mode. */
 export function logFinishedEdit(log: FastifyBaseLogger, userId: string, edit: FinishedEditKind, finishedEdit: FinishedEdit | null): void {

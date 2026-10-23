@@ -83,6 +83,10 @@ const MATRIX: Record<string, Slugs> = {
     409: ["exercise-retired"],
   }),
   "PATCH /v1/workout-exercises/{id}": withCentral("body", { 404: ["not-found"] }),
+  // Spec 09.4 AC20 — a workout's own sections.
+  "POST /v1/workouts/{id}/sections": withCentral("body", { 404: ["not-found"], 409: ["workout-section-limit"] }),
+  "PATCH /v1/workout-sections/{id}": withCentral("body", { 404: ["not-found"] }),
+  "DELETE /v1/workout-sections/{id}": withCentral("body", { 404: ["not-found"] }),
   "DELETE /v1/workout-exercises/{id}": withCentral("body", {
     404: ["not-found"],
     409: ["workout-would-be-empty"],

@@ -66,6 +66,17 @@ describe("07.4 AC32 — workout_edited", () => {
     expect(edited(ctx.lines).map((l) => l.edit)).toEqual(["exercise_added", "exercise_moved", "set_added", "set_deleted", "exercise_removed"]);
   });
 
+  it("09.4 AC9 — section_added, section_changed and section_removed on a finished workout; a no-op PATCH logs none", async () => {
+    const ctx = await finishedSetup();
+    const id = (await ctx.call("POST", `/v1/workouts/${ctx.workoutId}/sections`, { name: "Finisher" })).json().id as string;
+    await ctx.call("PATCH", `/v1/workout-sections/${id}`, { name: "Finisher" });
+    await ctx.call("PATCH", `/v1/workout-sections/${id}`, { notes: "EMOM" });
+    await ctx.call("DELETE", `/v1/workout-sections/${id}`);
+    const lines = edited(ctx.lines);
+    expect(lines.map((l) => l.edit)).toEqual(["section_added", "section_changed", "section_removed"]);
+    for (const l of lines) expect(l).toMatchObject({ workout_id: ctx.workoutId, records_recomputed: false, root_count: 0 });
+  });
+
   it("a live workout's writes log no workout_edited", async () => {
     const { logger, lines } = capturingLogger();
     const exerciseRepo = new FakeExerciseRepository();
