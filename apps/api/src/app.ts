@@ -120,7 +120,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
-  // Spec 13.0 §7 — the random per-request id (already in every log line) on the
+  // Spec 13.0 §7 — the per-request id (already in every log line: a valid client
+  // X-Request-Id, else a random UUID — genReqId above) on the
   // active span, so a trace can be found from a log line and vice versa. No-op
   // when telemetry is off (no active span).
   app.addHook("onRequest", async (request) => {

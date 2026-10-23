@@ -178,14 +178,14 @@ function PreviewBody({
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
   const focusEdit = useRef(false);
-  // Runs when the mark or Keep's outcome changes (DM-48). `kept` too, so the focus does not depend on whether the
-  // cache patch that clears the mark renders before or after `focusEdit` is set (today it renders after).
+  // No dependency list on purpose (DM-48): it runs after every render until the Edit link exists and the mark is
+  // gone, so the focus lands whichever render brings them; the ref guard makes every other run a no-op.
   useLayoutEffect(() => {
     if (!focusEdit.current || markedOneOff) return;
     focusEdit.current = false;
     // The Keep button it came from has unmounted.
     editLink.current?.focus();
-  }, [markedOneOff, kept]);
+  });
 
   async function onKeep() {
     if (keepLock.current) return;
