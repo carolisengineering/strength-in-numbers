@@ -134,6 +134,8 @@ export interface UpdateWorkoutExerciseFields {
   notes?: string | null;
   /** Spec 09 D10. Key present with `null` clears the group. */
   supersetGroup?: number | null;
+  /** Spec 09.4. A section of the exercise's own workout, or `null` for loose; the server places it. Never with `position`. */
+  sectionId?: string | null;
 }
 
 /** One `set_entry` row (Spec 05.1 §4). `weightKg` / `distanceM` are the
@@ -324,13 +326,14 @@ export interface WorkoutRepository {
     fields: AddWorkoutExerciseFields,
   ): Promise<WithFinishedEdit<WorkoutExerciseRecord>>;
 
-  /** Reorder and/or edit notes / supersetGroup (§6.7), live or finished (Spec 07.4). Throws
-   * `NotFoundError` or `ValidationError` (422, out-of-range `position`). */
+  /** Reorder and/or edit notes / supersetGroup (§6.7), live or finished (Spec 07.4), or move it to another
+   * section (Spec 09.4 §6.3: placed by `insertIndexForSection`, leaves its superset unless the body sets one).
+   * Throws `NotFoundError` (incl. a section of another workout) or `ValidationError` (422, out-of-range `position`). */
   updateWorkoutExercise(
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }>;
 
   /** Delete + close the position gap (§6.7), live or finished. Throws `NotFoundError`, or
    * `WorkoutWouldBeEmptyError` (409) when it would leave a finished workout with no sets (Spec 07.4). */

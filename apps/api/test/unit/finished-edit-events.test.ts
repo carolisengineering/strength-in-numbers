@@ -77,6 +77,15 @@ describe("07.4 AC32 — workout_edited", () => {
     for (const l of lines) expect(l).toMatchObject({ workout_id: ctx.workoutId, records_recomputed: false, root_count: 0 });
   });
 
+  it("09.4 AC21 — a finished-workout section move logs edit: exercise_sectioned", async () => {
+    const ctx = await finishedSetup();
+    const sectionId = (await ctx.call("POST", `/v1/workouts/${ctx.workoutId}/sections`, { name: "Finisher" })).json().id as string;
+    ctx.lines.length = 0;
+    const res = await ctx.call("PATCH", `/v1/workout-exercises/${ctx.weId}`, { sectionId, supersetGroup: 2 });
+    expect(res.statusCode).toBe(200);
+    expect(edited(ctx.lines).map((l) => l.edit)).toEqual(["exercise_sectioned"]);
+  });
+
   it("a live workout's writes log no workout_edited", async () => {
     const { logger, lines } = capturingLogger();
     const exerciseRepo = new FakeExerciseRepository();

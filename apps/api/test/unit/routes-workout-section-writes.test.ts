@@ -6,7 +6,8 @@ import { uuidv7 } from "uuidv7";
 import { WorkoutSectionSchema } from "@sin/core";
 import { RATE_LIMITS } from "../../src/plugins/rate-limit.js";
 import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
-import { FakeExerciseRepository, FakeWorkoutRepository } from "../helpers/fakes.js";
+import { FakeExerciseRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
+import { exerciseEditKind } from "../../src/routes/finished-edit-log.js";
 
 const BEARER = { authorization: "Bearer test-token", "content-type": "application/json" };
 const STARTED_AT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -101,6 +102,43 @@ describe("09.4 AC20 — wiring", () => {
       windowMs: 60_000, ip: 600, docs: 30, exportPerUser: 3,
       groups: { sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10 }, inflight: 4,
     });
+  });
+});
+
+describe("09.4 AC21 — workout_exercise_sectioned", () => {
+  it("logs ids and booleans when the section changes, nothing when it does not; no names", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    const ex = makeExerciseRecord({ name: "SecretExerciseQx", modality: "weight_reps", isActive: true });
+    exerciseRepo.byId.set(ex.id, ex);
+    const lines: Record<string, unknown>[] = [];
+    const logger: FastifyBaseLogger = pino({ level: "debug" }, { write: (s: string) => lines.push(JSON.parse(s)) });
+    const { app } = await buildTestApp({ logger, exerciseRepository: exerciseRepo, workoutRepository: new FakeWorkoutRepository(exerciseRepo), rateLimits: GENEROUS_LIMITS });
+    const call = (method: "POST" | "PATCH", url: string, payload: object) => app.inject({ method, url, headers: BEARER, payload });
+    const workoutId = (await call("POST", "/v1/workouts", { clientGeneratedId: uuidv7(), startedAt: STARTED_AT })).json().id as string;
+    const a = (await call("POST", `/v1/workouts/${workoutId}/exercises`, { exerciseId: ex.id })).json().id as string;
+    await call("PATCH", `/v1/workout-exercises/${a}`, { supersetGroup: 4 });
+    const sectionId = (await call("POST", `/v1/workouts/${workoutId}/sections`, { name: SECRET_NAME })).json().id as string;
+    lines.length = 0;
+
+    expect((await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId })).json()).toMatchObject({ sectionId, supersetGroup: null });
+    await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId }); // same section: no line
+    await call("PATCH", `/v1/workout-exercises/${a}`, { sectionId: null });
+    const sectioned = lines.filter((l) => l.msg === "workout_exercise_sectioned");
+    const pick = (l: Record<string, unknown>) =>
+      Object.fromEntries(["workout_id", "workout_exercise_id", "to_section", "moved", "left_superset"].map((k) => [k, l[k]]));
+    expect(sectioned.map(pick)).toEqual([
+      { workout_id: workoutId, workout_exercise_id: a, to_section: true, moved: false, left_superset: true },
+      { workout_id: workoutId, workout_exercise_id: a, to_section: false, moved: false, left_superset: false },
+    ]);
+    expect(JSON.stringify(lines)).not.toContain("SecretExerciseQx");
+    expect(JSON.stringify(lines)).not.toContain(SECRET_NAME);
+  });
+
+  it("exerciseEditKind: sectioned wins over moved and over supersetGroup in the body", () => {
+    expect(exerciseEditKind(true, { supersetGroup: 1 }, true)).toBe("exercise_sectioned");
+    expect(exerciseEditKind(false, {}, true)).toBe("exercise_sectioned");
+    expect(exerciseEditKind(true, {}, false)).toBe("exercise_moved");
+    expect(exerciseEditKind(false, { supersetGroup: 1 }, false)).toBe("exercise_regrouped");
   });
 });
 

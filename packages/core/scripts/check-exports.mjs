@@ -183,6 +183,7 @@ const EXPECTED = [
   "UpdateWorkoutSectionSchema",
   "sectionForNewExercise",
   "insertIndexForSection",
+  "NOT_WITH_POSITION",
   // dto — routines (Spec 09 §5)
   "ROUTINE_NAME_MAX",
   "ROUTINE_NOTES_MAX",

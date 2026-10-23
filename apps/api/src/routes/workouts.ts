@@ -270,7 +270,20 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
         request.params.id,
         request.body,
       );
-      logFinishedEdit(request.log, request.user!.id, exerciseEditKind(updated.moved, request.body), updated.finishedEdit);
+      if (updated.sectioned) {
+        request.log.info(
+          {
+            workout_id: updated.workoutId,
+            workout_exercise_id: updated.id,
+            user_id: request.user!.id,
+            to_section: updated.sectionId !== null,
+            moved: updated.moved,
+            left_superset: updated.leftSuperset,
+          },
+          "workout_exercise_sectioned",
+        );
+      }
+      logFinishedEdit(request.log, request.user!.id, exerciseEditKind(updated.moved, request.body, updated.sectioned), updated.finishedEdit);
       return toWorkoutExerciseDto(updated);
     },
   );

@@ -103,7 +103,7 @@ export const WorkoutExerciseSchema = z.object({
   /** Spec 09.1 — the routine item's planned sets, snapshotted at start; `[]` for a
    * manual add and for workouts started before 0010. Read-only (no write route). */
   plannedSets: z.array(PlannedSetSchema),
-  /** Spec 09.2 — the snapshotted section this exercise sits in; `null` = loose, manually added, or started before 0011. No write route (D9). */
+  /** Spec 09.2 — the section this exercise sits in; `null` = loose, or started before 0011. Changed only by `PATCH sectionId` (Spec 09.4). */
   sectionId: WorkoutSectionIdSchema.nullable(),
 });
 export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
@@ -188,12 +188,19 @@ export const AddWorkoutExerciseSchema = z.strictObject({
 export type AddWorkoutExercise = z.infer<typeof AddWorkoutExerciseSchema>;
 
 /** PATCH /v1/workout-exercises/{id} body. */
-export const UpdateWorkoutExerciseSchema = z.strictObject({
-  position: z.number().int().min(0).optional(),
-  notes: WorkoutNotes.nullable().optional(),
-  /** Spec 09 D10: any 1..99, `null` clears; no density or adjacency rule on a workout. */
-  supersetGroup: z.number().int().min(1).max(99).nullable().optional(),
-});
+/** Spec 09.4 AC11 — the server places a section move, so `sectionId` never travels with `position`. */
+export const NOT_WITH_POSITION = "can't be combined with position";
+
+export const UpdateWorkoutExerciseSchema = z
+  .strictObject({
+    position: z.number().int().min(0).optional(),
+    notes: WorkoutNotes.nullable().optional(),
+    /** Spec 09 D10: any 1..99, `null` clears; no density or adjacency rule on a workout. */
+    supersetGroup: z.number().int().min(1).max(99).nullable().optional(),
+    /** Spec 09.4: a section of the exercise's own workout moves it there (server-placed); `null` makes it loose. */
+    sectionId: WorkoutSectionIdSchema.nullable().optional(),
+  })
+  .refine((b) => b.sectionId === undefined || b.position === undefined, { path: ["sectionId"], message: NOT_WITH_POSITION });
 export type UpdateWorkoutExercise = z.infer<typeof UpdateWorkoutExerciseSchema>;
 
 /** `PATCH /v1/workouts/{id}` 200 body (Spec 07.0 §5, D12): the workout plus

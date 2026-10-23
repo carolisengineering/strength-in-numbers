@@ -1,6 +1,6 @@
 // apps/api/src/repositories/workout.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isWorkoutExerciseId, isWorkoutId, localDateFor, offsetMinutesForZone } from "@sin/core";
+import { insertIndexForSection, isWorkoutExerciseId, isWorkoutId, isWorkoutSectionId, localDateFor, offsetMinutesForZone } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   ExerciseRetiredError,
@@ -37,7 +37,7 @@ import {
   retimeOutcome,
 } from "./workout-writes.js";
 import { calendarFor, clampSetTimes, shiftSetTimes } from "./workout-retime.prisma.js";
-import { workoutSectionMethods } from "./workout-section.prisma.js";
+import { exerciseRanks, workoutSectionMethods } from "./workout-section.prisma.js";
 import {
   assertWorkingSetsComplete,
   assertWouldNotEmpty,
@@ -803,7 +803,7 @@ export function createWorkoutRepository(
       actingUserId: string,
       id: string,
       patch: UpdateWorkoutExerciseFields,
-    ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }> {
+    ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }> {
       if (!isWorkoutExerciseId(id)) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
@@ -836,7 +836,7 @@ export function createWorkoutRepository(
       // edit that skipped this path could commit after a concurrent
       // finishWorkout, without ever raising WorkoutFinishedError.
       const workoutId = current.workout_id;
-      const requestedPosition = patch.position;
+      let requestedPosition = patch.position;
       return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
         await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
         // The lock is its own statement, ahead of every read it protects
@@ -853,13 +853,32 @@ export function createWorkoutRepository(
         assertStillLive(mode, locked.ended_at);
 
         const targetRows = await tx.$queryRaw<
-          { id: string; position: number; notes: string | null; superset_group: number | null }[]
+          { id: string; position: number; notes: string | null; superset_group: number | null; section_id: string | null }[]
         >`
-          SELECT id, position, notes, superset_group FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT id, position, notes, superset_group, section_id::text FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
         `;
         const target = targetRows[0];
         if (!target) {
           throw new NotFoundError("workout exercise not found or not owned by the acting user");
+        }
+
+        // Spec 09.4 §6.3: a changed section is placed by the server (the schema refuses `position` beside it).
+        const nextSection = patch.sectionId === undefined ? target.section_id : patch.sectionId;
+        const sectioned = nextSection !== target.section_id;
+        if (sectioned) {
+          let rank = -1;
+          if (nextSection !== null) {
+            const sectionRows = isWorkoutSectionId(nextSection)
+              ? await tx.$queryRaw<{ position: number }[]>`
+                  SELECT position FROM "workout_section"
+                  WHERE id = ${nextSection}::uuid AND workout_id = ${workoutId}::uuid FOR SHARE
+                `
+              : [];
+            const section = sectionRows[0];
+            if (!section) throw new NotFoundError("workout section not found in this workout");
+            rank = section.position;
+          }
+          requestedPosition = insertIndexForSection(await exerciseRanks(tx, workoutId, id), rank);
         }
 
         const countRows = await tx.$queryRaw<{ n: number }[]>`
@@ -901,10 +920,14 @@ export function createWorkoutRepository(
         const nextNotes = "notes" in patch ? (patch.notes ?? null) : target.notes;
         // Spec 09 D10: key present with `null` clears; absent leaves the group.
         // No density, adjacency or size rule on a workout.
-        const nextGroup = "supersetGroup" in patch ? (patch.supersetGroup ?? null) : target.superset_group;
+        // Spec 09.4 AC13: a superset does not cross a section boundary unless the body says so.
+        const nextGroup =
+          "supersetGroup" in patch ? (patch.supersetGroup ?? null) : sectioned ? null : target.superset_group;
+        const leftSuperset = sectioned && target.superset_group !== null && nextGroup === null;
         const updatedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
           UPDATE "workout_exercise"
-          SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup}, updated_at = now()
+          SET position = ${nextPosition}, notes = ${nextNotes}, superset_group = ${nextGroup},
+              section_id = ${nextSection}::uuid, updated_at = now()
           WHERE id = ${id}::uuid
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
                     modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
@@ -912,13 +935,14 @@ export function createWorkoutRepository(
         `;
         const exercise = toExerciseRecord(updatedRows[0]!);
         const moved = nextPosition !== target.position;
-        const changed = moved || nextNotes !== target.notes || nextGroup !== target.superset_group;
+        const changed = moved || sectioned || nextNotes !== target.notes || nextGroup !== target.superset_group;
         // A no-op PATCH in finished mode reports no edit (same as the workout PATCH's `{}`).
-        if (mode === "live" || !changed) return { ...exercise, finishedEdit: null, moved };
+        if (mode === "live" || !changed) return { ...exercise, finishedEdit: null, moved, sectioned, leftSuperset };
         // 07.4 §6.2 / AC7: position is a records tie-break only between cards of one lineage, and a
-        // move changes only the moved card's order against the others.
+        // move changes only the moved card's order against the others (Spec 09.4 AC14: a section move too).
         const root = moved ? await repeatedRootOfWorkoutExercise(tx, id) : null;
-        return { ...exercise, finishedEdit: await recomputeTimed(tx, actingUserId, workoutId, root ? [root] : []), moved };
+        const finishedEdit = await recomputeTimed(tx, actingUserId, workoutId, root ? [root] : []);
+        return { ...exercise, finishedEdit, moved, sectioned, leftSuperset };
       });
     },
     async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {

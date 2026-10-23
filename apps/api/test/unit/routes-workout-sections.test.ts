@@ -91,7 +91,7 @@ describe("09.4 AC1 — key sets", () => {
 });
 
 describe("AC17 — running-workout writes never touch sections", () => {
-  it("add is loose; reorder and regroup keep section_id; sectionId is an unknown key (422); remove leaves the sections", async () => {
+  it("add is loose; reorder and regroup keep section_id; sectionId moves it (amended by 09.4 AC11, was 422); remove leaves the sections", async () => {
     const { json, detail, workoutId } = await sectionedWorkout();
     const [first, second, third] = detail.exercises as { id: string; sectionId: string | null }[];
     const added = await json("POST", `/v1/workouts/${workoutId}/exercises`, { exerciseId: EX.id });
@@ -101,9 +101,9 @@ describe("AC17 — running-workout writes never touch sections", () => {
     expect(moved.json().sectionId).toBe(third!.sectionId);
     const grouped = await json("PATCH", `/v1/workout-exercises/${second!.id}`, { supersetGroup: 5 });
     expect(grouped.json().sectionId).toBe(second!.sectionId);
-    const bad = await json("PATCH", `/v1/workout-exercises/${first!.id}`, { sectionId: second!.sectionId });
-    expect(bad.statusCode).toBe(422);
-    expect(bad.json().type).toMatch(/validation-error$/);
+    const sectioned = await json("PATCH", `/v1/workout-exercises/${first!.id}`, { sectionId: second!.sectionId });
+    expect(sectioned.statusCode).toBe(200);
+    expect(sectioned.json().sectionId).toBe(second!.sectionId);
     const del = await json("DELETE", `/v1/workout-exercises/${second!.id}`);
     expect(del.statusCode).toBe(204);
     const after = (await json("GET", `/v1/workouts/${workoutId}`)).json();

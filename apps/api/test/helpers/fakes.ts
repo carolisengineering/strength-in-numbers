@@ -5,6 +5,7 @@ import {
   isWorkoutExerciseId,
   isSetEntryId,
   isWorkoutId,
+  insertIndexForSection,
   isWorkoutSectionId,
   localDateFor,
   normalizeSupersetGroups,
@@ -835,14 +836,29 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }> {
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }> {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
     const n = [...this.exercises.values()].filter((e) => e.workoutId === we.workoutId).length;
+    // Spec 09.4 §6.3: a changed section is placed by `insertIndexForSection`, as the repository does.
+    const nextSection = patch.sectionId === undefined ? we.sectionId : patch.sectionId;
+    const sectioned = nextSection !== we.sectionId;
+    let requested = patch.position;
+    if (sectioned) {
+      const sections = this.sectionsByWorkout.get(we.workoutId)?.sections ?? [];
+      const rankOf = (sectionId: string | null) => (sectionId === null ? -1 : sections.find((x) => x.id === sectionId)?.position);
+      const rank = rankOf(nextSection);
+      if (rank === undefined) throw new NotFoundError("workout section not found in this workout");
+      const others = [...this.exercises.values()]
+        .filter((e) => e.workoutId === we.workoutId && e.id !== id)
+        .sort((a, b) => a.position - b.position)
+        .map((e) => rankOf(e.sectionId) ?? -1);
+      requested = insertIndexForSection(others, rank);
+    }
     let nextPosition = we.position;
-    if (patch.position !== undefined && patch.position !== we.position) {
-      assertReorderPositionInRange(patch.position, n);
+    if (requested !== undefined && requested !== we.position) {
+      assertReorderPositionInRange(requested, n);
       const old = we.position;
-      nextPosition = patch.position;
+      nextPosition = requested;
       for (const e of this.exercises.values()) {
         if (e.workoutId !== we.workoutId || e.id === id) continue;
         if (nextPosition > old && e.position > old && e.position <= nextPosition) {
@@ -856,12 +872,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       ...we,
       position: nextPosition,
       notes: "notes" in patch ? patch.notes ?? null : we.notes,
-      supersetGroup: "supersetGroup" in patch ? (patch.supersetGroup ?? null) : we.supersetGroup,
+      supersetGroup: "supersetGroup" in patch ? (patch.supersetGroup ?? null) : sectioned ? null : we.supersetGroup,
+      sectionId: nextSection,
       updatedAt: new Date(we.updatedAt.getTime() + 1000),
     };
     this.exercises.set(id, updated);
-    const changed = nextPosition !== we.position || updated.notes !== we.notes || updated.supersetGroup !== we.supersetGroup;
-    return { ...updated, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null, moved: nextPosition !== we.position };
+    const changed = sectioned || nextPosition !== we.position || updated.notes !== we.notes || updated.supersetGroup !== we.supersetGroup;
+    const leftSuperset = sectioned && we.supersetGroup !== null && updated.supersetGroup === null;
+    return { ...updated, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null, moved: nextPosition !== we.position, sectioned, leftSuperset };
   }
 
   async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {

@@ -54,8 +54,9 @@ export function logRetimed(log: FastifyBaseLogger, userId: string, workoutId: st
   );
 }
 
-/** §9: a `PATCH /workout-exercises/{id}` is classified by the first of: moved, regrouped, noted. */
-export function exerciseEditKind(moved: boolean, body: { supersetGroup?: unknown }): FinishedEditKind {
+/** §9: a `PATCH /workout-exercises/{id}` is classified by the first of: sectioned (Spec 09.4 D12), moved, regrouped, noted. */
+export function exerciseEditKind(moved: boolean, body: { supersetGroup?: unknown }, sectioned: boolean): FinishedEditKind {
+  if (sectioned) return "exercise_sectioned";
   if (moved) return "exercise_moved";
   return "supersetGroup" in body ? "exercise_regrouped" : "exercise_noted";
 }
