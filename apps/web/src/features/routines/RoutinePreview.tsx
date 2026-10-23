@@ -22,11 +22,11 @@ import {
   LOAD_ONE_FAILED,
   OFFLINE_DELETE,
   OFFLINE_KEEP,
-  ONE_OFF_TAG,
   RATE_LIMITED,
   ROUTINE_GONE,
   START_RETIRED,
 } from "./messages";
+import { OneOffTag } from "./OneOffTag";
 import { isOneOff, oneOffNote } from "./oneOff";
 import { EDITOR_FROM_BACK, routineEditPath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine } from "./queries";
@@ -178,12 +178,14 @@ function PreviewBody({
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
   const focusEdit = useRef(false);
+  // Runs when the mark or Keep's outcome changes (DM-48). `kept` too, so the focus does not depend on whether the
+  // cache patch that clears the mark renders before or after `focusEdit` is set (today it renders after).
   useLayoutEffect(() => {
     if (!focusEdit.current || markedOneOff) return;
     focusEdit.current = false;
     // The Keep button it came from has unmounted.
     editLink.current?.focus();
-  });
+  }, [markedOneOff, kept]);
 
   async function onKeep() {
     if (keepLock.current) return;
@@ -250,7 +252,7 @@ function PreviewBody({
         <div className={styles.oneOffBlock}>
           {markedOneOff ? (
             <>
-              <span className={styles.tag}>{ONE_OFF_TAG}</span>
+              <OneOffTag />
               <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
             </>
           ) : null}

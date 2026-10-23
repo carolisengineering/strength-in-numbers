@@ -3,7 +3,8 @@ import { Link } from "react-router";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
-import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, ONE_OFF_TAG, REFRESH_LIST_FAILED } from "./messages";
+import { EMPTY_ROUTINES, LIMIT_MESSAGE, LOAD_LIST_FAILED, REFRESH_LIST_FAILED } from "./messages";
+import { OneOffTag } from "./OneOffTag";
 import { isOneOff, oneOffMeta } from "./oneOff";
 import { EDITOR_FROM_BACK, IMPORT_PATH, NEW_ROUTINE_PATH, routinePath } from "./paths";
 import { useRoutines } from "./queries";
@@ -56,7 +57,7 @@ export function RoutinesSection() {
                   // Spec 10.5 AC2: the tag is text on the name line, inside the link (not color alone).
                   <>
                     <span className={styles.nameLine}>
-                      <span className={styles.name}>{routine.name}</span> <span className={styles.tag}>{ONE_OFF_TAG}</span>
+                      <span className={styles.name}>{routine.name}</span> <OneOffTag />
                     </span>
                     <span className={styles.summary}>{oneOffMeta(routine, now)}</span>
                   </>

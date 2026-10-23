@@ -1,0 +1,8 @@
+/* Spec 10.5 AC2 / AC6: the "One-off" tag, the same on the routines list and the preview (DM-44). */
+.tag {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}

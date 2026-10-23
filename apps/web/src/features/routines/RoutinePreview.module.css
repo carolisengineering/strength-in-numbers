@@ -26,14 +26,6 @@
   gap: var(--space-1);
 }
 
-.tag {
-  color: var(--color-muted);
-  font-size: var(--font-size-sm);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-}
-
 .oneOffNote {
   margin: 0;
   color: var(--color-muted);
