@@ -373,7 +373,8 @@ describe("createLogger — a request-validation error's `validation[]` and messa
     });
     expect(res.statusCode).toBe(422);
     const out = lines.join("");
-    expect(out).toContain("request error");
+    // A 422 is a client error, logged at info since #27 / BL-5; the scrub applies to it all the same.
+    expect(out).toContain("request rejected");
     expect(out).toContain('"instancePath":"/displayName","keyword":"too_big"');
     expect(out).toContain('"instancePath":"/email","keyword":"custom"');
     expect(out).not.toContain(NAME);

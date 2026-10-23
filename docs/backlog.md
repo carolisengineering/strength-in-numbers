@@ -14,7 +14,7 @@ Numbering is append-only — never renumber an existing BL.
 | [BL-2](#bl-2) | Catalog writes | `updateExercise`'s zero-row fallback reports a misleading 409 on an invariant break | Minor | 2026-09-17 |
 | [BL-3](#bl-3) | Catalog writes | `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
 | [BL-4](#bl-4) | Testing | Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
-| [BL-5](#bl-5) | Observability | Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
+| [BL-5](#bl-5) | Observability | **Resolved (2026-10-22, #27)** — Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | **Resolved (2026-09-28, #28)** — `openapi.json` documented only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
 | [BL-7](#bl-7) | API contract | **Resolved (2026-09-24)** — `@fastify/swagger` forced `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
 | [BL-9](#bl-9) | Catalog sync | Restore-epoch hardening for sync tokens must land (or every `1.` token be force-410'd) before the Spec 15 Neon → AWS cutover | Medium (deadline) | 2026-09-19 |
@@ -126,6 +126,14 @@ route layer (wrong error surfaced, wrong status mapped) would not be caught.
 `apps/api/test/unit/routes-exercises-writes.test.ts`.
 
 ## BL-5
+
+**Status: Resolved (2026-10-22, GitHub #27)** in `apps/api/src/errors/contract.ts`:
+any error whose problem status is below 500 logs at `info` as `request rejected`
+(with `slug` and `status`), on every route, not only the catalog writes; `error`
+(`request error`) is kept for 5xx. The two dedicated `warn` lines (sync token
+expired, rate limited) are unchanged. Spec 03.2 §9's rejection counters were not
+added: a new metric goes through the Spec 13.0 telemetry allowlist, so it is its
+own change.
 
 **Routine 4xx on the catalog write endpoints log at `error` severity.**
 
