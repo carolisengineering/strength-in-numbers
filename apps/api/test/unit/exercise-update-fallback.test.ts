@@ -27,22 +27,26 @@ const ownedRow = (isActive: boolean) => ({
   updated_at: new Date(0),
 });
 
-/** Answers the three statements in order: the visibility read, the gated UPDATE (no row), the re-check read. */
+/**
+ * Answers by statement, not by call order: the gated UPDATE matches no row; the first visibility read sees the
+ * owned, active row and every later one sees `recheck`. Any other statement fails the test.
+ */
 function repoWhereUpdateMatchesNothing(recheck: unknown[]) {
-  const queryRaw = vi
-    .fn()
-    .mockResolvedValueOnce([ownedRow(true)])
-    .mockResolvedValueOnce([])
-    .mockResolvedValueOnce(recheck);
+  let reads = 0;
+  const queryRaw = vi.fn(async (strings: TemplateStringsArray) => {
+    const sql = strings.join("?");
+    if (/^\s*UPDATE "exercise"/.test(sql)) return [];
+    if (/FROM "exercise"\s+WHERE id = \?::uuid/.test(sql)) return reads++ === 0 ? [ownedRow(true)] : recheck;
+    throw new Error(`unexpected statement: ${sql}`);
+  });
   const prisma = { $queryRaw: queryRaw } as unknown as PrismaClient;
   return { repo: createExerciseRepository(prisma), queryRaw };
 }
 
 describe("#24 — updateExercise's zero-row fallback", () => {
   it("a row retired between the read and the UPDATE is 409 exercise-retired", async () => {
-    const { repo, queryRaw } = repoWhereUpdateMatchesNothing([ownedRow(false)]);
+    const { repo } = repoWhereUpdateMatchesNothing([ownedRow(false)]);
     await expect(repo.updateExercise(USER, ID, { name: "New" })).rejects.toBeInstanceOf(ExerciseRetiredError);
-    expect(queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it("a row still owned and active is an invariant break: InternalError (500), not exercise-immutable-use-fork", async () => {

@@ -138,7 +138,9 @@ route layer (wrong error surfaced, wrong status mapped) would not be caught.
 **Status: Resolved (2026-10-22, GitHub #27)** in `apps/api/src/errors/contract.ts`:
 any error whose problem status is below 500 logs at `info` as `request rejected`
 (with `slug` and `status`), on every route, not only the catalog writes; `error`
-(`request error`) is kept for 5xx. The two dedicated `warn` lines (sync token
+(`request error`) is kept for 5xx. One exception: `401 invalid-token` (a token that
+fails verification) logs the same line at `warn`, so a broken Auth0 setup still
+stands out; a missing token is ordinary traffic and stays at `info`. The two dedicated `warn` lines (sync token
 expired, rate limited) are unchanged. Spec 03.2 §9's rejection counters were not
 added: a new metric goes through the Spec 13.0 telemetry allowlist, so it is its
 own change, tracked as [BL-26](#bl-26). The text below is the original report.

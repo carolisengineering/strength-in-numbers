@@ -18,6 +18,9 @@ export function registerErrorContract(app: FastifyInstance): void {
   });
 
   app.setErrorHandler((err, request, reply) => {
+    // Normalized once: it picks the log level below and is the problem sent. The original `err` is what
+    // gets logged, so the serializer still sees (and scrubs) the Prisma / Zod / validation error itself.
+    const problem = normalizeError(err);
     if (err instanceof SyncTokenExpiredError) {
       // Spec 03.3 AC8's `Cache-Control: no-store` (a cached 410 would keep a
       // healed client failing) comes from the /v1 cache policy, like every /v1
@@ -34,14 +37,17 @@ export function registerErrorContract(app: FastifyInstance): void {
           : { layer, group, userId: request.user?.id },
         "rate_limited",
       );
-    } else {
+    } else if (problem.status >= 500) {
       // Internal reason to the logs; the client only ever sees the generic body.
-      // #27 / BL-5: a 4xx is the client's mistake or ordinary traffic (a 404, a 409, a 422), so it
-      // logs at info; error is kept for server faults, so an error-level line still means "look".
-      const { status, slug } = normalizeError(err);
-      if (status >= 500) request.log.error({ err }, "request error");
+      request.log.error({ err }, "request error");
+    } else {
+      // #27 / BL-5: a 4xx is the client's mistake or ordinary traffic (a 404, a 409, a 422), so it logs at
+      // info and an error-level line still means "look". A token that fails verification is the exception:
+      // a broken Auth0 setup or a forged-token probe must stand out, so it is a warn (a missing token is not).
+      const { slug, status } = problem;
+      if (slug === "invalid-token") request.log.warn({ err, slug, status }, "request rejected");
       else request.log.info({ err, slug, status }, "request rejected");
     }
-    problemResponse(reply, err);
+    problemResponse(reply, problem);
   });
 }
