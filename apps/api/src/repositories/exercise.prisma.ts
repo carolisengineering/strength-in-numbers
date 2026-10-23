@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
@@ -45,6 +45,19 @@ export interface ExerciseDbRow {
   forked_from_exercise_id: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+/** Every `ExerciseDbRow` column, in one place (#21); the check below fails the build if one is missed. */
+const EXERCISE_DB_COLUMNS = [
+  "id", "catalog_key", "owner_user_id", "name", "modality", "primary_muscle_id",
+  "secondary_muscle_ids", "equipment_id", "is_active", "forked_from_exercise_id", "created_at", "updated_at",
+] as const satisfies readonly (keyof ExerciseDbRow)[];
+const everyColumnListed: Exclude<keyof ExerciseDbRow, (typeof EXERCISE_DB_COLUMNS)[number]> extends never ? true : never = true;
+void everyColumnListed;
+
+/** The column list for a SELECT or RETURNING; `alias` is a SQL table alias literal (`"e"`), never user input. */
+function exerciseColumns(alias?: string): Prisma.Sql {
+  return Prisma.raw(EXERCISE_DB_COLUMNS.map((c) => (alias ? `${alias}.${c}` : c)).join(", "));
 }
 
 /**
@@ -114,9 +127,7 @@ export function createExerciseRepository(
       );
     }
     const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
-      SELECT id, catalog_key, owner_user_id, name, modality,
-             primary_muscle_id, secondary_muscle_ids, equipment_id,
-             is_active, forked_from_exercise_id, created_at, updated_at
+      SELECT ${exerciseColumns()}
       FROM "exercise"
       WHERE id = ${id}::uuid
         AND (owner_user_id IS NULL OR owner_user_id = ${actingUserId}::uuid)
@@ -233,9 +244,7 @@ export function createExerciseRepository(
                true, ${forkedFromExerciseId}::uuid, now(), now()
         FROM _cap
         WHERE _cap.active_count < ${MAX_CUSTOM_EXERCISES_PER_USER}
-        RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
-                  secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
-                  created_at, updated_at
+        RETURNING ${exerciseColumns()}
       `;
       return rows[0];
     });
@@ -254,9 +263,7 @@ export function createExerciseRepository(
         since === undefined
           ? await prisma.$queryRaw<CatalogDbRow[]>`
               WITH snap AS (SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS token)
-              SELECT snap.token, e.id, e.catalog_key, e.owner_user_id, e.name, e.modality,
-                     e.primary_muscle_id, e.secondary_muscle_ids, e.equipment_id,
-                     e.is_active, e.forked_from_exercise_id, e.created_at, e.updated_at
+              SELECT snap.token, ${exerciseColumns("e")}
               FROM snap
               LEFT JOIN "exercise" e
                 ON e.is_active = true
@@ -270,9 +277,7 @@ export function createExerciseRepository(
                        pg_snapshot_xmax(pg_current_snapshot())      AS xmax
               )
               SELECT snap.token, (${since}::xid8 > snap.xmax) AS since_is_future,
-                     e.id, e.catalog_key, e.owner_user_id, e.name, e.modality,
-                     e.primary_muscle_id, e.secondary_muscle_ids, e.equipment_id,
-                     e.is_active, e.forked_from_exercise_id, e.created_at, e.updated_at
+                     ${exerciseColumns("e")}
               FROM snap
               LEFT JOIN "exercise" e
                 -- ">=": the horizon xid may itself commit after this read
@@ -320,9 +325,7 @@ export function createExerciseRepository(
             secondary_muscle_ids = ${merged.secondaryMuscleIds}::text[],
             equipment_id = ${merged.equipmentId}, updated_at = now()
         WHERE id = ${id}::uuid AND owner_user_id = ${actingUserId}::uuid AND is_active = true
-        RETURNING id, catalog_key, owner_user_id, name, modality, primary_muscle_id,
-                  secondary_muscle_ids, equipment_id, is_active, forked_from_exercise_id,
-                  created_at, updated_at
+        RETURNING ${exerciseColumns()}
       `;
       const updated = rows[0];
       if (!updated) {
