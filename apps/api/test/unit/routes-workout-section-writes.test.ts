@@ -8,6 +8,11 @@ import { RATE_LIMITS } from "../../src/plugins/rate-limit.js";
 import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 import { exerciseEditKind } from "../../src/routes/finished-edit-log.js";
+import { SPAN_ATTRIBUTE_ALLOWLIST } from "../../src/telemetry/allowlist.js";
+import { METRIC_NAMES } from "../../src/telemetry/views.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BEARER = { authorization: "Bearer test-token", "content-type": "application/json" };
 const STARTED_AT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -139,6 +144,37 @@ describe("09.4 AC21 — workout_exercise_sectioned", () => {
     expect(exerciseEditKind(false, {}, true)).toBe("exercise_sectioned");
     expect(exerciseEditKind(true, {}, false)).toBe("exercise_moved");
     expect(exerciseEditKind(false, { supersetGroup: 1 }, false)).toBe("exercise_regrouped");
+  });
+});
+
+describe("09.4 AC21 — no new telemetry surface", () => {
+  it("the span allowlist and the metric names are exactly today's", () => {
+    expect([...SPAN_ATTRIBUTE_ALLOWLIST].sort()).toEqual([
+      "db.query.text", "db.statement", "db.system", "error.type", "http.request.method", "http.response.status_code",
+      "http.route", "method", "model", "server.address", "server.port", "sin.request_id", "url.scheme",
+    ]);
+    expect(Object.values(METRIC_NAMES).sort()).toEqual([
+      "http_server_request_duration_seconds", "nodejs_eventloop_delay_p99_seconds", "sin_process_start_time_seconds",
+      "sin_sets_logged", "sin_workouts_finished", "sin_workouts_started", "v8js_gc_duration_seconds", "v8js_memory_heap_used_bytes",
+    ]);
+  });
+});
+
+describe("09.4 AC24 — the placement rules have one implementation", () => {
+  it("no file under apps/ defines insertIndexForSection or sectionForNewExercise; the API imports them from @sin/core", () => {
+    const appsDir = fileURLToPath(new URL("../../../", import.meta.url));
+    const sources = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) return [];
+        const p = join(dir, e.name);
+        return e.isDirectory() ? sources(p) : /\.(ts|tsx|mjs)$/.test(e.name) ? [p] : [];
+      });
+    const files = sources(appsDir);
+    const defining = files.filter((f) => /function\s+(insertIndexForSection|sectionForNewExercise)\b|(insertIndexForSection|sectionForNewExercise)\s*=\s*\(/.test(readFileSync(f, "utf8")));
+    expect(defining).toEqual([]);
+    const users = files.filter((f) => f.includes(`${join("api", "src")}`) && /insertIndexForSection|sectionForNewExercise/.test(readFileSync(f, "utf8")));
+    expect(users.length).toBeGreaterThan(0);
+    for (const f of users) expect(readFileSync(f, "utf8"), f).toMatch(/from "@sin\/core"/);
   });
 });
 

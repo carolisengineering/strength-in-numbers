@@ -986,7 +986,6 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return workout.endedAt === null ? now : clampInstantToSpan(now, workout.startedAt, workout.endedAt);
   }
 
-  /** The fake does no PR work; a finished-mode write still reports itself (07.4 §9). */
   /** Spec 09.4 — the section and its workout, resolved through the workout's owner (404, never 403). */
   private ownedSectionOrThrow(actingUserId: string, sectionId: string): { workout: WorkoutRecord; list: WorkoutSectionRecord[]; index: number } {
     if (isWorkoutSectionId(sectionId)) {
@@ -1053,6 +1052,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     return { workoutId: workout.id, exerciseCount, finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
 
+  /** The fake does no PR work; a finished-mode write still reports itself (07.4 §9). */
   private static edit(workout: WorkoutRecord): FinishedEdit | null {
     return workout.endedAt === null ? null : { workoutId: workout.id, recordsRecomputed: false, rootCount: 0, recomputeMs: 0 };
   }
