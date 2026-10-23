@@ -7,8 +7,13 @@ export interface SheetProps {
   /** The parent owns this; the sheet never closes itself. */
   open: boolean;
   title: string;
-  /** Called by the Close button and by Escape / the Android back gesture. */
+  /** Called by the Close button and by Escape / the Android back gesture, and when the dialog closed itself. */
   onClose: () => void;
+  /**
+   * DM-12: false while a save is in flight, so its failure shows in the open sheet. Close (marked `aria-disabled`)
+   * and Escape do nothing; a close the browser makes anyway still calls `onClose`, so the parent stays in step.
+   */
+  dismissible?: boolean;
   children?: ReactNode;
 }
 
@@ -22,7 +27,7 @@ export interface SheetProps {
  * lands on it instead of on a text field (which would raise the phone
  * keyboard). CSS puts it visually on the right.
  */
-export function Sheet({ open, title, onClose, children }: SheetProps) {
+export function Sheet({ open, title, onClose, dismissible = true, children }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   // The latest `open`, so the native `close` handler can tell "the dialog closed itself" (a form
@@ -46,9 +51,9 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
       className={styles.sheet}
       aria-labelledby={titleId}
       onCancel={(event) => {
-        // Controlled: tell the parent, and let it flip `open`.
+        // Controlled: tell the parent, and let it flip `open`. Not while a save is in flight (DM-12).
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
       onClose={() => {
         // Spec 06.1 AC32: a natively-closed sheet would leave the parent's `open` true, so the next
@@ -59,7 +64,15 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
       {open ? (
         <>
           <header className={styles.header}>
-            <button type="button" className={styles.close} aria-label="Close" onClick={onClose}>
+            <button
+              type="button"
+              className={styles.close}
+              aria-label="Close"
+              aria-disabled={dismissible ? undefined : true}
+              onClick={() => {
+                if (dismissible) onClose();
+              }}
+            >
               <CloseIcon />
             </button>
             <h2 className={styles.title} id={titleId}>

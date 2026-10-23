@@ -347,7 +347,7 @@ Loaded and Zod-validated at boot; invalid config crashes before the port binds.
 | `AUTH0_CLAIM_NAMESPACE` | yes | `https://strengthinnumbers.app/` | prefix for custom claims; API reads `${ns}email`, `${ns}email_verified` (Q3-A) |
 | `WEB_ORIGIN` | yes | `http://localhost:5173` (local) · `https://si-web-staging.onrender.com` (staging) | Comma-separated exact origins for the CORS allowlist (§5.5). No wildcard. Prod gets the real app origin(s). |
 | `LOG_LEVEL` | no | `info` | default `info` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | unset → tracing is a no-op |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | — | *superseded by Spec 13.0 §8* (telemetry is off unless an `OTEL_*_EXPORTER` is set) |
 | `SERVICE_NAME` | no | `si-api` | resource attribute and the log `service` field; trimmed, a blank value fails boot (#127) |
 
 **Postgres connection budget (Q9).** Render's managed Postgres plans cap total
@@ -384,9 +384,9 @@ chain + hostname verification against the OS trust store (#8).
   `missing_email_claim`, `jwks_unavailable`, `account_deleted`),
   `user_provisioned_total`, `db_pool_in_use`. `jwks_unavailable` spiking is an
   Auth0-reachability alert, not a client problem.
-- **Traces (OTel):** HTTP-server + `pg` auto-instrumentation; spans exported only
-  if `OTEL_EXPORTER_OTLP_ENDPOINT` is set (no-op otherwise). One span around the
-  provisioning transaction.
+- **Traces (OTel):** *superseded by Spec 13.0* (instrumentations §6.2, config
+  §8). The original plan was HTTP-server + `pg` auto-instrumentation, exported
+  only if `OTEL_EXPORTER_OTLP_ENDPOINT` was set.
 
 ---
 

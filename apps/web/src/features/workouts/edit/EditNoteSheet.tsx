@@ -59,6 +59,8 @@ export function EditNoteSheet({ open, exercise, onClose, mode }: { open: boolean
       initial={exercise.notes}
       onSave={(notes) => void onSave(notes)}
       onClose={onClose}
+      // DM-12: a save in flight keeps the sheet open (Cancel, Close, Escape), so its failure shows here. Live is unchanged.
+      dismissible={!save.isPending}
       saving={save.isPending}
       saveError={error}
     />

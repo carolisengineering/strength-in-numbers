@@ -22,11 +22,11 @@ import {
   LOAD_ONE_FAILED,
   OFFLINE_DELETE,
   OFFLINE_KEEP,
-  ONE_OFF_TAG,
   RATE_LIMITED,
   ROUTINE_GONE,
   START_RETIRED,
 } from "./messages";
+import { OneOffTag } from "./OneOffTag";
 import { isOneOff, oneOffNote } from "./oneOff";
 import { EDITOR_FROM_BACK, routineEditPath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine } from "./queries";
@@ -178,6 +178,8 @@ function PreviewBody({
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
   const focusEdit = useRef(false);
+  // No dependency list on purpose (DM-48): it runs after every render until the Edit link exists and the mark is
+  // gone, so the focus lands whichever render brings them; the ref guard makes every other run a no-op.
   useLayoutEffect(() => {
     if (!focusEdit.current || markedOneOff) return;
     focusEdit.current = false;
@@ -250,7 +252,7 @@ function PreviewBody({
         <div className={styles.oneOffBlock}>
           {markedOneOff ? (
             <>
-              <span className={styles.tag}>{ONE_OFF_TAG}</span>
+              <OneOffTag />
               <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
             </>
           ) : null}

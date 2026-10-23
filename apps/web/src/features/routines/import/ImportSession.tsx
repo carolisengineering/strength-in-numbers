@@ -24,7 +24,11 @@ export interface ImportSessionValue {
   readonly placeholderFor: (cardKey: string) => string;
   readonly handoff: ImportHandoff | null;
   readonly setHandoff: (handoff: ImportHandoff) => void;
-  /** Spec 10.4 AC32: what Save created so far, so a retry never creates an exercise twice. One per session. */
+  /**
+   * Spec 10.4 AC32: what Save created so far, so a retry never creates an exercise twice. One per session, and kept
+   * on purpose when the pasted text changes (DM-33): the same name key gets the same placeholder, so an exercise an
+   * earlier Save created is reused, not created again. Clearing it here would make duplicate exercises.
+   */
   readonly saveRecord: SaveRecord;
 }
 

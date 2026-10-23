@@ -44,7 +44,7 @@ function start(routines = 0) {
 }
 
 type App = ReturnType<typeof start>;
-const SCREENS: Record<string, { path: string; reach: (app: App) => Promise<void> }> = {
+const SCREENS: Record<"paste" | "names" | "editor", { path: string; reach: (app: App) => Promise<void> }> = {
   paste: { path: IMPORT_PATH, reach: async ({ user }) => {
     await user.click(await screen.findByLabelText(TEXT_LABEL));
     await user.paste("Strength\n3 Sets:\n10 Curl\nx.");
@@ -62,8 +62,8 @@ async function discardIfAsked(user: App["user"]) {
 }
 
 describe("10.4 AC33 — backing out leaves nothing", () => {
-  it.each(Object.keys(SCREENS))("from the %s screen (Back, nav tab, reload)", async (where) => {
-    const { path, reach } = SCREENS[where]!;
+  it.each(Object.keys(SCREENS) as (keyof typeof SCREENS)[])("from the %s screen (Back, nav tab, reload)", async (where) => {
+    const { path, reach } = SCREENS[where];
     // Back
     let app = start();
     await reach(app);

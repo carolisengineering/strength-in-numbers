@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -138,6 +138,24 @@ describe("18.0 AC53 / AC54 — the Details sheet", () => {
     held.resolve();
     await waitFor(() => expect(sheet().getByText("Couldn't save the details — try again")).toBeInTheDocument());
     expect(patches(fake)).toHaveLength(1);
+  });
+
+  it("DM-12 — a save in flight keeps the sheet open: Close and Escape wait, and a failure shows in the sheet", async () => {
+    const { fake, user } = await open();
+    const held = deferred<void>();
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\// }, (async () => {
+      await held.promise;
+      return problemResponse(500, "about:blank");
+    }) as unknown as () => Response);
+    await edit(user, "Title", "Deload");
+    await user.click(sheet().getByRole("button", { name: "Save details" }));
+    await user.click(sheet().getByRole("button", { name: "Close" }));
+    fireEvent(screen.getByRole("dialog", { name: "Details" }), new Event("cancel", { cancelable: true }));
+    expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(sheet().getByText("Couldn't save the details — try again")).toBeInTheDocument());
+    await user.click(sheet().getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Details" })).toBeNull());
   });
 });
 

@@ -15,14 +15,16 @@ export interface NoteSheetProps {
   saving?: boolean;
   /** Spec 18.0 AC12: the failed save's text, shown under the field when there is no parse error. */
   saveError?: string | null;
+  /** DM-12 (edit mode): false while the save is in flight; Close, Escape and Cancel then do nothing. */
+  dismissible?: boolean;
 }
 
 /** One exercise's note for THIS workout (Spec 10.3 AC27). Local state; Save parses, Cancel and Close discard. Keyed per opening by the card. */
-export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving = false, saveError = null }: NoteSheetProps) {
+export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving = false, saveError = null, dismissible = true }: NoteSheetProps) {
   const [text, setText] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
   return (
-    <Sheet open={open} title={`Note for ${exerciseName}`} onClose={onClose}>
+    <Sheet open={open} title={`Note for ${exerciseName}`} onClose={onClose} dismissible={dismissible}>
       <form
         className={styles.form}
         noValidate
@@ -45,7 +47,13 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving
           <Button type="submit" busy={saving}>
             Save
           </Button>
-          <Button variant="secondary" onClick={onClose}>
+          <Button
+            variant="secondary"
+            aria-disabled={dismissible ? undefined : true}
+            onClick={() => {
+              if (dismissible) onClose();
+            }}
+          >
             Cancel
           </Button>
         </div>

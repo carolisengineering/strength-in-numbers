@@ -802,6 +802,9 @@ actually need a prod environment, not now.
 
 Production comes later, via Spec 01.1.
 
+Metrics and traces (Spec 13.0) are off on a first deploy. Turning them on, the local Grafana stack and Grafana
+Cloud are in [`observability.md`](observability.md).
+
 ---
 
 ## Troubleshooting
