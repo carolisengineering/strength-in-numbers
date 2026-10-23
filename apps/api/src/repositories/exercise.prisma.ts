@@ -312,8 +312,9 @@ export function createExerciseRepository(
       patch: ExerciseWritePatch,
     ): Promise<ExerciseRecord> {
       const before = toRecord(await loadVisibleRow(actingUserId, id));
-      if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
+      // Retired before global (#25): a retired global row cannot be forked either, so "use fork" would be a dead end.
       if (!before.isActive) throw new ExerciseRetiredError();
+      if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
 
       const merged = mergeWritableFields(before, patch);
       assertMergedFieldsValid(merged, patch);

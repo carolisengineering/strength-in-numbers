@@ -421,6 +421,17 @@ describe.skipIf(!shouldRunIntegration())(
         ).rejects.toBeInstanceOf(ExerciseImmutableUseForkError);
       });
 
+      it("#25 — 409 exercise-retired on a retired global row (retired is checked before global)", async () => {
+        const userId = uuidv7();
+        await insertUser(db, { id: userId });
+        const id = uuidv7();
+        await insertExercise(db, { id, name: "Retired Global Row", isActive: false });
+
+        await expect(repo.updateExercise(userId, id, { name: "Hijacked" })).rejects.toBeInstanceOf(ExerciseRetiredError);
+        const [stored] = await db.prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "exercise" WHERE id = ${id}::uuid`;
+        expect(stored!.name).toBe("Retired Global Row");
+      });
+
       it("409 exercise-retired on the caller's own already-soft-deleted row", async () => {
         const userId = uuidv7();
         await insertUser(db, { id: userId });

@@ -350,8 +350,8 @@ export class FakeExerciseRepository implements ExerciseRepository {
     patch: ExerciseWritePatch,
   ): Promise<ExerciseRecord> {
     const before = await this.findVisibleById(actingUserId, id);
+    if (!before.isActive) throw new ExerciseRetiredError(); // retired before global, as the real repository (#25)
     if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
-    if (!before.isActive) throw new ExerciseRetiredError();
     const merged = mergeWritableFields(before, patch);
     assertMergedFieldsValid(merged, patch);
     this.validateReferences(merged);
