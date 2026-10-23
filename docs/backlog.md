@@ -652,3 +652,102 @@ allowlist (`telemetry/allowlist.ts`, `telemetry/views.ts`) with a test. Until th
 **Done looks like:** a counter of rejected writes with `slug` as its only attribute (from the
 fixed set of problem slugs, never user input), added to the allowlist with its test, and a
 Grafana panel if one is wanted.
+
+## BL-27
+
+**No nightly backups of the production database.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). Production runs on its own Neon
+free project, and Neon free's point-in-time restore window is short. Until a backup exists, a
+mistake found after that window (a bad migration, a purge run against the wrong database) cannot
+be undone.
+
+**Done looks like:** a scheduled job (for example a GitHub Actions cron running `pg_dump` against
+the direct URL) writes a dump to storage the owner controls and keeps the last few copies; the
+runbook has a restore drill that was run once.
+
+## BL-28
+
+**Production is not limited to the owner.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). Production uses the existing Auth0
+tenant and a new SPA application, and the front door offers sign-up like staging does. Anyone
+who finds the Firebase address can create an account and use the free-tier quota.
+
+**Done looks like:** sign-up on the production application is closed or allow-listed to the
+owner (an Auth0 setting or a post-login Action rule), with a check in the runbook that a second
+account is refused.
+
+## BL-29
+
+**No uptime check on production.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). The deploy workflow smokes
+production once, at release. Nothing emails the owner if production goes down afterward. Cloud
+Run scales to zero, so a check must be infrequent enough to stay inside the free tier (a check
+every few minutes is fine for a service that bills per request). Supersedes the Spec 01.1 half of
+BL-24 for production.
+
+**Done looks like:** a free uptime check (Google Cloud Monitoring or an external one) calls
+`/healthz` on the production API and emails the owner when it fails twice in a row.
+
+## BL-30
+
+**Staging and production can drift apart.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). Auth0 (two applications in one
+tenant, the Action, callback URLs) and Neon (two projects) are configured by hand for staging and
+for production, so a setting changed on one side is easy to forget on the other.
+
+**Done looks like:** a short checklist in the runbook that lists every hand-set value in both
+environments side by side, with a note to run it after any Auth0 or Neon change; or those
+settings moved into Terraform, whichever is cheaper.
+
+## BL-31
+
+**Nobody watches for free-tier term changes.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). Google gives 30 days' notice of a
+change to the free tier. The $1 budget alert is the backstop, but it only fires after money is
+spent.
+
+**Done looks like:** the owner is subscribed to the Cloud Run, Artifact Registry, Secret
+Manager and Firebase Hosting change notices (or a quarterly reminder to read the pricing pages
+exists), and the runbook says where the free-tier limits Spec 15 relies on are written down.
+
+## BL-32
+
+**A cold launch on weak Wi-Fi may be slow.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). A cold start of the production
+API (scale to zero) and the Auth0 round trip of a Home Screen cold launch (tokens are memory-only)
+add up. Each is a few seconds on a good connection and unmeasured on a weak one.
+
+**Done looks like:** the cold-launch time is measured on the phone over weak Wi-Fi and written
+down. If it is too slow, the options are decided from the numbers (a `min-instances 1` costs
+money; a warm-up request from the landing page costs none).
+
+## BL-33
+
+**Production shares the staging Auth0 tenant.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). Production has its own SPA
+application inside `dev-gncuqvfir0wv0t4l`, so users, connections and tenant settings are shared
+with staging, and a tenant-level mistake affects both.
+
+**Done looks like:** a separate production Auth0 tenant (own API, SPA application, M2M
+application, post-login Action), the production values in Secret Manager and the `production`
+GitHub Environment switched over, and the runbook updated. Users do not carry over; the owner
+signs up again.
+
+## BL-34
+
+**Production has no custom domain.**
+
+**Status: Open.** Deferred by the Spec 15 design (2026-10-23). The app lives at the `*.web.app`
+and `*.run.app` addresses. A domain costs about $10–15 a year and is the one accepted spend.
+
+**Done looks like:** a domain mapped to Firebase Hosting (web) and Cloud Run (API); the new
+origins added to the Auth0 production application (callback, logout, web origins), the API's
+`WEB_ORIGIN`, and the CSP `connect-src` together, with the parity test updated and runbook D4.d
+re-run.
