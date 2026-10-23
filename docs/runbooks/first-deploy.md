@@ -487,6 +487,21 @@ eligible sets.
 
    Then revert 10.5, then 09.3 if needed.
 
+### 0014 — workout section origin (Spec 09.4)
+
+1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.4; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (do not assume). Old code never reads or writes `added_in_workout`, so the migration safely precedes it.
+2. Merge 09.4 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `addedInWorkout` on every section, which the old API does not send — the session and History screens would fail to parse; accepted on staging, as in 0010 / 0011 / 0012 / 0013).
+3. Verify: `GET $BASE/v1/workouts/{id}` shows `addedInWorkout: false` on every section; `POST $BASE/v1/workouts/{id}/sections` on a scratch workout answers `201`; a `PATCH $BASE/v1/workout-exercises/{id}` with `sectionId` moves the exercise; `DELETE $BASE/v1/workout-sections/{id}` answers `204`. Consistency queries — expected `0` each (run the first immediately after deploy, before any test write):
+
+   ```sql
+   SELECT count(*) FROM workout_section WHERE added_in_workout;
+   SELECT count(*) FROM (SELECT workout_id FROM workout_section GROUP BY workout_id HAVING max(position) + 1 <> count(*)) t;
+   ```
+
+   No backfill, no `records:rebuild`.
+4. Spec 10.6 (the UI) may merge only after step 3 is clean.
+5. Rollback: revert the code commit; the column stays, inert. Old code ignores it: sections added in workouts remain (ordinary rows; the old UI draws them as sections and cannot edit them). If 10.6 is merged, revert it first. Nothing to convert: no data is hidden by a rollback.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

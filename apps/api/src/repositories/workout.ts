@@ -81,6 +81,8 @@ export interface WorkoutSectionRecord {
   position: number;
   name: string;
   notes: string | null;
+  /** Spec 09.4 — origin: created during the workout (true) or copied from the routine (false). */
+  addedInWorkout: boolean;
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
@@ -132,6 +134,8 @@ export interface UpdateWorkoutExerciseFields {
   notes?: string | null;
   /** Spec 09 D10. Key present with `null` clears the group. */
   supersetGroup?: number | null;
+  /** Spec 09.4. A section of the exercise's own workout, or `null` for loose; the server places it. Never with `position`. */
+  sectionId?: string | null;
 }
 
 /** One `set_entry` row (Spec 05.1 §4). `weightKg` / `distanceM` are the
@@ -322,13 +326,14 @@ export interface WorkoutRepository {
     fields: AddWorkoutExerciseFields,
   ): Promise<WithFinishedEdit<WorkoutExerciseRecord>>;
 
-  /** Reorder and/or edit notes / supersetGroup (§6.7), live or finished (Spec 07.4). Throws
-   * `NotFoundError` or `ValidationError` (422, out-of-range `position`). */
+  /** Reorder and/or edit notes / supersetGroup (§6.7), live or finished (Spec 07.4), or move it to another
+   * section (Spec 09.4 §6.3: placed by `insertIndexForSection`, leaves its superset unless the body sets one).
+   * Throws `NotFoundError` (incl. a section of another workout) or `ValidationError` (422, out-of-range `position`). */
   updateWorkoutExercise(
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }>;
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }>;
 
   /** Delete + close the position gap (§6.7), live or finished. Throws `NotFoundError`, or
    * `WorkoutWouldBeEmptyError` (409) when it would leave a finished workout with no sets (Spec 07.4). */
@@ -353,4 +358,28 @@ export interface WorkoutRepository {
   /** Spec 05.1 §6.4 + D10. Hard delete, no renumbering; live or finished (Spec 07.4). Throws
    * `NotFoundError`, or `WorkoutWouldBeEmptyError` (409) for a finished workout's last set. */
   deleteSet(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }>;
+
+  /** Spec 09.4 §6.4 — appends a section (`position` = the current count, `added_in_workout = true`), live or
+   * finished; recomputes nothing. Throws `NotFoundError` or `WorkoutSectionLimitError` (409). `sectionCount`
+   * is the count after the insert. */
+  addWorkoutSection(
+    actingUserId: string,
+    workoutId: string,
+    fields: { name: string; notes: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }>;
+
+  /** Spec 09.4 §6.4 — changes exactly the keys present; a body equal to the stored values writes nothing
+   * (`finishedEdit: null`). Throws `NotFoundError`. */
+  updateWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+    patch: { name?: string; notes?: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }>;
+
+  /** Spec 09.4 §6.4 — deletes the section (its exercises stay where they are, loose) and renumbers the later
+   * sections densely. `exerciseCount` is how many exercises were in it. Throws `NotFoundError`. */
+  removeWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+  ): Promise<{ workoutId: string; exerciseCount: number; finishedEdit: FinishedEdit | null }>;
 }

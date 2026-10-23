@@ -92,7 +92,7 @@ export interface WorkoutDetailOptions {
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
 export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetail {
   const id = opts.id ?? nextId();
-  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null }));
+  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null, addedInWorkout: false }));
   return WorkoutDetailSchema.parse({
     id,
     title: opts.title ?? null,

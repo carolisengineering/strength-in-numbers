@@ -73,6 +73,7 @@ describe("AC9 (amended by 07.4) — addWorkoutExercise on a finished workout", (
     stub.queueRows([w]);
     stub.queueRows([{ ended_at: w.ended_at }]); // FOR SHARE
     stub.queueRows([{ n: 1 }]);
+    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
     stub.queueRows([inserted(w.id)]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
     const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
@@ -91,6 +92,7 @@ describe("AC9 (amended by 07.4) — addWorkoutExercise on a finished workout", (
     stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // live FOR SHARE: now finished → restart
     stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // finished FOR SHARE
     stub.queueRows([{ n: 0 }]);
+    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
     stub.queueRows([inserted(w.id)]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
     const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
@@ -144,6 +146,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
     stub.queueRows([w]); // phase 1
     stub.queueRows([{ ended_at: null }]); // FOR SHARE re-check
     stub.queueRows([{ n: 2 }]); // count read: 2 existing rows -> append at position 2
+    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
     stub.queueRows([
       {
         id: uuidv7(),
@@ -170,7 +173,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
 });
 
 describe("AC13 — statement order: the advisory lock is the first statement other than SET CONSTRAINTS, the count read is later and separate", () => {
-  it("orders SET CONSTRAINTS, lock, FOR SHARE, count, insert", async () => {
+  it("orders SET CONSTRAINTS, lock, FOR SHARE, count, sections (Spec 09.4 C4), insert", async () => {
     const stub = new ScriptedPrisma();
     const w = workoutRow();
     const exerciseRepo = new FakeExerciseRepository();
@@ -179,6 +182,7 @@ describe("AC13 — statement order: the advisory lock is the first statement oth
     stub.queueRows([w]);
     stub.queueRows([{ ended_at: null }]);
     stub.queueRows([{ n: 0 }]);
+    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
     stub.queueRows([
       {
         id: uuidv7(),
@@ -204,6 +208,7 @@ describe("AC13 — statement order: the advisory lock is the first statement oth
     expect(txCalls[1]!.sql).toContain("pg_advisory_xact_lock");
     expect(txCalls[2]!.sql).toContain("FOR SHARE");
     expect(txCalls[3]!.sql).toContain("count(*)");
-    expect(txCalls[4]!.sql).toContain("INSERT INTO");
+    expect(txCalls[4]!.sql).toContain(`FROM "workout_section"`);
+    expect(txCalls[5]!.sql).toContain("INSERT INTO");
   });
 });

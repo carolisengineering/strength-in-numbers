@@ -226,6 +226,23 @@ describe("CORS (Criterion 15)", () => {
     expect(methods).toContain("POST");
   });
 
+  it.each([
+    ["POST", "/v1/workouts/00000000-0000-4000-8000-000000000001/sections"],
+    ["PATCH", "/v1/workout-sections/00000000-0000-4000-8000-000000000001"],
+    ["DELETE", "/v1/workout-sections/00000000-0000-4000-8000-000000000001"],
+  ])("09.4 AC20 — the preflight for %s %s allows the method", async (method, url) => {
+    const { app } = await buildTestApp();
+    const res = await app.inject({
+      method: "OPTIONS",
+      url,
+      headers: { origin: "http://localhost:5173", "access-control-request-method": method },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    const methods = String(res.headers["access-control-allow-methods"] ?? "").split(",").map((m) => m.trim());
+    expect(methods).toContain(method);
+  });
+
   it("a PUT preflight from an unlisted origin still gets no allow-origin header", async () => {
     const { app } = await buildTestApp();
     const res = await app.inject({

@@ -5,10 +5,14 @@ import {
   isWorkoutExerciseId,
   isSetEntryId,
   isWorkoutId,
+  insertIndexForSection,
+  isWorkoutSectionId,
   localDateFor,
+  sectionForNewExercise,
   normalizeSupersetGroups,
   ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
+  ROUTINE_SECTIONS_MAX,
   rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
   offsetMinutesForZone,
@@ -49,6 +53,7 @@ import {
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
+  WorkoutSectionLimitError,
   WorkoutWouldBeEmptyError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
@@ -534,7 +539,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       // Spec 09 §6.5 in miniature: 404 for an absent/foreign routine, 409 on a
       // retired item (nothing persisted), else copy every item in order.
       const routine = await this.routineRepository!.getById(actingUserId, fields.routineId);
-      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes }));
+      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false }));
       const wsByRoutineSection = new Map(routine.sections.map((s, j) => [s.id, sectionRecords[j]!.id]));
       routineNotes = routine.notes;
       for (const item of routine.items) {
@@ -782,9 +787,24 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     if (!exercise.isActive) throw new ExerciseRetiredError();
 
     const n = [...this.exercises.values()].filter((e) => e.workoutId === workoutId).length;
-    const position = fields.position ?? computeAppendPosition(n);
-    if (fields.position !== undefined) {
+    // Spec 09.4 §6.5 (C4), as the repository does.
+    let position = fields.position ?? computeAppendPosition(n);
+    let sectionId: string | null = null;
+    if (fields.position === undefined) {
+      const sections = this.sectionsByWorkout.get(workoutId)?.sections ?? [];
+      const target = sectionForNewExercise(sections);
+      if (target) {
+        sectionId = target.id;
+        const ranks = [...this.exercises.values()]
+          .filter((e) => e.workoutId === workoutId)
+          .sort((a, b) => a.position - b.position)
+          .map((e) => sections.find((x) => x.id === e.sectionId)?.position ?? -1);
+        position = insertIndexForSection(ranks, target.position);
+      }
+    } else {
       assertAddPositionInRange(fields.position, n);
+    }
+    if (position < n) {
       for (const e of this.exercises.values()) {
         if (e.workoutId === workoutId && e.position >= position) {
           this.exercises.set(e.id, { ...e, position: e.position + 1 });
@@ -809,7 +829,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       restSeconds: null,
       supersetGroup: null,
       plannedSets: [],
-      sectionId: null,
+      sectionId,
     };
     this.exercises.set(record.id, record);
     return { ...record, finishedEdit: FakeWorkoutRepository.edit(w) };
@@ -832,14 +852,29 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     actingUserId: string,
     id: string,
     patch: UpdateWorkoutExerciseFields,
-  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean }> {
+  ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }> {
     const { we, workout } = this.ownedExerciseOrThrow(actingUserId, id);
     const n = [...this.exercises.values()].filter((e) => e.workoutId === we.workoutId).length;
+    // Spec 09.4 §6.3: a changed section is placed by `insertIndexForSection`, as the repository does.
+    const nextSection = patch.sectionId === undefined ? we.sectionId : (patch.sectionId?.toLowerCase() ?? null);
+    const sectioned = nextSection !== we.sectionId;
+    let requested = patch.position;
+    if (sectioned) {
+      const sections = this.sectionsByWorkout.get(we.workoutId)?.sections ?? [];
+      const rankOf = (sectionId: string | null) => (sectionId === null ? -1 : sections.find((x) => x.id === sectionId)?.position);
+      const rank = rankOf(nextSection);
+      if (rank === undefined) throw new NotFoundError("workout section not found in this workout");
+      const others = [...this.exercises.values()]
+        .filter((e) => e.workoutId === we.workoutId && e.id !== id)
+        .sort((a, b) => a.position - b.position)
+        .map((e) => rankOf(e.sectionId) ?? -1);
+      requested = insertIndexForSection(others, rank);
+    }
     let nextPosition = we.position;
-    if (patch.position !== undefined && patch.position !== we.position) {
-      assertReorderPositionInRange(patch.position, n);
+    if (requested !== undefined && requested !== we.position) {
+      assertReorderPositionInRange(requested, n);
       const old = we.position;
-      nextPosition = patch.position;
+      nextPosition = requested;
       for (const e of this.exercises.values()) {
         if (e.workoutId !== we.workoutId || e.id === id) continue;
         if (nextPosition > old && e.position > old && e.position <= nextPosition) {
@@ -853,12 +888,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       ...we,
       position: nextPosition,
       notes: "notes" in patch ? patch.notes ?? null : we.notes,
-      supersetGroup: "supersetGroup" in patch ? (patch.supersetGroup ?? null) : we.supersetGroup,
+      supersetGroup: "supersetGroup" in patch ? (patch.supersetGroup ?? null) : sectioned ? null : we.supersetGroup,
+      sectionId: nextSection,
       updatedAt: new Date(we.updatedAt.getTime() + 1000),
     };
     this.exercises.set(id, updated);
-    const changed = nextPosition !== we.position || updated.notes !== we.notes || updated.supersetGroup !== we.supersetGroup;
-    return { ...updated, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null, moved: nextPosition !== we.position };
+    const changed = sectioned || nextPosition !== we.position || updated.notes !== we.notes || updated.supersetGroup !== we.supersetGroup;
+    const leftSuperset = sectioned && we.supersetGroup !== null && updated.supersetGroup === null;
+    return { ...updated, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null, moved: nextPosition !== we.position, sectioned, leftSuperset };
   }
 
   async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
@@ -947,6 +984,72 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   /** Spec 07.4 §6.6: `now`, kept inside a finished workout's span. */
   private static completedNow(workout: WorkoutRecord, now: Date): Date {
     return workout.endedAt === null ? now : clampInstantToSpan(now, workout.startedAt, workout.endedAt);
+  }
+
+  /** Spec 09.4 — the section and its workout, resolved through the workout's owner (404, never 403). */
+  private ownedSectionOrThrow(actingUserId: string, sectionId: string): { workout: WorkoutRecord; list: WorkoutSectionRecord[]; index: number } {
+    if (isWorkoutSectionId(sectionId)) {
+      for (const [workoutId, snap] of this.sectionsByWorkout) {
+        const index = snap.sections.findIndex((x) => x.id === sectionId);
+        const workout = this.workouts.get(workoutId);
+        if (index >= 0 && workout && workout.userId === actingUserId) return { workout, list: snap.sections, index };
+      }
+    }
+    throw new NotFoundError("workout section not found");
+  }
+
+  private sectionSnapshot(workoutId: string) {
+    let snap = this.sectionsByWorkout.get(workoutId);
+    if (!snap) {
+      snap = { routineNotes: null, sections: [] };
+      this.sectionsByWorkout.set(workoutId, snap);
+    }
+    return snap;
+  }
+
+  async addWorkoutSection(
+    actingUserId: string,
+    workoutId: string,
+    fields: { name: string; notes: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }> {
+    const workout = this.ownedWorkoutOrThrow(actingUserId, workoutId);
+    const snap = this.sectionSnapshot(workoutId);
+    if (snap.sections.length >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
+    const section: WorkoutSectionRecord = { id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true };
+    snap.sections = [...snap.sections, section];
+    return { ...section, workoutId, sectionCount: snap.sections.length, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async updateWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+    patch: { name?: string; notes?: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const next = { ...current, name: patch.name ?? current.name, notes: patch.notes === undefined ? current.notes : patch.notes };
+    const nameChanged = next.name !== current.name;
+    const notesChanged = next.notes !== current.notes;
+    list[index] = next;
+    const changed = nameChanged || notesChanged;
+    return { ...next, workoutId: workout.id, nameChanged, notesChanged, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null };
+  }
+
+  async removeWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+  ): Promise<{ workoutId: string; exerciseCount: number; finishedEdit: FinishedEdit | null }> {
+    const { workout } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const snap = this.sectionsByWorkout.get(workout.id)!;
+    snap.sections = snap.sections.filter((x) => x.id !== sectionId).map((x, position) => ({ ...x, position }));
+    let exerciseCount = 0;
+    for (const e of this.exercises.values()) {
+      if (e.sectionId === sectionId) {
+        exerciseCount++;
+        this.exercises.set(e.id, { ...e, sectionId: null });
+      }
+    }
+    return { workoutId: workout.id, exerciseCount, finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
 
   /** The fake does no PR work; a finished-mode write still reports itself (07.4 §9). */

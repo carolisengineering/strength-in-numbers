@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { WORKOUT_NOTES_MAX, WorkoutDetailSchema, WorkoutExerciseSchema, WorkoutSummarySchema } from "@sin/core";
+import { UpdatedWorkoutSchema, WORKOUT_NOTES_MAX, WorkoutDetailSchema, WorkoutExerciseSchema, WorkoutSectionSchema, WorkoutSummarySchema } from "@sin/core";
 import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeRoutineRepository, FakeWorkoutRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
@@ -71,8 +71,27 @@ describe("AC1 — the start response and a History list row are unchanged", () =
   });
 });
 
+describe("09.4 AC1 — key sets", () => {
+  it("WorkoutSection ends with addedInWorkout and the detail's sections carry exactly its keys", async () => {
+    const { detail } = await sectionedWorkout();
+    const keys = Object.keys(WorkoutSectionSchema.shape);
+    expect(keys.at(-1)).toBe("addedInWorkout");
+    for (const s of detail.sections) expect(Object.keys(s)).toEqual(keys);
+    expect(detail.sections.map((s: { addedInWorkout: boolean }) => s.addedInWorkout)).toEqual([false, false]);
+  });
+  it("a History row, the finish response and a WorkoutExercise keep exactly today's keys", async () => {
+    const { json, workoutId } = await sectionedWorkout();
+    const added = await json("POST", `/v1/workouts/${workoutId}/exercises`, { exerciseId: EX.id });
+    expect(Object.keys(added.json()).sort()).toEqual(Object.keys(WorkoutExerciseSchema.shape).sort());
+    const finished = await json("PATCH", `/v1/workouts/${workoutId}`, { endedAt: ENDED_AT });
+    expect(Object.keys(finished.json()).sort()).toEqual(Object.keys(UpdatedWorkoutSchema.shape).sort());
+    const list = (await json("GET", "/v1/workouts")).json();
+    expect(Object.keys(list.items[0]).sort()).toEqual(Object.keys(WorkoutSummarySchema.shape).sort());
+  });
+});
+
 describe("AC17 — running-workout writes never touch sections", () => {
-  it("add is loose; reorder and regroup keep section_id; sectionId is an unknown key (422); remove leaves the sections", async () => {
+  it("add is loose; reorder and regroup keep section_id; sectionId moves it (amended by 09.4 AC11, was 422); remove leaves the sections", async () => {
     const { json, detail, workoutId } = await sectionedWorkout();
     const [first, second, third] = detail.exercises as { id: string; sectionId: string | null }[];
     const added = await json("POST", `/v1/workouts/${workoutId}/exercises`, { exerciseId: EX.id });
@@ -82,9 +101,9 @@ describe("AC17 — running-workout writes never touch sections", () => {
     expect(moved.json().sectionId).toBe(third!.sectionId);
     const grouped = await json("PATCH", `/v1/workout-exercises/${second!.id}`, { supersetGroup: 5 });
     expect(grouped.json().sectionId).toBe(second!.sectionId);
-    const bad = await json("PATCH", `/v1/workout-exercises/${first!.id}`, { sectionId: second!.sectionId });
-    expect(bad.statusCode).toBe(422);
-    expect(bad.json().type).toMatch(/validation-error$/);
+    const sectioned = await json("PATCH", `/v1/workout-exercises/${first!.id}`, { sectionId: second!.sectionId });
+    expect(sectioned.statusCode).toBe(200);
+    expect(sectioned.json().sectionId).toBe(second!.sectionId);
     const del = await json("DELETE", `/v1/workout-exercises/${second!.id}`);
     expect(del.statusCode).toBe(204);
     const after = (await json("GET", `/v1/workouts/${workoutId}`)).json();

@@ -15,6 +15,7 @@ import { registerReferenceRoutes } from "./reference.js";
 import { registerRoutineRoutes } from "./routines.js";
 import { registerSetRoutes } from "./sets.js";
 import { registerWorkoutRoutes } from "./workouts.js";
+import { registerWorkoutSectionRoutes } from "./workout-sections.js";
 
 export interface V1RouteDeps {
   userRepository: UserRepository;
@@ -38,6 +39,7 @@ export function registerV1Routes(
   registerExerciseRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerReferenceRoutes(app, { exerciseRepository: deps.exerciseRepository });
   registerWorkoutRoutes(app, { workoutRepository: deps.workoutRepository });
+  registerWorkoutSectionRoutes(app, { workoutRepository: deps.workoutRepository });
   registerRoutineRoutes(app, { routineRepository: deps.routineRepository });
   registerSetRoutes(app, { workoutRepository: deps.workoutRepository });
   registerPersonalRecordRoutes(app, { personalRecordRepository: deps.personalRecordRepository });

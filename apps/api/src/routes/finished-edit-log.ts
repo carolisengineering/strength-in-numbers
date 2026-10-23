@@ -13,7 +13,12 @@ export type FinishedEditKind =
   | "exercise_moved"
   | "exercise_regrouped"
   | "exercise_noted"
-  | "details_changed";
+  | "details_changed"
+  // Spec 09.4 §9 — a workout's own sections, and an exercise moved between them.
+  | "section_added"
+  | "section_changed"
+  | "section_removed"
+  | "exercise_sectioned";
 
 /** `workout_edited`, after commit, iff the write ran in finished mode. */
 export function logFinishedEdit(log: FastifyBaseLogger, userId: string, edit: FinishedEditKind, finishedEdit: FinishedEdit | null): void {
@@ -49,8 +54,9 @@ export function logRetimed(log: FastifyBaseLogger, userId: string, workoutId: st
   );
 }
 
-/** §9: a `PATCH /workout-exercises/{id}` is classified by the first of: moved, regrouped, noted. */
-export function exerciseEditKind(moved: boolean, body: { supersetGroup?: unknown }): FinishedEditKind {
+/** §9: a `PATCH /workout-exercises/{id}` is classified by the first of: sectioned (Spec 09.4 D12), moved, regrouped, noted. */
+export function exerciseEditKind(moved: boolean, body: { supersetGroup?: unknown }, sectioned: boolean): FinishedEditKind {
+  if (sectioned) return "exercise_sectioned";
   if (moved) return "exercise_moved";
   return "supersetGroup" in body ? "exercise_regrouped" : "exercise_noted";
 }

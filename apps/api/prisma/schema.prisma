@@ -329,6 +329,8 @@ model WorkoutSection {
   position  Int               @db.SmallInt
   name      String
   notes     String?
+  /// Spec 09.4 — origin: true iff created by POST /v1/workouts/{id}/sections (copied from the routine = false).
+  addedInWorkout Boolean    @default(false) @map("added_in_workout")
   createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises WorkoutExercise[]

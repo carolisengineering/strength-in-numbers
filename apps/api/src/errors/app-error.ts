@@ -313,6 +313,18 @@ export class RoutineLimitError extends AppError {
   }
 }
 
+/** Spec 09.4 AC5 — the workout already has ROUTINE_SECTIONS_MAX sections. */
+export class WorkoutSectionLimitError extends AppError {
+  readonly status = 409;
+  readonly slug = "workout-section-limit";
+  readonly title = "Workout section limit reached";
+  readonly publicDetail = "A workout can have at most 8 sections.";
+
+  constructor(internal = "per-workout section cap exceeded") {
+    super(internal);
+  }
+}
+
 export type RateLimitLayer = "ip" | "ip-docs" | "user-rate" | "user-inflight" | "user-export";
 
 /** Spec 05.2 §5 — which limit fired. Internal only: logged, never rendered. */

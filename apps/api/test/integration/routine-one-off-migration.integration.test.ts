@@ -1,7 +1,5 @@
-// Spec 09.3 AC26 / AC27 — migration 0013 (routine.one_off_until), real Postgres. Owns the whole-schema
-// `prisma migrate diff` no-drift check (moved here from workout-planned-duration-migration, CLAUDE.md).
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+// Spec 09.3 AC26 — migration 0013 (routine.one_off_until), real Postgres. The whole-schema
+// `prisma migrate diff` no-drift check (09.3 AC27) moved to workout-sections-migration with 0014 (CLAUDE.md).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
@@ -55,21 +53,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — migration 0013 (real Pos
     await checkViolation(set("created_at - interval '1 second'"));
     await set("created_at + interval '1 second'");
     await set("NULL");
-  });
-
-  it("09.3 AC27 — prisma migrate diff reports no difference beyond the two generated set_entry columns", () => {
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2);
-    const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });
