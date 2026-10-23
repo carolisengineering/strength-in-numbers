@@ -80,9 +80,11 @@ function EditForm({
 }: Omit<SetEditSheetProps, "adding"> & { set: SetEntry }) {
   const update = useUpdateSet();
   const del = useDeleteSet();
-  const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
-    draftFromSet(set, unitDefaultsFor(unitPreference), "edit"),
-  );
+  // `draftFromSet` drafts a *new* set as working; an edit keeps the stored type (#129: a warm-up stays a warm-up).
+  const [draft, dispatch] = useReducer(reduceDraft, undefined, () => ({
+    ...draftFromSet(set, unitDefaultsFor(unitPreference), "edit"),
+    setType: set.setType,
+  }));
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
