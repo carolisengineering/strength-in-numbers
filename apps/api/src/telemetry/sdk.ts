@@ -98,6 +98,12 @@ const pathOf = (url: string | undefined): string => {
 /** AC4: both instrumentations skip the health paths, compared without the query string (#122). */
 export const isIgnoredUrl = (url: string | undefined): boolean => IGNORED_PATHS.has(pathOf(url));
 
+/** The two instrumentations' ignore hooks, exported so a test can call each one (#122). */
+export const IGNORE_HOOKS = {
+  http: (req: { url?: string }): boolean => isIgnoredUrl(req.url),
+  fastify: (opts: { url: string }): boolean => isIgnoredUrl(opts.url),
+} as const;
+
 export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps): TelemetryHandle | undefined {
   if (!config.enabled && !deps.spanExporter && !deps.metricReader) return undefined;
 
@@ -164,12 +170,12 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
     meterProvider,
     instrumentations: [
       new HttpInstrumentation({
-        ignoreIncomingRequestHook: (req) => isIgnoredUrl(req.url),
+        ignoreIncomingRequestHook: IGNORE_HOOKS.http,
         disableOutgoingRequestInstrumentation: true, // JWKS fetches are noise (§6.2)
       }),
       new FastifyOtelInstrumentation({
         registerOnInitialization: true,
-        ignorePaths: (opts: { url: string }) => isIgnoredUrl(opts.url),
+        ignorePaths: IGNORE_HOOKS.fastify,
       }),
       new PrismaInstrumentation({
         ignoreSpanTypes: ["prisma:client:serialize", "prisma:engine:serialize", "prisma:engine:response_json_serialization"],

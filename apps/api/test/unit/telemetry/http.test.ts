@@ -69,9 +69,13 @@ describe("AC4 — health paths are not measured or traced", () => {
   });
 
   it("#122 — a query string does not take a health path out of the ignore list", async () => {
-    const { isIgnoredUrl } = await import("../../../src/telemetry/sdk.js");
+    const { IGNORE_HOOKS, isIgnoredUrl } = await import("../../../src/telemetry/sdk.js");
     expect(["/healthz?probe=1", "/readyz?x", "/metrics?", "/healthz"].map(isIgnoredUrl)).toEqual([true, true, true, true]);
     expect(["/v1/me?healthz", "/healthzx", undefined].map(isIgnoredUrl)).toEqual([false, false, false]);
+    // Each hook on its own: the HTTP hook already stripped the query, so the end-to-end check below cannot see the Fastify one.
+    expect(IGNORE_HOOKS.fastify({ url: "/healthz?probe=1" })).toBe(true);
+    expect(IGNORE_HOOKS.http({ url: "/healthz?probe=1" })).toBe(true);
+    expect(IGNORE_HOOKS.fastify({ url: "/v1/me?healthz" })).toBe(false);
     const before = JSON.stringify(await durationPoints());
     await fetch(`${base}/healthz?probe=1`);
     expect(JSON.stringify(await durationPoints())).toBe(before);
