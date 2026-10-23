@@ -7,6 +7,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
+  InternalError,
   NotFoundError,
   SyncTokenExpiredError,
   ValidationError,
@@ -333,7 +334,9 @@ export function createExerciseRepository(
         // note) — re-derive the correct 404/409 rather than assume one.
         const recheck = toRecord(await loadVisibleRow(actingUserId, id));
         if (!recheck.isActive) throw new ExerciseRetiredError();
-        throw new ExerciseImmutableUseForkError();
+        // #24: ownership cannot change under a caller, so a row that is still owned and
+        // active here means an invariant broke — surface it as one, not as "use fork".
+        throw new InternalError("updateExercise: the gated UPDATE matched no row for an owned, active exercise");
       }
       return toRecord(updated);
     },
