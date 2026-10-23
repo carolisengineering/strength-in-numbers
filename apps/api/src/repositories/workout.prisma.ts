@@ -1,6 +1,14 @@
 // apps/api/src/repositories/workout.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { insertIndexForSection, isWorkoutExerciseId, isWorkoutId, isWorkoutSectionId, localDateFor, offsetMinutesForZone } from "@sin/core";
+import {
+  insertIndexForSection,
+  isWorkoutExerciseId,
+  isWorkoutId,
+  isWorkoutSectionId,
+  localDateFor,
+  offsetMinutesForZone,
+  sectionForNewExercise,
+} from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   ExerciseRetiredError,
@@ -773,9 +781,22 @@ export function createWorkoutRepository(
         `;
         const n = countRows[0]!.n;
 
-        const position = fields.position ?? computeAppendPosition(n);
-        if (fields.position !== undefined) {
+        // Spec 09.4 §6.5 (C4): with no `position`, the add joins the last section iff it was added in the workout.
+        let sectionId: string | null = null;
+        let position = fields.position ?? computeAppendPosition(n);
+        if (fields.position === undefined) {
+          const sections = await tx.$queryRaw<{ id: string; position: number; added_in_workout: boolean }[]>`
+            SELECT id::text, position, added_in_workout FROM "workout_section" WHERE workout_id = ${workoutId}::uuid
+          `;
+          const target = sectionForNewExercise(sections.map((s) => ({ id: s.id, position: s.position, addedInWorkout: s.added_in_workout })));
+          if (target) {
+            sectionId = target.id;
+            position = insertIndexForSection(await exerciseRanks(tx, workoutId, null), target.position);
+          }
+        } else {
           assertAddPositionInRange(fields.position, n);
+        }
+        if (position < n) {
           await tx.$executeRaw`
             UPDATE "workout_exercise" SET position = position + 1
             WHERE workout_id = ${workoutId}::uuid AND position >= ${position}
@@ -786,10 +807,10 @@ export function createWorkoutRepository(
         const insertedRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`
           INSERT INTO "workout_exercise"
             (id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at)
+             modality_snapshot, notes, section_id, created_at, updated_at)
           VALUES
             (${id}::uuid, ${workoutId}::uuid, ${position}, ${exercise.id}::uuid,
-             ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, now(), now())
+             ${exercise.name}, ${exercise.modality}, ${fields.notes ?? null}, ${sectionId}::uuid, now(), now())
           RETURNING id, workout_id, position, exercise_id, exercise_name_snapshot,
                     modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
                     '[]'::json AS planned_sets

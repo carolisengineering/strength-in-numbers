@@ -8,6 +8,7 @@ import {
   insertIndexForSection,
   isWorkoutSectionId,
   localDateFor,
+  sectionForNewExercise,
   normalizeSupersetGroups,
   ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
@@ -786,9 +787,24 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     if (!exercise.isActive) throw new ExerciseRetiredError();
 
     const n = [...this.exercises.values()].filter((e) => e.workoutId === workoutId).length;
-    const position = fields.position ?? computeAppendPosition(n);
-    if (fields.position !== undefined) {
+    // Spec 09.4 §6.5 (C4), as the repository does.
+    let position = fields.position ?? computeAppendPosition(n);
+    let sectionId: string | null = null;
+    if (fields.position === undefined) {
+      const sections = this.sectionsByWorkout.get(workoutId)?.sections ?? [];
+      const target = sectionForNewExercise(sections);
+      if (target) {
+        sectionId = target.id;
+        const ranks = [...this.exercises.values()]
+          .filter((e) => e.workoutId === workoutId)
+          .sort((a, b) => a.position - b.position)
+          .map((e) => sections.find((x) => x.id === e.sectionId)?.position ?? -1);
+        position = insertIndexForSection(ranks, target.position);
+      }
+    } else {
       assertAddPositionInRange(fields.position, n);
+    }
+    if (position < n) {
       for (const e of this.exercises.values()) {
         if (e.workoutId === workoutId && e.position >= position) {
           this.exercises.set(e.id, { ...e, position: e.position + 1 });
@@ -813,7 +829,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       restSeconds: null,
       supersetGroup: null,
       plannedSets: [],
-      sectionId: null,
+      sectionId,
     };
     this.exercises.set(record.id, record);
     return { ...record, finishedEdit: FakeWorkoutRepository.edit(w) };

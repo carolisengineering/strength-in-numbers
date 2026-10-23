@@ -245,6 +245,7 @@ export function registerWorkoutRoutes(app: FastifyInstance, deps: WorkoutRouteDe
           exercise_id: created.exerciseId,
           user_id: actingUserId,
           position: created.position,
+          in_section: created.sectionId !== null,
         },
         "workout_exercise_added",
       );

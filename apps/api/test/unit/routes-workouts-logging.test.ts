@@ -155,6 +155,21 @@ describe("AC18 — the four business log lines, no free text", () => {
     });
   });
 
+  it("09.4 AC21 — workout_exercise_added carries in_section: false with no added section, true once one is added", async () => {
+    const { logger, lines } = capturingLogger();
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ modality: "weight_reps", isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    const { app } = await buildTestApp({ logger, workoutRepository: new FakeWorkoutRepository(exerciseRepo) });
+    const call = (url: string, payload: object) => app.inject({ method: "POST", url, headers: BEARER, payload });
+    const workoutId = (await call("/v1/workouts", { clientGeneratedId: uuidv7(), startedAt: STARTED_AT })).json().id;
+    const loose = await call(`/v1/workouts/${workoutId}/exercises`, { exerciseId: exercise.id });
+    const sectionId = (await call(`/v1/workouts/${workoutId}/sections`, { name: "Warm-up" })).json().id;
+    const joined = await call(`/v1/workouts/${workoutId}/exercises`, { exerciseId: exercise.id });
+    expect([loose.json().sectionId, joined.json().sectionId]).toEqual([null, sectionId]);
+    expect(lines.filter((l) => l.msg === "workout_exercise_added").map((l) => l.in_section)).toEqual([false, true]);
+  });
+
   it("no captured line, and no 422 problem+json detail, contains the request's title or notes text", async () => {
     const { logger, lines } = capturingLogger();
     const { app } = await buildTestApp({ logger });
