@@ -31,8 +31,6 @@ describe.skipIf(!shouldRunIntegration())(
       await db.prisma.$executeRawUnsafe('TRUNCATE "exercise", "user" CASCADE');
     });
 
-    /** Minimal raw insert — only the NOT NULL columns without a default. */
-
     describe("AC1 — migration creates the catalog schema", () => {
       it("creates exercise / muscle_group / equipment alongside 0001's user", async () => {
         const rows = await db.prisma.$queryRawUnsafe<{ table_name: string }[]>(
