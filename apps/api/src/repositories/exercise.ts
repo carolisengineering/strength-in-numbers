@@ -97,12 +97,12 @@ export interface ExerciseRepository {
 
   /**
    * Updates the caller's own custom row in place (Spec 03.2 §6). The
-   * ownership/global/retired checks run ahead of the write; the actual `UPDATE`
+   * retired and ownership checks run ahead of the write, retired first (#25); the actual `UPDATE`
    * additionally gates its own `WHERE` clause on `owner_user_id` + `is_active`
    * so a same-user race against a concurrent `DELETE` can never silently apply
    * an edit to a row that just became retired. Throws `NotFoundError` (not
-   * visible), `ExerciseImmutableUseForkError` (target is global),
-   * `ExerciseRetiredError` (target already soft-deleted), or `ValidationError`
+   * visible), `ExerciseRetiredError` (target soft-deleted or retired, whoever owns it),
+   * `ExerciseImmutableUseForkError` (target is an active global row), or `ValidationError`
    * (merged result fails the cross-field check).
    */
   updateExercise(

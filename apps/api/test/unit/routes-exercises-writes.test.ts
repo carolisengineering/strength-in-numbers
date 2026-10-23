@@ -676,10 +676,16 @@ describe("#26 — PATCH / fork / DELETE at the route boundary (Spec 03.2 AC4–A
   });
 
   it("AC5 / #25 — PATCH on a retired global row → 409 exercise-retired, not use-fork (fork would refuse it too)", async () => {
-    const app = await appWith(row({ ownerUserId: null, isActive: false }));
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(ROW_ID, row({ ownerUserId: null, isActive: false }));
+    const userRepo = new FakeUserRepository();
+    userRepo.seed(caller);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo, userRepository: userRepo });
     const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { name: "New" } });
     expect(res.statusCode).toBe(409);
     expect(res.json().type).toContain("exercise-retired");
+    expect(exerciseRepo.byId.get(ROW_ID)).toMatchObject({ ownerUserId: null, isActive: false });
+    expect(exerciseRepo.byId.get(ROW_ID)!.name).not.toBe("New");
   });
 
   it("AC5 — PATCH on an active global row is still 409 exercise-immutable-use-fork", async () => {
