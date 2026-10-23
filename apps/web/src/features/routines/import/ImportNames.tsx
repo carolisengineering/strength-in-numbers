@@ -145,7 +145,7 @@ function NamesBody() {
           if (key === null) return;
           // Picking the exercise the card already matched selects the match rather than listing it twice (DM-26).
           session.updateCard(key, (c) =>
-            c.match?.exerciseId === exercise.id ? { ...c, selected: "match" } : { ...c, pickedId: exercise.id, selected: "picked" },
+            c.match?.exerciseId === exercise.id ? { ...c, pickedId: null, selected: "match" } : { ...c, pickedId: exercise.id, selected: "picked" },
           );
           focusAfterPick.current = key;
           setPickerFor(null);
