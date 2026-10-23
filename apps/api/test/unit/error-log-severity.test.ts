@@ -31,7 +31,7 @@ describe("#27 / BL-5 — a client error logs at info; error is for server faults
     ["409 exercise-retired", new ExerciseRetiredError(), 409, "exercise-retired"],
     ["409 exercise-immutable-use-fork", new ExerciseImmutableUseForkError(), 409, "exercise-immutable-use-fork"],
     ["422 validation-error", new ValidationError([{ path: "name", message: "required" }]), 422, "validation-error"],
-    ["401 invalid-token", new InvalidTokenError(), 401, "invalid-token"],
+    ["401 invalid-token", new InvalidTokenError("signature check failed"), 401, "invalid-token"],
     ["400 bad-request", new BadRequestError(), 400, "bad-request"],
   ])("%s → one info 'request rejected' line with slug and status, no error line", async (_label, err, status, slug) => {
     const lines: Record<string, unknown>[] = [];
