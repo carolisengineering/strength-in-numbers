@@ -11,9 +11,9 @@ Numbering is append-only — never renumber an existing BL.
 | ID | Area | Summary | Severity | Found |
 |----|------|---------|----------|-------|
 | [BL-1](#bl-1) | Catalog sync | **Resolved (Spec 03.3)** — a newly created/forked row could be permanently skipped by an `updated_since` delta | Medium | 2026-09-17 |
-| [BL-2](#bl-2) | Catalog writes | `updateExercise`'s zero-row fallback reports a misleading 409 on an invariant break | Minor | 2026-09-17 |
+| [BL-2](#bl-2) | Catalog writes | **Resolved (2026-10-22, #24)** — `updateExercise`'s zero-row fallback reports a misleading 409 on an invariant break | Minor | 2026-09-17 |
 | [BL-3](#bl-3) | Catalog writes | `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
-| [BL-4](#bl-4) | Testing | Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
+| [BL-4](#bl-4) | Testing | **Resolved (2026-10-22, #26)** — Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
 | [BL-5](#bl-5) | Observability | **Resolved (2026-10-22, #27)** — Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | **Resolved (2026-09-28, #28)** — `openapi.json` documented only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
 | [BL-7](#bl-7) | API contract | **Resolved (2026-09-24)** — `@fastify/swagger` forced `requestBody.required: true`, misdescribing the optional `/fork` overlay | Minor | 2026-09-17 |
@@ -79,6 +79,10 @@ currently stated too strongly.
 
 ## BL-2
 
+**Status: Resolved (2026-10-22, GitHub #24).** When the gated `UPDATE` matches no row and the
+re-read row is still owned and active, `updateExercise` now throws `InternalError` (500). A
+row retired in between is still `409 exercise-retired`. The text below is the original report.
+
 **`updateExercise`'s zero-row fallback reports a misleading 409.**
 
 In `updateExercise` (`apps/api/src/repositories/exercise.prisma.ts`), when the
@@ -109,6 +113,10 @@ documented behavior.
 
 ## BL-4
 
+**Status: Resolved (2026-10-22, GitHub #26).** `apps/api/test/unit/routes-exercises-writes.test.ts`
+has an `inject` test for each case below, and the fake exercise repository now hides other
+users' rows the way the real query does. The text below is the original report.
+
 **Route-level test coverage is thinner than repository-level for several 03.2 cases.**
 
 Spec 03.2 §10 describes these acceptance criteria in terms of `fastify.inject`,
@@ -133,7 +141,7 @@ any error whose problem status is below 500 logs at `info` as `request rejected`
 (`request error`) is kept for 5xx. The two dedicated `warn` lines (sync token
 expired, rate limited) are unchanged. Spec 03.2 §9's rejection counters were not
 added: a new metric goes through the Spec 13.0 telemetry allowlist, so it is its
-own change.
+own change, tracked as [BL-26](#bl-26). The text below is the original report.
 
 **Routine 4xx on the catalog write endpoints log at `error` severity.**
 
@@ -623,3 +631,18 @@ Interim proxy: `prisma:engine:connection` span durations in traces.
 **Done looks like:** once the API uses a Prisma driver adapter (or Prisma 7), `pg.Pool`
 observable gauges for busy (`totalCount − idleCount`) and waiting (`waitingCount`)
 connections, with a View allowlist entry and a dashboard panel.
+
+## BL-26
+
+**No counters for rejected catalog writes.**
+
+**Status: Open.** Split off BL-5 on 2026-10-22 (#27). Spec 03.2 §9 wanted rejection counters
+(limit reached, retired, immutable) on the catalog write endpoints. BL-5 fixed only the log
+severity: a 4xx now logs at `info` as `request rejected` with its `slug`. The counters did not
+come with it, because a new metric and its attributes go through the Spec 13.0 telemetry
+allowlist (`telemetry/allowlist.ts`, `telemetry/views.ts`) with a test. Until then, the
+`request rejected` lines are the only way to count them.
+
+**Done looks like:** a counter of rejected writes with `slug` as its only attribute (from the
+fixed set of problem slugs, never user input), added to the allowlist with its test, and a
+Grafana panel if one is wanted.
