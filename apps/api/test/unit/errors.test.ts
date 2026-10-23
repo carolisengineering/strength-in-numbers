@@ -17,6 +17,7 @@ import {
   SyncTokenExpiredError,
   RoutineNameTakenError,
   RoutineLimitError,
+  WorkoutSectionLimitError,
 } from "../../src/errors/app-error.js";
 import { toProblem, PROBLEM_BASE_URL } from "../../src/errors/problem.js";
 
@@ -45,6 +46,7 @@ describe("AppError hierarchy", () => {
       [new SyncTokenExpiredError(), 410, "sync-token-expired"],
       [new RoutineNameTakenError(), 409, "routine-name-taken"],
       [new RoutineLimitError(), 409, "routine-limit"],
+      [new WorkoutSectionLimitError(), 409, "workout-section-limit"],
     ];
     for (const [err, status, slug] of cases) {
       expect(err, slug).toBeInstanceOf(AppError);

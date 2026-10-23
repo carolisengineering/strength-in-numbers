@@ -37,6 +37,7 @@ import {
   retimeOutcome,
 } from "./workout-writes.js";
 import { calendarFor, clampSetTimes, shiftSetTimes } from "./workout-retime.prisma.js";
+import { workoutSectionMethods } from "./workout-section.prisma.js";
 import {
   assertWorkingSetsComplete,
   assertWouldNotEmpty,
@@ -459,6 +460,8 @@ export function createWorkoutRepository(
 
   return {
     ...createSetEntryMethods(prisma),
+    // Spec 09.4: a workout's own section writes live in their own module.
+    ...workoutSectionMethods(prisma),
     // Spec 07.1 (D9): the history list's read-only queries live in their own module.
     listFinishedWorkouts: (actingUserId, opts) => listFinishedWorkoutsQuery(prisma, actingUserId, opts),
     async createWorkout(

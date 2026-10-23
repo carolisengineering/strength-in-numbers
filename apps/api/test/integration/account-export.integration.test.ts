@@ -5,6 +5,7 @@ import { createRoutineRepository } from "../../src/repositories/routine.prisma.j
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
+import { addWorkoutSection } from "./section-helpers.js";
 import { bearer, makeAccountApp, TRUNCATE_ACCOUNTS } from "./account-helpers.js";
 
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000);
@@ -55,6 +56,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
       payload: { clientGeneratedId: crypto.randomUUID(), startedAt: new Date().toISOString(), routineId: routine.id },
     });
     expect(started.statusCode).toBe(201);
+    // Spec 09.4 AC19 — a section added during the workout travels through the same aggregate.
+    await addWorkoutSection(db, started.json().id as string, 1, "Finisher", "EMOM 10 min");
     return { id, global, custom, routine, w1, activeId: started.json().id as string };
   }
 
@@ -104,7 +107,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     expect(routine.items.every((i) => i.sectionId === routine.sections[0]!.id)).toBe(true);
     const active = body.workouts.find((w) => w.id === s.activeId)!;
     expect(active.routineNotes).toBe("Routine note\r\nsecond line");
-    expect(active.sections.map((x) => [x.name, x.notes])).toEqual([["Main", "Heavy singles"]]);
+    // 09.4 AC19: the fixture also holds a section added during the workout.
+    expect(active.sections.map((x) => [x.name, x.notes, x.addedInWorkout])).toEqual([["Main", "Heavy singles", false], ["Finisher", "EMOM 10 min", true]]);
     expect(active.exercises.every((e) => e.sectionId === active.sections[0]!.id)).toBe(true);
     const read = await app.inject({ method: "GET", url: `/v1/workouts/${s.activeId}`, headers: bearer("exp-a") });
     expect(active).toEqual(read.json()); // Spec 11 AC6 parity, with section rows present

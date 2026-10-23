@@ -5,10 +5,12 @@ import {
   isWorkoutExerciseId,
   isSetEntryId,
   isWorkoutId,
+  isWorkoutSectionId,
   localDateFor,
   normalizeSupersetGroups,
   ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
+  ROUTINE_SECTIONS_MAX,
   rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
   offsetMinutesForZone,
@@ -49,6 +51,7 @@ import {
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
+  WorkoutSectionLimitError,
   WorkoutWouldBeEmptyError,
 } from "../../src/errors/app-error.js";
 import { assertMergedFieldsValid, mergeWritableFields } from "../../src/repositories/exercise-writes.js";
@@ -950,6 +953,72 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   }
 
   /** The fake does no PR work; a finished-mode write still reports itself (07.4 §9). */
+  /** Spec 09.4 — the section and its workout, resolved through the workout's owner (404, never 403). */
+  private ownedSectionOrThrow(actingUserId: string, sectionId: string): { workout: WorkoutRecord; list: WorkoutSectionRecord[]; index: number } {
+    if (isWorkoutSectionId(sectionId)) {
+      for (const [workoutId, snap] of this.sectionsByWorkout) {
+        const index = snap.sections.findIndex((x) => x.id === sectionId);
+        const workout = this.workouts.get(workoutId);
+        if (index >= 0 && workout && workout.userId === actingUserId) return { workout, list: snap.sections, index };
+      }
+    }
+    throw new NotFoundError("workout section not found");
+  }
+
+  private sectionSnapshot(workoutId: string) {
+    let snap = this.sectionsByWorkout.get(workoutId);
+    if (!snap) {
+      snap = { routineNotes: null, sections: [] };
+      this.sectionsByWorkout.set(workoutId, snap);
+    }
+    return snap;
+  }
+
+  async addWorkoutSection(
+    actingUserId: string,
+    workoutId: string,
+    fields: { name: string; notes: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }> {
+    const workout = this.ownedWorkoutOrThrow(actingUserId, workoutId);
+    const snap = this.sectionSnapshot(workoutId);
+    if (snap.sections.length >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
+    const section: WorkoutSectionRecord = { id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true };
+    snap.sections = [...snap.sections, section];
+    return { ...section, workoutId, sectionCount: snap.sections.length, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async updateWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+    patch: { name?: string; notes?: string | null },
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const next = { ...current, name: patch.name ?? current.name, notes: patch.notes === undefined ? current.notes : patch.notes };
+    const nameChanged = next.name !== current.name;
+    const notesChanged = next.notes !== current.notes;
+    list[index] = next;
+    const changed = nameChanged || notesChanged;
+    return { ...next, workoutId: workout.id, nameChanged, notesChanged, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null };
+  }
+
+  async removeWorkoutSection(
+    actingUserId: string,
+    sectionId: string,
+  ): Promise<{ workoutId: string; exerciseCount: number; finishedEdit: FinishedEdit | null }> {
+    const { workout } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const snap = this.sectionsByWorkout.get(workout.id)!;
+    snap.sections = snap.sections.filter((x) => x.id !== sectionId).map((x, position) => ({ ...x, position }));
+    let exerciseCount = 0;
+    for (const e of this.exercises.values()) {
+      if (e.sectionId === sectionId) {
+        exerciseCount++;
+        this.exercises.set(e.id, { ...e, sectionId: null });
+      }
+    }
+    return { workoutId: workout.id, exerciseCount, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
   private static edit(workout: WorkoutRecord): FinishedEdit | null {
     return workout.endedAt === null ? null : { workoutId: workout.id, recordsRecomputed: false, rootCount: 0, recomputeMs: 0 };
   }
