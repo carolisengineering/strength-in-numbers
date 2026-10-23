@@ -42,4 +42,11 @@ describe("18.0 AC53 / AC54 — details rules", () => {
     expect(buildPatch(initial, { ...initial, title: "" })).toEqual({ title: null });
     expect(buildPatch(initial, { title: "Heavy day", notes: "two\nlines" })).toEqual({ notes: "two\nlines" });
   });
+
+  it("DM-3 — a whitespace-only edit is no change: the saved value would be the same, so no request", () => {
+    const initial = { title: "Heavy day", notes: "n" };
+    expect(buildPatch(initial, { title: "Heavy day ", notes: " n\n" })).toBeNull();
+    expect(buildPatch({ title: "", notes: "" }, { title: "   ", notes: "\n" })).toBeNull();
+    expect(buildPatch(initial, { ...initial, title: " Heavy  day" })).toEqual({ title: "Heavy  day" });
+  });
 });

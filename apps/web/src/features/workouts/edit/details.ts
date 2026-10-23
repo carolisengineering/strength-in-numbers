@@ -36,10 +36,13 @@ export function validate(field: DetailsField, text: string): string | null {
   return EDIT_COPY.details.other;
 }
 
-/** Only the fields whose text changed, each normalized; `null` when nothing changed (no request). */
+/**
+ * Only the fields whose normalized text changed, each normalized; `null` when nothing changed (no request). Compared
+ * after `normalize`, so a trailing space alone is no edit (DM-3): it would save the same value.
+ */
 export function buildPatch(initial: DetailsForm, form: DetailsForm): WorkoutUpdate | null {
   const patch: { title?: string | null; notes?: string | null } = {};
-  if (form.title !== initial.title) patch.title = normalize(form.title);
-  if (form.notes !== initial.notes) patch.notes = normalize(form.notes);
+  if (normalize(form.title) !== normalize(initial.title)) patch.title = normalize(form.title);
+  if (normalize(form.notes) !== normalize(initial.notes)) patch.notes = normalize(form.notes);
   return Object.keys(patch).length === 0 ? null : patch;
 }
