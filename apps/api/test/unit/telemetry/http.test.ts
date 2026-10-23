@@ -67,6 +67,16 @@ describe("AC4 — health paths are not measured or traced", () => {
     expect(JSON.stringify(await durationPoints())).toBe(before);
     expect(h.spans.getFinishedSpans()).toHaveLength(0);
   });
+
+  it("#122 — a query string does not take a health path out of the ignore list", async () => {
+    const { isIgnoredUrl } = await import("../../../src/telemetry/sdk.js");
+    expect(["/healthz?probe=1", "/readyz?x", "/metrics?", "/healthz"].map(isIgnoredUrl)).toEqual([true, true, true, true]);
+    expect(["/v1/me?healthz", "/healthzx", undefined].map(isIgnoredUrl)).toEqual([false, false, false]);
+    const before = JSON.stringify(await durationPoints());
+    await fetch(`${base}/healthz?probe=1`);
+    expect(JSON.stringify(await durationPoints())).toBe(before);
+    expect(h.spans.getFinishedSpans()).toHaveLength(0);
+  });
 });
 
 describe("AC5 — runtime metrics", () => {
