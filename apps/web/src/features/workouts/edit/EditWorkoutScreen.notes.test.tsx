@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -82,6 +82,24 @@ describe("18.0 AC12 — exercise notes wait for the server", () => {
     await typeNote(user, "Slow eccentric");
     await waitFor(() => expect(sheet().getByText(EDIT_COPY.offline)).toBeInTheDocument());
     expect(sheet().getByLabelText("Note")).toHaveValue("Slow eccentric");
+  });
+
+  it("DM-12 — a save in flight keeps the sheet open: Cancel, Close and Escape wait, and a failure shows in the sheet", async () => {
+    const { fake, user } = await open();
+    const held = deferred<void>();
+    fake.failNext({ method: "PATCH", path: /\/workout-exercises\// }, (async () => {
+      await held.promise;
+      return problemResponse(500, "about:blank");
+    }) as unknown as () => Response);
+    await typeNote(user, "Slow eccentric");
+    await user.click(sheet().getByRole("button", { name: "Cancel" }));
+    await user.click(sheet().getByRole("button", { name: "Close" }));
+    fireEvent(screen.getByRole("dialog", { name: "Note for Bench Press" }), new Event("cancel", { cancelable: true }));
+    expect(screen.getByRole("dialog", { name: "Note for Bench Press" })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(sheet().getByText("Couldn't save the note — try again")).toBeInTheDocument());
+    await user.click(sheet().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Note for Bench Press" })).toBeNull());
   });
 
   it("a 500 says the note couldn't be saved", async () => {
