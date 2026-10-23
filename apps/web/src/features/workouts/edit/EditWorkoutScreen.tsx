@@ -38,11 +38,11 @@ import { useChangeTime } from "../changeTime/useChangeTime";
 import { DetailsSheet } from "./DetailsSheet";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure, type EditOperation } from "./editFailure";
-
-type StructureOp = Extract<EditOperation, "add-exercise" | "move-exercise" | "regroup" | "remove-exercise">;
 import { LastSetDialog } from "./LastSetDialog";
 import styles from "./EditWorkoutScreen.module.css";
 import { editSucceeded, useEditAddExercise, useEditRemoveExercise, useIsEditWritePending } from "./useEditMutations";
+
+type StructureOp = Extract<EditOperation, "add-exercise" | "move-exercise" | "regroup" | "remove-exercise">;
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
 

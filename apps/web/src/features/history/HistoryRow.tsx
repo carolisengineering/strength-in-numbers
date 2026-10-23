@@ -11,6 +11,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * first line ends with the workout's title (Spec 18.0 AC56), else the routine name (Spec 10.1 AC25). */
 export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummary; unitPreference: UnitPreference }) {
   const more = workout.exerciseCount - workout.exerciseNames.length;
+  const label = workout.title ?? workout.routineName;
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
 
   return (
@@ -18,7 +19,7 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
       <span className={styles.top}>
         <span className={styles.date}>
           {formatLocalDate(workout.localDate)}
-          {(workout.title ?? workout.routineName) === null ? null : ` · ${workout.title ?? workout.routineName}`}
+          {label === null ? null : ` · ${label}`}
         </span>
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={plural(workout.recordCount, "personal record", "personal records")}>
