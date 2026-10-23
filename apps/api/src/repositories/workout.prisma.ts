@@ -126,10 +126,11 @@ export interface WorkoutSectionDbRow {
   position: number;
   name: string;
   notes: string | null;
+  added_in_workout: boolean;
 }
 
 export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRecord {
-  return { id: r.id, position: r.position, name: r.name, notes: r.notes };
+  return { id: r.id, position: r.position, name: r.name, notes: r.notes, addedInWorkout: r.added_in_workout };
 }
 
 /** Spec 09.2 §6.3 — a workout's sections as one scalar subquery (the `plannedSetsJson` idiom), so a
@@ -137,7 +138,8 @@ export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRe
  * reference (`'w.id'`, `'"workout".id'`), never user input. */
 export function workoutSectionsJson(parentRef: string): Prisma.Sql {
   return Prisma.raw(`COALESCE((
-    SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes)
+    SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes,
+                                      'added_in_workout', s.added_in_workout)
                     ORDER BY s.position)
     FROM "workout_section" s WHERE s.workout_id = ${parentRef}
   ), '[]'::json)`);

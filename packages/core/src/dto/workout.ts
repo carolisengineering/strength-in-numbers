@@ -108,12 +108,14 @@ export const WorkoutExerciseSchema = z.object({
 });
 export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
 
-/** Spec 09.2 — a workout's section, snapshotted from the routine at start (immutable; no write route). */
+/** Spec 09.2 — a workout's section, seeded from the routine at start; Spec 09.4 — then the workout's own. */
 export const WorkoutSectionSchema = z.object({
   id: WorkoutSectionIdSchema,
   position: z.number().int().min(0),
   name: z.string(),
   notes: z.string().nullable(),
+  /** Spec 09.4 — true iff created during the workout (`POST …/sections`); copied from the routine = false. */
+  addedInWorkout: z.boolean(),
 });
 export type WorkoutSection = z.infer<typeof WorkoutSectionSchema>;
 

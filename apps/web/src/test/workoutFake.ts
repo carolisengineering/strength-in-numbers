@@ -451,7 +451,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       }
       const workoutIdForStart = uuid();
       if (routine) state.links.set(workoutIdForStart, routine.id);
-      const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes }));
+      const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false }));
       // Spec 09.2 §6.4: the join is on section position (each copy keeps its routine section's position).
       const startSectionOf = (routineSectionId: string | null): string | null => {
         if (routineSectionId === null) return null;

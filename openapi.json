@@ -1523,13 +1523,17 @@
                                     "string",
                                     "null"
                                   ]
+                                },
+                                "addedInWorkout": {
+                                  "type": "boolean"
                                 }
                               },
                               "required": [
                                 "id",
                                 "position",
                                 "name",
-                                "notes"
+                                "notes",
+                                "addedInWorkout"
                               ],
                               "additionalProperties": false
                             }
@@ -5375,13 +5379,17 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "addedInWorkout": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
                           "id",
                           "position",
                           "name",
-                          "notes"
+                          "notes",
+                          "addedInWorkout"
                         ],
                         "additionalProperties": false
                       }
@@ -6106,13 +6114,17 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "addedInWorkout": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
                           "id",
                           "position",
                           "name",
-                          "notes"
+                          "notes",
+                          "addedInWorkout"
                         ],
                         "additionalProperties": false
                       }

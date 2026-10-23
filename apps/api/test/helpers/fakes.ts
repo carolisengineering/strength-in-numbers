@@ -534,7 +534,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       // Spec 09 §6.5 in miniature: 404 for an absent/foreign routine, 409 on a
       // retired item (nothing persisted), else copy every item in order.
       const routine = await this.routineRepository!.getById(actingUserId, fields.routineId);
-      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes }));
+      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false }));
       const wsByRoutineSection = new Map(routine.sections.map((s, j) => [s.id, sectionRecords[j]!.id]));
       routineNotes = routine.notes;
       for (const item of routine.items) {

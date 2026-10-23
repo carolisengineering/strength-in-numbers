@@ -149,7 +149,7 @@ export function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise 
 }
 
 export function toWorkoutSectionDto(r: WorkoutSectionRecord): WorkoutSection {
-  return { id: r.id as WorkoutSection["id"], position: r.position, name: r.name, notes: r.notes };
+  return { id: r.id as WorkoutSection["id"], position: r.position, name: r.name, notes: r.notes, addedInWorkout: r.addedInWorkout };
 }
 
 /** DB record -> wire DTO, keys in `SetEntrySchema` field order. */

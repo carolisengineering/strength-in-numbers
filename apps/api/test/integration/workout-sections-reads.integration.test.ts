@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
@@ -42,6 +43,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — workout reads and writes
     expect(d.routineNotes).toBe("Routine note\r\nline two");
     expect(d.exercises.map((e) => e.sectionId)).toEqual([null, main, main]);
     expect((await workouts().getActiveWorkout(u)).sections).toEqual(d.sections);
+  });
+
+  it("09.4 AC2 — detail, active and export carry addedInWorkout from the stored row", async () => {
+    const { u, workoutId, main, warm } = await sectioned();
+    const flags = (sections: { id: string; addedInWorkout: boolean }[]) => sections.map((s) => [s.id, s.addedInWorkout]);
+    expect(flags((await workouts().getWorkoutById(u, workoutId)).sections)).toEqual([[warm, false], [main, false]]);
+    expect(flags((await workouts().getActiveWorkout(u)).sections)).toEqual([[warm, false], [main, false]]);
+
+    await db.prisma.$executeRawUnsafe(`UPDATE "workout_section" SET added_in_workout = true WHERE id = $1::uuid`, main);
+    expect(flags((await workouts().getWorkoutById(u, workoutId)).sections)).toEqual([[warm, false], [main, true]]);
+    expect(flags((await workouts().getActiveWorkout(u)).sections)).toEqual([[warm, false], [main, true]]);
+    const snapshot = await createAccountExportRepository(db.prisma).snapshot(u);
+    expect(flags(snapshot.workouts.find((w) => w.id === workoutId)!.sections)).toEqual([[warm, false], [main, true]]);
   });
 
   it("AC3 — a workout written before 0011 reads sections: [], routineNotes: null, sectionId: null", async () => {

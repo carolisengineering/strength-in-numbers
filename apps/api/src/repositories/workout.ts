@@ -81,6 +81,8 @@ export interface WorkoutSectionRecord {
   position: number;
   name: string;
   notes: string | null;
+  /** Spec 09.4 — origin: created during the workout (true) or copied from the routine (false). */
+  addedInWorkout: boolean;
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
