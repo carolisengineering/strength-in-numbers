@@ -29,7 +29,8 @@ export function oneOffMeta(routine: Routine, now: number): string {
   return oneOffMetaText(routineSummary(routine), dayUnlessPast(routine.oneOffUntil, now));
 }
 
-/** The preview note of a one-off (AC6), or its reduced form past expiry (AC4). */
-export function oneOffNote(routine: Routine, now: number): string {
-  return oneOffNoteText(routine.oneOffUntil === null ? null : dayUnlessPast(routine.oneOffUntil, now));
+/** The preview note of a one-off (AC6), or its reduced form past expiry (AC4); an ordinary routine has none. */
+export function oneOffNote(routine: Routine, now: number): string | null {
+  if (routine.oneOffUntil === null) return null;
+  return oneOffNoteText(dayUnlessPast(routine.oneOffUntil, now));
 }
