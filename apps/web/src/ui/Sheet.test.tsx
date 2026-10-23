@@ -106,3 +106,29 @@ describe("AC24 — <Sheet> is a modal dialog", () => {
     expect(close.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("DM-12 — a sheet that is not dismissible (a save in flight)", () => {
+  it("Close and a cancel event do nothing; Close says it is unavailable", async () => {
+    const onClose = vi.fn();
+    render(<Sheet open title="Details" onClose={onClose} dismissible={false} />);
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(close);
+    const cancel = new Event("cancel", { cancelable: true });
+    fireEvent(screen.getByRole("dialog"), cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a close the browser made anyway still reaches the parent, so its open state stays in step (AC32)", () => {
+    const onClose = vi.fn();
+    render(<Sheet open title="Details" onClose={onClose} dismissible={false} />);
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismissible by default: Close has no aria-disabled", () => {
+    render(<Sheet open title="Details" onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Close" })).not.toHaveAttribute("aria-disabled");
+  });
+});

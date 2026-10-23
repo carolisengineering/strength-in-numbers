@@ -82,13 +82,9 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
     }
   }
 
-  // DM-12: a save in flight keeps the sheet open, so its failure is shown where the lifter can see it (as Change Time).
-  const close = () => {
-    if (!inFlight.current) onClose();
-  };
-
   return (
-    <Sheet open={open} title={EDIT_COPY.details.heading} onClose={close}>
+    // DM-12: a save in flight keeps the sheet open, so its failure is shown where the lifter can see it.
+    <Sheet open={open} title={EDIT_COPY.details.heading} onClose={onClose} dismissible={!save.isPending}>
       <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
         <Field id="workout-title" label={EDIT_COPY.details.title} hint={`${Array.from(form.title).length} / ${WORKOUT_TITLE_MAX}`} {...(errors.title ? { error: errors.title } : {})}>
           {(control) => <input {...control} type="text" className={styles.input} value={form.title} onChange={(e) => change("title", e.target.value)} />}
