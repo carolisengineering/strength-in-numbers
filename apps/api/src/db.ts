@@ -52,11 +52,13 @@ export function resolveDatabaseUrl(rawUrl: string): string {
   return url.toString();
 }
 
+/** A client for an already-resolved URL (`resolveDatabaseUrl`), with the app's Prisma log levels. */
+export function prismaFor(datasourceUrl: string): PrismaClient {
+  return new PrismaClient({ datasourceUrl, log: ["warn", "error"] });
+}
+
 export function createPrisma(config: Config): PrismaClient {
-  return new PrismaClient({
-    datasourceUrl: resolveDatabaseUrl(config.databaseUrl),
-    log: ["warn", "error"],
-  });
+  return prismaFor(resolveDatabaseUrl(config.databaseUrl));
 }
 
 export async function checkDatabaseReady(prisma: PrismaClient): Promise<void> {
