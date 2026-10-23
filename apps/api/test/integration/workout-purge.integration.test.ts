@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 
 describe.skipIf(!shouldRunIntegration())("AC17 — account purge reaches workout rows down both FK paths (real Postgres)", () => {
@@ -21,20 +21,9 @@ describe.skipIf(!shouldRunIntegration())("AC17 — account purge reaches workout
     );
   });
 
-  async function insertUser(): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-      id,
-      `auth0|${id}`,
-      "u@ex.com",
-    );
-    return id;
-  }
-
   it("DELETE FROM user removes the purged user's workout + workout_exercise rows down both paths, leaves the global exercise and the other user untouched", async () => {
-    const purgedUser = await insertUser();
-    const otherUser = await insertUser();
+    const purgedUser = await insertUser(db);
+    const otherUser = await insertUser(db);
     const exerciseRepo = createExerciseRepository(db.prisma);
     const repo = createWorkoutRepository(db.prisma, exerciseRepo);
 
@@ -105,8 +94,8 @@ describe.skipIf(!shouldRunIntegration())("AC17 — account purge reaches workout
   });
 
   it("AC23 (Spec 07.0) — an account purge reaches personal_record with no ordering step", async () => {
-    const purgedUser = await insertUser();
-    const otherUser = await insertUser();
+    const purgedUser = await insertUser(db);
+    const otherUser = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const bench = await insertExercise(db);
     for (const userId of [purgedUser, otherUser]) {

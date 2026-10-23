@@ -11,11 +11,7 @@ import {
 } from "../../src/errors/app-error.js";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.1 §6.1 / §10 AC5 (repository half) — the caller-visibility filter and
@@ -46,43 +42,6 @@ describe.skipIf(!shouldRunIntegration())(
       );
     });
 
-    async function insertUser(id: string): Promise<void> {
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-    }
-
-    function insertExercise(opts: {
-      id?: string;
-      name: string;
-      modality?: string;
-      ownerUserId?: string | null;
-      isActive?: boolean;
-      catalogKey?: string | null;
-    }): Promise<number> {
-      const {
-        id = uuidv7(),
-        name,
-        modality = "weight_reps",
-        ownerUserId = null,
-        isActive = true,
-        catalogKey = null,
-      } = opts;
-      return db.prisma.$executeRawUnsafe(
-        `INSERT INTO "exercise" ("id", "catalog_key", "owner_user_id", "name", "modality", "is_active")
-         VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6)`,
-        id,
-        catalogKey,
-        ownerUserId,
-        name,
-        modality,
-        isActive,
-      );
-    }
-
     function insertMuscleGroup(
       id: string,
       name: string,
@@ -111,9 +70,9 @@ describe.skipIf(!shouldRunIntegration())(
 
     describe("findCatalog — full pull", () => {
       it("returns active curated rows only, ordered by name COLLATE \"C\" then id", async () => {
-        await insertExercise({ name: "banana" });
-        await insertExercise({ name: "Apple" });
-        await insertExercise({ name: "cherry", isActive: false });
+        await insertExercise(db, { name: "banana" });
+        await insertExercise(db, { name: "Apple" });
+        await insertExercise(db, { name: "cherry", isActive: false });
 
         const { rows } = await repo.findCatalog(uuidv7());
 
@@ -125,12 +84,12 @@ describe.skipIf(!shouldRunIntegration())(
       it("includes the acting user's own custom rows but no other user's", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
-        await insertUser(userA);
-        await insertUser(userB);
+        await insertUser(db, { id: userA });
+        await insertUser(db, { id: userB });
 
-        await insertExercise({ name: "Global Squat" });
-        await insertExercise({ name: "A custom row", ownerUserId: userA });
-        await insertExercise({ name: "B custom row", ownerUserId: userB });
+        await insertExercise(db, { name: "Global Squat" });
+        await insertExercise(db, { name: "A custom row", ownerUserId: userA });
+        await insertExercise(db, { name: "B custom row", ownerUserId: userB });
 
         const { rows } = await repo.findCatalog(userA);
 
@@ -144,15 +103,15 @@ describe.skipIf(!shouldRunIntegration())(
       it("breaks a name tie by id", async () => {
         const first = "00000000-0000-7000-8000-000000000001";
         const second = "00000000-0000-7000-8000-000000000002";
-        await insertExercise({ id: second, name: "Row" });
-        await insertExercise({ id: first, name: "Row" });
+        await insertExercise(db, { id: second, name: "Row" });
+        await insertExercise(db, { id: first, name: "Row" });
 
         const { rows } = await repo.findCatalog(uuidv7());
         expect(rows.map((r) => r.id)).toEqual([first, second]);
       });
 
       it("maps every column, array intact", async () => {
-        await insertExercise({ name: "Bench Press" });
+        await insertExercise(db, { name: "Bench Press" });
         const { rows: [row] } = await repo.findCatalog(uuidv7());
         expect(row).toMatchObject({
           name: "Bench Press",
@@ -166,7 +125,7 @@ describe.skipIf(!shouldRunIntegration())(
       });
 
       it("maps forked_from_exercise_id (null for every existing row)", async () => {
-        await insertExercise({ name: "Plain Row" });
+        await insertExercise(db, { name: "Plain Row" });
         const { rows: [row] } = await repo.findCatalog(uuidv7());
         expect(row?.forkedFromExerciseId).toBeNull();
       });
@@ -175,16 +134,16 @@ describe.skipIf(!shouldRunIntegration())(
     describe("findVisibleById", () => {
       it("returns a curated row", async () => {
         const id = uuidv7();
-        await insertExercise({ id, name: "Deadlift" });
+        await insertExercise(db, { id, name: "Deadlift" });
         const row = await repo.findVisibleById(uuidv7(), id);
         expect(row.name).toBe("Deadlift");
       });
 
       it("returns the acting user's own custom row", async () => {
         const userA = uuidv7();
-        await insertUser(userA);
+        await insertUser(db, { id: userA });
         const id = uuidv7();
-        await insertExercise({ id, name: "My Curl", ownerUserId: userA });
+        await insertExercise(db, { id, name: "My Curl", ownerUserId: userA });
         const row = await repo.findVisibleById(userA, id);
         expect(row.ownerUserId).toBe(userA);
       });
@@ -192,10 +151,10 @@ describe.skipIf(!shouldRunIntegration())(
       it("throws NotFoundError for another user's custom row", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
-        await insertUser(userA);
-        await insertUser(userB);
+        await insertUser(db, { id: userA });
+        await insertUser(db, { id: userB });
         const bRow = uuidv7();
-        await insertExercise({ id: bRow, name: "B only", ownerUserId: userB });
+        await insertExercise(db, { id: bRow, name: "B only", ownerUserId: userB });
 
         await expect(repo.findVisibleById(userA, bRow)).rejects.toBeInstanceOf(
           NotFoundError,
@@ -210,7 +169,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("finds an inactive row (no is_active gate on the lookup)", async () => {
         const id = uuidv7();
-        await insertExercise({ id, name: "Retired Move", isActive: false });
+        await insertExercise(db, { id, name: "Retired Move", isActive: false });
         const row = await repo.findVisibleById(uuidv7(), id);
         expect(row.isActive).toBe(false);
       });
@@ -255,7 +214,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("inserts an owned row with catalogKey null and forkedFromExerciseId null", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const created = await repo.createExercise(userId, fields);
         expect(created).toMatchObject({
           catalogKey: null,
@@ -268,7 +227,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("rejects unknown primaryMuscleId, secondaryMuscleIds, and equipmentId together in one error", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         try {
           await repo.createExercise(userId, {
             ...fields,
@@ -288,7 +247,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("accepts real muscle/equipment reference ids", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await insertMuscleGroup("chest", "Chest", 1);
         await insertEquipment("barbell", "Barbell", 1);
         const created = await repo.createExercise(userId, {
@@ -301,10 +260,10 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("admits the 500th active row, rejects the 501st with CustomExerciseLimitError", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await Promise.all(
           Array.from({ length: 499 }, () =>
-            insertExercise({ name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
+            insertExercise(db, { name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
           ),
         );
 
@@ -332,10 +291,10 @@ describe.skipIf(!shouldRunIntegration())(
         // pre-INSERT work (zero reference-check round trips, since every field
         // here is null/empty), to reliably contend on the same snapshot window.
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await Promise.all(
           Array.from({ length: 495 }, () =>
-            insertExercise({ name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
+            insertExercise(db, { name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
           ),
         );
 
@@ -364,10 +323,10 @@ describe.skipIf(!shouldRunIntegration())(
       it("does not count another user's or the caller's own retired rows toward the cap", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
-        await insertUser(userA);
-        await insertUser(userB);
-        await insertExercise({ name: "B's row", ownerUserId: userB, isActive: true });
-        await insertExercise({ name: "A's retired row", ownerUserId: userA, isActive: false });
+        await insertUser(db, { id: userA });
+        await insertUser(db, { id: userB });
+        await insertExercise(db, { name: "B's row", ownerUserId: userB, isActive: true });
+        await insertExercise(db, { name: "A's retired row", ownerUserId: userA, isActive: false });
 
         const created = await repo.createExercise(userA, fields);
         expect(created.ownerUserId).toBe(userA);
@@ -377,9 +336,9 @@ describe.skipIf(!shouldRunIntegration())(
     describe("Spec 03.2 AC4/AC5 — updateExercise", () => {
       it("updates an owned row in place: same id, updatedAt bumped", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Old Name", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Old Name", ownerUserId: userId });
         const before = await repo.findVisibleById(userId, id);
 
         const updated = await repo.updateExercise(userId, id, { name: "New Name" });
@@ -390,14 +349,14 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("422s naming the field when a partial body, merged with the base row, restates primaryMuscleId", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
         await insertMuscleGroup("quads", "Quads", 1);
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET primary_muscle_id = NULL WHERE id = $1::uuid`,
           id,
         );
-        await insertExercise({ id, name: "Squat", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Squat", ownerUserId: userId });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET primary_muscle_id = 'quads' WHERE id = $1::uuid`,
           id,
@@ -410,9 +369,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("I1 — 422 ValidationError on a PATCH naming an unknown primaryMuscleId/secondaryMuscleIds/equipmentId, not a 500", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Owned Row", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Owned Row", ownerUserId: userId });
 
         try {
           await repo.updateExercise(userId, id, {
@@ -432,14 +391,14 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("I2 — 422 ValidationError naming secondaryMuscleIds when a PATCH merge pushes the array over the 4-entry cap", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
         await insertMuscleGroup("m1", "M1", 1);
         await insertMuscleGroup("m2", "M2", 1);
         await insertMuscleGroup("m3", "M3", 1);
         await insertMuscleGroup("m4", "M4", 1);
         await insertMuscleGroup("m5", "M5", 1);
-        await insertExercise({ id, name: "Owned Row", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Owned Row", ownerUserId: userId });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
           ["m1", "m2", "m3"],
@@ -453,9 +412,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("409 exercise-immutable-use-fork on a global row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Global Row" });
+        await insertExercise(db, { id, name: "Global Row" });
 
         await expect(
           repo.updateExercise(userId, id, { name: "Hijacked" }),
@@ -464,9 +423,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("409 exercise-retired on the caller's own already-soft-deleted row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Gone", ownerUserId: userId, isActive: false });
+        await insertExercise(db, { id, name: "Gone", ownerUserId: userId, isActive: false });
 
         await expect(
           repo.updateExercise(userId, id, { name: "Revived?" }),
@@ -476,10 +435,10 @@ describe.skipIf(!shouldRunIntegration())(
       it("404 for an absent id and for another user's custom row, indistinguishable", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
-        await insertUser(userA);
-        await insertUser(userB);
+        await insertUser(db, { id: userA });
+        await insertUser(db, { id: userB });
         const bRow = uuidv7();
-        await insertExercise({ id: bRow, name: "B only", ownerUserId: userB });
+        await insertExercise(db, { id: bRow, name: "B only", ownerUserId: userB });
 
         await expect(
           repo.updateExercise(userA, bRow, { name: "x" }),
@@ -491,9 +450,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("a PATCH racing a concurrent DELETE on the same owned row never silently applies to a retired row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Racer", ownerUserId: userId, isActive: true });
+        await insertExercise(db, { id, name: "Racer", ownerUserId: userId, isActive: true });
 
         // `ExerciseRepository.deleteExercise` does not exist yet (it lands in a
         // later task in this same plan) — the concurrent DELETE side of this race
@@ -532,11 +491,11 @@ describe.skipIf(!shouldRunIntegration())(
     describe("Spec 03.2 AC6/AC7/AC10 — forkExercise", () => {
       it("copies unedited origin fields, sets ownerUserId/forkedFromExerciseId, leaves the origin byte-for-byte unchanged", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await insertMuscleGroup("quads", "Quads", 1);
         await insertEquipment("barbell", "Barbell", 1);
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Back Squat", catalogKey: "back-squat" });
+        await insertExercise(db, { id: originId, name: "Back Squat", catalogKey: "back-squat" });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET primary_muscle_id = 'quads', equipment_id = 'barbell' WHERE id = $1::uuid`,
           originId,
@@ -559,9 +518,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("applies overlay fields on top of the origin's copied fields", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Deadlift", catalogKey: "deadlift" });
+        await insertExercise(db, { id: originId, name: "Deadlift", catalogKey: "deadlift" });
 
         const forked = await repo.forkExercise(userId, originId, { name: "My Deadlift" });
         expect(forked.name).toBe("My Deadlift");
@@ -569,9 +528,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("422s when the overlay, merged with the origin's unedited fields, restates primaryMuscleId", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Row", catalogKey: "row" });
+        await insertExercise(db, { id: originId, name: "Row", catalogKey: "row" });
         await insertMuscleGroup("lats", "Lats", 1);
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET primary_muscle_id = 'lats' WHERE id = $1::uuid`,
@@ -585,9 +544,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("409 exercise-already-owned when forking the caller's own row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Mine", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Mine", ownerUserId: userId });
 
         await expect(repo.forkExercise(userId, id, {})).rejects.toBeInstanceOf(
           ExerciseAlreadyOwnedError,
@@ -596,9 +555,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("409 exercise-retired when forking a retired global row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Dead", isActive: false });
+        await insertExercise(db, { id, name: "Dead", isActive: false });
 
         await expect(repo.forkExercise(userId, id, {})).rejects.toBeInstanceOf(
           ExerciseRetiredError,
@@ -613,9 +572,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("both origin and fork remain visible together, forkedFromExerciseId correct", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Bench", catalogKey: "bench" });
+        await insertExercise(db, { id: originId, name: "Bench", catalogKey: "bench" });
 
         const forked = await repo.forkExercise(userId, originId, {});
         const { rows } = await repo.findCatalog(userId);
@@ -636,14 +595,14 @@ describe.skipIf(!shouldRunIntegration())(
         // between create and fork, all racing the same single free slot,
         // contends much more reliably.
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await Promise.all(
           Array.from({ length: 499 }, () =>
-            insertExercise({ name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
+            insertExercise(db, { name: `Seed ${uuidv7()}`, ownerUserId: userId, isActive: true }),
           ),
         );
         const globalId = uuidv7();
-        await insertExercise({ id: globalId, name: "Global Row" });
+        await insertExercise(db, { id: globalId, name: "Global Row" });
 
         const calls: Promise<unknown>[] = [];
         for (let i = 0; i < 10; i += 1) {
@@ -681,7 +640,7 @@ describe.skipIf(!shouldRunIntegration())(
     describe("D22 — fork copies an over-4 curated secondaryMuscleIds array unchanged", () => {
       it("forkExercise with an empty overlay succeeds and preserves a 5-entry origin array", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await insertMuscleGroup("m1", "M1", 1);
         await insertMuscleGroup("m2", "M2", 1);
         await insertMuscleGroup("m3", "M3", 1);
@@ -690,7 +649,7 @@ describe.skipIf(!shouldRunIntegration())(
         const originId = uuidv7();
         // Bypasses the app layer, standing in for a curated row the seed
         // would have inserted uncapped (D18/D22).
-        await insertExercise({ id: originId, name: "Curated Row", catalogKey: "curated-row" });
+        await insertExercise(db, { id: originId, name: "Curated Row", catalogKey: "curated-row" });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
           ["m1", "m2", "m3", "m4", "m5"],
@@ -703,14 +662,14 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("a later PATCH that doesn't touch secondaryMuscleIds does not retroactively cap it", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await insertMuscleGroup("m1", "M1", 1);
         await insertMuscleGroup("m2", "M2", 1);
         await insertMuscleGroup("m3", "M3", 1);
         await insertMuscleGroup("m4", "M4", 1);
         await insertMuscleGroup("m5", "M5", 1);
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Curated Row 2", catalogKey: "curated-row-2" });
+        await insertExercise(db, { id: originId, name: "Curated Row 2", catalogKey: "curated-row-2" });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
           ["m1", "m2", "m3", "m4", "m5"],
@@ -726,14 +685,14 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("explicitly resubmitting the same over-cap array is still rejected", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await insertMuscleGroup("m1", "M1", 1);
         await insertMuscleGroup("m2", "M2", 1);
         await insertMuscleGroup("m3", "M3", 1);
         await insertMuscleGroup("m4", "M4", 1);
         await insertMuscleGroup("m5", "M5", 1);
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Curated Row 3", catalogKey: "curated-row-3" });
+        await insertExercise(db, { id: originId, name: "Curated Row 3", catalogKey: "curated-row-3" });
         await db.prisma.$executeRawUnsafe(
           `UPDATE "exercise" SET secondary_muscle_ids = $1::text[] WHERE id = $2::uuid`,
           ["m1", "m2", "m3", "m4", "m5"],
@@ -752,9 +711,9 @@ describe.skipIf(!shouldRunIntegration())(
     describe("Spec 03.2 AC8/AC9 — deleteExercise", () => {
       it("soft-deletes an owned row: is_active false, idempotent on repeat", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Mine", ownerUserId: userId });
+        await insertExercise(db, { id, name: "Mine", ownerUserId: userId });
 
         await repo.deleteExercise(userId, id);
         const afterFirst = await repo.findVisibleById(userId, id);
@@ -767,9 +726,9 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("403 exercise-immutable on a global row", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         const id = uuidv7();
-        await insertExercise({ id, name: "Global" });
+        await insertExercise(db, { id, name: "Global" });
 
         await expect(repo.deleteExercise(userId, id)).rejects.toBeInstanceOf(
           ExerciseImmutableError,
@@ -779,10 +738,10 @@ describe.skipIf(!shouldRunIntegration())(
       it("404 for an absent id and for another user's custom row", async () => {
         const userA = uuidv7();
         const userB = uuidv7();
-        await insertUser(userA);
-        await insertUser(userB);
+        await insertUser(db, { id: userA });
+        await insertUser(db, { id: userB });
         const bRow = uuidv7();
-        await insertExercise({ id: bRow, name: "B only", ownerUserId: userB });
+        await insertExercise(db, { id: bRow, name: "B only", ownerUserId: userB });
 
         await expect(repo.deleteExercise(userA, bRow)).rejects.toBeInstanceOf(NotFoundError);
         await expect(repo.deleteExercise(userA, uuidv7())).rejects.toBeInstanceOf(NotFoundError);

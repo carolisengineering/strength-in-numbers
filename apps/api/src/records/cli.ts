@@ -12,10 +12,10 @@
  */
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
 import { isUserId } from "@sin/core";
-import { resolveDatabaseUrl } from "../db.js";
+import { prismaFor } from "../db.js";
 import { rebuildRecords } from "./rebuild.js";
 
 export type RebuildArgs = { ok: true; userId: string | undefined } | { ok: false; error: string };
@@ -60,7 +60,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
 
   let prisma: PrismaClient | undefined;
   try {
-    prisma = new PrismaClient({ datasourceUrl: resolveDatabaseUrl(databaseUrl) });
+    prisma = prismaFor(databaseUrl);
     const summary = await rebuildRecords(prisma, log, { userId: args.userId });
     log.info(summary, "records rebuild complete");
     return 0;

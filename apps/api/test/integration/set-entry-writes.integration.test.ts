@@ -10,7 +10,7 @@ import {
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import type { WorkoutRepository } from "../../src/repositories/workout.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.1 — set writes, detail reads and the finish rule against real
@@ -34,28 +34,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     await db.prisma.$executeRawUnsafe('TRUNCATE "set_entry", "workout", "workout_exercise", "exercise", "user" CASCADE');
   });
 
-  async function insertUser(): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, 'u@ex.com')`,
-      id,
-      `auth0|${id}`,
-    );
-    return id;
-  }
-  async function insertExercise(modality: Modality): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, $2, $3, true)`,
-      id,
-      `Ex ${id.slice(-6)}`,
-      modality,
-    );
-    return id;
-  }
   /** A user with an in-progress workout and one exercise per modality given. */
   async function workoutWith(...modalities: Modality[]) {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const { workout } = await repo.createWorkout(
       userId,
       {
@@ -69,7 +50,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.1 set writes, reads and the fi
     );
     const weIds: string[] = [];
     for (const m of modalities) {
-      weIds.push((await repo.addWorkoutExercise(userId, workout.id, { exerciseId: await insertExercise(m) })).id);
+      weIds.push((await repo.addWorkoutExercise(userId, workout.id, { exerciseId: await insertExercise(db, { modality: m }) })).id);
     }
     return { userId, workoutId: workout.id, weIds };
   }

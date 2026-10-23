@@ -3,11 +3,7 @@ import { uuidv7 } from "uuidv7";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { parseSyncToken } from "../../src/repositories/sync-token.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.3 §6.3 / §10 AC4 (repository half) — the `since` delta by sync token:
@@ -40,43 +36,16 @@ describe.skipIf(!shouldRunIntegration())(
       await db.prisma.$executeRawUnsafe('TRUNCATE "exercise", "user" CASCADE');
     });
 
-    function insertExercise(opts: {
-      id?: string;
-      name: string;
-      ownerUserId?: string | null;
-      isActive?: boolean;
-    }): Promise<number> {
-      const { id = uuidv7(), name, ownerUserId = null, isActive = true } = opts;
-      return db.prisma.$executeRawUnsafe(
-        `INSERT INTO "exercise"
-           ("id", "catalog_key", "owner_user_id", "name", "modality", "is_active")
-         VALUES ($1::uuid, NULL, $2::uuid, $3, 'weight_reps', $4)`,
-        id,
-        ownerUserId,
-        name,
-        isActive,
-      );
-    }
-
-    function insertUser(id: string): Promise<number> {
-      return db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-    }
-
     /** The bare xid a client would replay, taken from a fresh full pull. */
     const tokenNow = async (userId: string): Promise<string> =>
       parseSyncToken((await repo.findCatalog(userId)).syncToken);
 
     it('returns only rows changed at/after `since`, ordered by name COLLATE "C"', async () => {
       const u = uuidv7();
-      await insertExercise({ name: "old" });
+      await insertExercise(db, { name: "old" });
       const since = await tokenNow(u); // every finished transaction is < token
-      await insertExercise({ name: "Newer" });
-      await insertExercise({ name: "newest" });
+      await insertExercise(db, { name: "Newer" });
+      await insertExercise(db, { name: "newest" });
 
       const { rows } = await repo.findCatalog(u, since);
       expect(rows.map((r) => r.name)).toEqual(["Newer", "newest"]);
@@ -85,7 +54,7 @@ describe.skipIf(!shouldRunIntegration())(
     it("includes rows retired since `since` as tombstones (no is_active gate)", async () => {
       const u = uuidv7();
       const since = await tokenNow(u);
-      await insertExercise({ name: "Retired", isActive: false });
+      await insertExercise(db, { name: "Retired", isActive: false });
 
       const { rows } = await repo.findCatalog(u, since);
       expect(rows).toHaveLength(1);
@@ -97,8 +66,8 @@ describe.skipIf(!shouldRunIntegration())(
       expect(empty.rows).toEqual([]);
       expect(empty.syncToken).toMatch(/^1\.\d+$/);
 
-      await insertExercise({ name: "live" });
-      await insertExercise({ name: "dead", isActive: false });
+      await insertExercise(db, { name: "live" });
+      await insertExercise(db, { name: "dead", isActive: false });
       const { rows } = await repo.findCatalog(uuidv7());
       expect(rows.map((r) => r.name)).toEqual(["live"]);
     });
@@ -106,11 +75,11 @@ describe.skipIf(!shouldRunIntegration())(
     it("applies the visibility filter — user A's delta never returns user B's changed row", async () => {
       const userA = uuidv7();
       const userB = uuidv7();
-      await insertUser(userA);
-      await insertUser(userB);
+      await insertUser(db, { id: userA });
+      await insertUser(db, { id: userB });
       const since = await tokenNow(userA);
-      await insertExercise({ name: "B change", ownerUserId: userB });
-      await insertExercise({ name: "global change" });
+      await insertExercise(db, { name: "B change", ownerUserId: userB });
+      await insertExercise(db, { name: "global change" });
 
       const { rows } = await repo.findCatalog(userA, since);
       expect(rows.map((r) => r.name)).toEqual(["global change"]);

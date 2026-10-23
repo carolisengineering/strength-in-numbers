@@ -1,11 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { MODALITY_VALUES } from "@sin/core";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.1 §4 / §10 — the `0002_create_exercise_catalog` schema, checked against
@@ -34,42 +30,6 @@ describe.skipIf(!shouldRunIntegration())(
       // `user` cascades into `exercise`; clears both between tests.
       await db.prisma.$executeRawUnsafe('TRUNCATE "exercise", "user" CASCADE');
     });
-
-    /** Minimal raw insert — only the NOT NULL columns without a default. */
-    function insertExercise(opts: {
-      id?: string;
-      name?: string;
-      modality?: string;
-      catalogKey?: string | null;
-      ownerUserId?: string | null;
-    }): Promise<number> {
-      const {
-        id = uuidv7(),
-        name = "Test Exercise",
-        modality = "weight_reps",
-        catalogKey = null,
-        ownerUserId = null,
-      } = opts;
-      // Positional params bind as text; uuid columns need an explicit cast.
-      return db.prisma.$executeRawUnsafe(
-        `INSERT INTO "exercise" ("id", "catalog_key", "owner_user_id", "name", "modality")
-         VALUES ($1::uuid, $2, $3::uuid, $4, $5)`,
-        id,
-        catalogKey,
-        ownerUserId,
-        name,
-        modality,
-      );
-    }
-
-    async function insertUser(id: string): Promise<void> {
-      await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "user" ("id", "auth_sub", "email") VALUES ($1::uuid, $2, $3)`,
-        id,
-        `auth0|${id}`,
-        "u@ex.com",
-      );
-    }
 
     describe("AC1 — migration creates the catalog schema", () => {
       it("creates exercise / muscle_group / equipment alongside 0001's user", async () => {
@@ -165,8 +125,8 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("deletes a user's custom exercises when the user row is deleted (cascade)", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
-        await insertExercise({ ownerUserId: userId, catalogKey: null });
+        await insertUser(db, { id: userId });
+        await insertExercise(db, { ownerUserId: userId, catalogKey: null });
         await db.prisma.$executeRawUnsafe(
           `DELETE FROM "user" WHERE "id" = $1::uuid`,
           userId,
@@ -182,42 +142,42 @@ describe.skipIf(!shouldRunIntegration())(
 
     describe("AC2 — modality is constrained (behavioural)", () => {
       it("rejects a modality outside MODALITY_VALUES", async () => {
-        await expect(insertExercise({ modality: "isometric_hold" })).rejects.toThrow();
+        await expect(insertExercise(db, { modality: "isometric_hold" })).rejects.toThrow();
       });
 
       it("accepts every MODALITY_VALUES member", async () => {
         for (const modality of MODALITY_VALUES) {
-          await expect(insertExercise({ modality })).resolves.toBe(1);
+          await expect(insertExercise(db, { modality })).resolves.toBeTypeOf("string");
         }
       });
     });
 
     describe("AC3 — catalog_key is unique among curated rows only", () => {
       it("rejects a second curated row with the same catalog_key", async () => {
-        await insertExercise({ catalogKey: "back-squat", ownerUserId: null });
+        await insertExercise(db, { catalogKey: "back-squat", ownerUserId: null });
         await expect(
-          insertExercise({ catalogKey: "back-squat", ownerUserId: null }),
+          insertExercise(db, { catalogKey: "back-squat", ownerUserId: null }),
         ).rejects.toThrow();
       });
 
       it("allows many curated rows with a null catalog_key", async () => {
         await expect(
-          insertExercise({ catalogKey: null, ownerUserId: null }),
-        ).resolves.toBe(1);
+          insertExercise(db, { catalogKey: null, ownerUserId: null }),
+        ).resolves.toBeTypeOf("string");
         await expect(
-          insertExercise({ catalogKey: null, ownerUserId: null }),
-        ).resolves.toBe(1);
+          insertExercise(db, { catalogKey: null, ownerUserId: null }),
+        ).resolves.toBeTypeOf("string");
       });
 
       it("exempts custom rows — two owned rows may share a catalog_key", async () => {
         const userId = uuidv7();
-        await insertUser(userId);
+        await insertUser(db, { id: userId });
         await expect(
-          insertExercise({ catalogKey: "owned-key", ownerUserId: userId }),
-        ).resolves.toBe(1);
+          insertExercise(db, { catalogKey: "owned-key", ownerUserId: userId }),
+        ).resolves.toBeTypeOf("string");
         await expect(
-          insertExercise({ catalogKey: "owned-key", ownerUserId: userId }),
-        ).resolves.toBe(1);
+          insertExercise(db, { catalogKey: "owned-key", ownerUserId: userId }),
+        ).resolves.toBeTypeOf("string");
       });
     });
 
@@ -253,7 +213,7 @@ describe.skipIf(!shouldRunIntegration())(
 
       it("defaults to NULL on an existing row and accepts a self-reference", async () => {
         const originId = uuidv7();
-        await insertExercise({ id: originId, name: "Origin", catalogKey: "origin-key" });
+        await insertExercise(db, { id: originId, name: "Origin", catalogKey: "origin-key" });
         const forkRow = await db.prisma.$queryRawUnsafe<{ forked_from_exercise_id: string | null }[]>(
           `SELECT forked_from_exercise_id FROM "exercise" WHERE id = $1::uuid`,
           originId,

@@ -7,11 +7,11 @@ import { createHash } from "node:crypto";
 
 /**
  * A strong `ETag`: `"` + the first 32 hex of `sha256(parts joined by "\n")` +
- * `"`. The first part is a namespace sentinel (the delta cursor for
- * `/v1/exercises`, the payload key for a reference endpoint) so two responses
- * that happen to serialize to the same bytes on different routes — or a delta
- * that serializes like an earlier full pull — never share a validator and
- * cannot produce a spurious `304`.
+ * `"`. Where two representations could serialize to the same bytes, the first
+ * part is a namespace sentinel (the delta cursor for `/v1/exercises`, so a delta
+ * that serializes like an earlier full pull never shares a validator and cannot
+ * produce a spurious `304`). A reference endpoint hashes its whole body, whose
+ * top-level key (`muscleGroups` / `equipment`) keeps the two apart.
  */
 export function strongEtag(...parts: string[]): string {
   const hash = createHash("sha256");

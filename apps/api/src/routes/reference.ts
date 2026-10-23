@@ -1,12 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import {
-  EquipmentResponse,
-  MuscleGroupsResponse,
-  type Equipment,
-  type MuscleGroup,
-} from "@sin/core";
+import { EquipmentResponse, MuscleGroupsResponse, type ReferenceRow } from "@sin/core";
 import type { ReferenceRecord } from "../repositories/exercise.js";
 import type { ExerciseRepository } from "../repositories/exercise.js";
 import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
@@ -28,27 +23,24 @@ export interface ReferenceRouteDeps {
   exerciseRepository: ExerciseRepository;
 }
 
-/** DB record → wire DTO. `MuscleGroup` and `Equipment` share this shape (§5). */
-function toDto(r: ReferenceRecord): MuscleGroup & Equipment {
+/** DB record → wire DTO. Muscle groups and equipment share this shape (§5). */
+function toDto(r: ReferenceRecord): ReferenceRow {
   return { id: r.id, name: r.name, displayOrder: r.displayOrder };
 }
 
 /**
- * Set the strong `ETag` (namespaced by `sentinel` — the payload
- * key — so the two reference endpoints can never share a validator), then either
- * `304` with an empty body or hand the body back for the type provider to
- * serialize.
+ * Set the strong `ETag`, the hash of the exact body bytes. The body's one top-level key
+ * (`muscleGroups` / `equipment`) keeps the two endpoints' validators apart. Then either `304` with
+ * an empty body or hand the body back for the type provider to serialize.
  */
 function serveReference<B extends object>(
   request: { headers: Record<string, string | string[] | undefined> },
   reply: FastifyReply,
-  sentinel: string,
-  rows: (MuscleGroup & Equipment)[],
   body: B,
 ): B | FastifyReply {
-  // Equal to the serializer's bytes for `rows` (no schema transforms, `toDto` in
-  // schema order) — pinned by the #20 route test (Spec 03.1 §6.1 step 3).
-  const etag = strongEtag(sentinel, JSON.stringify(rows));
+  // Equal to the serializer's bytes (no schema transforms, `toDto` in schema order) — pinned by
+  // the #20 route test (Spec 03.1 §6.1 step 3).
+  const etag = strongEtag(JSON.stringify(body));
 
   reply.header("etag", etag);
 
@@ -72,9 +64,7 @@ export function registerReferenceRoutes(
       const muscleGroups = (
         await deps.exerciseRepository.listMuscleGroups()
       ).map(toDto);
-      return serveReference(request, reply, "muscleGroups", muscleGroups, {
-        muscleGroups,
-      });
+      return serveReference(request, reply, { muscleGroups });
     },
   );
 
@@ -85,9 +75,7 @@ export function registerReferenceRoutes(
       const equipment = (await deps.exerciseRepository.listEquipment()).map(
         toDto,
       );
-      return serveReference(request, reply, "equipment", equipment, {
-        equipment,
-      });
+      return serveReference(request, reply, { equipment });
     },
   );
 }

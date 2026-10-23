@@ -11,6 +11,7 @@ import {
   MuscleGroupSchema,
   muscleIdCrossFieldIssues,
   noControlChars,
+  ReferenceRowSchema,
   UpdateExerciseSchema,
 } from "../../src/dto/exercise.js";
 
@@ -133,6 +134,11 @@ describe("catalog DTOs (Spec 03.1 §5)", () => {
     expect(
       EquipmentSchema.parse({ id: "barbell", name: "Barbell", displayOrder: 0 }),
     ).toEqual({ id: "barbell", name: "Barbell", displayOrder: 0 });
+  });
+
+  it("#21 — both reference schemas are the one ReferenceRowSchema", () => {
+    expect(MuscleGroupSchema).toBe(ReferenceRowSchema);
+    expect(EquipmentSchema).toBe(ReferenceRowSchema);
   });
 
   it("MuscleGroupSchema rejects a non-integer displayOrder", () => {

@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 05.0 AC6 — `local_date` is derived once, at insert time, via
@@ -28,20 +28,8 @@ describe.skipIf(!shouldRunIntegration())("AC6 — calendar fields (real Postgres
     await db.prisma.$executeRawUnsafe('TRUNCATE "workout", "workout_exercise", "user" CASCADE');
   });
 
-  async function insertUser(timezone = "UTC"): Promise<string> {
-    const id = uuidv7();
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "user" ("id", "auth_sub", "email", "timezone") VALUES ($1::uuid, $2, $3, $4)`,
-      id,
-      `auth0|${id}`,
-      "u@ex.com",
-      timezone,
-    );
-    return id;
-  }
-
   it("an explicit east-of-UTC tzOffsetMinutes moves local_date forward across midnight", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const { workout } = await repo.createWorkout(
       userId,
@@ -59,7 +47,7 @@ describe.skipIf(!shouldRunIntegration())("AC6 — calendar fields (real Postgres
   });
 
   it("an explicit west-of-UTC tzOffsetMinutes keeps the same calendar day", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const { workout } = await repo.createWorkout(
       userId,
@@ -76,7 +64,7 @@ describe.skipIf(!shouldRunIntegration())("AC6 — calendar fields (real Postgres
   });
 
   it("an absent tzOffsetMinutes falls back to the user's stored timezone, at that instant", async () => {
-    const userId = await insertUser("America/New_York");
+    const userId = await insertUser(db, { timezone: "America/New_York" });
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const { workout: beforeDst } = await repo.createWorkout(
       userId,
@@ -108,7 +96,7 @@ describe.skipIf(!shouldRunIntegration())("AC6 — calendar fields (real Postgres
   });
 
   it("local_date is unchanged by a title/notes PATCH and by finishing", async () => {
-    const userId = await insertUser();
+    const userId = await insertUser(db);
     const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const { workout } = await repo.createWorkout(
       userId,
