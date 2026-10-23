@@ -12,7 +12,7 @@ Numbering is append-only — never renumber an existing BL.
 |----|------|---------|----------|-------|
 | [BL-1](#bl-1) | Catalog sync | **Resolved (Spec 03.3)** — a newly created/forked row could be permanently skipped by an `updated_since` delta | Medium | 2026-09-17 |
 | [BL-2](#bl-2) | Catalog writes | **Resolved (2026-10-22, #24)** — `updateExercise`'s zero-row fallback reports a misleading 409 on an invariant break | Minor | 2026-09-17 |
-| [BL-3](#bl-3) | Catalog writes | `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
+| [BL-3](#bl-3) | Catalog writes | **Resolved (2026-10-23, #25)** — `PATCH` on a retired global row says "use fork", but fork then rejects it as retired | Minor | 2026-09-17 |
 | [BL-4](#bl-4) | Testing | **Resolved (2026-10-22, #26)** — Route-level (`inject`) coverage thinner than repository-level for several 03.2 error cases | Minor | 2026-09-17 |
 | [BL-5](#bl-5) | Observability | **Resolved (2026-10-22, #27)** — Routine 4xx on catalog writes log at `error` severity | Minor | 2026-09-17 |
 | [BL-6](#bl-6) | API contract | **Resolved (2026-09-28, #28)** — `openapi.json` documented only success responses, not the 4xx matrix D19 designed | Minor | 2026-09-17 |
@@ -110,6 +110,10 @@ is conformant — it is just a small dead end for the client.
 this case and returns `exercise-retired` directly, or the spec explicitly notes
 the two-step outcome as intended. Needs a spec decision first, since it changes
 documented behavior.
+
+**Resolved 2026-10-23 (#25):** the owner chose the first option. `PATCH` checks
+retired before global and answers `409 exercise-retired`; Spec 03.2 AC5, §5, §6
+and §12 are amended.
 
 ## BL-4
 
