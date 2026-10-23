@@ -279,9 +279,10 @@ export class FakeExerciseRepository implements ExerciseRepository {
   ): Promise<ExerciseRecord> {
     this.lastActingUserId = actingUserId;
     // Mirrors the Prisma implementation: a non-UUID is "not found", never a throw
-    // from the driver.
+    // from the driver, and another user's custom row is as invisible as an absent
+    // one (`owner_user_id IS NULL OR owner_user_id = $acting`, Spec 03.2 AC8; #26).
     const row = isExerciseId(id) ? this.byId.get(id) : undefined;
-    if (!row) throw new NotFoundError("exercise not found");
+    if (!row || (row.ownerUserId !== null && row.ownerUserId !== actingUserId)) throw new NotFoundError("exercise not found");
     return row;
   }
 

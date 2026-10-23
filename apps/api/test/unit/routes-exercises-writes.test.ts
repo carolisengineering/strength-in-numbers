@@ -632,6 +632,103 @@ describe("DELETE /v1/exercises/{id} (Spec 03.2 AC8, AC9)", () => {
   });
 });
 
+/**
+ * #26 — the Spec 03.2 cases that were proven only at the repository layer, now through `inject`, so a wiring
+ * mistake in the route layer (the wrong error surfaced, the wrong status mapped) fails a test.
+ */
+describe("#26 — PATCH / fork / DELETE at the route boundary (Spec 03.2 AC4–AC8, AC11)", () => {
+  const ROW_ID = "018f9c8e-0000-7000-8000-000000000101";
+  const ABSENT_ID = "018f9c8e-0000-7000-8000-0000000001ff";
+  /** The id provisioning gives the default auth context's user, seeded up front (see the PATCH 200 test). */
+  const caller = makeUser({ authSub: "auth0|user-123" });
+
+  function row(fields: { ownerUserId: string | null; isActive?: boolean; primaryMuscleId?: string | null }) {
+    return {
+      id: ROW_ID,
+      catalogKey: fields.ownerUserId === null ? "row-key" : null,
+      ownerUserId: fields.ownerUserId,
+      name: "Row",
+      modality: "weight_reps",
+      primaryMuscleId: fields.primaryMuscleId ?? null,
+      secondaryMuscleIds: [],
+      equipmentId: null,
+      isActive: fields.isActive ?? true,
+      forkedFromExerciseId: null,
+      createdAt: new Date("2026-09-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    };
+  }
+
+  async function appWith(seeded: ReturnType<typeof row>) {
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(seeded.id, seeded);
+    const userRepo = new FakeUserRepository();
+    userRepo.seed(caller);
+    const { app } = await buildTestApp({ exerciseRepository: exerciseRepo, userRepository: userRepo });
+    return app;
+  }
+
+  it("AC5 — PATCH on the caller's retired row → 409 exercise-retired", async () => {
+    const app = await appWith(row({ ownerUserId: caller.id, isActive: false }));
+    const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { name: "New" } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-retired");
+  });
+
+  it("AC4 — PATCH whose merged result restates the stored primary as a secondary → 422 on secondaryMuscleIds", async () => {
+    const app = await appWith(row({ ownerUserId: caller.id, primaryMuscleId: "chest" }));
+    const res = await app.inject({ method: "PATCH", url: `/v1/exercises/${ROW_ID}`, headers: JSON_HEADERS, payload: { secondaryMuscleIds: ["chest"] } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().type).toContain("validation-error");
+    expect(res.json().errors).toEqual([expect.objectContaining({ path: "secondaryMuscleIds" })]);
+  });
+
+  it("AC7 — fork of a retired global row → 409 exercise-retired", async () => {
+    const app = await appWith(row({ ownerUserId: null, isActive: false }));
+    const res = await app.inject({ method: "POST", url: `/v1/exercises/${ROW_ID}/fork`, headers: BEARER });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toContain("exercise-retired");
+  });
+
+  it("AC6 — fork whose overlay merges into an invalid row → 422 on secondaryMuscleIds", async () => {
+    const app = await appWith(row({ ownerUserId: null, primaryMuscleId: "chest" }));
+    const res = await app.inject({ method: "POST", url: `/v1/exercises/${ROW_ID}/fork`, headers: JSON_HEADERS, payload: { secondaryMuscleIds: ["chest"] } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().errors).toEqual([expect.objectContaining({ path: "secondaryMuscleIds" })]);
+  });
+
+  it.each([
+    ["PATCH", (id: string) => `/v1/exercises/${id}`, { name: "x" }],
+    ["POST", (id: string) => `/v1/exercises/${id}/fork`, undefined],
+    ["DELETE", (id: string) => `/v1/exercises/${id}`, undefined],
+  ] as const)("AC8 — %s on another user's row is a 404 indistinguishable from an absent id", async (method, url, payload) => {
+    const app = await appWith(row({ ownerUserId: "018f9c8e-0000-7000-8000-00000000b0b0" }));
+    const send = (id: string) =>
+      app.inject({ method, url: url(id), headers: payload ? JSON_HEADERS : BEARER, ...(payload ? { payload } : {}) });
+    const foreign = await send(ROW_ID);
+    const absent = await send(ABSENT_ID);
+    expect(foreign.statusCode).toBe(404);
+    expect(absent.statusCode).toBe(404);
+    // `instance` is the request id, different per request; everything else must match.
+    expect({ ...foreign.json(), instance: null }).toEqual({ ...absent.json(), instance: null });
+  });
+
+  it.each([
+    ["PATCH", `/v1/exercises/${ROW_ID}`],
+    ["POST", `/v1/exercises/${ROW_ID}/fork`],
+    ["DELETE", `/v1/exercises/${ROW_ID}`],
+  ] as const)("AC11 — %s with an invalid token → 401", async (method, url) => {
+    const { app } = await buildTestApp({
+      tokenVerifier: fakeVerifier(() => {
+        throw new InvalidTokenError("signature check failed");
+      }),
+    });
+    const res = await app.inject({ method, url, headers: method === "PATCH" ? JSON_HEADERS : BEARER, ...(method === "PATCH" ? { payload: { name: "x" } } : {}) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().type).toContain("invalid-token");
+  });
+});
+
 function makeExerciseRecordForGet() {
   return {
     id: "018f9c8e-0000-7000-8000-000000000006",
