@@ -72,6 +72,13 @@ describe("10.5 fake — one-off semantics", () => {
     expect((await call("POST", `/routines/${routineId(9)}/keep`)).status).toBe(404);
   });
 
+  it("DM-45 — keep on an ordinary routine is a 204 that changes nothing (Spec 09.3 AC9)", async () => {
+    const ordinary = makeRoutine({ id: routineId(1), oneOffUntil: null });
+    boot({ routines: [ordinary], now: () => T });
+    expect((await call("POST", `/routines/${routineId(1)}/keep`)).status).toBe(204);
+    expect((await call("GET", `/routines/${routineId(1)}`)).json).toMatchObject({ oneOffUntil: null, updatedAt: ordinary.updatedAt });
+  });
+
   describe("a workout started from a one-off", () => {
     const cls = () => makeRoutine({ id: routineId(1), name: "Class", oneOffUntil: "2026-10-30T09:00:00.000Z", items: [makeRoutineItem({ exerciseId: bench.id })] });
 
