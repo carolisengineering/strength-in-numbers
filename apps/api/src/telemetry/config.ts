@@ -10,7 +10,7 @@ export type TracesExporterKind = "otlp" | "none";
 export interface TelemetryConfig {
   /** Metrics or traces exporter is not "none". */
   readonly enabled: boolean;
-  /** From SERVICE_NAME (default "si-api"), shared with the log `service` field (D17). */
+  /** From SERVICE_NAME (default "si-api"); `loadConfig` sets it to `Config.serviceName`, the log `service` field (D17, #127). */
   readonly serviceName: string;
   /** SERVICE_VERSION ?? RENDER_GIT_COMMIT. */
   readonly serviceVersion: string | undefined;

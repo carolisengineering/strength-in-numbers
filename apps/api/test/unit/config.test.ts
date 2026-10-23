@@ -53,6 +53,18 @@ describe("loadConfig — happy path (Criterion 2)", () => {
     expect(cfg.serviceName).toBe("si-api-test");
   });
 
+  it("#127 — logs and traces get one trimmed service name (D17)", () => {
+    const cfg = loadConfig({ ...base, SERVICE_NAME: " si-api-x " });
+    expect(cfg.serviceName).toBe("si-api-x");
+    expect(cfg.telemetry.serviceName).toBe("si-api-x");
+  });
+
+  it("#127 — a blank SERVICE_NAME fails boot like an empty one, not two different names", () => {
+    expect(() => loadConfig({ ...base, SERVICE_NAME: "   " })).toThrowError(
+      expect.objectContaining({ issues: expect.arrayContaining([expect.stringMatching(/^SERVICE_NAME:/)]) }),
+    );
+  });
+
   it("AC2 — merges telemetry issues into one ConfigError", () => {
     expect(() => loadConfig({ ...base, OTEL_TRACES_EXPORTER: "otlp", PORT: "x" })).toThrowError(
       expect.objectContaining({

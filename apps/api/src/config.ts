@@ -107,7 +107,8 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
 
-  SERVICE_NAME: z.string().min(1).default("si-api"),
+  // #127: trimmed here, and this one value is the log `service` and the trace resource name (D17).
+  SERVICE_NAME: z.string().trim().min(1).default("si-api"),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
 
@@ -184,6 +185,6 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
     webOrigins: Object.freeze(c.WEB_ORIGIN),
     logLevel: c.LOG_LEVEL,
     serviceName: c.SERVICE_NAME,
-    telemetry: telemetry.config,
+    telemetry: Object.freeze({ ...telemetry.config, serviceName: c.SERVICE_NAME }),
   });
 }
