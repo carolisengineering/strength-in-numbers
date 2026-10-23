@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.10-4.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
+// A tag check, not a coverage gate (DM-34): it fails when an AC number has no tagged describe, but cannot tell
+// whether that test really exercises the criterion. Review is the check on that.
 describe("10.4 AC41 — every web criterion has a committed, tagged test", () => {
   // AC1–AC18 are core's (packages/core/test/acTags.10-4.test.ts); AC38 is the CI gate and the diff-scope check,
   // AC39 the screenshot harness, AC40 the owner's phone check in the PR, AC41 this scan plus review.

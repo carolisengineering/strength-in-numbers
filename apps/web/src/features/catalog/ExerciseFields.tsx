@@ -98,6 +98,8 @@ export function ExerciseFields({
           <input
             {...control}
             type="text"
+            // Typing stops at 120; a value set by code (an import's prefill) is not clipped. The schema check, not
+            // maxLength, is the gate: it shows the too-long message and blocks Continue (DM-28).
             maxLength={120}
             autoComplete="off"
             value={values.name}
