@@ -9,7 +9,7 @@ import {
   createDraftReducer,
   diffForPatch,
   draftFieldForPath,
-  draftFromSet,
+  draftForEdit,
   parseDraft,
   seedDraft,
   unitDefaultsFor,
@@ -50,8 +50,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
     target.kind === "add"
       ? seedDraft({ plannedSets: [], sets: target.sets, defaults, attemptKey: crypto.randomUUID() })
-      : // `draftFromSet` drafts a *new* set as working; an edit keeps the stored type (a warm-up stays a warm-up).
-        { ...draftFromSet(target.set, defaults, "edit"), setType: target.set.setType },
+      : draftForEdit(target.set, defaults),
   );
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);

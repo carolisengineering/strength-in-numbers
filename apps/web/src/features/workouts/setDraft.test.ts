@@ -4,6 +4,7 @@ import {
   createDraftReducer,
   diffForPatch,
   draftFieldForPath,
+  draftForEdit,
   draftFromSet,
   parseDraft,
   seedDraft,
@@ -281,6 +282,11 @@ describe("draftFromSet / unit defaults", () => {
       weight: "",
       reps: "0",
     });
+  });
+  it("#129 — copy-forward drafts a working set; draftForEdit keeps the stored type, keyed \"edit\"", () => {
+    const warmup = set({ setType: "warmup", weight: 40, reps: 8 });
+    expect(draftFromSet(warmup, KG, "k").setType).toBe("working");
+    expect(draftForEdit(warmup, KG)).toEqual({ ...draftFromSet(warmup, KG, "edit"), setType: "warmup" });
   });
 });
 

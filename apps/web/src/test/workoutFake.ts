@@ -575,11 +575,13 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       state.routines.set(result.routine.id, result.routine);
       return HttpResponse.json(result.routine);
     }),
-    // Spec 09.3: Keep clears the mark; 204, no body.
+    // Spec 09.3: Keep clears the mark; 204, no body. An ordinary routine is left as it is (AC9: same updatedAt).
     handle("post", "/routines/:id/keep", ({ params }) => {
       const routine = state.routines.get(params["id"]!);
       if (!routine) return notFound();
-      state.routines.set(routine.id, RoutineSchema.parse({ ...routine, oneOffUntil: null, updatedAt: now() }));
+      if (routine.oneOffUntil !== null) {
+        state.routines.set(routine.id, RoutineSchema.parse({ ...routine, oneOffUntil: null, updatedAt: now() }));
+      }
       return new HttpResponse(null, { status: 204 });
     }),
     handle("delete", "/routines/:id", ({ params }) =>

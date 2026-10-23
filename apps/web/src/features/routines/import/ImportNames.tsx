@@ -10,7 +10,7 @@ import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { IMPORT_EDIT_PATH, IMPORT_PATH } from "../paths";
-import { cardNames, cardProblems, initialCards } from "./cards";
+import { cardNames, cardProblems, initialCards, type CardProblem } from "./cards";
 import styles from "./ImportNames.module.css";
 import { useImportSession } from "./ImportSession";
 import { buildHandoff } from "./handoff";
@@ -69,7 +69,7 @@ function NamesBody() {
   }, [waiting, session, read, visible]);
 
   const cards = session.cards;
-  const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map()), [cards, visible]);
+  const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map<string, CardProblem>()), [cards, visible]);
   const blocked = cards?.filter((card) => problems.has(card.key)) ?? [];
 
   const goToFirst = () => {
@@ -143,7 +143,10 @@ function NamesBody() {
         onPick={(exercise) => {
           const key = pickerFor;
           if (key === null) return;
-          session.updateCard(key, (c) => ({ ...c, pickedId: exercise.id, selected: "picked" }));
+          // Picking the exercise the card already matched selects the match rather than listing it twice (DM-26).
+          session.updateCard(key, (c) =>
+            c.match?.exerciseId === exercise.id ? { ...c, pickedId: null, selected: "match" } : { ...c, pickedId: exercise.id, selected: "picked" },
+          );
           focusAfterPick.current = key;
           setPickerFor(null);
         }}

@@ -67,6 +67,8 @@ describe("10.5 AC6 / AC20 — the copy, exactly", () => {
     ]);
   });
 
+  it("an ordinary routine has no note (DM-50)", () => expect(oneOffNote(makeRoutine(), NOW)).toBeNull());
+
   it("isOneOff", () => {
     expect(isOneOff({ oneOffUntil: FUTURE })).toBe(true);
     expect(isOneOff({ oneOffUntil: null })).toBe(false);

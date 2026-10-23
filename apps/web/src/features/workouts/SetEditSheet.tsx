@@ -12,7 +12,7 @@ import {
   createDraftReducer,
   diffForPatch,
   draftFieldForPath,
-  draftFromSet,
+  draftForEdit,
   parseDraft,
   unitDefaultsFor,
   type DraftField,
@@ -80,9 +80,7 @@ function EditForm({
 }: Omit<SetEditSheetProps, "adding"> & { set: SetEntry }) {
   const update = useUpdateSet();
   const del = useDeleteSet();
-  const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
-    draftFromSet(set, unitDefaultsFor(unitPreference), "edit"),
-  );
+  const [draft, dispatch] = useReducer(reduceDraft, undefined, () => draftForEdit(set, unitDefaultsFor(unitPreference)));
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);

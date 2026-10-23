@@ -20,17 +20,11 @@ import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
 afterEach(() => cleanupApp());
 
-async function setup() {
+async function setup(
+  sets = [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 60, reps: 7 })],
+) {
   const fake = createWorkoutFake({
-    active: makeWorkoutDetail({
-      exercises: [
-        {
-          modality: "weight_reps",
-          name: "X",
-          sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 60, reps: 7 })],
-        },
-      ],
-    }),
+    active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", sets }] }),
   });
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
@@ -90,6 +84,17 @@ describe("AC25 — edit and delete a logged set", () => {
   it("no change closes the sheet without a request", async () => {
     const { fake, user } = await setup();
     await user.click(setRow(/60 kg × 8/));
+
+    await user.click(within(dialog()).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set/ })).not.toBeInTheDocument());
+    expect(requests(fake, "PATCH")).toHaveLength(0);
+  });
+
+  it("#129 — an unchanged Save on a warm-up sends no request (the sheet keeps the stored set type)", async () => {
+    const { fake, user } = await setup([makeSet({ setNumber: 1, setType: "warmup", weight: 40, reps: 8 })]);
+    await user.click(setRow(/40 kg × 8/));
+    expect(within(dialog()).getByLabelText("Set type")).toHaveValue("warmup");
 
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 

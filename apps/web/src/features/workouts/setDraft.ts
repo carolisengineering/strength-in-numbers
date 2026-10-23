@@ -175,7 +175,8 @@ export function diffForPatch(set: SetEntry, body: SetBody): Partial<SetBody> | n
 
 const text = (n: number | null): string => (n === null ? "" : String(n));
 
-/** The one place copy-forward and edit-sheet prefill happen. A null measure becomes "" (never "0"). */
+/** The one place copy-forward and edit-sheet prefill happen. A null measure becomes "" (never "0"). A copied-forward
+ * draft is a new set, so it is always working; an edit prefills through `draftForEdit`, which keeps the stored type. */
 export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attemptKey: string): SetDraft {
   if (set === null) {
     return {
@@ -202,6 +203,11 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
     setType: "working",
     attemptKey,
   };
+}
+
+/** An edit sheet's draft of a stored set: its values and its own set type (#129: a warm-up stays a warm-up). */
+export function draftForEdit(set: SetEntry, defaults: UnitDefaults): SetDraft {
+  return { ...draftFromSet(set, defaults, "edit"), setType: set.setType };
 }
 
 /**
