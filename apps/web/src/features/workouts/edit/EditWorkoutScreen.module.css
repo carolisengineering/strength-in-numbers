@@ -74,12 +74,20 @@
   color: var(--color-muted);
 }
 
-/* Add exercise after the last card, full width (as the live screen's list end). */
+/* Add exercise and Add section after the last card, equal widths (as the live screen's list end). */
 .listEnd {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin-top: var(--space-4);
 }
 
 .listEnd > button {
   flex: 1;
+}
+
+/* Spec 10.6 AC3: why Add section is disabled at the cap. */
+.limit {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
 }

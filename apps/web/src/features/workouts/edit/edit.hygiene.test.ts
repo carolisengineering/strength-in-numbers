@@ -12,6 +12,11 @@ const changeTimeSources = import.meta.glob(["../changeTime/**/*.ts", "../changeT
   import: "default",
   eager: true,
 }) as Record<string, string>;
+// Spec 10.6 AC18: the shared section modules the edit screen renders (everything but the live hook file).
+const sharedSectionSources = import.meta.glob(
+  ["../sections/**/*.ts", "../sections/**/*.tsx", "!../sections/**/*.test.ts", "!../sections/**/*.test.tsx", "!../sections/useSectionMutations.ts"],
+  { query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
 const activeSession = import.meta.glob("../ActiveSession.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const liveScreens = import.meta.glob(["../ActiveSession.tsx", "../StartWorkout.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const corsMethods = import.meta.glob("../../../../../api/src/plugins/cors-methods.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -38,6 +43,22 @@ describe("18.0 AC46 — edit modules stay off the live machinery", () => {
     expect(Object.keys(changeTimeSources).length).toBeGreaterThanOrEqual(3);
     const offenders = Object.entries(changeTimeSources)
       .filter(([, source]) => LIVE_MACHINERY.test(stripComments(source)) || /\buseNow\b/.test(stripComments(source)))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
+  it("10.6 AC18 — the edit section hook is scanned, and no edit module imports the live section hook", () => {
+    expect(Object.keys(editSources)).toContain("./useEditSectionMutations.ts");
+    const offenders = Object.entries(editSources)
+      .filter(([, source]) => /sections\/useSectionMutations/.test(stripComments(source)))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+  });
+
+  it("10.6 AC18 — the shared section modules the edit screen uses name none of the live machinery", () => {
+    expect(Object.keys(sharedSectionSources).length).toBeGreaterThanOrEqual(8);
+    const offenders = Object.entries(sharedSectionSources)
+      .filter(([, source]) => LIVE_MACHINERY.test(stripComments(source)))
       .map(([path]) => path);
     expect(offenders).toEqual([]);
   });

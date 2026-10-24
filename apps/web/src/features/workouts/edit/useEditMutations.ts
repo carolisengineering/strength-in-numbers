@@ -33,7 +33,12 @@ export type EditKind =
   | "exercise_moved"
   | "exercise_regrouped"
   | "exercise_noted"
-  | "details_changed";
+  | "details_changed"
+  // Spec 10.6 AC19 (the server's names, Spec 09.4 §9)
+  | "section_added"
+  | "section_changed"
+  | "section_removed"
+  | "exercise_sectioned";
 
 /** One successful edit: one scalar event, then the History / Progress / records refresh (AC22, AC27). */
 export function editSucceeded(queryClient: QueryClient, edit: EditKind): void {
@@ -45,23 +50,23 @@ export function editSucceeded(queryClient: QueryClient, edit: EditKind): void {
  * Before a set write, cancel an in-flight read of the detail so a stale response cannot land on top of
  * the write and erase it; re-read once afterwards if one was interrupted (the live `cancelActiveReads`).
  */
-async function cancelDetailReads(queryClient: QueryClient, workoutId: string): Promise<{ interrupted: boolean }> {
+export async function cancelDetailReads(queryClient: QueryClient, workoutId: string): Promise<{ interrupted: boolean }> {
   const key = WORKOUT_KEYS.detail(workoutId);
   const interrupted = queryClient.isFetching({ queryKey: key }) > 0;
   await queryClient.cancelQueries({ queryKey: key });
   return { interrupted };
 }
 
-function refetchIfInterrupted(queryClient: QueryClient, workoutId: string, context: { interrupted: boolean } | undefined): void {
+export function refetchIfInterrupted(queryClient: QueryClient, workoutId: string, context: { interrupted: boolean } | undefined): void {
   if (context?.interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
 }
 
-function writeDetail(queryClient: QueryClient, workoutId: string, change: (d: WorkoutDetail) => WorkoutDetail): void {
+export function writeDetail(queryClient: QueryClient, workoutId: string, change: (d: WorkoutDetail) => WorkoutDetail): void {
   queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId), (d) => (d ? change(d) : d));
 }
 
 /** A repeated delete answers 404: it already happened. */
-async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
+export async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
   try {
     await run();
   } catch (error) {

@@ -49,6 +49,27 @@ describe("10.6 AC27 — boundaries", () => {
   });
 });
 
+describe("10.6 AC27 — boundaries with the edit screen", () => {
+  const editDir = join(here, "..", "edit");
+  const EDIT_SOURCES = readdirSync(editDir).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
+  const ALLOWED = new Set(["useSectionActions", "SectionDialogs", "NewExercisesLine", "sectionCopy", "sectionMutations", "SectionPicker"]);
+
+  it("sections/ imports nothing from edit/", () => {
+    const hits = SOURCES.flatMap((f) => imports(read(f)).filter((i) => /(^|\/)edit\//.test(i)).map((i) => `${f}: ${i}`));
+    expect(hits).toEqual([]);
+  });
+
+  it("edit/ imports sections/ only through the shared controls, never the live hook", () => {
+    const used = EDIT_SOURCES.flatMap((f) =>
+      imports(readFileSync(join(editDir, f), "utf8"))
+        .filter((i) => /(^|\/)sections\//.test(i))
+        .map((i) => i.split("/").at(-1)!),
+    );
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((m) => !ALLOWED.has(m))).toEqual([]);
+  });
+});
+
 describe("10.6 AC24 — text as text, no new storage", () => {
   it("no dangerouslySetInnerHTML, innerHTML, style= or <style in sections/", () => {
     const hits = SOURCES.filter((f) => /dangerouslySetInnerHTML|innerHTML|style=|<style/.test(stripComments(read(f))));

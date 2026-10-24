@@ -748,3 +748,65 @@ describe("10.6 AC25 — section controls, accessibly", () => {
     expect(hasTapTarget(file, selector)).toBe(true);
   });
 });
+
+describe("10.6 AC25 — the edit screen's section controls, accessibly", () => {
+  async function editWithSections() {
+    const workout = makeWorkoutDetail({
+      endedAt: "2026-10-02T11:00:00.000Z",
+      sections: [{ name: "Warm-up", notes: "5 min rower" }, { name: "Cooldown", addedInWorkout: true }],
+      exercises: [
+        { modality: "weight_reps", name: "Row Erg", sectionIndex: 0, sets: [makeSet({ setNumber: 1 })] },
+        { modality: "weight_reps", name: "Bench", sectionIndex: null, sets: [makeSet({ setNumber: 1 })] },
+      ],
+    });
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const app = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    return { fake, ...app };
+  }
+
+  it("headings are regions named by their h2 with unique Edit names; the empty line, the line and the list end are present", async () => {
+    await editWithSections();
+    expect(screen.getAllByRole("button", { name: /^Edit section / }).map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Edit section Warm-up",
+      "Edit section Cooldown",
+    ]);
+    expect(within(screen.getByRole("region", { name: "Cooldown" })).getByText("No exercises yet.")).toBeInTheDocument();
+    expect(screen.getByText("Cooldown", { selector: "strong" })).toBeInTheDocument();
+    const addSection = screen.getByRole("button", { name: "Add section" });
+    expect(addSection.parentElement).toBe(screen.getByRole("button", { name: "Add exercise" }).parentElement);
+  });
+
+  it("the Edit section sheet: a labeled dialog with labeled fields and the hint linked", async () => {
+    const { user } = await editWithSections();
+    await user.click(screen.getByRole("button", { name: "Edit section Warm-up" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit section" });
+    for (const control of dialog.querySelectorAll("input, textarea")) expect(control).toHaveAccessibleName();
+    expect(within(dialog).getByLabelText("Note")).toHaveAccessibleDescription("Anything beyond sets and reps.");
+  });
+
+  it("Options: the Section select is labeled", async () => {
+    const { user } = await editWithSections();
+    await user.click(optionsButton("Bench"));
+    expect(within(card("Bench")).getByRole("combobox", { name: "Section" })).toBeInTheDocument();
+  });
+
+  it("the remove confirm focuses Cancel; success goes to the edit screen's status line, never an alert", async () => {
+    const { user } = await editWithSections();
+    await user.click(screen.getByRole("button", { name: "Edit section Cooldown" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Edit section" })).getByRole("button", { name: "Remove section" }));
+    const confirm = screen.getByRole("dialog", { name: "Remove Cooldown?" });
+    expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.click(within(confirm).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(screen.getByTestId("edit-announcement")).toHaveTextContent("Section removed"));
+    expect(screen.getByTestId("edit-announcement")).toHaveAttribute("role", "status");
+    expect(screen.queryAllByRole("alert").filter((a) => /Section/.test(a.textContent ?? ""))).toEqual([]);
+  });
+
+  it("the edit screen's list end lets its buttons wrap and the limit line is muted text", () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "edit/EditWorkoutScreen.module.css"), "utf8");
+    expect(css).toMatch(/\.listEnd \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.limit \{[^}]*color: var\(--color-muted\)/);
+  });
+});

@@ -21,7 +21,7 @@ import { localStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { card, logButton } from "../../../test/sessionHelpers";
+import { card, logButton, optionsButton } from "../../../test/sessionHelpers";
 import { DRAFTS_KEY } from "../drafts/draftStore";
 import { OUTBOX_KEY } from "../outbox/outbox";
 import { WORKOUT_KEYS } from "../queries";
@@ -79,9 +79,24 @@ describe("18.0 AC21 — edit mode never touches the live session", () => {
     await user.click(sheet.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set 2/ })).toBeNull());
 
+    // Spec 10.6 AC18: the section writes (add, move, remove) leave the live session alone too.
+    const announced = () => screen.getByTestId("edit-announcement");
+    await user.click(screen.getByRole("button", { name: "Add section" }));
+    const add = within(screen.getByRole("dialog", { name: "New section" }));
+    await user.type(add.getByLabelText("Name"), "Core");
+    await user.click(add.getByRole("button", { name: "Add section" }));
+    await waitFor(() => expect(announced()).toHaveTextContent("Section added: Core"));
+    await user.click(optionsButton("Bench Press"));
+    await user.selectOptions(within(card("Bench Press")).getByLabelText("Section"), "Core");
+    await waitFor(() => expect(announced()).toHaveTextContent("Moved Bench Press to Core"));
+    await user.click(screen.getByRole("button", { name: "Edit section Core" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Edit section" })).getByRole("button", { name: "Remove section" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Remove Core?" })).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(announced()).toHaveTextContent("Section removed"));
+
     expect([OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
     expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBe(active);
-    expect(fake.requests.filter((r) => r.method === "PATCH").map((r) => r.path)).toEqual([`/v1/sets/${finished.exercises[0]!.sets[1]!.id}`]);
+    expect(fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/sets/")).map((r) => r.path)).toEqual([`/v1/sets/${finished.exercises[0]!.sets[1]!.id}`]);
     expect(fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"))).toEqual([]);
   });
 });
