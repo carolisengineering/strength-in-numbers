@@ -4,6 +4,7 @@ import {
   CreateExerciseSchema,
   CreateSetSchema,
   CreateWorkoutSchema,
+  CreateWorkoutSectionSchema,
   ExerciseIdSchema,
   ExerciseSchema,
   PersonalRecordsResponseSchema,
@@ -13,7 +14,12 @@ import {
   UpdateSetSchema,
   UpdateWorkoutExerciseSchema,
   UpdateWorkoutSchema,
+  UpdateWorkoutSectionSchema,
   WorkoutDetailSchema,
+  WorkoutSectionSchema,
+  insertIndexForSection,
+  sectionForNewExercise,
+  ROUTINE_SECTIONS_MAX,
   resolveRetime,
   WorkoutExerciseSchema,
   WorkoutHistoryResponseSchema,
@@ -42,6 +48,7 @@ import {
   type ProgressPoint,
   type SetEntry,
   type WorkoutDetail,
+  type WorkoutExerciseDetail,
 } from "@sin/core";
 import { API_BASE_URL, USER_ID } from "./catalogHarness";
 
@@ -50,7 +57,9 @@ import { API_BASE_URL, USER_ID } from "./catalogHarness";
  * conversation partner for component tests (Spec 06.1 §10): one active workout, dense positions,
  * appended set numbers, the strict `isComplete` gate (05.1 D14), `clientGeneratedId` replay (D15) and
  * the finish rule. `PATCH /workout-exercises/:id` applies `position` (any in-range index, others shift),
- * `supersetGroup` (1–99 / null, stored as sent) and `notes` (Spec 10.1). Every response is built through the `@sin/core` schemas and every request body is
+ * `supersetGroup` (1–99 / null, stored as sent) and `notes` (Spec 10.1), and `sectionId` (Spec 09.4: placed by
+ * `insertIndexForSection`, superset label cleared); a plain add joins the last section iff it was added in the
+ * workout (C4); section create / update / remove follow Spec 09.4 §6.4 (cap, renumber, loosen in place). Every response is built through the `@sin/core` schemas and every request body is
  * parsed with the core request schemas, so the fake cannot drift into accepting a shape the real API
  * rejects. **Risk, stated:** a hand-written fake can still drift on behaviour; Spec 06.3 runs the main
  * flows against the real API.
@@ -246,6 +255,24 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         const set = exercise.sets.find((s) => s.id === id);
         if (detail && set) return { detail, exercise, set };
       }
+    }
+    return null;
+  };
+
+  /** Spec 09.4 §6.2: an exercise's rank is its section's position, or -1 when loose. */
+  const rankOf = (detail: WorkoutDetail, e: { sectionId: string | null }) =>
+    e.sectionId === null ? -1 : (detail.sections.find((s) => s.id === e.sectionId)?.position ?? -1);
+  /** Insert `row` (not in `others`) at `index` among the position-ordered `others`, positions dense. */
+  const placeAt = (others: readonly WorkoutExerciseDetail[], row: WorkoutExerciseDetail, index: number) => {
+    const list = [...others];
+    list.splice(index, 0, row);
+    return list.map((e, i) => ({ ...e, position: i }));
+  };
+  const byPosition = (list: readonly WorkoutExerciseDetail[]) => [...list].sort((a, b) => a.position - b.position);
+  const locateSection = (id: string) => {
+    for (const detail of [state.active, ...state.finished.values()]) {
+      const section = detail?.sections.find((s) => s.id === id);
+      if (detail && section) return { detail, section };
     }
     return null;
   };
@@ -704,6 +731,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       if (!exercise) return notFound();
       if (!exercise.isActive) return problemResponse(409, "exercise-retired");
       const detail = found.detail;
+      // Spec 09.4 §6.5 (C4): a plain add joins the last section iff it was added during the workout.
+      const target = sectionForNewExercise(detail.sections);
       const row = {
         id: uuid(),
         workoutId: detail.id,
@@ -721,10 +750,12 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         restSeconds: null,
         supersetGroup: null,
         plannedSets: [],
-        sectionId: null,
+        sectionId: target?.id ?? null,
       };
-      store({ ...detail, exercises: [...detail.exercises, { ...row, sets: [] }] });
-      return HttpResponse.json(WorkoutExerciseSchema.parse(row), { status: 201 });
+      const others = byPosition(detail.exercises);
+      const index = target ? insertIndexForSection(others.map((e) => rankOf(detail, e)), target.position) : others.length;
+      const stored = store({ ...detail, exercises: placeAt(others, { ...row, sets: [] } as unknown as WorkoutExerciseDetail, index) });
+      return HttpResponse.json(WorkoutExerciseSchema.parse(stored.exercises.find((e) => e.id === row.id)), { status: 201 });
     }),
     handle("patch", "/workout-exercises/:id", ({ params, body }) => {
       const found = locateExercise(params["id"]!);
@@ -740,7 +771,19 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         without.splice(target, 0, exercise);
         current = { ...current, exercises: without.map((e, i) => ({ ...e, position: i })) };
       }
-      const { supersetGroup, notes } = parsed.data;
+      const { sectionId } = parsed.data;
+      let clearGroup = false;
+      if (sectionId !== undefined && sectionId !== exercise.sectionId) {
+        // Spec 09.4 §6.3: the server places the move (§6.2) and drops the exercise from its superset.
+        const section = sectionId === null ? null : detail.sections.find((x) => x.id === sectionId);
+        if (section === undefined) return notFound();
+        const others = byPosition(detail.exercises.filter((e) => e.id !== exercise.id));
+        const index = insertIndexForSection(others.map((e) => rankOf(detail, e)), section === null ? -1 : section.position);
+        current = { ...current, exercises: placeAt(others, { ...exercise, sectionId: section?.id ?? null }, index) };
+        clearGroup = true;
+      }
+      const { notes } = parsed.data;
+      const supersetGroup = parsed.data.supersetGroup !== undefined ? parsed.data.supersetGroup : clearGroup ? null : undefined;
       if (supersetGroup !== undefined || notes !== undefined) {
         current = {
           ...current,
@@ -761,6 +804,52 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       const after = { ...found.detail, exercises: remaining };
       if (wouldBeEmpty(found.detail, after)) return problemResponse(409, "workout-would-be-empty");
       store(after);
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // Spec 09.4 §6.4: a workout's own sections.
+    handle("post", "/workouts/:id/sections", ({ params, body }) => {
+      const found = locateWorkout(params["id"]!);
+      if (!found) return notFound();
+      const parsed = parseBody(CreateWorkoutSectionSchema, body);
+      if (!parsed.ok) return parsed.response;
+      const detail = found.detail;
+      if (detail.sections.length >= ROUTINE_SECTIONS_MAX) return problemResponse(409, "workout-section-limit");
+      const section = WorkoutSectionSchema.parse({
+        id: uuid(),
+        position: detail.sections.length,
+        name: parsed.data.name,
+        notes: parsed.data.notes ?? null,
+        addedInWorkout: true,
+      });
+      store({ ...detail, sections: [...detail.sections, section] });
+      return HttpResponse.json(section, { status: 201 });
+    }),
+    handle("patch", "/workout-sections/:id", ({ params, body }) => {
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const parsed = parseBody(UpdateWorkoutSectionSchema, body);
+      if (!parsed.ok) return parsed.response;
+      const next = WorkoutSectionSchema.parse({
+        ...found.section,
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+      });
+      store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
+      return HttpResponse.json(next);
+    }),
+    handle("delete", "/workout-sections/:id", ({ params }) => {
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const removed = found.section;
+      store({
+        ...found.detail,
+        sections: found.detail.sections
+          .filter((x) => x.id !== removed.id)
+          .map((x) => (x.position > removed.position ? { ...x, position: x.position - 1 } : x)),
+        // The FK nulls section_id; positions are untouched.
+        exercises: found.detail.exercises.map((e) => (e.sectionId === removed.id ? { ...e, sectionId: null } : e)),
+      });
       return new HttpResponse(null, { status: 204 });
     }),
 

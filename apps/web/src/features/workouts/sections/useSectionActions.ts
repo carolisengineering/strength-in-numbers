@@ -1,0 +1,303 @@
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import type { WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
+import { reportUnexpected } from "../reportUnexpected";
+import { SECTION_COPY, movedOut, movedTo, sectionAdded } from "./sectionCopy";
+import { checkSectionFields, sectionBody, type SectionValues } from "./sectionFields";
+import type { SectionMutations } from "./sectionMutations";
+import type { SectionSheetErrors } from "./SectionSheet";
+import { resolveSectionFailure, type SectionOp } from "./resolveSectionFailure";
+
+export interface SectionBanner {
+  tone: "warning" | "error";
+  text: string;
+  requestId?: string | null;
+  retry?: () => void;
+}
+
+/** What a screen injects (Spec 10.6 §6.3): its mutation set, lock, banner, status line, refetch and gone path. */
+export interface SectionActionDeps {
+  workout: WorkoutDetail;
+  mutations: SectionMutations;
+  /** The screen's structure lock: a write begun while another structure write is in flight is ignored (AC12). */
+  structureLock: { current: boolean };
+  setBanner(banner: SectionBanner | null): void;
+  /** The screen's one polite status line. */
+  announce(text: string): void;
+  /** Re-read the workout; resolves to the fresh detail (absent or another workout = gone). */
+  refetch(): Promise<WorkoutDetail | null | undefined>;
+  onGone(): void;
+  offlineText: string;
+  /** After a move: the screen reveals the remounted card and focuses its heading (§6.4). */
+  onMoved(exerciseId: string): void;
+}
+
+export interface SheetView {
+  readonly session: number;
+  readonly mode: "add" | "edit";
+  readonly sectionId: string | null;
+}
+
+export interface SectionActions {
+  /** The open sheet, or null. */
+  sheet: SheetView | null;
+  /** The sheet as last opened, kept after it closes so the dialog can close in place. */
+  sheetView: SheetView | null;
+  errors: SectionSheetErrors;
+  busy: boolean;
+  openAdd(): void;
+  openEdit(sectionId: string): void;
+  closeSheet(): void;
+  submitSheet(values: SectionValues): Promise<void>;
+  removeOpen: boolean;
+  requestRemove(): void;
+  cancelRemove(): void;
+  confirmRemove(): Promise<void>;
+  setExerciseSection(exercise: WorkoutExerciseDetail, sectionId: string | null): Promise<void>;
+  addSectionRef: RefObject<HTMLButtonElement | null>;
+  editRefFor(sectionId: string): (node: HTMLButtonElement | null) => void;
+  removeRef(node: HTMLButtonElement | null): void;
+}
+
+type FocusTarget = { kind: "add" } | { kind: "edit"; sectionId: string } | { kind: "remove" } | null;
+
+const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null };
+
+/**
+ * Spec 10.6 §6.3 — the section controls' behavior, shared by the live and the edit screen. It owns the
+ * sheet and confirm state, the double-tap guards, the failure table (`resolveSectionFailure`), the
+ * announcements and the focus rule of AC6–AC8; everything screen-specific is injected.
+ */
+export function useSectionActions(deps: SectionActionDeps): SectionActions {
+  const { workout, mutations, structureLock, setBanner, announce, refetch, onGone, offlineText, onMoved } = deps;
+  const [view, setView] = useState<(SheetView & { open: boolean }) | null>(null);
+  const [errors, setErrors] = useState<SectionSheetErrors>(NO_ERRORS);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const sessionRef = useRef(0);
+
+  const addSectionRef = useRef<HTMLButtonElement | null>(null);
+  const editNodes = useRef(new Map<string, HTMLButtonElement>());
+  const editCallbacks = useRef(new Map<string, (node: HTMLButtonElement | null) => void>());
+  const removeNode = useRef<HTMLButtonElement | null>(null);
+
+  // jsdom's dialog shim does not restore focus, and after a remove the opener is gone: focus is explicit,
+  // after the commit that closed the dialogs.
+  const pendingFocus = useRef<FocusTarget>(null);
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null) return;
+    const node =
+      target.kind === "add"
+        ? addSectionRef.current
+        : target.kind === "remove"
+          ? removeNode.current
+          : (editNodes.current.get(target.sectionId) ?? addSectionRef.current);
+    if (!node) return;
+    pendingFocus.current = null;
+    node.focus();
+  });
+
+  const editRefFor = useCallback((sectionId: string) => {
+    let callback = editCallbacks.current.get(sectionId);
+    if (!callback) {
+      callback = (node) => {
+        if (node) editNodes.current.set(sectionId, node);
+        else editNodes.current.delete(sectionId);
+      };
+      editCallbacks.current.set(sectionId, callback);
+    }
+    return callback;
+  }, []);
+  const removeRef = useCallback((node: HTMLButtonElement | null) => {
+    removeNode.current = node;
+  }, []);
+
+  const sheet = view !== null && view.open ? { session: view.session, mode: view.mode, sectionId: view.sectionId } : null;
+
+  function open(mode: "add" | "edit", sectionId: string | null) {
+    sessionRef.current += 1;
+    setErrors(NO_ERRORS);
+    setRemoveOpen(false);
+    setView({ session: sessionRef.current, mode, sectionId, open: true });
+  }
+
+  function closeAll(focus: FocusTarget) {
+    setView((v) => (v === null ? v : { ...v, open: false }));
+    setRemoveOpen(false);
+    setErrors(NO_ERRORS);
+    pendingFocus.current = focus;
+  }
+
+  const openerOf = (s: SheetView | null): FocusTarget =>
+    s?.mode === "edit" && s.sectionId !== null ? { kind: "edit", sectionId: s.sectionId } : { kind: "add" };
+
+  function begin(): boolean {
+    if (structureLock.current || submittingRef.current) return false;
+    structureLock.current = true;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setBanner(null);
+    return true;
+  }
+  function end() {
+    structureLock.current = false;
+    submittingRef.current = false;
+    setSubmitting(false);
+  }
+
+  /** The AC13 table. `inSheet`: the failure can show in the open sheet; `retry` re-runs the write. */
+  async function fail(op: SectionOp, error: unknown, ui: { inSheet: boolean; focus: FocusTarget; retry?: () => void }) {
+    const failure = resolveSectionFailure(op, error, { offlineText });
+    if (failure.report) reportUnexpected(op, error);
+    const formOrBanner = (text: string) => {
+      if (ui.inSheet) setErrors({ ...NO_ERRORS, form: text });
+      else setBanner({ tone: "error", text });
+    };
+    switch (failure.type) {
+      case "offline":
+      case "rate-limited":
+      case "limit":
+        formOrBanner(failure.text);
+        return;
+      case "fields":
+        if (ui.inSheet) {
+          const unmatched = failure.name === null && failure.notes === null;
+          setErrors({ name: failure.name, notes: failure.notes, form: unmatched ? SECTION_COPY.fieldsGeneric : null });
+        } else {
+          setBanner({ tone: "error", text: SECTION_COPY.fieldsGeneric });
+        }
+        return;
+      case "missing": {
+        const fresh = await refetch();
+        if (!fresh || fresh.id !== workout.id) {
+          closeAll(null);
+          onGone();
+          return;
+        }
+        closeAll({ kind: "add" });
+        setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
+        return;
+      }
+      case "workout-gone":
+        closeAll(null);
+        onGone();
+        return;
+      case "done":
+        return;
+      case "unconfirmed":
+        // AC14: no blind retry of a create — show the lifter whether it exists first.
+        await refetch();
+        closeAll({ kind: "add" });
+        setBanner({ tone: "warning", text: failure.text, requestId: failure.requestId });
+        return;
+      case "retry":
+        if (op === "update-section") {
+          setErrors({ ...NO_ERRORS, form: failure.text }); // Save is the retry
+          return;
+        }
+        closeAll(ui.focus);
+        setBanner({
+          tone: "error",
+          text: failure.text,
+          requestId: failure.requestId,
+          ...(failure.offerRetry && ui.retry ? { retry: ui.retry } : {}),
+        });
+    }
+  }
+
+  async function submitSheet(values: SectionValues) {
+    if (sheet === null) return;
+    const checked = checkSectionFields(values.name, values.notes);
+    if (checked.name !== null || checked.notes !== null) {
+      setErrors({ ...checked, form: null });
+      return;
+    }
+    const stored = sheet.mode === "edit" ? workout.sections.find((s) => s.id === sheet.sectionId) : undefined;
+    if (sheet.mode === "edit" && stored === undefined) {
+      closeAll({ kind: "add" });
+      setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
+      return;
+    }
+    const body = sectionBody(sheet.mode, values, stored);
+    if (body === null) {
+      closeAll(openerOf(sheet)); // nothing changed: no request
+      return;
+    }
+    if (!begin()) return;
+    try {
+      if (sheet.mode === "add") {
+        const created = await mutations.add(body as { name: string; notes?: string });
+        closeAll({ kind: "add" });
+        announce(sectionAdded(created.name));
+      } else {
+        await mutations.update(stored!.id, body);
+        closeAll(openerOf(sheet));
+        announce(SECTION_COPY.saved);
+      }
+    } catch (error) {
+      await fail(sheet.mode === "add" ? "add-section" : "update-section", error, { inSheet: true, focus: openerOf(sheet) });
+    } finally {
+      end();
+    }
+  }
+
+  async function removeSection(sectionId: string) {
+    if (!begin()) return;
+    const exerciseCount = workout.exercises.filter((e) => e.sectionId === sectionId).length;
+    try {
+      await mutations.remove(sectionId, exerciseCount);
+      closeAll({ kind: "add" });
+      announce(SECTION_COPY.removed);
+    } catch (error) {
+      setRemoveOpen(false);
+      await fail("remove-section", error, {
+        inSheet: true,
+        focus: { kind: "edit", sectionId },
+        retry: () => void removeSection(sectionId),
+      });
+    } finally {
+      end();
+    }
+  }
+
+  async function setExerciseSection(exercise: WorkoutExerciseDetail, sectionId: string | null) {
+    if (sectionId === exercise.sectionId) return;
+    if (!begin()) return;
+    try {
+      await mutations.setSection(exercise.id, sectionId);
+      const section = sectionId === null ? undefined : workout.sections.find((s) => s.id === sectionId);
+      announce(section ? movedTo(exercise.exerciseNameSnapshot, section.name) : movedOut(exercise.exerciseNameSnapshot));
+      onMoved(exercise.id);
+    } catch (error) {
+      await fail("set-section", error, { inSheet: false, focus: null, retry: () => void setExerciseSection(exercise, sectionId) });
+    } finally {
+      end();
+    }
+  }
+
+  return {
+    sheet,
+    sheetView: view === null ? null : { session: view.session, mode: view.mode, sectionId: view.sectionId },
+    errors,
+    busy: submitting || mutations.pending,
+    openAdd: () => open("add", null),
+    openEdit: (sectionId) => open("edit", sectionId),
+    closeSheet: () => closeAll(openerOf(sheet)),
+    submitSheet,
+    removeOpen,
+    requestRemove: () => setRemoveOpen(true),
+    cancelRemove: () => {
+      setRemoveOpen(false);
+      pendingFocus.current = { kind: "remove" };
+    },
+    confirmRemove: async () => {
+      if (sheet?.mode !== "edit" || sheet.sectionId === null) return;
+      await removeSection(sheet.sectionId);
+    },
+    setExerciseSection,
+    addSectionRef,
+    editRefFor,
+    removeRef,
+  };
+}
