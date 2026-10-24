@@ -8,6 +8,8 @@ export type WorkoutErrorKind =
   | "workout-would-be-empty"
   | "incomplete-working-sets"
   | "exercise-retired"
+  /** Spec 09.4 / 10.6 AC13: a ninth section on a workout. */
+  | "workout-section-limit"
   | "validation"
   | "unauthenticated"
   | "network"
@@ -55,6 +57,7 @@ export function classifyWorkoutError(error: unknown, context?: { op: string }): 
         case "workout-would-be-empty":
         case "incomplete-working-sets":
         case "exercise-retired":
+        case "workout-section-limit":
           return classified(error.type, op, error);
         default:
           return classified("unknown", op, error);
