@@ -1,0 +1,23 @@
+exit=1
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "fx_failed", schema "public" at "<host>"
+
+14 migrations found in prisma/migrations
+Following migration have failed:
+0014_workout_section_origin
+
+During development if the failed migration(s) have not been deployed to a production database you can then fix the migration(s) and run prisma migrate dev.
+
+The failed migration(s) can be marked as rolled back or applied:
+      
+- If you rolled back the migration(s) manually:
+prisma migrate resolve --rolled-back "0014_workout_section_origin"
+
+- If you fixed the database manually (hotfix):
+prisma migrate resolve --applied "0014_workout_section_origin"
+
+Read more about how to resolve migration issues in a production database:
+https://pris.ly/d/migrate-resolve
+undefined
+<pnpm-workspace>/apps/api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: prisma migrate status

@@ -1,0 +1,9 @@
+exit=1
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "sin", schema "public" at "<host>"
+Error: P1001: Can't reach database server at `<host>`
+
+Please make sure your database server is running at `<host>`.
+undefined
+<pnpm-workspace>/apps/api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: prisma migrate status

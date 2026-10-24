@@ -1,0 +1,7 @@
+exit=0
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "fx_ahead", schema "public" at "<host>"
+
+14 migrations found in prisma/migrations
+
+Database schema is up to date!

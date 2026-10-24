@@ -1,0 +1,17 @@
+exit=1
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "fx_both", schema "public" at "<host>"
+
+14 migrations found in prisma/migrations
+Your local migration history and the migrations table from your database are different:
+
+The last common migration is: 0013_routine_one_off
+
+The migration have not yet been applied:
+0014_workout_section_origin
+
+The migration from the database are not found locally in prisma/migrations:
+9999_future_migration
+undefined
+<pnpm-workspace>/apps/api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: prisma migrate status

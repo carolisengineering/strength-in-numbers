@@ -1,0 +1,13 @@
+exit=1
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "fx_pending", schema "public" at "<host>"
+
+14 migrations found in prisma/migrations
+Following migration have not yet been applied:
+0014_workout_section_origin
+
+To apply migrations in development run prisma migrate dev.
+To apply migrations in production run prisma migrate deploy.
+undefined
+<pnpm-workspace>/apps/api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: prisma migrate status
