@@ -43,6 +43,11 @@ export function cardNames(read: ReadResult): ReadName[] {
   return read.names.filter((name) => kept.has(name.key));
 }
 
+/** The sections the routine keeps (the 8-section cap), so the summary counts what `cardNames` counts (deferred minor 23). */
+export function keptSectionCount(read: ReadResult): number {
+  return buildImportPlan(read, () => "weight_reps").sections.length;
+}
+
 /** AC24: exact or similar → that exercise, pre-picked; nothing similar → New. */
 export function initialCards(names: readonly ReadName[], visible: readonly Exercise[]): CardState[] {
   return names.map((name, index) => {
