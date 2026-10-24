@@ -19,12 +19,18 @@ terraform {
   }
 }
 
+# With the owner's user credentials (gcloud auth application-default login), the Billing Budgets API
+# answers 403 unless calls are billed to a project (provider docs, google_billing_budget).
 provider "google" {
-  project = var.project_id
-  region  = var.region
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true
+  billing_project       = var.project_id
 }
 
 provider "google-beta" {
-  project = var.project_id
-  region  = var.region
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true
+  billing_project       = var.project_id
 }

@@ -264,7 +264,7 @@ A job can read an Environment's secrets only if it is bound to that Environment,
 | `GCP_DEPLOYER_SA` | var | deployer service account email |
 | `PROD_API_BASE_URL` | var | the Cloud Run origin, no trailing slash |
 | `PROD_WEB_BASE_URL` | var | the Hosting origin |
-| `FIREBASE_SITE_ID` | var | Hosting site id |
+| ~~`FIREBASE_SITE_ID`~~ | — | *(dropped at implementation: no workflow reads it; the site id lives in `apps/web/firebase.json` and `infra/prod.tfvars`)* |
 | `VITE_API_BASE_URL` / `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` / `VITE_AUTH0_AUDIENCE` / `VITE_APP_ENV` | vars | production values; `VITE_APP_ENV=production` |
 | `AUTH0_PROD_TOKEN_URL` | var | `https://dev-gncuqvfir0wv0t4l.us.auth0.com/oauth/token` |
 | `AUTH0_PROD_M2M_CLIENT_ID` / `AUTH0_PROD_M2M_CLIENT_SECRET` | secrets | the production M2M application |
@@ -344,7 +344,7 @@ Unit tests for scripts live in `apps/api/test/unit/` (the scripts are `apps/api/
 - **Of a bad release:** dispatch `deploy-prod` with the previous commit (AC21). Both the API and the web go back. Within the last 5 retained images this takes a few minutes; older ones need a forward-fix commit.
 - **Of this spec itself:** staging is untouched in behavior, so reverting the PR restores today's CI; the Google project can sit idle at no cost (scale to zero, free tier), or be removed with `terraform destroy` by the owner. `CLIENT_IP_SOURCE` unset behaves as before.
 - **Database:** forward-fix migration only; never `migrate down` (Spec 01 §11).
-- **Break-glass if Actions is unavailable:** the Cloud Run console "Edit & deploy new revision" with an older image digest; the web via `firebase hosting:rollback` from the owner's machine. Both are recorded in the runbook.
+- **Break-glass if Actions is unavailable:** the Cloud Run console "Edit & deploy new revision" with an older image digest; the web via the Firebase console's Hosting release history (Roll back), or `firebase hosting:clone <site>:<version-id> <site>:live` *(corrected at implementation: firebase-tools has no `hosting:rollback`)*. Both are recorded in the runbook.
 
 ### DESIGN.md / README / CLAUDE.md / doc edits (to be applied at implementation; NOT applied by this draft; verified by AC33)
 

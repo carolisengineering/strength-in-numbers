@@ -22,7 +22,7 @@ const CLIENT_ID = requireEnv("AUTH0_M2M_CLIENT_ID");
 const CLIENT_SECRET = requireEnv("AUTH0_M2M_CLIENT_SECRET");
 const AUDIENCE = requireEnv("AUTH0_M2M_AUDIENCE");
 const EXPECT_COMMIT = process.env.EXPECT_COMMIT || undefined;
-const WEB_ORIGIN = process.env.SMOKE_WEB_ORIGIN || undefined;
+const WEB_ORIGIN = process.env.SMOKE_WEB_ORIGIN?.replace(/\/+$/, "") || undefined;
 
 function requireEnv(name: string): string {
   const v = process.env[name];

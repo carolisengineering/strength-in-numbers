@@ -43,3 +43,9 @@ export async function waitForApiCommit(opts: WaitForApiCommitOptions): Promise<W
     await opts.sleep(opts.intervalMs);
   }
 }
+
+/** `WAIT_TIMEOUT_S`: a positive number of seconds; unset, empty or garbage means the 15-minute default. */
+export function parseTimeoutSeconds(raw: string | undefined): number {
+  const n = Number(raw);
+  return raw !== undefined && raw.trim() !== "" && Number.isFinite(n) && n > 0 ? n : 900;
+}

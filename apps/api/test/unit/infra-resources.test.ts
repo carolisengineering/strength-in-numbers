@@ -77,3 +77,13 @@ describe("15 AC1 — Terraform layout and pins", () => {
     for (const cmd of ["fmt -check -recursive", "init -backend=false", "validate"]) expect(job).toContain(cmd);
   });
 });
+
+describe("15 AC6 / AC7 — the first apply works (final review)", () => {
+  it("the environment attribute tolerates jobs without an environment claim", () =>
+    expect(tf()).toMatch(/"attribute\.environment"\s*=\s*"has\(assertion\.environment\) \? assertion\.environment : ''"/));
+  it("both providers bill API calls to the project (user ADC + the Billing Budgets API)", () => {
+    const versions = readFileSync(INFRA + "versions.tf", "utf8");
+    expect(versions.match(/user_project_override\s*=\s*true/g)).toHaveLength(2);
+    expect(versions.match(/billing_project\s*=\s*var\.project_id/g)).toHaveLength(2);
+  });
+});

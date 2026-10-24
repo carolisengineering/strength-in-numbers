@@ -9,7 +9,9 @@ export function checkCommit(body: unknown, expect: string | undefined): string |
 }
 
 /** The preflight must allow exactly the web origin (never `*`) and the GET method. */
-export function checkCorsPreflight(headers: Headers, origin: string): string | null {
+export function checkCorsPreflight(headers: Headers, configured: string): string | null {
+  // A configured origin may carry a trailing slash; an Origin header never does.
+  const origin = configured.replace(/\/+$/, "");
   const allowed = headers.get("access-control-allow-origin");
   if (allowed !== origin) return `CORS preflight allows origin ${allowed ?? "(none)"}, expected exactly ${origin}`;
   const methods = (headers.get("access-control-allow-methods") ?? "").split(",").map((m) => m.trim().toUpperCase());

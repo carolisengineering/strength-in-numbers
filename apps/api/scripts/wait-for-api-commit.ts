@@ -11,7 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import { waitForApiCommit } from "./lib/wait-for-api-commit.js";
+import { parseTimeoutSeconds, waitForApiCommit } from "./lib/wait-for-api-commit.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -41,7 +41,8 @@ function isAncestor(older: string, newer: string): boolean | null {
 }
 
 async function fetchCommit(url: string): Promise<string | null> {
-  const res = await fetch(url, { headers: { "cache-control": "no-cache" } });
+  // A stalled connection must not hold one poll for undici's 300 s default.
+  const res = await fetch(url, { headers: { "cache-control": "no-cache" }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) return null;
   const body = (await res.json()) as { commit?: unknown };
   return typeof body.commit === "string" ? body.commit : null;
@@ -50,7 +51,7 @@ async function fetchCommit(url: string): Promise<string | null> {
 async function main(): Promise<void> {
   const baseUrl = requireEnv("WAIT_BASE_URL");
   const want = requireEnv("WAIT_COMMIT");
-  const timeoutMs = Number(process.env.WAIT_TIMEOUT_S ?? "900") * 1000;
+  const timeoutMs = parseTimeoutSeconds(process.env.WAIT_TIMEOUT_S) * 1000;
   const outcome = await waitForApiCommit({ baseUrl, want, timeoutMs, intervalMs: 10_000, fetchCommit, isAncestor, now: Date.now, sleep });
   if (outcome.result === "match") {
     process.stdout.write(`wait-for-api-commit: ok — ${baseUrl} serves ${want}\n`);

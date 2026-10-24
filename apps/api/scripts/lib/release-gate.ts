@@ -15,7 +15,7 @@ export interface CiRun {
 
 export type ReleaseDecision =
   | { ok: true; sha: string; digest: string }
-  | { ok: false; reason: "no-candidate" | "no-ci-run" | "staging-skipped" | "staging-failed" | "image-missing" | "not-on-main"; message: string };
+  | { ok: false; reason: "bad-sha" | "no-candidate" | "no-ci-run" | "staging-skipped" | "staging-failed" | "image-missing" | "not-on-main"; message: string };
 
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -63,6 +63,9 @@ export function decideRelease(input: { requestedSha: string | null; runs: CiRun[
   }
   if (input.requestedSha !== null) {
     const sha = input.requestedSha.trim().toLowerCase();
+    if (!COMMIT_SHA.test(sha)) {
+      return { ok: false, reason: "bad-sha", message: `"${input.requestedSha.trim()}" is not a full commit: give all 40 characters (git rev-parse <sha>)` };
+    }
     return check(sha, newest.get(sha), input.images, input.onMain);
   }
   for (const [sha, run] of newest) {

@@ -51,6 +51,15 @@ async function main(): Promise<void> {
     `/repos/${repo}/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=30`,
     token,
   );
+  // An explicit rollback can be older than the newest 30 runs (code review): fetch its own runs too.
+  const requestedFull = requested !== null && /^[0-9a-f]{40}$/i.test(requested) ? requested.toLowerCase() : null;
+  if (requestedFull !== null && !workflow_runs.some((r) => r.head_sha === requestedFull)) {
+    const own = await github<{ workflow_runs: Run[] }>(
+      `/repos/${repo}/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&head_sha=${requestedFull}&per_page=10`,
+      token,
+    );
+    workflow_runs.push(...own.workflow_runs);
+  }
   const runs: CiRun[] = [];
   for (const run of workflow_runs) {
     const { jobs } = await github<Jobs>(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`, token);

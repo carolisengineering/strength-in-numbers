@@ -63,3 +63,8 @@ describe("15 AC22 / AC24 — parseTfvars", () => {
   it("reads quoted string values and ignores comments", () =>
     expect(parseTfvars('# a comment\nproject_id     = "sin-prod"\nproject_number = "123" # trailing\n')).toEqual({ project_id: "sin-prod", project_number: "123" }));
 });
+
+describe("15 AC22 — only the two Cache-Control rules (final review)", () => {
+  it("a third Cache-Control rule on another source is named", () =>
+    expect(check(firebase({ rules: (r) => [...r, { source: "**/*.html", headers: [{ key: "Cache-Control", value: "public, max-age=3600" }] }] })).join("\n")).toMatch(/\*\*\/\*\.html/));
+});

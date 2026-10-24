@@ -35,7 +35,7 @@ describe("15 AC13 / AC16 / AC17 — deploy-prod trigger, approval and concurrenc
     expect(Object.keys(w.on)).toEqual(["workflow_dispatch"]);
     expect((w.on.workflow_dispatch as { inputs: { sha: { required: boolean } } }).inputs.sha.required).toBe(false);
   });
-  it("one deploy at a time, never cancelled", () => expect(prod().concurrency).toEqual({ group: "deploy-prod", "cancel-in-progress": false }));
+  it("one deploy at a time, never canceled", () => expect(prod().concurrency).toEqual({ group: "deploy-prod", "cancel-in-progress": false }));
   it("the gate refuses any ref but main; deploy waits in the production Environment", () => {
     const { gate, deploy } = prod().jobs;
     expect(gate!.if).toBe("github.ref == 'refs/heads/main'");
@@ -105,5 +105,17 @@ describe("15 D13 — CI never applies Terraform", () => {
     const dir = `${repoRoot}.github/workflows/`;
     const files = existsSync(dir) ? readdirSync(dir) : [];
     expect(files.filter((f) => /terraform\s+(-chdir=\S+\s+)?apply/.test(read(`.github/workflows/${f}`)))).toEqual([]);
+  });
+});
+
+describe("15 AC3 / AC20 — final review fixes", () => {
+  it("one publish is one registry version: no provenance or SBOM attestations", () => {
+    const build = ci().jobs.publish!.steps.find((s) => s.uses?.startsWith("docker/build-push-action@"))!;
+    expect(build.with).toMatchObject({ provenance: false, sbom: false });
+  });
+  it("the release record names the approver from the run's approval history", () => {
+    const deploy = prod().jobs.deploy!;
+    expect(deploy.permissions).toMatchObject({ actions: "read" });
+    expect(deploy.steps.at(-1)!.run).toMatch(/actions\/runs\/\$\{?GITHUB_RUN_ID\}?\/approvals/);
   });
 });

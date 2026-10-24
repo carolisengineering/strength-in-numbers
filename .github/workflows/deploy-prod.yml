@@ -74,6 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read # the release record reads who approved
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -165,9 +166,11 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
           DIGEST: ${{ needs.gate.outputs.digest }}
           REVISION: ${{ steps.revision.outputs.revision }}
-          APPROVER: ${{ github.triggering_actor }}
+          TRIGGERED_BY: ${{ github.triggering_actor }}
           RESULT: ${{ job.status }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          approver=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" --jq '[.[] | select(.state == "approved") | .user.login] | join(", ")' 2>/dev/null || true)
           {
             echo "## deploy-prod"
             echo "| | |"
@@ -175,6 +178,7 @@ jobs:
             echo "| Commit | \`$SHA\` |"
             echo "| Image digest | \`$DIGEST\` |"
             echo "| Revision | \`${REVISION:-none}\` |"
-            echo "| Triggered by | $APPROVER |"
+            echo "| Triggered by | $TRIGGERED_BY |"
+            echo "| Approved by | ${approver:-unknown} |"
             echo "| Result | $RESULT |"
           } >> "$GITHUB_STEP_SUMMARY"

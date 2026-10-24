@@ -91,6 +91,10 @@ export function checkFirebaseParity({ renderYaml, firebaseJson, prodApiOrigin, s
   if (revalidate.length !== 1 || revalidate[0].value !== REVALIDATE) {
     problems.push(`** needs exactly one Cache-Control "${REVALIDATE}" (found ${revalidate.map((h) => `"${h.value}"`).join(", ") || "none"})`);
   }
+  // Only the two Cache-Control rules exist (Review Focus 4): no other source may set it.
+  for (const h of sent) {
+    if (h.key === "Cache-Control" && h.source !== "**" && h.source !== "/assets/**") problems.push(`Cache-Control on ${h.source} is not allowed (only ** and /assets/**)`);
+  }
   // Review Focus 4: the more specific /assets/** rule comes after **, so it is the one that applies to assets.
   const assets = find("/assets/**", "Cache-Control");
   if (revalidate.length > 0 && assets.length > 0 && assets[0].index < revalidate[0].index) {

@@ -21,7 +21,7 @@ describe("15 AC14 / AC21 — decideRelease", () => {
   it("requested and the staging step failed → staging-failed", () =>
     expect(decideRelease({ requestedSha: sha("f"), runs: [run("f", "failure", "2026-10-24T09:00:00Z")], images: images("f"), onMain })).toMatchObject({ ok: false, reason: "staging-failed" }));
   it("requested and the step is missing (before this spec) → staging-failed", () =>
-    expect(decideRelease({ requestedSha: sha("m"), runs: [run("m", "missing", "2026-10-20T09:00:00Z")], images: images("m"), onMain })).toMatchObject({ ok: false, reason: "staging-failed" }));
+    expect(decideRelease({ requestedSha: sha("e"), runs: [run("e", "missing", "2026-10-20T09:00:00Z")], images: images("e"), onMain })).toMatchObject({ ok: false, reason: "staging-failed" }));
   it("requested and passing → its digest", () =>
     expect(decideRelease({ requestedSha: sha("b"), runs: RUNS, images: images("a", "b"), onMain })).toEqual({ ok: true, sha: sha("b"), digest: digest("b") }));
   it("rollback to a retained older commit → ok with its digest", () =>
@@ -34,7 +34,7 @@ describe("15 AC14 / AC21 — decideRelease", () => {
   it("not on main → not-on-main", () =>
     expect(decideRelease({ requestedSha: sha("b"), runs: RUNS, images: images("b"), onMain: () => false })).toMatchObject({ ok: false, reason: "not-on-main" }));
   it("a commit with no CI run → no-ci-run", () =>
-    expect(decideRelease({ requestedSha: sha("z"), runs: RUNS, images: images("z"), onMain })).toMatchObject({ ok: false, reason: "no-ci-run" }));
+    expect(decideRelease({ requestedSha: sha("9"), runs: RUNS, images: images("9"), onMain })).toMatchObject({ ok: false, reason: "no-ci-run" }));
   it("30 runs, none passing → no-candidate", () => {
     const runs = Array.from({ length: 30 }, (_, i) => ({ headSha: (i % 16).toString(16).repeat(40), createdAt: `2026-10-${String(1 + i).padStart(2, "0")}T00:00:00Z`, stagingStep: "failure" as const }));
     expect(decideRelease({ requestedSha: null, runs, images: new Map(), onMain })).toMatchObject({ ok: false, reason: "no-candidate" });
@@ -67,5 +67,13 @@ describe("15 AC14 — parseArImages", () => {
   it("garbage is an empty map", () => {
     expect(parseArImages(null)).toEqual(new Map());
     expect(parseArImages({})).toEqual(new Map());
+  });
+});
+
+describe("15 AC13 — a requested sha must be the full commit (code review)", () => {
+  it("a short sha is refused as bad-sha, not as a commit without CI", () => {
+    const r = decideRelease({ requestedSha: "7fffea5", runs: [], images: new Map(), onMain: () => true });
+    expect(r).toMatchObject({ ok: false, reason: "bad-sha" });
+    expect(!r.ok && r.message).toMatch(/40/);
   });
 });

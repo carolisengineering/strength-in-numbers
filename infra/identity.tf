@@ -13,10 +13,12 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   display_name                       = "GitHub OIDC"
   attribute_condition                = "assertion.repository == '${var.github_repository}'"
   attribute_mapping = {
-    "google.subject"        = "assertion.sub"
-    "attribute.repository"  = "assertion.repository"
-    "attribute.ref"         = "assertion.ref"
-    "attribute.environment" = "assertion.environment"
+    "google.subject"       = "assertion.sub"
+    "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
+    # Jobs without an environment (publish, the gate) carry no `environment` claim; a bare
+    # reference would fail their token exchange (code review).
+    "attribute.environment" = "has(assertion.environment) ? assertion.environment : ''"
   }
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

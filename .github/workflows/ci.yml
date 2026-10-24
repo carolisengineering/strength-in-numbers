@@ -169,6 +169,10 @@ jobs:
           push: true
           build-args: GIT_COMMIT=${{ github.sha }}
           tags: ${{ vars.AR_IMAGE }}:${{ github.sha }}
+          # One push = one registry version, so the "keep the 5 most recent" policy keeps 5 commits
+          # (attestation manifests would count as versions too).
+          provenance: false
+          sbom: false
       - if: steps.gcp.outputs.ready == 'true'
         run: echo "Published \`${{ vars.AR_IMAGE }}:${{ github.sha }}\` — digest \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
 

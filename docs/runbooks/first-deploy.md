@@ -5,8 +5,8 @@ tenant, and to make the CI post-deploy smoke pass. After this, deploys are just
 pushes to `main`.
 
 Do everything in **one Auth0 tenant** (Parts A–D), prove the pipeline end to end.
-Production is deferred to **Part E** and needs its own tenant — decide the Auth0
-plan then, not now.
+Production is **Part F** (Spec 15): a Google Cloud project, using this same tenant with its own
+production applications (Spec 15 D7; a separate tenant is BL-33).
 
 **Prerequisites:** an Auth0 account, a Render account, admin on the GitHub repo.
 `main` merged (PR #1).
@@ -20,9 +20,8 @@ plan then, not now.
 - Set **Settings → General → Friendly Name** to `SiN staging` — a dashboard label
   only; it does not change the tenant domain.
 - The tenant's environment tag will be **Development** — leave it.
-- **Do not upgrade to a paid plan.** A separate Production tenant is a Part E
-  concern; on the free plan that is a second free tenant (create it then) or a
-  plan upgrade — evaluate when you get there.
+- **Do not upgrade to a paid plan.** Production uses this tenant too (Part F7, Spec 15 D7); a
+  separate production tenant is BL-33.
 - Below, **`<tenant>.us.auth0.com`** means your real tenant domain, shown in the
   dashboard's top-left tenant switcher — e.g. `dev-gncuqvfir0wv0t4l.us.auth0.com`.
 
@@ -840,10 +839,16 @@ gcloud storage buckets create gs://<project-id>-tfstate --project=<project-id> -
 gcloud storage buckets update gs://<project-id>-tfstate --versioning
 ```
 
-### F5. First apply
+### F5. First apply — in two steps
+
+Cloud Run reads `DATABASE_URL` from the secret's latest version, so the secret needs a value before the
+service is created; otherwise the first revision can't start and the apply fails.
 
 ```bash
 terraform -chdir=infra init -backend-config="bucket=<project-id>-tfstate"
+# 1. Only the (empty) secret container, and the APIs it needs:
+terraform -chdir=infra apply -var-file=prod.tfvars -target=google_secret_manager_secret.database_url
+# 2. Now do F6 steps 1–2 (create the Neon project, add the secret version), then everything else:
 terraform -chdir=infra apply -var-file=prod.tfvars
 terraform -chdir=infra output
 ```
@@ -852,7 +857,7 @@ Check (AC5): `api_origin` is in `api_urls`, and `web_origin` is `https://<site i
 what `prod.tfvars` gives. Cloud Run starts on Google's sample image until the first `deploy-prod`.
 Terraform never deploys an image after that (`ignore_changes`). **Never run `apply` from CI.**
 
-### F6. Production database (Neon) and its secret
+### F6. Production database (Neon) and its secret — steps 1–2 happen inside F5
 
 1. Create a **new** Neon free project (the B1 steps, its own project — not staging's). Take the **direct**
    (not `-pooler`) connection string and append `sslmode=require&sslaccept=strict` (B1).
@@ -901,7 +906,6 @@ deployment branches = `main` only. Its variables and secrets:
 | `GCP_DEPLOYER_SA` | var | `terraform -chdir=infra output -raw deployer_sa` |
 | `PROD_API_BASE_URL` | var | `terraform -chdir=infra output -raw api_origin` |
 | `PROD_WEB_BASE_URL` | var | `terraform -chdir=infra output -raw web_origin` |
-| `FIREBASE_SITE_ID` | var | the `hosting_site_id` from `prod.tfvars` |
 | `VITE_API_BASE_URL` | var | `terraform -chdir=infra output -raw api_origin` |
 | `VITE_AUTH0_DOMAIN` | var | `dev-gncuqvfir0wv0t4l.us.auth0.com` |
 | `VITE_AUTH0_CLIENT_ID` | var | the production SPA application's client id (F7) |
@@ -965,7 +969,9 @@ slower).
 
 - **API:** Cloud Run console → `si-api` → Edit & deploy new revision → an older image **by digest** from
   Artifact Registry.
-- **Web:** `pnpm --filter @sin/web exec firebase hosting:rollback --project <project-id>`.
+- **Web:** Firebase console → Hosting → the site → **Release history** → the previous release → **Roll back**.
+  (firebase-tools has no `hosting:rollback`; from the CLI, `hosting:clone <site>:<version-id> <site>:live`
+  makes an older version live.)
 
 Record what you did; the next `deploy-prod` puts both back on the pipeline.
 

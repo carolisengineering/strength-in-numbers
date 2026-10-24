@@ -58,3 +58,13 @@ describe("15 AC12 — waitForApiCommit", () => {
     expect(await harness([new Error("ECONNRESET"), null, WANT]).run()).toEqual({ result: "match", last: WANT });
   });
 });
+
+describe("15 AC12 — the wait's bound (code review)", () => {
+  it("an empty or non-numeric WAIT_TIMEOUT_S means the default 900 s, not 0", async () => {
+    const { parseTimeoutSeconds } = await import("../../scripts/lib/wait-for-api-commit.js");
+    expect(parseTimeoutSeconds(undefined)).toBe(900);
+    expect(parseTimeoutSeconds("")).toBe(900);
+    expect(parseTimeoutSeconds("abc")).toBe(900);
+    expect(parseTimeoutSeconds("20")).toBe(20);
+  });
+});

@@ -28,3 +28,8 @@ describe("15 AC20 — checkCorsPreflight", () => {
   it("a missing allow-origin fails", () => expect(checkCorsPreflight(H({ "access-control-allow-methods": "GET" }), ORIGIN)).not.toBeNull());
   it("methods without GET fail", () => expect(checkCorsPreflight(H({ "access-control-allow-origin": ORIGIN, "access-control-allow-methods": "POST" }), ORIGIN)).not.toBeNull());
 });
+
+describe("15 AC20 — a trailing slash on the configured web origin is not a CORS failure (code review)", () => {
+  it("the origin is compared without its trailing slash", () =>
+    expect(checkCorsPreflight(new Headers({ "access-control-allow-origin": "https://site.web.app", "access-control-allow-methods": "GET" }), "https://site.web.app/")).toBeNull());
+});
