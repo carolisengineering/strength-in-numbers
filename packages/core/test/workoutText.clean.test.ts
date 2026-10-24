@@ -62,13 +62,13 @@ describe("10.4 AC42 — a clock line may carry one icon", () => {
 });
 
 describe("10.4 AC43 — icon and count lines are furniture", () => {
-  it.each(["口", "凸", "الهه", "→", "•0ll", "•ll", "|"])("%s is dropped and counted", (line) => {
+  it.each(["口", "凸", "الهه", "→", "•0ll", "•ll"])("%s is dropped and counted", (line) => {
     expect(isIconLine(line)).toBe(true);
     const r = cleanWorkoutText(`Intro\n${line}\nNext`);
     expect(r.lines).toEqual(["Intro", "Next"]);
     expect(r.furniture).toBe(1);
   });
-  it.each(["Søren Lunge", "Row", "10", "I", "Lo", "100m"])("%s is kept (Review Focus 2)", (line) => {
+  it.each(["Søren Lunge", "Row", "10", "I", "Lo", "100m", "***", "---", "+", "|"])("%s is kept (Review Focus 2; plain ASCII marks are separators, not icons)", (line) => {
     expect(isIconLine(line)).toBe(false);
     expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(line);
   });

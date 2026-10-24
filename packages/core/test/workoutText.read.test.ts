@@ -121,11 +121,14 @@ describe("10.4 AC46 — a repeated tagged header continues its section", () => {
     expect(r.sections[0]!.notes).toBe("First part.\nSecond part.");
     expect(r.lines.placed.filter((p) => p.as === "heading")).toHaveLength(2);
   });
-  it("an untagged repeat in a badge paste is a note (Review Focus 4)", () => {
+  it("an untagged repeat of a strict header continues the section too (Review Focus 4; code review fix)", () => {
     const r = read(['Workout: "Run"', "REPS", "First part.", 'Workout: "Run"']);
     expect(r.sections).toHaveLength(1);
-    expect(r.sections[0]!.notes).toBe('First part.\nWorkout: "Run"');
+    expect(r.sections[0]!.notes).toBe("First part.");
+    expect(r.lines.placed.map((p) => p.as)).toEqual(["heading", "note", "heading"]);
   });
+  it("an untagged generic title in a badge paste is a note", () =>
+    expect(read(['Workout: "Run"', "REPS", "First part.", "Front Rack Carry", "x."]).sections[0]!.notes).toBe("First part.\nFront Rack Carry\nx."));
 });
 
 describe("10.4 AC47 — the repeated first line of a card is dropped", () => {
@@ -134,7 +137,10 @@ describe("10.4 AC47 — the repeated first line of a card is dropped", () => {
     expect(r.sections[0]!.notes).toBe("Stretch");
     expect(r.lines.placed.map((p) => p.as)).toEqual(["heading", "heading", "note"]);
   });
-  it("only the first line: a later repeat stays", () => expect(read(["Warmup", "NO SCORE", "Stretch", "Warmup"]).sections[0]!.notes).toBe("Stretch\nWarmup"));
+  it("a later repeat of the header word continues the section (it is a header, not a note)", () =>
+    expect(read(["Warmup", "NO SCORE", "Stretch", "Warmup"]).sections[0]!.notes).toBe("Stretch"));
+  it("a first line that only resembles a non-strict header stays", () =>
+    expect(read(["Front Rack", "WEIGHT", "Front Rack Carry", "10 Lunges"]).sections[0]!.notes).toBe("Front Rack Carry\n10 Lunges"));
 });
 
 describe("10.4 AC52 — alternatives after a label are notes", () => {
@@ -220,4 +226,26 @@ describe("10.4 AC45 — a header at a screenshot edge keeps its section (final r
   });
   it("a generic title at a screenshot's end is not promoted", () =>
     expect(read(["11:00", 'Workout: "X"', "REPS", "a note.", "Front Rack Carry", "11:01", "more."]).sections.map((s) => s.name)).toEqual(["X"]));
+});
+
+describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
+  it("a stray badge word in a non-gym paste keeps the strict headings (AC45)", () =>
+    expect(read(["Warmup", "Easy row.", "Strength", "Back Squat", "Weight", "5 Sets:", "5 Back Squat", "Conditioning", "21-15-9", "Thrusters", "x."]).sections.map((s) => s.name))
+      .toEqual(["Warmup", "Strength", "Back Squat", "Conditioning"]));
+  it("a parenthesized cue keeps the run open; later movements are exercises (AC52)", () => {
+    const r = read(["Strength", "REPS", "3 Rounds:", "10 Lunges", "(each leg)", "15 Pushups", "20 Situps"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Lunges", "Pushups", "Situps"]);
+    expect(r.sections[0]!.notes).toBe("(each leg)");
+  });
+  it.each(["Advanced Plank", "Home stretch", "Options for the rower"])("%s is not a label (AC52)", (line) =>
+    expect(read(["Strength", "REPS", "3 Rounds:", "10 Lunges", line, "15 Pushups"]).items.map((i) => i.name)).toContain("Pushups"));
+  it.each(["Scaled:", "Options", "(No Bike)", "(Without a rower)"])("%s is still a label (AC52)", (label) =>
+    expect(read(["Strength", "REPS", label, "3 Sets:", "10 Curl"]).items).toEqual([]));
+  it("after 'N Sets, 1 Set Every', coaching lines are notes and only real movements are exercises (AC48)", () => {
+    const r = read(["Strength", "WEIGHT", "5 Sets, 1 Set Every 2:00", "Build to a heavy 5", "Tempo 3-1-1", "5 Back Squat"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Back Squat"]);
+    expect(r.sections[0]!.notes.split("\n")).toEqual(["5 Sets, 1 Set Every 2:00", "Build to a heavy 5", "Tempo 3-1-1"]);
+  });
+  it("a *** separator still ends the run", () =>
+    expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => i.name)).toEqual(["Pushups"]));
 });

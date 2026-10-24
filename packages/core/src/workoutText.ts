@@ -25,6 +25,8 @@ const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060]/g;
 const LINE_BREAK = /\r\n|\r|\n/;
 const ALNUM = /[\p{L}\p{N}]/u;
 const LATIN_OR_DIGIT = /[A-Za-z0-9\u00C0-\u024F]/;
+/** Outside printable ASCII (lines are collapsed first, so no control characters remain). */
+const NON_ASCII = /[^ -~]/;
 /** The signal-strength bars as Live Text reads them: a dot, then up to three bar-like characters. */
 const SIGNAL_BARS = /^[•·][•·.0oOlI|]{0,3}$/;
 const BARE_NUMBER = /^\d{1,6}$/;
@@ -40,7 +42,8 @@ const ICON_MAX_LENGTH = 8;
 /** AC43: a status-bar or tab-bar icon read as text: a short line with no Latin letter or digit, or the signal bars. */
 export function isIconLine(line: string): boolean {
   const l = collapseLine(line);
-  return l !== "" && l.length <= ICON_MAX_LENGTH && (!LATIN_OR_DIGIT.test(l) || SIGNAL_BARS.test(l));
+  // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
+  return l !== "" && l.length <= ICON_MAX_LENGTH && ((!LATIN_OR_DIGIT.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
 }
 
 export function isFurnitureLine(line: string): boolean {
@@ -264,7 +267,8 @@ interface MutableItem {
   noteLines: string[];
   run: number | null;
 }
-type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number };
+/** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
+type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number; strict?: boolean };
 
 /** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
 function isGenericTitle(line: string): boolean {
@@ -425,7 +429,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // 5. A lead-in opens a run of N sets (AC9); "N Sets, 1 Set Every M:SS" also stays in the note (AC48).
   const every = LEAD_IN_SETS_EVERY.exec(line);
   if (every && Number(every[1]) >= 1) {
-    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]) };
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
     return "note";
   }
   const n = leadInCount(line);
@@ -445,7 +449,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (s.run !== null) {
     const raw = line.replace(BULLET, "");
     // AC49: lines that describe the interval go to the note and keep the run open.
-    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw)) return "note";
+    // A parenthesized cue ("(each leg)") is a note too.
+    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side.
     const parts = raw.split(PLUS);
     if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
@@ -460,6 +465,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
       return "movement";
     }
     const text = raw.endsWith("+") ? raw.slice(0, -1).trimEnd() : raw;
+    // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
+    if (s.run.kind === "lead-in" && s.run.strict && repFormOf(text) === null && !LEADING_MEASURE.test(text)) return "note";
     if (!isMovementText(text)) return null;
     pushMovement(s, s.run, text, repFormOf(text));
     return "movement";
@@ -487,9 +494,15 @@ const FIRST_WORD = /^[\p{L}]+/u;
 
 /** AC52: a line that starts an alternative (scaled, at home, "(No Bike)"); format lines like "For Time:" are not. */
 function isVariantLabel(line: string): boolean {
-  if (NON_LABEL.test(line) || AT_HOME.test(line) || PARENTHESIZED.test(line)) return true;
+  if (NON_LABEL.test(line) || AT_HOME.test(line)) return true;
+  // "(No Bike)", "(Without a rower)", "(Scaled)" — but not a cue like "(each leg)".
+  if (PARENTHESIZED.test(line)) {
+    const inner = FIRST_WORD.exec(line.slice(1))?.[0].toLowerCase();
+    return inner !== undefined && (inner === "no" || inner === "non" || inner === "without" || VARIANT_WORDS.has(inner));
+  }
+  // A variant word heads a label only when the line reads as one: "Scaled Run:", "Options", "INTENT" — not "Advanced Plank".
   const word = FIRST_WORD.exec(line)?.[0].toLowerCase();
-  return word !== undefined && VARIANT_WORDS.has(word);
+  return word !== undefined && VARIANT_WORDS.has(word) && (line.endsWith(":") || !line.includes(" "));
 }
 
 export function readWorkoutText(raw: string): ReadResult {
@@ -506,7 +519,9 @@ export function readWorkoutText(raw: string): ReadResult {
     const heading = badgeMode
       ? clean.tagged[i]
         ? (headingOf(line, false, false) ?? { name: line.endsWith(":") ? line.slice(0, -1).trimEnd() : line, workout: false })
-        : null
+        : isStrictHeading(line)
+          ? headingOf(line, false, false)
+          : null
       : headingOf(line, i === clean.lines.length - 1, s.run !== null);
     const open = s.section === null ? null : s.sections[s.section]!;
     // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
