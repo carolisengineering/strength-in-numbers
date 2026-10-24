@@ -302,7 +302,7 @@ pnpm run db:migrate:deploy   # = pnpm --filter @sin/api exec prisma migrate depl
 
 Run it from the repo root with `pnpm`, never `npx prisma …` — `npx` fetches the
 latest Prisma (a different major) instead of the repo's pinned one. The root
-`.npmrc` makes pnpm use Node 22.23.3 even if your shell's `node` is another version.
+`.npmrc` makes pnpm use Node 22.23.4 even if your shell's `node` is another version.
 
 Expect `N migrations found` and one `Applying migration …` line per migration
 not yet on that database — on a fresh Neon branch that is every folder under

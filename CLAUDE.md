@@ -4,7 +4,7 @@ Workout-logging + progress-tracking web app. Responsive web only for v1 (mobile-
 
 ## Layout (pnpm workspaces, Node 22)
 
-The root `.npmrc` pins `use-node-version=22.23.3`: every `pnpm` command in this repo runs on that
+The root `.npmrc` pins `use-node-version=22.23.4`: every `pnpm` command in this repo runs on that
 Node regardless of the shell's `node` (pnpm downloads it once). Use `pnpm run …` / `pnpm exec …`,
 never `npx` — `npx prisma` fetches the latest Prisma instead of the repo's pinned one.
 
