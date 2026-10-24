@@ -12,6 +12,7 @@ import {
   IN_YOUR_LIST,
   NOTHING_SIMILAR,
   SAME_NEW,
+  NEW_DETAILS_INVALID,
   SIMILAR,
   TYPE_LABEL,
   USE_IT_INSTEAD,
@@ -87,6 +88,10 @@ export function NameCard({ card, problem, rows, muscleGroups, equipment, onChang
     ) : problem?.kind === "same-new" ? (
       <p className={styles.notice} role="status">
         {SAME_NEW}
+      </p>
+    ) : problem?.kind === "invalid" ? (
+      <p className={styles.notice} role="status">
+        {NEW_DETAILS_INVALID}
       </p>
     ) : null;
 

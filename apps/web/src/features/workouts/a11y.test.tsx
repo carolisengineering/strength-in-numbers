@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -673,6 +673,7 @@ describe("10.5 AC24 — one-off controls, accessibly", () => {
     expect(keep).toHaveAttribute("aria-busy", "true");
     expect(keep).toBeDisabled();
     release();
-    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent("Kept in your routines.");
+    // Amended by deferred minor 47: announced through a polite live region present from first paint, not a status role.
+    await waitFor(() => expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Kept in your routines."));
   });
 });

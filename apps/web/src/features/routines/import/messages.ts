@@ -20,6 +20,8 @@ import {
 export const NEW_NAME_REQUIRED = "Give the exercise a name";
 export const NEW_NAME_TOO_LONG = "Keep the name to 120 characters or fewer";
 export const NEW_NAME_INVALID = "Remove unusual characters from the name";
+/** A New card refused for something other than its name (type, muscles, equipment). Defensive: the fields prevent it today. */
+export const NEW_DETAILS_INVALID = "Check this exercise's type and details";
 
 // Paste screen (AC21, §5.2).
 export const PASTE_TITLE = "New routine from text";

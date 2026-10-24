@@ -101,6 +101,10 @@ describe("10.5 AC7 — Keep as a routine", () => {
     const fake = boot();
     const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
     const button = await screen.findByRole("button", { name: KEEP_AS_ROUTINE });
+    // Deferred minor 47: an empty polite live region (no status role) holds only the confirmation, not the note.
+    const region = document.querySelector('[aria-live="polite"]')!;
+    expect(region).toBeEmptyDOMElement();
+    expect(region.contains(screen.getByText(oneOffNoteText(oneOffDay(FUTURE))))).toBe(false);
     const hold = holdKeep(fake);
     await user.dblClick(button);
     expect(screen.getByRole("button", { name: KEEP_AS_ROUTINE })).toHaveAttribute("aria-busy", "true");
@@ -108,7 +112,9 @@ describe("10.5 AC7 — Keep as a routine", () => {
     await waitFor(() => expect(screen.queryByText(ONE_OFF_TAG)).toBeNull());
     expect(screen.queryByRole("button", { name: KEEP_AS_ROUTINE })).toBeNull();
     expect(screen.queryByText(oneOffNoteText(oneOffDay(FUTURE)))).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(KEPT_STATUS);
+    // The same region, never remounted, fills with the confirmation, so it is announced.
+    await waitFor(() => expect(region).toHaveTextContent(KEPT_STATUS));
+    expect(region.isConnected).toBe(true);
     await waitFor(() => expect(screen.getByRole("link", { name: "Edit" })).toHaveFocus());
     expect(keeps(fake)).toHaveLength(1);
     expect(keeps(fake)[0]!.body).toBeUndefined();
@@ -183,6 +189,55 @@ describe("10.5 AC9 — Keep failures keep the one-off", () => {
     expect(await screen.findByText(KEPT_STATUS)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(keeps(fake)).toHaveLength(2);
+  });
+
+  it("deferred minor 51: a 429 keeps its request id, like Delete's", async () => {
+    const fake = boot();
+    const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
+    fake.failNext({ method: "POST", path: KEEP_PATH }, () => problemResponse(429, "rate-limited"));
+    await user.click(await screen.findByRole("button", { name: KEEP_AS_ROUTINE }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Request ID: \S+/);
+  });
+
+  it("deferred minor 53: Retry keeps focus while the retry is in flight; a second failure keeps it; success moves it to Edit", async () => {
+    const fake = boot();
+    const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
+    fake.failNext({ method: "POST", path: KEEP_PATH }, () => problemResponse(500, "about:blank"));
+    await user.click(await screen.findByRole("button", { name: KEEP_AS_ROUTINE }));
+    const retry = () => within(screen.getByRole("alert")).getByRole("button", { name: "Retry" });
+    await screen.findByRole("alert");
+    fake.failNext({ method: "POST", path: KEEP_PATH }, () => problemResponse(500, "about:blank"));
+    await user.click(retry());
+    expect(retry()).toHaveFocus();
+    await waitFor(() => expect(keeps(fake)).toHaveLength(2));
+    expect(retry()).toHaveFocus();
+    const hold = holdKeep(fake);
+    await user.click(retry());
+    expect(retry()).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+    hold.release();
+    await screen.findByText(KEPT_STATUS);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Edit" })).toHaveFocus());
+  });
+
+  it("deferred minor 53 (review): a new Keep tap clears a notice that has no Retry while it is in flight", async () => {
+    const fake = boot();
+    const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
+    fake.failNext({ method: "POST", path: KEEP_PATH }, () => HttpResponse.error());
+    await user.click(await screen.findByRole("button", { name: KEEP_AS_ROUTINE }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(OFFLINE_KEEP);
+    const hold = holdKeep(fake);
+    await user.click(screen.getByRole("button", { name: KEEP_AS_ROUTINE }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    hold.release();
+    await screen.findByText(KEPT_STATUS);
+  });
+
+  it("deferred minor 47: a one-off preview has no empty status element before a Keep", async () => {
+    boot();
+    renderApp(`/app/workouts/routines/${cls.id}`);
+    await screen.findByRole("button", { name: KEEP_AS_ROUTINE });
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("an unrecognized failure is reported once, with static tags only", async () => {

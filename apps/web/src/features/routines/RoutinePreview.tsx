@@ -174,6 +174,10 @@ function PreviewBody({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Spec 10.5 AC4: read once per routine data change
   const now = useMemo(() => Date.now(), [routine]);
   const [kept, setKept] = useState(false);
+  // Once shown, the one-off block stays for this preview: Keep's cache patch clears the mark a render before
+  // `kept` is set, and a remounted live region would not announce the confirmation.
+  const [shownOneOff, setShownOneOff] = useState(markedOneOff);
+  if (markedOneOff && !shownOneOff) setShownOneOff(true);
   const [keepFailure, setKeepFailure] = useState<ClassifiedRoutineError | null>(null);
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
@@ -190,10 +194,13 @@ function PreviewBody({
   async function onKeep() {
     if (keepLock.current) return;
     keepLock.current = true;
-    setKeepFailure(null);
+    // A Retry notice stays until this attempt's result, so its focused Retry is not unmounted mid-flight
+    // (deferred minor 53); success moves focus to Edit. A notice without Retry goes at once.
+    setKeepFailure((f) => (f !== null && f.kind !== "network" && f.kind !== "rate-limited" ? f : null));
     try {
       await keep.mutateAsync(routine.id);
       focusEdit.current = true;
+      setKeepFailure(null);
       setKept(true);
     } catch (caught) {
       reportRoutineUnexpected("keep-routine", caught);
@@ -248,7 +255,7 @@ function PreviewBody({
   // #98: the actions (and their notices) lead, so Start is reachable without scrolling past the exercises.
   return (
     <Screen title={routine.name} lead={<BackToWorkouts />}>
-      {markedOneOff || kept ? (
+      {shownOneOff ? (
         <div className={styles.oneOffBlock}>
           {markedOneOff ? (
             <>
@@ -256,10 +263,12 @@ function PreviewBody({
               <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
             </>
           ) : null}
-          {/* Present before success, so the confirmation is announced when it fills (AC7). */}
-          <p role="status" className={styles.status}>
-            {kept ? KEPT_STATUS : ""}
-          </p>
+          {/* A polite live region from first paint holding only the confirmation (AC7): no empty status element
+              (deferred minor 47), and the note's wording is never announced. The block stays mounted across the
+              Keep, so the region is the same element when it fills. */}
+          <div aria-live="polite" className={styles.status}>
+            {kept ? KEPT_STATUS : null}
+          </div>
         </div>
       ) : null}
       <div className={styles.actions}>
@@ -304,11 +313,16 @@ function PreviewBody({
       ) : null}
       {keepFailure ? (
         keepFailure.kind === "network" || keepFailure.kind === "rate-limited" ? (
-          <InlineNotice tone="error" requestId={null}>
+          <InlineNotice tone="error" requestId={keepFailure.kind === "network" ? null : keepFailure.requestId}>
             {keepMessage(keepFailure)}
           </InlineNotice>
         ) : (
-          <InlineNotice tone="error" requestId={keepFailure.requestId} actionLabel="Retry" onAction={() => void onKeep()}>
+          <InlineNotice
+            tone="error"
+            requestId={keepFailure.requestId}
+            actionLabel="Retry"
+            onAction={() => void onKeep()}
+          >
             {keepMessage(keepFailure)}
           </InlineNotice>
         )

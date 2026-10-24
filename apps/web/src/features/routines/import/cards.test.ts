@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog } from "../../../test/importFixtures";
-import { cardNames, cardProblems, initialCards, chooseExisting, type CardState } from "./cards";
+import { cardNames, cardProblems, initialCards, chooseExisting, keptSectionCount, type CardState } from "./cards";
 import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messages";
 
 const read = readWorkoutText(HIRAYA_TEXT);
@@ -31,6 +31,13 @@ describe("10.4 AC24 — one card per name, pre-decided", () => {
     expect(cardNames(nine).map((n) => n.written)).not.toContain("Lift I");
     const many = readWorkoutText(["Strength", ...Array.from({ length: 31 }, (_, k) => `- 5 Lift ${k}x`), "x."].join("\n"));
     expect(cardNames(many)).toHaveLength(30);
+  });
+  it("deferred minor 23: the summary's section count is the sections the routine keeps (8 of 9), like its exercise count", () => {
+    const blocks = Array.from({ length: 9 }, (_, k) => `Block ${String.fromCharCode(65 + k)}x\n- 5 Lift ${String.fromCharCode(65 + k)}`);
+    const nine = readWorkoutText([...blocks, "x."].join("\n"));
+    expect(nine.sections).toHaveLength(9);
+    expect(keptSectionCount(nine)).toBe(8);
+    expect(keptSectionCount(read)).toBe(read.sections.length);
   });
 });
 

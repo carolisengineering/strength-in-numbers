@@ -10,7 +10,7 @@ import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { IMPORT_EDIT_PATH, IMPORT_PATH } from "../paths";
-import { cardNames, cardProblems, initialCards, type CardProblem } from "./cards";
+import { cardNames, cardProblems, initialCards, keptSectionCount, type CardProblem } from "./cards";
 import styles from "./ImportNames.module.css";
 import { useImportSession } from "./ImportSession";
 import { buildHandoff } from "./handoff";
@@ -89,7 +89,19 @@ function NamesBody() {
   };
 
   return (
-    <Screen title={NAMES_TITLE} titleRef={titleRef} lead={<BackLink to={IMPORT_PATH} label={BACK_TO_TEXT} />}>
+    <Screen
+      title={NAMES_TITLE}
+      titleRef={titleRef}
+      lead={
+        <BackLink
+          to={IMPORT_PATH}
+          label={BACK_TO_TEXT}
+          onClick={(event) => {
+            if (session.backTo(IMPORT_PATH)) event.preventDefault();
+          }}
+        />
+      }
+    >
       {waiting && state.status === "error" ? (
         <InlineNotice tone="error" actionLabel="Retry" onAction={() => void refresh(true)}>
           {CATALOG_FAILED}
@@ -102,7 +114,7 @@ function NamesBody() {
       ) : null}
       {!waiting && cards !== null ? (
         <>
-          <p className={styles.summary}>{summaryLine(read.sections.length, cards.length, read.chunks)}</p>
+          <p className={styles.summary}>{summaryLine(keptSectionCount(read), cards.length, read.chunks)}</p>
           <div className={styles.cards}>
             {cards.map((card) => (
               <NameCard

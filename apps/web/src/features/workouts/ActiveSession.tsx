@@ -52,6 +52,7 @@ import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
+import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
 import { barMode, unloggedPlanned } from "./unloggedPlanned";
 import {
@@ -119,6 +120,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // #108: the screen stays on while a workout is open, unless this device turned it off in Profile.
   const [keepAwake] = useState(() => readKeepAwake());
   useKeepScreenAwake(keepAwake);
+  const today = useToday();
 
   // Spec 06.5 AC10: an entry whose exercise is no longer in the workout is dropped on the next write.
   const exerciseIds = workout.exercises.map((e) => e.id).join(",");
@@ -713,7 +715,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         }
         below={
           <div className={styles.startedRow}>
-            <p className={styles.started}>Started {formatStartedAt(workout.startedAt, { today: new Date() })}</p>
+            <p className={styles.started}>Started {formatStartedAt(workout.startedAt, { today })}</p>
             <Button
               variant="secondary"
               disabled={structureBusy}

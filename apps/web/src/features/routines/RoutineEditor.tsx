@@ -106,6 +106,8 @@ export interface EditorStart {
   readonly prepareBody?: (body: RoutineWriteInput, draft: Draft, signal: AbortSignal) => Promise<PreparedBody>;
   /** Spec 10.5 AC17 / D8: an import's create is a one-off, with or without pending exercises. Set only by `ImportEditRoute`. */
   readonly oneOff?: true;
+  /** Where a saved create goes instead of replacing the editor with its preview (the import gives up its history entries). */
+  readonly leaveTo?: (path: string) => void;
 }
 
 export function RoutineEditor({ routine, initial }: { routine: Routine | null; initial?: EditorStart }) {
@@ -250,6 +252,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
       setSaved(true);
       if (!mounted.current) return;
       if (routine && back) navigate(-1); // the preview behind us reads the saved copy from the cache
+      else if (initial?.leaveTo) initial.leaveTo(routinePath(saved.id));
       else navigate(routinePath(saved.id), { replace: true });
     } catch (caught) {
       inFlight.current = false; // only a failure reopens Save

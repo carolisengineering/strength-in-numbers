@@ -39,8 +39,11 @@ const TOOK_ERROR_ID = "change-time-took-error";
  * failure keeps the typed values, and the sheet cannot be closed while a save is in flight. The owner keys it per opening, so each opening starts from the
  * stored workout.
  */
-export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onVanished }: ChangeTimeSheetProps) {
+export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSaved, onVanished }: ChangeTimeSheetProps) {
   const [openedAt] = useState(() => new Date());
+  // The whole sheet works from the workout as it opened (deferred minor 15): a refetch landing while it is open
+  // changes neither "what changed", nor live vs finished, nor what is validated and sent; the server has the last word.
+  const [workout] = useState(() => latest);
   const [form, setForm] = useState<ChangeTimeForm>(() => initialValues(workout));
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
   const [requestId, setRequestId] = useState<string | null>(null);

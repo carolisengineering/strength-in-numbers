@@ -299,3 +299,50 @@ describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
     expect(rest.createSet).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("deferred minor 6 — another workout's op that keeps failing no longer blocks the live workout", () => {
+  const addTo = (outbox: Ctx["outbox"], workoutId: string, key: string) =>
+    outbox.enqueueCreate({ workoutId, workoutExerciseId: "we", body: body(key) });
+
+  function failingFor(rest: Ctx["rest"], key: string, error: () => ApiError) {
+    rest.createSet.mockImplementation(async (_we, b) => {
+      if (b.clientGeneratedId === key) throw error();
+      return makeSet({ id: SERVER, clientGeneratedId: b.clientGeneratedId ?? null });
+    });
+  }
+
+  it("while another workout's op backs off on 5xx, the live workout's sets sync; the other op is never failed", async () => {
+    const { outbox, rest, onFailed } = setup({ activeWorkoutId: () => "live" });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "old", KEY);
+    addTo(outbox, "live", KEY2);
+    addTo(outbox, "live", KEY3);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(outbox.getState().ops.map((o) => [o.workoutId, o.status])).toEqual([["old", "queued"]]);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(outbox.getState().ops).toMatchObject([{ workoutId: "old", status: "queued" }]);
+    expect(onFailed).not.toHaveBeenCalled();
+  });
+
+  it("the live workout's own ops keep their order behind its own backing-off op", async () => {
+    const { outbox, rest } = setup({ activeWorkoutId: () => "live" });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "live", KEY);
+    addTo(outbox, "live", KEY2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.getState().ops.map((o) => (o.kind === "create" ? o.target : null))).toEqual([{ clientGeneratedId: KEY }, { clientGeneratedId: KEY2 }]);
+    expect(rest.createSet.mock.calls.every(([, b]) => b.clientGeneratedId === KEY)).toBe(true);
+  });
+
+  it.each([
+    ["unknown", (): string | null | undefined => undefined],
+    ["none", (): string | null | undefined => null],
+  ] as const)("control: with the active workout %s, the oldest op still goes first (strict order)", async (_, activeWorkoutId) => {
+    const { outbox, rest } = setup({ activeWorkoutId });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "old", KEY);
+    addTo(outbox, "other", KEY2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual(["old", "other"]);
+  });
+});

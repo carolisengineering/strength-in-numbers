@@ -29,6 +29,11 @@ export interface OutboxDeps {
   isOnline?: () => boolean;
   random?: () => number;
   newId?: () => string;
+  /**
+   * The live workout's id, `null` when there is none, `undefined` when not known. While the oldest op belongs to
+   * another workout and is backing off, the live workout's ops may go first (deferred minor 6).
+   */
+  activeWorkoutId?: () => string | null | undefined;
   /** An op reached the server. `row` is the server's row for a create / update, `null` for a delete. */
   onSynced?: (op: OutboxOp, row: SetEntry | null) => void;
   /** A note op reached the server: `exercise` is the server's row, `null` for the 404 "done" path (Spec 10.3 AC12). A note never calls `onSynced`. */
@@ -270,6 +275,25 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     }
   }
 
+  /**
+   * The op to send next: the oldest (AC4), except that while it belongs to another workout and is backing off,
+   * the live workout's oldest op may go first (deferred minor 6) — each workout's own ops stay in order, and
+   * nothing is failed for it. `wait` is how long until the chosen op may go.
+   */
+  function nextOp(): { op: OutboxOp; wait: number } | null {
+    const queue = state.ops.filter((o) => o.status !== "failed");
+    const head = queue[0];
+    if (!head) return null;
+    const now = Date.now();
+    const headWait = head.nextAttemptAt - now;
+    const active = deps.activeWorkoutId?.();
+    if (headWait <= 0 || !active || head.workoutId === active) return { op: head, wait: headWait };
+    const live = queue.find((o) => o.workoutId === active);
+    if (!live) return { op: head, wait: headWait };
+    const liveWait = live.nextAttemptAt - now;
+    return liveWait < headWait ? { op: live, wait: liveWait } : { op: head, wait: headWait };
+  }
+
   /** One loop, one op in flight, oldest first (AC4). `force` makes one attempt even offline (Retry now). */
   async function drain({ force = false }: { force?: boolean } = {}): Promise<void> {
     if (draining || stopped || state.conflict) return;
@@ -277,10 +301,10 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     let forced = force;
     try {
       for (;;) {
-        const op = state.ops.find((o) => o.status !== "failed");
-        if (!op) return;
+        const next = nextOp();
+        if (!next) return;
+        const { op, wait } = next;
         if (!forced && !isOnline()) return;
-        const wait = op.nextAttemptAt - Date.now();
         if (!forced && wait > 0) {
           schedule(wait);
           return;
