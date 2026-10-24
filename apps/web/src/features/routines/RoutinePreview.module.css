@@ -46,7 +46,11 @@
   padding: 0 var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  /* The secondary Button's look (deferred minor 43), so Edit and Keep as a routine match side by side. */
+  background: var(--color-surface-raised);
   color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 600;
   text-decoration: none;
 }
 
