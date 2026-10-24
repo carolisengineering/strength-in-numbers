@@ -114,9 +114,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         : randomUUID();
     },
     bodyLimit: BODY_LIMIT_BYTES,
-    // No trustProxy (Spec 05.2 §6.6, D12): req.ip is the socket and
-    // X-Forwarded-* are never trusted. The client address behind Cloudflare is
-    // `clientAddress()` in plugins/rate-limit.ts (CF-Connecting-IP).
+    // No trustProxy (Spec 05.2 §6.6, D12): req.ip is the socket. The client
+    // address is `clientAddress()` in plugins/rate-limit.ts: CF-Connecting-IP on
+    // Render, the front end's X-Forwarded-For entry on Cloud Run (Spec 15 §6.2,
+    // CLIENT_IP_SOURCE); never Fastify's own forwarding logic.
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
@@ -204,6 +205,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // before the /v1 scope (L1 runs before the auth hook — AC2).
   const writeLimits = await registerRateLimits(app, deps.rateLimits ?? RATE_LIMITS, {
     isProduction: config.isProduction,
+    clientIpSource: config.clientIpSource,
   });
 
   // Emit-only OpenAPI 3.1 (Spec 03.0 §6.3). Registered before any route so its
@@ -260,12 +262,12 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     readinessTtlMs: deps.readinessTtlMs,
   });
 
-  registerErrorContract(app);
+  registerErrorContract(app, { clientIpSource: config.clientIpSource });
 
   // Everything under /v1 requires a valid token + a live user.
   await app.register(
     async (v1) => {
-      registerErrorContract(v1);
+      registerErrorContract(v1, { clientIpSource: config.clientIpSource });
       // #17 / #18: every /v1 response's Cache-Control, in one place.
       registerV1CachePolicy(v1);
       writeLimits.attachWriteLimits(v1);

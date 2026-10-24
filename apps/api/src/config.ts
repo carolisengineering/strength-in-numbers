@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClientIpSource } from "./plugins/rate-limit.js";
 import { DEFAULT_SERVICE_NAME, parseTelemetryEnv, type TelemetryConfig } from "./telemetry/config.js";
 
 /**
@@ -109,6 +110,9 @@ const schema = z.object({
 
   // #127: trimmed here, and this one value is the log `service` and the trace resource name (D17).
   SERVICE_NAME: z.string().trim().min(1).default(DEFAULT_SERVICE_NAME),
+
+  // Spec 15 AC25: which proxy chain the client address comes from (`clientAddress()`, plugins/rate-limit.ts).
+  CLIENT_IP_SOURCE: z.enum(["render", "cloud-run"]).default("render"),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
 
@@ -164,6 +168,8 @@ export interface Config {
   readonly serviceName: string;
   /** Spec 15 AC11: reported by `/healthz`. */
   readonly commit: string;
+  /** Spec 15 AC25: `render` (CF-Connecting-IP behind a private socket) or `cloud-run` (the right-most X-Forwarded-For). */
+  readonly clientIpSource: ClientIpSource;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Config {
@@ -199,6 +205,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
     }),
     webOrigins: Object.freeze(c.WEB_ORIGIN),
     commit: resolveCommit(env as Record<string, unknown>),
+    clientIpSource: c.CLIENT_IP_SOURCE,
     logLevel: c.LOG_LEVEL,
     serviceName: c.SERVICE_NAME,
     telemetry: telemetry.config,

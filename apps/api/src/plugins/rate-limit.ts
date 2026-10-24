@@ -89,17 +89,49 @@ function cfConnectingIp(request: FastifyRequest): string | null {
   return isIP(value) === 0 ? null : value;
 }
 
+/** Spec 15 AC25: which proxy chain sits in front of the API. */
+export type ClientIpSource = "render" | "cloud-run";
+
 /**
- * Spec 05.2 §6.6 / D12 — the client address the L1 limit keys on. Cloudflare
+ * Spec 15 §6.2: on Cloud Run the Google front end appends the address that connected to it to
+ * `X-Forwarded-For`, so the entry this many places from the right is the client; everything to its left
+ * is client-controlled. 1 is an assumption until the go-live measurement (AC28, runbook D4.d) confirms it.
+ */
+export const CLOUD_RUN_XFF_HOPS = 1;
+
+/** The `X-Forwarded-For` entry the Cloud Run front end added, or null if it is absent or not an IP. */
+function cloudRunForwardedFor(request: FastifyRequest): string | null {
+  const raw = request.headers?.["x-forwarded-for"];
+  if (typeof raw !== "string") return null;
+  const entries = raw.split(",").map((e) => e.trim());
+  const value = entries[entries.length - CLOUD_RUN_XFF_HOPS];
+  return value !== undefined && isIP(value) !== 0 ? value : null;
+}
+
+/** Spec 15 §6.2 / AC26: a public socket is the client; behind a private one, the front end's XFF entry. */
+function cloudRunClientAddress(request: FastifyRequest): string {
+  const socket = socketAddress(request);
+  if (!isPrivateAddress(socket)) return socket;
+  return cloudRunForwardedFor(request) ?? socket;
+}
+
+/**
+ * Spec 05.2 §6.6 / D12 — the client address the L1 limit keys on (and every request's `client_ip`).
+ *
+ * `render` (the default): Cloudflare
  * sets `CF-Connecting-IP` on every proxied request to the address that
  * connected to it, overwriting anything the client sent, so it is used — but
  * only behind a **private / loopback socket** (Render's own infrastructure),
  * which no end user can connect from. Any public socket is itself the client,
  * Cloudflare-owned ones included: WARP and Workers egress from Cloudflare
  * ranges, so trusting those would let such a client choose its key (code
- * reviews, 2026-10-04). `X-Forwarded-For` is never read.
+ * reviews, 2026-10-04). `X-Forwarded-For` is never read in this mode.
+ *
+ * `cloud-run` (Spec 15 §6.2, AC26): the socket when it is public, else the `X-Forwarded-For` entry the Google
+ * front end appended (`CLOUD_RUN_XFF_HOPS` from the right), else the socket. `CF-Connecting-IP` is never read.
  */
-export function clientAddress(request: FastifyRequest): string {
+export function clientAddress(request: FastifyRequest, source: ClientIpSource = "render"): string {
+  if (source === "cloud-run") return cloudRunClientAddress(request);
   const socket = socketAddress(request);
   if (!isPrivateAddress(socket)) return socket;
   return cfConnectingIp(request) ?? socket;
@@ -115,14 +147,18 @@ export function clientAddress(request: FastifyRequest): string {
  * (internal probes, health checks, direct clients) never count, so they can't
  * spend the single warning.
  */
-export function trustProxyTripwire(): (request: FastifyRequest) => void {
+export function trustProxyTripwire(source: ClientIpSource = "render"): (request: FastifyRequest) => void {
   let warned = false;
   return (request) => {
     if (warned || request.headers?.["x-forwarded-for"] === undefined) return;
     const socket = socketAddress(request);
+    // Spec 15 AC27: on Cloud Run a forwarded request must carry a usable front-end entry.
+    const forwarded = source === "cloud-run" ? cloudRunForwardedFor(request) : cfConnectingIp(request);
     const reason = isPrivateAddress(socket)
-      ? cfConnectingIp(request) === null
-        ? "no-cf-connecting-ip"
+      ? forwarded === null
+        ? source === "cloud-run"
+          ? "no-xff"
+          : "no-cf-connecting-ip"
         : null
       : "unknown-proxy";
     if (reason === null) return;
@@ -158,24 +194,25 @@ export interface WriteLimits {
 export async function registerRateLimits(
   app: FastifyInstance,
   config: RateLimitConfig,
-  opts: { isProduction: boolean },
+  opts: { isProduction: boolean; clientIpSource?: ClientIpSource },
 ): Promise<WriteLimits> {
+  const source = opts.clientIpSource ?? "render";
   // global: false → the plugin adds no hooks of its own; we only use its store
   // through createRateLimit (D11).
   await app.register(rateLimit, { global: false, ...(config.store ? { store: config.store } : {}) });
 
   // The client behind Cloudflare (§6.6), normalised so one IPv6 /64 is one client.
-  const ipKey = (req: FastifyRequest) => rateLimit.normalizeIP(clientAddress(req));
+  const ipKey = (req: FastifyRequest) => rateLimit.normalizeIP(clientAddress(req, source));
   const ipLimiter = app.createRateLimit({ max: config.ip, timeWindow: config.windowMs, keyGenerator: ipKey });
   // AC17: its own child store, so docs requests and L1 never share a counter.
   const docsLimiter = app.createRateLimit({ max: config.docs, timeWindow: config.windowMs, keyGenerator: ipKey });
-  const tripwire = opts.isProduction ? trustProxyTripwire() : () => {};
+  const tripwire = opts.isProduction ? trustProxyTripwire(source) : () => {};
 
   app.addHook("onRequest", async (request) => {
     // Every later log line of this request (incl. "request completed") carries
     // the resolved client — the runbook D4.d check reads it.
     (request.log as { setBindings?: (b: Record<string, unknown>) => void }).setBindings?.({
-      client_ip: clientAddress(request),
+      client_ip: clientAddress(request, source),
     });
     if (request.routeOptions.config?.skipRateLimit === true) return;
     tripwire(request);
