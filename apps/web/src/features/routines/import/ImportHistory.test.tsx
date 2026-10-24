@@ -59,4 +59,22 @@ describe("deferred minor 31 — after Save, one Back returns to Workouts", () =>
     await act(() => router.navigate(-1));
     await waitFor(() => expect(router.state.location.pathname).toBe(WORKOUTS_PATH));
   });
+
+  it("still holds after browser Back then Forward on the Check screen (forward entries are kept)", async () => {
+    const { user, router } = await fromWorkouts();
+    await readHiraya(user);
+    await waitFor(() => expect(cardGroups()).toHaveLength(8));
+    await act(() => router.navigate(-1));
+    await screen.findByRole("heading", { level: 1, name: PASTE_TITLE });
+    await act(() => router.navigate(1));
+    await waitFor(() => expect(cardGroups()).toHaveLength(8));
+    const button = await screen.findByRole("button", { name: "Continue" });
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    await screen.findByRole("heading", { level: 1, name: "New routine" });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("heading", { level: 1, name: "Second Shift" });
+    await act(() => router.navigate(-1));
+    await waitFor(() => expect(router.state.location.pathname).toBe(WORKOUTS_PATH));
+  });
 });

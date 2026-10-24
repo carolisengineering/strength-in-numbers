@@ -89,7 +89,10 @@ function NamesBody() {
   };
 
   return (
-    <Screen title={NAMES_TITLE} titleRef={titleRef} lead={
+    <Screen
+      title={NAMES_TITLE}
+      titleRef={titleRef}
+      lead={
         <BackLink
           to={IMPORT_PATH}
           label={BACK_TO_TEXT}

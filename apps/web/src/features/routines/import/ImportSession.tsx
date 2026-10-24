@@ -43,26 +43,32 @@ interface Entry {
 
 /**
  * The import screens' own history entries, mirrored in memory from the router's navigations (nothing goes in
- * router state, AC20). `leaveTo` goes back to the first entry, then replaces it.
+ * router state, AC20), with a cursor so Back and Forward move over them as the browser does. `leaveTo` goes back
+ * to the first entry, then replaces it.
  */
 function useImportHistory(): Pick<ImportSessionValue, "backTo" | "leaveTo"> {
   const location = useLocation();
   const type = useNavigationType();
   const navigate = useNavigate();
-  const entries = useRef<Entry[]>([]);
+  const history = useRef<{ entries: Entry[]; at: number }>({ entries: [], at: -1 });
   const pending = useRef<string | null>(null);
 
   useLayoutEffect(() => {
-    const list = entries.current;
+    const h = history.current;
     const here = { key: location.key, pathname: location.pathname };
-    if (list.at(-1)?.key === here.key) return;
-    if (list.length === 0 || type === "PUSH") list.push(here);
-    else if (type === "REPLACE") list[list.length - 1] = here;
-    else {
-      const index = list.findIndex((e) => e.key === here.key);
-      entries.current = index >= 0 ? list.slice(0, index + 1) : [here];
+    if (h.entries[h.at]?.key === here.key) return;
+    if (h.at < 0 || type === "PUSH") {
+      h.entries = [...h.entries.slice(0, h.at + 1), here];
+      h.at += 1;
+    } else if (type === "REPLACE") {
+      h.entries[h.at] = here;
+    } else {
+      const index = h.entries.findIndex((e) => e.key === here.key);
+      if (index >= 0) h.at = index;
+      else history.current = { entries: [here], at: 0 };
     }
-    if (pending.current !== null && entries.current.length === 1) {
+    // The Back that `leaveTo` started has landed: whatever entry it reached gives way to the destination.
+    if (pending.current !== null && type === "POP") {
       const to = pending.current;
       pending.current = null;
       navigate(to, { replace: true });
@@ -71,7 +77,8 @@ function useImportHistory(): Pick<ImportSessionValue, "backTo" | "leaveTo"> {
 
   const backTo = useCallback(
     (pathname: string) => {
-      if (entries.current.at(-2)?.pathname !== pathname) return false;
+      const h = history.current;
+      if (h.entries[h.at - 1]?.pathname !== pathname) return false;
       navigate(-1);
       return true;
     },
@@ -79,7 +86,7 @@ function useImportHistory(): Pick<ImportSessionValue, "backTo" | "leaveTo"> {
   );
   const leaveTo = useCallback(
     (path: string) => {
-      const depth = entries.current.length - 1;
+      const depth = history.current.at;
       if (depth <= 0) {
         navigate(path, { replace: true });
         return;
