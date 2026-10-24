@@ -411,3 +411,25 @@ describe("10.6 AC19 — live events", () => {
     expect(JSON.stringify(observability.track.mock.calls)).not.toMatch(/ZebraSecQx|NoteSecQx|Warm-up|[0-9a-f]{8}-/);
   });
 });
+
+describe("10.6 AC13 — final review fixes", () => {
+  it("409 workout-section-limit refetches so the row's count refreshes; the sheet stays open", async () => {
+    const { user, deps } = setup({ addSection: vi.fn(async () => Promise.reject(api(409, "workout-section-limit"))) });
+    await user.click(screen.getByRole("button", { name: "Open add" }));
+    await user.type(sheet("New section").getByLabelText("Name"), "Nine");
+    await user.click(sheet("New section").getByRole("button", { name: "Add section" }));
+    expect(await sheet("New section").findByText(SECTION_COPY.limit)).toBeInTheDocument();
+    expect(deps.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a submit from the closing sheet after a success sends no second POST (Review Focus 4)", async () => {
+    const addSection = vi.fn(async () => sectionOf(baseWorkout()));
+    const { user, actions } = setup({ addSection });
+    await user.click(screen.getByRole("button", { name: "Open add" }));
+    const stale = actions();
+    await act(async () => stale.submitSheet({ name: "Cooldown", notes: "" }));
+    await act(async () => stale.submitSheet({ name: "Cooldown", notes: "" }));
+    expect(addSection).toHaveBeenCalledTimes(1);
+  });
+});
+

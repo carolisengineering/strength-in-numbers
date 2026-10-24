@@ -25,6 +25,8 @@
 
 .title {
   font-size: var(--font-size-lg);
+  /* A user-named title ("Remove {section}?") wraps instead of overflowing (Spec 10.6 AC24). */
+  overflow-wrap: anywhere;
 }
 
 .body {

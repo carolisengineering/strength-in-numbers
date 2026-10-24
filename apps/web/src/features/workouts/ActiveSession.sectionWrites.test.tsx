@@ -274,3 +274,34 @@ describe("10.6 AC12 — offline and busy", () => {
     expect(await sheet("New section").findByText("You're offline — try again when you have signal")).toBeInTheDocument();
   });
 });
+
+describe("10.6 AC6 / AC10 — focus after the final review", () => {
+  it("adding the 8th section: Add section is disabled, so focus goes to the new section's Edit", async () => {
+    const { user } = await setup({ sections: Array.from({ length: 7 }, (_, i) => ({ name: `S${i}` })), exercises: [ex("a", 0)] });
+    await addSection(user, "Eighth");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add section" })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit section Eighth" })).toHaveFocus());
+  });
+
+  it("a failed move puts focus back on the Section select (the browser blurs it while disabled)", async () => {
+    const { user } = await setup({ sections: [{ name: "Warm-up" }], exercises: [ex("Squat", 0), ex("Row Erg")] });
+    const gate = deferred<void>();
+    server.use(
+      http.patch(`${API_BASE_URL}/v1/workout-exercises/:id`, async () => {
+        await gate.promise;
+        return HttpResponse.error();
+      }),
+    );
+    await makeCurrent(user, "Row Erg");
+    await user.click(optionsButton("Row Erg"));
+    await user.selectOptions(sectionSelect("Row Erg"), "Warm-up");
+    await waitFor(() => expect(sectionSelect("Row Erg")).toBeDisabled());
+    // A browser moves focus off a focused control that becomes disabled; jsdom ignores blur() on one, so move it.
+    act(() => optionsButton("Row Erg").focus());
+    expect(sectionSelect("Row Erg")).not.toHaveFocus();
+    gate.resolve();
+    expect(await screen.findByText("You're offline — try again when you have signal")).toBeInTheDocument();
+    await waitFor(() => expect(sectionSelect("Row Erg")).toHaveFocus());
+  });
+});
+

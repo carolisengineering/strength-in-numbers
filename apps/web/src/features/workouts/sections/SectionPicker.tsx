@@ -16,9 +16,12 @@ export interface SectionPickerProps {
  * Spec 10.6 AC9 / AC11 — the Section select in an exercise's Options. Controlled by the cached
  * `sectionId`, so a failed move visibly reverts; re-choosing the current value sends nothing.
  */
+/** The select's id: the section controls put focus back on it after a failed move. */
+export const sectionPickerId = (exerciseId: string): string => `section-picker-${exerciseId}`;
+
 export function SectionPicker({ exerciseId, value, sections, linked, disabled, onChange }: SectionPickerProps) {
   if (sections.length === 0) return null;
-  const id = `section-picker-${exerciseId}`;
+  const id = sectionPickerId(exerciseId);
   const hintId = `${id}-hint`;
   const ordered = [...sections].sort((a, b) => a.position - b.position);
   return (

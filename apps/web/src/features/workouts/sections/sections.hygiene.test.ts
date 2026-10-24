@@ -66,6 +66,7 @@ describe("10.6 AC24 — a long name wraps instead of overflowing", () => {
     const rule = (css: string, selector: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").match(new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
     expect(rule(readFileSync(join(here, "../SessionSectionHeading.module.css"), "utf8"), ".name")).toMatch(/overflow-wrap:\s*anywhere/);
     expect(rule(read("NewExercisesLine.module.css"), ".line")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule(readFileSync(join(here, "../../../ui/ConfirmDialog.module.css"), "utf8"), ".title")).toMatch(/overflow-wrap:\s*anywhere/); // "Remove {name}?"
   });
 });
 

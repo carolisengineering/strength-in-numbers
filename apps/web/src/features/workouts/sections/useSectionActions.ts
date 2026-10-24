@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { WorkoutDetail, WorkoutExerciseDetail } from "@sin/core";
+import { ROUTINE_SECTIONS_MAX, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 import { reportUnexpected } from "../reportUnexpected";
 import { SECTION_COPY, movedOut, movedTo, sectionAdded } from "./sectionCopy";
+import { sectionPickerId } from "./SectionPicker";
 import { checkSectionFields, sectionBody, type SectionValues } from "./sectionFields";
 import type { SectionMutations } from "./sectionMutations";
 import type { SectionSheetErrors } from "./SectionSheet";
@@ -58,7 +59,14 @@ export interface SectionActions {
   removeRef(node: HTMLButtonElement | null): void;
 }
 
-type FocusTarget = { kind: "add" } | { kind: "edit"; sectionId: string } | { kind: "remove" } | null;
+type FocusTarget =
+  | { kind: "add" }
+  /** `wait`: the Edit button is about to render (a new section), so do not fall back to Add section meanwhile. */
+  | { kind: "edit"; sectionId: string; wait?: boolean }
+  | { kind: "remove" }
+  /** After a failed move: the card's Section select (the browser moved focus off it while it was disabled). */
+  | { kind: "select"; exerciseId: string }
+  | null;
 
 const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null };
 
@@ -75,6 +83,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const sessionRef = useRef(0);
+  // The last sheet opening that was closed: a submit from that opening (a tap landing before the close commits) is ignored.
+  const closedSessionRef = useRef(0);
 
   const addSectionRef = useRef<HTMLButtonElement | null>(null);
   const editNodes = useRef(new Map<string, HTMLButtonElement>());
@@ -82,18 +92,20 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const removeNode = useRef<HTMLButtonElement | null>(null);
 
   // jsdom's dialog shim does not restore focus, and after a remove the opener is gone: focus is explicit,
-  // after the commit that closed the dialogs.
+  // after the commit that closed the dialogs. A target that is still disabled (the write's busy state) waits.
   const pendingFocus = useRef<FocusTarget>(null);
   useEffect(() => {
     const target = pendingFocus.current;
     if (target === null) return;
-    const node =
+    const node: HTMLButtonElement | HTMLSelectElement | null =
       target.kind === "add"
         ? addSectionRef.current
         : target.kind === "remove"
           ? removeNode.current
-          : (editNodes.current.get(target.sectionId) ?? addSectionRef.current);
-    if (!node) return;
+          : target.kind === "select"
+            ? (document.getElementById(sectionPickerId(target.exerciseId)) as HTMLSelectElement | null)
+            : (editNodes.current.get(target.sectionId) ?? (target.wait ? null : addSectionRef.current));
+    if (!node || node.disabled) return;
     pendingFocus.current = null;
     node.focus();
   });
@@ -123,6 +135,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   }
 
   function closeAll(focus: FocusTarget) {
+    closedSessionRef.current = sessionRef.current;
     setView((v) => (v === null ? v : { ...v, open: false }));
     setRemoveOpen(false);
     setErrors(NO_ERRORS);
@@ -136,6 +149,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     if (structureLock.current || submittingRef.current) return false;
     structureLock.current = true;
     submittingRef.current = true;
+    pendingFocus.current = null;
     setSubmitting(true);
     setBanner(null);
     return true;
@@ -157,8 +171,11 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     switch (failure.type) {
       case "offline":
       case "rate-limited":
+        formOrBanner(failure.text);
+        return;
       case "limit":
         formOrBanner(failure.text);
+        await refetch(); // AC13: the row's count refreshes, so Add section shows the cap
         return;
       case "fields":
         if (ui.inSheet) {
@@ -207,7 +224,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   }
 
   async function submitSheet(values: SectionValues) {
-    if (sheet === null) return;
+    if (sheet === null || sheet.session <= closedSessionRef.current) return;
     const checked = checkSectionFields(values.name, values.notes);
     if (checked.name !== null || checked.notes !== null) {
       setErrors({ ...checked, form: null });
@@ -228,7 +245,9 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     try {
       if (sheet.mode === "add") {
         const created = await mutations.add(body as { name: string; notes?: string });
-        closeAll({ kind: "add" });
+        // At the cap Add section is disabled and cannot take focus: the new section's Edit does.
+        const atCap = workout.sections.length + 1 >= ROUTINE_SECTIONS_MAX;
+        closeAll(atCap ? { kind: "edit", sectionId: created.id, wait: true } : { kind: "add" });
         announce(sectionAdded(created.name));
       } else {
         await mutations.update(stored!.id, body);
@@ -271,6 +290,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       onMoved(exercise.id);
     } catch (error) {
       await fail("set-section", error, { inSheet: false, focus: null, retry: () => void setExerciseSection(exercise, sectionId) });
+      if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId: exercise.id };
     } finally {
       end();
     }
