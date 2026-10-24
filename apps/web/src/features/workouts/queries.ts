@@ -64,6 +64,8 @@ export function useEditableWorkout(id: string): UseQueryResult<WorkoutDetail> {
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     retry: false,
+    // Spec 18.0 AC15: an offline device fails the read at once (so "Couldn't refresh" shows) instead of pausing it.
+    networkMode: "always",
   });
 }
 

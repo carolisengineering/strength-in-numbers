@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { focusManager } from "@tanstack/react-query";
+import { focusManager, onlineManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -150,6 +150,24 @@ describe("18.0 AC15 — offline open", () => {
     await ready();
     expect(await screen.findByText(EDIT_COPY.refreshFailed)).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(2);
+  });
+
+  it("deferred minor 10: with the browser itself offline (airplane mode) the notice shows too", async () => {
+    const workout = simple();
+    const fake = createWorkoutFake({ finished: [workout] });
+    prepareApp({ auth, fake });
+    const { router } = renderApp(`/app/history/${workout.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    fake.setOffline(true);
+    onlineManager.setOnline(false);
+    try {
+      await act(() => router.navigate(`/app/history/${workout.id}/edit`));
+      await ready();
+      expect(await screen.findByText(EDIT_COPY.refreshFailed)).toBeInTheDocument();
+      expect(screen.getAllByRole("article")).toHaveLength(2);
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 });
 
