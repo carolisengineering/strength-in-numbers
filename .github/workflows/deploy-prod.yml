@@ -126,13 +126,15 @@ jobs:
           case "$digest" in *"$WANT") ;; *) echo "::error::$revision runs $digest, expected $WANT"; exit 1 ;; esac
       # AC19: the web from the same checkout, with the production values and the commit stamp.
       - name: Build the web
-        run: pnpm --filter @sin/core run build && pnpm --filter @sin/web run build
+        run: |
+          [ "$VITE_APP_ENV" = "production" ] || { echo "::error::the production Environment's VITE_APP_ENV is '$VITE_APP_ENV', expected 'production'"; exit 1; }
+          pnpm --filter @sin/core run build && pnpm --filter @sin/web run build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
-          VITE_APP_ENV: production
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV }}
           SIN_COMMIT: ${{ needs.gate.outputs.sha }}
       - run: node apps/web/scripts/assert-build-output.mjs
       - name: No staging origin in the production build

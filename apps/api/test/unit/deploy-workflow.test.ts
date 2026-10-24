@@ -88,7 +88,9 @@ describe("15 AC15 / AC18 / AC19 / AC20 — the deploy job's order", () => {
   });
   it("the web build carries the production VITE_* values and the commit; no Render origin may ship", () => {
     const build = steps().find((s) => /--filter @sin\/web run build/.test(s.run ?? ""))!;
-    expect(build.env).toMatchObject({ VITE_APP_ENV: "production", SIN_COMMIT: "${{ needs.gate.outputs.sha }}" });
+    expect(build.env).toMatchObject({ VITE_APP_ENV: "${{ vars.VITE_APP_ENV }}", SIN_COMMIT: "${{ needs.gate.outputs.sha }}" });
+    // The Environment variable must say production, or the build refuses to run.
+    expect(build.run).toMatch(/\[ "\$VITE_APP_ENV" = "production" \]/);
     expect(steps().some((s) => /onrender\.com/.test(s.run ?? "") && /grep/.test(s.run ?? ""))).toBe(true);
   });
   it("the smokes check the commit, CORS and the Firebase headers", () => {

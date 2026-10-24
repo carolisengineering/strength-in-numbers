@@ -910,12 +910,11 @@ deployment branches = `main` only. Its variables and secrets:
 | `VITE_AUTH0_DOMAIN` | var | `dev-gncuqvfir0wv0t4l.us.auth0.com` |
 | `VITE_AUTH0_CLIENT_ID` | var | the production SPA application's client id (F7) |
 | `VITE_AUTH0_AUDIENCE` | var | `https://api.strengthinnumbers.app` |
+| `VITE_APP_ENV` | var | `production` (the web build refuses any other value) |
 | `AUTH0_PROD_TOKEN_URL` | var | `https://dev-gncuqvfir0wv0t4l.us.auth0.com/oauth/token` |
 | `AUTH0_PROD_M2M_CLIENT_ID` | secret | the production M2M application's client id (F7) |
 | `AUTH0_PROD_M2M_CLIENT_SECRET` | secret | its client secret |
 | `DATABASE_URL_PROD` | secret | the F6 direct URL (read-only use: `migrate status`) |
-
-(`VITE_APP_ENV=production` is fixed in the workflow.)
 
 ### F9. First image
 
