@@ -11,6 +11,7 @@ import { prng } from "./helpers/history-generator.js";
 import { toWrite } from "./helpers/importPlan.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
+const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../src");
 
 function assertConserved(raw: string) {
@@ -28,6 +29,20 @@ describe("10.4 AC12 — every line ends up in exactly one place", () => {
     const count = (as: string) => readWorkoutText(raw).lines.placed.filter((p) => p.as === as).length;
     expect([count("heading"), count("set-line"), count("scheme"), count("lead-in"), count("separator"), count("movement"), count("note")]).toEqual([4, 6, 2, 1, 1, 7, 33]);
   });
+  it.each(Array.from({ length: 200 }, (_, i) => i + 1))("seeded shuffle %i", (seed) => {
+    const lines = raw.split("\n");
+    const rnd = prng(seed);
+    for (let i = lines.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [lines[i], lines[j]] = [lines[j]!, lines[i]!];
+    }
+    assertConserved(lines.join("\n"));
+  });
+});
+
+describe("10.4 AC12 / AC53 — the 2026-10-24 paste: every line in exactly one place", () => {
+  const raw = readFileSync(FIXTURE_24, "utf8");
+  it("the paste", () => assertConserved(raw));
   it.each(Array.from({ length: 200 }, (_, i) => i + 1))("seeded shuffle %i", (seed) => {
     const lines = raw.split("\n");
     const rnd = prng(seed);

@@ -128,7 +128,7 @@ describe("10.4 AC46 — a repeated tagged header continues its section", () => {
   });
 });
 
-describe("10.4 AC47 — the card's repeated first line is dropped", () => {
+describe("10.4 AC47 — the repeated first line of a card is dropped", () => {
   it("Warmup under Warmup is not added to the note, and is placed as a heading", () => {
     const r = read(["Warmup", "NO SCORE", "Warmup", "Stretch"]);
     expect(r.sections[0]!.notes).toBe("Stretch");
@@ -153,7 +153,7 @@ describe("10.4 AC52 — alternatives after a label are notes", () => {
 
 const tenNull = Array.from({ length: 10 }, () => [null, null]);
 
-describe("10.4 AC48 — 'N Sets, 1 Set Every M:SS' sets the count", () => {
+describe("10.4 AC48 — N Sets, 1 Set Every M:SS sets the count", () => {
   it("opens a run of N and stays in the note", () => {
     const r = read(["Accessory", "NO SCORE", "3 Sets, 1 Set Every 4:00", "10-15 Double DB Bench Press", "15 DB or Plate Front Raises"]);
     expect(r.items.map((i) => [i.name, rowsOf(i)])).toEqual([
@@ -168,7 +168,7 @@ describe("10.4 AC48 — 'N Sets, 1 Set Every M:SS' sets the count", () => {
     expect(read(["Accessory", "NO SCORE", "3 Sets:", "10 Curl"]).sections[0]!.notes).toBe(""));
 });
 
-describe("10.4 AC49 — interval lines don't end a run", () => {
+describe("10.4 AC49 — interval lines do not end a run", () => {
   it("work/rest, comma and Rest lines go to the note and keep the run open", () => {
     const r = read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a 90s Time window,", "200 Meter Run+", "1:30 on / 1:30 REst", "10x 90s on / 90s Rest", "Rest 90s and Repeat"]);
     expect(r.items.map((i) => i.name)).toEqual(["200 Meter Run"]);
@@ -191,7 +191,7 @@ describe("10.4 AC50 — interval movements", () => {
     expect(run(line)).toMatchObject({ name, noteLines: [note] }));
 });
 
-describe("10.4 AC51 — 'A + B' is two exercises", () => {
+describe("10.4 AC51 — A + B is two exercises", () => {
   it("each part with a rep form becomes its own exercise in the same run", () => {
     const r = read(["Accessory", "NO SCORE", "3 Sets, 1 Set Every 4:00", "10 Tuckups + 15 Hollow Rocks"]);
     expect(r.items.map((i) => [i.name, rowsOf(i)])).toEqual([

@@ -72,6 +72,8 @@ describe("10.4 AC43 — icon and count lines are furniture", () => {
     expect(isIconLine(line)).toBe(false);
     expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(line);
   });
+  it.each(["今日はスピードとパワーの日です。", "-".repeat(40), "\u0000\ud800" + "-".repeat(2_000)])("a long line with no Latin letter is text, not an icon: %#", (line) =>
+    expect(isIconLine(line)).toBe(false));
   it("a bare number right after RESULTS (n) is dropped; elsewhere it stays", () => {
     expect(cleanWorkoutText("Intro\nRESULTS (2)\n49\nAccessory").lines).toEqual(["Intro", "Accessory"]);
     expect(cleanWorkoutText("Intro\n49\nAccessory").lines).toEqual(["Intro", "49", "Accessory"]);

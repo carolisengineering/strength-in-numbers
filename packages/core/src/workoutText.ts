@@ -34,10 +34,13 @@ export function collapseLine(line: string): string {
   return line.replace(CONTROLS, " ").replace(/\s+/g, " ").trim();
 }
 
-/** AC43: a status-bar or tab-bar icon read as text: no Latin letter or digit, or the signal bars. */
+/** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
+const ICON_MAX_LENGTH = 8;
+
+/** AC43: a status-bar or tab-bar icon read as text: a short line with no Latin letter or digit, or the signal bars. */
 export function isIconLine(line: string): boolean {
   const l = collapseLine(line);
-  return l !== "" && (!LATIN_OR_DIGIT.test(l) || SIGNAL_BARS.test(l));
+  return l !== "" && l.length <= ICON_MAX_LENGTH && (!LATIN_OR_DIGIT.test(l) || SIGNAL_BARS.test(l));
 }
 
 export function isFurnitureLine(line: string): boolean {
