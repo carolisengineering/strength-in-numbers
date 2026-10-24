@@ -330,13 +330,13 @@ describe("deferred minor 6 — another workout's op that keeps failing no longer
     addTo(outbox, "live", KEY);
     addTo(outbox, "live", KEY2);
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(outbox.getState().ops.map((o) => o.target)).toEqual([{ clientGeneratedId: KEY }, { clientGeneratedId: KEY2 }]);
+    expect(outbox.getState().ops.map((o) => (o.kind === "create" ? o.target : null))).toEqual([{ clientGeneratedId: KEY }, { clientGeneratedId: KEY2 }]);
     expect(rest.createSet.mock.calls.every(([, b]) => b.clientGeneratedId === KEY)).toBe(true);
   });
 
   it.each([
-    ["unknown", () => undefined],
-    ["none", () => null],
+    ["unknown", (): string | null | undefined => undefined],
+    ["none", (): string | null | undefined => null],
   ] as const)("control: with the active workout %s, the oldest op still goes first (strict order)", async (_, activeWorkoutId) => {
     const { outbox, rest } = setup({ activeWorkoutId });
     failingFor(rest, KEY, () => api(500));
