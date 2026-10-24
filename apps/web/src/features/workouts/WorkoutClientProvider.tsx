@@ -55,9 +55,15 @@ function applyNoteSynced(queryClient: QueryClient, outbox: Outbox, op: NoteOp, e
 /**
  * Spec 18.0 AC24: an op that landed on a workout that is not the cached active one (finished on another
  * device; 07.4 applies it and recomputes records) changed a finished workout: refresh what shows it.
+ * With no `/active` in the cache (a reload onto History or Progress) only a cached finished detail
+ * proves the workout is finished; otherwise the op is taken to be the live one's, and History keeps its
+ * page until its own next read.
  */
 function refreshFinishedElsewhere(queryClient: QueryClient, workoutId: string): void {
-  if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workoutId) return;
+  const active = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+  if (active === undefined) {
+    if (!queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId))?.endedAt) return;
+  } else if (active?.id === workoutId) return;
   applyEditedCaches(queryClient);
   void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
 }

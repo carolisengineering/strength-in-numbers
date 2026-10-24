@@ -98,4 +98,22 @@ describe("18.0 AC24 — a late op on a workout that is not active refreshes its 
     expect(fake.state.active!.exercises[0]!.sets).toHaveLength(2);
     expect(fake.requests.some((r) => r.method === "GET" && r.path === `/v1/workouts/${active.id}`)).toBe(false);
   });
+
+  it("deferred minor 1: an op for the live workout drained on History (active not cached) leaves History alone", async () => {
+    const active = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }] });
+    const fake = createWorkoutFake({ active });
+    prepareApp({ auth, fake });
+    seedQueuedCreate(active.id, active.exercises[0]!.id);
+    online = false;
+    renderApp("/app/history");
+    await screen.findByRole("heading", { name: "History" });
+    const listReads = () => fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts").length;
+    await waitFor(() => expect(listReads()).toBe(1));
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    expect(fake.state.active!.exercises[0]!.sets).toHaveLength(2);
+    expect(listReads()).toBe(1);
+    expect(fake.requests.some((r) => r.method === "GET" && r.path === `/v1/workouts/${active.id}`)).toBe(false);
+  });
 });
