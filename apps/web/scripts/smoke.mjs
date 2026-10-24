@@ -15,19 +15,20 @@
  *
  * Run by the post-deploy `smoke` job in .github/workflows/ci.yml (enabled by
  * Spec 06.3).
+ *
+ * Spec 15 AC23, by env (unset → today's checks and output):
+ *   - WEB_SMOKE_HOST=firebase → the CSP comes from apps/web/firebase.json, and
+ *     `/` must revalidate while an `/assets/…` file is immutable;
+ *   - WEB_SMOKE_EXPECT_COMMIT → `<meta name="sin-commit">` must equal it.
  */
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkCacheControl, checkCommitMeta, expectedCspFrom, normalizeCsp } from "./lib/web-smoke-checks.mjs";
 
 const BASE = requireEnv("WEB_SMOKE_BASE_URL").replace(/\/$/, "");
-const RENDER_YAML = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-  "render.yaml",
-);
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const HOST = process.env.WEB_SMOKE_HOST === "firebase" ? "firebase" : "render";
+const EXPECT_COMMIT = process.env.WEB_SMOKE_EXPECT_COMMIT || undefined;
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -49,25 +50,12 @@ function assert(cond, msg) {
 }
 
 function expectedCsp() {
-  const yaml = readFileSync(RENDER_YAML, "utf8");
-  const block = yaml.slice(yaml.indexOf("name: si-web-staging"));
-  const m = block.match(
-    /name:\s*Content-Security-Policy\s*\n\s*value:\s*"([^"]+)"/,
-  );
-  if (!m) {
-    process.stderr.write("web-smoke: could not read expected CSP from render.yaml\n");
+  try {
+    return expectedCspFrom(HOST, REPO_ROOT);
+  } catch (err) {
+    process.stderr.write(`web-smoke: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   }
-  return m[1];
-}
-
-function normalizeCsp(v) {
-  return (v ?? "")
-    .split(";")
-    .map((d) => d.trim().replace(/\s+/g, " "))
-    .filter(Boolean)
-    .sort()
-    .join("; ");
 }
 
 async function main() {
@@ -76,7 +64,7 @@ async function main() {
   assert(
     normalizeCsp(root.headers.get("content-security-policy")) ===
       normalizeCsp(expectedCsp()),
-    "GET / Content-Security-Policy header matches render.yaml (AC15)",
+    `GET / Content-Security-Policy header matches ${HOST === "firebase" ? "apps/web/firebase.json (Spec 15 AC23)" : "render.yaml (AC15)"}`,
   );
   assert(
     root.headers.get("x-content-type-options") === "nosniff",
@@ -86,6 +74,24 @@ async function main() {
     root.headers.get("referrer-policy") === "no-referrer",
     "GET / Referrer-Policy: no-referrer (AC15)",
   );
+
+  const rootHtml = await root.text();
+  if (EXPECT_COMMIT) {
+    const problem = checkCommitMeta(rootHtml, EXPECT_COMMIT);
+    assert(problem === null, problem ?? `GET / sin-commit is ${EXPECT_COMMIT} (Spec 15 AC23)`);
+  }
+  if (HOST === "firebase") {
+    const rootCache = checkCacheControl("/", root.headers.get("cache-control"));
+    assert(rootCache === null, rootCache ?? "GET / Cache-Control revalidates (Spec 15 AC23)");
+    const asset = rootHtml.match(/\/assets\/[^"'\s>]+/)?.[0];
+    if (asset) {
+      const res = await fetch(`${BASE}${asset}`);
+      const assetCache = checkCacheControl("/assets", res.headers.get("cache-control"));
+      assert(res.status === 200 && assetCache === null, assetCache ?? `GET ${asset} is immutable (Spec 15 AC23)`);
+    } else {
+      assert(false, "GET / names an /assets/ file to check (Spec 15 AC23)");
+    }
+  }
 
   const deep = await fetch(`${BASE}/app`);
   assert(deep.status === 200, `GET /app → ${deep.status} (expected 200, SPA rewrite)`);

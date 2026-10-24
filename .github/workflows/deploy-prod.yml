@@ -1,0 +1,186 @@
+# Spec 15 §6.4 — the one way production ships. A commit that passed the commit-checked staging smoke, by
+# image digest, after the owner approves in the GitHub Environment `production`. Rollback is the same
+# workflow with an older `sha` (AC21). It never runs a migration (AC15) and never applies Terraform (D13).
+name: deploy-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to deploy (default: the newest commit that passed staging)"
+        required: false
+        type: string
+
+# AC17: one release at a time; a queued one waits rather than cancelling a deploy in progress.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 9.15.4
+
+jobs:
+  # AC13 / AC14: read-only. Resolves the commit and its digest, or refuses naming the unmet condition,
+  # before any approval prompt.
+  gate:
+    name: release gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      sha: ${{ steps.decide.outputs.sha }}
+      digest: ${{ steps.decide.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # "is it on main?" needs the history
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # AC24: never deploy while infra/prod.tfvars still holds REPLACE_ME placeholders.
+      - run: pnpm --filter @sin/api exec tsx scripts/check-prod-ids.ts --strict
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - run: gcloud artifacts docker images list "${{ vars.AR_IMAGE }}" --include-tags --format=json > "$RUNNER_TEMP/ar.json"
+      - id: decide
+        name: Decide the release
+        run: pnpm --filter @sin/api exec tsx scripts/release-gate.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          INPUT_SHA: ${{ inputs.sha }}
+          AR_IMAGES_JSON: ${{ runner.temp }}/ar.json
+
+  # AC15–AC20: pauses for the owner's approval (the Environment's required reviewer), then deploys the
+  # gate's commit only — never a re-resolved one.
+  deploy:
+    name: deploy (production)
+    needs: gate
+    environment: production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # the release record reads who approved
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sin/api exec prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder # the schema parser needs a value; nothing connects
+      # AC15 / §6.5: first after approval, before any change. The database URL is scoped to this step only.
+      - name: No unapplied migrations
+        run: pnpm --filter @sin/api exec tsx scripts/check-migrate-status.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # AC18: the API first (one release ahead of the web, DESIGN §6), by digest.
+      - name: Deploy the API by digest
+        run: >-
+          gcloud run deploy si-api
+          --image "${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}"
+          --region "${{ vars.GCP_REGION }}" --project "${{ vars.GCP_PROJECT_ID }}" --quiet
+      - id: revision
+        name: The latest ready revision serves 100 % with the gate's digest
+        env:
+          WANT: ${{ needs.gate.outputs.digest }}
+          REGION: ${{ vars.GCP_REGION }}
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          gcloud run services describe si-api --region "$REGION" --project "$PROJECT" --format=json > "$RUNNER_TEMP/service.json"
+          revision=$(jq -r '.status.latestReadyRevisionName' "$RUNNER_TEMP/service.json")
+          created=$(jq -r '.status.latestCreatedRevisionName' "$RUNNER_TEMP/service.json")
+          percent=$(jq -r --arg r "$revision" '[.status.traffic[] | select(.revisionName == $r or .latestRevision == true) | .percent] | add // 0' "$RUNNER_TEMP/service.json")
+          digest=$(gcloud run revisions describe "$revision" --region "$REGION" --project "$PROJECT" --format='value(status.imageDigest)')
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "ready $revision (created $created) serves ${percent}% with ${digest}"
+          [ "$revision" = "$created" ] || { echo "::error::the newest revision $created is not ready; $revision still serves"; exit 1; }
+          [ "$percent" = "100" ] || { echo "::error::$revision serves ${percent}%, not 100%"; exit 1; }
+          case "$digest" in *"$WANT") ;; *) echo "::error::$revision runs $digest, expected $WANT"; exit 1 ;; esac
+      # AC19: the web from the same checkout, with the production values and the commit stamp.
+      - name: Build the web
+        run: |
+          [ "$VITE_APP_ENV" = "production" ] || { echo "::error::the production Environment's VITE_APP_ENV is '$VITE_APP_ENV', expected 'production'"; exit 1; }
+          pnpm --filter @sin/core run build && pnpm --filter @sin/web run build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV }}
+          SIN_COMMIT: ${{ needs.gate.outputs.sha }}
+      - run: node apps/web/scripts/assert-build-output.mjs
+      - name: No staging origin in the production build
+        run: |
+          if grep -rq "onrender.com" apps/web/dist; then
+            echo "::error::apps/web/dist names onrender.com"; exit 1
+          fi
+      - name: Deploy the web to Firebase Hosting
+        run: pnpm --filter @sin/web exec firebase deploy --only hosting --project "${{ vars.GCP_PROJECT_ID }}" --non-interactive
+      # AC20: both smokes against production, each checking the deployed commit.
+      - name: Production API smoke
+        run: pnpm --filter @sin/api exec tsx scripts/smoke.ts
+        env:
+          SMOKE_BASE_URL: ${{ vars.PROD_API_BASE_URL }}
+          AUTH0_TOKEN_URL: ${{ vars.AUTH0_PROD_TOKEN_URL }}
+          AUTH0_M2M_CLIENT_ID: ${{ secrets.AUTH0_PROD_M2M_CLIENT_ID }}
+          AUTH0_M2M_CLIENT_SECRET: ${{ secrets.AUTH0_PROD_M2M_CLIENT_SECRET }}
+          AUTH0_M2M_AUDIENCE: https://api.strengthinnumbers.app
+          EXPECT_COMMIT: ${{ needs.gate.outputs.sha }}
+          SMOKE_WEB_ORIGIN: ${{ vars.PROD_WEB_BASE_URL }}
+      - name: Production web smoke
+        run: node apps/web/scripts/smoke.mjs
+        env:
+          WEB_SMOKE_BASE_URL: ${{ vars.PROD_WEB_BASE_URL }}
+          WEB_SMOKE_HOST: firebase
+          WEB_SMOKE_EXPECT_COMMIT: ${{ needs.gate.outputs.sha }}
+      # §9: the run summary is the release record.
+      - name: Release record
+        if: always()
+        env:
+          SHA: ${{ needs.gate.outputs.sha }}
+          DIGEST: ${{ needs.gate.outputs.digest }}
+          REVISION: ${{ steps.revision.outputs.revision }}
+          TRIGGERED_BY: ${{ github.triggering_actor }}
+          RESULT: ${{ job.status }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          approver=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" --jq '[.[] | select(.state == "approved") | .user.login] | join(", ")' 2>/dev/null || true)
+          {
+            echo "## deploy-prod"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`$SHA\` |"
+            echo "| Image digest | \`$DIGEST\` |"
+            echo "| Revision | \`${REVISION:-none}\` |"
+            echo "| Triggered by | $TRIGGERED_BY |"
+            echo "| Approved by | ${approver:-unknown} |"
+            echo "| Result | $RESULT |"
+          } >> "$GITHUB_STEP_SUMMARY"

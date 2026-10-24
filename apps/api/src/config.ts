@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ClientIpSource } from "./plugins/rate-limit.js";
 import { DEFAULT_SERVICE_NAME, parseTelemetryEnv, type TelemetryConfig } from "./telemetry/config.js";
 
 /**
@@ -109,6 +110,9 @@ const schema = z.object({
 
   // #127: trimmed here, and this one value is the log `service` and the trace resource name (D17).
   SERVICE_NAME: z.string().trim().min(1).default(DEFAULT_SERVICE_NAME),
+
+  // Spec 15 AC25: which proxy chain the client address comes from (`clientAddress()`, plugins/rate-limit.ts).
+  CLIENT_IP_SOURCE: z.enum(["render", "cloud-run"]).default("render"),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
 
@@ -134,6 +138,19 @@ const schema = z.object({
   }
 });
 
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * Spec 15 AC11: the commit this process was built from. `SIN_COMMIT` (the image's build argument), else
+ * `RENDER_GIT_COMMIT` (Render's runtime env); the first non-blank, trimmed. Anything but 40 lowercase hex is "dev".
+ */
+export function resolveCommit(env: { SIN_COMMIT?: unknown; RENDER_GIT_COMMIT?: unknown }): string {
+  const value = [env.SIN_COMMIT, env.RENDER_GIT_COMMIT]
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .find((v) => v !== "");
+  return value !== undefined && COMMIT_SHA.test(value) ? value : "dev";
+}
+
 export interface Config {
   readonly nodeEnv: "development" | "test" | "production";
   readonly isProduction: boolean;
@@ -149,6 +166,10 @@ export interface Config {
   readonly logLevel: (typeof LOG_LEVELS)[number];
   readonly telemetry: TelemetryConfig;
   readonly serviceName: string;
+  /** Spec 15 AC11: reported by `/healthz`. */
+  readonly commit: string;
+  /** Spec 15 AC25: `render` (CF-Connecting-IP behind a private socket) or `cloud-run` (the right-most X-Forwarded-For). */
+  readonly clientIpSource: ClientIpSource;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Config {
@@ -183,6 +204,8 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
       jwksUri: `${c.AUTH0_ISSUER}.well-known/jwks.json`,
     }),
     webOrigins: Object.freeze(c.WEB_ORIGIN),
+    commit: resolveCommit(env as Record<string, unknown>),
+    clientIpSource: c.CLIENT_IP_SOURCE,
     logLevel: c.LOG_LEVEL,
     serviceName: c.SERVICE_NAME,
     telemetry: telemetry.config,

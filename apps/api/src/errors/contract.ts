@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { NotFoundError, RateLimitedError, SyncTokenExpiredError } from "./app-error.js";
 import { normalizeError, problemResponse } from "./problem.js";
-import { clientAddress } from "../plugins/rate-limit.js";
+import { clientAddress, type ClientIpSource } from "../plugins/rate-limit.js";
 
 /**
  * Installs the RFC 9457 error + not-found handlers on a Fastify context
@@ -9,7 +9,7 @@ import { clientAddress } from "../plugins/rate-limit.js";
  * scope so schema-validation errors raised there are rendered as problem+json
  * (Fastify does not always cascade a parent error handler into a child context).
  */
-export function registerErrorContract(app: FastifyInstance): void {
+export function registerErrorContract(app: FastifyInstance, opts: { clientIpSource?: ClientIpSource } = {}): void {
   app.setNotFoundHandler((request, reply) => {
     problemResponse(
       reply,
@@ -33,7 +33,7 @@ export function registerErrorContract(app: FastifyInstance): void {
       const { layer, group } = err.source;
       request.log.warn(
         layer === "ip" || layer === "ip-docs"
-          ? { layer, ip: clientAddress(request) }
+          ? { layer, ip: clientAddress(request, opts.clientIpSource) }
           : { layer, group, userId: request.user?.id },
         "rate_limited",
       );

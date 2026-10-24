@@ -76,6 +76,8 @@ jobs:
       - run: node apps/web/scripts/assert-build-output.mjs
       # AC14 — render.yaml ships the strict CSP + security headers.
       - run: node apps/web/scripts/assert-render-yaml.mjs
+      # Spec 15 AC22: firebase.json sends the same headers and CSP, with the production API origin.
+      - run: node apps/web/scripts/assert-firebase-json.mjs
       # Spec 04.1 AC1 — tokens.css is the only place design values are written;
       # every other stylesheet reads var(--…); no CSS framework dependency.
       - run: node apps/web/scripts/assert-css-tokens.mjs
@@ -108,6 +110,72 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: docker build -t si-api:ci .
 
+  # Spec 15 AC1: the production Terraform stays formatted and valid. It runs on every PR and push (it takes
+  # seconds), which covers every PR that touches infra/**. CI never applies (D13): no backend, no credentials.
+  infra:
+    name: infra (terraform fmt · validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.17.0"
+          terraform_wrapper: false
+      - run: terraform -chdir=infra fmt -check -recursive
+      - run: terraform -chdir=infra init -backend=false -input=false
+      - run: terraform -chdir=infra validate
+
+  # Spec 15 AC10: one image per main commit in Artifact Registry, tagged with the full SHA, with the commit
+  # baked in (/healthz reports it). Builds from the same Dockerfile as `docker`; never on a pull request.
+  publish:
+    name: publish API image (Artifact Registry)
+    needs: [check, web, integration, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Until the owner applies infra/ and sets the GCP variables (runbook Part F), skip with a notice
+      # instead of turning main red.
+      - id: gcp
+        env:
+          WIF: ${{ vars.GCP_WIF_PROVIDER }}
+        run: |
+          if [ -z "$WIF" ]; then
+            echo "::notice title=publish skipped::GCP_WIF_PROVIDER is not set — see docs/runbooks/first-deploy.md Part F"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.gcp.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.gcp.outputs.ready == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
+      - if: steps.gcp.outputs.ready == 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - if: steps.gcp.outputs.ready == 'true'
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+      - if: steps.gcp.outputs.ready == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.gcp.outputs.ready == 'true'
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          build-args: GIT_COMMIT=${{ github.sha }}
+          tags: ${{ vars.AR_IMAGE }}:${{ github.sha }}
+          # One push = one registry version, so the "keep the 5 most recent" policy keeps 5 commits
+          # (attestation manifests would count as versions too).
+          provenance: false
+          sbom: false
+      - if: steps.gcp.outputs.ready == 'true'
+        run: echo "Published \`${{ vars.AR_IMAGE }}:${{ github.sha }}\` — digest \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+
   smoke:
     name: post-deploy smoke (staging)
     needs: [check, web, integration, docker]
@@ -115,6 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the wait's superseded check needs the history
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -123,10 +193,22 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Waits for Render to finish the staging deploy of this SHA, then runs the
-      # smoke (Spec 01 §10, criterion 12). Secrets configured in repo settings.
-      - run: pnpm --filter @sin/api exec tsx scripts/smoke.ts
+      # Spec 15 AC12: wait until Render serves this SHA (/healthz commit). A later
+      # push already live → superseded, and the commit-checked smoke is skipped.
+      - id: api-commit
+        name: Wait for staging to serve this commit
+        run: pnpm --filter @sin/api exec tsx scripts/wait-for-api-commit.ts
         env:
+          WAIT_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          WAIT_COMMIT: ${{ github.sha }}
+      # The smoke (Spec 01 §10, criterion 12) against exactly this commit. Its step
+      # name is the release gate's contract (Spec 15 AC14): rename both together.
+      # Secrets configured in repo settings.
+      - name: Staging API smoke (commit verified)
+        if: steps.api-commit.outputs.superseded != 'true'
+        run: pnpm --filter @sin/api exec tsx scripts/smoke.ts
+        env:
+          EXPECT_COMMIT: ${{ github.sha }}
           SMOKE_BASE_URL: ${{ vars.STAGING_BASE_URL }}
           AUTH0_TOKEN_URL: ${{ vars.AUTH0_STAGING_TOKEN_URL }}
           AUTH0_M2M_CLIENT_ID: ${{ secrets.AUTH0_STAGING_M2M_CLIENT_ID }}

@@ -5,7 +5,8 @@ import { problemResponse } from "../errors/problem.js";
 /**
  * Health endpoints (Spec 01 §5).
  *
- * `/healthz` — liveness, no auth, no DB, the Render platform check target.
+ * `/healthz` — liveness, no auth, no DB, the Render platform check target; reports the
+ *              commit it was built from (Spec 15 AC11).
  * `/readyz`  — readiness, no auth, runs the injected check but caches the
  *              result for `readinessTtlMs` (default 3 s) so an unauthenticated
  *              caller cannot amplify load onto Postgres. Deploy-gated by the CI
@@ -20,6 +21,8 @@ class NotReadyError extends AppError {
 }
 
 export interface HealthDeps {
+  /** Spec 15 AC11: the commit this build reports (40 hex, or "dev"). */
+  commit: string;
   /** Resolves when ready; throws/rejects when not (e.g. `SELECT 1` failed). */
   checkReadiness: () => Promise<void>;
   readinessTtlMs?: number;
@@ -68,6 +71,7 @@ export function registerHealthRoutes(
   // `skipRateLimit` — Render's health checks must never be limited (Spec 05.2 AC6).
   app.get("/healthz", { schema: { hide: true }, config: { skipRateLimit: true } }, async () => ({
     status: "ok" as const,
+    commit: deps.commit,
   }));
 
   app.get("/readyz", { schema: { hide: true }, config: { skipRateLimit: true } }, async (request, reply) => {

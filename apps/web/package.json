@@ -20,7 +20,8 @@
     "assert:render-yaml": "node scripts/assert-render-yaml.mjs",
     "assert:css-tokens": "node scripts/assert-css-tokens.mjs",
     "screens": "node scripts/screens/run.mjs",
-    "icons": "node scripts/icons/render.mjs"
+    "icons": "node scripts/icons/render.mjs",
+    "assert:firebase-json": "node scripts/assert-firebase-json.mjs"
   },
   "dependencies": {
     "@auth0/auth0-react": "2.24.1",
@@ -43,6 +44,7 @@
     "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "2.1.9",
     "eslint-plugin-react-hooks": "7.1.1",
+    "firebase-tools": "15.34.1",
     "jsdom": "30.0.1",
     "msw": "2.15.0",
     "typescript": "5.9.3",

@@ -34,3 +34,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # Spec 15 AC1: keep the exact Terraform provider pins current (infra/versions.tf + the lock file).
+  - package-ecosystem: terraform
+    directory: /infra
+    schedule:
+      interval: weekly

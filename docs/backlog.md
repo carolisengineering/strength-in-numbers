@@ -260,7 +260,7 @@ bound, or run it under a role that is exempt.
 
 ## BL-9
 
-**Restore-epoch hardening for sync tokens has a hard deadline: before the Spec 15 (Neon → AWS) data cutover.**
+**Restore-epoch hardening for sync tokens has a hard deadline: before the Spec 15 (Neon → AWS) data cutover.** *(Note 2026-10-24: Spec 15 became production on Google Cloud with its own new Neon project, so there is no Neon → AWS cutover; the deadline now attaches to any future move or restore of a database that clients hold tokens for.)*
 
 Spec 03.3 D27 deferred the restore-epoch (a `sync_epoch` table and a `1.<epoch>.<xid>`
 token, plus a runbook step to bump the epoch after any point-in-time or branch
@@ -612,7 +612,8 @@ dashboards and recreates the three alert rules by hand. A later edit to `ops/gra
 re-imported.
 
 **Done looks like:** dashboards, alert rules and the contact point are managed as code (the
-Terraform `grafana` provider) in Spec 15, applied by CI.
+Terraform `grafana` provider) in Spec 15, applied by CI. *(Note 2026-10-24: Spec 15 shipped without it and
+never applies Terraform from CI (its D13); this now belongs to a later spec.)*
 
 ## BL-24
 
@@ -623,7 +624,8 @@ free instance awake about 730 of the workspace's 750 free hours. Until then, the
 post-deploy smoke is the "deployed and up" signal, and no alert says "API is down".
 
 **Done looks like:** Grafana Synthetic Monitoring (or an equivalent) checks `/healthz` on the
-non-sleeping prod service, with an alert, in Spec 01.1.
+non-sleeping prod service, with an alert, in Spec 01.1. *(Note 2026-10-24: Spec 01.1 is superseded by
+Spec 15; the production half of this item is BL-29.)*
 
 ## BL-25
 

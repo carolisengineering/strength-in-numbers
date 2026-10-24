@@ -37,7 +37,7 @@ describe("health endpoints (Criteria 3, 4)", () => {
     const { app } = await buildTestApp();
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok" });
+    expect(res.json()).toEqual({ status: "ok", commit: "dev" }); // Spec 15 AC11 adds the commit
     expect(res.headers["x-request-id"]).toBeTruthy();
   });
 

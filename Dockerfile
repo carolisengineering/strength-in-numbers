@@ -52,5 +52,9 @@ RUN useradd --system --uid 1001 --home-dir /app appuser \
 USER appuser
 
 EXPOSE 3000
+# Spec 15 AC10/AC11: the commit the image was built from, reported by /healthz. Last, so the
+# argument never invalidates the cached layers above; Render's build passes none (RENDER_GIT_COMMIT then).
+ARG GIT_COMMIT
+ENV SIN_COMMIT=$GIT_COMMIT
 # Compose overrides this to also run `prisma migrate deploy` first.
 CMD ["node", "apps/api/dist/main.js"]
