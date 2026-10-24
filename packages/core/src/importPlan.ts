@@ -68,15 +68,21 @@ export interface ImportPlan {
 
 const ELLIPSIS = "…";
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-/** The longest prefix of at most `max` UTF-16 units that ends on a grapheme boundary (never inside an emoji). */
+/**
+ * The longest prefix of at most `max` UTF-16 units that ends on a grapheme boundary (never inside an emoji).
+ * Built per cut, only when one is needed: a browser without `Intl.Segmenter` falls back to code points
+ * instead of failing to load the package.
+ */
 function prefixAt(text: string, max: number): string {
   if (text.length <= max) return text;
+  const units =
+    typeof Intl.Segmenter === "function"
+      ? Array.from(new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text), (s) => s.segment)
+      : Array.from(text);
   let end = 0;
-  for (const { index, segment } of graphemes.segment(text)) {
-    if (index + segment.length > max) break;
-    end = index + segment.length;
+  for (const unit of units) {
+    if (end + unit.length > max) break;
+    end += unit.length;
   }
   return text.slice(0, end);
 }

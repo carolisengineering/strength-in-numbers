@@ -10,8 +10,12 @@ import { combine, isSetOp, OutboxFileSchema, sameTarget, type CreateOp, type IdM
 export const OUTBOX_KEY = "sin:workout:outbox";
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
 const DELAYED_MS = 2000;
-/** A 5xx / 408 op of a workout other than the active one fails after this many attempts (deferred minor 6). */
-export const OTHER_WORKOUT_MAX_ATTEMPTS = 5;
+/**
+ * An op of a workout other than the active one fails after this many consecutive 5xx / 408 answers (deferred
+ * minor 6): with the 1–30 s backoff that is about a minute and a half of a failing server, so a blip or a cold
+ * start doesn't drop a late set. Network errors and 429s reset the count.
+ */
+export const OTHER_WORKOUT_MAX_SERVER_FAILURES = 8;
 
 /** An update / delete whose set's create never synced: there is no server id to send it to. */
 class UnresolvedTarget extends Error {}
@@ -33,7 +37,7 @@ export interface OutboxDeps {
   newId?: () => string;
   /**
    * The live workout's id, `null` when there is none, `undefined` when not known. An op of another
-   * workout that keeps meeting a 5xx / 408 fails after `OTHER_WORKOUT_MAX_ATTEMPTS`, so it can't hold
+   * workout that keeps meeting a 5xx / 408 fails after `OTHER_WORKOUT_MAX_SERVER_FAILURES`, so it can't hold
    * the live workout's sets behind it (the drain is oldest-first); 429s and network errors keep waiting.
    */
   activeWorkoutId?: () => string | null | undefined;
@@ -257,9 +261,17 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     deps.onFailed?.(op, error);
   }
 
-  function givesUp(op: OutboxOp, attempts: number, error: unknown): boolean {
-    if (attempts < OTHER_WORKOUT_MAX_ATTEMPTS) return false;
-    if (!(error instanceof ApiError) || error.isNetworkError || error.status === 429) return false;
+  /** Consecutive 5xx / 408 answers per op, in memory (a reload starts the count again). */
+  const serverFailures = new Map<string, number>();
+
+  function givesUp(op: OutboxOp, error: unknown): boolean {
+    if (!(error instanceof ApiError) || error.isNetworkError || error.status === 429) {
+      serverFailures.delete(op.id);
+      return false;
+    }
+    const count = (serverFailures.get(op.id) ?? 0) + 1;
+    serverFailures.set(op.id, count);
+    if (count < OTHER_WORKOUT_MAX_SERVER_FAILURES) return false;
     const active = deps.activeWorkoutId?.();
     return active !== undefined && active !== op.workoutId;
   }
@@ -276,7 +288,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
       const verdict = classify(op.kind, error);
       if (verdict === "done") succeed(op, null);
-      else if (verdict === "retry" && givesUp(op, attempts, error)) fail(op, failureOf(error), error);
+      else if (verdict === "retry" && givesUp(op, error)) fail(op, failureOf(error), error);
       else if (verdict === "retry") {
         // Spec 05.2 AC14: never retry sooner than the server's Retry-After.
         const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;

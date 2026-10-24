@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Modality } from "../src/enums.js";
 import { RoutineWriteSchema } from "../src/dto/routine.js";
 import { buildImportPlan, cutName, cutNote, type ImportPlan } from "../src/importPlan.js";
@@ -73,6 +73,18 @@ describe("10.4 AC17 — limits are cut and reported (§6.6)", () => {
     expect(cutNote("a".repeat(496) + "👨‍👩‍👧 end", 500)).toBe("a".repeat(496) + "…");
     expect(cutNote("a".repeat(490) + "👍🏽👍🏽👍🏽", 500)).toBe("a".repeat(490) + "👍🏽👍🏽" + "…");
     expect(cutName("b".repeat(38) + "👨‍👩‍👧", 40)).toBe("b".repeat(38));
+  });
+  it("deferred minor 17: without Intl.Segmenter (an older browser) the module loads and cuts land on code-point boundaries", async () => {
+    const segmenter = Intl.Segmenter;
+    Object.defineProperty(Intl, "Segmenter", { value: undefined, configurable: true, writable: true });
+    try {
+      vi.resetModules();
+      const fresh = await import("../src/importPlan.js");
+      expect(fresh.cutNote("a".repeat(498) + "😀😀", 500)).toBe("a".repeat(498) + "…");
+      expect(fresh.cutName("é".repeat(39) + "😀", 40)).toBe("é".repeat(39));
+    } finally {
+      Object.defineProperty(Intl, "Segmenter", { value: segmenter, configurable: true, writable: true });
+    }
   });
   it("a 2,000-character note ending in emoji and a 41-character accented name stay schema-valid", () => {
     const p = plan([`Workout: "${"É".repeat(40)}😀"`, "😀".repeat(1_100), "x."]);

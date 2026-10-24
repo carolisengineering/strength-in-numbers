@@ -9,7 +9,7 @@ import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet } from "../../../test/workoutFixtures";
 import { deferred } from "../../../test/workoutHarness";
-import { createOutbox, type OutboxDeps } from "./outbox";
+import { createOutbox, OTHER_WORKOUT_MAX_SERVER_FAILURES, type OutboxDeps } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -311,16 +311,31 @@ describe("deferred minor 6 — another workout's op that keeps failing stops blo
     });
   }
 
-  it("a 5xx op of a workout other than the active one fails after 5 attempts; the live set then syncs", async () => {
+  it("a 5xx op of a workout other than the active one fails after 8 consecutive server failures; the live set then syncs", async () => {
     const { outbox, rest, onFailed } = setup({ activeWorkoutId: () => "live" });
     failingFor(rest, KEY, () => api(500));
     addTo(outbox, "old", KEY);
     addTo(outbox, "live", KEY2);
     await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.getState().ops.find((o) => o.workoutId === "old")).toMatchObject({ status: "queued" });
+    await vi.advanceTimersByTimeAsync(120_000);
     const old = outbox.getState().ops.find((o) => o.workoutId === "old");
-    expect(old).toMatchObject({ status: "failed", attempts: 5, failure: { status: 500 } });
+    expect(old).toMatchObject({ status: "failed", attempts: OTHER_WORKOUT_MAX_SERVER_FAILURES, failure: { status: 500 } });
     expect(onFailed).toHaveBeenCalledTimes(1);
     expect(outbox.getState().ops.some((o) => o.workoutId === "live")).toBe(false);
+  });
+
+  it("network errors don't count toward the cap: 7 network failures, a 5xx, then more network failures keep the op queued", async () => {
+    const { outbox, rest } = setup({ activeWorkoutId: () => "live" });
+    let calls = 0;
+    rest.createSet.mockImplementation(async () => {
+      calls += 1;
+      throw calls === 8 ? api(500) : network();
+    });
+    addTo(outbox, "old", KEY);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(calls).toBeGreaterThan(8);
+    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
   });
 
   it("control: the active workout's own 5xx op keeps retrying", async () => {
