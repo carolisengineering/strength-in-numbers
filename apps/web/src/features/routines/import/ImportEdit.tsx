@@ -25,7 +25,7 @@ export function ImportEditRoute() {
 }
 
 function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
-  const { saveRecord } = useImportSession();
+  const { saveRecord, leaveTo } = useImportSession();
   const store = useCatalogStore();
   const routines = useRoutines();
   // At the routine limit, say so and create no exercise (no leftovers): Save reads the list afresh, because
@@ -50,7 +50,7 @@ function ImportEditor({ handoff }: { handoff: ImportHandoff }) {
   );
   return (
     <PendingExercisesContext.Provider value={pending}>
-      <RoutineEditor key="import" routine={null} initial={{ draft, notices: <ImportNotices notices={handoff.plan.notices} />, prepareBody, oneOff: true }} />
+      <RoutineEditor key="import" routine={null} initial={{ draft, notices: <ImportNotices notices={handoff.plan.notices} />, prepareBody, oneOff: true, leaveTo }} />
     </PendingExercisesContext.Provider>
   );
 }

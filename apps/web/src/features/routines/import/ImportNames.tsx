@@ -89,7 +89,16 @@ function NamesBody() {
   };
 
   return (
-    <Screen title={NAMES_TITLE} titleRef={titleRef} lead={<BackLink to={IMPORT_PATH} label={BACK_TO_TEXT} />}>
+    <Screen title={NAMES_TITLE} titleRef={titleRef} lead={
+        <BackLink
+          to={IMPORT_PATH}
+          label={BACK_TO_TEXT}
+          onClick={(event) => {
+            if (session.backTo(IMPORT_PATH)) event.preventDefault();
+          }}
+        />
+      }
+    >
       {waiting && state.status === "error" ? (
         <InlineNotice tone="error" actionLabel="Retry" onAction={() => void refresh(true)}>
           {CATALOG_FAILED}

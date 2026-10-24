@@ -1,6 +1,6 @@
 import type { ReadResult } from "@sin/core";
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { Outlet } from "react-router";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Outlet, useLocation, useNavigate, useNavigationType } from "react-router";
 
 import type { CardState } from "./cards";
 import type { ImportHandoff } from "./handoff";
@@ -30,6 +30,66 @@ export interface ImportSessionValue {
    * earlier Save created is reused, not created again. Clearing it here would make duplicate exercises.
    */
   readonly saveRecord: SaveRecord;
+  /** Go Back (instead of pushing) when the entry behind this one is `pathname`; false when it is not (deferred minor 27). */
+  readonly backTo: (pathname: string) => boolean;
+  /** Leave the import for `path`, giving up every import history entry, so one Back returns to where it began (deferred minor 31). */
+  readonly leaveTo: (path: string) => void;
+}
+
+interface Entry {
+  readonly key: string;
+  readonly pathname: string;
+}
+
+/**
+ * The import screens' own history entries, mirrored in memory from the router's navigations (nothing goes in
+ * router state, AC20). `leaveTo` goes back to the first entry, then replaces it.
+ */
+function useImportHistory(): Pick<ImportSessionValue, "backTo" | "leaveTo"> {
+  const location = useLocation();
+  const type = useNavigationType();
+  const navigate = useNavigate();
+  const entries = useRef<Entry[]>([]);
+  const pending = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const list = entries.current;
+    const here = { key: location.key, pathname: location.pathname };
+    if (list.at(-1)?.key === here.key) return;
+    if (list.length === 0 || type === "PUSH") list.push(here);
+    else if (type === "REPLACE") list[list.length - 1] = here;
+    else {
+      const index = list.findIndex((e) => e.key === here.key);
+      entries.current = index >= 0 ? list.slice(0, index + 1) : [here];
+    }
+    if (pending.current !== null && entries.current.length === 1) {
+      const to = pending.current;
+      pending.current = null;
+      navigate(to, { replace: true });
+    }
+  }, [location.key, location.pathname, type, navigate]);
+
+  const backTo = useCallback(
+    (pathname: string) => {
+      if (entries.current.at(-2)?.pathname !== pathname) return false;
+      navigate(-1);
+      return true;
+    },
+    [navigate],
+  );
+  const leaveTo = useCallback(
+    (path: string) => {
+      const depth = entries.current.length - 1;
+      if (depth <= 0) {
+        navigate(path, { replace: true });
+        return;
+      }
+      pending.current = path;
+      navigate(-depth);
+    },
+    [navigate],
+  );
+  return { backTo, leaveTo };
 }
 
 const ImportSessionContext = createContext<ImportSessionValue | null>(null);
@@ -66,9 +126,11 @@ export function ImportSessionProvider({ children }: { children: ReactNode }) {
     return id;
   }, []);
 
+  const { backTo, leaveTo } = useImportHistory();
+
   const value = useMemo<ImportSessionValue>(
-    () => ({ text, setText, read, commitRead, cards, setCards, updateCard, placeholderFor, handoff, setHandoff, saveRecord: saveRecord.current }),
-    [text, read, commitRead, cards, updateCard, placeholderFor, handoff],
+    () => ({ text, setText, read, commitRead, cards, setCards, updateCard, placeholderFor, handoff, setHandoff, saveRecord: saveRecord.current, backTo, leaveTo }),
+    [text, read, commitRead, cards, updateCard, placeholderFor, handoff, backTo, leaveTo],
   );
   return <ImportSessionContext.Provider value={value}>{children}</ImportSessionContext.Provider>;
 }

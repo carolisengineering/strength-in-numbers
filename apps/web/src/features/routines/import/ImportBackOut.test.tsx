@@ -155,13 +155,15 @@ describe("10.4 AC32 — the routine limit at Save creates nothing", () => {
 });
 
 describe("10.4 AC20 — after Save the session is gone", () => {
-  it("Back from the preview lands on an empty paste screen and sends nothing", async () => {
+  // Deferred minor 31: Save gives up the import's history entries, so Back from the preview leaves for wherever
+  // the import began; opening the import again then shows an empty paste screen.
+  it("reopening the import after Save shows an empty paste screen and sends nothing", async () => {
     const { user, fake, router } = start();
     await toEditor(user);
     await user.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByRole("heading", { level: 1, name: "Second Shift" });
     const sent = writesOf(fake).length;
-    await act(() => router.navigate(-1));
+    await act(() => router.navigate(IMPORT_PATH));
     expect(await screen.findByRole("heading", { level: 1, name: PASTE_TITLE })).toBeInTheDocument();
     expect(screen.getByLabelText(TEXT_LABEL)).toHaveValue("");
     expect(writesOf(fake)).toHaveLength(sent);
