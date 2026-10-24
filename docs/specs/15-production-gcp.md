@@ -1,6 +1,6 @@
 # Spec 15 — Production on Google Cloud (free tier)
 
-**Status:** Draft 2026-10-23. Design approved by the owner on 2026-10-23 (brief: `docs/superpowers/specs/2026-10-23-gcp-production-deploy-design.md`, kept locally — `docs/superpowers/specs/` is git-ignored; its decisions are restated in §12).
+**Status:** Implemented 2026-10-24 (PR pending); go-live (AC28–AC31) pending the owner's runbook Part F, and `infra/prod.tfvars` holds `REPLACE_ME_*` placeholders until then (owner decision 2026-10-24). Draft 2026-10-23. Design approved by the owner on 2026-10-23 (brief: `docs/superpowers/specs/2026-10-23-gcp-production-deploy-design.md`, kept locally — `docs/superpowers/specs/` is git-ignored; its decisions are restated in §12).
 **Kind:** infra / CI-CD (+ two small API changes: the commit marker on `/healthz` and the client-address rule for Cloud Run; plus one line of web build config, the commit stamp source — §12 D17)
 **Depends on:** Spec 01 (the API image, `render.yaml`, `scripts/smoke.ts`, the staging `smoke` job), Spec 01.1 (superseded for production; its gate / approval / concurrency / digest / rollback design is reused here), Spec 04.0 (the static-site headers and CSP this spec ports; `assert-render-yaml.mjs`), Spec 05.2 (`clientAddress()`, runbook D4.d), Spec 06.3 (`<meta name="sin-commit">`, `wait-for-commit.mjs`), Spec 13.0 (telemetry stays off in production).
 **Consumed by:** every later spec that ships to production (they inherit `deploy-prod` unchanged). Nothing else.

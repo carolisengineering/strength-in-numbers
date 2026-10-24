@@ -750,6 +750,10 @@ is.) A `trust_proxy_suspect` warning means the Cloudflare assumption broke; its
   05.2 D12: Cloudflare's ranges also carry WARP/Worker end users), not a quick
   fix.
 
+**On Cloud Run (production, `CLIENT_IP_SOURCE=cloud-run`)** the rule is different (the right-most
+`X-Forwarded-For` entry behind a non-public socket; `CF-Connecting-IP` is never read): check it with
+Part F11 instead.
+
 *History:* the first check (2026-10-04) logged the Cloudflare edge `104.22.64.33`
 — the original "private socket + one hop" `trustProxy` was a hop short, and
 walking `X-Forwarded-For` through Cloudflare's ranges proved spoofable from
@@ -787,23 +791,183 @@ UPDATE "user" SET deleted_at = NULL WHERE id = '<id>';
 Auth0 dashboard (User Management → Users) by hand. Database backups age out on
 the host's retention window.
 
-## Part E — Production (deferred)
+## Part F — Production on Google Cloud (Spec 15)
 
-Not part of this deploy. The full gated staging→prod pipeline is
-[Spec 01.1](../specs/01.1-prod-deploy-pipeline.md); do it when you
-actually need a prod environment, not now.
+Production is a separate Google Cloud project on the free tier: the API on **Cloud Run** (`si-api`,
+`us-central1`, scale 0 → 1), the web app on **Firebase Hosting**, its own **Neon** project, and a
+**$1 budget alert**. Staging stays on Render (Parts B–D). Everything below is done once, by hand, from your
+Mac, in this order; after that a release is one approved click (F11). Nothing in Google Cloud exists until
+you do F2–F5, and the CI `publish` job and `deploy-prod` skip or refuse until then.
 
-- **Auth0:** prod needs its **own** tenant (never share with staging). On the
-  free plan that's a second free tenant if Auth0 lets you create one, otherwise
-  the paid tier for a Production-tagged environment — evaluate then. In it,
-  repeat Part A: same API Identifier, same namespace, its own M2M app, its own
-  copy of the A3 Action bound to the Login flow.
-- **Render:** a second service from the same `render.yaml`
-  (`si-api-prod`, `autoDeploy: false`) + its own Postgres + a
-  `api-shared-prod` group with the prod tenant's `AUTH0_ISSUER` and the real
-  `WEB_ORIGIN`. Promoted with the exact image that passed staging.
-- **CI:** add `PROD_BASE_URL` / `AUTH0_PROD_*` and the `deploy-prod` workflow
-  per Spec 01.1.
+### F1. Tools
+
+- **gcloud CLI:** `brew install --cask google-cloud-sdk`, then `gcloud auth login` and
+  `gcloud auth application-default login` (Terraform uses the second).
+- **Terraform 1.17.0** — the exact version in `infra/versions.tf`. Download
+  `terraform_1.17.0_darwin_arm64.zip` and `terraform_1.17.0_SHA256SUMS` from releases.hashicorp.com, check
+  `grep darwin_arm64.zip terraform_1.17.0_SHA256SUMS | shasum -a 256 -c -`, unzip, and put it on your PATH.
+- **firebase-tools** is a pinned dev dependency of `@sin/web`: always `pnpm --filter @sin/web exec firebase …`.
+
+### F2. Project and billing (console or gcloud)
+
+```bash
+gcloud projects create <project-id>                       # e.g. sin-prod-<something unique>
+gcloud billing accounts list                              # note the ACCOUNT_ID
+gcloud billing projects link <project-id> --billing-account=<ACCOUNT_ID>
+gcloud projects describe <project-id> --format='value(projectNumber)'   # the project number
+```
+
+### F3. Fill `infra/prod.tfvars` (a small PR) — the placeholders end here
+
+Replace every `REPLACE_ME_*` in `infra/prod.tfvars`: `project_id`, `project_number`, `hosting_site_id` (the
+web address becomes `https://<site id>.web.app`; the project id is a fine choice) and `billing_account_id`.
+In the same PR, put the same values in `apps/web/firebase.json`: `hosting.site`, and the API origin in the
+CSP's `connect-src` (`https://si-api-<project number>.us-central1.run.app`). Then:
+
+```bash
+pnpm --filter @sin/api exec tsx scripts/check-prod-ids.ts --strict   # must print "no placeholders"
+node apps/web/scripts/assert-firebase-json.mjs                        # PASS
+pnpm --filter @sin/api exec vitest run test/unit/prod-origins.test.ts
+```
+
+Merge it. `deploy-prod` refuses to run while any placeholder is left.
+
+### F4. Terraform state bucket (by hand, once)
+
+```bash
+gcloud storage buckets create gs://<project-id>-tfstate --project=<project-id> --location=us-central1 \
+  --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets update gs://<project-id>-tfstate --versioning
+```
+
+### F5. First apply
+
+```bash
+terraform -chdir=infra init -backend-config="bucket=<project-id>-tfstate"
+terraform -chdir=infra apply -var-file=prod.tfvars
+terraform -chdir=infra output
+```
+
+Check (AC5): `api_origin` is in `api_urls`, and `web_origin` is `https://<site id>.web.app`; both must equal
+what `prod.tfvars` gives. Cloud Run starts on Google's sample image until the first `deploy-prod`.
+Terraform never deploys an image after that (`ignore_changes`). **Never run `apply` from CI.**
+
+### F6. Production database (Neon) and its secret
+
+1. Create a **new** Neon free project (the B1 steps, its own project — not staging's). Take the **direct**
+   (not `-pooler`) connection string and append `sslmode=require&sslaccept=strict` (B1).
+2. Store it as the runtime secret — from stdin, so it never lands in your shell history:
+
+```bash
+pbpaste | gcloud secrets versions add si-database-url --project=<project-id> --data-file=-
+```
+
+3. **AC29 — the empty database, by hand, with the same URL** (B4, B5, B5a, B6 against production):
+
+```bash
+DATABASE_URL='<prod direct url>' pnpm run db:migrate:deploy
+DATABASE_URL='<prod direct url>' pnpm run db:migrate:status          # up to date
+DATABASE_URL='<prod direct url>' pnpm --filter @sin/api run seed:catalog   # inserted > 0; again → unchanged
+DATABASE_URL='<prod direct url>' pnpm --filter @sin/api run records:rebuild  # a no-op on an empty database
+```
+
+and B6 (certificate and hostname verification) against the production URL.
+
+### F7. Auth0 production applications (AC30)
+
+In the existing tenant (D7):
+- **SPA application** "Strength in Numbers (production)": allowed callback, logout and web-origin URLs =
+  the `web_origin` output; refresh-token rotation as staging's SPA app.
+- **M2M application** "si production smoke", authorized for the existing API
+  (`https://api.strengthinnumbers.app`). Its secret goes only into the GitHub Environment (F8).
+
+### F8. GitHub variables, Environment and secrets (spec §8)
+
+**Repository variables** (Settings → Secrets and variables → Actions → Variables):
+
+| Name | Value |
+|---|---|
+| `GCP_WIF_PROVIDER` | `terraform -chdir=infra output -raw wif_provider` |
+| `GCP_PUBLISHER_SA` | `terraform -chdir=infra output -raw publisher_sa` |
+| `GCP_PROJECT_ID` | the project id |
+| `GCP_REGION` | `us-central1` |
+| `AR_IMAGE` | `terraform -chdir=infra output -raw ar_repository` + `/api` |
+
+**Environment `production`** (Settings → Environments → New environment): required reviewer = you;
+deployment branches = `main` only. Its variables and secrets:
+
+| Name | Kind | Value |
+|---|---|---|
+| `GCP_DEPLOYER_SA` | var | `terraform -chdir=infra output -raw deployer_sa` |
+| `PROD_API_BASE_URL` | var | `terraform -chdir=infra output -raw api_origin` |
+| `PROD_WEB_BASE_URL` | var | `terraform -chdir=infra output -raw web_origin` |
+| `FIREBASE_SITE_ID` | var | the `hosting_site_id` from `prod.tfvars` |
+| `VITE_API_BASE_URL` | var | `terraform -chdir=infra output -raw api_origin` |
+| `VITE_AUTH0_DOMAIN` | var | `dev-gncuqvfir0wv0t4l.us.auth0.com` |
+| `VITE_AUTH0_CLIENT_ID` | var | the production SPA application's client id (F7) |
+| `VITE_AUTH0_AUDIENCE` | var | `https://api.strengthinnumbers.app` |
+| `AUTH0_PROD_TOKEN_URL` | var | `https://dev-gncuqvfir0wv0t4l.us.auth0.com/oauth/token` |
+| `AUTH0_PROD_M2M_CLIENT_ID` | secret | the production M2M application's client id (F7) |
+| `AUTH0_PROD_M2M_CLIENT_SECRET` | secret | its client secret |
+| `DATABASE_URL_PROD` | secret | the F6 direct URL (read-only use: `migrate status`) |
+
+(`VITE_APP_ENV=production` is fixed in the workflow.)
+
+### F9. First image
+
+Push any commit to `main` (or re-run the latest `CI` run): the `publish` job now pushes
+`<AR_IMAGE>:<sha>`. Check the run summary shows a digest, and the staging `smoke` job shows the steps
+`Wait for staging to serve this commit` and `Staging API smoke (commit verified)` passing. Record the
+repository size (Artifact Registry → `si`) and the free allowance you checked it against (AC3).
+
+### F10. First release, rollback and roll-forward (AC31)
+
+1. Actions → **deploy-prod** → Run workflow (no `sha`). The gate names the commit and digest, then the run
+   waits for your approval. Approve.
+2. Watch: migration check → API deploy (by digest) → revision check → web build → Firebase deploy → API
+   smoke (commit + CORS) → web smoke (Firebase headers + commit). The summary is the release record.
+3. Run it again with `sha` = the previous release: both go back. Then again with the newer one.
+4. If a step fails, the failure table in Spec 15 §6.4 says what is live and what to do.
+
+### F11. D4.d on Cloud Run — the go-live gate (AC28)
+
+Production is not used until this holds. Send a request with forged headers:
+
+```bash
+curl -s -H 'X-Forwarded-For: 203.0.113.9' -H 'CF-Connecting-IP: 203.0.113.10' "$(terraform -chdir=infra output -raw api_origin)/healthz"
+```
+
+In Cloud Logging (Cloud Run → `si-api` → Logs), the matching `request completed` line's `client_ip` must be
+**your real public IP**: not `203.0.113.9` or `203.0.113.10`, not a `10.x` / `169.254.x` / Google address.
+Write the observed socket (`remoteAddress` on `incoming request`) and the `X-Forwarded-For` shape here:
+
+| Observed | Then |
+|---|---|
+| A private / link-local socket, and the last `X-Forwarded-For` entry is your IP | `CLOUD_RUN_XFF_HOPS = 1` stands (the default) |
+| The last two entries are your IP then a Google address | change `CLOUD_RUN_XFF_HOPS` to 2 and its test table, in a PR |
+| No entry is reliably yours | the Spec 15 §6.2 fallback: key on the socket (coarse, unforgeable), in a PR |
+| A public socket that is you | the rule already keys on the socket; nothing to change |
+
+A `trust_proxy_suspect` warning with `reason: no-xff` or `unknown-proxy` means the assumption broke.
+
+*Recorded at go-live:* (date, socket, header shape, decision)
+
+### F12. Phone check and cold starts
+
+Sign in on your phone at the `web_origin` and log a workout. Then, three times after at least 15 minutes
+idle, time the first `curl -s -o /dev/null -w '%{time_total}\n' <api_origin>/healthz`. The target is under
+10 seconds; record the three times and the peak memory from Cloud Run → Metrics here (BL-32 owns anything
+slower).
+
+*Recorded at go-live:* (three times, peak memory)
+
+### F13. Break-glass (Actions unavailable)
+
+- **API:** Cloud Run console → `si-api` → Edit & deploy new revision → an older image **by digest** from
+  Artifact Registry.
+- **Web:** `pnpm --filter @sin/web exec firebase hosting:rollback --project <project-id>`.
+
+Record what you did; the next `deploy-prod` puts both back on the pipeline.
 
 ---
 
@@ -815,7 +979,7 @@ actually need a prod environment, not now.
 - The CI `smoke` job passes end to end against your Auth0 tenant.
 - `render.yaml` is the source of truth — no manual service config drift.
 
-Production comes later, via Spec 01.1.
+Production is Part F (Spec 15).
 
 Metrics and traces (Spec 13.0) are off on a first deploy. Turning them on, the local Grafana stack and Grafana
 Cloud are in [`observability.md`](observability.md).

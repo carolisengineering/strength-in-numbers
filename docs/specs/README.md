@@ -68,6 +68,8 @@ spec small enough to finish in one work session.
 
 **Ownership of cross-cutting concerns:**
 
+- **Production deploy pipeline and `infra/`** — Spec 15. **CSP + web security headers** — Spec 04.0 for
+  `render.yaml`, Spec 15 for `apps/web/firebase.json` (kept in sync by `assert-firebase-json.mjs`).
 - **Rate limiting + per-user write quotas** — Spec 05.2 (first write-heavy
   path). Spec 03.2's `POST /v1/exercises` landed a write path earlier; 03.2 was
   to decide whether to pull a minimal per-user create quota forward or record

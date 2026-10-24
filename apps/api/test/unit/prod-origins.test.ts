@@ -31,3 +31,18 @@ describe("15 AC24 — strict mode refuses placeholders", () => {
     expect(placeholderIds('a = "REPLACE_ME_X"\nb = "ok"\nc = "REPLACE_ME_Y" # c\n')).toEqual(["a", "c"]));
   it("a filled file has none", () => expect(placeholderIds('project_id = "sin-prod"\n')).toEqual([]));
 });
+
+describe("15 AC24 — the runbook's Part F variable table derives every origin from Terraform", () => {
+  const runbook = read("docs/runbooks/first-deploy.md");
+  const partF = runbook.slice(runbook.indexOf("## Part F"), runbook.indexOf("## Done when"));
+  const row = (name: string) => partF.split("\n").find((l) => l.startsWith(`| \`${name}\``)) ?? "";
+  it("the origin variables point at the right terraform outputs", () => {
+    expect(row("PROD_API_BASE_URL")).toContain("output -raw api_origin");
+    expect(row("VITE_API_BASE_URL")).toContain("output -raw api_origin");
+    expect(row("PROD_WEB_BASE_URL")).toContain("output -raw web_origin");
+  });
+  it("Part F names no literal production origin (only <placeholder> forms)", () => {
+    const literals = [...partF.matchAll(/https:\/\/[^\s`'")|]+\.(?:run\.app|web\.app)/g)].map((m) => m[0]).filter((o) => !o.includes("<"));
+    expect(literals).toEqual([]);
+  });
+});

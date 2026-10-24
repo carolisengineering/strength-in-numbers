@@ -1,6 +1,8 @@
 # Spec 01 — Foundation & Auth
 
 **Status:** Implemented — v0.4 — §12 questions Q1–Q10 resolved; pre-implementation review pass
+
+*(Amended by Spec 15, 2026-10-24: production is Google Cloud — Cloud Run + Firebase Hosting, released by `deploy-prod` — not a second Render service; `/healthz` also reports `commit`.)*
 **Last updated:** 2026-08-31
 **Design refs:** DESIGN.md §3 (architecture), §4.1 (`user`), §5.1 (auth), §6 (API), §7 (infra), §8.2 (security), §9 (M0)
 
