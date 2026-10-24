@@ -177,6 +177,7 @@ function PreviewBody({
   const [keepFailure, setKeepFailure] = useState<ClassifiedRoutineError | null>(null);
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
+  const keepButton = useRef<HTMLButtonElement>(null);
   const focusEdit = useRef(false);
   // No dependency list on purpose (DM-48): it runs after every render until the Edit link exists and the mark is
   // gone, so the focus lands whichever render brings them; the ref guard makes every other run a no-op.
@@ -249,17 +250,20 @@ function PreviewBody({
   return (
     <Screen title={routine.name} lead={<BackToWorkouts />}>
       {markedOneOff || kept ? (
-        <div className={styles.oneOffBlock}>
+        // The block is the live region from first paint, so the confirmation is announced when it appears (AC7)
+        // without an empty status element on every one-off preview (deferred minor 47).
+        <div className={styles.oneOffBlock} aria-live="polite">
           {markedOneOff ? (
             <>
               <OneOffTag />
               <p className={styles.oneOffNote}>{oneOffNote(routine, now)}</p>
             </>
           ) : null}
-          {/* Present before success, so the confirmation is announced when it fills (AC7). */}
-          <p role="status" className={styles.status}>
-            {kept ? KEPT_STATUS : ""}
-          </p>
+          {kept ? (
+            <p role="status" className={styles.status}>
+              {KEPT_STATUS}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className={styles.actions}>
@@ -279,7 +283,15 @@ function PreviewBody({
           Edit
         </Link>
         {markedOneOff ? (
-          <Button variant="secondary" busy={keep.isPending} disabled={remove.isPending} onClick={() => void onKeep()}>
+          // `aria-busy`, not `busy`: a disabled button would drop the focus Retry moves here (deferred minor 53);
+          // `keepLock` guards the double tap.
+          <Button
+            ref={keepButton}
+            variant="secondary"
+            aria-busy={keep.isPending || undefined}
+            disabled={remove.isPending}
+            onClick={() => void onKeep()}
+          >
             {KEEP_AS_ROUTINE}
           </Button>
         ) : null}
@@ -304,11 +316,20 @@ function PreviewBody({
       ) : null}
       {keepFailure ? (
         keepFailure.kind === "network" || keepFailure.kind === "rate-limited" ? (
-          <InlineNotice tone="error" requestId={null}>
+          <InlineNotice tone="error" requestId={keepFailure.kind === "network" ? null : keepFailure.requestId}>
             {keepMessage(keepFailure)}
           </InlineNotice>
         ) : (
-          <InlineNotice tone="error" requestId={keepFailure.requestId} actionLabel="Retry" onAction={() => void onKeep()}>
+          <InlineNotice
+            tone="error"
+            requestId={keepFailure.requestId}
+            actionLabel="Retry"
+            onAction={() => {
+              // The notice (and its focused Retry) unmounts as the retry starts.
+              keepButton.current?.focus();
+              void onKeep();
+            }}
+          >
             {keepMessage(keepFailure)}
           </InlineNotice>
         )
