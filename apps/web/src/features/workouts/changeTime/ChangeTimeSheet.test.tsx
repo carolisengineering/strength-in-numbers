@@ -82,6 +82,22 @@ describe("18.0 AC31 — only what changed", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
+
+  it("deferred minor 15: a background refresh while open does not move the baseline — only the lifter's change is sent", async () => {
+    const w = finishedHour();
+    const updateWorkout = vi.fn(async () => updatedOf(w));
+    const client = fakeClient({ updateWorkout });
+    const callbacks = { onClose: vi.fn(), onSaved: vi.fn(), onVanished: vi.fn() };
+    const { rerender } = render(<Host workout={w} client={client} {...callbacks} />, { wrapper: wrapperWith(makeQueryClient(), fakeClient()) });
+    // Another device moved the start an hour earlier; the refetched workout reaches the open sheet.
+    const moved = { ...w, startedAt: "2026-10-16T16:00:00.000Z" };
+    rerender(<Host workout={moved} client={client} {...callbacks} />);
+    const user = userEvent.setup();
+    await user.clear(minutes());
+    await user.type(minutes(), "15");
+    await user.click(save());
+    expect(updateWorkout).toHaveBeenCalledWith(w.id, { durationSeconds: 4500 });
+  });
 });
 
 describe("18.0 AC33 — client errors block the request", () => {

@@ -41,7 +41,9 @@ const TOOK_ERROR_ID = "change-time-took-error";
  */
 export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onVanished }: ChangeTimeSheetProps) {
   const [openedAt] = useState(() => new Date());
-  const [form, setForm] = useState<ChangeTimeForm>(() => initialValues(workout));
+  // "What changed" compares against the times the sheet opened with, not a refetch that lands while it is open (deferred minor 15).
+  const [opened] = useState(() => workout);
+  const [form, setForm] = useState<ChangeTimeForm>(() => initialValues(opened));
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
   const [requestId, setRequestId] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -64,7 +66,7 @@ export function ChangeTimeSheet({ open, workout, mutation, onClose, onSaved, onV
       setErrors({ took: EDIT_COPY.tookWhole });
       return;
     }
-    const built = buildPatch(workout, form);
+    const built = buildPatch(opened, form);
     if (!built.ok) {
       setErrors(built.errors);
       return;
