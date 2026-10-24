@@ -8,14 +8,21 @@
  *   4. GET /v1/_authcheck  → 200, aud matches AUTH0_M2M_AUDIENCE
  *   5. GET /v1/me          → 401 invalid-token (no email claim on an M2M token)
  *
+ * Spec 15 AC20, opt-in by env (unset → today's behavior):
+ *   - EXPECT_COMMIT    → /healthz must report exactly this commit;
+ *   - SMOKE_WEB_ORIGIN → an OPTIONS /v1/me preflight from that origin must allow exactly it.
+ *
  * Any non-conforming result exits non-zero and fails the pipeline.
  */
+import { checkCommit, checkCorsPreflight } from "./lib/smoke-checks.js";
 
 const BASE = requireEnv("SMOKE_BASE_URL").replace(/\/$/, "");
 const TOKEN_URL = requireEnv("AUTH0_TOKEN_URL");
 const CLIENT_ID = requireEnv("AUTH0_M2M_CLIENT_ID");
 const CLIENT_SECRET = requireEnv("AUTH0_M2M_CLIENT_SECRET");
 const AUDIENCE = requireEnv("AUTH0_M2M_AUDIENCE");
+const EXPECT_COMMIT = process.env.EXPECT_COMMIT || undefined;
+const WEB_ORIGIN = process.env.SMOKE_WEB_ORIGIN || undefined;
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -68,6 +75,20 @@ async function getM2MToken(): Promise<string> {
 
 async function main(): Promise<void> {
   await waitForHealthy();
+
+  if (EXPECT_COMMIT) {
+    const health = await fetch(`${BASE}/healthz`, { headers: { "cache-control": "no-cache" } });
+    const problem = checkCommit(await health.json(), EXPECT_COMMIT);
+    assert(problem === null, problem ?? `/healthz reports commit ${EXPECT_COMMIT}`);
+  }
+  if (WEB_ORIGIN) {
+    const preflight = await fetch(`${BASE}/v1/me`, {
+      method: "OPTIONS",
+      headers: { origin: WEB_ORIGIN, "access-control-request-method": "GET", "access-control-request-headers": "authorization" },
+    });
+    const problem = checkCorsPreflight(preflight.headers, WEB_ORIGIN);
+    assert(problem === null, problem ?? `CORS preflight allows exactly ${WEB_ORIGIN}`);
+  }
 
   const ready = await fetch(`${BASE}/readyz`);
   assert(ready.status === 200, `/readyz → ${ready.status} (expected 200)`);
