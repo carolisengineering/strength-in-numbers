@@ -250,7 +250,7 @@ describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
 
 describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74", () => {
   const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
-  it.each(["Rx:", "Rx", "RX: 95/65 lb", "(Rx)"])("%s is a note that keeps the run open; the movements after it are exercises (item 69)", (label) => {
+  it.each(["Rx:", "Rx", "RX: 95/65 lb", "(Rx)", "Rx (95/65 lb)", "Rx Weights: 95/65", "Rx'd: 95/65"])("%s is a note that keeps the run open; the movements after it are exercises (item 69)", (label) => {
     const r = read(["Strength", "REPS", "3 Rounds:", label, "10 Thrusters", "10 Pull-ups"]);
     expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
     expect(r.sections[0]!.notes).toBe(label);
@@ -260,6 +260,8 @@ describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74", () => 
     expect(r.items.map((i) => i.name)).toEqual(["Curl"]);
     expect(r.sections[0]!.notes).toBe("Rx:");
   });
+  it("a bulleted line with no run drops its trailing + too (item 74, code review)", () =>
+    expect(read(["Strength", "REPS", "- 10 Push-ups +"]).items.map((i) => i.name)).toEqual(["Push-ups"]));
   it("Rx Bar Hang is a movement, not an Rx line (item 69)", () =>
     expect(read(["Strength", "REPS", "3 Sets:", "Rx Bar Hang"]).items.map((i) => i.name)).toEqual(["Rx Bar Hang"]));
   it.each([["Max Hang", "Max Hang"], ["Max Effort Sprint", "Max Effort Sprint"], ["Max Burpees", "Max Burpees"]])("%s keeps Max in its name (item 70)", (line, name) =>

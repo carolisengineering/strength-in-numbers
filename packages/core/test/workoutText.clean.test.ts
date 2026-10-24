@@ -102,6 +102,8 @@ describe("10.4 AC44 — the overlap tolerates OCR look-alikes", () => {
   it("case is kept except for letters whose two cases look alike (item 72)", () => {
     expect(ocrKey("1:30 on / 1:30 REST")).not.toBe(ocrKey("1:30 on / 1:30 Rest"));
     expect(ocrKey("Cross Over")).toBe(ocrKey("CrOss over"));
+    expect(ocrKey("90S REST")).toBe(ocrKey("GOS REST"));
+    expect(ocrKey("1 LEG")).toBe(ocrKey("L LEG"));
     const r = cleanWorkoutText("11:08\nIntro\n1:30 on / 1:30 REST\n11:09\n1:30 on / 1:30 Rest\nNext");
     expect(r.lines).toEqual(["Intro", "1:30 on / 1:30 REST", "1:30 on / 1:30 Rest", "Next"]);
     expect(r.overlap).toBe(0);
@@ -140,6 +142,8 @@ describe("10.4 AC45 — tagged headers survive cleaning", () => {
     expect(r.lines).toEqual(["Intro", "Shared line", "Front Rack Carry", "3 Sets:"]);
     expect(r.tagged).toEqual([false, false, true, false]);
   });
+  it("a status bar read as several icon lines is dropped whole (code review)", () =>
+    expect(cleanWorkoutText("11:08\n•ll\n令\n口\nStrength\n3 Sets:").lines).toEqual(["Strength", "3 Sets:"]));
   it("a short non-Latin exercise name right under the clock is dropped: the accepted cost of the status-bar rule (item 71)", () =>
     expect(cleanWorkoutText("11:08\nЖим\n3 Sets:").lines).toEqual(["3 Sets:"]));
   it("Log result does not tag the line above it", () => expect(cleanWorkoutText("Intro\nLog result").tagged).toEqual([false]));

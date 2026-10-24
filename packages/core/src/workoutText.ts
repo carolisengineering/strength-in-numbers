@@ -60,12 +60,12 @@ export function isFurnitureLine(line: string): boolean {
 }
 
 const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
-/** The status bar sits just under the clock line, the tab bar's icons between its labels. */
-const STATUS_BAR_LINES = 2;
+/** The status bar sits just under the clock line (at most one line of text before its last icon), the tab bar's icons between its labels. */
+const STATUS_BAR_TEXT_LINES = 1;
 
 const LOOK_ALIKES: Readonly<Record<string, string>> = { "0": "o", "9": "g", "1": "l", "|": "l", "5": "s" };
-/** Letters whose two cases differ only in size, so Live Text can read either. */
-const SAME_SHAPE_UPPER = /[COSUVWXZ]/g;
+/** Letters whose two cases differ only in size, so Live Text can read either, plus the capitals of the look-alikes' letters. */
+const SAME_SHAPE_UPPER = /[COSUVWXZGL]/g;
 /**
  * AC44: the overlap compares lines through this key, so Live Text's look-alike misreads ("90s" / "g0s" / "gos") still
  * match. Case is kept otherwise (item 72): "1:30 REST" and "1:30 Rest" are different lines.
@@ -147,18 +147,18 @@ export function cleanWorkoutText(raw: string): CleanResult {
   let previous = "";
   const chunks: CleanLine[][] = [[]];
   const all = raw.split(LINE_BREAK).map(collapseLine).filter((l) => l !== "");
-  const isNav = (i: number) => i >= 0 && i < all.length && NAV.has(all[i]!.toLowerCase());
-  let sinceClock = Infinity;
+  const nav = all.map((l) => NAV.has(l.toLowerCase()));
+  // Lines of text kept since the last clock line; icons and other furniture don't count.
+  let textSinceClock = Infinity;
   for (const [i, line] of all.entries()) {
     input++;
-    sinceClock++;
-    const nearChrome = sinceClock <= STATUS_BAR_LINES || isNav(i - 1) || isNav(i + 1);
+    const nearChrome = textSinceClock <= STATUS_BAR_TEXT_LINES || nav[i - 1] === true || nav[i + 1] === true;
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
     if (CLOCK_LINE.test(line)) {
       furniture++;
-      sinceClock = 0;
+      textSinceClock = 0;
       chunks.push([]);
       continue;
     }
@@ -174,6 +174,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       continue;
     }
     chunk.push({ text: line, tagged: false });
+    textSinceClock++;
   }
   const kept = chunks.filter((c) => c.length > 0);
   // A strict header cut off at a screenshot's bottom edge (its badge out of frame) still heads its section.
@@ -350,8 +351,11 @@ const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
 const REST_LINE = /^rest\b/i;
-/** Item 69: "Rx:" / "Rx: 95/65 lb" names the prescribed version, so the movements after it are the workout. */
-const RX_LINE = /^\(?rx\)?(?:\s*:|\s*$|\s+\d)/i;
+/**
+ * Item 69: "Rx", "Rx:", "Rx (95/65 lb)", "Rx'd: 95/65" name the prescribed version, so the movements after it are the
+ * workout. A name that only starts with Rx ("Rx Bar Hang": no colon, parenthesis or digit) is a movement.
+ */
+const RX_LINE = /^\(?rx(?:'?d)?\b(?=.*[:(\d]|\s*\)?$)/i;
 /**
  * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
  * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
@@ -507,7 +511,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 
   // 8. A bare bullet with a rep form is a rowless item (AC10).
   if (BULLET.test(line)) {
-    const form = repFormOf(line.replace(BULLET, ""));
+    const form = repFormOf(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     if (!form) return null;
     pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null });
     return "movement";
