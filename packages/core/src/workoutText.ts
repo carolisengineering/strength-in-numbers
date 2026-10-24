@@ -297,6 +297,16 @@ const RANGE_FORM = /^(\d{1,3})\s*[-–]\s*(\d{1,3})\s+(.+)$/;
 const SPLIT_FORM = /^(\d{1,3})\/(\d{1,3})\s+(.+)$/;
 const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
 const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?)$/i;
+/** AC48: "3 Sets, 1 Set Every 4:00" — a set count with more after a comma. */
+const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
+/** AC49: interval lines that describe the work, not a movement. */
+const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
+const REST_LINE = /^rest\b/i;
+/** AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. */
+const MAX_LINE = /^(max(?:\s+(?:cal|calories|reps))?)\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
+/** AC51: "10 Tuckups + 15 Hollow Rocks". */
+const PLUS = /\s\+\s/;
+const TRAILING_PLUS = /\s*\+$/;
 const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
@@ -347,7 +357,27 @@ function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">):
   s.items.push({ ...item, nameKey: normalizeExerciseName(item.name), section: s.section });
 }
 
-/** Steps 3–8: place the line as a construct, or null to leave it to the note. */
+/** One movement under an open run (AC8–AC11): rows from the run, the rep form or leading distance as its note. */
+function pushMovement(s: ReadState, run: Run, text: string, form: RepForm | null, extraNotes: readonly string[] = []): void {
+  const noteLines: string[] = [];
+  let name = text;
+  if (form) {
+    name = form.name;
+    if (run.kind === "scheme") noteLines.push(form.text);
+    else if (form.note) noteLines.push(form.note);
+  } else {
+    const measure = LEADING_MEASURE.exec(text);
+    if (measure) noteLines.push(measure[1]!);
+  }
+  noteLines.push(...extraNotes);
+  const rows =
+    run.kind === "scheme"
+      ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
+      : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
+  pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+}
+
+/** Steps 3–8: place the line as a construct ("note" keeps it in the note with the run open), or null to leave it to the note. */
 function readConstruct(line: string, s: ReadState): LinePlacement | null {
   const section = s.section === null ? null : s.sections[s.section]!;
 
@@ -374,7 +404,12 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "scheme";
   }
 
-  // 5. A lead-in opens a run of N sets (AC9).
+  // 5. A lead-in opens a run of N sets (AC9); "N Sets, 1 Set Every M:SS" also stays in the note (AC48).
+  const every = LEAD_IN_SETS_EVERY.exec(line);
+  if (every && Number(every[1]) >= 1) {
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]) };
+    return "note";
+  }
   const n = leadInCount(line);
   if (n !== null) {
     s.run = { id: ++s.runs, kind: "lead-in", n };
@@ -388,27 +423,27 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "separator";
   }
 
-  // 7. A movement under an open run (AC8–AC11).
+  // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null) {
-    const text = line.replace(BULLET, "");
-    if (!isMovementText(text)) return null;
-    const form = repFormOf(text);
-    const noteLines: string[] = [];
-    let name = text;
-    if (form) {
-      name = form.name;
-      if (s.run.kind === "scheme") noteLines.push(form.text);
-      else if (form.note) noteLines.push(form.note);
-    } else {
-      const measure = LEADING_MEASURE.exec(text);
-      if (measure) noteLines.push(measure[1]!);
+    const raw = line.replace(BULLET, "");
+    // AC49: lines that describe the interval go to the note and keep the run open.
+    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw)) return "note";
+    // AC51: "A + B" with a rep form on every side is one exercise per side.
+    const parts = raw.split(PLUS);
+    if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
+      for (const part of parts) pushMovement(s, s.run, part, repFormOf(part));
+      return "movement";
     }
-    const run = s.run;
-    const rows =
-      run.kind === "scheme"
-        ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
-        : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
-    pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+    // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
+    const max = MAX_LINE.exec(raw);
+    if (max && isMovementText(max[2]!)) {
+      const note = [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
+      pushMovement(s, s.run, max[2]!, null, [note]);
+      return "movement";
+    }
+    const text = raw.replace(TRAILING_PLUS, "");
+    if (!isMovementText(text)) return null;
+    pushMovement(s, s.run, text, repFormOf(text));
     return "movement";
   }
 
@@ -495,6 +530,7 @@ export function readWorkoutText(raw: string): ReadResult {
       return;
     }
     const as = readConstruct(line, s);
+    if (as === "note") (current ? current.notes : s.routineNotes).push(line);
     if (as) {
       placed.push({ text: line, as });
       return;

@@ -150,3 +150,59 @@ describe("10.4 AC52 — alternatives after a label are notes", () => {
   it.each(["AT HOME or ON THE ROAD", "Outdoor:", "Modified:", "Options"])("%s is a label", (label) =>
     expect(read(["Strength", "REPS", label, "3 Sets:", "10 Curl"]).items).toEqual([]));
 });
+
+const tenNull = Array.from({ length: 10 }, () => [null, null]);
+
+describe("10.4 AC48 — 'N Sets, 1 Set Every M:SS' sets the count", () => {
+  it("opens a run of N and stays in the note", () => {
+    const r = read(["Accessory", "NO SCORE", "3 Sets, 1 Set Every 4:00", "10-15 Double DB Bench Press", "15 DB or Plate Front Raises"]);
+    expect(r.items.map((i) => [i.name, rowsOf(i)])).toEqual([
+      ["Double DB Bench Press", [[10, 15], [10, 15], [10, 15]]],
+      ["DB or Plate Front Raises", [[15, 15], [15, 15], [15, 15]]],
+    ]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.notes).toBe("3 Sets, 1 Set Every 4:00");
+    expect(r.lines.placed[1]).toEqual({ text: "3 Sets, 1 Set Every 4:00", as: "note" });
+  });
+  it("a plain '3 Sets:' lead-in still works and is not in the note", () =>
+    expect(read(["Accessory", "NO SCORE", "3 Sets:", "10 Curl"]).sections[0]!.notes).toBe(""));
+});
+
+describe("10.4 AC49 — interval lines don't end a run", () => {
+  it("work/rest, comma and Rest lines go to the note and keep the run open", () => {
+    const r = read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a 90s Time window,", "200 Meter Run+", "1:30 on / 1:30 REst", "10x 90s on / 90s Rest", "Rest 90s and Repeat"]);
+    expect(r.items.map((i) => i.name)).toEqual(["200 Meter Run"]);
+    expect(r.sections[0]!.notes.split("\n")).toEqual([
+      "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a 90s Time window,", "1:30 on / 1:30 REst", "10x 90s on / 90s Rest", "Rest 90s and Repeat",
+    ]);
+  });
+});
+
+describe("10.4 AC50 — interval movements", () => {
+  const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
+  it("a leading distance keeps the name as written (AC11), minus a trailing +", () =>
+    expect(run("200 Meter Run+")).toMatchObject({ name: "200 Meter Run", noteLines: ["200 Meter"] }));
+  it("a Max line names the movement and keeps Max Cal and the time limit in the note", () => {
+    const item = run("Max Cal Echo Bike with remaining time")!;
+    expect(item).toMatchObject({ name: "Echo Bike", noteLines: ["Max Cal, with remaining time"] });
+    expect(rowsOf(item)).toEqual(tenNull);
+  });
+  it.each([["Max Burpees", "Burpees", "Max"], ["Max Reps Pull-ups", "Pull-ups", "Max Reps"]])("%s", (line, name, note) =>
+    expect(run(line)).toMatchObject({ name, noteLines: [note] }));
+});
+
+describe("10.4 AC51 — 'A + B' is two exercises", () => {
+  it("each part with a rep form becomes its own exercise in the same run", () => {
+    const r = read(["Accessory", "NO SCORE", "3 Sets, 1 Set Every 4:00", "10 Tuckups + 15 Hollow Rocks"]);
+    expect(r.items.map((i) => [i.name, rowsOf(i)])).toEqual([
+      ["Tuckups", [[10, 10], [10, 10], [10, 10]]],
+      ["Hollow Rocks", [[15, 15], [15, 15], [15, 15]]],
+    ]);
+    expect(r.items[0]!.run).toBe(r.items[1]!.run);
+    expect(r.lines.placed.filter((p) => p.as === "movement")).toHaveLength(1);
+  });
+  it("'200 Meter Run+' is never split", () =>
+    expect(read(['Workout: "Go"', "REPS", "3 Sets:", "200 Meter Run+"]).items.map((i) => i.name)).toEqual(["200 Meter Run"]));
+  it("a part without reps keeps the line whole", () =>
+    expect(read(["Accessory", "NO SCORE", "3 Sets:", "10 Tuckups + Hollow Rocks"]).items.map((i) => i.name)).toEqual(["Tuckups + Hollow Rocks"]));
+});
