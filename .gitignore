@@ -21,3 +21,12 @@ apps/web/.screens/
 
 # Obsidian vault config for anyone opening the repo as a vault
 .obsidian/
+
+# Spec 15 AC1 — Terraform: local working dirs, state, plans and variable files never get committed;
+# the one exception is infra/prod.tfvars (identifiers only, no secrets).
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!infra/prod.tfvars

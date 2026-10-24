@@ -20,4 +20,3 @@ auth0_claim_namespace = "https://strengthinnumbers.app/"
 
 github_repository  = "carolisengineering/strength-in-numbers"
 billing_account_id = "REPLACE_ME_BILLING_ACCOUNT_ID"
-budget_email       = "REPLACE_ME_BUDGET_EMAIL"
