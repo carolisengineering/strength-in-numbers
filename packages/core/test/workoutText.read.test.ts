@@ -206,3 +206,18 @@ describe("10.4 AC51 — A + B is two exercises", () => {
   it("a part without reps keeps the line whole", () =>
     expect(read(["Accessory", "NO SCORE", "3 Sets:", "10 Tuckups + Hollow Rocks"]).items.map((i) => i.name)).toEqual(["Tuckups + Hollow Rocks"]));
 });
+
+describe("10.4 AC45 — a header at a screenshot edge keeps its section (final review)", () => {
+  it("a badge that opens the next screenshot tags the header at the end of the one before", () => {
+    const r = read(["11:00", 'Workout: "X"', "REPS", "3 Sets:", "10 Push-ups", "10 Sit-ups", "Accessory", "11:01", "NO SCORE", "3 Sets:", "10 Front Raise", "10 Reverse Fly"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["X", "Accessory"]);
+    expect(r.items.map((i) => [i.name, i.section])).toEqual([["Push-ups", 0], ["Sit-ups", 0], ["Front Raise", 1], ["Reverse Fly", 1]]);
+  });
+  it("a strict header cut off at the bottom edge, with no repeat in the next screenshot, is still a section", () => {
+    const r = read(["11:00", 'Workout: "X"', "REPS", "3 Sets:", "10 Push-ups", "Accessory", "11:01", "3 Sets:", "10 Front Raise"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["X", "Accessory"]);
+    expect(r.items.map((i) => [i.name, i.section])).toEqual([["Push-ups", 0], ["Front Raise", 1]]);
+  });
+  it("a generic title at a screenshot's end is not promoted", () =>
+    expect(read(["11:00", 'Workout: "X"', "REPS", "a note.", "Front Rack Carry", "11:01", "more."]).sections.map((s) => s.name)).toEqual(["X"]));
+});

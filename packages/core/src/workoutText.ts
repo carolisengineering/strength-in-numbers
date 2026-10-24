@@ -134,7 +134,9 @@ export function cleanWorkoutText(raw: string): CleanResult {
       continue;
     }
     if (HEADER_BADGES.has(line.toLowerCase())) {
-      const above = chunk[chunk.length - 1];
+      // A badge that opens a screenshot belongs to the header that ended the one before.
+      const before = chunk.length > 0 ? chunk : [...chunks].reverse().find((c) => c.length > 0);
+      const above = before?.[before.length - 1];
       if (above) above.tagged = true;
     }
     // AC43: a results count ("RESULTS (2)" then "49") is screen furniture too.
@@ -145,6 +147,11 @@ export function cleanWorkoutText(raw: string): CleanResult {
     chunk.push({ text: line, tagged: false });
   }
   const kept = chunks.filter((c) => c.length > 0);
+  // A strict header cut off at a screenshot's bottom edge (its badge out of frame) still heads its section.
+  for (const c of kept.slice(0, -1)) {
+    const last = c[c.length - 1]!;
+    if (isStrictHeading(last.text)) last.tagged = true;
+  }
   let overlap = 0;
   for (let i = 1; i < kept.length; i++) {
     let p = i - 1;
@@ -268,6 +275,12 @@ function isGenericTitle(line: string): boolean {
   const firstLetter = line.match(/\p{L}/u)![0];
   if (!UPPER_START.test(firstLetter)) return false;
   return words.every((w) => (w.match(/\p{L}/gu)?.length ?? 0) < 4 || UPPER_START.test(w));
+}
+
+/** A `Workout: "X"` title or a known section word: a header even without its badge. */
+function isStrictHeading(line: string): boolean {
+  const bare = line.endsWith(":") ? line.slice(0, -1).trimEnd() : line;
+  return WORKOUT_TITLE.test(line) || HEADING_SET.has(bare.toLowerCase());
 }
 
 /** The section a heading line starts, or null. `listOpen` turns off generic titles (AC5). */
