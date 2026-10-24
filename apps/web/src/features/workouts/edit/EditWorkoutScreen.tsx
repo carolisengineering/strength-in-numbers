@@ -278,9 +278,11 @@ function EditBody({
     announce: setAnnouncement,
     refetch: async () => {
       await refetchDetail();
-      // A 404 re-read leaves the old data with an error; the parent then shows the vanished view.
+      // Only a 404 re-read means gone (the parent then shows the vanished view); an offline or 5xx re-read keeps the
+      // cached workout, so a section 404 still reads as "That section no longer exists".
       const state = queryClient.getQueryState<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId));
-      return state?.status === "error" ? null : state?.data;
+      const gone = state?.status === "error" && classifyWorkoutError(state.error, { op: "load-workout" }).kind === "not-found";
+      return gone ? null : state?.data;
     },
     onGone: onVanished,
     offlineText: EDIT_COPY.offline,

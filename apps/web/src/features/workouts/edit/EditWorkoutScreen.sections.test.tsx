@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
 import { onlineManager } from "@tanstack/react-query";
+import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -244,6 +245,18 @@ describe("10.6 AC20 — edit failures", () => {
     expect(await screen.findByText(EDIT_COPY.vanished)).toBeInTheDocument();
     expect(screen.queryByText(SECTION_COPY.sectionGone)).toBeNull();
     expect(sectionWrites(fake)).toHaveLength(1);
+  });
+
+  it("a section 404 whose re-read fails offline: the sectionGone banner, never the vanished view (final review)", async () => {
+    const { user, fake, workout } = await openEdit({ sections: [{ name: "Warm-up" }], exercises: [ex("Row Erg", 0)] });
+    await user.click(screen.getByRole("button", { name: "Edit section Warm-up" }));
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workout-sections\// }, () => problemResponse(404, "not-found"));
+    fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () => HttpResponse.error() as Response);
+    await user.type(sheet("Edit section").getByLabelText("Name"), "!");
+    await user.click(sheet("Edit section").getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(SECTION_COPY.sectionGone)).toBeInTheDocument();
+    expect(screen.queryByText(EDIT_COPY.vanished)).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Edit workout" })).toBeInTheDocument();
   });
 
   it("add 500: re-read before the addUnconfirmed banner, with no Try again", async () => {
