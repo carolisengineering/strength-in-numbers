@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
+import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { track } from "../../../observability/track";
 import { NotFound } from "../../../screens/NotFound";
@@ -28,6 +28,10 @@ import { reportUnexpected } from "../reportUnexpected";
 import { ScreenModeContext, type EditOutcome, type EditScreenMode } from "../screenMode";
 import { sectionSegments } from "../sectionSegments";
 import { SessionSection } from "../SessionSectionHeading";
+import { NewExercisesLine } from "../sections/NewExercisesLine";
+import { SECTION_COPY } from "../sections/sectionCopy";
+import { SectionDialogs } from "../sections/SectionDialogs";
+import { useSectionActions } from "../sections/useSectionActions";
 import { supersetRows, type SupersetRow } from "../supersetRows";
 import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
@@ -41,10 +45,12 @@ import { resolveEditFailure, type EditOperation } from "./editFailure";
 import { LastSetDialog } from "./LastSetDialog";
 import styles from "./EditWorkoutScreen.module.css";
 import { editSucceeded, useEditAddExercise, useEditRemoveExercise, useIsEditWritePending } from "./useEditMutations";
+import { useEditSectionMutations } from "./useEditSectionMutations";
 
 type StructureOp = Extract<EditOperation, "add-exercise" | "move-exercise" | "regroup" | "remove-exercise">;
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
+const SECTION_LIMIT_ID = "edit-section-limit";
 
 /** The screen's one banner: a warning (a missing set or exercise) or a failure with an optional Try again. */
 interface Banner {
@@ -221,7 +227,8 @@ function EditBody({
   // Spec 18.0 AC40: Change Time on the REST client, keyed EDIT_MUTATION_KEY (so Done waits); one sheet per opening.
   const retime = useChangeTime({ where: "edit", client: editClient, cacheKey: WORKOUT_KEYS.detail(workoutId) });
   const [changeTime, setChangeTime] = useState<{ session: number; open: boolean } | null>(null);
-  const structureBusy = add.isPending || remove.isPending || regroup.busy || pending !== null;
+  const sectionMutations = useEditSectionMutations(workoutId);
+  const structureBusy = add.isPending || remove.isPending || regroup.busy || pending !== null || sectionMutations.pending;
 
   // A tap plans from the segment last committed to the screen (as on the live screen).
   const plannerRef = useRef(new Map<string, { slots: SessionSlot[]; start: number }>());
@@ -248,8 +255,39 @@ function EditBody({
     reveal.current = null;
     node.scrollIntoView?.({ block: "nearest" });
   }, [workout.exercises]);
+  // Spec 10.6 §6.4: a section move remounts its card under another <section>; once its heading is registered, focus and show it.
+  const revealMoved = useRef<string | null>(null);
+  useEffect(() => {
+    const id = revealMoved.current;
+    if (id === null) return;
+    const node = headingRefs.current.get(id);
+    if (node === undefined) return;
+    revealMoved.current = null;
+    node.focus();
+    node.scrollIntoView?.({ block: "nearest" });
+  }, [segments]);
 
   const refetchDetail = () => queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+
+  // Spec 10.6 AC17: the shared section controls, on this screen's lock, banner, status line and vanished view.
+  const sectionActions = useSectionActions({
+    workout,
+    mutations: sectionMutations,
+    structureLock,
+    setBanner,
+    announce: setAnnouncement,
+    refetch: async () => {
+      await refetchDetail();
+      // A 404 re-read leaves the old data with an error; the parent then shows the vanished view.
+      const state = queryClient.getQueryState<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId));
+      return state?.status === "error" ? null : state?.data;
+    },
+    onGone: onVanished,
+    offlineText: EDIT_COPY.offline,
+    onMoved: (exerciseId) => {
+      revealMoved.current = exerciseId;
+    },
+  });
 
   /** §5.4's structure rows; the screen's banner is where they show. */
   async function handleFailure(op: StructureOp, error: unknown, retry?: () => void, options: { refetched?: boolean } = {}) {
@@ -376,6 +414,9 @@ function EditBody({
             unitPreference={unitPreference}
             onGone={noop}
             headingRef={headingRefFor(exercise.id)}
+            sections={workout.sections}
+            linked={bracket !== "none"}
+            onSection={(sectionId) => void sectionActions.setExerciseSection(exercise, sectionId)}
           />
         </div>
         {below ? (
@@ -396,6 +437,8 @@ function EditBody({
       </Fragment>
     );
   }
+
+  const atSectionCap = workout.sections.length >= ROUTINE_SECTIONS_MAX;
 
   return (
     <ScreenModeContext.Provider value={mode}>
@@ -446,7 +489,15 @@ function EditBody({
             return segment.heading === null ? (
               <Fragment key={segment.key}>{body}</Fragment>
             ) : (
-              <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+              <SessionSection
+                key={segment.key}
+                heading={segment.heading}
+                notes={segment.notes}
+                emptyText={SECTION_COPY.empty}
+                {...(segment.editable && segment.sectionId !== null
+                  ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
+                  : {})}
+              >
                 {body}
               </SessionSection>
             );
@@ -456,11 +507,27 @@ function EditBody({
               <p>Adding {pending.name}…</p>
             </div>
           ) : null}
+          {/* Spec 10.6 AC4: the line above the list end; Add section beside Add exercise (AC3; this screen has no bar Add exercise). */}
+          <NewExercisesLine sections={workout.sections} />
           <div className={styles.listEnd}>
             <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
               Add exercise
             </Button>
+            <Button
+              variant="secondary"
+              ref={sectionActions.addSectionRef}
+              disabled={structureBusy || atSectionCap}
+              {...(atSectionCap ? { "aria-describedby": SECTION_LIMIT_ID } : {})}
+              onClick={sectionActions.openAdd}
+            >
+              {SECTION_COPY.addSection}
+            </Button>
           </div>
+          {atSectionCap ? (
+            <p id={SECTION_LIMIT_ID} className={styles.limit}>
+              {SECTION_COPY.limit}
+            </p>
+          ) : null}
         </div>
 
         <p role="status" data-testid="edit-announcement">
@@ -493,6 +560,7 @@ function EditBody({
         >
           <p>{removing ? `${plural(removing.sets.length, "set", "sets")} will be deleted.` : null}</p>
         </ConfirmDialog>
+        <SectionDialogs actions={sectionActions} sections={workout.sections} />
         <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
 
         <ActionBar data-testid="edit-bar">
