@@ -135,5 +135,12 @@ describe("10.4 AC45 — tagged headers survive cleaning", () => {
     expect(r.lines).toEqual(["Intro", "Front Rack Carry", "3 Sets:"]);
     expect(r.tagged).toEqual([false, true, false]);
   });
+  it("the hand-off also works when more lines overlap before the cut-off one (item 75)", () => {
+    const r = cleanWorkoutText("11:08\nIntro\nShared line\nFront Rack\nREPS\n11:09\nShared line\nFront Rack Carry\n3 Sets:");
+    expect(r.lines).toEqual(["Intro", "Shared line", "Front Rack Carry", "3 Sets:"]);
+    expect(r.tagged).toEqual([false, false, true, false]);
+  });
+  it("a short non-Latin exercise name right under the clock is dropped: the accepted cost of the status-bar rule (item 71)", () =>
+    expect(cleanWorkoutText("11:08\nЖим\n3 Sets:").lines).toEqual(["3 Sets:"]));
   it("Log result does not tag the line above it", () => expect(cleanWorkoutText("Intro\nLog result").tagged).toEqual([false]));
 });

@@ -248,18 +248,26 @@ describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
     expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => i.name)).toEqual(["Pushups"]));
 });
 
-describe("10.4 AC50 / AC51 / AC52 — deferred minors 69, 70, 74", () => {
+describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74", () => {
   const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
   it.each(["Rx:", "Rx", "RX: 95/65 lb", "(Rx)"])("%s is a note that keeps the run open; the movements after it are exercises (item 69)", (label) => {
     const r = read(["Strength", "REPS", "3 Rounds:", label, "10 Thrusters", "10 Pull-ups"]);
     expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
     expect(r.sections[0]!.notes).toBe(label);
   });
+  it("Rx with no run open is a note, not a label: a later lead-in still reads (item 69)", () => {
+    const r = read(["Strength", "REPS", "Rx:", "3 Sets:", "10 Curl"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Curl"]);
+    expect(r.sections[0]!.notes).toBe("Rx:");
+  });
+  it("Rx Bar Hang is a movement, not an Rx line (item 69)", () =>
+    expect(read(["Strength", "REPS", "3 Sets:", "Rx Bar Hang"]).items.map((i) => i.name)).toEqual(["Rx Bar Hang"]));
   it.each([["Max Hang", "Max Hang"], ["Max Effort Sprint", "Max Effort Sprint"], ["Max Burpees", "Max Burpees"]])("%s keeps Max in its name (item 70)", (line, name) =>
     expect(read(["Strength", "REPS", "3 Sets:", line]).items[0]).toMatchObject({ name, noteLines: [] }));
   it.each([
     ["Max Burpees with remaining time", "Burpees", "Max, with remaining time"],
     ["Max Cal Row", "Row", "Max Cal"],
+    ["Max Calories Ski", "Ski", "Max Calories"],
     ["Max Reps Pull-ups", "Pull-ups", "Max Reps"],
   ])("%s still strips Max (item 70)", (line, name, note) => expect(run(line)).toMatchObject({ name, noteLines: [note] }));
   it.each([

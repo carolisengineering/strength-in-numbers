@@ -351,7 +351,7 @@ const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
 const REST_LINE = /^rest\b/i;
 /** Item 69: "Rx:" / "Rx: 95/65 lb" names the prescribed version, so the movements after it are the workout. */
-const RX_LINE = /^rx\b/i;
+const RX_LINE = /^\(?rx\)?(?:\s*:|\s*$|\s+\d)/i;
 /**
  * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
  * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
