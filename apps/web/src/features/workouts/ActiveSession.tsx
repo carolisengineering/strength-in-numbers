@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
+import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
@@ -41,6 +41,11 @@ import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure, type Operation } from "./sessionErrors";
 import { RoutineNotePanel } from "./RoutineNotePanel";
+import { NewExercisesLine } from "./sections/NewExercisesLine";
+import { SECTION_COPY } from "./sections/sectionCopy";
+import { SectionDialogs } from "./sections/SectionDialogs";
+import { useSectionActions } from "./sections/useSectionActions";
+import { useSectionMutations } from "./sections/useSectionMutations";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
 import { SessionClock } from "./SessionClock";
 import { SessionSection } from "./SessionSectionHeading";
@@ -87,6 +92,7 @@ interface Banner {
 const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time, then try again.";
 /** A structure write, finish or discard that failed at the network (Spec 06.2 AC15). */
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
+const SECTION_LIMIT_ID = "session-section-limit";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
@@ -194,6 +200,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     if (pending.focus) node.focus();
     node.scrollIntoView?.({ block: "nearest" });
   }, [current.currentId]);
+  // Spec 10.6 §6.4: a section move remounts its card under another <section> and keeps the current exercise, so the
+  // reveal above (keyed on `currentId`) never runs. Once the moved card's heading is registered, focus and show it.
+  const revealMoved = useRef<string | null>(null);
+  useEffect(() => {
+    const id = revealMoved.current;
+    if (id === null) return;
+    const node = headingRefs.current.get(id);
+    if (node === undefined) return;
+    revealMoved.current = null;
+    node.focus();
+    node.scrollIntoView?.({ block: "nearest" });
+  }, [segments]);
   // Spec 17.1 AC9: on a phone the current-set panel can open below the fold (the top row, a routine note and done rows
   // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
   // and the scroller's scroll-padding keeps it clear of the bar.
@@ -266,7 +284,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   );
   // Spec 18.0 AC38: with a plan, both dialogs say where the workout ends.
   const endsAt = workout.plannedDurationSeconds === null ? undefined : finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, openedAt);
-  const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null || retime.isPending;
+  const sectionMutations = useSectionMutations(workout.id);
+  const structureBusy = add.isPending || regroup.busy || remove.isPending || pending !== null || retime.isPending || sectionMutations.pending;
 
   // A flag lasts only while the set is still incomplete: fixing or deleting it clears the marker.
   const flagged = useMemo(() => {
@@ -350,6 +369,24 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     track("workout_conflict", { kind: reason });
     onGone(options);
   };
+
+  // Spec 10.6: the section controls take this screen's lock, banner, status line and gone path.
+  const sectionActions = useSectionActions({
+    workout,
+    mutations: sectionMutations,
+    structureLock,
+    setBanner,
+    announce: setAnnouncement,
+    refetch: async () => {
+      await refetchActive();
+      return queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+    },
+    onGone: () => gone("gone"),
+    offlineText: OFFLINE_MESSAGE,
+    onMoved: (exerciseId) => {
+      revealMoved.current = exerciseId;
+    },
+  });
 
   /** Resolve a failed exercise-structure write per §5.8. */
   async function handleFailure(op: Operation, error: unknown, retry?: () => void, options: { refetched?: boolean } = {}) {
@@ -640,6 +677,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               failedRowRef={setFailedRowRef}
               headingRef={headingRefFor(exercise.id)}
               onLogged={onLogged}
+              sections={workout.sections}
+              linked={bracket !== "none"}
+              onSection={(sectionId) => void sectionActions.setExerciseSection(exercise, sectionId)}
             />
           ) : (
             <CollapsedExercise
@@ -671,6 +711,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     );
   }
 
+  const atSectionCap = workout.sections.length >= ROUTINE_SECTIONS_MAX;
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
@@ -769,7 +810,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           return segment.heading === null ? (
             <Fragment key={segment.key}>{body}</Fragment>
           ) : (
-            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+            <SessionSection
+              key={segment.key}
+              heading={segment.heading}
+              notes={segment.notes}
+              emptyText={SECTION_COPY.empty}
+              {...(segment.editable && segment.sectionId !== null
+                ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
+                : {})}
+            >
               {body}
             </SessionSection>
           );
@@ -779,18 +828,34 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
             <p>Adding {pending.name}…</p>
           </div>
         ) : null}
-        {exercises.length > 0 ? (
-          <div className={styles.listEnd}>
+        {/* Spec 10.6 AC3–AC4: the list end is always there, so a section can be made before any exercise. */}
+        <NewExercisesLine sections={workout.sections} />
+        <div className={styles.listEnd}>
+          {exercises.length > 0 ? (
             <Button variant="secondary" disabled={structureBusy} onClick={() => setPickerOpen(true)}>
               Add exercise
             </Button>
-            {/* D14: a workout with no plan has no Finish mode, so Finish lives here. */}
-            {freeForm ? (
-              <Button variant="secondary" disabled={finishDisabled} onClick={openFinish}>
-                Finish workout
-              </Button>
-            ) : null}
-          </div>
+          ) : null}
+          <Button
+            variant="secondary"
+            ref={sectionActions.addSectionRef}
+            disabled={structureBusy || atSectionCap}
+            {...(atSectionCap ? { "aria-describedby": SECTION_LIMIT_ID } : {})}
+            onClick={sectionActions.openAdd}
+          >
+            {SECTION_COPY.addSection}
+          </Button>
+          {/* D14: a workout with no plan has no Finish mode, so Finish lives here. */}
+          {exercises.length > 0 && freeForm ? (
+            <Button variant="secondary" disabled={finishDisabled} onClick={openFinish}>
+              Finish workout
+            </Button>
+          ) : null}
+        </div>
+        {atSectionCap ? (
+          <p id={SECTION_LIMIT_ID} className={styles.limit}>
+            {SECTION_COPY.limit}
+          </p>
         ) : null}
       </div>
 
@@ -815,6 +880,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}
       </ActionBar>
 
+      <SectionDialogs actions={sectionActions} sections={workout.sections} />
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
       <ChangeTimeSheet
         key={changeTimeKey}
