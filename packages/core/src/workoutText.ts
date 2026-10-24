@@ -9,27 +9,52 @@ import { normalizeExerciseName } from "./exerciseMatch.js";
 /** The paste box's limit (Phase B); the reader itself accepts any length. */
 export const IMPORT_TEXT_MAX = 40_000;
 
-export const CLOCK_LINE = /^\d{1,2}:\d{2}(?: ?[AP]M)?$/i;
+/** A status-bar time; AC42: optionally one icon after it (a space and ≤ 3 characters with no letter or digit). */
+export const CLOCK_LINE = /^\d{1,2}:\d{2}(?: ?[AP]M)?(?: [^\p{L}\p{N}\s]{1,3})?$/iu;
 export const RESULTS_LINE = /^RESULTS \(\d{1,6}\)$/i;
 export const BADGE_LINES: readonly string[] = ["NO SCORE", "WEIGHT", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD", "Log result"];
 export const GYM_LINES: readonly string[] = ["HIRAYA TRAINING HOUSE", "HIRAYA", "TRAINING HOUSE"];
 export const NAV_LINES: readonly string[] = ["Home", "Schedule", "Workouts", "Social"];
 
+/** AC45: the badges that sit beside a section header ("Log result" is a button, not a badge). */
+const HEADER_BADGES = new Set(BADGE_LINES.filter((l) => l !== "Log result").map((l) => l.toLowerCase()));
 const FURNITURE = new Set([...BADGE_LINES, ...GYM_LINES, ...NAV_LINES].map((l) => l.toLowerCase()));
 // C0 controls, DEL, C1 controls and the zero-width space / word joiner; `\s` covers NBSP and BOM.
 // eslint-disable-next-line no-control-regex -- turning control characters into spaces is the point
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060]/g;
 const LINE_BREAK = /\r\n|\r|\n/;
 const ALNUM = /[\p{L}\p{N}]/u;
+const LATIN_OR_DIGIT = /[A-Za-z0-9\u00C0-\u024F]/;
+/** Outside printable ASCII (lines are collapsed first, so no control characters remain). */
+const NON_ASCII = /[^ -~]/;
+/** The signal-strength bars as Live Text reads them: a dot, then up to three bar-like characters. */
+const SIGNAL_BARS = /^[•·][•·.0oOlI|]{0,3}$/;
+const BARE_NUMBER = /^\d{1,6}$/;
 
 /** Control characters become spaces, whitespace runs collapse to one space, ends trimmed. */
 export function collapseLine(line: string): string {
   return line.replace(CONTROLS, " ").replace(/\s+/g, " ").trim();
 }
 
+/** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
+const ICON_MAX_LENGTH = 8;
+
+/** AC43: a status-bar or tab-bar icon read as text: a short line with no Latin letter or digit, or the signal bars. */
+export function isIconLine(line: string): boolean {
+  const l = collapseLine(line);
+  // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
+  return l !== "" && l.length <= ICON_MAX_LENGTH && ((!LATIN_OR_DIGIT.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
+}
+
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase());
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l);
+}
+
+const LOOK_ALIKES: Readonly<Record<string, string>> = { "0": "o", "9": "g", "1": "l", "|": "l", "5": "s" };
+/** AC44: the overlap compares lines through this key, so Live Text's look-alike misreads ("90s" / "g0s" / "gos") still match. */
+export function ocrKey(line: string): string {
+  return collapseLine(line).toLowerCase().replace(/[0915|]/g, (c) => LOOK_ALIKES[c]!);
 }
 
 export interface CleanResult {
@@ -43,6 +68,8 @@ export interface CleanResult {
   readonly furniture: number;
   /** Removed as boundary overlap (a dropped partial line included). */
   readonly overlap: number;
+  /** AC45: parallel to `lines`; true for a line directly above a header badge in its own screenshot. */
+  readonly tagged: readonly boolean[];
 }
 
 const wordCount = (s: string) => s.split(" ").length;
@@ -87,26 +114,47 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
   return null;
 }
 
+interface CleanLine {
+  readonly text: string;
+  tagged: boolean;
+}
+
 export function cleanWorkoutText(raw: string): CleanResult {
   let input = 0;
   let furniture = 0;
-  const chunks: string[][] = [[]];
+  let previous = "";
+  const chunks: CleanLine[][] = [[]];
   for (const rawLine of raw.split(LINE_BREAK)) {
     const line = collapseLine(rawLine);
     if (line === "") continue;
     input++;
+    const after = previous;
+    previous = line;
+    const chunk = chunks[chunks.length - 1]!;
     if (CLOCK_LINE.test(line)) {
       furniture++;
       chunks.push([]);
       continue;
     }
-    if (isFurnitureLine(line)) {
+    if (HEADER_BADGES.has(line.toLowerCase())) {
+      // A badge that opens a screenshot belongs to the header that ended the one before.
+      const before = chunk.length > 0 ? chunk : [...chunks].reverse().find((c) => c.length > 0);
+      const above = before?.[before.length - 1];
+      if (above) above.tagged = true;
+    }
+    // AC43: a results count ("RESULTS (2)" then "49") is screen furniture too.
+    if (isFurnitureLine(line) || (BARE_NUMBER.test(line) && RESULTS_LINE.test(after))) {
       furniture++;
       continue;
     }
-    chunks[chunks.length - 1]!.push(line);
+    chunk.push({ text: line, tagged: false });
   }
   const kept = chunks.filter((c) => c.length > 0);
+  // A strict header cut off at a screenshot's bottom edge (its badge out of frame) still heads its section.
+  for (const c of kept.slice(0, -1)) {
+    const last = c[c.length - 1]!;
+    if (isStrictHeading(last.text)) last.tagged = true;
+  }
   let overlap = 0;
   for (let i = 1; i < kept.length; i++) {
     let p = i - 1;
@@ -114,13 +162,20 @@ export function cleanWorkoutText(raw: string): CleanResult {
     const a = kept[p]!;
     const b = kept[i]!;
     if (a.length === 0) continue;
-    const cut = overlapAt(a, b);
+    const cut = overlapAt(
+      a.map((l) => ocrKey(l.text)),
+      b.map((l) => ocrKey(l.text)),
+    );
     if (cut === null) continue;
+    // A removed twin hands its header tag to the copy that stays (a header whose badge was cut off).
+    const off = a.length - cut.dropA - cut.dropB;
+    for (let j = 0; j < cut.dropB; j++) if (b[j]!.tagged) a[off + j]!.tagged = true;
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
     overlap += cut.dropA + cut.dropB;
   }
-  return { lines: kept.flat(), chunks: kept.length, input, furniture, overlap };
+  const flat = kept.flat();
+  return { lines: flat.map((l) => l.text), tagged: flat.map((l) => l.tagged), chunks: kept.length, input, furniture, overlap };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -197,6 +252,10 @@ interface MutableSection {
   notes: string[];
   warmup: boolean;
   strength: MutableItem | null;
+  /** AC47: no line has been placed under the header yet. */
+  fresh: boolean;
+  /** AC52: a variant label was seen; the rest of the section is note. */
+  notesOnly: boolean;
 }
 interface MutableItem {
   name: string;
@@ -208,7 +267,8 @@ interface MutableItem {
   noteLines: string[];
   run: number | null;
 }
-type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number };
+/** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
+type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number; strict?: boolean };
 
 /** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
 function isGenericTitle(line: string): boolean {
@@ -219,6 +279,12 @@ function isGenericTitle(line: string): boolean {
   const firstLetter = line.match(/\p{L}/u)![0];
   if (!UPPER_START.test(firstLetter)) return false;
   return words.every((w) => (w.match(/\p{L}/gu)?.length ?? 0) < 4 || UPPER_START.test(w));
+}
+
+/** A `Workout: "X"` title or a known section word: a header even without its badge. */
+function isStrictHeading(line: string): boolean {
+  const bare = line.endsWith(":") ? line.slice(0, -1).trimEnd() : line;
+  return WORKOUT_TITLE.test(line) || HEADING_SET.has(bare.toLowerCase());
 }
 
 /** The section a heading line starts, or null. `listOpen` turns off generic titles (AC5). */
@@ -251,6 +317,18 @@ const RANGE_FORM = /^(\d{1,3})\s*[-–]\s*(\d{1,3})\s+(.+)$/;
 const SPLIT_FORM = /^(\d{1,3})\/(\d{1,3})\s+(.+)$/;
 const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
 const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?)$/i;
+/** AC48: "3 Sets, 1 Set Every 4:00" — a set count with more after a comma. */
+const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
+/** AC49: interval lines that describe the work, not a movement. */
+const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
+const REST_LINE = /^rest\b/i;
+/**
+ * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
+ * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
+ */
+const MAX_LINE = /^(max(?:\s+(?:cal|calories|reps))?)\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
+/** AC51: "10 Tuckups + 15 Hollow Rocks". */
+const PLUS = /\s\+\s/;
 const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
@@ -301,7 +379,27 @@ function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">):
   s.items.push({ ...item, nameKey: normalizeExerciseName(item.name), section: s.section });
 }
 
-/** Steps 3–8: place the line as a construct, or null to leave it to the note. */
+/** One movement under an open run (AC8–AC11): rows from the run, the rep form or leading distance as its note. */
+function pushMovement(s: ReadState, run: Run, text: string, form: RepForm | null, extraNotes: readonly string[] = []): void {
+  const noteLines: string[] = [];
+  let name = text;
+  if (form) {
+    name = form.name;
+    if (run.kind === "scheme") noteLines.push(form.text);
+    else if (form.note) noteLines.push(form.note);
+  } else {
+    const measure = LEADING_MEASURE.exec(text);
+    if (measure) noteLines.push(measure[1]!);
+  }
+  noteLines.push(...extraNotes);
+  const rows =
+    run.kind === "scheme"
+      ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
+      : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
+  pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+}
+
+/** Steps 3–8: place the line as a construct ("note" keeps it in the note with the run open), or null to leave it to the note. */
 function readConstruct(line: string, s: ReadState): LinePlacement | null {
   const section = s.section === null ? null : s.sections[s.section]!;
 
@@ -328,7 +426,12 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "scheme";
   }
 
-  // 5. A lead-in opens a run of N sets (AC9).
+  // 5. A lead-in opens a run of N sets (AC9); "N Sets, 1 Set Every M:SS" also stays in the note (AC48).
+  const every = LEAD_IN_SETS_EVERY.exec(line);
+  if (every && Number(every[1]) >= 1) {
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
+    return "note";
+  }
   const n = leadInCount(line);
   if (n !== null) {
     s.run = { id: ++s.runs, kind: "lead-in", n };
@@ -342,27 +445,30 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "separator";
   }
 
-  // 7. A movement under an open run (AC8–AC11).
+  // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null) {
-    const text = line.replace(BULLET, "");
-    if (!isMovementText(text)) return null;
-    const form = repFormOf(text);
-    const noteLines: string[] = [];
-    let name = text;
-    if (form) {
-      name = form.name;
-      if (s.run.kind === "scheme") noteLines.push(form.text);
-      else if (form.note) noteLines.push(form.note);
-    } else {
-      const measure = LEADING_MEASURE.exec(text);
-      if (measure) noteLines.push(measure[1]!);
+    const raw = line.replace(BULLET, "");
+    // AC49: lines that describe the interval go to the note and keep the run open.
+    // A parenthesized cue ("(each leg)") is a note too.
+    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
+    // AC51: "A + B" with a rep form on every side is one exercise per side.
+    const parts = raw.split(PLUS);
+    if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
+      for (const part of parts) pushMovement(s, s.run, part, repFormOf(part));
+      return "movement";
     }
-    const run = s.run;
-    const rows =
-      run.kind === "scheme"
-        ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
-        : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
-    pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+    // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
+    const max = MAX_LINE.exec(raw);
+    if (max && isMovementText(max[2]!)) {
+      const note = [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
+      pushMovement(s, s.run, max[2]!, null, [note]);
+      return "movement";
+    }
+    const text = raw.endsWith("+") ? raw.slice(0, -1).trimEnd() : raw;
+    // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
+    if (s.run.kind === "lead-in" && s.run.strict && repFormOf(text) === null && !LEADING_MEASURE.test(text)) return "note";
+    if (!isMovementText(text)) return null;
+    pushMovement(s, s.run, text, repFormOf(text));
     return "movement";
   }
 
@@ -376,6 +482,29 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   return null;
 }
 
+/** AC52: the first words that name an alternative version of the workout (lowercase). */
+const VARIANT_WORDS = new Set([
+  "scaled", "scale", "outdoor", "outdoors", "indoor", "modified", "beginner", "intermediate", "advanced",
+  "alternative", "alternatives", "option", "options", "sub", "subs", "substitute", "rx", "intent", "travel", "home",
+]);
+const NON_LABEL = /^non[- ]/i;
+const AT_HOME = /^at home\b/i;
+const PARENTHESIZED = /^\(.*\)$/;
+const FIRST_WORD = /^[\p{L}]+/u;
+
+/** AC52: a line that starts an alternative (scaled, at home, "(No Bike)"); format lines like "For Time:" are not. */
+function isVariantLabel(line: string): boolean {
+  if (NON_LABEL.test(line) || AT_HOME.test(line)) return true;
+  // "(No Bike)", "(Without a rower)", "(Scaled)" — but not a cue like "(each leg)".
+  if (PARENTHESIZED.test(line)) {
+    const inner = FIRST_WORD.exec(line.slice(1))?.[0].toLowerCase();
+    return inner !== undefined && (inner === "no" || inner === "non" || inner === "without" || VARIANT_WORDS.has(inner));
+  }
+  // A variant word heads a label only when the line reads as one: "Scaled Run:", "Options", "INTENT" — not "Advanced Plank".
+  const word = FIRST_WORD.exec(line)?.[0].toLowerCase();
+  return word !== undefined && VARIANT_WORDS.has(word) && (line.endsWith(":") || !line.includes(" "));
+}
+
 export function readWorkoutText(raw: string): ReadResult {
   const clean = cleanWorkoutText(raw);
   const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0 };
@@ -383,12 +512,28 @@ export function readWorkoutText(raw: string): ReadResult {
   let name: string | null = null;
   let nameFromWorkout = false;
 
+  // AC45: when the paste has header badges, only the lines above them head sections.
+  const badgeMode = clean.tagged.some(Boolean);
+
   clean.lines.forEach((line, i) => {
-    const heading = headingOf(line, i === clean.lines.length - 1, s.run !== null);
+    const heading = badgeMode
+      ? clean.tagged[i]
+        ? (headingOf(line, false, false) ?? { name: line.endsWith(":") ? line.slice(0, -1).trimEnd() : line, workout: false })
+        : isStrictHeading(line)
+          ? headingOf(line, false, false)
+          : null
+      : headingOf(line, i === clean.lines.length - 1, s.run !== null);
+    const open = s.section === null ? null : s.sections[s.section]!;
+    // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
+    if (heading && open && ocrKey(heading.name) === ocrKey(open.name)) {
+      s.run = null;
+      placed.push({ text: line, as: "heading" });
+      return;
+    }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -398,12 +543,27 @@ export function readWorkoutText(raw: string): ReadResult {
       return;
     }
     const current = s.section === null ? null : s.sections[s.section]!;
+    // AC47: the card repeats its header as its first line ("Warmup" under Warmup).
+    if (current?.fresh && ocrKey(line) === ocrKey(current.name)) {
+      current.fresh = false;
+      placed.push({ text: line, as: "heading" });
+      return;
+    }
+    if (current) current.fresh = false;
+    if (current && !current.warmup && (current.notesOnly || isVariantLabel(line))) {
+      current.notesOnly = true;
+      s.run = null;
+      current.notes.push(line);
+      placed.push({ text: line, as: "note" });
+      return;
+    }
     if (current?.warmup) {
       current.notes.push(line);
       placed.push({ text: line, as: "note" });
       return;
     }
     const as = readConstruct(line, s);
+    if (as === "note") (current ? current.notes : s.routineNotes).push(line);
     if (as) {
       placed.push({ text: line, as });
       return;

@@ -57,3 +57,13 @@ describe("10.4 AC18 — the example, end to end", () => {
     expect(p.items[2]).toEqual(item("Hand Release Pushups", 2, 1, "21-15-9 reps as written", quick(3, null, null)));
   });
 });
+
+describe("10.4 AC54 — the 2026-10-19 example reads as before the 2026-10-24 amendment", () => {
+  it("the same four sections and eight exercises, every line placed as before", () => {
+    const read = readWorkoutText(readFileSync(FIXTURE, "utf8"));
+    expect(read.sections.map((s) => s.name)).toEqual(["Warmup", "Strict Press", "Second Shift", "Accessory"]);
+    expect(read.items).toHaveLength(8);
+    const count = (as: string) => read.lines.placed.filter((p) => p.as === as).length;
+    expect([count("heading"), count("set-line"), count("scheme"), count("lead-in"), count("separator"), count("movement"), count("note")]).toEqual([4, 6, 2, 1, 1, 7, 33]);
+  });
+});
