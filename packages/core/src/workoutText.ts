@@ -305,11 +305,13 @@ const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
 const REST_LINE = /^rest\b/i;
-/** AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. */
+/**
+ * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
+ * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
+ */
 const MAX_LINE = /^(max(?:\s+(?:cal|calories|reps))?)\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
 /** AC51: "10 Tuckups + 15 Hollow Rocks". */
 const PLUS = /\s\+\s/;
-const TRAILING_PLUS = /\s*\+$/;
 const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
@@ -444,7 +446,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
       pushMovement(s, s.run, max[2]!, null, [note]);
       return "movement";
     }
-    const text = raw.replace(TRAILING_PLUS, "");
+    const text = raw.endsWith("+") ? raw.slice(0, -1).trimEnd() : raw;
     if (!isMovementText(text)) return null;
     pushMovement(s, s.run, text, repFormOf(text));
     return "movement";
