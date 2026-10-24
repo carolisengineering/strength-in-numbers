@@ -1,0 +1,9 @@
+.line {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.name {
+  color: var(--color-text);
+}

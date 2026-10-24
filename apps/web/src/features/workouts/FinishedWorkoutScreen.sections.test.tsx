@@ -78,3 +78,24 @@ describe("10.3 AC31 — finished workout and History", () => {
     expect(Array.from(main.querySelectorAll("[data-bracket]")).map((e) => e.getAttribute("data-bracket"))).toEqual(["first", "middle", "last"]);
   });
 });
+
+describe("10.6 AC16 — the summary is unchanged", () => {
+  it("a section added in the workout draws exactly as a copied one: no Edit button, no empty line", async () => {
+    const d = makeWorkoutDetail({
+      id: "70000000-0000-4000-8000-000000000003",
+      endedAt: FINISHED,
+      sections: [
+        { name: "Warm-up", notes: "5 min rower" },
+        { name: "Cooldown", notes: "Stretch", addedInWorkout: true },
+      ],
+      exercises: [ex("Row", 0, { sets: [makeSet({ setNumber: 1 })] })],
+    });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [d] }) });
+    renderApp(`/app/history/${d.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(within(screen.getByRole("region", { name: "Warm-up" })).getByText("5 min rower")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Cooldown" })).getByText("Stretch")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Edit section/ })).toBeNull();
+    expect(screen.queryByText("No exercises yet.")).toBeNull();
+  });
+});
