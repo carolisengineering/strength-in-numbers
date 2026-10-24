@@ -677,3 +677,74 @@ describe("10.5 AC24 — one-off controls, accessibly", () => {
     await waitFor(() => expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Kept in your routines."));
   });
 });
+
+describe("10.6 AC25 — section controls, accessibly", () => {
+  async function liveWithSections() {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        sections: [{ name: "Warm-up", notes: "5 min rower" }, { name: "Cooldown", addedInWorkout: true }],
+        exercises: [
+          { modality: "weight_reps", name: "Row Erg", sectionIndex: 0, supersetGroup: 1 },
+          { modality: "weight_reps", name: "Squat", sectionIndex: 0, supersetGroup: 1 },
+          { modality: "weight_reps", name: "Bench", sectionIndex: null, sets: [makeSet({ setNumber: 1 })] },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    return { fake, ...app };
+  }
+
+  it("headings: each section a region named by its h2, Edit names unique per section; the empty line, the line and the list end are present", async () => {
+    await liveWithSections();
+    const edits = screen.getAllByRole("button", { name: /^Edit section / });
+    expect(edits.map((b) => b.getAttribute("aria-label"))).toEqual(["Edit section Warm-up", "Edit section Cooldown"]);
+    for (const name of ["Warm-up", "Cooldown"]) {
+      const region = screen.getByRole("region", { name });
+      expect(within(region).getByRole("button", { name: `Edit section ${name}` })).toBeInTheDocument();
+    }
+    expect(within(screen.getByRole("region", { name: "Cooldown" })).getByText("No exercises yet.")).toBeInTheDocument();
+    expect(screen.getByText("Cooldown", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add section" })).toBeEnabled();
+  });
+
+  it("the New section sheet: a labeled dialog, labeled fields, the hint linked, a field error announced and linked", async () => {
+    const { user } = await liveWithSections();
+    await user.click(screen.getByRole("button", { name: "Add section" }));
+    const dialog = screen.getByRole("dialog", { name: "New section" });
+    for (const control of dialog.querySelectorAll("input, textarea")) expect(control).toHaveAccessibleName();
+    expect(within(dialog).getByLabelText("Note")).toHaveAccessibleDescription("Anything beyond sets and reps.");
+    await user.click(within(dialog).getByRole("button", { name: "Add section" }));
+    const error = within(dialog).getByText("Enter a name.");
+    expect(error).toHaveAttribute("role", "alert");
+    expect(within(dialog).getByLabelText("Name").getAttribute("aria-describedby")?.split(" ")).toContain(error.id);
+  });
+
+  it("Options: the Section select is labeled and the superset line is linked to it", async () => {
+    const { user } = await liveWithSections();
+    await makeCurrent(user, /^Row Erg/);
+    await user.click(optionsButton(/^Row Erg/));
+    const select = within(card(/^Row Erg/)).getByRole("combobox", { name: "Section" });
+    expect(select).toHaveAccessibleDescription("Changing the section takes it out of its superset.");
+  });
+
+  it("the remove confirm focuses Cancel; success is announced in the status line, never as an alert", async () => {
+    const { user } = await liveWithSections();
+    await user.click(screen.getByRole("button", { name: "Edit section Cooldown" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Edit section" })).getByRole("button", { name: "Remove section" }));
+    const confirm = screen.getByRole("dialog", { name: "Remove Cooldown?" });
+    expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.click(within(confirm).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(screen.getByTestId("session-announcement")).toHaveTextContent("Section removed"));
+    expect(screen.getByTestId("session-announcement")).toHaveAttribute("role", "status");
+    expect(screen.queryAllByRole("alert").filter((a) => /Section/.test(a.textContent ?? ""))).toEqual([]);
+  });
+
+  it.each([
+    ["./sections/SectionPicker.module.css", ".select"],
+    ["./sections/SectionSheet.module.css", ".input"],
+  ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
+    expect(hasTapTarget(file, selector)).toBe(true);
+  });
+});
