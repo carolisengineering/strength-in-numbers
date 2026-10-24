@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { ROUTINE_SECTIONS_MAX, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 import { reportUnexpected } from "../reportUnexpected";
 import { SECTION_COPY, movedOut, movedTo, sectionAdded } from "./sectionCopy";
@@ -83,6 +83,11 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const sessionRef = useRef(0);
+  // The workout as last rendered: a Try again tapped later reads it, not the render that failed.
+  const latest = useRef(workout);
+  useLayoutEffect(() => {
+    latest.current = workout;
+  });
   // The last sheet opening that was closed: a submit from that opening (a tap landing before the close commits) is ignored.
   const closedSessionRef = useRef(0);
 
@@ -142,8 +147,10 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     pendingFocus.current = focus;
   }
 
+  /** Add section, unless it is disabled at the cap (a waiting target would steal focus once the cap lifts). */
+  const addTarget = (): FocusTarget => (latest.current.sections.length >= ROUTINE_SECTIONS_MAX ? null : { kind: "add" });
   const openerOf = (s: SheetView | null): FocusTarget =>
-    s?.mode === "edit" && s.sectionId !== null ? { kind: "edit", sectionId: s.sectionId } : { kind: "add" };
+    s?.mode === "edit" && s.sectionId !== null ? { kind: "edit", sectionId: s.sectionId } : addTarget();
 
   function begin(): boolean {
     if (structureLock.current || submittingRef.current) return false;
@@ -161,7 +168,11 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   }
 
   /** The AC13 table. `inSheet`: the failure can show in the open sheet; `retry` re-runs the write. */
-  async function fail(op: SectionOp, error: unknown, ui: { inSheet: boolean; focus: FocusTarget; retry?: () => void }) {
+  async function fail(
+    op: SectionOp,
+    error: unknown,
+    ui: { inSheet: boolean; focus: FocusTarget; retry?: () => void; exerciseId?: string },
+  ) {
     const failure = resolveSectionFailure(op, error, { offlineText });
     if (failure.report) reportUnexpected(op, error);
     const formOrBanner = (text: string) => {
@@ -192,7 +203,9 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
           onGone();
           return;
         }
-        closeAll({ kind: "add" });
+        // A move's 404 can also mean the exercise is gone: the refetch already shows that, and the section is not.
+        if (ui.exerciseId !== undefined && !fresh.exercises.some((e) => e.id === ui.exerciseId)) return;
+        closeAll(addTarget());
         setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
         return;
       }
@@ -201,11 +214,15 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
         onGone();
         return;
       case "done":
+        // A remove whose section is already gone (a mutation set that lets the 404 through): what was asked is done.
+        await refetch();
+        closeAll(addTarget());
+        announce(SECTION_COPY.removed);
         return;
       case "unconfirmed":
         // AC14: no blind retry of a create — show the lifter whether it exists first.
         await refetch();
-        closeAll({ kind: "add" });
+        closeAll(addTarget());
         setBanner({ tone: "warning", text: failure.text, requestId: failure.requestId });
         return;
       case "retry":
@@ -232,7 +249,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     }
     const stored = sheet.mode === "edit" ? workout.sections.find((s) => s.id === sheet.sectionId) : undefined;
     if (sheet.mode === "edit" && stored === undefined) {
-      closeAll({ kind: "add" });
+      closeAll(addTarget());
       setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
       return;
     }
@@ -266,7 +283,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     const exerciseCount = workout.exercises.filter((e) => e.sectionId === sectionId).length;
     try {
       await mutations.remove(sectionId, exerciseCount);
-      closeAll({ kind: "add" });
+      closeAll(addTarget());
       announce(SECTION_COPY.removed);
     } catch (error) {
       setRemoveOpen(false);
@@ -282,15 +299,22 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
 
   async function setExerciseSection(exercise: WorkoutExerciseDetail, sectionId: string | null) {
     if (sectionId === exercise.sectionId) return;
+    await moveExercise(exercise.id, sectionId);
+  }
+
+  /** A move, read against the workout as last rendered (so a later Try again sees where the exercise is now). */
+  async function moveExercise(exerciseId: string, sectionId: string | null) {
+    const exercise = latest.current.exercises.find((e) => e.id === exerciseId);
+    if (exercise === undefined || sectionId === exercise.sectionId) return;
     if (!begin()) return;
     try {
       await mutations.setSection(exercise.id, sectionId);
-      const section = sectionId === null ? undefined : workout.sections.find((s) => s.id === sectionId);
+      const section = sectionId === null ? undefined : latest.current.sections.find((s) => s.id === sectionId);
       announce(section ? movedTo(exercise.exerciseNameSnapshot, section.name) : movedOut(exercise.exerciseNameSnapshot));
       onMoved(exercise.id);
     } catch (error) {
-      await fail("set-section", error, { inSheet: false, focus: null, retry: () => void setExerciseSection(exercise, sectionId) });
-      if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId: exercise.id };
+      await fail("set-section", error, { inSheet: false, focus: null, exerciseId, retry: () => void moveExercise(exerciseId, sectionId) });
+      if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId };
     } finally {
       end();
     }

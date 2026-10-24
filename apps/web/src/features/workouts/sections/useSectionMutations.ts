@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "../../../api";
 import { track } from "../../../observability/track";
 import { WORKOUT_KEYS, useWorkoutClient } from "../queries";
+import { ignoreNotFound } from "../useWorkoutMutations";
 import type { SectionMutations } from "./sectionMutations";
 
 /**
@@ -34,14 +34,8 @@ export function useSectionMutations(workoutId: string): SectionMutations {
   });
   const remove = useMutation({
     ...base,
-    mutationFn: async ({ id }: { id: string; exerciseCount: number }) => {
-      try {
-        await client.removeSection(id);
-      } catch (error) {
-        // A repeat of an already-applied remove answers 404: what was asked is done (AC8).
-        if (!(error instanceof ApiError && error.status === 404)) throw error;
-      }
-    },
+    // A repeat of an already-applied remove answers 404: what was asked is done (AC8).
+    mutationFn: ({ id }: { id: string; exerciseCount: number }) => ignoreNotFound(() => client.removeSection(id)),
     onSuccess: (_void, { exerciseCount }) => {
       track("section_removed", { exerciseCount });
       return refresh();

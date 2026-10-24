@@ -83,8 +83,10 @@ function setup(overrides: Partial<WorkoutClient> = {}, workout: WorkoutDetail = 
   const lock = { current: false };
   let actions!: SectionActions;
   const client = fakeClient(overrides);
-  render(<Host workout={workout} deps={deps} lock={lock} expose={(a) => (actions = a)} />, { wrapper: wrapperWith(qc, client) });
-  return { user: userEvent.setup(), qc, invalidate, deps, lock, order, workout, actions: () => actions };
+  const expose = (a: SectionActions) => (actions = a);
+  const view = render(<Host workout={workout} deps={deps} lock={lock} expose={expose} />, { wrapper: wrapperWith(qc, client) });
+  const rerender = (next: WorkoutDetail) => view.rerender(<Host workout={next} deps={deps} lock={lock} expose={expose} />);
+  return { user: userEvent.setup(), qc, invalidate, deps, lock, order, workout, rerender, actions: () => actions };
 }
 const sheet = (name: string) => within(screen.getByRole("dialog", { name }));
 
@@ -430,6 +432,72 @@ describe("10.6 AC13 — final review fixes", () => {
     await act(async () => stale.submitSheet({ name: "Cooldown", notes: "" }));
     await act(async () => stale.submitSheet({ name: "Cooldown", notes: "" }));
     expect(addSection).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("10.6 AC13 — code review fixes", () => {
+  it("a move 404 because the exercise is gone refetches and shows no section banner", async () => {
+    const { actions, workout, deps, qc } = setup({ setExerciseSection: vi.fn(async () => Promise.reject(api(404, "not-found"))) });
+    const bench = workout.exercises.find((e) => e.exerciseNameSnapshot === "Bench")!;
+    deps.refetch.mockImplementation(async () => {
+      const fresh = { ...workout, exercises: workout.exercises.filter((e) => e.id !== bench.id) };
+      qc.setQueryData(WORKOUT_KEYS.active, fresh);
+      return fresh;
+    });
+    await act(async () => actions().setExerciseSection(bench, workout.sections[0]!.id));
+    expect(deps.refetch).toHaveBeenCalledTimes(1);
+    expect(deps.setBanner).not.toHaveBeenCalledWith(expect.objectContaining({ text: SECTION_COPY.sectionGone }));
+    expect(deps.onGone).not.toHaveBeenCalled();
+  });
+
+  it("a remove that reaches the hook as a 404 (an edit-screen mutation set) is done: dialogs close, refetch, announce", async () => {
+    const qc = makeQueryClient();
+    const workout = baseWorkout();
+    qc.setQueryData(WORKOUT_KEYS.active, workout);
+    const deps = { setBanner: vi.fn(), announce: vi.fn(), refetch: vi.fn(async () => workout), onGone: vi.fn(), offlineText: OFFLINE, onMoved: vi.fn() };
+    const mutations = {
+      add: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(async () => Promise.reject(api(404, "not-found"))),
+      setSection: vi.fn(),
+      pending: false,
+    };
+    let actions!: SectionActions;
+    function Bare() {
+      actions = useSectionActions({ workout, mutations, structureLock: { current: false }, ...deps });
+      return <SectionDialogs actions={actions} sections={workout.sections} />;
+    }
+    render(<Bare />, { wrapper: wrapperWith(qc, fakeClient()) });
+    await act(async () => actions.openEdit(workout.sections[0]!.id));
+    await act(async () => actions.requestRemove());
+    await act(async () => actions.confirmRemove());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(deps.refetch).toHaveBeenCalledTimes(1);
+    expect(deps.announce).toHaveBeenCalledWith("Section removed");
+  });
+
+  it("Try again re-reads the exercise: if it already sits in the target section, nothing is sent", async () => {
+    const setExerciseSection = vi.fn<WorkoutClient["setExerciseSection"]>().mockRejectedValueOnce(api(500));
+    const { actions, workout, deps, rerender } = setup({ setExerciseSection });
+    const bench = workout.exercises.find((e) => e.exerciseNameSnapshot === "Bench")!;
+    const target = workout.sections[0]!.id;
+    await act(async () => actions().setExerciseSection(bench, target));
+    const retry = deps.setBanner.mock.calls.at(-1)![0].retry;
+    rerender({ ...workout, exercises: workout.exercises.map((e) => (e.id === bench.id ? { ...e, sectionId: target } : e)) });
+    await act(async () => retry());
+    expect(setExerciseSection).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("10.6 AC3 — no stale focus target at the cap (code review)", () => {
+  it("at 8 sections a failure that closes the sheet does not aim focus at Add section (it is disabled there)", async () => {
+    const w = makeWorkoutDetail({ sections: Array.from({ length: 8 }, (_, i) => ({ name: `S${i}` })), exercises: [] });
+    const { user } = setup({ updateSection: vi.fn(async () => Promise.reject(api(404, "not-found"))) }, w);
+    await user.click(screen.getByRole("button", { name: "Open edit S1" }));
+    await user.type(sheet("Edit section").getByLabelText("Name"), "x");
+    await user.click(sheet("Edit section").getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Open add" })).not.toHaveFocus();
   });
 });
 

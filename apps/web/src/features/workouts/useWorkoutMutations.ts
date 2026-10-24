@@ -65,7 +65,7 @@ function refetchIfInterrupted(queryClient: QueryClient, context: { interrupted: 
 const isNotFound = (error: unknown): boolean => error instanceof ApiError && error.status === 404;
 
 /** A repeat of an already-applied delete answers 404; the screen treats that as success. */
-async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
+export async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
   try {
     await run();
   } catch (error) {

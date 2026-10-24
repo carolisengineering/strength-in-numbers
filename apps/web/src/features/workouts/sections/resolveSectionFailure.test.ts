@@ -121,3 +121,11 @@ describe("10.6 AC13 — resolveSectionFailure", () => {
     expect(resolve("update-section", api(409, "workout-section-limit"))).toMatchObject({ type: "retry" });
   });
 });
+
+describe("10.6 AC13 — a 422 on a move or a remove is not a field error", () => {
+  it.each<SectionOp>(["set-section", "remove-section"])("%s 422 → the op's retry text", (op) => {
+    const failure = resolve(op, api(422, "validation-error", { errors: [{ path: "sectionId", message: "x" }] }));
+    expect(failure).toMatchObject({ type: "retry", text: op === "set-section" ? SECTION_COPY.moveFailed : SECTION_COPY.removeFailed });
+  });
+});
+

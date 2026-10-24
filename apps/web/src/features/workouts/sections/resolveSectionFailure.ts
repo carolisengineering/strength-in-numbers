@@ -41,7 +41,8 @@ export function resolveSectionFailure(
     const retryAfterMs = error instanceof ApiError ? (error.retryAfterMs ?? null) : null;
     return { type: "rate-limited", text: rateLimited(retryAfterMs), report: false };
   }
-  if (kind === "validation") {
+  // A move or a remove has no fields the lifter typed: its 422 is the op's generic failure.
+  if (kind === "validation" && (op === "add-section" || op === "update-section")) {
     const has = (path: string) => fieldErrors.some((e) => e.path === path);
     return {
       type: "fields",
