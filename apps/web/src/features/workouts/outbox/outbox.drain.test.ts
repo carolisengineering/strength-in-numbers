@@ -9,7 +9,7 @@ import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet } from "../../../test/workoutFixtures";
 import { deferred } from "../../../test/workoutHarness";
-import { createOutbox, OTHER_WORKOUT_MAX_SERVER_FAILURES, type OutboxDeps } from "./outbox";
+import { createOutbox, type OutboxDeps } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -300,7 +300,7 @@ describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
   });
 });
 
-describe("deferred minor 6 — another workout's op that keeps failing stops blocking the live workout", () => {
+describe("deferred minor 6 — another workout's op that keeps failing no longer blocks the live workout", () => {
   const addTo = (outbox: Ctx["outbox"], workoutId: string, key: string) =>
     outbox.enqueueCreate({ workoutId, workoutExerciseId: "we", body: body(key) });
 
@@ -311,58 +311,38 @@ describe("deferred minor 6 — another workout's op that keeps failing stops blo
     });
   }
 
-  it("a 5xx op of a workout other than the active one fails after 8 consecutive server failures; the live set then syncs", async () => {
+  it("while another workout's op backs off on 5xx, the live workout's sets sync; the other op is never failed", async () => {
     const { outbox, rest, onFailed } = setup({ activeWorkoutId: () => "live" });
     failingFor(rest, KEY, () => api(500));
     addTo(outbox, "old", KEY);
     addTo(outbox, "live", KEY2);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(outbox.getState().ops.find((o) => o.workoutId === "old")).toMatchObject({ status: "queued" });
-    await vi.advanceTimersByTimeAsync(120_000);
-    const old = outbox.getState().ops.find((o) => o.workoutId === "old");
-    expect(old).toMatchObject({ status: "failed", attempts: OTHER_WORKOUT_MAX_SERVER_FAILURES, failure: { status: 500 } });
-    expect(onFailed).toHaveBeenCalledTimes(1);
-    expect(outbox.getState().ops.some((o) => o.workoutId === "live")).toBe(false);
+    addTo(outbox, "live", KEY3);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(outbox.getState().ops.map((o) => [o.workoutId, o.status])).toEqual([["old", "queued"]]);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(outbox.getState().ops).toMatchObject([{ workoutId: "old", status: "queued" }]);
+    expect(onFailed).not.toHaveBeenCalled();
   });
 
-  it("network errors don't count toward the cap: 7 network failures, a 5xx, then more network failures keep the op queued", async () => {
-    const { outbox, rest } = setup({ activeWorkoutId: () => "live" });
-    let calls = 0;
-    rest.createSet.mockImplementation(async () => {
-      calls += 1;
-      throw calls === 8 ? api(500) : network();
-    });
-    addTo(outbox, "old", KEY);
-    await vi.advanceTimersByTimeAsync(300_000);
-    expect(calls).toBeGreaterThan(8);
-    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
-  });
-
-  it("control: the active workout's own 5xx op keeps retrying", async () => {
+  it("the live workout's own ops keep their order behind its own backing-off op", async () => {
     const { outbox, rest } = setup({ activeWorkoutId: () => "live" });
     failingFor(rest, KEY, () => api(500));
     addTo(outbox, "live", KEY);
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
-    expect(rest.createSet.mock.calls.length).toBeGreaterThan(5);
+    addTo(outbox, "live", KEY2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.getState().ops.map((o) => o.target)).toEqual([{ clientGeneratedId: KEY }, { clientGeneratedId: KEY2 }]);
+    expect(rest.createSet.mock.calls.every(([, b]) => b.clientGeneratedId === KEY)).toBe(true);
   });
 
-  it("control: with the active workout unknown, nothing is capped", async () => {
-    const { outbox, rest } = setup({ activeWorkoutId: () => undefined });
+  it.each([
+    ["unknown", () => undefined],
+    ["none", () => null],
+  ] as const)("control: with the active workout %s, the oldest op still goes first (strict order)", async (_, activeWorkoutId) => {
+    const { outbox, rest } = setup({ activeWorkoutId });
     failingFor(rest, KEY, () => api(500));
     addTo(outbox, "old", KEY);
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
-  });
-
-  it("control: a 429 or a network error of another workout keeps waiting (only 5xx / 408 are capped)", async () => {
-    for (const error of [() => api(429), network]) {
-      const { outbox, rest, stop } = setup({ activeWorkoutId: () => "live" });
-      failingFor(rest, KEY, error);
-      addTo(outbox, "old", KEY);
-      await vi.advanceTimersByTimeAsync(120_000);
-      expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
-      stop();
-    }
+    addTo(outbox, "other", KEY2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.getState().ops.map((o) => o.workoutId)).toEqual(["old", "other"]);
   });
 });

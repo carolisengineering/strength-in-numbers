@@ -10,12 +10,6 @@ import { combine, isSetOp, OutboxFileSchema, sameTarget, type CreateOp, type IdM
 export const OUTBOX_KEY = "sin:workout:outbox";
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
 const DELAYED_MS = 2000;
-/**
- * An op of a workout other than the active one fails after this many consecutive 5xx / 408 answers (deferred
- * minor 6): with the 1–30 s backoff that is about a minute and a half of a failing server, so a blip or a cold
- * start doesn't drop a late set. Network errors and 429s reset the count.
- */
-export const OTHER_WORKOUT_MAX_SERVER_FAILURES = 8;
 
 /** An update / delete whose set's create never synced: there is no server id to send it to. */
 class UnresolvedTarget extends Error {}
@@ -36,9 +30,8 @@ export interface OutboxDeps {
   random?: () => number;
   newId?: () => string;
   /**
-   * The live workout's id, `null` when there is none, `undefined` when not known. An op of another
-   * workout that keeps meeting a 5xx / 408 fails after `OTHER_WORKOUT_MAX_SERVER_FAILURES`, so it can't hold
-   * the live workout's sets behind it (the drain is oldest-first); 429s and network errors keep waiting.
+   * The live workout's id, `null` when there is none, `undefined` when not known. While the oldest op belongs to
+   * another workout and is backing off, the live workout's ops may go first (deferred minor 6).
    */
   activeWorkoutId?: () => string | null | undefined;
   /** An op reached the server. `row` is the server's row for a create / update, `null` for a delete. */
@@ -261,21 +254,6 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     deps.onFailed?.(op, error);
   }
 
-  /** Consecutive 5xx / 408 answers per op, in memory (a reload starts the count again). */
-  const serverFailures = new Map<string, number>();
-
-  function givesUp(op: OutboxOp, error: unknown): boolean {
-    if (!(error instanceof ApiError) || error.isNetworkError || error.status === 429) {
-      serverFailures.delete(op.id);
-      return false;
-    }
-    const count = (serverFailures.get(op.id) ?? 0) + 1;
-    serverFailures.set(op.id, count);
-    if (count < OTHER_WORKOUT_MAX_SERVER_FAILURES) return false;
-    const active = deps.activeWorkoutId?.();
-    return active !== undefined && active !== op.workoutId;
-  }
-
   async function send(op: OutboxOp): Promise<void> {
     const attempts = op.attempts + 1;
     patchOp(op.id, { status: "sending", attempted: true, attempts });
@@ -288,7 +266,6 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
       const verdict = classify(op.kind, error);
       if (verdict === "done") succeed(op, null);
-      else if (verdict === "retry" && givesUp(op, error)) fail(op, failureOf(error), error);
       else if (verdict === "retry") {
         // Spec 05.2 AC14: never retry sooner than the server's Retry-After.
         const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
@@ -298,6 +275,25 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     }
   }
 
+  /**
+   * The op to send next: the oldest (AC4), except that while it belongs to another workout and is backing off,
+   * the live workout's oldest op may go first (deferred minor 6) — each workout's own ops stay in order, and
+   * nothing is failed for it. `wait` is how long until the chosen op may go.
+   */
+  function nextOp(): { op: OutboxOp; wait: number } | null {
+    const queue = state.ops.filter((o) => o.status !== "failed");
+    const head = queue[0];
+    if (!head) return null;
+    const now = Date.now();
+    const headWait = head.nextAttemptAt - now;
+    const active = deps.activeWorkoutId?.();
+    if (headWait <= 0 || !active || head.workoutId === active) return { op: head, wait: headWait };
+    const live = queue.find((o) => o.workoutId === active);
+    if (!live) return { op: head, wait: headWait };
+    const liveWait = live.nextAttemptAt - now;
+    return liveWait < headWait ? { op: live, wait: liveWait } : { op: head, wait: headWait };
+  }
+
   /** One loop, one op in flight, oldest first (AC4). `force` makes one attempt even offline (Retry now). */
   async function drain({ force = false }: { force?: boolean } = {}): Promise<void> {
     if (draining || stopped || state.conflict) return;
@@ -305,10 +301,10 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     let forced = force;
     try {
       for (;;) {
-        const op = state.ops.find((o) => o.status !== "failed");
-        if (!op) return;
+        const next = nextOp();
+        if (!next) return;
+        const { op, wait } = next;
         if (!forced && !isOnline()) return;
-        const wait = op.nextAttemptAt - Date.now();
         if (!forced && wait > 0) {
           schedule(wait);
           return;
