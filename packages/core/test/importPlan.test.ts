@@ -68,6 +68,12 @@ describe("10.4 AC17 — limits are cut and reported (§6.6)", () => {
     expect(cutName("é".repeat(39) + "😀", 40)).toBe("é".repeat(39));
     expect(cutNote("short", 500)).toBe("short");
   });
+  it("deferred minor 17: a cut note drops trailing whitespace before the '…' and never splits a joined emoji", () => {
+    expect(cutNote("a".repeat(498) + "\nbbbb", 500)).toBe("a".repeat(498) + "…");
+    expect(cutNote("a".repeat(496) + "👨‍👩‍👧 end", 500)).toBe("a".repeat(496) + "…");
+    expect(cutNote("a".repeat(490) + "👍🏽👍🏽👍🏽", 500)).toBe("a".repeat(490) + "👍🏽👍🏽" + "…");
+    expect(cutName("b".repeat(38) + "👨‍👩‍👧", 40)).toBe("b".repeat(38));
+  });
   it("a 2,000-character note ending in emoji and a 41-character accented name stay schema-valid", () => {
     const p = plan([`Workout: "${"É".repeat(40)}😀"`, "😀".repeat(1_100), "x."]);
     expect(p.sections[0]!.name).toBe("É".repeat(40));

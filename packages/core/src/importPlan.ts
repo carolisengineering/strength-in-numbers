@@ -68,22 +68,25 @@ export interface ImportPlan {
 
 const ELLIPSIS = "…";
 
-/** The longest prefix of at most `max` UTF-16 units that does not end inside a surrogate pair. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** The longest prefix of at most `max` UTF-16 units that ends on a grapheme boundary (never inside an emoji). */
 function prefixAt(text: string, max: number): string {
   if (text.length <= max) return text;
-  let end = Math.max(0, max);
-  const before = text.charCodeAt(end - 1);
-  const after = text.charCodeAt(end);
-  if (end > 0 && before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) end -= 1;
+  let end = 0;
+  for (const { index, segment } of graphemes.segment(text)) {
+    if (index + segment.length > max) break;
+    end = index + segment.length;
+  }
   return text.slice(0, end);
 }
 
-/** ≤ max UTF-16 units on a code-point boundary; ends "…" when cut. */
+/** ≤ max UTF-16 units on a grapheme boundary; ends "…" (after no trailing whitespace) when cut. */
 export function cutNote(text: string, max: number): string {
-  return text.length <= max ? text : prefixAt(text, max - ELLIPSIS.length) + ELLIPSIS;
+  return text.length <= max ? text : prefixAt(text, max - ELLIPSIS.length).trimEnd() + ELLIPSIS;
 }
 
-/** ≤ max UTF-16 units on a code-point boundary, trimmed at the end; no "…". */
+/** ≤ max UTF-16 units on a grapheme boundary, trimmed at the end; no "…". */
 export function cutName(text: string, max: number): string {
   return text.length <= max ? text : prefixAt(text, max).trimEnd();
 }
