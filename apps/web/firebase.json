@@ -1,0 +1,44 @@
+{
+  "hosting": {
+    "site": "REPLACE_ME_SITE_ID",
+    "public": "dist",
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; connect-src 'self' https://si-api-REPLACE_ME_PROJECT_NUMBER.us-central1.run.app https://dev-gncuqvfir0wv0t4l.us.auth0.com; frame-src https://dev-gncuqvfir0wv0t4l.us.auth0.com; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "no-referrer"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=0, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  }
+}
