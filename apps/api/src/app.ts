@@ -255,6 +255,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   });
 
   registerHealthRoutes(app, {
+    commit: config.commit,
     checkReadiness: deps.checkReadiness,
     readinessTtlMs: deps.readinessTtlMs,
   });

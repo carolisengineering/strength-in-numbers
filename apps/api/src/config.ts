@@ -134,6 +134,19 @@ const schema = z.object({
   }
 });
 
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * Spec 15 AC11: the commit this process was built from. `SIN_COMMIT` (the image's build argument), else
+ * `RENDER_GIT_COMMIT` (Render's runtime env); the first non-blank, trimmed. Anything but 40 lowercase hex is "dev".
+ */
+export function resolveCommit(env: { SIN_COMMIT?: unknown; RENDER_GIT_COMMIT?: unknown }): string {
+  const value = [env.SIN_COMMIT, env.RENDER_GIT_COMMIT]
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .find((v) => v !== "");
+  return value !== undefined && COMMIT_SHA.test(value) ? value : "dev";
+}
+
 export interface Config {
   readonly nodeEnv: "development" | "test" | "production";
   readonly isProduction: boolean;
@@ -149,6 +162,8 @@ export interface Config {
   readonly logLevel: (typeof LOG_LEVELS)[number];
   readonly telemetry: TelemetryConfig;
   readonly serviceName: string;
+  /** Spec 15 AC11: reported by `/healthz`. */
+  readonly commit: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Config {
@@ -183,6 +198,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
       jwksUri: `${c.AUTH0_ISSUER}.well-known/jwks.json`,
     }),
     webOrigins: Object.freeze(c.WEB_ORIGIN),
+    commit: resolveCommit(env as Record<string, unknown>),
     logLevel: c.LOG_LEVEL,
     serviceName: c.SERVICE_NAME,
     telemetry: telemetry.config,

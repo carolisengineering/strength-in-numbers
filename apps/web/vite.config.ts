@@ -23,7 +23,8 @@ export default defineConfig({
       targets: [{ src: auth0Worker, dest: "." }],
     }),
     // Spec 06.3 §6.3 — the e2e job waits until the deployed stamp is the pushed SHA.
-    commitMeta(process.env.RENDER_GIT_COMMIT),
+    // Spec 15 AC19: production builds pass SIN_COMMIT; Render sets RENDER_GIT_COMMIT.
+    commitMeta(process.env.SIN_COMMIT || process.env.RENDER_GIT_COMMIT),
   ],
   build: {
     // Emit no inline module-preload polyfill script, so `index.html` carries no

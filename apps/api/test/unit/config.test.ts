@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig, ConfigError } from "../../src/config.js";
+import { loadConfig, ConfigError, resolveCommit } from "../../src/config.js";
 
 const base: Record<string, string> = {
   NODE_ENV: "test",
@@ -225,4 +225,21 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
       expect((err as Error).message).toMatch(/AUTH0_AUDIENCE/);
     }
   });
+});
+
+describe("15 AC11 — resolveCommit", () => {
+  const A = "0123456789abcdef0123456789abcdef01234567";
+  const B = "fedcba9876543210fedcba9876543210fedcba98";
+  it.each([
+    ["SIN_COMMIT only", { SIN_COMMIT: A }, A],
+    ["RENDER_GIT_COMMIT only", { RENDER_GIT_COMMIT: B }, B],
+    ["both: SIN_COMMIT wins", { SIN_COMMIT: A, RENDER_GIT_COMMIT: B }, A],
+    ["neither", {}, "dev"],
+    ["empty SIN_COMMIT falls through to Render", { SIN_COMMIT: "", RENDER_GIT_COMMIT: B }, B],
+    ["uppercase hex", { SIN_COMMIT: A.toUpperCase() }, "dev"],
+    ["a 7-character SHA", { SIN_COMMIT: A.slice(0, 7) }, "dev"],
+    ["padded with spaces", { SIN_COMMIT: ` ${A} ` }, A],
+    ["whitespace only falls through", { SIN_COMMIT: "   ", RENDER_GIT_COMMIT: B }, B],
+  ])("%s", (_, env, expected) => expect(resolveCommit(env)).toBe(expected));
+  it("loadConfig carries it", () => expect(loadConfig({ ...base, SIN_COMMIT: A }).commit).toBe(A));
 });
