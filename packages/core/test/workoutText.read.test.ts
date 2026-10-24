@@ -193,8 +193,6 @@ describe("10.4 AC50 — interval movements", () => {
     expect(item).toMatchObject({ name: "Echo Bike", noteLines: ["Max Cal, with remaining time"] });
     expect(rowsOf(item)).toEqual(tenNull);
   });
-  it.each([["Max Burpees", "Burpees", "Max"], ["Max Reps Pull-ups", "Pull-ups", "Max Reps"]])("%s", (line, name, note) =>
-    expect(run(line)).toMatchObject({ name, noteLines: [note] }));
 });
 
 describe("10.4 AC51 — A + B is two exercises", () => {
@@ -248,4 +246,25 @@ describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
   });
   it("a *** separator still ends the run", () =>
     expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => i.name)).toEqual(["Pushups"]));
+});
+
+describe("10.4 AC50 / AC51 / AC52 — deferred minors 69, 70, 74", () => {
+  const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
+  it.each(["Rx:", "Rx", "RX: 95/65 lb", "(Rx)"])("%s is a note that keeps the run open; the movements after it are exercises (item 69)", (label) => {
+    const r = read(["Strength", "REPS", "3 Rounds:", label, "10 Thrusters", "10 Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.notes).toBe(label);
+  });
+  it.each([["Max Hang", "Max Hang"], ["Max Effort Sprint", "Max Effort Sprint"], ["Max Burpees", "Max Burpees"]])("%s keeps Max in its name (item 70)", (line, name) =>
+    expect(read(["Strength", "REPS", "3 Sets:", line]).items[0]).toMatchObject({ name, noteLines: [] }));
+  it.each([
+    ["Max Burpees with remaining time", "Burpees", "Max, with remaining time"],
+    ["Max Cal Row", "Row", "Max Cal"],
+    ["Max Reps Pull-ups", "Pull-ups", "Max Reps"],
+  ])("%s still strips Max (item 70)", (line, name, note) => expect(run(line)).toMatchObject({ name, noteLines: [note] }));
+  it.each([
+    ["Max Cal Echo Bike +", ["Echo Bike"]],
+    ["10 Tuckups + 15 Hollow Rocks +", ["Tuckups", "Hollow Rocks"]],
+  ])("a trailing + is dropped before every branch: %s (item 74)", (line, names) =>
+    expect(read(["Accessory", "NO SCORE", "3 Sets:", line]).items.map((i) => i.name)).toEqual(names));
 });

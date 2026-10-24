@@ -39,11 +39,19 @@ export function collapseLine(line: string): string {
 /** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
 const ICON_MAX_LENGTH = 8;
 
-/** AC43: a status-bar or tab-bar icon read as text: a short line with no Latin letter or digit, or the signal bars. */
+/** AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script, or the signal bars. */
 export function isIconLine(line: string): boolean {
   const l = collapseLine(line);
   // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
-  return l !== "" && l.length <= ICON_MAX_LENGTH && ((!LATIN_OR_DIGIT.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
+  return l !== "" && l.length <= ICON_MAX_LENGTH && ((!ALNUM.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
+}
+
+/**
+ * AC43 (item 71): Live Text also reads icons as short words in another script ("口", "الهه"). Such a line is an
+ * icon only beside the screen's chrome (see `nearChrome`); elsewhere it is someone's text ("Жим").
+ */
+function isScriptIconLine(l: string): boolean {
+  return l.length <= ICON_MAX_LENGTH && !LATIN_OR_DIGIT.test(l) && NON_ASCII.test(l);
 }
 
 export function isFurnitureLine(line: string): boolean {
@@ -51,11 +59,25 @@ export function isFurnitureLine(line: string): boolean {
   return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l);
 }
 
+const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
+/** The status bar sits just under the clock line, the tab bar's icons between its labels. */
+const STATUS_BAR_LINES = 2;
+
 const LOOK_ALIKES: Readonly<Record<string, string>> = { "0": "o", "9": "g", "1": "l", "|": "l", "5": "s" };
-/** AC44: the overlap compares lines through this key, so Live Text's look-alike misreads ("90s" / "g0s" / "gos") still match. */
+/** Letters whose two cases differ only in size, so Live Text can read either. */
+const SAME_SHAPE_UPPER = /[COSUVWXZ]/g;
+/**
+ * AC44: the overlap compares lines through this key, so Live Text's look-alike misreads ("90s" / "g0s" / "gos") still
+ * match. Case is kept otherwise (item 72): "1:30 REST" and "1:30 Rest" are different lines.
+ */
 export function ocrKey(line: string): string {
-  return collapseLine(line).toLowerCase().replace(/[0915|]/g, (c) => LOOK_ALIKES[c]!);
+  return collapseLine(line)
+    .replace(SAME_SHAPE_UPPER, (c) => c.toLowerCase())
+    .replace(/[0915|]/g, (c) => LOOK_ALIKES[c]!);
 }
+
+/** Header names compare without case (the same header again, a card repeating its header). */
+const headerKey = (line: string) => ocrKey(line).toLowerCase();
 
 export interface CleanResult {
   /** Collapsed, non-empty, furniture and overlap removed, in order. */
@@ -124,15 +146,19 @@ export function cleanWorkoutText(raw: string): CleanResult {
   let furniture = 0;
   let previous = "";
   const chunks: CleanLine[][] = [[]];
-  for (const rawLine of raw.split(LINE_BREAK)) {
-    const line = collapseLine(rawLine);
-    if (line === "") continue;
+  const all = raw.split(LINE_BREAK).map(collapseLine).filter((l) => l !== "");
+  const isNav = (i: number) => i >= 0 && i < all.length && NAV.has(all[i]!.toLowerCase());
+  let sinceClock = Infinity;
+  for (const [i, line] of all.entries()) {
     input++;
+    sinceClock++;
+    const nearChrome = sinceClock <= STATUS_BAR_LINES || isNav(i - 1) || isNav(i + 1);
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
     if (CLOCK_LINE.test(line)) {
       furniture++;
+      sinceClock = 0;
       chunks.push([]);
       continue;
     }
@@ -143,7 +169,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       if (above) above.tagged = true;
     }
     // AC43: a results count ("RESULTS (2)" then "49") is screen furniture too.
-    if (isFurnitureLine(line) || (BARE_NUMBER.test(line) && RESULTS_LINE.test(after))) {
+    if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || (BARE_NUMBER.test(line) && RESULTS_LINE.test(after))) {
       furniture++;
       continue;
     }
@@ -170,6 +196,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
     // A removed twin hands its header tag to the copy that stays (a header whose badge was cut off).
     const off = a.length - cut.dropA - cut.dropB;
     for (let j = 0; j < cut.dropB; j++) if (b[j]!.tagged) a[off + j]!.tagged = true;
+    // A cut-off last line of A gives way to B's full line, which stays (item 75).
+    if (cut.dropA === 1 && a[a.length - 1]!.tagged) b[cut.dropB]!.tagged = true;
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
     overlap += cut.dropA + cut.dropB;
@@ -322,13 +350,18 @@ const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
 const REST_LINE = /^rest\b/i;
+/** Item 69: "Rx:" / "Rx: 95/65 lb" names the prescribed version, so the movements after it are the workout. */
+const RX_LINE = /^rx\b/i;
 /**
  * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
  * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
  */
-const MAX_LINE = /^(max(?:\s+(?:cal|calories|reps))?)\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
+const MAX_LINE = /^(max\s+(?:cal|calories|reps))\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
+/** Item 70: a bare "Max" is stripped only with the time limit ("Max Burpees with remaining time"); "Max Hang" is a name. */
+const MAX_REMAINING_LINE = /^(max)\s+(\S.*?)\s+(with\s+(?:the\s+)?remaining\s+time)$/i;
 /** AC51: "10 Tuckups + 15 Hollow Rocks". */
 const PLUS = /\s\+\s/;
+const TRAILING_PLUS = /\s?\+$/;
 const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
@@ -447,10 +480,11 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 
   // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null) {
-    const raw = line.replace(BULLET, "");
+    // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
+    const raw = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
-    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
+    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side.
     const parts = raw.split(PLUS);
     if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
@@ -458,17 +492,16 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
-    const max = MAX_LINE.exec(raw);
+    const max = MAX_LINE.exec(raw) ?? MAX_REMAINING_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
       const note = [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
       pushMovement(s, s.run, max[2]!, null, [note]);
       return "movement";
     }
-    const text = raw.endsWith("+") ? raw.slice(0, -1).trimEnd() : raw;
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
-    if (s.run.kind === "lead-in" && s.run.strict && repFormOf(text) === null && !LEADING_MEASURE.test(text)) return "note";
-    if (!isMovementText(text)) return null;
-    pushMovement(s, s.run, text, repFormOf(text));
+    if (s.run.kind === "lead-in" && s.run.strict && repFormOf(raw) === null && !LEADING_MEASURE.test(raw)) return "note";
+    if (!isMovementText(raw)) return null;
+    pushMovement(s, s.run, raw, repFormOf(raw));
     return "movement";
   }
 
@@ -485,7 +518,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 /** AC52: the first words that name an alternative version of the workout (lowercase). */
 const VARIANT_WORDS = new Set([
   "scaled", "scale", "outdoor", "outdoors", "indoor", "modified", "beginner", "intermediate", "advanced",
-  "alternative", "alternatives", "option", "options", "sub", "subs", "substitute", "rx", "intent", "travel", "home",
+  "alternative", "alternatives", "option", "options", "sub", "subs", "substitute", "intent", "travel", "home",
 ]);
 const NON_LABEL = /^non[- ]/i;
 const AT_HOME = /^at home\b/i;
@@ -525,7 +558,7 @@ export function readWorkoutText(raw: string): ReadResult {
       : headingOf(line, i === clean.lines.length - 1, s.run !== null);
     const open = s.section === null ? null : s.sections[s.section]!;
     // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
-    if (heading && open && ocrKey(heading.name) === ocrKey(open.name)) {
+    if (heading && open && headerKey(heading.name) === headerKey(open.name)) {
       s.run = null;
       placed.push({ text: line, as: "heading" });
       return;
@@ -544,7 +577,7 @@ export function readWorkoutText(raw: string): ReadResult {
     }
     const current = s.section === null ? null : s.sections[s.section]!;
     // AC47: the card repeats its header as its first line ("Warmup" under Warmup).
-    if (current?.fresh && ocrKey(line) === ocrKey(current.name)) {
+    if (current?.fresh && headerKey(line) === headerKey(current.name)) {
       current.fresh = false;
       placed.push({ text: line, as: "heading" });
       return;
