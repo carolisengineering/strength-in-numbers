@@ -9,27 +9,46 @@ import { normalizeExerciseName } from "./exerciseMatch.js";
 /** The paste box's limit (Phase B); the reader itself accepts any length. */
 export const IMPORT_TEXT_MAX = 40_000;
 
-export const CLOCK_LINE = /^\d{1,2}:\d{2}(?: ?[AP]M)?$/i;
+/** A status-bar time; AC42: optionally one icon after it (a space and ≤ 3 characters with no letter or digit). */
+export const CLOCK_LINE = /^\d{1,2}:\d{2}(?: ?[AP]M)?(?: [^\p{L}\p{N}\s]{1,3})?$/iu;
 export const RESULTS_LINE = /^RESULTS \(\d{1,6}\)$/i;
 export const BADGE_LINES: readonly string[] = ["NO SCORE", "WEIGHT", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD", "Log result"];
 export const GYM_LINES: readonly string[] = ["HIRAYA TRAINING HOUSE", "HIRAYA", "TRAINING HOUSE"];
 export const NAV_LINES: readonly string[] = ["Home", "Schedule", "Workouts", "Social"];
 
+/** AC45: the badges that sit beside a section header ("Log result" is a button, not a badge). */
+const HEADER_BADGES = new Set(BADGE_LINES.filter((l) => l !== "Log result").map((l) => l.toLowerCase()));
 const FURNITURE = new Set([...BADGE_LINES, ...GYM_LINES, ...NAV_LINES].map((l) => l.toLowerCase()));
 // C0 controls, DEL, C1 controls and the zero-width space / word joiner; `\s` covers NBSP and BOM.
 // eslint-disable-next-line no-control-regex -- turning control characters into spaces is the point
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060]/g;
 const LINE_BREAK = /\r\n|\r|\n/;
 const ALNUM = /[\p{L}\p{N}]/u;
+const LATIN_OR_DIGIT = /[A-Za-z0-9\u00C0-\u024F]/;
+/** The signal-strength bars as Live Text reads them: a dot, then up to three bar-like characters. */
+const SIGNAL_BARS = /^[•·][•·.0oOlI|]{0,3}$/;
+const BARE_NUMBER = /^\d{1,6}$/;
 
 /** Control characters become spaces, whitespace runs collapse to one space, ends trimmed. */
 export function collapseLine(line: string): string {
   return line.replace(CONTROLS, " ").replace(/\s+/g, " ").trim();
 }
 
+/** AC43: a status-bar or tab-bar icon read as text: no Latin letter or digit, or the signal bars. */
+export function isIconLine(line: string): boolean {
+  const l = collapseLine(line);
+  return l !== "" && (!LATIN_OR_DIGIT.test(l) || SIGNAL_BARS.test(l));
+}
+
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase());
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l);
+}
+
+const LOOK_ALIKES: Readonly<Record<string, string>> = { "0": "o", "9": "g", "1": "l", "|": "l", "5": "s" };
+/** AC44: the overlap compares lines through this key, so Live Text's look-alike misreads ("90s" / "g0s" / "gos") still match. */
+export function ocrKey(line: string): string {
+  return collapseLine(line).toLowerCase().replace(/[0915|]/g, (c) => LOOK_ALIKES[c]!);
 }
 
 export interface CleanResult {
@@ -43,6 +62,8 @@ export interface CleanResult {
   readonly furniture: number;
   /** Removed as boundary overlap (a dropped partial line included). */
   readonly overlap: number;
+  /** AC45: parallel to `lines`; true for a line directly above a header badge in its own screenshot. */
+  readonly tagged: readonly boolean[];
 }
 
 const wordCount = (s: string) => s.split(" ").length;
@@ -87,24 +108,38 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
   return null;
 }
 
+interface CleanLine {
+  readonly text: string;
+  tagged: boolean;
+}
+
 export function cleanWorkoutText(raw: string): CleanResult {
   let input = 0;
   let furniture = 0;
-  const chunks: string[][] = [[]];
+  let previous = "";
+  const chunks: CleanLine[][] = [[]];
   for (const rawLine of raw.split(LINE_BREAK)) {
     const line = collapseLine(rawLine);
     if (line === "") continue;
     input++;
+    const after = previous;
+    previous = line;
+    const chunk = chunks[chunks.length - 1]!;
     if (CLOCK_LINE.test(line)) {
       furniture++;
       chunks.push([]);
       continue;
     }
-    if (isFurnitureLine(line)) {
+    if (HEADER_BADGES.has(line.toLowerCase())) {
+      const above = chunk[chunk.length - 1];
+      if (above) above.tagged = true;
+    }
+    // AC43: a results count ("RESULTS (2)" then "49") is screen furniture too.
+    if (isFurnitureLine(line) || (BARE_NUMBER.test(line) && RESULTS_LINE.test(after))) {
       furniture++;
       continue;
     }
-    chunks[chunks.length - 1]!.push(line);
+    chunk.push({ text: line, tagged: false });
   }
   const kept = chunks.filter((c) => c.length > 0);
   let overlap = 0;
@@ -114,13 +149,20 @@ export function cleanWorkoutText(raw: string): CleanResult {
     const a = kept[p]!;
     const b = kept[i]!;
     if (a.length === 0) continue;
-    const cut = overlapAt(a, b);
+    const cut = overlapAt(
+      a.map((l) => ocrKey(l.text)),
+      b.map((l) => ocrKey(l.text)),
+    );
     if (cut === null) continue;
+    // A removed twin hands its header tag to the copy that stays (a header whose badge was cut off).
+    const off = a.length - cut.dropA - cut.dropB;
+    for (let j = 0; j < cut.dropB; j++) if (b[j]!.tagged) a[off + j]!.tagged = true;
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
     overlap += cut.dropA + cut.dropB;
   }
-  return { lines: kept.flat(), chunks: kept.length, input, furniture, overlap };
+  const flat = kept.flat();
+  return { lines: flat.map((l) => l.text), tagged: flat.map((l) => l.tagged), chunks: kept.length, input, furniture, overlap };
 }
 
 // ---------------------------------------------------------------------------------------------

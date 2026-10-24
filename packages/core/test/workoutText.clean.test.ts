@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { cleanWorkoutText, collapseLine, isFurnitureLine } from "../src/workoutText.js";
+import { cleanWorkoutText, collapseLine, isFurnitureLine, isIconLine, ocrKey } from "../src/workoutText.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
+const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
 
 describe("10.4 AC2 — furniture lines are dropped by exact whole-line match", () => {
   it.each(["11:41", "7:05 PM", "07:05pm", "  no   score ", "Weight", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD",
@@ -47,4 +48,66 @@ describe("10.4 AC4 — overlap removal at boundaries only", () => {
     expect(r.lines).not.toContain("our legs.");
     expect(r.lines.filter((l) => l.startsWith("Today we're building"))).toHaveLength(1);
   });
+});
+
+describe("10.4 AC42 — a clock line may carry one icon", () => {
+  it.each(["11:08 →", "11:09 |", "11:09 -", "9:41 AM •"])("%s splits screenshots", (clock) =>
+    expect(cleanWorkoutText(`Intro\n${clock}\nNext`).chunks).toBe(2));
+  it.each(["1:30 on / 1:30 Rest", "3:00 Rest", "2:00 Machine Choice", "11:41 Run"])("%s is text, not a clock (Review Focus 1)", (line) => {
+    const r = cleanWorkoutText(`Intro\n${line}`);
+    expect(r.chunks).toBe(1);
+    expect(r.lines).toContain(line);
+  });
+  it("the 2026-10-24 paste cleans to 4 screenshots", () => expect(cleanWorkoutText(readFileSync(FIXTURE_24, "utf8")).chunks).toBe(4));
+});
+
+describe("10.4 AC43 — icon and count lines are furniture", () => {
+  it.each(["口", "凸", "الهه", "→", "•0ll", "•ll", "|"])("%s is dropped and counted", (line) => {
+    expect(isIconLine(line)).toBe(true);
+    const r = cleanWorkoutText(`Intro\n${line}\nNext`);
+    expect(r.lines).toEqual(["Intro", "Next"]);
+    expect(r.furniture).toBe(1);
+  });
+  it.each(["Søren Lunge", "Row", "10", "I", "Lo", "100m"])("%s is kept (Review Focus 2)", (line) => {
+    expect(isIconLine(line)).toBe(false);
+    expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(line);
+  });
+  it("a bare number right after RESULTS (n) is dropped; elsewhere it stays", () => {
+    expect(cleanWorkoutText("Intro\nRESULTS (2)\n49\nAccessory").lines).toEqual(["Intro", "Accessory"]);
+    expect(cleanWorkoutText("Intro\n49\nAccessory").lines).toEqual(["Intro", "49", "Accessory"]);
+  });
+});
+
+describe("10.4 AC44 — the overlap tolerates OCR look-alikes", () => {
+  it("gos and g0s share a key; different numbers do not (Review Focus 3)", () => {
+    expect(ocrKey("In a gos Time window,")).toBe(ocrKey("In a g0s Time window,"));
+    expect(ocrKey("In a 90s Time window,")).toBe(ocrKey("In a gos  time window,"));
+    expect(ocrKey("Set 1")).not.toBe(ocrKey("Set 2"));
+    expect(ocrKey("10 Reps")).not.toBe(ocrKey("12 Reps"));
+  });
+  it("a 6-line overlap differing by one look-alike is removed from the second screenshot; the first's text is kept", () => {
+    const a = ["Head line", "10x 90s on / 90s Rest", "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a gos Time window,", "200 Meter Run+"];
+    const b = ["10x 90s on / 90s Rest", "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a g0s Time window,", "200 Meter Run+", "Max Cal Echo Bike"];
+    const r = cleanWorkoutText(["11:08", "Intro", ...a, "11:09 →", ...b].join("\n"));
+    expect(r.lines).toEqual(["Intro", ...a, "Max Cal Echo Bike"]);
+    expect(r.overlap).toBe(5);
+  });
+});
+
+describe("10.4 AC45 — tagged headers survive cleaning", () => {
+  const taggedOf = (path: string) => {
+    const r = cleanWorkoutText(readFileSync(path, "utf8"));
+    expect(r.tagged).toHaveLength(r.lines.length);
+    return r.lines.filter((_, i) => r.tagged[i]);
+  };
+  it("2026-10-24: Warmup, the workout and Accessory, once each", () =>
+    expect(taggedOf(FIXTURE_24)).toEqual(["Warmup", `Workout: "Don't Let up"`, "Accessory"]));
+  it("2026-10-19: its four headers", () =>
+    expect(taggedOf(FIXTURE)).toEqual(["Warmup", "Strict Press", 'Workout: " Second Shift"', "Accessory"]));
+  it("a header cut off above its badge keeps the tag of its twin removed as overlap (Review Focus 4)", () => {
+    const r = cleanWorkoutText("11:08\nIntro line\nAccessory\n11:09 →\nAccessory\nNO SCORE\n3 Sets:");
+    expect(r.lines).toEqual(["Intro line", "Accessory", "3 Sets:"]);
+    expect(r.tagged).toEqual([false, true, false]);
+  });
+  it("Log result does not tag the line above it", () => expect(cleanWorkoutText("Intro\nLog result").tagged).toEqual([false]));
 });
