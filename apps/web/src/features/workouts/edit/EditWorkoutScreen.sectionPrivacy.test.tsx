@@ -41,6 +41,9 @@ const leaked = () =>
   JSON.stringify([observability.track.mock.calls, observability.reportError.mock.calls.map((c) => c[1]), ...consoles.map((s) => s.mock.calls.map((c) => c.map(String)))]);
 
 describe("10.6 AC24 — privacy on the edit screen: nothing user-derived reaches track, reportError or the console", () => {
+  // Every write and failure path in one flow: ~1.5 s locally, over Vitest's 5 s default on a slow CI runner (#145 merge run).
+  const LONG_FLOW_MS = 20_000;
+
   it("add, edit, move, remove and every failure path", async () => {
     const workout = makeWorkoutDetail({
       endedAt: "2026-10-02T11:00:00.000Z",
@@ -103,5 +106,5 @@ describe("10.6 AC24 — privacy on the edit screen: nothing user-derived reaches
     expect(leaked()).not.toContain(NAME);
     expect(leaked()).not.toContain(NOTE);
     expect(leaked()).not.toContain("Squat");
-  });
+  }, LONG_FLOW_MS);
 });
