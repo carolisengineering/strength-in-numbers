@@ -7,6 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { insertIndexForSection, sectionForNewExercise } from "@sin/core";
+
 import * as D from "./data.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +59,10 @@ function makeHandler(state) {
       res = r ? json(r) : problem(404, "not-found", "Not found");
     } else if (m === "POST" && /^\/v1\/routines\/[^/]+\/keep$/.test(p)) {
       res = { status: 204, body: "" };
+    } else if (m === "GET" && p === "/v1/workouts/active" && state.sectioned) {
+      res = json(state.sectioned);
+    } else if (state.sectioned && (res = sectionRoute(state.sectioned, m, p, req.postData()))) {
+      // Spec 10.6 AC28: the four section writes on the sectioned live workout (placement as Spec 09.4 §6.2).
     } else if (m === "GET" && p === "/v1/workouts/active") {
       const live = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
       res = state.active ? json(live) : problem(404, "not-found", "No active workout");
@@ -108,6 +114,68 @@ function makeHandler(state) {
     }
     await route.fulfill(res);
   };
+}
+
+/**
+ * Spec 10.6 AC28: the harness's section writes, mutating `w` (the sectioned live workout) in place. Placement and
+ * C4 come from @sin/core's own helpers, as the API's do (Spec 09.4 §6.2, §6.5). Returns null for any other request.
+ */
+function sectionRoute(w, m, p, raw) {
+  const body = JSON.parse(raw ?? "{}");
+  const rank = (e) => (e.sectionId === null ? -1 : (w.sections.find((s) => s.id === e.sectionId)?.position ?? -1));
+  const place = (row, sectionPosition) => {
+    const others = w.exercises.filter((e) => e.id !== row.id).sort((a, b) => a.position - b.position);
+    others.splice(insertIndexForSection(others.map(rank), sectionPosition), 0, row);
+    w.exercises = others.map((e, i) => ({ ...e, position: i }));
+  };
+  let seg;
+  if (m === "POST" && p === `/v1/workouts/${w.id}/sections`) {
+    if (w.sections.length >= 8) return problem(409, "workout-section-limit", "Section limit");
+    const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true };
+    w.sections = [...w.sections, section];
+    return json(section, 201);
+  }
+  if ((seg = /^\/v1\/workout-sections\/([^/]+)$/.exec(p))) {
+    const id = decodeURIComponent(seg[1]);
+    const section = w.sections.find((s) => s.id === id);
+    if (!section) return problem(404, "not-found", "Not found");
+    if (m === "PATCH") {
+      Object.assign(section, "name" in body ? { name: String(body.name).trim() } : {}, "notes" in body ? { notes: body.notes } : {});
+      return json(section);
+    }
+    if (m === "DELETE") {
+      w.sections = w.sections.filter((s) => s.id !== id).map((s) => (s.position > section.position ? { ...s, position: s.position - 1 } : s));
+      w.exercises = w.exercises.map((e) => (e.sectionId === id ? { ...e, sectionId: null } : e));
+      return { status: 204, body: "" };
+    }
+  }
+  if (m === "PATCH" && (seg = /^\/v1\/workout-exercises\/([^/]+)$/.exec(p)) && "sectionId" in body) {
+    const exercise = w.exercises.find((e) => e.id === decodeURIComponent(seg[1]));
+    if (!exercise) return problem(404, "not-found", "Not found");
+    const target = body.sectionId === null ? null : w.sections.find((s) => s.id === body.sectionId);
+    if (target === undefined) return problem(404, "not-found", "Not found");
+    if (exercise.sectionId !== body.sectionId) place({ ...exercise, sectionId: body.sectionId, supersetGroup: null }, target === null ? -1 : target.position);
+    const out = { ...w.exercises.find((e) => e.id === exercise.id) };
+    delete out.sets;
+    return json(out);
+  }
+  if (m === "POST" && p === `/v1/workouts/${w.id}/exercises`) {
+    const ex = D.exercises.find((e) => e.id === body.exerciseId);
+    if (!ex) return problem(404, "not-found", "Not found");
+    const target = sectionForNewExercise(w.sections);
+    const t = new Date().toISOString();
+    const row = {
+      id: crypto.randomUUID(), workoutId: w.id, position: w.exercises.length, exerciseId: ex.id, exerciseNameSnapshot: ex.name,
+      modalitySnapshot: ex.modality, notes: null, createdAt: t, updatedAt: t, targetSets: null, targetRepsLow: null, targetRepsHigh: null,
+      targetRpe: null, restSeconds: null, supersetGroup: null, plannedSets: [], sectionId: target?.id ?? null, sets: [],
+    };
+    if (target) place(row, target.position);
+    else w.exercises = [...w.exercises, row];
+    const out = { ...row };
+    delete out.sets;
+    return json({ ...out, position: w.exercises.find((e) => e.id === row.id).position }, 201);
+  }
+  return null;
 }
 
 // --------------------------------------------------------------- layout evidence
@@ -470,6 +538,37 @@ try {
       await shoot(page, device, "40-finish-ends", "End workout early with a took: Ends …, as set in Change Time (Spec 18.0 AC38)");
       await page.keyboard.press("Escape");
       state.planned = false;
+    });
+
+    // Spec 10.6 AC28 (Phase A): sections on the live workout — headings with Edit, an empty added section, the line,
+    // Add section beside Add exercise, the sheets, the Section select and the remove confirm.
+    await tryStep("workout sections (live)", async () => {
+      state.sectioned = structuredClone(D.activeSections);
+      await go("/app/workouts");
+      await shoot(page, device, "52-session-sections", "Live workout with sections: a heading with its note and Edit, an empty added section, the New exercises go into line, Add section beside Add exercise (Spec 10.6 AC1–AC4)");
+      await page.getByRole("button", { name: "Add section", exact: true }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "53-section-new-sheet", "New section sheet: Name, Note with its hint, Cancel and Add section (Spec 10.6 AC5)");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      const rowing = page.getByRole("article", { name: "Rowing Machine" }).getByRole("heading", { level: 2 }).getByRole("button");
+      if (await rowing.count()) await rowing.click(); // collapsed: make it current first
+      await page.getByRole("button", { name: "Options for Rowing Machine" }).click();
+      await page.getByRole("article", { name: "Rowing Machine" }).getByLabel("Section").scrollIntoViewIfNeeded();
+      await shoot(page, device, "54-section-options-picker", "Options on a card logged before any section existed: the Section select (Spec 10.6 AC9)");
+      await page.getByRole("button", { name: "Edit section Strength" }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "55-section-edit-sheet", "Edit section sheet: Name and Note prefilled, Save, Remove section under the divider (Spec 10.6 AC7–AC8)");
+      await page.getByRole("button", { name: "Remove section" }).click();
+      await page.getByRole("dialog", { name: "Remove Strength?" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "56-section-remove-confirm", "Remove Strength? confirm, Cancel focused (Spec 10.6 AC8)");
+      await page.keyboard.press("Escape");
+    });
+    state.sectioned = null;
+    await tryStep("summary sections", async () => {
+      await go(`/app/history/${D.ids.latestPush}`);
+      await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "58-summary-sections", "History summary: each section's name and note above its cards, no Edit (Spec 10.6 AC16)");
     });
 
     // No active workout: start screen + routines.

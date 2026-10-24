@@ -430,6 +430,23 @@ export const activeDone = (() => {
 /** Spec 10.5 AC26: the same all-logged session, started from the one-off (its Finish dialog shows the line). */
 export const activeOneOff = { ...activeDone, routineName: CLASS.name, routineIsOneOff: true };
 
+// Spec 10.6 AC28: a live workout with a copied section (with its note), a section added during the workout (empty),
+// a superset in the copied section, and a loose Rowing Machine card logged before any section existed.
+const AS_STRENGTH = uuid("f2000000", 3);
+const AS_COOLDOWN = uuid("f2000000", 4);
+const sectionsStart = NOW - 25 * MIN;
+export const activeSections = makeWorkout(51, sectionsStart, 0, [
+  { key: "back_squat", sectionId: AS_STRENGTH, superset: 1, sets: [W(5, 100)] },
+  { key: "barbell_row", sectionId: AS_STRENGTH, superset: 1, sets: [] },
+  { key: "row_erg", sets: [{ distance: 1000, durationS: 240 }] },
+], {
+  active: true,
+  sections: [
+    { id: AS_STRENGTH, position: 0, name: "Strength", notes: "EMOM 10 min: 5 reps on the minute", addedInWorkout: false },
+    { id: AS_COOLDOWN, position: 1, name: "Cooldown", notes: "Easy stretching, 5 min", addedInWorkout: true },
+  ],
+});
+
 // ---------------------------------------------------------------- records + progress
 const epley = (w, r) => (r === 1 ? w : r >= 1 && r <= 12 ? w * (1 + r / 30) : null);
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -557,6 +574,7 @@ export function payloadChecks() {
     ["active, all planned logged", "WorkoutDetailSchema", activeDone],
     ["active, from a one-off", "WorkoutDetailSchema", activeOneOff],
     ["active, back-dated with a took", "WorkoutDetailSchema", activePlanned],
+    ["active, with workout sections", "WorkoutDetailSchema", activeSections],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
   ];
 }

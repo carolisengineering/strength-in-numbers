@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
+import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { CheckIcon } from "../../ui/icons";
@@ -10,6 +10,7 @@ import { NoteSheet } from "./NoteSheet";
 import { useScreenMode } from "./screenMode";
 import type { RowSync } from "./outbox/project";
 import { collapsedSync, type CollapsedSummary } from "./summaryLine";
+import { SectionPicker } from "./sections/SectionPicker";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
 import styles from "./ExerciseCard.module.css";
@@ -50,6 +51,12 @@ export interface ExerciseCardProps {
   onLogged?: (event: LoggedEvent) => void;
   /** Spec 17.1 AC27: Finish mode. */
   logExtra?: boolean;
+  /** Spec 10.6 AC9: the workout's sections, for the Options panel's Section select (shown only with `onSection`). */
+  sections?: readonly WorkoutSection[];
+  /** Spec 10.6 AC9: move this exercise to a section (`null` = No section); the server places it. */
+  onSection?: (sectionId: string | null) => void;
+  /** Spec 10.6 AC11: the card sits in a linked superset run. */
+  linked?: boolean;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -85,6 +92,9 @@ export function ExerciseCard({
   headingRef,
   onLogged,
   logExtra,
+  sections,
+  onSection,
+  linked = false,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -156,6 +166,16 @@ export function ExerciseCard({
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
           </Button>
+          {onSection && sections ? (
+            <SectionPicker
+              exerciseId={exercise.id}
+              value={exercise.sectionId}
+              sections={sections}
+              linked={linked}
+              disabled={structureBusy}
+              onChange={onSection}
+            />
+          ) : null}
         </div>
       ) : null}
 

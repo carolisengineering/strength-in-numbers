@@ -11,6 +11,10 @@ export interface SectionSegment {
   /** The section's note; only under the section's FIRST segment, `null` otherwise. */
   readonly notes: string | null;
   readonly rows: readonly SupersetRow[];
+  /** Spec 10.6 AC1: the real section this segment draws; `null` on loose segments ("Other exercises" included). */
+  readonly sectionId: string | null;
+  /** Spec 10.6 AC1: true only on a real section's FIRST segment — where its note shows and its Edit button goes. */
+  readonly editable: boolean;
   /** Index in the position-ordered rows of this segment's first row — the offset of its absolute positions (AC26). */
   readonly start: number;
 }
@@ -28,7 +32,7 @@ interface Draft {
  * or is a trailing loose segment (else last). Pure.
  */
 export function sectionSegments(rows: readonly SupersetRow[], sections: readonly WorkoutSection[]): SectionSegment[] {
-  if (sections.length === 0) return [{ key: "loose-start-0", heading: null, notes: null, rows, start: 0 }];
+  if (sections.length === 0) return [{ key: "loose-start-0", heading: null, notes: null, rows, start: 0, sectionId: null, editable: false }];
   const known = new Map(sections.map((s) => [s.id as string, s]));
   const sectionOf = (row: SupersetRow): string | null => (row.sectionId !== null && known.has(row.sectionId) ? row.sectionId : null);
 
@@ -59,7 +63,7 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
     if (d.section === null) {
       const key = lastSectionId === null ? `loose-start-${looseRuns}` : `loose-after-${lastSectionId}-${lastOccurrence}-${looseRuns}`;
       looseRuns += 1;
-      return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start };
+      return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start, sectionId: null, editable: false };
     }
     looseRuns = 0;
     const occurrence = noted.get(d.section.id) ?? 0;
@@ -72,6 +76,8 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
       notes: occurrence === 0 ? d.section.notes : null,
       rows: d.rows,
       start: d.start,
+      sectionId: d.section.id,
+      editable: occurrence === 0,
     };
   });
 }

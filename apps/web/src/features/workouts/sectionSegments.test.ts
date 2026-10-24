@@ -65,3 +65,40 @@ describe("10.3 AC11 — segment keys are stable when an earlier run disappears (
     expect(new Set(all).size).toBe(all.length);
   });
 });
+
+describe("10.6 AC1 — sectionSegments carries sectionId and editable", () => {
+  const segs = (exercises: ExerciseSpec[], sections: Sec[]) => {
+    const detail = makeWorkoutDetail({ sections, exercises });
+    return { detail, segments: sectionSegments(supersetRows(detail.exercises), detail.sections) };
+  };
+
+  it("a section split in two: the first segment is editable, the second is not, same sectionId", () => {
+    const { detail, segments } = segs([ex("a", 0), ex("b"), ex("c", 0)], [A]);
+    const id = detail.sections[0]!.id;
+    expect(segments.map((s) => [s.sectionId, s.editable])).toEqual([
+      [id, true],
+      [null, false],
+      [id, false],
+    ]);
+  });
+
+  it("a loose head and an 'Other exercises' tail carry no sectionId and are not editable", () => {
+    const { detail, segments } = segs([ex("a"), ex("b", 0), ex("c")], [{ name: "M" }]);
+    expect(segments.map((s) => [s.heading, s.sectionId, s.editable])).toEqual([
+      [null, null, false],
+      ["M", detail.sections[0]!.id, true],
+      ["Other exercises", null, false],
+    ]);
+  });
+
+  it("an empty section is editable", () => {
+    const { detail, segments } = segs([ex("a", 0)], [{ name: "A" }, { name: "B" }]);
+    expect(segments[1]).toMatchObject({ heading: "B", sectionId: detail.sections[1]!.id, editable: true, rows: [] });
+  });
+
+  it("no sections: one segment with no sectionId", () => {
+    const { segments } = segs([ex("a")], []);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ sectionId: null, editable: false });
+  });
+});

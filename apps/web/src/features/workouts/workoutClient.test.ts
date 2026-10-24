@@ -5,6 +5,7 @@ import {
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
+  WorkoutSectionSchema,
 } from "@sin/core";
 import { ApiError } from "../../api";
 import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
@@ -12,7 +13,7 @@ import { memoryStorageAdapter } from "../../storage/storage";
 import { fakeClient } from "../../test/workoutHarness";
 import { createOutbox } from "./outbox/outbox";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
-import { createWorkoutClient } from "./workoutClient";
+import { createWorkoutClient, type WorkoutExercisePatch } from "./workoutClient";
 
 describe("08.0 AC5 — finish keeps newRecords", () => {
   it("parses the PATCH response with UpdatedWorkoutSchema, so newRecords survives", async () => {
@@ -246,5 +247,55 @@ describe("10.5 AC13 — finish forwards the body as given", () => {
       { endedAt: "2026-10-16T18:00:00.000Z" },
       { endedAt: "2026-10-16T18:00:00.000Z", keepRoutine: true },
     ]);
+  });
+});
+
+describe("10.6 AC9 — the wire", () => {
+  it("each section method sends its method, path and exact body", async () => {
+    const { api, calls } = recordingApi();
+    const client = createWorkoutClient(api);
+    await client.addSection("w/1", { name: "Warm-up" });
+    await client.addSection("w1", { name: "Strength", notes: "EMOM" });
+    await client.updateSection("s/1", { notes: null });
+    await client.removeSection("s1");
+    await client.setExerciseSection("we/1", "s1");
+    await client.setExerciseSection("we1", null);
+    expect(calls.map(({ method, path, body }) => ({ method, path, body }))).toStrictEqual([
+      { method: "post", path: "/v1/workouts/w%2F1/sections", body: { name: "Warm-up" } },
+      { method: "post", path: "/v1/workouts/w1/sections", body: { name: "Strength", notes: "EMOM" } },
+      { method: "patch", path: "/v1/workout-sections/s%2F1", body: { notes: null } },
+      { method: "delete", path: "/v1/workout-sections/s1", body: undefined },
+      { method: "patch", path: "/v1/workout-exercises/we%2F1", body: { sectionId: "s1" } },
+      { method: "patch", path: "/v1/workout-exercises/we1", body: { sectionId: null } },
+    ]);
+    expect(JSON.stringify(calls[5]!.body)).toBe('{"sectionId":null}');
+    expect(calls[0]!.schema).toBe(WorkoutSectionSchema);
+    expect(calls[4]!.schema).toBe(WorkoutExerciseSchema);
+  });
+
+  it("updateSection sends only the keys given", async () => {
+    const { api, calls } = recordingApi();
+    await createWorkoutClient(api).updateSection("s1", { name: "A" });
+    expect(Object.keys(calls[0]!.body as object)).toEqual(["name"]);
+  });
+
+  it("WorkoutExercisePatch has no sectionId", () => {
+    // @ts-expect-error — a regroup can never write a section (Spec 10.1 AC11 pattern).
+    const p: WorkoutExercisePatch = { sectionId: null };
+    expect(p).toBeDefined();
+  });
+
+  it("the queued client passes the four methods through and never enqueues", async () => {
+    const addSection = vi.fn(async () => ({}) as never);
+    const setExerciseSection = vi.fn(async () => ({}) as never);
+    const rest = fakeClient({ addSection, setExerciseSection });
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest, userId: "u1", isOnline: () => true });
+    const workout = makeWorkoutDetail();
+    const queued = createQueuedWorkoutClient({ rest, outbox, cached: () => workout });
+    await queued.addSection(workout.id, { name: "A" });
+    await queued.setExerciseSection("we1", null);
+    expect(addSection).toHaveBeenCalledWith(workout.id, { name: "A" });
+    expect(setExerciseSection).toHaveBeenCalledWith("we1", null);
+    expect(outbox.getState().ops).toEqual([]);
   });
 });

@@ -45,6 +45,10 @@ export function fakeClient(overrides: Partial<WorkoutClient> = {}): WorkoutClien
     deleteSet: unexpected("deleteSet"),
     setExerciseNote: unexpected("setExerciseNote"),
     updateWorkout: unexpected("updateWorkout"),
+    addSection: unexpected("addSection"),
+    updateSection: unexpected("updateSection"),
+    removeSection: unexpected("removeSection"),
+    setExerciseSection: unexpected("setExerciseSection"),
     ...overrides,
   } as WorkoutClient;
 }

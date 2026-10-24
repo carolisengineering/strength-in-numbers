@@ -69,3 +69,9 @@ describe("18.0 AC18 — the would-be-empty slug is its own kind", () => {
     },
   );
 });
+
+describe("10.6 AC13 — classifyWorkoutError knows the section cap", () => {
+  it("409 workout-section-limit → workout-section-limit", () => {
+    expect(classifyWorkoutError(problem(409, "workout-section-limit")).kind).toBe("workout-section-limit");
+  });
+});

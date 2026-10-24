@@ -4,6 +4,7 @@ import {
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
+  WorkoutSectionSchema,
   type CreateSet,
   type CreateWorkout,
   type SetEntry,
@@ -12,6 +13,7 @@ import {
   type Workout,
   type WorkoutDetail,
   type WorkoutExercise,
+  type WorkoutSection,
 } from "@sin/core";
 import { ApiError, type ApiClient } from "../../api";
 
@@ -59,6 +61,16 @@ export interface WorkoutClient {
   setExerciseNote(id: string, notes: string | null): Promise<WorkoutExercise>;
   /** Spec 18.0 AC54: `PATCH /v1/workouts/{id}` with exactly the keys given. Online-only: the queued client passes it through. */
   updateWorkout(id: string, body: WorkoutUpdate): Promise<UpdatedWorkout>;
+  /** Spec 10.6 AC6: `POST /v1/workouts/{id}/sections` with `{ name }` or `{ name, notes }`. Online-only (passed through). */
+  addSection(workoutId: string, body: { name: string; notes?: string }): Promise<WorkoutSection>;
+  /** Spec 10.6 AC7: exactly the keys given; an emptied note is `notes: null`. */
+  updateSection(id: string, body: { name?: string; notes?: string | null }): Promise<WorkoutSection>;
+  removeSection(id: string): Promise<void>;
+  /**
+   * Spec 10.6 AC9: exactly `{ sectionId }` on the wire; the server places the exercise. A separate
+   * method on purpose — WorkoutExercisePatch has no `sectionId`, so a regroup can never move one.
+   */
+  setExerciseSection(id: string, sectionId: string | null): Promise<WorkoutExercise>;
 }
 
 /** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
@@ -109,6 +121,22 @@ export function createWorkoutClient(
       if (body.durationSeconds !== undefined) wire.durationSeconds = body.durationSeconds;
       return api.patch(`/v1/workouts/${seg(id)}`, wire, UpdatedWorkoutSchema);
     },
+    addSection: (workoutId, body) => {
+      const wire: { name: string; notes?: string } = { name: body.name };
+      if (body.notes !== undefined) wire.notes = body.notes;
+      return api.post(`/v1/workouts/${seg(workoutId)}/sections`, wire, WorkoutSectionSchema);
+    },
+    updateSection: (id, body) => {
+      const wire: { name?: string; notes?: string | null } = {};
+      if (body.name !== undefined) wire.name = body.name;
+      if (body.notes !== undefined) wire.notes = body.notes;
+      return api.patch(`/v1/workout-sections/${seg(id)}`, wire, WorkoutSectionSchema);
+    },
+    removeSection: async (id) => {
+      await api.delete(`/v1/workout-sections/${seg(id)}`);
+    },
+    setExerciseSection: (id, sectionId) =>
+      api.patch(`/v1/workout-exercises/${seg(id)}`, { sectionId }, WorkoutExerciseSchema),
   };
   return client;
 }

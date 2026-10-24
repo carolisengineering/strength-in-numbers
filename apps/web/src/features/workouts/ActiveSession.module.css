@@ -68,3 +68,9 @@
 .listEnd > button {
   flex: 1;
 }
+
+/* Spec 10.6 AC3: why Add section is disabled at the cap. */
+.limit {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+}
