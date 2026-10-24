@@ -299,3 +299,55 @@ describe("18.0 AC26 — workout-finished handling is rollback-only", () => {
     expect(rest.createSet).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("deferred minor 6 — another workout's op that keeps failing stops blocking the live workout", () => {
+  const addTo = (outbox: Ctx["outbox"], workoutId: string, key: string) =>
+    outbox.enqueueCreate({ workoutId, workoutExerciseId: "we", body: body(key) });
+
+  function failingFor(rest: Ctx["rest"], key: string, error: () => ApiError) {
+    rest.createSet.mockImplementation(async (_we, b) => {
+      if (b.clientGeneratedId === key) throw error();
+      return makeSet({ id: SERVER, clientGeneratedId: b.clientGeneratedId ?? null });
+    });
+  }
+
+  it("a 5xx op of a workout other than the active one fails after 5 attempts; the live set then syncs", async () => {
+    const { outbox, rest, onFailed } = setup({ activeWorkoutId: () => "live" });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "old", KEY);
+    addTo(outbox, "live", KEY2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const old = outbox.getState().ops.find((o) => o.workoutId === "old");
+    expect(old).toMatchObject({ status: "failed", attempts: 5, failure: { status: 500 } });
+    expect(onFailed).toHaveBeenCalledTimes(1);
+    expect(outbox.getState().ops.some((o) => o.workoutId === "live")).toBe(false);
+  });
+
+  it("control: the active workout's own 5xx op keeps retrying", async () => {
+    const { outbox, rest } = setup({ activeWorkoutId: () => "live" });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "live", KEY);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
+    expect(rest.createSet.mock.calls.length).toBeGreaterThan(5);
+  });
+
+  it("control: with the active workout unknown, nothing is capped", async () => {
+    const { outbox, rest } = setup({ activeWorkoutId: () => undefined });
+    failingFor(rest, KEY, () => api(500));
+    addTo(outbox, "old", KEY);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
+  });
+
+  it("control: a 429 or a network error of another workout keeps waiting (only 5xx / 408 are capped)", async () => {
+    for (const error of [() => api(429), network]) {
+      const { outbox, rest, stop } = setup({ activeWorkoutId: () => "live" });
+      failingFor(rest, KEY, error);
+      addTo(outbox, "old", KEY);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(outbox.getState().ops[0]).toMatchObject({ status: "queued" });
+      stop();
+    }
+  });
+});

@@ -99,6 +99,10 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       storage: adapter,
       rest,
       userId,
+      activeWorkoutId: () => {
+        const active = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+        return active === undefined || active === null ? active : active.id;
+      },
       onSynced: (op, row) => {
         applySynced(queryClient, outbox, op, row);
         refreshFinishedElsewhere(queryClient, op.workoutId);
