@@ -38,7 +38,7 @@ function seeded() {
 const boom = () => new ApiError({ status: 500, type: "about:blank", title: "t", requestId: "r" });
 const detailOf = (qc: ReturnType<typeof makeQueryClient>, id: string) => qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id))!;
 const historyReset = (qc: ReturnType<typeof makeQueryClient>) => qc.getQueryState(HISTORY_KEYS.list)?.data === undefined;
-const section = (over: Partial<WorkoutSection>): WorkoutSection => ({ id: "s-new", position: 1, name: "Core", notes: null, addedInWorkout: true, ...over });
+const section = (over: Partial<WorkoutSection>): WorkoutSection => ({ id: "s-new" as WorkoutSection["id"], position: 1, name: "Core", notes: null, addedInWorkout: true, ...over });
 
 function hookWith(qc: ReturnType<typeof makeQueryClient>, workoutId: string, edit: WorkoutClient, live: WorkoutClient = fakeClient()) {
   return renderHook(() => useEditSectionMutations(workoutId), { wrapper: wrapperWith(qc, live, edit) });
