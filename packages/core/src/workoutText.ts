@@ -239,6 +239,10 @@ interface MutableSection {
   notes: string[];
   warmup: boolean;
   strength: MutableItem | null;
+  /** AC47: no line has been placed under the header yet. */
+  fresh: boolean;
+  /** AC52: a variant label was seen; the rest of the section is note. */
+  notesOnly: boolean;
 }
 interface MutableItem {
   name: string;
@@ -418,6 +422,23 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   return null;
 }
 
+/** AC52: the first words that name an alternative version of the workout (lowercase). */
+const VARIANT_WORDS = new Set([
+  "scaled", "scale", "outdoor", "outdoors", "indoor", "modified", "beginner", "intermediate", "advanced",
+  "alternative", "alternatives", "option", "options", "sub", "subs", "substitute", "rx", "intent", "travel", "home",
+]);
+const NON_LABEL = /^non[- ]/i;
+const AT_HOME = /^at home\b/i;
+const PARENTHESIZED = /^\(.*\)$/;
+const FIRST_WORD = /^[\p{L}]+/u;
+
+/** AC52: a line that starts an alternative (scaled, at home, "(No Bike)"); format lines like "For Time:" are not. */
+function isVariantLabel(line: string): boolean {
+  if (NON_LABEL.test(line) || AT_HOME.test(line) || PARENTHESIZED.test(line)) return true;
+  const word = FIRST_WORD.exec(line)?.[0].toLowerCase();
+  return word !== undefined && VARIANT_WORDS.has(word);
+}
+
 export function readWorkoutText(raw: string): ReadResult {
   const clean = cleanWorkoutText(raw);
   const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0 };
@@ -425,12 +446,26 @@ export function readWorkoutText(raw: string): ReadResult {
   let name: string | null = null;
   let nameFromWorkout = false;
 
+  // AC45: when the paste has header badges, only the lines above them head sections.
+  const badgeMode = clean.tagged.some(Boolean);
+
   clean.lines.forEach((line, i) => {
-    const heading = headingOf(line, i === clean.lines.length - 1, s.run !== null);
+    const heading = badgeMode
+      ? clean.tagged[i]
+        ? (headingOf(line, false, false) ?? { name: line.endsWith(":") ? line.slice(0, -1).trimEnd() : line, workout: false })
+        : null
+      : headingOf(line, i === clean.lines.length - 1, s.run !== null);
+    const open = s.section === null ? null : s.sections[s.section]!;
+    // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
+    if (heading && open && ocrKey(heading.name) === ocrKey(open.name)) {
+      s.run = null;
+      placed.push({ text: line, as: "heading" });
+      return;
+    }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -440,6 +475,20 @@ export function readWorkoutText(raw: string): ReadResult {
       return;
     }
     const current = s.section === null ? null : s.sections[s.section]!;
+    // AC47: the card repeats its header as its first line ("Warmup" under Warmup).
+    if (current?.fresh && ocrKey(line) === ocrKey(current.name)) {
+      current.fresh = false;
+      placed.push({ text: line, as: "heading" });
+      return;
+    }
+    if (current) current.fresh = false;
+    if (current && !current.warmup && (current.notesOnly || isVariantLabel(line))) {
+      current.notesOnly = true;
+      s.run = null;
+      current.notes.push(line);
+      placed.push({ text: line, as: "note" });
+      return;
+    }
     if (current?.warmup) {
       current.notes.push(line);
       placed.push({ text: line, as: "note" });

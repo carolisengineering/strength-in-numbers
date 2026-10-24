@@ -102,3 +102,51 @@ describe("10.4 AC11 — distances and times in a name", () => {
   it.each([["400 Meter Run", "400 Meter"], ["1 Mile Run", "1 Mile"], ["400m Row", "400m"], ["2 Min Plank", "2 Min"]])("%s", (l, lead) =>
     expect(read(["Engine", "3 Rounds", l, "x."]).items[0]).toMatchObject({ name: l, noteLines: [lead] }));
 });
+
+describe("10.4 AC45 — badge-tagged headers are the sections", () => {
+  it("only tagged lines head sections when a paste has badges", () => {
+    const r = read(["Warmup", "NO SCORE", "x", "INTENT", "Strength", "REPS", "10 Curl"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Warmup", "Strength"]);
+    expect(r.sections[0]!.notes).toBe("x\nINTENT");
+  });
+  it("a tagged Workout: \"X\" line is named X", () => expect(read(['Workout: "Engine"', "TIME", "a note."]).sections.map((s) => s.name)).toEqual(["Engine"]));
+  it("with no badge, guessed headings work as before", () =>
+    expect(read(["INTENT", "a note.", "Strength", "10 Curl", "x."]).sections.map((s) => s.name)).toEqual(["INTENT", "Strength"]));
+});
+
+describe("10.4 AC46 — a repeated tagged header continues its section", () => {
+  it("two screenshots that both start with the header, with no overlap between them, give one section", () => {
+    const r = read(["11:08", 'Workout: "Run"', "REPS", "First part.", "11:09 →", 'Workout: "Run"', "REPS", "Second part."]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Run"]);
+    expect(r.sections[0]!.notes).toBe("First part.\nSecond part.");
+    expect(r.lines.placed.filter((p) => p.as === "heading")).toHaveLength(2);
+  });
+  it("an untagged repeat in a badge paste is a note (Review Focus 4)", () => {
+    const r = read(['Workout: "Run"', "REPS", "First part.", 'Workout: "Run"']);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0]!.notes).toBe('First part.\nWorkout: "Run"');
+  });
+});
+
+describe("10.4 AC47 — the card's repeated first line is dropped", () => {
+  it("Warmup under Warmup is not added to the note, and is placed as a heading", () => {
+    const r = read(["Warmup", "NO SCORE", "Warmup", "Stretch"]);
+    expect(r.sections[0]!.notes).toBe("Stretch");
+    expect(r.lines.placed.map((p) => p.as)).toEqual(["heading", "heading", "note"]);
+  });
+  it("only the first line: a later repeat stays", () => expect(read(["Warmup", "NO SCORE", "Stretch", "Warmup"]).sections[0]!.notes).toBe("Stretch\nWarmup"));
+});
+
+describe("10.4 AC52 — alternatives after a label are notes", () => {
+  it.each(["Scaled Run:", "Non- Run", "Non Run", "(No Bike)", "INTENT"])("after %s, a lead-in and a movement are notes", (label) => {
+    const r = read(["Strength", "REPS", label, "3 Sets:", "10 Curl", "Accessory", "NO SCORE", "3 Sets:", "10 Row"]);
+    expect(r.sections[0]!.notes).toBe(`${label}\n3 Sets:\n10 Curl`);
+    expect(r.items.map((i) => [i.name, i.section])).toEqual([["Row", 1]]);
+  });
+  it("lead-ins and separators ending in a colon are not labels", () =>
+    expect(read(["Strength", "REPS", "3 Sets:", "10 Curl"]).items.map((i) => i.name)).toEqual(["Curl"]));
+  it.each(["For Time:", "EMOM", "AMRAP", "STRICT PRESS BUILD TO A 10RM"])("a format line like %s is not a label (Review Focus 5)", (line) =>
+    expect(read(["Strength", "REPS", line, "3 Sets:", "10 Curl"]).items.map((i) => i.name)).toEqual(["Curl"]));
+  it.each(["AT HOME or ON THE ROAD", "Outdoor:", "Modified:", "Options"])("%s is a label", (label) =>
+    expect(read(["Strength", "REPS", label, "3 Sets:", "10 Curl"]).items).toEqual([]));
+});
