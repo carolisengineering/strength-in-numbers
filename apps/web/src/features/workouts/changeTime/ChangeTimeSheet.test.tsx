@@ -98,6 +98,16 @@ describe("18.0 AC31 — only what changed", () => {
     await user.click(save());
     expect(updateWorkout).toHaveBeenCalledWith(w.id, { durationSeconds: 4500 });
   });
+
+  it("deferred minor 15 (review): a live sheet stays live if the workout is finished elsewhere while it is open", () => {
+    const w = liveWorkout();
+    const client = fakeClient({ updateWorkout: vi.fn(async () => updatedOf(w)) });
+    const callbacks = { onClose: vi.fn(), onSaved: vi.fn(), onVanished: vi.fn() };
+    const { rerender } = render(<Host workout={w} client={client} {...callbacks} />, { wrapper: wrapperWith(makeQueryClient(), fakeClient()) });
+    expect(sheet().getByText(EDIT_COPY.tookHint)).toBeInTheDocument();
+    rerender(<Host workout={{ ...w, endedAt: "2026-10-18T09:55:00.000Z" }} client={client} {...callbacks} />);
+    expect(sheet().getByText(EDIT_COPY.tookHint)).toBeInTheDocument();
+  });
 });
 
 describe("18.0 AC33 — client errors block the request", () => {
