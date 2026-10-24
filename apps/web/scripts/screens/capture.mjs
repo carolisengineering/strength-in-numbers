@@ -63,6 +63,10 @@ function makeHandler(state) {
       res = json(state.sectioned);
     } else if (state.sectioned && (res = sectionRoute(state.sectioned, m, p, req.postData()))) {
       // Spec 10.6 AC28: the four section writes on the sectioned live workout (placement as Spec 09.4 §6.2).
+    } else if (m === "GET" && state.editSectioned && p === `/v1/workouts/${state.editSectioned.id}`) {
+      res = json(state.editSectioned);
+    } else if (state.editSectioned && (res = sectionRoute(state.editSectioned, m, p, req.postData()))) {
+      // Spec 10.6 AC28 (Phase B): the same writes on a finished copy of it, for the edit screen.
     } else if (m === "GET" && p === "/v1/workouts/active") {
       const live = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
       res = state.active ? json(live) : problem(404, "not-found", "No active workout");
@@ -565,6 +569,15 @@ try {
       await page.keyboard.press("Escape");
     });
     state.sectioned = null;
+    // Spec 10.6 AC28 (Phase B): the edit screen of a finished workout gets the same controls.
+    await tryStep("workout sections (edit)", async () => {
+      const w = structuredClone(D.activeSections);
+      state.editSectioned = { ...w, endedAt: new Date(Date.parse(w.startedAt) + 20 * 60_000).toISOString() };
+      await go(`/app/history/${w.id}/edit`);
+      await page.getByRole("region", { name: "Strength" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "57-edit-sections", "Edit screen of a finished workout with sections: headings with Edit, the empty added section, the line, Add exercise and Add section (Spec 10.6 AC17)");
+    });
+    state.editSectioned = null;
     await tryStep("summary sections", async () => {
       await go(`/app/history/${D.ids.latestPush}`);
       await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();
