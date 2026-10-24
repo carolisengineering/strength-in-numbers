@@ -195,16 +195,25 @@ describe("10.5 AC9 — Keep failures keep the one-off", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/Request ID: \S+/);
   });
 
-  it("deferred minor 53: Retry moves focus to Keep as a routine instead of dropping it to the page", async () => {
+  it("deferred minor 53: Retry keeps focus while the retry is in flight; a second failure keeps it; success moves it to Edit", async () => {
     const fake = boot();
     const { user } = renderApp(`/app/workouts/routines/${cls.id}`);
     fake.failNext({ method: "POST", path: KEEP_PATH }, () => problemResponse(500, "about:blank"));
     await user.click(await screen.findByRole("button", { name: KEEP_AS_ROUTINE }));
+    const retry = () => within(screen.getByRole("alert")).getByRole("button", { name: "Retry" });
+    await screen.findByRole("alert");
+    fake.failNext({ method: "POST", path: KEEP_PATH }, () => problemResponse(500, "about:blank"));
+    await user.click(retry());
+    expect(retry()).toHaveFocus();
+    await waitFor(() => expect(keeps(fake)).toHaveLength(2));
+    expect(retry()).toHaveFocus();
     const hold = holdKeep(fake);
-    await user.click(within(await screen.findByRole("alert")).getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: KEEP_AS_ROUTINE })).toHaveFocus());
+    await user.click(retry());
+    expect(retry()).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
     hold.release();
     await screen.findByText(KEPT_STATUS);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Edit" })).toHaveFocus());
   });
 
   it("deferred minor 47: a one-off preview has no empty status element before a Keep", async () => {

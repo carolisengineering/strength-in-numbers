@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, Ref } from "react";
+import type { ButtonHTMLAttributes } from "react";
 
 import styles from "./Button.module.css";
 
@@ -13,8 +13,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   busy?: boolean;
   /** Full-width — the thumb-zone default for a form's primary action. */
   block?: boolean;
-  /** React 19 passes `ref` as a prop; it reaches the native `<button>` through `rest`. */
-  ref?: Ref<HTMLButtonElement>;
 }
 
 /**

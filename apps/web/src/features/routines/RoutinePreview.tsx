@@ -177,7 +177,6 @@ function PreviewBody({
   const [keepFailure, setKeepFailure] = useState<ClassifiedRoutineError | null>(null);
   const keepLock = useRef(false);
   const editLink = useRef<HTMLAnchorElement>(null);
-  const keepButton = useRef<HTMLButtonElement>(null);
   const focusEdit = useRef(false);
   // No dependency list on purpose (DM-48): it runs after every render until the Edit link exists and the mark is
   // gone, so the focus lands whichever render brings them; the ref guard makes every other run a no-op.
@@ -191,10 +190,12 @@ function PreviewBody({
   async function onKeep() {
     if (keepLock.current) return;
     keepLock.current = true;
-    setKeepFailure(null);
+    // A failure notice stays until this attempt's result, so its focused Retry is not unmounted mid-flight
+    // (deferred minor 53); success moves focus to Edit.
     try {
       await keep.mutateAsync(routine.id);
       focusEdit.current = true;
+      setKeepFailure(null);
       setKept(true);
     } catch (caught) {
       reportRoutineUnexpected("keep-routine", caught);
@@ -283,15 +284,7 @@ function PreviewBody({
           Edit
         </Link>
         {markedOneOff ? (
-          // `aria-busy`, not `busy`: a disabled button would drop the focus Retry moves here (deferred minor 53);
-          // `keepLock` guards the double tap.
-          <Button
-            ref={keepButton}
-            variant="secondary"
-            aria-busy={keep.isPending || undefined}
-            disabled={remove.isPending}
-            onClick={() => void onKeep()}
-          >
+          <Button variant="secondary" busy={keep.isPending} disabled={remove.isPending} onClick={() => void onKeep()}>
             {KEEP_AS_ROUTINE}
           </Button>
         ) : null}
@@ -324,11 +317,7 @@ function PreviewBody({
             tone="error"
             requestId={keepFailure.requestId}
             actionLabel="Retry"
-            onAction={() => {
-              // The notice (and its focused Retry) unmounts as the retry starts.
-              keepButton.current?.focus();
-              void onKeep();
-            }}
+            onAction={() => void onKeep()}
           >
             {keepMessage(keepFailure)}
           </InlineNotice>
