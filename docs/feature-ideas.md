@@ -9,14 +9,14 @@ Numbering is append-only — never renumber an existing FI.
 
 | ID | Idea | Area | Source | Added | Status |
 |----|------|------|--------|-------|--------|
-| [FI-1](#fi-1) | Target weight on routine items (planned sets) | Routines | Phone check | 2026-10-11 | Specced (09.1 / 10.2) |
-| [FI-2](#fi-2) | Routine sections, each with its own note (warm-up / main / accessory) | Routines | Phone check | 2026-10-11 | Idea |
-| [FI-3](#fi-3) | Default exercises from existing custom exercises | Catalog | Phone check | 2026-10-11 | Idea |
-| [FI-4](#fi-4) | Export to Hevy | Import / export | Phone check | 2026-10-11 | Idea |
-| [FI-5](#fi-5) | Import from Hevy | Import / export | Phone check | 2026-10-11 | Idea |
-| [FI-6](#fi-6) | Create a routine from a screenshot of a workout in another app | Routines / import | Owner | 2026-10-11 | Idea |
-| [FI-7](#fi-7) | Show the routine's notes in history for a workout started from it | Routines / History | Owner | 2026-10-11 | Idea |
-| [FI-8](#fi-8) | Whole-app design review with the `impeccable` skill | UI / design | Owner | 2026-10-11 | Idea |
+| [FI-1](#fi-1) | Target weight on routine items (planned sets) | Routines | Phone check | 2026-10-11 | Implemented (09.1 #73, 10.2 #74) |
+| [FI-2](#fi-2) | Routine sections, each with its own note (warm-up / main / accessory) | Routines | Phone check | 2026-10-11 | Implemented (09.2 #76, 10.3 #77; workout sections 09.4 #143, 10.6 #145/#146) |
+| [FI-3](#fi-3) | Default exercises from existing custom exercises | Catalog | Phone check | 2026-10-11 | Idea — GitHub #117 |
+| [FI-4](#fi-4) | Export to Hevy | Import / export | Phone check | 2026-10-11 | Idea — GitHub #92 |
+| [FI-5](#fi-5) | Import from Hevy | Import / export | Phone check | 2026-10-11 | Idea — GitHub #87 |
+| [FI-6](#fi-6) | Create a routine from a screenshot of a workout in another app | Routines / import | Owner | 2026-10-11 | Implemented (10.4 #132–#134, round 2 #148; GitHub #88) |
+| [FI-7](#fi-7) | Show the routine's notes in history for a workout started from it | Routines / History | Owner | 2026-10-11 | Implemented (09.2 `routine_notes_snapshot`, 10.3: History and the summary show it) |
+| [FI-8](#fi-8) | Whole-app design review with the `impeccable` skill | UI / design | Owner | 2026-10-11 | Done — the design refresh (Specs 17.0–17.3, #83–#100) |
 | [FI-9](#fi-9) | Archive routines | Routines | Owner | 2026-10-11 | Idea |
 | [FI-10](#fi-10) | Routine folders | Routines | Owner | 2026-10-11 | Idea |
 | [FI-11](#fi-11) | Planned duration/distance for timed and distance exercises | Routines | Planned-sets design | 2026-10-11 | Idea |
