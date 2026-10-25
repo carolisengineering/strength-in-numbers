@@ -18,7 +18,7 @@ import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messag
  * card. The screens hold an array of these in the import session.
  */
 export interface CardState {
-  /** normalizeExerciseName(written). */
+  /** The read name's key: normalizeExerciseName(written), or `written:<name>` for a name with no letter or digit (#169). */
   readonly key: string;
   /** DOM ids: `import-card-${index}`. */
   readonly index: number;

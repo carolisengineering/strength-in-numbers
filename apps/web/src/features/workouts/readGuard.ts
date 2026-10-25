@@ -48,6 +48,7 @@ export async function rereadUntilLanded(queryClient: QueryClient, queryKey: Quer
     const query = queryClient.getQueryCache().find({ queryKey, exact: true }); // the one workout entry itself
     const after = query?.state;
     if (!before || !after || query.getObserversCount() === 0) return;
-    if (after.dataUpdatedAt !== before.dataUpdatedAt || after.errorUpdatedAt !== before.errorUpdatedAt) return;
+    // The update counters, not the timestamps: two answers can land in the same millisecond (a canceled read reverts both).
+    if (after.dataUpdateCount !== before.dataUpdateCount || after.errorUpdateCount !== before.errorUpdateCount) return;
   }
 }

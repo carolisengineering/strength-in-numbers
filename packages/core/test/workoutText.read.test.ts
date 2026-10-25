@@ -184,6 +184,45 @@ describe("10.4 AC49 — interval lines do not end a run", () => {
   });
 });
 
+describe("#169 — a name with no letters or digits is its own name, per written form", () => {
+  it("!!! and ??? are two names; a second !!! shares the first (set lines take their section's name)", () => {
+    const r = read(["!!!", "REPS", "Set 1: 5 reps", "???", "REPS", "Set 1: 5 reps", "!!!", "REPS", "Set 1: 3 reps"]);
+    expect(r.names.map((n) => n.written)).toEqual(["!!!", "???"]);
+    expect(new Set(r.items.map((i) => i.nameKey)).size).toBe(2);
+    expect(r.names.every((n) => n.key !== "")).toBe(true);
+  });
+  it("a real name keeps its normalized key", () => expect(read(["Bench Press", "REPS", "Set 1: 5 reps"]).names[0]!.key).toBe("benchpress"));
+});
+
+describe("#155 — Rest-Pause, a trailing comma and complexes under an open run", () => {
+  const under = (...lines: string[]) => read(["Strength", "3 Sets:", ...lines]);
+  it.each(["Rest-Pause Curls", "Rest Pause Curls", "8 Rest-Pause Curls"])("%s is an exercise, not a Rest line", (line) =>
+    expect(under(line).items.map((i) => i.name)).toEqual([line.replace(/^8 /, "")]));
+  it.each(["Rest", "Rest:", "Rest 90s", "Rest as needed", "REST 2 min between rounds"])("%s is still a note that keeps the run open", (line) => {
+    const r = under(line, "10 Squats");
+    expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
+    expect(r.sections[0]!.notes).toContain(line);
+  });
+  it("a movement with a rep form and a trailing comma is an exercise, named without the comma", () =>
+    expect(under("10 Push-ups,", "10 Squats").items.map((i) => i.name)).toEqual(["Push-ups", "Squats"]));
+  it.each(["2 Rounds of,", "5 Rounds of,", "3 Supersets of,", "4 times through,", "8 Rest,"])("%s is structure, not an exercise (review)", (line) =>
+    expect(under(line, "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
+  it.each(["Rest-Pause between sets", "Rest pause as needed", "Rest pause 30s"])("%s is still a Rest note (review)", (line) =>
+    expect(under(line, "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
+  it("an en dash reads like a hyphen: Rest–Pause Curls is an exercise (review)", () =>
+    expect(under("Rest–Pause Curls").items.map((i) => i.name)).toEqual(["Rest–Pause Curls"]));
+  it("a bulleted rowless line outside a run drops its trailing comma too (review)", () =>
+    expect(read(["Strength", "- 10 Push-ups,"]).items.map((i) => i.name)).toEqual(["Push-ups"]));
+  it("a cue with a trailing comma and no rep form is still a note", () =>
+    expect(under("Keep the pace steady,", "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
+  it("a barbell complex splits into a superset, like any A + B (owner ruling 2026-10-25)", () => {
+    const r = under("2 Power Clean + 1 Push Jerk");
+    expect(r.items.map((i) => i.name)).toEqual(["Power Clean", "Push Jerk"]);
+    expect(r.items[0]!.run).not.toBeNull();
+    expect(r.items.map((i) => i.run)).toEqual([r.items[0]!.run, r.items[0]!.run]);
+  });
+});
+
 describe("10.4 AC50 — interval movements", () => {
   const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
   it("a leading distance keeps the name as written (AC11), minus a trailing +", () =>

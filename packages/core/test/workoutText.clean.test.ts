@@ -148,3 +148,22 @@ describe("10.4 AC45 — tagged headers survive cleaning", () => {
     expect(cleanWorkoutText("11:08\nЖим\n3 Sets:").lines).toEqual(["3 Sets:"]));
   it("Log result does not tag the line above it", () => expect(cleanWorkoutText("Intro\nLog result").tagged).toEqual([false]));
 });
+
+describe("#168 — a time inside the workout text does not open the status-bar window", () => {
+  it("a bare time under a round count: the short non-Latin name after it is kept", () =>
+    expect(cleanWorkoutText("Strength\n3 Rounds:\n4:00\nЖим\n10 Squats").lines).toContain("Жим"));
+  it("a clock right after the tab bar still opens it (the next screenshot's status bar)", () =>
+    expect(cleanWorkoutText("Intro\nHome\nSchedule\nWorkouts\nSocial\n11:09\nINTENT\nالهه\nToday").lines).not.toContain("الهه"));
+  it("the paste's first line is the top of a screenshot", () => expect(cleanWorkoutText("11:08\n口\nStrength").lines).toEqual(["Strength"]));
+  it("one tab-bar word in the text (an at-home label) is not the tab bar (review)", () =>
+    expect(cleanWorkoutText("Strength\n3 Rounds:\nHome\n4:00\nЖим\n10 Squats").lines).toContain("Жим"));
+  it("the time still splits screenshots, as AC42 says", () => expect(cleanWorkoutText("Strength\n3 Rounds:\n4:00\nЖим").chunks).toBe(2));
+});
+
+describe("#170 — the screenshot count is every screenshot pasted (owner ruling 2026-10-25)", () => {
+  it("a middle screenshot that fully repeats the first still counts", () => {
+    const r = cleanWorkoutText("11:08\nWarmup\n10 Squats\n11:09\nWarmup\n10 Squats\n11:10\nWarmup\n10 Squats\n3 Sets:");
+    expect(r.lines).toEqual(["Warmup", "10 Squats", "3 Sets:"]);
+    expect(r.chunks).toBe(3);
+  });
+});

@@ -91,6 +91,20 @@ describe("#158 — a structure re-read resolves only once an answer has landed",
     expect(queryClient.getQueryData(KEY)).toBe("answer 3");
   });
 
+  it("an answer landing in the same millisecond as the last one counts as landed (CI, PR #176)", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      let calls = 0;
+      const { queryClient } = setup(async () => `answer ${++calls}`);
+      await settle();
+      await rereadUntilLanded(queryClient, KEY);
+      expect(calls).toBe(2);
+      expect(queryClient.getQueryData(KEY)).toBe("answer 2");
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("a failed re-read is not retried", async () => {
     let calls = 0;
     const { queryClient } = setup(async () => {
