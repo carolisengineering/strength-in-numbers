@@ -1,7 +1,7 @@
 # Strength in Numbers — Design Document
 
-**Status:** Draft v0.5 — decisions Q1–Q30 resolved; consistency pass done
-**Last updated:** 2026-10-24 (§3.3 / §7 / §9 / Q31 from Spec 15 — production on Google Cloud, free tier: Cloud Run + Firebase Hosting + Neon, Terraform in `infra/`, the gated `deploy-prod`). Earlier: 2026-10-24 (Q28 from Spec 10.4 round 2 — routine from text reads sections from the gym app's score badges and survives status-bar icons and look-alike misreads). Earlier: 2026-10-24 (Q30 from Spec 10.6 Phase B — the same section controls on the edit screen for a finished workout, pessimistic writes that refresh History, Progress and records). Earlier: 2026-10-24 (Q30 from Spec 10.6 Phase A — workout sections UI on the live screen: Edit on section headings, Add section, the "New exercises go into" line, the Section select in Options; no API change). Earlier: 2026-10-23 (§2 items 3 / 4 / §4.4 / §4.9 / §6 / §9 M3 row and milestone mapping / Q21 clause / Q30 from Spec 09.4 — workout sections API: a workout's sections become the workout's own after the start copy, added, renamed, re-noted, removed and filled during or after the workout; migration `0014`). Earlier: 2026-10-22 (§2 item 3 / §9 M3 row / Q29 from Spec 10.5 — one-off routines UI: the tag and expiry on the list, the preview note and Keep, the Finish-dialog line and checkbox; no API change). Earlier same day: 2026-10-22 (§2 item 3 / §4.3 / §4.4 / §4.5 / §4.9 / §6 / §9 M3 row and milestone mapping / Q29 from Spec 09.3 — one-off routines: a routine that removes itself when a workout started from it is finished, kept on request, swept lazily after 14 days; owner approved 2026-10-19). Earlier: 2026-10-21 (Spec 10.4 Phase C — routine from text is reachable: **New from text** on the Routines list, the import opens in the ordinary editor, Save creates the new exercises then the routine). Earlier same day: (§6 from Spec 10.4 Phase B — a bulk create checks the synced list for an existing name first). Earlier: 2026-10-19 (§2 item 3 / §4.2 / §9 M3 row / Q28 from Spec 10.4 — a routine from pasted text: a pure on-device reader, a name check, nothing created before Save; owner approved 2026-10-19). Earlier: 2026-10-18 (§2 item 4 / §5.3 / Q27 from Spec 18.0 — the UI for editing finished workouts and Change Time: a workout title and notes shown on the summary and the title on the History row, edit writes pessimistic and online-only, the outbox keeps unsent ops on the gone path; owner approved 2026-10-18. Earlier same day: §2 items 4–5 / §4.4 / §4.5 / §4.9 / §5.3 / §6 / §9 / Q27 from Spec 07.4 — finished workouts become editable and workout times fixable: set and exercise writes open on a finished workout with in-transaction record recomputes, Change Time on `PATCH /v1/workouts/{id}`, a stored live "took"; draft, owner decisions 2026-10-18. Earlier: 2026-10-17 (Q26 from Spec 17.3 — the front door: the landing and resuming screens as one title card, "Strength in Numbers", a double-tap guard on Log in. Earlier same day: Q25 from Spec 17.2 Phase B — record cards, e1RM display rounding, the History count badge. Earlier same day: Q25 from Phase A — the Finish dialogs and summary header. Earlier same day: §4.5 from Spec 07.3 — History recordCount excludes set volume. Earlier same day: §2 items 1 and 8 / §9 M3 and M4 rows / Q5 / Q24 from Spec 17.1 Phase C — the rest timer, pulled forward from M4). Earlier: 2026-10-16 (§2 item 8 / Q24 from Spec 17.1 Phase B — the "now" workout screen: one current exercise, ± steppers by the set's unit, the per-set bottom bar, End workout early. Earlier same day: §2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)))
+**Status:** Draft v0.5 — decisions Q1–Q32 resolved; consistency pass done
+**Last updated:** 2026-10-25 (§2 item 2 / §4.2 / §4.4 / §4.5 / §4.6 / §9 milestone mapping / glossary / Q32 from Spec 05.3 — three new exercise types, Calories, Weight + distance and Weight + duration: a `calories` set column, three new record types, `heaviest_weight` widened to the weighted types, migration `0015`; GitHub #104 piece 1, draft). Earlier: 2026-10-24 (§3.3 / §7 / §9 / Q31 from Spec 15 — production on Google Cloud, free tier: Cloud Run + Firebase Hosting + Neon, Terraform in `infra/`, the gated `deploy-prod`). Earlier: 2026-10-24 (Q28 from Spec 10.4 round 2 — routine from text reads sections from the gym app's score badges and survives status-bar icons and look-alike misreads). Earlier: 2026-10-24 (Q30 from Spec 10.6 Phase B — the same section controls on the edit screen for a finished workout, pessimistic writes that refresh History, Progress and records). Earlier: 2026-10-24 (Q30 from Spec 10.6 Phase A — workout sections UI on the live screen: Edit on section headings, Add section, the "New exercises go into" line, the Section select in Options; no API change). Earlier: 2026-10-23 (§2 items 3 / 4 / §4.4 / §4.9 / §6 / §9 M3 row and milestone mapping / Q21 clause / Q30 from Spec 09.4 — workout sections API: a workout's sections become the workout's own after the start copy, added, renamed, re-noted, removed and filled during or after the workout; migration `0014`). Earlier: 2026-10-22 (§2 item 3 / §9 M3 row / Q29 from Spec 10.5 — one-off routines UI: the tag and expiry on the list, the preview note and Keep, the Finish-dialog line and checkbox; no API change). Earlier same day: 2026-10-22 (§2 item 3 / §4.3 / §4.4 / §4.5 / §4.9 / §6 / §9 M3 row and milestone mapping / Q29 from Spec 09.3 — one-off routines: a routine that removes itself when a workout started from it is finished, kept on request, swept lazily after 14 days; owner approved 2026-10-19). Earlier: 2026-10-21 (Spec 10.4 Phase C — routine from text is reachable: **New from text** on the Routines list, the import opens in the ordinary editor, Save creates the new exercises then the routine). Earlier same day: (§6 from Spec 10.4 Phase B — a bulk create checks the synced list for an existing name first). Earlier: 2026-10-19 (§2 item 3 / §4.2 / §9 M3 row / Q28 from Spec 10.4 — a routine from pasted text: a pure on-device reader, a name check, nothing created before Save; owner approved 2026-10-19). Earlier: 2026-10-18 (§2 item 4 / §5.3 / Q27 from Spec 18.0 — the UI for editing finished workouts and Change Time: a workout title and notes shown on the summary and the title on the History row, edit writes pessimistic and online-only, the outbox keeps unsent ops on the gone path; owner approved 2026-10-18. Earlier same day: §2 items 4–5 / §4.4 / §4.5 / §4.9 / §5.3 / §6 / §9 / Q27 from Spec 07.4 — finished workouts become editable and workout times fixable: set and exercise writes open on a finished workout with in-transaction record recomputes, Change Time on `PATCH /v1/workouts/{id}`, a stored live "took"; draft, owner decisions 2026-10-18. Earlier: 2026-10-17 (Q26 from Spec 17.3 — the front door: the landing and resuming screens as one title card, "Strength in Numbers", a double-tap guard on Log in. Earlier same day: Q25 from Spec 17.2 Phase B — record cards, e1RM display rounding, the History count badge. Earlier same day: Q25 from Phase A — the Finish dialogs and summary header. Earlier same day: §4.5 from Spec 07.3 — History recordCount excludes set volume. Earlier same day: §2 items 1 and 8 / §9 M3 and M4 rows / Q5 / Q24 from Spec 17.1 Phase C — the rest timer, pulled forward from M4). Earlier: 2026-10-16 (§2 item 8 / Q24 from Spec 17.1 Phase B — the "now" workout screen: one current exercise, ± steppers by the set's unit, the per-set bottom bar, End workout early. Earlier same day: §2 item 4 / §4.3 / §4.4 / Q23 from Spec 17.1 Phase A — RPE hidden in the UI, kept in the data. Earlier: 2026-10-16 (§3.2 / §9 / Q22 from Spec 17.0 — visual identity "Stone": light-first palette with a Light/Dark/System switch, color roles, self-hosted type; no API or CSP change. Earlier: 2026-10-14 (§2 item 1 from Spec 12 — account lifecycle UI drafted: Profile-screen download and two-step delete, a terminal "scheduled for deletion" screen, no API change. Earlier: 2026-10-13 (§2 item 3 / §4.3 / §4.4 / §4.9 / §6 / §9 M3 row / Q21 from Specs 09.2 and 10.3 — routine sections and notes: named, noted groups of exercises in a routine, snapshotted with the routine's own note onto started workouts and shown in the session and History; session exercise notes queued through the offline outbox. Earlier: 2026-10-11 (§2 item 3 / §4.3 / §4.4 / §4.8 / §4.9 / §6 / §9 M3 row / Q20 from Specs 09.1 and 10.2 — planned sets: per-set routine plans (type, reps, weight), snapshotted onto started workouts, prefilled in the session; reverses Spec 10.1 D3. Earlier same day: §3.1 / §3.2 / §3.3 / §4.1 / §4.9 / §6 / §8.2 / §9 M4 row / Q4 / Q19 from Spec 11 — account lifecycle API: beta-minimum synchronous export + manual purge CLI, R2 and cron deferred to GA. Earlier same day: §2 item 8 / Q5 "grid logging" = bracket + per-card logging, §6 response-field rollout convention, §9 M3 row from Spec 10.1 — routines session side. Earlier: 2026-10-10, §2 items 3 / 8, §9 M3 row, Q5 wording from Spec 10.0 — routines UI; the rest timer is M4, not M3; Spec 10 split into 10.0 / 10.1. Earlier: 2026-10-08, §4.3 / §4.4 / §4.9 / §6 / Q18 from Spec 09 — routines and supersets API. Earlier same day: §2 item 6 / §4.6 / §9 / Q17 from Spec 08.1 — progress screen and chart approach. Earlier same day: §2 items 5–6 / §8.3 / §9 / Q16 from Spec 08.0 — history screen + PR display; Spec 08 split into 08.0 / 08.1. Earlier: 2026-10-07, §6 progress endpoint / §4.6 / Q15 from Spec 07.2 — progress series; §6 cursor contract / §4.6 / Q14 / glossary from Spec 07.1 — history list. Earlier: 2026-10-06, §4.5 / §6 / §9 / Q13 / glossary from Spec 07.0 — PR engine; Spec 07 split into 07.0 / 07.1 / 07.2; and 2026-09-05, Q10–Q12 from Spec 04.0/04.1)))
 **Authors:** carolisengineering, + architecture review
 
 ---
@@ -72,8 +72,9 @@ resolved) and Risk R6.
    weight log (simple time series), account deletion + data export. (API: Spec 11; UI: Spec 12
    — "Your data" download and a two-step "Delete account" on the Profile screen.)
 2. **Exercise catalog** — curated global library (name, primary/secondary muscle
-   groups, equipment, modality: weight+reps / bodyweight / timed / distance) plus
-   user-created custom exercises.
+   groups, equipment, modality: weight+reps / bodyweight / weighted bodyweight / timed /
+   distance + time / calories / weight + distance / weight + duration) plus
+   user-created custom exercises. (The last three: Spec 05.3, Q32.)
 3. **Routines (templates)** — user builds a reusable ordered list of exercises
    with target sets/reps. Optional; you can also start an empty workout.
    (UI: Spec 10.0 — routines live inside the **Workouts** tab, not a fifth tab: the
@@ -242,7 +243,8 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   rows; `UNIQUE` where `owner_user_id IS NULL`, `NULL` for custom — Spec 03.1),
   `owner_user_id` (NULL = global/curated; `ON DELETE CASCADE`), `name`,
   `modality` (`weight_reps` | `bodyweight_reps` | `weighted_bodyweight` |
-  `duration` | `distance_duration`), `primary_muscle_id`, `secondary_muscle_ids`
+  `duration` | `distance_duration` | `calories` | `weight_distance` |
+  `weight_duration` — the last three from Spec 05.3), `primary_muscle_id`, `secondary_muscle_ids`
   (array), `equipment_id`, `is_active`, `forked_from_exercise_id` (`uuid NULL
   REFERENCES exercise(id) ON DELETE RESTRICT` — Spec 03.2, resolves D9: kept
   for provenance, but suppressing a forked row's global origin from a catalog
@@ -411,13 +413,15 @@ first, then by `lower(name)`, `id`; one-offs count toward the 50.
   (`warmup` | `working` | `drop` | `failure`). Nullable measure columns:
   `reps`, `weight`, `weight_unit`, `weight_kg` (**stored generated column** =
   `weight` normalised to kg), `distance`, `distance_unit`, `distance_m` (generated),
-  `duration_s`, `rpe` (kept but not shown or entered in the UI, Q23), `is_complete BOOL`, `completed_at`, and a nullable
+  `duration_s`, `calories` (`SMALLINT`, whole numbers, no unit — Spec 05.3, migration `0015`), `rpe` (kept but not shown or entered in the UI, Q23), `is_complete BOOL`, `completed_at`, and a nullable
   `client_generated_id UUID` (optional create idempotency key, unique per
   `workout_exercise_id` — Spec 05.1 D15).
   Which measures are required is validated per `modality` in `packages/core`, not
   by DB `CHECK`s, so an in-progress row can be half-filled. A set of any type can
   be marked `is_complete` only once it has each measure its modality requires
-  (the per-modality table is Spec 05.1 §6.1; a failed attempt is `reps: 0` plus
+  (the per-modality table is Spec 05.1 §6.1, extended by Spec 05.3 §6.1 with the
+  `calories`, `weight_distance` and `weight_duration` rows and a `calories` measure that
+  every other modality forbids; a failed attempt is `reps: 0` plus
   the weight — Spec 05.1 D14). One integrity rule is enforced at finish: every
   `working` set must have each of those measures; `warmup`/`drop`/`failure`
   sets are exempt. A set is addressed by its own `SetEntryId` (`POST` to create,
@@ -433,15 +437,15 @@ is one (web) client.
 ### 4.5 Personal records (derived cache)
 
 - **personal_record** — `id`, `user_id`, `exercise_id` (the **lineage root**, below),
-  `record_type`, `value numeric(12,3)` (canonical units), `unit`,
-  `previous_value numeric(12,3) NULL` (the best of that type from strictly-earlier
+  `record_type`, `value numeric(14,3)` (canonical units; widened from `(12,3)` by Spec 05.3 for second-valued records), `unit`,
+  `previous_value numeric(14,3) NULL` (the best of that type from strictly-earlier
   workouts), `source_set_entry_id`, `workout_id`, `achieved_at` (= the workout's
   `started_at`), `local_date`, `created_at`. One row per
   `(user_id, exercise_id, record_type)`. All four FKs are `ON DELETE CASCADE`.
   Spec 07.0 §4 owns the table (migration `0008`).
 
-v1 tracks **four** record types, decided per modality (Spec 07.0 D2, 2026-10-06;
-supersedes the three-type decision of 2026-08-30). A set qualifies if it is a
+v1 tracks **seven** record types, decided per modality (the first four: Spec 07.0 D2, 2026-10-06,
+supersedes the three-type decision of 2026-08-30; the last three: Spec 05.3, 2026-10-25). A set qualifies if it is a
 `working` set in a **finished** workout; warmup/drop/failure are excluded, and
 `is_complete` is **ignored** (finish integrity already guarantees the required
 measures, and many users never tick the box). Eligibility uses the set's own
@@ -449,14 +453,17 @@ measures, and many users never tick the box). Eligibility uses the set's own
 
 | `record_type` (`unit`) | Rule | Modalities |
 |---|---|---|
-| `heaviest_weight` (`kg`) | max `weight_kg` where `reps ≥ 1` | `weight_reps`, `weighted_bodyweight` |
-| `best_est_1rm` (`kg`) | max Epley e1RM = `weight_kg × (30 + reps) / 30`, rounded half-up to 0.001 kg, only sets with `1 ≤ reps ≤ 12` | same |
+| `heaviest_weight` (`kg`) | max `weight_kg` where `reps ≥ 1`; for the weighted carry / hold, where `distance_m > 0` / `duration_s ≥ 1` | `weight_reps`, `weighted_bodyweight`, `weight_distance`, `weight_duration` |
+| `best_est_1rm` (`kg`) | max Epley e1RM = `weight_kg × (30 + reps) / 30`, rounded half-up to 0.001 kg, only sets with `1 ≤ reps ≤ 12` | `weight_reps`, `weighted_bodyweight` |
 | `best_set_volume` (`kg_reps`) | max `reps × weight_kg` over a single set | same |
 | `max_reps` (`reps`) | max `reps` where `reps ≥ 1` | `bodyweight_reps` |
+| `max_calories` (`cal`) | max `calories` where `calories ≥ 1` | `calories` |
+| `max_distance` (`m`) | max `distance_m` (canonical meters) where `> 0`, whatever the load | `weight_distance` |
+| `max_duration` (`s`) | max `duration_s` where `≥ 1`, whatever the load (the longest hold) | `weight_duration` |
 
-`duration` and `distance_duration` exercises have no PRs in v1. For
+`duration` and `distance_duration` exercises have no PRs in v1 (Spec 05.3 adds records only for the three new types). For
 `weighted_bodyweight` the weight is the **added load only** — a
-body-weight-inclusive total waits for the `body_metric` table. A weight-based type
+body-weight-inclusive total waits for the `body_metric` table. For `weight_distance` and `weight_duration` the weight is the **total carried or held**; volume and e1RM need reps, so they stay on the two rep-load types. A weight-based type
 also needs `weight_kg > 0`; a value of 0 is never a record. Deferred:
 `rep_pr_at_weight` (a set of rows, not one) — revisit post-v1.
 History's `recordCount` counts the records a workout holds now other than `best_set_volume` (Spec 07.3), matching the finish summary, which does not list set-volume records (Spec 17.2).
@@ -499,12 +506,12 @@ entities, computed from `set_entry` + `weight_kg`. If aggregate latency becomes 
 problem at real data sizes, add a nightly `exercise_daily_stat` rollup — not in
 v1 (§1.3 scale does not need it). **Volume** in every view — the history row's
 `totalVolume` (Spec 07.1), the progress series, `best_set_volume` — means `set_type =
-'working'` sets of the load modalities (`weight_reps`, `weighted_bodyweight`) with
+'working'` sets of the rep-load modalities (`weight_reps`, `weighted_bodyweight`; the three Spec 05.3 types have no volume) with
 `best_set_volume`'s eligibility (reps ≥ 1, `weight_kg > 0`), one function in
 `@sin/core` (`setVolumeMilli`). A **progress series** has one point per finished workout
 (Spec 07.2); over a lineage's full history the series maximum of `topSetWeight`,
-`bestE1rm` and `maxReps` equals the PR of `heaviest_weight`, `best_est_1rm` and
-`max_reps` (both go through one per-type eligibility function, `setRecordValueMilli`).
+`bestE1rm`, `maxReps` and (Spec 05.3) `maxCalories`, `maxDistance`, `maxDuration` equals the PR of `heaviest_weight`, `best_est_1rm`,
+`max_reps`, `max_calories`, `max_distance` and `max_duration` (both go through one per-type eligibility function, `setRecordValueMilli`).
 `totalVolume` is a **session sum**, not `best_set_volume` (a single-set best), so that
 guarantee does not cover it. The UI draws these series client-side (Spec 08.1, Q17): any
 metric may be `null` at a point and is then **skipped, never plotted as zero**, and the
@@ -949,7 +956,7 @@ Planning implications:
   [`docs/specs/`](specs/README.md), each implemented and deployed independently.
   Feature work splits into an API spec and a UI spec (API-first, per R6). Mapping:
   M0 = 01, 02, 04.0, 04.1 · M1 = 03.0, 03.1, 03.2, 03.3, 05.0, 05.1, 05.2, 06.0, 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 · M2 = 07.0, 07.1, 07.2, 08.0, 08.1 ·
-  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3, 10.4, 09.3, 10.5 · M4 = 11–13 · GA = 14 · Production on Google Cloud = 15 · Post-M4 improvements = 07.4 (edit finished workouts, fix workout times; issues #89 / #90) · Design refresh = 17.0–17.3 (outside M1–M4; after M3: visual identity "Stone" 17.0, workout screen "now" 17.1, finish and PR moments 17.2, landing page 17.3; see Q22). (`packages/core` (02) is a
+  M3 = 09, 09.1, 09.2, 10.0, 10.1, 10.2, 10.3, 10.4, 09.3, 10.5 · M4 = 11–13 · GA = 14 · Production on Google Cloud = 15 · Post-M4 improvements = 07.4 (edit finished workouts, fix workout times; issues #89 / #90), 05.3 (three new exercise types, API; issue #104 piece 1, UI spec to follow) · Design refresh = 17.0–17.3 (outside M1–M4; after M3: visual identity "Stone" 17.0, workout screen "now" 17.1, finish and PR moments 17.2, landing page 17.3; see Q22). (`packages/core` (02) is a
   foundation both M0 clients import — it is an M0 prerequisite, not M1 work.)
 
 | Milestone | Contents | Exit criteria |
@@ -1367,6 +1374,8 @@ with rationale so the "why" survives.
 
 - **Q31 — Production on Google Cloud, free tier.** ✅ **Resolved (Spec 15, 2026-10-23; owner decisions D1–D11): the API runs on Cloud Run with the staging image's recipe, scaling to zero (max one instance), and the web on Firebase Hosting (D1); production has its own Neon free project (D2); staging stays on Render (D3); a release is one owner-approved `deploy-prod` run of a commit that passed the commit-checked staging smoke, deployed by image digest (D4); infrastructure is Terraform in `infra/`, applied by hand (D5); a $1 budget alert and the one-instance cap guard the cost (D6); the existing Auth0 tenant gains production applications (D7); no custom domain yet (D8); production starts empty (D9); the production image is the same commit rebuilt by CI, and the gate proves "this commit ran on staging", not byte identity (D10); eight follow-ups are BL-27 – BL-34 (D11).** Rationale: production must answer within seconds from a phone and cost nothing; a scale-to-zero container delivers both with no server to keep alive. Rejected: AWS Lambda (an API rewrite to a function model), always-free VMs (a server to patch; reclaimable), the earlier Render-production and AWS-Fargate plans. Cost: a cold start on the first request after idle (BL-32), no production backups yet (BL-27). See Spec 15 §12.
 
+
+- **Q32 — Three new exercise types.** ✅ **Resolved (Spec 05.3, 2026-10-25, draft; design approved by the owner 2026-10-25, GitHub #104 piece 1): `calories`, `weight_distance` and `weight_duration` join the modalities (D1); calories live in a new whole-number `set_entry.calories` column (D2) that every other type forbids (D3); weight on the weighted types is the total carried (D4); heaviest load reuses `heaviest_weight` through its own gate, so e1RM and set volume still need reps (D5, D6); three new records `max_calories` (`cal`), `max_distance` (`m`), `max_duration` (`s`) (D7), which widens `personal_record.value` to `numeric(14,3)` (D8); the progress series gains three nullable metrics (D9); the reader's `Max Cal …` and leading `20 Cal Row` lines make a Calories guess (D10); one migration, `0015`, expand-only, before the code.** Rationale: the types must be loggable and recordable without reinterpreting any existing column (the Echo Bike mistake) and without letting a new type reach the reps-based math. Rejected: reusing `duration_s` or `reps` for calories, a new `heaviest_load` record type, a generic measure column. No built-in exercises are added here (owner, 2026-10-25; another issue covers them). Cost: `@sin/core`'s shared unions widen, so the API PR carries a handful of behavior-free web compile edits, approved by the owner (D15); `duration` and `distance_duration` still have no records. See Spec 05.3 §12.
 ---
 
 ## Appendix A — Glossary
@@ -1379,8 +1388,8 @@ with rationale so the "why" survives.
   sets for an exercise or session (history `totalVolume`, progress charts, §4.6).
   Counts **working sets only**, of the load modalities, with the same eligibility as
   `best_set_volume` (reps ≥ 1, `weight_kg > 0`); `null`, not 0, when nothing qualifies.
-- **PR** — Personal Record; four kinds (`heaviest_weight`, `best_est_1rm`,
-  `best_set_volume`, `max_reps` — §4.5), tracked per **lineage root** (a global
+- **PR** — Personal Record; seven kinds (`heaviest_weight`, `best_est_1rm`,
+  `best_set_volume`, `max_reps`, `max_calories`, `max_distance`, `max_duration` — §4.5), tracked per **lineage root** (a global
   exercise and the user's forks of it count as one exercise).
 - **Lineage root** — `COALESCE(exercise.forked_from_exercise_id, exercise.id)`; the
   exercise a PR is filed under (§4.5).
