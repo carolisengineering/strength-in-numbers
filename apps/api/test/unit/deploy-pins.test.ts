@@ -46,7 +46,9 @@ describe("15 AC9 — hygiene scan", () => {
     expect(keys).toEqual([]);
   });
   it("no workflow uses pull_request_target (it carries main's ref, which the image publisher trusts — #166)", () => {
-    const uses = walk(join(repoRoot, ".github/workflows")).filter((f) => /pull_request_target/.test(readFileSync(f, "utf8")));
+    // A trigger key (`pull_request_target:` / `- pull_request_target`) or an inline `on:` form; a comment naming it is fine.
+    const trigger = /^\s*(?:-\s*)?pull_request_target\b|^\s*["']?on["']?:.*\bpull_request_target\b/m;
+    const uses = walk(join(repoRoot, ".github/workflows")).filter((f) => trigger.test(readFileSync(f, "utf8")));
     expect(uses.map((f) => f.slice(repoRoot.length))).toEqual([]);
   });
   it("prod.tfvars holds no secret-looking key", () => {
