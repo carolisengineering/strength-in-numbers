@@ -164,6 +164,19 @@ describe("10.6 AC7 — edit", () => {
   });
 });
 
+describe("#171 — typed text is dropped when the sheet closes, not at the next opening", () => {
+  it("Cancel: the closed dialog no longer holds the typed name or note", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: "Open add" }));
+    await user.type(sheet("New section").getByLabelText("Name"), "Finisher");
+    await user.type(sheet("New section").getByLabelText("Note"), "Hard");
+    await user.click(sheet("New section").getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const fields = [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("#section-name, #section-notes")];
+    expect(fields.map((f) => f.value).filter(Boolean)).toEqual([]);
+  });
+});
+
 describe("10.6 AC8 — remove", () => {
   it("nothing is sent until Remove; then one DELETE; the count is tracked; focus on Add section", async () => {
     const removeSection = vi.fn(async () => undefined);
