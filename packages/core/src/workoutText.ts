@@ -360,12 +360,12 @@ const RX_LINE = /^\(?rx(?:'?d)?\b(?=.*[:(\d]|\s*\)?$)/i;
  * AC50: "Max Cal Echo Bike with remaining time" — name the movement, keep the rest as its note. Linear only on
  * collapsed lines (single spaces): the lazy name before an optional suffix is quadratic over a long whitespace run.
  */
-const MAX_LINE = /^(max\s+(?:cal|calories|reps))\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
-/** Item 70: a bare "Max" is stripped only with the time limit ("Max Burpees with remaining time"); "Max Hang" is a name. */
-const MAX_REMAINING_LINE = /^(max)\s+(\S.*?)\s+(with\s+(?:the\s+)?remaining\s+time)$/i;
+const MAX_LINE = /^(max(?:\s+(?:cal|calories|reps))?)\s+(\S.*?)(?:\s+(with\s+(?:the\s+)?remaining\s+time))?$/i;
 /** AC51: "10 Tuckups + 15 Hollow Rocks". */
 const PLUS = /\s\+\s/;
 const TRAILING_PLUS = /\s?\+$/;
+/** "Max Cal", "with remaining time" → "Max Cal, with remaining time". */
+const maxNote = (max: RegExpExecArray) => [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
 const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
@@ -496,10 +496,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
-    const max = MAX_LINE.exec(raw) ?? MAX_REMAINING_LINE.exec(raw);
+    // "Max" is a rep count, never part of a name: "Max Hang" is Hang (owner, 2026-10-24; replaces item 70's fix).
+    const max = MAX_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
-      const note = [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
-      pushMovement(s, s.run, max[2]!, null, [note]);
+      pushMovement(s, s.run, max[2]!, null, [maxNote(max)]);
       return "movement";
     }
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
@@ -509,9 +509,15 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "movement";
   }
 
-  // 8. A bare bullet with a rep form is a rowless item (AC10).
+  // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50).
   if (BULLET.test(line)) {
-    const form = repFormOf(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const text = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
+    const max = MAX_LINE.exec(text);
+    if (max && isMovementText(max[2]!)) {
+      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], run: null });
+      return "movement";
+    }
+    const form = repFormOf(text);
     if (!form) return null;
     pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null });
     return "movement";
