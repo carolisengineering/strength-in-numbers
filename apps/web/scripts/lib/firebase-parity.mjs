@@ -9,16 +9,6 @@ const GLOB = { "/*": "**", "/assets/*": "/assets/**" };
 const REVALIDATE = "public, max-age=0, must-revalidate";
 const RELAXATIONS = ["unsafe-inline", "unsafe-eval", "blob:"];
 
-/** `key = "value"` lines of a `.tfvars` file (string values only; comments ignored). */
-export function parseTfvars(text) {
-  const vars = {};
-  for (const line of text.split("\n")) {
-    const m = line.match(/^\s*([a-z_][a-z0-9_]*)\s*=\s*"([^"]*)"/i);
-    if (m) vars[m[1]] = m[2];
-  }
-  return vars;
-}
-
 /** The si-web-staging `headers:` entries as `{ path, name, value }`. */
 function renderHeaders(renderYaml) {
   const block = renderYaml.slice(renderYaml.indexOf("name: si-web-staging"));

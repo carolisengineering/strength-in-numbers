@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — a plain .mjs module of the web package, imported by path (spec §10)
-import { checkFirebaseParity, parseTfvars } from "../../../web/scripts/lib/firebase-parity.mjs";
+import { checkFirebaseParity } from "../../../web/scripts/lib/firebase-parity.mjs";
+import { parseTfvars } from "../../../web/scripts/lib/prod-ids.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const RENDER_YAML = readFileSync(join(ROOT, "render.yaml"), "utf8");

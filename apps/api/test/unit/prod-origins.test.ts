@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { placeholderIds, prodOrigins } from "../../scripts/lib/prod-ids.js";
+import { placeholderIds, prodOrigins } from "../../../web/scripts/lib/prod-ids.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${repoRoot}${rel}`, "utf8");
@@ -23,6 +23,20 @@ describe("15 AC24 — one source of production origins", () => {
     const tf = readdirSync(`${repoRoot}infra`).filter((f) => f.endsWith(".tf")).map((f) => read(`infra/${f}`)).join("\n");
     expect(tf).toMatch(/name\s*=\s*"WEB_ORIGIN"\s*\n\s*value\s*=\s*"https:\/\/\$\{var\.hosting_site_id\}\.web\.app"/);
     expect(tf).not.toMatch(/\.web\.app"(?<!\$\{var\.hosting_site_id\}\.web\.app")/);
+  });
+});
+
+describe("15 AC24 — the origins are derived in one module (#167)", () => {
+  const scripts = ["apps/api/scripts", "apps/api/scripts/lib", "apps/web/scripts", "apps/web/scripts/lib"].flatMap((d) =>
+    readdirSync(`${repoRoot}${d}`).filter((f) => /\.(ts|mjs)$/.test(f)).map((f) => `${d}/${f}`),
+  );
+  it("only prod-ids.mjs builds a .run.app or .web.app origin or parses a tfvars file", () => {
+    const builders = scripts.filter((f) => /\.(?:run|web)\.app`|function parseTfvars/.test(read(f)));
+    expect(builders).toEqual(["apps/web/scripts/lib/prod-ids.mjs"]);
+  });
+  it("check-prod-ids.ts and assert-firebase-json.mjs import it", () => {
+    expect(read("apps/api/scripts/check-prod-ids.ts")).toContain('from "../../web/scripts/lib/prod-ids.mjs"');
+    expect(read("apps/web/scripts/assert-firebase-json.mjs")).toContain('from "./lib/prod-ids.mjs"');
   });
 });
 

@@ -102,6 +102,23 @@ describe("15 AC15 / AC18 / AC19 / AC20 — the deploy job's order", () => {
   it("a summary runs whatever happened", () => expect(steps().at(-1)!.if).toBe("always()"));
 });
 
+describe("15 AC21 — an image removed during the approval wait fails with its reason (#164)", () => {
+  const steps = () => prod().jobs.deploy!.steps;
+  it("re-checks the gate's digest after the deployer's Google auth, before the API deploy", () => {
+    const s = steps();
+    const gcloud = indexOf(s, (x) => (x.uses ?? "").startsWith("google-github-actions/setup-gcloud@"));
+    const check = indexOf(s, (x) => /gcloud artifacts docker images describe "\$IMAGE"/.test(x.run ?? ""));
+    const api = indexOf(s, (x) => /gcloud run deploy/.test(x.run ?? ""));
+    expect([gcloud >= 0, gcloud < check, check < api]).toEqual([true, true, true]);
+    expect(s[check]!.env).toEqual({ IMAGE: "${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}" });
+  });
+  it("names the cleanup policy and fails the job", () => {
+    const run = steps().find((x) => /gcloud artifacts docker images describe/.test(x.run ?? ""))!.run!;
+    expect(run).toMatch(/::error::.*cleanup policy/);
+    expect(run).toMatch(/exit 1/);
+  });
+});
+
 describe("15 D13 — CI never applies Terraform", () => {
   it("no terraform apply in .github/", () => {
     const dir = `${repoRoot}.github/workflows/`;

@@ -50,6 +50,11 @@ variable "github_repository" {
   description = "owner/repo; the only repository the CI identity accepts."
 }
 
+variable "github_repository_id" {
+  type        = string
+  description = "The repository's numeric id (public). The CI identity requires it too, so a re-created repository with the same name is refused."
+}
+
 variable "billing_account_id" {
   type        = string
   description = "The billing account the $1 budget watches."

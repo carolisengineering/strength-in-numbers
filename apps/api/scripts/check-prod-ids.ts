@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { placeholderIds, prodOrigins } from "./lib/prod-ids.js";
+import { placeholderIds, prodOrigins } from "../../web/scripts/lib/prod-ids.mjs";
 
 const text = readFileSync(fileURLToPath(new URL("../../../infra/prod.tfvars", import.meta.url)), "utf8");
 const strict = process.argv.includes("--strict");

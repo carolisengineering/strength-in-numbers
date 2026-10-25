@@ -101,6 +101,17 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # #164: the gate saw the image before the approval pause; merges during the wait can push it past the
+      # cleanup policy. Re-check now, so a missing image fails with its reason, not gcloud's deploy error.
+      - name: The gate's image still exists
+        env:
+          IMAGE: ${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}
+        run: |
+          if ! out=$(gcloud artifacts docker images describe "$IMAGE" --format='value(image_summary.digest)' 2>&1); then
+            echo "$out"
+            echo "::error::$IMAGE is no longer in Artifact Registry — removed by the 5-image cleanup policy while this release waited for approval (or see gcloud's message above). Nothing was deployed; dispatch deploy-prod again with a commit whose image is still kept."
+            exit 1
+          fi
       # AC18: the API first (one release ahead of the web, DESIGN §6), by digest.
       - name: Deploy the API by digest
         run: >-

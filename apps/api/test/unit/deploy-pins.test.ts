@@ -14,6 +14,18 @@ function walk(dir: string): string[] {
   });
 }
 
+describe("15 AC6 — the CI identity accepts this repository by name and numeric id (#165)", () => {
+  const tfvars = readFileSync(join(repoRoot, "infra/prod.tfvars"), "utf8");
+  it("prod.tfvars carries the repository's numeric id", () => expect(tfvars).toMatch(/^github_repository_id\s*=\s*"\d+"/m));
+  it("the provider's attribute condition requires both", () => {
+    const identity = readFileSync(join(repoRoot, "infra/identity.tf"), "utf8");
+    const condition = /attribute_condition\s*=\s*"([^\n]*)"\n/.exec(identity)?.[1] ?? "";
+    expect(condition).toContain("assertion.repository == '${var.github_repository}'");
+    expect(condition).toContain("assertion.repository_id == '${var.github_repository_id}'");
+    expect(condition).toContain("&&");
+  });
+});
+
 describe("15 AC9 — hygiene scan", () => {
   it("every workflow uses: is pinned to a 40-hex commit SHA", () => {
     const unpinned = walk(join(repoRoot, ".github/workflows")).flatMap((f) =>
@@ -32,6 +44,10 @@ describe("15 AC9 — hygiene scan", () => {
     expect(tracked.filter((f) => /\.tfstate|\.tfplan$|\.pem$/.test(f) || (f.endsWith(".tfvars") && f !== "infra/prod.tfvars"))).toEqual([]);
     const keys = tracked.filter((f) => existsSync(join(repoRoot, f)) && /"private_key"\s*:/.test(readFileSync(join(repoRoot, f), "utf8")));
     expect(keys).toEqual([]);
+  });
+  it("no workflow uses pull_request_target (it carries main's ref, which the image publisher trusts — #166)", () => {
+    const uses = walk(join(repoRoot, ".github/workflows")).filter((f) => /pull_request_target/.test(readFileSync(f, "utf8")));
+    expect(uses.map((f) => f.slice(repoRoot.length))).toEqual([]);
   });
   it("prod.tfvars holds no secret-looking key", () => {
     const names = [...readFileSync(join(repoRoot, "infra/prod.tfvars"), "utf8").matchAll(/^\s*([a-z_0-9]+)\s*=/gim)].map((m) => m[1]!);
