@@ -72,7 +72,10 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function EditWorkoutScreen({ section }: { section: SummarySection }) {
   const home = SECTION_HOME[section];
   const { id = "" } = useParams();
-  const detail = useEditableWorkout(id);
+  // #160: set while Delete workout is in flight. The detail stops reading (a focus refetch would find it, or 404 once
+  // the delete has removed it from the cache), and once it is gone the screen draws nothing until the navigation lands.
+  const [leaving, setLeaving] = useState(false);
+  const detail = useEditableWorkout(id, { enabled: !leaving });
   const [vanished, setVanished] = useState(false);
 
   useEffect(() => {
@@ -86,6 +89,7 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
   // Once the workout is gone it stays gone: no write is attempted afterwards (AC20).
   const onVanished = useCallback(() => setVanished(true), []);
 
+  if (leaving && detail.data === undefined) return null;
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
   const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
@@ -120,6 +124,7 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
       section={section}
       refreshFailed={failure !== null}
       onVanished={onVanished}
+      onLeaving={setLeaving}
     />
   );
 }
@@ -130,12 +135,15 @@ function EditBody({
   section,
   refreshFailed,
   onVanished,
+  onLeaving,
 }: {
   workout: WorkoutDetail;
   endedAt: string;
   section: SummarySection;
   refreshFailed: boolean;
   onVanished: () => void;
+  /** #160: true while Delete workout is in flight (cleared again if it fails). */
+  onLeaving: (leaving: boolean) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -185,11 +193,13 @@ function EditBody({
     deleteLock.current = true;
     if (fromDialog) track("workout_edit_refused", { reason: "would_be_empty", choice: "deleted" });
     setBanner(null);
+    onLeaving(true);
     try {
       await deleteWorkout.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setLastSetOpen(false);
       void navigate(home, { replace: true });
     } catch (error) {
+      onLeaving(false);
       setLastSetOpen(false);
       reportUnexpected("discard", error);
       const failure = resolveEditFailure("delete-workout", error);
