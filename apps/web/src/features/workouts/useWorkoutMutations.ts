@@ -24,6 +24,7 @@ import { useOutbox } from "./outbox/OutboxContext";
 import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
+import { guardReads, rereadIfStale, type ReadGuard } from "./readGuard";
 import { reportUnexpected } from "./reportUnexpected";
 import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
@@ -46,21 +47,15 @@ export function useIsSetWritePending(): boolean {
 }
 
 /**
- * Before a set write, cancel any in-flight read of the active workout so a stale response cannot land
- * on top of the write and erase it (§6.2, AC11). Remember whether one was actually interrupted: it
- * may have been the follow-up refetch of an add / move / remove, which `refetchQueries` swallows the
- * cancellation of — the new card would then never appear until the next focus.
+ * Before a set write, cancel any in-flight read of the active workout so a stale response cannot land on top of the
+ * write and erase it (§6.2, AC11), and watch for a read that starts while it is pending (#154). Either is re-read
+ * once the write settles: an interrupted one may have been the follow-up refetch of an add / move / remove, which
+ * `refetchQueries` swallows the cancellation of — the new card would then never appear until the next focus.
+ * Not awaited: logging must not wait.
  */
-async function cancelActiveReads(queryClient: QueryClient): Promise<{ interrupted: boolean }> {
-  const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;
-  await queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active });
-  return { interrupted };
-}
-
-/** Re-read once the set write has landed, if it interrupted a read. Not awaited: logging must not wait. */
-function refetchIfInterrupted(queryClient: QueryClient, context: { interrupted: boolean } | undefined): void {
-  if (context?.interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
-}
+const guardActiveReads = (queryClient: QueryClient): Promise<ReadGuard> => guardReads(queryClient, WORKOUT_KEYS.active);
+const rereadActiveIfStale = (queryClient: QueryClient, guard: ReadGuard | undefined): void =>
+  rereadIfStale(queryClient, WORKOUT_KEYS.active, guard);
 
 const isNotFound = (error: unknown): boolean => error instanceof ApiError && error.status === 404;
 
@@ -217,8 +212,8 @@ export function useCreateSet(): UseMutationResult<SetEntry, Error, CreateSetVars
     networkMode: "always",
     mutationFn: ({ workoutExerciseId, body }) => client.createSet(workoutExerciseId, body),
     // Stop an in-flight refetch landing on top of the write and erasing it (§6.2, AC11).
-    onMutate: () => cancelActiveReads(queryClient),
-    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
+    onMutate: () => guardActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, guard) => rereadActiveIfStale(queryClient, guard),
     onSuccess: (set, { modality, msToLog, edited }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetUpserted(d, set) : d));
       track("set_logged", { modality, setType: set.setType, edited, msToLog });
@@ -237,8 +232,8 @@ export function useUpdateSet(): UseMutationResult<
     mutationKey: SET_MUTATION_KEY,
     networkMode: "always",
     mutationFn: ({ id, body }) => client.updateSet(id, body),
-    onMutate: () => cancelActiveReads(queryClient),
-    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
+    onMutate: () => guardActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, guard) => rereadActiveIfStale(queryClient, guard),
     onSuccess: (set, { modality }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetUpserted(d, set) : d));
       track("set_edited", { modality });
@@ -253,8 +248,8 @@ export function useDeleteSet(): UseMutationResult<void, Error, { id: string; mod
     mutationKey: SET_MUTATION_KEY,
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteSet(id)),
-    onMutate: () => cancelActiveReads(queryClient),
-    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
+    onMutate: () => guardActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, guard) => rereadActiveIfStale(queryClient, guard),
     onSuccess: (_void, { id, modality }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetRemoved(d, id) : d));
       track("set_deleted", { modality });
@@ -273,8 +268,8 @@ export function useSetExerciseNote(): UseMutationResult<WorkoutExercise, Error, 
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id, notes }) => client.setExerciseNote(id, notes),
-    onMutate: () => cancelActiveReads(queryClient),
-    onSettled: (_data, _error, _variables, context) => refetchIfInterrupted(queryClient, context),
+    onMutate: () => guardActiveReads(queryClient),
+    onSettled: (_data, _error, _variables, guard) => rereadActiveIfStale(queryClient, guard),
     onSuccess: (exercise) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withExerciseNotes(d, exercise) : d));
     },
