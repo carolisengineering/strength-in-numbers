@@ -41,9 +41,9 @@ resource "google_service_account" "deployer" {
 }
 
 # Who may act as each account.
-# The publisher trusts any run whose ref is main. A `pull_request_target` run carries the BASE branch's ref
-# (main) while a fork's pull request can steer it, so it would match this binding: no workflow may use that
-# trigger (deploy-pins.test.ts fails if one does, #166).
+# The publisher trusts any run whose ref is main. A `pull_request_target`, `workflow_run` or `issue_comment`
+# run carries main's ref while someone outside can start or steer it, so it would match this binding: workflows
+# may trigger only on push, pull_request or workflow_dispatch (deploy-pins.test.ts fails otherwise, #166).
 resource "google_service_account_iam_member" "publisher_from_main" {
   service_account_id = google_service_account.publisher.name
   role               = "roles/iam.workloadIdentityUser"

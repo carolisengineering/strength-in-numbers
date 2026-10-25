@@ -53,6 +53,10 @@ variable "github_repository" {
 variable "github_repository_id" {
   type        = string
   description = "The repository's numeric id (public). The CI identity requires it too, so a re-created repository with the same name is refused."
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be the numeric id from `gh api repos/<owner>/<repo> --jq .id`."
+  }
 }
 
 variable "billing_account_id" {

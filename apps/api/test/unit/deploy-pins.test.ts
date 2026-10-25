@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 function walk(dir: string): string[] {
@@ -45,11 +46,18 @@ describe("15 AC9 — hygiene scan", () => {
     const keys = tracked.filter((f) => existsSync(join(repoRoot, f)) && /"private_key"\s*:/.test(readFileSync(join(repoRoot, f), "utf8")));
     expect(keys).toEqual([]);
   });
-  it("no workflow uses pull_request_target (it carries main's ref, which the image publisher trusts — #166)", () => {
-    // A trigger key (`pull_request_target:` / `- pull_request_target`) or an inline `on:` form; a comment naming it is fine.
-    const trigger = /^\s*(?:-\s*)?pull_request_target\b|^\s*["']?on["']?:.*\bpull_request_target\b/m;
-    const uses = walk(join(repoRoot, ".github/workflows")).filter((f) => trigger.test(readFileSync(f, "utf8")));
-    expect(uses.map((f) => f.slice(repoRoot.length))).toEqual([]);
+  // #166: the image publisher trusts any run whose ref is main. pull_request_target, workflow_run,
+  // issue_comment and the other repository-event triggers run with main's ref while someone outside can start
+  // or steer them, so only these three are allowed (push to main, a PR's own ref, an owner's dispatch).
+  it("every workflow triggers only on push, pull_request or workflow_dispatch (#166)", () => {
+    const allowed = new Set(["push", "pull_request", "workflow_dispatch"]);
+    const triggersOf = (on: unknown): string[] => (typeof on === "string" ? [on] : Array.isArray(on) ? on.map(String) : Object.keys(on ?? {}));
+    const bad = walk(join(repoRoot, ".github/workflows")).flatMap((f) => {
+      const triggers = triggersOf((parse(readFileSync(f, "utf8")) as { on?: unknown }).on);
+      expect(triggers.length).toBeGreaterThan(0);
+      return triggers.filter((t) => !allowed.has(t)).map((t) => `${f.slice(repoRoot.length)}: ${t}`);
+    });
+    expect(bad).toEqual([]);
   });
   it("prod.tfvars holds no secret-looking key", () => {
     const names = [...readFileSync(join(repoRoot, "infra/prod.tfvars"), "utf8").matchAll(/^\s*([a-z_0-9]+)\s*=/gim)].map((m) => m[1]!);

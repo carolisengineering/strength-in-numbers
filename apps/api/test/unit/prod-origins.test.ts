@@ -27,11 +27,13 @@ describe("15 AC24 — one source of production origins", () => {
 });
 
 describe("15 AC24 — the origins are derived in one module (#167)", () => {
-  const scripts = ["apps/api/scripts", "apps/api/scripts/lib", "apps/web/scripts", "apps/web/scripts/lib"].flatMap((d) =>
-    readdirSync(`${repoRoot}${d}`).filter((f) => /\.(ts|mjs)$/.test(f)).map((f) => `${d}/${f}`),
+  const scripts = ["apps/api/scripts", "apps/web/scripts"].flatMap((d) =>
+    readdirSync(`${repoRoot}${d}`, { recursive: true, encoding: "utf8" })
+      .filter((f) => !f.split("/").includes("node_modules") && /\.(?:[cm]?[jt]s)$/.test(f) && !f.endsWith(".d.mts"))
+      .map((f) => `${d}/${f}`),
   );
-  it("only prod-ids.mjs builds a .run.app or .web.app origin or parses a tfvars file", () => {
-    const builders = scripts.filter((f) => /\.(?:run|web)\.app`|function parseTfvars/.test(read(f)));
+  it("only prod-ids.mjs names a .run.app or .web.app origin or parses a tfvars file", () => {
+    const builders = scripts.filter((f) => /\.(?:run|web)\.app\b|function parseTfvars/.test(read(f)));
     expect(builders).toEqual(["apps/web/scripts/lib/prod-ids.mjs"]);
   });
   it("check-prod-ids.ts and assert-firebase-json.mjs import it", () => {

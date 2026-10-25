@@ -6,7 +6,7 @@ import { parse } from "yaml";
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${repoRoot}${rel}`, "utf8");
 type Step = { id?: string; name?: string; uses?: string; run?: string; if?: string; env?: Record<string, string>; with?: Record<string, unknown> };
-type Job = { needs?: string | string[]; if?: string; environment?: string; permissions?: Record<string, string>; steps: Step[]; outputs?: Record<string, string> };
+type Job = { needs?: string | string[]; if?: string; environment?: string; env?: Record<string, string>; permissions?: Record<string, string>; steps: Step[]; outputs?: Record<string, string> };
 type Workflow = { on: Record<string, unknown>; concurrency?: unknown; jobs: Record<string, Job> };
 const ci = () => parse(read(".github/workflows/ci.yml")) as Workflow;
 const prod = () => parse(read(".github/workflows/deploy-prod.yml")) as Workflow;
@@ -71,7 +71,8 @@ describe("15 AC15 / AC18 / AC19 / AC20 — the deploy job's order", () => {
   });
   it("deploys the API by digest, never a tag, and asserts the revision", () => {
     const run = steps().map((s) => s.run ?? "").join("\n");
-    expect(run).toContain("@${{ needs.gate.outputs.digest }}");
+    expect(prod().jobs.deploy!.env).toEqual({ IMAGE: "${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}" });
+    expect(steps().find((s) => /gcloud run deploy/.test(s.run ?? ""))!.run).toMatch(/--image "\$IMAGE"/);
     expect(run).not.toMatch(/AR_IMAGE \}\}:/);
     expect(run).toMatch(/gcloud run services describe/);
   });
@@ -110,11 +111,13 @@ describe("15 AC21 — an image removed during the approval wait fails with its r
     const check = indexOf(s, (x) => /gcloud artifacts docker images describe "\$IMAGE"/.test(x.run ?? ""));
     const api = indexOf(s, (x) => /gcloud run deploy/.test(x.run ?? ""));
     expect([gcloud >= 0, gcloud < check, check < api]).toEqual([true, true, true]);
-    expect(s[check]!.env).toEqual({ IMAGE: "${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}" });
+    // The job-level IMAGE (see AC18's test) is the one reference both steps use.
+    expect(s[check]!.env).toBeUndefined();
   });
-  it("names the cleanup policy and fails the job", () => {
+  it("names the cleanup policy only for a not-found answer, and fails the job either way", () => {
     const run = steps().find((x) => /gcloud artifacts docker images describe/.test(x.run ?? ""))!.run!;
-    expect(run).toMatch(/::error::.*cleanup policy/);
+    expect(run).toMatch(/\*not_found\* \| \*"not found"\*\) echo "::error::.*cleanup policy/);
+    expect(run).toMatch(/\*\) echo "::error::could not look up/);
     expect(run).toMatch(/exit 1/);
   });
 });
