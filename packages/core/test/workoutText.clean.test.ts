@@ -62,12 +62,24 @@ describe("10.4 AC42 — a clock line may carry one icon", () => {
 });
 
 describe("10.4 AC43 — icon and count lines are furniture", () => {
-  it.each(["口", "凸", "الهه", "→", "•0ll", "•ll"])("%s is dropped and counted", (line) => {
+  it.each(["→", "•0ll", "•ll", "★"])("%s is dropped and counted anywhere", (line) => {
     expect(isIconLine(line)).toBe(true);
     const r = cleanWorkoutText(`Intro\n${line}\nNext`);
     expect(r.lines).toEqual(["Intro", "Next"]);
     expect(r.furniture).toBe(1);
   });
+  it.each([
+    ["before a tab-bar line", "Intro\nNext\n{}\nHome"],
+    ["after a tab-bar line", "Intro\nNext\nWorkouts\n{}\nSocial"],
+    ["within two lines of the clock", "11:09\nIntro\n{}\nNext"],
+  ])("a short line of letters in another script is an icon %s (item 71)", (_, text) => {
+    for (const icon of ["口", "凸", "الهه"]) {
+      expect(isIconLine(icon)).toBe(false);
+      expect(cleanWorkoutText(text.replace("{}", icon)).lines).not.toContain(icon);
+    }
+  });
+  it.each(["Жим", "スクワット", "الهه"])("%s mid-list is someone's exercise, not an icon (item 71)", (line) =>
+    expect(cleanWorkoutText(`11:08\nStrength\n3 Sets:\n10 Push-ups\n${line}\n10 Squats`).lines).toContain(line));
   it.each(["Søren Lunge", "Row", "10", "I", "Lo", "100m", "***", "---", "+", "|"])("%s is kept (Review Focus 2; plain ASCII marks are separators, not icons)", (line) => {
     expect(isIconLine(line)).toBe(false);
     expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(line);
@@ -83,9 +95,18 @@ describe("10.4 AC43 — icon and count lines are furniture", () => {
 describe("10.4 AC44 — the overlap tolerates OCR look-alikes", () => {
   it("gos and g0s share a key; different numbers do not (Review Focus 3)", () => {
     expect(ocrKey("In a gos Time window,")).toBe(ocrKey("In a g0s Time window,"));
-    expect(ocrKey("In a 90s Time window,")).toBe(ocrKey("In a gos  time window,"));
+    expect(ocrKey("In a 90s Time window,")).toBe(ocrKey("In a gos  Time window,"));
     expect(ocrKey("Set 1")).not.toBe(ocrKey("Set 2"));
     expect(ocrKey("10 Reps")).not.toBe(ocrKey("12 Reps"));
+  });
+  it("case is kept except for letters whose two cases look alike (item 72)", () => {
+    expect(ocrKey("1:30 on / 1:30 REST")).not.toBe(ocrKey("1:30 on / 1:30 Rest"));
+    expect(ocrKey("Cross Over")).toBe(ocrKey("CrOss over"));
+    expect(ocrKey("90S REST")).toBe(ocrKey("GOS REST"));
+    expect(ocrKey("1 LEG")).toBe(ocrKey("L LEG"));
+    const r = cleanWorkoutText("11:08\nIntro\n1:30 on / 1:30 REST\n11:09\n1:30 on / 1:30 Rest\nNext");
+    expect(r.lines).toEqual(["Intro", "1:30 on / 1:30 REST", "1:30 on / 1:30 Rest", "Next"]);
+    expect(r.overlap).toBe(0);
   });
   it("a 6-line overlap differing by one look-alike is removed from the second screenshot; the first's text is kept", () => {
     const a = ["Head line", "10x 90s on / 90s Rest", "10 Sets, 1 Set Every 3:00", "90s on / 90s Rest", "In a gos Time window,", "200 Meter Run+"];
@@ -111,5 +132,19 @@ describe("10.4 AC45 — tagged headers survive cleaning", () => {
     expect(r.lines).toEqual(["Intro line", "Accessory", "3 Sets:"]);
     expect(r.tagged).toEqual([false, true, false]);
   });
+  it("a cut-off header dropped from the first screenshot hands its tag to the full line that stays (item 75)", () => {
+    const r = cleanWorkoutText("11:08\nIntro\nFront Rack\nREPS\n11:09\nFront Rack Carry\n3 Sets:");
+    expect(r.lines).toEqual(["Intro", "Front Rack Carry", "3 Sets:"]);
+    expect(r.tagged).toEqual([false, true, false]);
+  });
+  it("the hand-off also works when more lines overlap before the cut-off one (item 75)", () => {
+    const r = cleanWorkoutText("11:08\nIntro\nShared line\nFront Rack\nREPS\n11:09\nShared line\nFront Rack Carry\n3 Sets:");
+    expect(r.lines).toEqual(["Intro", "Shared line", "Front Rack Carry", "3 Sets:"]);
+    expect(r.tagged).toEqual([false, false, true, false]);
+  });
+  it("a status bar read as several icon lines is dropped whole (code review)", () =>
+    expect(cleanWorkoutText("11:08\n•ll\n令\n口\nStrength\n3 Sets:").lines).toEqual(["Strength", "3 Sets:"]));
+  it("a short non-Latin exercise name right under the clock is dropped: the accepted cost of the status-bar rule (item 71)", () =>
+    expect(cleanWorkoutText("11:08\nЖим\n3 Sets:").lines).toEqual(["3 Sets:"]));
   it("Log result does not tag the line above it", () => expect(cleanWorkoutText("Intro\nLog result").tagged).toEqual([false]));
 });

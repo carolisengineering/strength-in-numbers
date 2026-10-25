@@ -193,8 +193,6 @@ describe("10.4 AC50 — interval movements", () => {
     expect(item).toMatchObject({ name: "Echo Bike", noteLines: ["Max Cal, with remaining time"] });
     expect(rowsOf(item)).toEqual(tenNull);
   });
-  it.each([["Max Burpees", "Burpees", "Max"], ["Max Reps Pull-ups", "Pull-ups", "Max Reps"]])("%s", (line, name, note) =>
-    expect(run(line)).toMatchObject({ name, noteLines: [note] }));
 });
 
 describe("10.4 AC51 — A + B is two exercises", () => {
@@ -248,4 +246,37 @@ describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
   });
   it("a *** separator still ends the run", () =>
     expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => i.name)).toEqual(["Pushups"]));
+});
+
+describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74 and the owner's Max ruling", () => {
+  const run = (line: string) => read(['Workout: "Go"', "REPS", "10 Sets, 1 Set Every 3:00", line]).items[0];
+  it.each(["Rx:", "Rx", "RX: 95/65 lb", "(Rx)", "Rx (95/65 lb)", "Rx Weights: 95/65", "Rx'd: 95/65"])("%s is a note that keeps the run open; the movements after it are exercises (item 69)", (label) => {
+    const r = read(["Strength", "REPS", "3 Rounds:", label, "10 Thrusters", "10 Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.notes).toBe(label);
+  });
+  it("Rx with no run open is a note, not a label: a later lead-in still reads (item 69)", () => {
+    const r = read(["Strength", "REPS", "Rx:", "3 Sets:", "10 Curl"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Curl"]);
+    expect(r.sections[0]!.notes).toBe("Rx:");
+  });
+  it("a bulleted line with no run drops its trailing + too (item 74, code review)", () =>
+    expect(read(["Strength", "REPS", "- 10 Push-ups +"]).items.map((i) => i.name)).toEqual(["Push-ups"]));
+  it("Rx Bar Hang is a movement, not an Rx line (item 69)", () =>
+    expect(read(["Strength", "REPS", "3 Sets:", "Rx Bar Hang"]).items.map((i) => i.name)).toEqual(["Rx Bar Hang"]));
+  it.each([["Max Hang", "Hang"], ["Max Effort Sprint", "Effort Sprint"], ["Max Burpees", "Burpees"], ["MAX Wall Balls", "Wall Balls"]])("%s: Max is a rep count, so it always leaves the name (owner, 2026-10-24)", (line, name) =>
+    expect(read(["Strength", "REPS", "3 Sets:", line]).items[0]).toMatchObject({ name, noteLines: ["MAX Wall Balls" === line ? "MAX" : "Max"] }));
+  it.each([
+    ["Max Burpees with remaining time", "Burpees", "Max, with remaining time"],
+    ["Max Cal Row", "Row", "Max Cal"],
+    ["Max Calories Ski", "Ski", "Max Calories"],
+    ["Max Reps Pull-ups", "Pull-ups", "Max Reps"],
+  ])("%s strips the Max form into the note", (line, name, note) => expect(run(line)).toMatchObject({ name, noteLines: [note] }));
+  it("a bulleted Max line with no run is a rowless exercise (owner, 2026-10-24)", () =>
+    expect(read(["Strength", "REPS", "- Max Burpees"]).items).toMatchObject([{ name: "Burpees", rows: null, noteLines: ["Max"] }]));
+  it.each([
+    ["Max Cal Echo Bike +", ["Echo Bike"]],
+    ["10 Tuckups + 15 Hollow Rocks +", ["Tuckups", "Hollow Rocks"]],
+  ])("a trailing + is dropped before every branch: %s (item 74)", (line, names) =>
+    expect(read(["Accessory", "NO SCORE", "3 Sets:", line]).items.map((i) => i.name)).toEqual(names));
 });
