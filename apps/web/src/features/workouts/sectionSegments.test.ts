@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
-import { sectionSegments } from "./sectionSegments";
+import { OTHER_EXERCISES_HEADING, sectionSegments } from "./sectionSegments";
 import { supersetRows } from "./supersetRows";
 
 type Sec = { name: string; notes?: string | null };
@@ -63,6 +63,23 @@ describe("10.3 AC11 — segment keys are stable when an earlier run disappears (
   it("keys are unique within one render, including a split section and several loose runs", () => {
     const all = keys([ex("x"), ex("a", 0), ex("y"), ex("c", 0), ex("z")], [{ name: "A" }]).map(([, k]) => k);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe("#156 — adding a section keeps the trailing 'Other exercises' key", () => {
+  it("a new (empty, last) section lands before the loose tail; the tail's key does not change", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "New" }], exercises: [ex("a", 0), ex("x"), ex("y")] });
+    const tailKey = (sections: typeof detail.sections) => sectionSegments(supersetRows(detail.exercises), sections).at(-1)!;
+    const before = tailKey(detail.sections.slice(0, 1));
+    const after = tailKey(detail.sections);
+    expect([before.heading, after.heading]).toEqual([OTHER_EXERCISES_HEADING, OTHER_EXERCISES_HEADING]);
+    expect(after.key).toBe(before.key);
+  });
+  it("a loose run between two sections still keys by the section before it", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "B" }], exercises: [ex("a", 0), ex("x"), ex("b", 1), ex("y")] });
+    const keys = sectionSegments(supersetRows(detail.exercises), detail.sections).map((s) => s.key);
+    expect(keys.filter((k) => k.startsWith("loose-after-"))).toHaveLength(1);
+    expect(keys.at(-1)).toBe("loose-tail");
   });
 });
 
