@@ -356,7 +356,8 @@ const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|ca
 const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
-const REST_LINE = /^rest\b/i;
+/** A line starting with Rest ("Rest 90s", "Rest as needed"); not the rest-pause technique, which names a movement (#155). */
+const REST_LINE = /^rest\b(?![\s-]*pause\b)/i;
 /**
  * Item 69: "Rx", "Rx:", "Rx (95/65 lb)", "Rx'd: 95/65" name the prescribed version, so the movements after it are the
  * workout. A name that only starts with Rx ("Rx Bar Hang": no colon, parenthesis or digit) is a movement.
@@ -418,8 +419,18 @@ function isMovementText(text: string): boolean {
   );
 }
 
+/**
+ * #169: a name with no letter or digit ("!!!", a section title used by its set lines) normalizes to "", which would
+ * make every such name one Check card. It gets its own key per written form instead; a real key is only letters and
+ * digits, so the ":" keeps the two kinds apart.
+ */
+function nameKeyOf(name: string): string {
+  const key = normalizeExerciseName(name);
+  return key === "" ? `written:${name}` : key;
+}
+
 function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">): void {
-  s.items.push({ ...item, nameKey: normalizeExerciseName(item.name), section: s.section });
+  s.items.push({ ...item, nameKey: nameKeyOf(item.name), section: s.section });
 }
 
 /** One movement under an open run (AC8–AC11): rows from the run, the rep form or leading distance as its note. */
@@ -491,7 +502,12 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null) {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
-    const raw = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
+    let raw = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
+    // #155: a movement with a rep form keeps its place when the line ends in a comma ("10 Push-ups,"); the comma goes.
+    if (raw.endsWith(",")) {
+      const bare = raw.slice(0, -1).trimEnd();
+      if (isMovementText(bare) && repFormOf(bare) !== null) raw = bare;
+    }
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
     if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
