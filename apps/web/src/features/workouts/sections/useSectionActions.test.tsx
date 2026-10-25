@@ -341,7 +341,7 @@ describe("10.6 AC13 / AC14 — failures", () => {
 });
 
 describe("10.6 AC9 / AC10 — move", () => {
-  it("one { sectionId } write; the announcement; onMoved with the id", async () => {
+  it("one { sectionId } write; the announcement; onMoved with the id and the target section (#157)", async () => {
     const setExerciseSection = vi.fn(async (id: string, sectionId: string | null) =>
       WorkoutExerciseSchema.parse({ ...baseWorkout().exercises[2]!, id, sectionId }),
     );
@@ -350,7 +350,7 @@ describe("10.6 AC9 / AC10 — move", () => {
     const row = workout.exercises.find((e) => e.exerciseNameSnapshot === "Row Erg")!;
     await act(async () => actions().setExerciseSection(bench, workout.sections[0]!.id));
     expect(deps.announce).toHaveBeenLastCalledWith("Moved Bench to Warm-up");
-    expect(deps.onMoved).toHaveBeenLastCalledWith(bench.id);
+    expect(deps.onMoved).toHaveBeenLastCalledWith(bench.id, workout.sections[0]!.id);
     await act(async () => actions().setExerciseSection(row, null));
     expect(deps.announce).toHaveBeenLastCalledWith("Moved Row Erg out of its section");
     expect(setExerciseSection.mock.calls).toEqual([

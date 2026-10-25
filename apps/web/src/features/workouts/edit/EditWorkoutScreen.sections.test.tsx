@@ -201,6 +201,23 @@ describe("10.6 AC18 — edit flows end to end", () => {
     expect(announcement()).toHaveTextContent("Moved Row Erg to Warm-up");
   });
 
+  it("#157 — a move whose re-read fails: a later unrelated change does not focus that card", async () => {
+    const { user, fake, workout } = await openEdit({ sections: [{ name: "Warm-up" }], exercises: [ex("Squat", 0), ex("Row Erg")] });
+    fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () => HttpResponse.error() as Response);
+    await user.click(optionsButton("Row Erg"));
+    await user.selectOptions(sectionSelect("Row Erg"), "Warm-up");
+    await waitFor(() => expect(announcement()).toHaveTextContent("Moved Row Erg to Warm-up"));
+    // The re-read failed: the old placement stays on screen.
+    expect(within(screen.getByRole("region", { name: "Warm-up" })).queryByRole("article", { name: "Row Erg" })).toBeNull();
+    const focus = vi.spyOn(within(card("Row Erg")).getByRole("heading", { level: 2 }), "focus");
+    await user.click(screen.getByRole("button", { name: "Edit section Warm-up" }));
+    await user.clear(sheet("Edit section").getByLabelText("Name"));
+    await user.type(sheet("Edit section").getByLabelText("Name"), "Warm");
+    await user.click(sheet("Edit section").getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "Warm" })).toBeInTheDocument());
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it("Done waits while a section write is in flight", async () => {
     const { user, fake } = await openEdit({ exercises: [ex("Row Erg")] });
     const held = deferred<void>();

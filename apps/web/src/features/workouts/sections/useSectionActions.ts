@@ -28,8 +28,11 @@ export interface SectionActionDeps {
   refetch(): Promise<WorkoutDetail | null | undefined>;
   onGone(): void;
   offlineText: string;
-  /** After a move: the screen reveals the remounted card and focuses its heading (§6.4). */
-  onMoved(exerciseId: string): void;
+  /**
+   * After a move: the screen reveals the remounted card and focuses its heading (§6.4) — once the card shows under
+   * `sectionId`, never on a later unrelated change if the re-read failed (#157).
+   */
+  onMoved(exerciseId: string, sectionId: string | null): void;
 }
 
 export interface SheetView {
@@ -311,7 +314,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       await mutations.setSection(exercise.id, sectionId);
       const section = sectionId === null ? undefined : latest.current.sections.find((s) => s.id === sectionId);
       announce(section ? movedTo(exercise.exerciseNameSnapshot, section.name) : movedOut(exercise.exerciseNameSnapshot));
-      onMoved(exercise.id);
+      onMoved(exercise.id, sectionId);
     } catch (error) {
       await fail("set-section", error, { inSheet: false, focus: null, exerciseId, retry: () => void moveExercise(exerciseId, sectionId) });
       if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId };

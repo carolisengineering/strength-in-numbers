@@ -256,16 +256,22 @@ function EditBody({
     node.scrollIntoView?.({ block: "nearest" });
   }, [workout.exercises]);
   // Spec 10.6 §6.4: a section move remounts its card under another <section>; once its heading is registered, focus and show it.
-  const revealMoved = useRef<string | null>(null);
+  const revealMoved = useRef<{ exerciseId: string; sectionId: string | null } | null>(null);
   useEffect(() => {
-    const id = revealMoved.current;
-    if (id === null) return;
-    const node = headingRefs.current.get(id);
+    const moved = revealMoved.current;
+    if (moved === null) return;
+    const exercise = workout.exercises.find((e) => e.id === moved.exerciseId);
+    if (exercise === undefined) {
+      revealMoved.current = null;
+      return;
+    }
+    if (exercise.sectionId !== moved.sectionId) return; // #157: the re-read has not shown the move (it may have failed)
+    const node = headingRefs.current.get(moved.exerciseId);
     if (node === undefined) return;
     revealMoved.current = null;
     node.focus();
     node.scrollIntoView?.({ block: "nearest" });
-  }, [segments]);
+  }, [segments, workout.exercises]);
 
   const refetchDetail = () => queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
 
@@ -286,8 +292,8 @@ function EditBody({
     },
     onGone: onVanished,
     offlineText: EDIT_COPY.offline,
-    onMoved: (exerciseId) => {
-      revealMoved.current = exerciseId;
+    onMoved: (exerciseId, sectionId) => {
+      revealMoved.current = { exerciseId, sectionId };
     },
   });
 

@@ -202,16 +202,22 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, [current.currentId]);
   // Spec 10.6 §6.4: a section move remounts its card under another <section> and keeps the current exercise, so the
   // reveal above (keyed on `currentId`) never runs. Once the moved card's heading is registered, focus and show it.
-  const revealMoved = useRef<string | null>(null);
+  const revealMoved = useRef<{ exerciseId: string; sectionId: string | null } | null>(null);
   useEffect(() => {
-    const id = revealMoved.current;
-    if (id === null) return;
-    const node = headingRefs.current.get(id);
+    const moved = revealMoved.current;
+    if (moved === null) return;
+    const exercise = workout.exercises.find((e) => e.id === moved.exerciseId);
+    if (exercise === undefined) {
+      revealMoved.current = null;
+      return;
+    }
+    if (exercise.sectionId !== moved.sectionId) return; // #157: the re-read has not shown the move (it may have failed)
+    const node = headingRefs.current.get(moved.exerciseId);
     if (node === undefined) return;
     revealMoved.current = null;
     node.focus();
     node.scrollIntoView?.({ block: "nearest" });
-  }, [segments]);
+  }, [segments, workout.exercises]);
   // Spec 17.1 AC9: on a phone the current-set panel can open below the fold (the top row, a routine note and done rows
   // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
   // and the scroller's scroll-padding keeps it clear of the bar.
@@ -383,8 +389,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     },
     onGone: () => gone("gone"),
     offlineText: OFFLINE_MESSAGE,
-    onMoved: (exerciseId) => {
-      revealMoved.current = exerciseId;
+    onMoved: (exerciseId, sectionId) => {
+      revealMoved.current = { exerciseId, sectionId };
     },
   });
 
