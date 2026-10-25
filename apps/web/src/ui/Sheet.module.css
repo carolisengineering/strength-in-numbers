@@ -34,7 +34,11 @@
   font-size: var(--font-size-lg);
 }
 
+/* #101: centered — the reset makes the svg a block, which a plain button would put at its left edge. */
 .close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
   border: 0;
