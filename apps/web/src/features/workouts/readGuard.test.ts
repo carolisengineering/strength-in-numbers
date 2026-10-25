@@ -74,16 +74,17 @@ describe("#154 — a read that starts while a write is pending is redone after i
 describe("#158 — a structure re-read resolves only once an answer has landed", () => {
   it("a re-read cancelled by a later write is asked again", async () => {
     let calls = 0;
-    let queryClient!: QueryClient;
-    ({ queryClient } = setup(async () => {
+    const holder: { client?: QueryClient } = {};
+    const { queryClient } = setup(async () => {
       calls += 1;
       if (calls === 2) {
         // The structure write's re-read: a set write starts now and cancels it (its guardReads).
-        void queryClient.cancelQueries({ queryKey: KEY });
+        void holder.client!.cancelQueries({ queryKey: KEY });
         await new Promise((r) => setTimeout(r, 5));
       }
       return `answer ${calls}`;
-    }));
+    });
+    holder.client = queryClient;
     await settle();
     await rereadUntilLanded(queryClient, KEY);
     expect(calls).toBe(3);
