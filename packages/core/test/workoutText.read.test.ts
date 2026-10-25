@@ -205,6 +205,14 @@ describe("#155 — Rest-Pause, a trailing comma and complexes under an open run"
   });
   it("a movement with a rep form and a trailing comma is an exercise, named without the comma", () =>
     expect(under("10 Push-ups,", "10 Squats").items.map((i) => i.name)).toEqual(["Push-ups", "Squats"]));
+  it.each(["2 Rounds of,", "5 Rounds of,", "3 Supersets of,", "4 times through,", "8 Rest,"])("%s is structure, not an exercise (review)", (line) =>
+    expect(under(line, "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
+  it.each(["Rest-Pause between sets", "Rest pause as needed", "Rest pause 30s"])("%s is still a Rest note (review)", (line) =>
+    expect(under(line, "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
+  it("an en dash reads like a hyphen: Rest–Pause Curls is an exercise (review)", () =>
+    expect(under("Rest–Pause Curls").items.map((i) => i.name)).toEqual(["Rest–Pause Curls"]));
+  it("a bulleted rowless line outside a run drops its trailing comma too (review)", () =>
+    expect(read(["Strength", "- 10 Push-ups,"]).items.map((i) => i.name)).toEqual(["Push-ups"]));
   it("a cue with a trailing comma and no rep form is still a note", () =>
     expect(under("Keep the pace steady,", "10 Squats").items.map((i) => i.name)).toEqual(["Squats"]));
   it("a barbell complex splits into a superset, like any A + B (owner ruling 2026-10-25)", () => {

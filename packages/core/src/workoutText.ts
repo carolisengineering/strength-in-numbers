@@ -158,7 +158,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
-    if (nav[i]) textSinceNav = 0;
+    // A tab bar is several of its words close together (icons between); one "Home" in the text is an at-home label.
+    if (nav[i] && [-2, -1, 1, 2].some((d) => nav[i + d] === true)) textSinceNav = 0;
     if (CLOCK_LINE.test(line)) {
       furniture++;
       // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a
@@ -248,6 +249,7 @@ export interface ReadItem {
   readonly run: number | null;
 }
 export interface ReadName {
+  /** normalizeExerciseName(written), or `written:<name>` when that is empty (#169). */
   readonly key: string;
   readonly written: string;
   /** Names of the sections using it (loose omitted). */
@@ -356,8 +358,17 @@ const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|ca
 const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
-/** A line starting with Rest ("Rest 90s", "Rest as needed"); not the rest-pause technique, which names a movement (#155). */
-const REST_LINE = /^rest\b(?![\s-]*pause\b)/i;
+const REST_LINE = /^rest\b/i;
+/**
+ * #155: the rest-pause technique names a movement ("Rest-Pause Curls", an en dash too); "Rest pause as needed",
+ * "Rest-Pause between sets" or "Rest pause 30s" is still a Rest line. Tested only on short lines (isMovementText's 60).
+ */
+const REST_PAUSE_MOVEMENT =
+  /^rest[\s\-–]*pause\s+(?!.*\b(?:as|between|for|after|until|each|per|on|of|then|and|with|to|needed|secs?|seconds?)\b)\D+$/i;
+const isRestLine = (text: string): boolean => REST_LINE.test(text) && !(text.length <= 60 && REST_PAUSE_MOVEMENT.test(text));
+/** A counted line that is structure, not a movement, once its comma goes ("5 Rounds of,", "8 Rest,"): #155 review. */
+const STRUCTURE_START = /^(?:rounds?|sets?|supersets?|times?|rest)\b/i;
+const DANGLING_END = /\s(?:of|through|for|then|and|with|to)$/i;
 /**
  * Item 69: "Rx", "Rx:", "Rx (95/65 lb)", "Rx'd: 95/65" name the prescribed version, so the movements after it are the
  * workout. A name that only starts with Rx ("Rx Bar Hang": no colon, parenthesis or digit) is a movement.
@@ -412,6 +423,17 @@ function leadInCount(line: string): number | null {
 }
 
 /** AC8: ≤ 6 words, ≤ 60 characters, a letter, no colon or sentence punctuation, not a lead-in or scheme. */
+/**
+ * #155: a counted movement keeps its place when its line ends in a comma ("10 Push-ups," is Push-ups), under a run or
+ * on a bullet. Anything else keeps the comma, so it stays a note (AC49): a cue, or structure such as "5 Rounds of,".
+ */
+function dropMovementComma(text: string): string {
+  if (!text.endsWith(",")) return text;
+  const bare = text.slice(0, -1).trimEnd();
+  const form = repFormOf(bare);
+  return form && isMovementText(bare) && !STRUCTURE_START.test(form.name) && !DANGLING_END.test(form.name) ? bare : text;
+}
+
 function isMovementText(text: string): boolean {
   return (
     text.length <= 60 && text.split(" ").length <= 6 && LETTER.test(text) && !MOVEMENT_PUNCTUATION.test(text) &&
@@ -502,15 +524,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null) {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
-    let raw = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
-    // #155: a movement with a rep form keeps its place when the line ends in a comma ("10 Push-ups,"); the comma goes.
-    if (raw.endsWith(",")) {
-      const bare = raw.slice(0, -1).trimEnd();
-      if (isMovementText(bare) && repFormOf(bare) !== null) raw = bare;
-    }
+    const raw = dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
-    if (WORK_REST.test(raw) || raw.endsWith(",") || REST_LINE.test(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
+    if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side.
     const parts = raw.split(PLUS);
     if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
@@ -533,7 +550,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 
   // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50).
   if (BULLET.test(line)) {
-    const text = line.replace(BULLET, "").replace(TRAILING_PLUS, "");
+    const text = dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const max = MAX_LINE.exec(text);
     if (max && isMovementText(max[2]!)) {
       pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], run: null });
