@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 function walk(dir: string): string[] {
@@ -13,6 +14,18 @@ function walk(dir: string): string[] {
     return statSync(path).isDirectory() ? walk(path) : [path];
   });
 }
+
+describe("15 AC6 — the CI identity accepts this repository by name and numeric id (#165)", () => {
+  const tfvars = readFileSync(join(repoRoot, "infra/prod.tfvars"), "utf8");
+  it("prod.tfvars carries the repository's numeric id", () => expect(tfvars).toMatch(/^github_repository_id\s*=\s*"\d+"/m));
+  it("the provider's attribute condition requires both", () => {
+    const identity = readFileSync(join(repoRoot, "infra/identity.tf"), "utf8");
+    const condition = /attribute_condition\s*=\s*"([^\n]*)"\n/.exec(identity)?.[1] ?? "";
+    expect(condition).toContain("assertion.repository == '${var.github_repository}'");
+    expect(condition).toContain("assertion.repository_id == '${var.github_repository_id}'");
+    expect(condition).toContain("&&");
+  });
+});
 
 describe("15 AC9 — hygiene scan", () => {
   it("every workflow uses: is pinned to a 40-hex commit SHA", () => {
@@ -32,6 +45,19 @@ describe("15 AC9 — hygiene scan", () => {
     expect(tracked.filter((f) => /\.tfstate|\.tfplan$|\.pem$/.test(f) || (f.endsWith(".tfvars") && f !== "infra/prod.tfvars"))).toEqual([]);
     const keys = tracked.filter((f) => existsSync(join(repoRoot, f)) && /"private_key"\s*:/.test(readFileSync(join(repoRoot, f), "utf8")));
     expect(keys).toEqual([]);
+  });
+  // #166: the image publisher trusts any run whose ref is main. pull_request_target, workflow_run,
+  // issue_comment and the other repository-event triggers run with main's ref while someone outside can start
+  // or steer them, so only these three are allowed (push to main, a PR's own ref, an owner's dispatch).
+  it("every workflow triggers only on push, pull_request or workflow_dispatch (#166)", () => {
+    const allowed = new Set(["push", "pull_request", "workflow_dispatch"]);
+    const triggersOf = (on: unknown): string[] => (typeof on === "string" ? [on] : Array.isArray(on) ? on.map(String) : Object.keys(on ?? {}));
+    const bad = walk(join(repoRoot, ".github/workflows")).flatMap((f) => {
+      const triggers = triggersOf((parse(readFileSync(f, "utf8")) as { on?: unknown }).on);
+      expect(triggers.length).toBeGreaterThan(0);
+      return triggers.filter((t) => !allowed.has(t)).map((t) => `${f.slice(repoRoot.length)}: ${t}`);
+    });
+    expect(bad).toEqual([]);
   });
   it("prod.tfvars holds no secret-looking key", () => {
     const names = [...readFileSync(join(repoRoot, "infra/prod.tfvars"), "utf8").matchAll(/^\s*([a-z_0-9]+)\s*=/gim)].map((m) => m[1]!);

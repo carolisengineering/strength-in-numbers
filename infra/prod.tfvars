@@ -18,5 +18,6 @@ auth0_issuer          = "https://dev-gncuqvfir0wv0t4l.us.auth0.com/"
 auth0_audience        = "https://api.strengthinnumbers.app"
 auth0_claim_namespace = "https://strengthinnumbers.app/"
 
-github_repository  = "carolisengineering/strength-in-numbers"
-billing_account_id = "REPLACE_ME_BILLING_ACCOUNT_ID"
+github_repository    = "carolisengineering/strength-in-numbers"
+github_repository_id = "1351697035" # gh api repos/carolisengineering/strength-in-numbers --jq .id
+billing_account_id   = "REPLACE_ME_BILLING_ACCOUNT_ID"

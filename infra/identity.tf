@@ -11,7 +11,8 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-oidc"
   display_name                       = "GitHub OIDC"
-  attribute_condition                = "assertion.repository == '${var.github_repository}'"
+  # The name alone could be re-created by someone else after a rename or delete; the numeric id cannot (#165).
+  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.repository_id == '${var.github_repository_id}'"
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
     "attribute.repository" = "assertion.repository"
@@ -40,6 +41,9 @@ resource "google_service_account" "deployer" {
 }
 
 # Who may act as each account.
+# The publisher trusts any run whose ref is main. A `pull_request_target`, `workflow_run` or `issue_comment`
+# run carries main's ref while someone outside can start or steer it, so it would match this binding: workflows
+# may trigger only on push, pull_request or workflow_dispatch (deploy-pins.test.ts fails otherwise, #166).
 resource "google_service_account_iam_member" "publisher_from_main" {
   service_account_id = google_service_account.publisher.name
   role               = "roles/iam.workloadIdentityUser"

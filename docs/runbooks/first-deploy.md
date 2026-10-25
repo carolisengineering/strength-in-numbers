@@ -821,7 +821,9 @@ gcloud projects describe <project-id> --format='value(projectNumber)'   # the pr
 Replace every `REPLACE_ME_*` in `infra/prod.tfvars`: `project_id`, `project_number`, `hosting_site_id` (the
 web address becomes `https://<site id>.web.app`; the project id is a fine choice) and `billing_account_id`.
 In the same PR, put the same values in `apps/web/firebase.json`: `hosting.site`, and the API origin in the
-CSP's `connect-src` (`https://si-api-<project number>.us-central1.run.app`). Then:
+CSP's `connect-src` (`https://si-api-<project number>.us-central1.run.app`). `github_repository_id` is
+already real (public; `gh api repos/<owner>/<repo> --jq .id`) — change it only if the repository is
+transferred or re-created, or CI's Google sign-in is refused. Then:
 
 ```bash
 pnpm --filter @sin/api exec tsx scripts/check-prod-ids.ts --strict   # must print "no placeholders"

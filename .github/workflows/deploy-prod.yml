@@ -76,6 +76,9 @@ jobs:
       contents: read
       actions: read # the release record reads who approved
       id-token: write
+    env:
+      # The gate's image by digest: the one reference the existence check and the API deploy both use.
+      IMAGE: ${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,11 +104,23 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # #164: the gate saw the image before the approval pause; merges during the wait can push it past the
+      # cleanup policy. Re-check now, so a missing image fails with its reason, not gcloud's deploy error.
+      - name: The gate's image still exists
+        run: |
+          if ! out=$(gcloud artifacts docker images describe "$IMAGE" --format='value(image_summary.digest)' 2>&1); then
+            echo "$out"
+            case "${out,,}" in # lowercased: gcloud says NOT_FOUND or "not found" depending on the API
+              *not_found* | *"not found"*) echo "::error::$IMAGE is no longer in Artifact Registry — the cleanup policy removed it while this release waited for approval. Nothing was deployed; dispatch deploy-prod again with a commit whose image is still kept." ;;
+              *) echo "::error::could not look up $IMAGE (gcloud's message above). Nothing was deployed." ;;
+            esac
+            exit 1
+          fi
       # AC18: the API first (one release ahead of the web, DESIGN §6), by digest.
       - name: Deploy the API by digest
         run: >-
           gcloud run deploy si-api
-          --image "${{ vars.AR_IMAGE }}@${{ needs.gate.outputs.digest }}"
+          --image "$IMAGE"
           --region "${{ vars.GCP_REGION }}" --project "${{ vars.GCP_PROJECT_ID }}" --quiet
       - id: revision
         name: The latest ready revision serves 100 % with the gate's digest
