@@ -6,6 +6,7 @@ import { applyEditedCaches } from "../../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
 import type { WorkoutUpdate } from "../workoutClient";
+import { guardReads, rereadIfStale, type ReadGuard } from "../readGuard";
 import { mergeWorkout } from "./editCache";
 
 /**
@@ -47,18 +48,16 @@ export function editSucceeded(queryClient: QueryClient, edit: EditKind): void {
 }
 
 /**
- * Before a set write, cancel an in-flight read of the detail so a stale response cannot land on top of
- * the write and erase it; re-read once afterwards if one was interrupted (the live `cancelActiveReads`).
+ * Before a write that patches the detail from its response: cancel a read in flight, and watch for one that starts
+ * while the write is pending (a focus refetch); either may answer from before the commit, so the detail is read
+ * once more when the write settles (#154; the live hooks do the same for the active workout).
  */
-export async function cancelDetailReads(queryClient: QueryClient, workoutId: string): Promise<{ interrupted: boolean }> {
-  const key = WORKOUT_KEYS.detail(workoutId);
-  const interrupted = queryClient.isFetching({ queryKey: key }) > 0;
-  await queryClient.cancelQueries({ queryKey: key });
-  return { interrupted };
+export function guardDetailReads(queryClient: QueryClient, workoutId: string): Promise<ReadGuard> {
+  return guardReads(queryClient, WORKOUT_KEYS.detail(workoutId));
 }
 
-export function refetchIfInterrupted(queryClient: QueryClient, workoutId: string, context: { interrupted: boolean } | undefined): void {
-  if (context?.interrupted) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+export function rereadDetailIfStale(queryClient: QueryClient, workoutId: string, guard: ReadGuard | undefined): void {
+  rereadIfStale(queryClient, WORKOUT_KEYS.detail(workoutId), guard);
 }
 
 export function writeDetail(queryClient: QueryClient, workoutId: string, change: (d: WorkoutDetail) => WorkoutDetail): void {
@@ -86,8 +85,8 @@ export function useEditCreateSet(): UseMutationResult<
     networkMode: "always",
     retry: false,
     mutationFn: ({ workoutExerciseId, body }) => client.createSet(workoutExerciseId, body),
-    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
-    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
+    onMutate: ({ workoutId }) => guardDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, guard) => rereadDetailIfStale(queryClient, workoutId, guard),
     onSuccess: (set, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => withSetUpserted(d, set));
       editSucceeded(queryClient, "set_added");
@@ -103,8 +102,8 @@ export function useEditUpdateSet(): UseMutationResult<SetEntry, Error, { workout
     networkMode: "always",
     retry: false,
     mutationFn: ({ id, body }) => client.updateSet(id, body),
-    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
-    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
+    onMutate: ({ workoutId }) => guardDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, guard) => rereadDetailIfStale(queryClient, workoutId, guard),
     onSuccess: (set, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => withSetUpserted(d, set));
       editSucceeded(queryClient, "set_changed");
@@ -120,8 +119,8 @@ export function useEditDeleteSet(): UseMutationResult<void, Error, { workoutId: 
     networkMode: "always",
     retry: false,
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteSet(id)),
-    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
-    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
+    onMutate: ({ workoutId }) => guardDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, guard) => rereadDetailIfStale(queryClient, workoutId, guard),
     onSuccess: (_void, { workoutId, id }) => {
       writeDetail(queryClient, workoutId, (d) => withSetRemoved(d, id));
       editSucceeded(queryClient, "set_deleted");
@@ -139,8 +138,8 @@ export function useEditSetNote(): UseMutationResult<WorkoutExercise, Error, { wo
     retry: false,
     mutationFn: ({ id, notes }) => client.setExerciseNote(id, notes),
     // Final review #2: as for the set writes, a read in flight must not land on top of the saved note.
-    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
-    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
+    onMutate: ({ workoutId }) => guardDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, guard) => rereadDetailIfStale(queryClient, workoutId, guard),
     onSuccess: (exercise, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => withExerciseNotes(d, exercise));
       editSucceeded(queryClient, "exercise_noted");
@@ -157,8 +156,8 @@ export function useEditDetails(): UseMutationResult<UpdatedWorkout, Error, { wor
     networkMode: "always",
     retry: false,
     mutationFn: ({ workoutId, body }) => client.updateWorkout(workoutId, body),
-    onMutate: ({ workoutId }) => cancelDetailReads(queryClient, workoutId),
-    onSettled: (_data, _error, { workoutId }, context) => refetchIfInterrupted(queryClient, workoutId, context),
+    onMutate: ({ workoutId }) => guardDetailReads(queryClient, workoutId),
+    onSettled: (_data, _error, { workoutId }, guard) => rereadDetailIfStale(queryClient, workoutId, guard),
     onSuccess: (updated, { workoutId }) => {
       writeDetail(queryClient, workoutId, (d) => mergeWorkout(d, updated));
       editSucceeded(queryClient, "details_changed");

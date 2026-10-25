@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -18,7 +19,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
-import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
+import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { card } from "../../../test/sessionHelpers";
 import { EDIT_COPY } from "./editCopy";
 
@@ -79,6 +80,26 @@ describe("18.0 AC19 — Delete workout", () => {
     expect(fake.requests.some((r) => r.method === "DELETE" && r.path === `/v1/workouts/${workout.id}`)).toBe(true);
     expect(fake.state.finished.has(workout.id)).toBe(false);
     expect(observability.track).toHaveBeenCalledWith("workout_edit_refused", { reason: "would_be_empty", choice: "deleted" });
+  });
+
+  it("#160 — once the delete starts the detail is never read again (a focus mid-delete included); no NotFound flash", async () => {
+    const { fake, workout, user, router } = openOneSet();
+    await deleteOnlySet(user);
+    const held = deferred<void>();
+    fake.failNext({ method: "DELETE", path: /^\/v1\/workouts\// }, (async () => {
+      await held.promise;
+      return new Response(null, { status: 204 });
+    }) as unknown as () => Response);
+    await user.click(within(dialog()).getByRole("button", { name: "Delete workout" }));
+    await waitFor(() => expect(fake.requests.some((r) => r.method === "DELETE" && r.path === `/v1/workouts/${workout.id}`)).toBe(true));
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    held.resolve();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/history"));
+    focusManager.setFocused(undefined);
+    const deleteAt = fake.requests.findIndex((r) => r.method === "DELETE" && r.path === `/v1/workouts/${workout.id}`);
+    expect(fake.requests.slice(deleteAt).filter((r) => r.method === "GET" && r.path === `/v1/workouts/${workout.id}`)).toEqual([]);
+    expect(screen.queryByRole("heading", { name: /not found/i })).toBeNull();
   });
 
   it("a 404 counts as done", async () => {

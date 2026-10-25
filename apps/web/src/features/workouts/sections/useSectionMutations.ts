@@ -1,19 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { track } from "../../../observability/track";
 import { WORKOUT_KEYS, useWorkoutClient } from "../queries";
+import { rereadUntilLanded } from "../readGuard";
 import { ignoreNotFound } from "../useWorkoutMutations";
 import type { SectionMutations } from "./sectionMutations";
 
 /**
  * Spec 10.6 AC12, AC15, AC19 — the live screen's section writes: online-only TanStack mutations on the
  * live client (`networkMode: "always"`, `retry: false`, no outbox op). Each hook-level `onSuccess`
- * tracks its event, then returns the active workout's invalidation, so `mutateAsync` resolves only
- * once the refetch has landed and the screen changes only from the server's answer.
+ * tracks its event, then returns the active workout's re-read, so `mutateAsync` resolves only once an
+ * answer has landed (asked again if a set write canceled it, #158) and the screen changes only from the server's answer.
  */
 export function useSectionMutations(workoutId: string): SectionMutations {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
-  const refresh = () => queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+  const refresh = () => rereadUntilLanded(queryClient, WORKOUT_KEYS.active);
   const base = { networkMode: "always", retry: false } as const;
 
   const add = useMutation({

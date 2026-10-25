@@ -195,6 +195,20 @@ describe("10.6 AC9 / AC10 — move", () => {
     expect(optionsButton("Row Erg")).toBeInTheDocument(); // still the current card
   });
 
+  it("#157 — a move whose re-read fails: a later unrelated change does not focus that card", async () => {
+    const { user, fake } = await setup(MOVE);
+    await makeCurrent(user, "Row Erg");
+    fake.failNext({ method: "GET", path: /^\/v1\/workouts\/active$/ }, () => HttpResponse.error() as Response);
+    await user.click(optionsButton("Row Erg"));
+    await user.selectOptions(sectionSelect("Row Erg"), "Warm-up");
+    await waitFor(() => expect(announcement()).toHaveTextContent("Moved Row Erg to Warm-up"));
+    expect(within(screen.getByRole("region", { name: "Warm-up" })).queryByRole("article", { name: "Row Erg" })).toBeNull();
+    const focus = vi.spyOn(within(card("Row Erg")).getByRole("heading", { level: 2 }), "focus");
+    await user.click(logButton("Row Erg")); // an unrelated list change: a logged set lands in the cache
+    await waitFor(() => expect(within(card("Row Erg")).getAllByRole("listitem").length).toBeGreaterThan(1));
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it("re-choosing the current value sends nothing; No section moves it out", async () => {
     const { user, fake } = await setup({ sections: [{ name: "Warm-up" }], exercises: [ex("Squat", 0), ex("Row Erg")] });
     await makeCurrent(user, "Squat");

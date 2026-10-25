@@ -25,7 +25,7 @@ const REPORT_OP = { create: "create-set", update: "update-set", delete: "delete-
  * Swap a synced op's local row for the server's, then re-overlay what is still queued (AC12). A read
  * of `/active` already in flight may hold a snapshot from before this write; it would land with the op
  * gone from the outbox and erase the row. So cancel it first and re-read once the cache is written —
- * the same move as `cancelActiveReads` for the mutation hooks.
+ * the same move as `guardActiveReads` for the mutation hooks.
  */
 function applySynced(queryClient: QueryClient, outbox: Outbox, op: OutboxOp, row: SetEntry | null): void {
   const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;

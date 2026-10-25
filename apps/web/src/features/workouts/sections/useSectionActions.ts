@@ -28,8 +28,11 @@ export interface SectionActionDeps {
   refetch(): Promise<WorkoutDetail | null | undefined>;
   onGone(): void;
   offlineText: string;
-  /** After a move: the screen reveals the remounted card and focuses its heading (§6.4). */
-  onMoved(exerciseId: string): void;
+  /**
+   * After a move: the screen reveals the remounted card and focuses its heading (§6.4) — once the card shows under
+   * `sectionId`, never on a later unrelated change if the re-read failed (#157).
+   */
+  onMoved(exerciseId: string, sectionId: string | null): void;
 }
 
 export interface SheetView {
@@ -151,6 +154,18 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const addTarget = (): FocusTarget => (latest.current.sections.length >= ROUTINE_SECTIONS_MAX ? null : { kind: "add" });
   const openerOf = (s: SheetView | null): FocusTarget =>
     s?.mode === "edit" && s.sectionId !== null ? { kind: "edit", sectionId: s.sectionId } : addTarget();
+
+  // #159: a refetch dropped the section whose Edit sheet is open (another device removed it), which would leave
+  // Remove section a dead button: close, and say so. Not while this screen's own write is in flight — its own
+  // remove drops the section before it settles — but checked again once that write ends (`submitting`).
+  const openEditId = sheet?.mode === "edit" ? sheet.sectionId : null;
+  useEffect(() => {
+    if (openEditId === null || submittingRef.current) return;
+    if (workout.sections.some((s) => s.id === openEditId)) return;
+    closeAll(addTarget());
+    setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeAll / addTarget read refs; re-run only when these change
+  }, [openEditId, workout.sections, submitting]);
 
   function begin(): boolean {
     if (structureLock.current || submittingRef.current) return false;
@@ -311,7 +326,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       await mutations.setSection(exercise.id, sectionId);
       const section = sectionId === null ? undefined : latest.current.sections.find((s) => s.id === sectionId);
       announce(section ? movedTo(exercise.exerciseNameSnapshot, section.name) : movedOut(exercise.exerciseNameSnapshot));
-      onMoved(exercise.id);
+      onMoved(exercise.id, sectionId);
     } catch (error) {
       await fail("set-section", error, { inSheet: false, focus: null, exerciseId, retry: () => void moveExercise(exerciseId, sectionId) });
       if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId };

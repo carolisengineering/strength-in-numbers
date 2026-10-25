@@ -164,6 +164,19 @@ describe("10.6 AC7 — edit", () => {
   });
 });
 
+describe("#171 — typed text is dropped when the sheet closes, not at the next opening", () => {
+  it("Cancel: the closed dialog no longer holds the typed name or note", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: "Open add" }));
+    await user.type(sheet("New section").getByLabelText("Name"), "Finisher");
+    await user.type(sheet("New section").getByLabelText("Note"), "Hard");
+    await user.click(sheet("New section").getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const fields = [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("#section-name, #section-notes")];
+    expect(fields.map((f) => f.value).filter(Boolean)).toEqual([]);
+  });
+});
+
 describe("10.6 AC8 — remove", () => {
   it("nothing is sent until Remove; then one DELETE; the count is tracked; focus on Add section", async () => {
     const removeSection = vi.fn(async () => undefined);
@@ -192,6 +205,29 @@ describe("10.6 AC8 — remove", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove Warm-up?" })).toBeNull());
     expect(sheet("Edit section").getByRole("button", { name: "Remove section" })).toHaveFocus();
     expect(removeSection).not.toHaveBeenCalled();
+  });
+
+  it("#159 — another device removed the open sheet's section: the sheet closes with the sectionGone banner", async () => {
+    const { user, workout, deps, rerender } = setup();
+    await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));
+    await user.click(sheet("Edit section").getByRole("button", { name: "Remove section" }));
+    rerender({ ...workout, sections: [], exercises: workout.exercises.map((e) => ({ ...e, sectionId: null })) });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(deps.setBanner).toHaveBeenLastCalledWith({ tone: "warning", text: SECTION_COPY.sectionGone });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open add" })).toHaveFocus());
+  });
+
+  it("#159 — this screen's own remove dropping the section is not 'gone'", async () => {
+    const pending = deferred<undefined>();
+    const removeSection = vi.fn(() => pending.promise);
+    const { user, workout, deps, rerender } = setup({ removeSection });
+    await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));
+    await user.click(sheet("Edit section").getByRole("button", { name: "Remove section" }));
+    await user.click(sheet("Remove Warm-up?").getByRole("button", { name: "Remove" }));
+    rerender({ ...workout, sections: [], exercises: workout.exercises.map((e) => ({ ...e, sectionId: null })) }); // its re-read lands first
+    await act(async () => pending.resolve(undefined));
+    await waitFor(() => expect(deps.announce).toHaveBeenCalledWith("Section removed"));
+    expect(deps.setBanner).not.toHaveBeenCalledWith(expect.objectContaining({ text: SECTION_COPY.sectionGone }));
   });
 
   it("a 404 counts as done", async () => {
@@ -341,7 +377,7 @@ describe("10.6 AC13 / AC14 — failures", () => {
 });
 
 describe("10.6 AC9 / AC10 — move", () => {
-  it("one { sectionId } write; the announcement; onMoved with the id", async () => {
+  it("one { sectionId } write; the announcement; onMoved with the id and the target section (#157)", async () => {
     const setExerciseSection = vi.fn(async (id: string, sectionId: string | null) =>
       WorkoutExerciseSchema.parse({ ...baseWorkout().exercises[2]!, id, sectionId }),
     );
@@ -350,7 +386,7 @@ describe("10.6 AC9 / AC10 — move", () => {
     const row = workout.exercises.find((e) => e.exerciseNameSnapshot === "Row Erg")!;
     await act(async () => actions().setExerciseSection(bench, workout.sections[0]!.id));
     expect(deps.announce).toHaveBeenLastCalledWith("Moved Bench to Warm-up");
-    expect(deps.onMoved).toHaveBeenLastCalledWith(bench.id);
+    expect(deps.onMoved).toHaveBeenLastCalledWith(bench.id, workout.sections[0]!.id);
     await act(async () => actions().setExerciseSection(row, null));
     expect(deps.announce).toHaveBeenLastCalledWith("Moved Row Erg out of its section");
     expect(setExerciseSection.mock.calls).toEqual([

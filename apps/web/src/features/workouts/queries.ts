@@ -54,11 +54,13 @@ export function useEditWorkoutClient(): WorkoutClient {
  * The edit screen's workout (Spec 18.0 §6.1): the summary's key, but always re-read on mount and on
  * focus so an edit starts from the server's truth. `retry: false`: the error notice's button is the retry.
  */
-export function useEditableWorkout(id: string): UseQueryResult<WorkoutDetail> {
+export function useEditableWorkout(id: string, { enabled = true }: { enabled?: boolean } = {}): UseQueryResult<WorkoutDetail> {
   const client = useEditWorkoutClient();
   return useQuery({
     queryKey: WORKOUT_KEYS.detail(id),
     queryFn: () => client.getById(id),
+    // #160: off while the screen deletes the workout, so nothing re-reads it on the way out.
+    enabled,
     // Stale at once, so a focus re-reads it (the app default staleTime would skip a focus within 30 s).
     staleTime: 0,
     refetchOnMount: "always",

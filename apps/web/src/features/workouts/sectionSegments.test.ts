@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
-import { sectionSegments } from "./sectionSegments";
+import { OTHER_EXERCISES_HEADING, sectionSegments } from "./sectionSegments";
 import { supersetRows } from "./supersetRows";
 
 type Sec = { name: string; notes?: string | null };
@@ -63,6 +63,31 @@ describe("10.3 AC11 — segment keys are stable when an earlier run disappears (
   it("keys are unique within one render, including a split section and several loose runs", () => {
     const all = keys([ex("x"), ex("a", 0), ex("y"), ex("c", 0), ex("z")], [{ name: "A" }]).map(([, k]) => k);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe("#156 — adding a section keeps the trailing 'Other exercises' key", () => {
+  it("a new (empty, last) section lands before the loose tail; the tail's key does not change", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "New" }], exercises: [ex("a", 0), ex("x"), ex("y")] });
+    const tailKey = (sections: typeof detail.sections) => sectionSegments(supersetRows(detail.exercises), sections).at(-1)!;
+    const before = tailKey(detail.sections.slice(0, 1));
+    const after = tailKey(detail.sections);
+    expect([before.heading, after.heading]).toEqual([OTHER_EXERCISES_HEADING, OTHER_EXERCISES_HEADING]);
+    expect(after.key).toBe(before.key);
+  });
+  it("removing the section after a loose run (it becomes the tail) keeps that run's key (code review)", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "B" }], exercises: [ex("a", 0), ex("x"), ex("b", 1)] });
+    const keyOfX = (exercises: typeof detail.exercises, sections: typeof detail.sections) =>
+      sectionSegments(supersetRows(exercises), sections).find((s) => s.rows.some((r) => r.exercise.exerciseNameSnapshot === "x"))!.key;
+    const withoutB = detail.exercises.map((e) => (e.exerciseNameSnapshot === "b" ? { ...e, sectionId: null } : e));
+    expect(keyOfX(withoutB, detail.sections.slice(0, 1))).toBe(keyOfX(detail.exercises, detail.sections));
+  });
+  it("filling the new section from elsewhere keeps the tail's key", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "New" }], exercises: [ex("a", 0), ex("x"), ex("y")] });
+    const tail = (exercises: typeof detail.exercises) => sectionSegments(supersetRows(exercises), detail.sections).at(-1)!.key;
+    const newId = detail.sections[1]!.id;
+    const aInNew = detail.exercises.map((e) => (e.exerciseNameSnapshot === "a" ? { ...e, sectionId: newId } : e));
+    expect(tail(aInNew)).toBe(tail(detail.exercises));
   });
 });
 

@@ -55,13 +55,15 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
 
   // Keys come from content, never from the list index: a run that disappears (the lifter removes the only
   // loose-first exercise) must not renumber the others, or React remounts their cards and loses typed drafts.
+  // A loose run after a section ("Other exercises") is keyed by its first exercise, not by the section before it:
+  // adding a section puts its empty segment before the tail, and removing or filling a section changes which one
+  // comes first — neither may remount those cards (#156, an open Options panel would close).
   const noted = new Map<string, number>();
   let lastSectionId: string | null = null;
-  let lastOccurrence = 0;
   let looseRuns = 0;
   return list.map((d): SectionSegment => {
     if (d.section === null) {
-      const key = lastSectionId === null ? `loose-start-${looseRuns}` : `loose-after-${lastSectionId}-${lastOccurrence}-${looseRuns}`;
+      const key = lastSectionId === null ? `loose-start-${looseRuns}` : `loose-from-${d.rows[0]!.exercise.id}`;
       looseRuns += 1;
       return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start, sectionId: null, editable: false };
     }
@@ -69,7 +71,6 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
     const occurrence = noted.get(d.section.id) ?? 0;
     noted.set(d.section.id, occurrence + 1);
     lastSectionId = d.section.id;
-    lastOccurrence = occurrence;
     return {
       key: `section-${d.section.id}-${occurrence}`,
       heading: d.section.name,

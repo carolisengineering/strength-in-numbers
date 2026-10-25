@@ -68,6 +68,7 @@ import {
   useRemoveExercise,
 } from "./useWorkoutMutations";
 import styles from "./ActiveSession.module.css";
+import { useRevealMoved } from "./useRevealMoved";
 
 export interface ActiveSessionProps {
   workout: WorkoutDetail;
@@ -202,16 +203,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, [current.currentId]);
   // Spec 10.6 §6.4: a section move remounts its card under another <section> and keeps the current exercise, so the
   // reveal above (keyed on `currentId`) never runs. Once the moved card's heading is registered, focus and show it.
-  const revealMoved = useRef<string | null>(null);
-  useEffect(() => {
-    const id = revealMoved.current;
-    if (id === null) return;
-    const node = headingRefs.current.get(id);
-    if (node === undefined) return;
-    revealMoved.current = null;
-    node.focus();
-    node.scrollIntoView?.({ block: "nearest" });
-  }, [segments]);
+  const revealMoved = useRevealMoved(workout, segments, headingRefs, () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active));
   // Spec 17.1 AC9: on a phone the current-set panel can open below the fold (the top row, a routine note and done rows
   // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
   // and the scroller's scroll-padding keeps it clear of the bar.
@@ -383,9 +375,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     },
     onGone: () => gone("gone"),
     offlineText: OFFLINE_MESSAGE,
-    onMoved: (exerciseId) => {
-      revealMoved.current = exerciseId;
-    },
+    onMoved: revealMoved,
   });
 
   /** Resolve a failed exercise-structure write per §5.8. */

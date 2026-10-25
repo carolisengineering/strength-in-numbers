@@ -1,10 +1,11 @@
-import { useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import type { UpdatedWorkout, WorkoutDetail } from "@sin/core";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
 import { mergeWorkout } from "../edit/editCache";
 import { EDIT_MUTATION_KEY } from "../edit/useEditMutations";
 import { WORKOUT_KEYS } from "../queries";
+import { guardReads, rereadIfStale } from "../readGuard";
 import type { WorkoutClient, WorkoutUpdate } from "../workoutClient";
 import { changedGroups, daysBack } from "./changeTime";
 
@@ -26,13 +27,6 @@ export interface ChangeTimeVars {
   readonly patch: WorkoutUpdate;
 }
 
-/** As the edit hooks: cancel an in-flight read so a stale answer cannot land over the save; re-read once if one was cut. */
-async function cancelReads(queryClient: QueryClient, key: readonly unknown[]): Promise<{ interrupted: boolean }> {
-  const interrupted = queryClient.isFetching({ queryKey: key }) > 0;
-  await queryClient.cancelQueries({ queryKey: key });
-  return { interrupted };
-}
-
 /**
  * Spec 18.0 §6.5 (AC35, AC40–AC43): online-only, never queued, never retried; the cache changes only
  * in the hook-level `onSuccess`, from the response. The response's `endedAt` decides: a live workout
@@ -48,11 +42,11 @@ export function useChangeTime(target: ChangeTimeTarget): UseMutationResult<Updat
     networkMode: "always",
     retry: false,
     mutationFn: ({ workout, patch }) => client.updateWorkout(workout.id, patch),
-    onMutate: () => cancelReads(queryClient, cacheKey),
-    onSettled: (_data, _error, _vars, context) => {
-      if (context?.interrupted) void queryClient.invalidateQueries({ queryKey: cacheKey });
-    },
-    onSuccess: (updated, { workout, patch }) => {
+    // As the edit hooks (#154): a read in flight, or one started while the save is pending, may answer from
+    // before it; the key is read once more when the save settles.
+    onMutate: () => guardReads(queryClient, cacheKey),
+    onSettled: (_data, _error, _vars, guard) => rereadIfStale(queryClient, cacheKey, guard),
+    onSuccess: (updated, { workout, patch }, guard) => {
       track("workout_retimed", {
         where,
         changed: changedGroups(patch),
@@ -71,6 +65,7 @@ export function useChangeTime(target: ChangeTimeTarget): UseMutationResult<Updat
       }
       applyEditedCaches(queryClient);
       void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workout.id) });
+      guard?.finish(); // this re-read follows the save, so it replaces the guard's
       return queryClient.invalidateQueries({ queryKey: cacheKey });
     },
   });
