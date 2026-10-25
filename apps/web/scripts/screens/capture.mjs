@@ -342,6 +342,9 @@ let THEME = "light";
 // Spec 17.3 AC19 / AC21 / AC22 / AC24: the front door's composition, measured in the page. Violations go to
 // `_report.json` under `frontDoor`.
 const frontDoor = [];
+// #101: in every shot with an open sheet, the Close icon is centered in its button (to the pixel) — the reset makes an
+// svg a block, which a bare <button> puts at its left edge. Each off-center X is reported and fails the run.
+const offCenter = [];
 async function checkFrontDoor(page, label) {
   const m = await page.evaluate(() => {
     const px = (v) => parseFloat(v) || 0;
@@ -410,6 +413,19 @@ async function shoot(page, device, name, note) {
   await markScroller(page);
   const dump = await layoutDump(page);
   dump.scroller = sc.tag;
+  const closeOffsets = await page.evaluate(() =>
+    [...document.querySelectorAll('dialog[open] button[aria-label="Close"]')].map((button) => {
+      const b = button.getBoundingClientRect();
+      const i = button.querySelector("svg")?.getBoundingClientRect();
+      return i ? { dx: i.left + i.width / 2 - (b.left + b.width / 2), dy: i.top + i.height / 2 - (b.top + b.height / 2) } : null;
+    }),
+  );
+  for (const o of closeOffsets) {
+    if (o && (Math.abs(o.dx) > 1 || Math.abs(o.dy) > 1)) {
+      offCenter.push({ shot: label, ...o });
+      console.error(`  CLOSE OFF CENTER ${label}: dx ${o.dx.toFixed(1)}px, dy ${o.dy.toFixed(1)}px`);
+    }
+  }
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
   // Every enabled control on the page counts, scrolled into view or not (a below-the-fold panel is still the panel).
@@ -849,7 +865,8 @@ const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
 if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, unmatched: [...unmatched], consoleErrors }, null, 1));
+if (offCenter.length) process.exitCode = 1;
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);
