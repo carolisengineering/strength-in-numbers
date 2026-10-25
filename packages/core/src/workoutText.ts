@@ -150,15 +150,20 @@ export function cleanWorkoutText(raw: string): CleanResult {
   const nav = all.map((l) => NAV.has(l.toLowerCase()));
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
+  // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
+  let textSinceNav = 0;
   for (const [i, line] of all.entries()) {
     input++;
     const nearChrome = textSinceClock <= STATUS_BAR_TEXT_LINES || nav[i - 1] === true || nav[i + 1] === true;
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
+    if (nav[i]) textSinceNav = 0;
     if (CLOCK_LINE.test(line)) {
       furniture++;
-      textSinceClock = 0;
+      // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a
+      // clock at the top opens the status-bar window, so a short non-Latin name after a mid-text time is kept.
+      textSinceClock = textSinceNav === 0 ? 0 : Infinity;
       chunks.push([]);
       continue;
     }
@@ -175,6 +180,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
     }
     chunk.push({ text: line, tagged: false });
     textSinceClock++;
+    textSinceNav++;
   }
   const kept = chunks.filter((c) => c.length > 0);
   // A strict header cut off at a screenshot's bottom edge (its badge out of frame) still heads its section.
