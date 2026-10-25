@@ -155,6 +155,18 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const openerOf = (s: SheetView | null): FocusTarget =>
     s?.mode === "edit" && s.sectionId !== null ? { kind: "edit", sectionId: s.sectionId } : addTarget();
 
+  // #159: a refetch dropped the section whose Edit sheet is open (another device removed it), which would leave
+  // Remove section a dead button: close, and say so. Not while this screen's own write is in flight — its own
+  // remove drops the section before it settles — but checked again once that write ends (`submitting`).
+  const openEditId = sheet?.mode === "edit" ? sheet.sectionId : null;
+  useEffect(() => {
+    if (openEditId === null || submittingRef.current) return;
+    if (workout.sections.some((s) => s.id === openEditId)) return;
+    closeAll(addTarget());
+    setBanner({ tone: "warning", text: SECTION_COPY.sectionGone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeAll / addTarget read refs; re-run only when these change
+  }, [openEditId, workout.sections, submitting]);
+
   function begin(): boolean {
     if (structureLock.current || submittingRef.current) return false;
     structureLock.current = true;

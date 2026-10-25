@@ -194,6 +194,29 @@ describe("10.6 AC8 — remove", () => {
     expect(removeSection).not.toHaveBeenCalled();
   });
 
+  it("#159 — another device removed the open sheet's section: the sheet closes with the sectionGone banner", async () => {
+    const { user, workout, deps, rerender } = setup();
+    await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));
+    await user.click(sheet("Edit section").getByRole("button", { name: "Remove section" }));
+    rerender({ ...workout, sections: [], exercises: workout.exercises.map((e) => ({ ...e, sectionId: null })) });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(deps.setBanner).toHaveBeenLastCalledWith({ tone: "warning", text: SECTION_COPY.sectionGone });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open add" })).toHaveFocus());
+  });
+
+  it("#159 — this screen's own remove dropping the section is not 'gone'", async () => {
+    const pending = deferred<undefined>();
+    const removeSection = vi.fn(() => pending.promise);
+    const { user, workout, deps, rerender } = setup({ removeSection });
+    await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));
+    await user.click(sheet("Edit section").getByRole("button", { name: "Remove section" }));
+    await user.click(sheet("Remove Warm-up?").getByRole("button", { name: "Remove" }));
+    rerender({ ...workout, sections: [], exercises: workout.exercises.map((e) => ({ ...e, sectionId: null })) }); // its re-read lands first
+    await act(async () => pending.resolve(undefined));
+    await waitFor(() => expect(deps.announce).toHaveBeenCalledWith("Section removed"));
+    expect(deps.setBanner).not.toHaveBeenCalledWith(expect.objectContaining({ text: SECTION_COPY.sectionGone }));
+  });
+
   it("a 404 counts as done", async () => {
     const removeSection = vi.fn(async () => Promise.reject(api(404, "not-found")));
     const { user, deps } = setup({ removeSection });
