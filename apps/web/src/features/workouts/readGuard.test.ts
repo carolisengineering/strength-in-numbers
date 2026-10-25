@@ -42,7 +42,7 @@ describe("#154 — a read that starts while a write is pending is redone after i
     expect(fn.mock.calls.length).toBe(before);
   });
 
-  it("a read in flight at the start is cancelled, and counts", async () => {
+  it("a read in flight at the start is canceled, and counts", async () => {
     let release!: (v: string) => void;
     const { queryClient } = setup(() => new Promise<string>((r) => (release = r)));
     expect(queryClient.isFetching({ queryKey: KEY })).toBe(1);
@@ -72,7 +72,7 @@ describe("#154 — a read that starts while a write is pending is redone after i
 });
 
 describe("#158 — a structure re-read resolves only once an answer has landed", () => {
-  it("a re-read cancelled by a later write is asked again", async () => {
+  it("a re-read canceled by a later write is asked again", async () => {
     let calls = 0;
     const holder: { client?: QueryClient } = {};
     const { queryClient } = setup(async () => {

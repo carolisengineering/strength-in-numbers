@@ -75,11 +75,19 @@ describe("#156 — adding a section keeps the trailing 'Other exercises' key", (
     expect([before.heading, after.heading]).toEqual([OTHER_EXERCISES_HEADING, OTHER_EXERCISES_HEADING]);
     expect(after.key).toBe(before.key);
   });
-  it("a loose run between two sections still keys by the section before it", () => {
-    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "B" }], exercises: [ex("a", 0), ex("x"), ex("b", 1), ex("y")] });
-    const keys = sectionSegments(supersetRows(detail.exercises), detail.sections).map((s) => s.key);
-    expect(keys.filter((k) => k.startsWith("loose-after-"))).toHaveLength(1);
-    expect(keys.at(-1)).toBe("loose-tail");
+  it("removing the section after a loose run (it becomes the tail) keeps that run's key (code review)", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "B" }], exercises: [ex("a", 0), ex("x"), ex("b", 1)] });
+    const keyOfX = (exercises: typeof detail.exercises, sections: typeof detail.sections) =>
+      sectionSegments(supersetRows(exercises), sections).find((s) => s.rows.some((r) => r.exercise.exerciseNameSnapshot === "x"))!.key;
+    const withoutB = detail.exercises.map((e) => (e.exerciseNameSnapshot === "b" ? { ...e, sectionId: null } : e));
+    expect(keyOfX(withoutB, detail.sections.slice(0, 1))).toBe(keyOfX(detail.exercises, detail.sections));
+  });
+  it("filling the new section from elsewhere keeps the tail's key", () => {
+    const detail = makeWorkoutDetail({ sections: [{ name: "A" }, { name: "New" }], exercises: [ex("a", 0), ex("x"), ex("y")] });
+    const tail = (exercises: typeof detail.exercises) => sectionSegments(supersetRows(exercises), detail.sections).at(-1)!.key;
+    const newId = detail.sections[1]!.id;
+    const aInNew = detail.exercises.map((e) => (e.exerciseNameSnapshot === "a" ? { ...e, sectionId: newId } : e));
+    expect(tail(aInNew)).toBe(tail(detail.exercises));
   });
 });
 

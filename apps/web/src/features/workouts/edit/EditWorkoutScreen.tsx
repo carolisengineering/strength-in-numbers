@@ -46,6 +46,7 @@ import { LastSetDialog } from "./LastSetDialog";
 import styles from "./EditWorkoutScreen.module.css";
 import { editSucceeded, useEditAddExercise, useEditRemoveExercise, useIsEditWritePending } from "./useEditMutations";
 import { useEditSectionMutations } from "./useEditSectionMutations";
+import { useRevealMoved } from "../useRevealMoved";
 
 type StructureOp = Extract<EditOperation, "add-exercise" | "move-exercise" | "regroup" | "remove-exercise">;
 
@@ -266,22 +267,7 @@ function EditBody({
     node.scrollIntoView?.({ block: "nearest" });
   }, [workout.exercises]);
   // Spec 10.6 §6.4: a section move remounts its card under another <section>; once its heading is registered, focus and show it.
-  const revealMoved = useRef<{ exerciseId: string; sectionId: string | null } | null>(null);
-  useEffect(() => {
-    const moved = revealMoved.current;
-    if (moved === null) return;
-    const exercise = workout.exercises.find((e) => e.id === moved.exerciseId);
-    if (exercise === undefined) {
-      revealMoved.current = null;
-      return;
-    }
-    if (exercise.sectionId !== moved.sectionId) return; // #157: the re-read has not shown the move (it may have failed)
-    const node = headingRefs.current.get(moved.exerciseId);
-    if (node === undefined) return;
-    revealMoved.current = null;
-    node.focus();
-    node.scrollIntoView?.({ block: "nearest" });
-  }, [segments, workout.exercises]);
+  const revealMoved = useRevealMoved(workout, segments, headingRefs, () => queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId)));
 
   const refetchDetail = () => queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
 
@@ -302,9 +288,7 @@ function EditBody({
     },
     onGone: onVanished,
     offlineText: EDIT_COPY.offline,
-    onMoved: (exerciseId, sectionId) => {
-      revealMoved.current = { exerciseId, sectionId };
-    },
+    onMoved: revealMoved,
   });
 
   /** §5.4's structure rows; the screen's banner is where they show. */

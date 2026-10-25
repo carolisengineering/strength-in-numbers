@@ -17,7 +17,7 @@ export async function guardReads(queryClient: QueryClient, queryKey: QueryKey): 
   let started = false;
   let done = false;
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-    if (event.type === "updated" && event.action.type === "fetch" && matchQuery({ queryKey, exact: true }, event.query)) started = true;
+    if (event.type === "updated" && event.action.type === "fetch" && matchQuery({ queryKey }, event.query)) started = true;
   });
   return {
     finish: () => {
@@ -38,13 +38,14 @@ export function rereadIfStale(queryClient: QueryClient, queryKey: QueryKey, guar
  * A structure write (a section remove or move) changes other rows, so it re-reads the workout and resolves only
  * once the answer has landed (Spec 10.6 §6.4). A set write started meanwhile cancels that read (its `guardReads`);
  * ask again, up to three times, rather than resolve on the old list (#158). A read that fails is not retried, and
- * nothing is read for a screen that has gone (no observer).
+ * nothing is read for a screen that has gone (no observer). After three cancels it resolves on what is cached; the
+ * move's reveal then stays unarmed (`useRevealMoved`), and the next read shows the change.
  */
 export async function rereadUntilLanded(queryClient: QueryClient, queryKey: QueryKey): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const before = queryClient.getQueryState(queryKey);
     await queryClient.invalidateQueries({ queryKey });
-    const query = queryClient.getQueryCache().find({ queryKey, exact: true });
+    const query = queryClient.getQueryCache().find({ queryKey, exact: true }); // the one workout entry itself
     const after = query?.state;
     if (!before || !after || query.getObserversCount() === 0) return;
     if (after.dataUpdatedAt !== before.dataUpdatedAt || after.errorUpdatedAt !== before.errorUpdatedAt) return;

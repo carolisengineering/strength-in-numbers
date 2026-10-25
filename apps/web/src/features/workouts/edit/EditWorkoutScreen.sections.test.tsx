@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
-import { onlineManager } from "@tanstack/react-query";
+import { focusManager, onlineManager } from "@tanstack/react-query";
 import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -216,6 +216,21 @@ describe("10.6 AC18 — edit flows end to end", () => {
     await user.click(sheet("Edit section").getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("region", { name: "Warm" })).toBeInTheDocument());
     expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("#157 — a move whose re-read fails: a later refetch that shows the move does not pull focus to it (code review)", async () => {
+    const { user, fake, workout } = await openEdit({ sections: [{ name: "Warm-up" }], exercises: [ex("Squat", 0), ex("Row Erg")] });
+    fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () => HttpResponse.error() as Response);
+    await user.click(optionsButton("Row Erg"));
+    await user.selectOptions(sectionSelect("Row Erg"), "Warm-up");
+    await waitFor(() => expect(announcement()).toHaveTextContent("Moved Row Erg to Warm-up"));
+    const elsewhere = screen.getByRole("button", { name: "Add section" });
+    elsewhere.focus();
+    focusManager.setFocused(false);
+    focusManager.setFocused(true); // the lifter comes back to the tab: a refetch shows the move
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Warm-up" })).getByRole("article", { name: "Row Erg" })).toBeInTheDocument());
+    focusManager.setFocused(undefined);
+    expect(within(card("Row Erg")).getByRole("heading", { level: 2 })).not.toHaveFocus();
   });
 
   it("Done waits while a section write is in flight", async () => {

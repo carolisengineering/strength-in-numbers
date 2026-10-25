@@ -23,7 +23,7 @@ function withSection(detail: WorkoutDetail, section: WorkoutSection): WorkoutDet
  * Spec 18.0's terms: the plain REST client, `EDIT_MUTATION_KEY`, pessimistic, never retried. Create and
  * update write the returned section into the detail (guarding it against a read in flight or started meanwhile);
  * remove and move change other rows, so they re-read the detail and resolve only once an answer has landed — asking
- * again if a set write cancelled that read (#158). Every success calls
+ * again if a set write canceled that read (#158). Every success calls
  * `editSucceeded` (one `workout_edit` event, then History / Progress / records refresh). All cache work is
  * in the hook-level `onSuccess`, so it still lands if the screen unmounts mid-request.
  */
