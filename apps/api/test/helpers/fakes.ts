@@ -37,7 +37,9 @@ import type {
 import type {
   CatalogPage,
   ExerciseRecord,
+  ExerciseRoutineRecord,
   ExerciseUpdateResult,
+  ExerciseUsageRecord,
   ExerciseRepository,
   ExerciseWriteFields,
   ExerciseWritePatch,
@@ -399,6 +401,19 @@ export class FakeExerciseRepository implements ExerciseRepository {
       throw new ExerciseTypeLockedError(from, to);
     }
     return this.insertOwned(actingUserId, merged, origin.id);
+  }
+
+  /** Spec 03.4: seeded by route tests; the real statement is pinned by the integration tests. */
+  routinesUsing = new Map<string, ExerciseRoutineRecord[]>();
+  usage: ExerciseUsageRecord[] = [];
+
+  async findUsage(): Promise<ExerciseUsageRecord[]> {
+    return this.usage;
+  }
+
+  async listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]> {
+    await this.findVisibleById(actingUserId, id);
+    return this.routinesUsing.get(id) ?? [];
   }
 
   async deleteExercise(actingUserId: string, id: string): Promise<void> {

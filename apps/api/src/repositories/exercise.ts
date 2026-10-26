@@ -60,6 +60,19 @@ export interface ExerciseWriteFields {
 /** A partial edit — `PATCH` body or `/fork` overlay body (Spec 03.2 §5, §6). */
 export type ExerciseWritePatch = Partial<ExerciseWriteFields>;
 
+/** Spec 03.4 §5.2: last logged per lineage root; `lastLoggedOn` is `YYYY-MM-DD` text from Postgres. */
+export interface ExerciseUsageRecord {
+  readonly rootId: string;
+  readonly lastLoggedOn: string;
+}
+
+/** Spec 03.4 §5.1: a routine that uses an exercise. */
+export interface ExerciseRoutineRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly oneOffUntil: Date | null;
+}
+
 /** Spec 03.4 AC20: the updated row, and whether its stored type changed (for the log line). */
 export interface ExerciseUpdateResult {
   readonly exercise: ExerciseRecord;
@@ -67,6 +80,19 @@ export interface ExerciseUpdateResult {
 }
 
 export interface ExerciseRepository {
+  /**
+   * Spec 03.4 §6.4 — the caller's routines with an item on exactly `id` (each once), ordered `lower(name)`, `id`.
+   * Visibility as every exercise read: an invisible or malformed id is `NotFoundError`; a retired own row still
+   * answers, so the warning list survives a delete. One statement: no sweep, no write.
+   */
+  listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]>;
+
+  /**
+   * Spec 03.4 §6.7 — the latest `local_date` of the caller's workouts holding any set under each lineage root,
+   * ordered `lastLoggedOn` descending then `rootId`. Retired exercises count; other users' workouts never do.
+   */
+  findUsage(actingUserId: string): Promise<ExerciseUsageRecord[]>;
+
   /**
    * The caller-visible catalog. No `since` → the full pull: visible rows with
    * `is_active = true`, ordered by `name COLLATE "C"` then `id`. With `since` (a

@@ -20,7 +20,9 @@ import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
+  ExerciseRoutineRecord,
   ExerciseUpdateResult,
+  ExerciseUsageRecord,
   ExerciseWriteFields,
   ExerciseWritePatch,
   ReferenceRecord,
@@ -380,6 +382,33 @@ export function createExerciseRepository(
       // #24: ownership cannot change under a caller, so a row that is still owned and
       // active here means an invariant broke — surface it as one, not as "use fork".
       throw new InternalError("updateExercise: the gated UPDATE matched no row for an owned, active exercise");
+    },
+
+    async listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]> {
+      await loadVisibleRow(actingUserId, id); // 404 for invisible or malformed; no is_active gate (AC22)
+      const rows = await prisma.$queryRaw<{ id: string; name: string; one_off_until: Date | null }[]>`
+        SELECT r.id::text AS id, r.name, r.one_off_until
+        FROM "routine" r
+        WHERE r.user_id = ${actingUserId}::uuid
+          AND EXISTS (SELECT 1 FROM "routine_item" ri WHERE ri.routine_id = r.id AND ri.exercise_id = ${id}::uuid)
+        ORDER BY lower(r.name), r.id
+      `;
+      return rows.map((r) => ({ id: r.id, name: r.name, oneOffUntil: r.one_off_until }));
+    },
+
+    async findUsage(actingUserId: string): Promise<ExerciseUsageRecord[]> {
+      const rows = await prisma.$queryRaw<{ root_id: string; last_logged_on: string }[]>`
+        SELECT COALESCE(x.forked_from_exercise_id, x.id)::text AS root_id,
+               max(w.local_date)::text AS last_logged_on
+        FROM "workout" w
+        JOIN "workout_exercise" we ON we.workout_id = w.id
+        JOIN "exercise" x          ON x.id = we.exercise_id
+        WHERE w.user_id = ${actingUserId}::uuid
+          AND EXISTS (SELECT 1 FROM "set_entry" se WHERE se.workout_exercise_id = we.id)
+        GROUP BY 1
+        ORDER BY 2 DESC, 1
+      `;
+      return rows.map((r) => ({ rootId: r.root_id, lastLoggedOn: r.last_logged_on }));
     },
 
     async forkExercise(

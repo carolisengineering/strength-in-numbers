@@ -5,7 +5,11 @@ import {
   CatalogSinceQuery,
   CreateExerciseSchema,
   ExercisesResponse,
+  ExerciseRoutinesResponseSchema,
   ExerciseSchema,
+  ExerciseUsageResponseSchema,
+  type ExerciseRoutineRef,
+  type ExerciseUsage,
   UpdateExerciseSchema,
   type Exercise,
 } from "@sin/core";
@@ -85,6 +89,41 @@ export function registerExerciseRoutes(
 ): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
   const exerciseIdParams = z.object({ id: z.string() });
+
+  // Spec 03.4 §5.2: last logged per lineage root. Static path: find-my-way matches it before `/exercises/:id`.
+  r.get(
+    "/exercises/usage",
+    {
+      schema: { response: { 200: ExerciseUsageResponseSchema, 304: z.undefined() } },
+      config: { published: true, problems: [], httpCache: "revalidate" },
+    },
+    async (request, reply) => {
+      const exercises = (await deps.exerciseRepository.findUsage(request.user!.id)).map((u) => ({
+        rootId: u.rootId as ExerciseUsage["rootId"],
+        lastLoggedOn: u.lastLoggedOn,
+      }));
+      const etag = strongEtag("exercise-usage", JSON.stringify(exercises));
+      reply.header("etag", etag);
+      if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {
+        reply.code(304).send();
+        return reply;
+      }
+      return { exercises };
+    },
+  );
+
+  // Spec 03.4 §5.1: the delete warning's list. no-store (no httpCache), a read (no writeGroup), never sweeps one-offs.
+  r.get(
+    "/exercises/:id/routines",
+    {
+      schema: { params: exerciseIdParams, response: { 200: ExerciseRoutinesResponseSchema } },
+      config: { published: true, problems: [NotFoundError] },
+    },
+    async (request) => {
+      const routines = await deps.exerciseRepository.listRoutinesUsing(request.user!.id, request.params.id);
+      return { routines: routines.map((r) => ({ id: r.id as ExerciseRoutineRef["id"], name: r.name, oneOffUntil: r.oneOffUntil?.toISOString() ?? null })) };
+    },
+  );
 
   r.get(
     "/exercises",

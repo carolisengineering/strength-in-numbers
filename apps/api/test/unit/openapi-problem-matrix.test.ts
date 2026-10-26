@@ -54,6 +54,10 @@ const MATRIX: Record<string, Slugs> = {
     404: ["not-found"],
     409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached", "exercise-type-locked"],
   }),
+  // Spec 03.4 §5.2: no parameters, no domain problems.
+  "GET /v1/exercises/usage": withCentral("none"),
+  // Spec 03.4 §5.1: any visible exercise, retired included; an invisible or malformed id is 404.
+  "GET /v1/exercises/{id}/routines": withCentral("input", { 404: ["not-found"] }),
   "DELETE /v1/exercises/{id}": withCentral("body", {
     403: ["exercise-immutable"],
     404: ["not-found"],
