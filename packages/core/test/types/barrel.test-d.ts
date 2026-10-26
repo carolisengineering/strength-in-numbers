@@ -42,6 +42,7 @@ import {
   mToMi,
   ftToM,
   mToFt,
+  parseDecimalMilli,
   miToM,
   lbToKg,
   noControlChars,
@@ -102,6 +103,7 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(mToMi).toBeFunction();
     expectTypeOf(ftToM).toBeFunction();
     expectTypeOf(mToFt).toBeFunction();
+    expectTypeOf(parseDecimalMilli).toEqualTypeOf<(decimalString: string) => number>();
     expectTypeOf(LB_TO_KG).toBeNumber();
     expectTypeOf(KM_TO_M).toBeNumber();
     expectTypeOf(MI_TO_M).toBeNumber();

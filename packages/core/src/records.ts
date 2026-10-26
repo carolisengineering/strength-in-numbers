@@ -3,10 +3,11 @@
  * shared by the API's finish / delete / rebuild paths and, later, the clients.
  *
  * Every value is an integer in thousandths ("milli"): kg × 1000 for the load
- * types, reps × kg × 1000 for set volume, reps × 1000 for max_reps — so one
- * `numeric(12,3)` column and one formatter serve all four, and every
- * comparison is exact (D3). Magnitudes stay below 3.3e11, far inside
- * Number.MAX_SAFE_INTEGER, so no BigInt is needed.
+ * types, reps × kg × 1000 for set volume, reps × 1000 for max_reps, and
+ * calories / meters / seconds × 1000 for the Spec 05.3 types — so one
+ * `numeric(14,3)` column and one formatter serve all seven, and every
+ * comparison is exact (D3). The largest value is SET_DURATION_S_MAX × 1000
+ * ≈ 2.1e12, far inside Number.MAX_SAFE_INTEGER, so no BigInt is needed.
  */
 import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type RecordType, type RecordUnit, type SetType } from "./enums.js";
 
@@ -19,6 +20,12 @@ export interface RecordSet {
   modality: string;
   weightKgMilli: number | null;
   reps: number | null;
+  /** distance_m in milli-meters (Spec 05.3); absent = null. */
+  distanceMMilli?: number | null;
+  /** duration_s in whole seconds; absent = null. */
+  durationS?: number | null;
+  /** Whole calories; absent = null. */
+  calories?: number | null;
 }
 
 export interface ComputedRecord {
@@ -42,6 +49,9 @@ export function parseWeightKgMilli(decimalString: string): number {
   return milli;
 }
 
+/** The same parser under a neutral name, for meters (Spec 05.3 AC35). */
+export const parseDecimalMilli = parseWeightKgMilli;
+
 /** `61235` → `"61.235"` — string arithmetic, no division. */
 export function milliToDecimalString(milli: number): string {
   if (!Number.isSafeInteger(milli) || milli < 0) {
@@ -64,7 +74,19 @@ export function estimate1rm(weightKgMilli: number, reps: number): number | null 
   return divFloor(weightKgMilli * (30 + reps) + 15, 30);
 }
 
+/** The rep-load modalities: they alone have e1RM and set volume, which need reps. */
 const LOAD_MODALITIES = new Set(["weight_reps", "weighted_bodyweight"]);
+
+const repsAtLeastOne = (s: RecordSet): boolean => s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1;
+
+/** Spec 05.3 §6.2: the load modalities and the second measure each needs
+ * positive before its weight can be a heaviest_weight. Gates only that type. */
+const HEAVIEST_LOAD: Readonly<Record<string, (s: RecordSet) => boolean>> = {
+  weight_reps: repsAtLeastOne,
+  weighted_bodyweight: repsAtLeastOne,
+  weight_distance: (s) => (s.distanceMMilli ?? 0) > 0,
+  weight_duration: (s) => (s.durationS ?? 0) >= 1,
+};
 
 /**
  * The one definition of a set's volume (Spec 07.1 D4): reps × weight in milli,
@@ -95,9 +117,24 @@ export function sumVolumeMilli(
  * ineligible (07.0 §6.1 table, D5). Exported for Spec 07.2's progress series —
  * one per-set rule for PRs and charts. */
 export function setRecordValueMilli(recordType: RecordType, s: RecordSet): number | null {
-  // Spec 05.3 Phase B fills these three; until then they produce nothing.
-  if (recordType === "max_calories" || recordType === "max_distance" || recordType === "max_duration") return null;
-  const reps = s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 ? s.reps : null;
+  // Spec 05.3 §6.2: each new type reads one measure of one modality.
+  if (recordType === "max_calories") {
+    const c = s.calories ?? null;
+    return s.modality === "calories" && c !== null && c >= 1 ? c * 1000 : null;
+  }
+  if (recordType === "max_distance") {
+    const d = s.distanceMMilli ?? null;
+    return s.modality === "weight_distance" && d !== null && d > 0 ? d : null;
+  }
+  if (recordType === "max_duration") {
+    const t = s.durationS ?? null;
+    return s.modality === "weight_duration" && t !== null && t >= 1 ? t * 1000 : null;
+  }
+  if (recordType === "heaviest_weight") {
+    const w = s.weightKgMilli;
+    return HEAVIEST_LOAD[s.modality]?.(s) === true && w !== null && w > 0 ? w : null;
+  }
+  const reps = repsAtLeastOne(s) ? s.reps : null;
   if (recordType === "max_reps") {
     return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;
   }
@@ -109,12 +146,7 @@ export function setRecordValueMilli(recordType: RecordType, s: RecordSet): numbe
   if (!LOAD_MODALITIES.has(s.modality) || reps === null) return null;
   const w = s.weightKgMilli;
   if (w === null || w <= 0) return null;
-  switch (recordType) {
-    case "heaviest_weight":
-      return w;
-    case "best_est_1rm":
-      return estimate1rm(w, reps);
-  }
+  return estimate1rm(w, reps);
 }
 
 /** Contiguous per-workout runs of `sets`, in input order. Throws if a

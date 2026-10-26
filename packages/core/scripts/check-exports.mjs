@@ -144,6 +144,7 @@ const EXPECTED = [
   "UpdatedWorkoutSchema",
   // records.ts (Spec 07.0 §6.1)
   "parseWeightKgMilli",
+  "parseDecimalMilli",
   "milliToDecimalString",
   "estimate1rm",
   "computeRecords",

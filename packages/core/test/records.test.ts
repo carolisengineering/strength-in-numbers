@@ -8,7 +8,7 @@ import {
   setRecordValueMilli,
   type RecordSet,
 } from "../src/records.js";
-import { MODALITY_VALUES } from "../src/enums.js";
+import { MODALITY_VALUES, RECORD_TYPE_VALUES } from "../src/enums.js";
 
 let n = 0;
 const set = (over: Partial<RecordSet> & Pick<RecordSet, "workoutId">): RecordSet => ({
@@ -178,16 +178,115 @@ describe("AC8 — chronology is the input order; workouts must be contiguous", (
   });
 });
 
-describe("05.3 Phase A — new record types produce nothing yet", () => {
-  const NEW_TYPES = ["max_calories", "max_distance", "max_duration"] as const;
-  for (const recordType of NEW_TYPES) {
-    for (const modality of MODALITY_VALUES) {
-      it(`${recordType} on ${modality} is null`, () => {
-        expect(setRecordValueMilli(recordType, set({ workoutId: "w1", modality }))).toBeNull();
-      });
-    }
+type Expect = Partial<Record<(typeof RECORD_TYPE_VALUES)[number], number>>;
+const NONE: Expect = {};
+
+/** One representative working set per modality, with every measure that
+ * modality carries; the expected values are spec 05.3 §6.2's table. */
+const FULL: Record<(typeof MODALITY_VALUES)[number], [Partial<RecordSet>, Expect]> = {
+  weight_reps: [{ weightKgMilli: 100_000, reps: 5 }, { heaviest_weight: 100_000, best_est_1rm: 116_667, best_set_volume: 500_000 }],
+  bodyweight_reps: [{ weightKgMilli: null, reps: 12 }, { max_reps: 12_000 }],
+  weighted_bodyweight: [{ weightKgMilli: 10_000, reps: 8 }, { heaviest_weight: 10_000, best_est_1rm: 12_667, best_set_volume: 80_000 }],
+  duration: [{ weightKgMilli: null, reps: null, durationS: 600 }, NONE],
+  distance_duration: [{ weightKgMilli: null, reps: null, distanceMMilli: 5_000_000, durationS: 1_500 }, NONE],
+  calories: [{ weightKgMilli: null, reps: null, calories: 20 }, { max_calories: 20_000 }],
+  weight_distance: [{ weightKgMilli: 24_000, reps: null, distanceMMilli: 40_000 }, { heaviest_weight: 24_000, max_distance: 40_000 }],
+  weight_duration: [{ weightKgMilli: 20_000, reps: null, durationS: 90 }, { heaviest_weight: 20_000, max_duration: 90_000 }],
+};
+
+const valuesOf = (over: Partial<RecordSet>): Expect => {
+  const s = set({ workoutId: "w1", ...over });
+  const out: Expect = {};
+  for (const t of RECORD_TYPE_VALUES) {
+    const v = setRecordValueMilli(t, s);
+    if (v !== null) out[t] = v;
   }
-  it("computeRecords over a calories set returns []", () => {
-    expect(computeRecords([set({ workoutId: "w1", modality: "calories", weightKgMilli: null, reps: null })])).toEqual([]);
+  return out;
+};
+
+describe("05.3 AC22 — eligibility matrix", () => {
+  it.each(MODALITY_VALUES)("%s: the full set gives exactly the §6.2 row", (modality) => {
+    const [over, expected] = FULL[modality];
+    expect(valuesOf({ modality, ...over })).toEqual(expected);
+  });
+
+  it.each([
+    ["weight_distance 24 kg × 40 m", { modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 40_000 }, { heaviest_weight: 24_000, max_distance: 40_000 }],
+    ["weight_distance weight 0 still wins distance (D6)", { modality: "weight_distance", weightKgMilli: 0, reps: null, distanceMMilli: 40_000 }, { max_distance: 40_000 }],
+    ["weight_distance weight null still wins distance", { modality: "weight_distance", weightKgMilli: null, reps: null, distanceMMilli: 40_000 }, { max_distance: 40_000 }],
+    ["weight_distance distance 0 gives nothing", { modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 0 }, NONE],
+    ["weight_distance distance null gives nothing", { modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: null }, NONE],
+    ["weight_distance 0.001 m records", { modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 1 }, { heaviest_weight: 24_000, max_distance: 1 }],
+    ["weight_distance ignores stray reps", { modality: "weight_distance", weightKgMilli: 24_000, reps: 5, distanceMMilli: 40_000 }, { heaviest_weight: 24_000, max_distance: 40_000 }],
+    ["weight_duration 20 kg × 1 s", { modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 1 }, { heaviest_weight: 20_000, max_duration: 1_000 }],
+    ["weight_duration weight 0 still wins duration", { modality: "weight_duration", weightKgMilli: 0, reps: null, durationS: 90 }, { max_duration: 90_000 }],
+    ["weight_duration duration 0 gives nothing", { modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 0 }, NONE],
+    ["weight_duration duration null gives nothing", { modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: null }, NONE],
+    ["weight_duration at the DTO maximum", { modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 2_147_483_647 }, { heaviest_weight: 20_000, max_duration: 2_147_483_647_000 }],
+    ["calories 0 gives nothing", { modality: "calories", weightKgMilli: null, reps: null, calories: 0 }, NONE],
+    ["calories null gives nothing", { modality: "calories", weightKgMilli: null, reps: null, calories: null }, NONE],
+    ["calories 1", { modality: "calories", weightKgMilli: null, reps: null, calories: 1 }, { max_calories: 1_000 }],
+    ["calories 32767", { modality: "calories", weightKgMilli: null, reps: null, calories: 32_767 }, { max_calories: 32_767_000 }],
+    ["calories ignores stray weight and reps", { modality: "calories", weightKgMilli: 50_000, reps: 5, calories: 20 }, { max_calories: 20_000 }],
+    ["weight_reps ignores stray calories, distance, duration", { modality: "weight_reps", weightKgMilli: 100_000, reps: 5, calories: 20, distanceMMilli: 40_000, durationS: 90 }, { heaviest_weight: 100_000, best_est_1rm: 116_667, best_set_volume: 500_000 }],
+    ["duration never records max_duration", { modality: "duration", weightKgMilli: null, reps: null, durationS: 600 }, NONE],
+    ["distance_duration never records max_distance", { modality: "distance_duration", weightKgMilli: null, reps: null, distanceMMilli: 5_000_000, durationS: 1_500 }, NONE],
+  ] as const)("%s", (_label, over, expected) => {
+    expect(valuesOf(over as Partial<RecordSet>)).toEqual(expected);
+  });
+
+  it("e1RM, set volume and max reps are never produced for a new type", () => {
+    for (const modality of ["calories", "weight_distance", "weight_duration"] as const) {
+      const s = set({ workoutId: "w1", modality, weightKgMilli: 100_000, reps: 5, calories: 20, distanceMMilli: 40_000, durationS: 90 });
+      for (const t of ["best_est_1rm", "best_set_volume", "max_reps"] as const) {
+        expect(setRecordValueMilli(t, s)).toBeNull();
+      }
+    }
+  });
+});
+
+describe("05.3 AC23 — calories records", () => {
+  it("one max_calories record; the earliest wins a tie; previous is the best of earlier workouts", () => {
+    const cal = (workoutId: string, calories: number) => set({ workoutId, modality: "calories", weightKgMilli: null, reps: null, calories });
+    const a = cal("w1", 20);
+    const b = cal("w2", 25);
+    const c = cal("w3", 25);
+    const records = computeRecords([a, b, c]);
+    expect(records).toEqual([
+      { recordType: "max_calories", valueMilli: 25_000, unit: "cal", setId: b.setId, workoutId: "w2", previousValueMilli: 20_000 },
+    ]);
+  });
+});
+
+describe("05.3 AC24 — weight + distance", () => {
+  it("heaviest_weight and max_distance have independent holders", () => {
+    const a = set({ workoutId: "w1", modality: "weight_distance", weightKgMilli: 40_000, reps: null, distanceMMilli: 20_000 });
+    const b = set({ workoutId: "w2", modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 60_000 });
+    const r = byType([a, b]);
+    expect(Object.keys(r).sort()).toEqual(["heaviest_weight", "max_distance"]);
+    expect(r.heaviest_weight).toMatchObject({ setId: a.setId, valueMilli: 40_000, unit: "kg", previousValueMilli: null });
+    expect(r.max_distance).toMatchObject({ setId: b.setId, valueMilli: 60_000, unit: "m", previousValueMilli: 20_000 });
+  });
+});
+
+describe("05.3 AC25 — weight + duration", () => {
+  it("heaviest_weight and max_duration have independent holders", () => {
+    const a = set({ workoutId: "w1", modality: "weight_duration", weightKgMilli: 40_000, reps: null, durationS: 30 });
+    const b = set({ workoutId: "w2", modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 90 });
+    const r = byType([a, b]);
+    expect(Object.keys(r).sort()).toEqual(["heaviest_weight", "max_duration"]);
+    expect(r.heaviest_weight).toMatchObject({ setId: a.setId, valueMilli: 40_000, unit: "kg", previousValueMilli: null });
+    expect(r.max_duration).toMatchObject({ setId: b.setId, valueMilli: 90_000, unit: "s", previousValueMilli: 30_000 });
+  });
+});
+
+describe("05.3 AC26 — legacy unchanged, mixed snapshots", () => {
+  it("each set is judged under its own snapshot: old duration sets give no max_duration", () => {
+    const old = set({ workoutId: "w1", modality: "duration", weightKgMilli: null, reps: null, durationS: 600 });
+    const now = set({ workoutId: "w2", modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 90 });
+    const r = byType([old, now]);
+    expect(Object.keys(r).sort()).toEqual(["heaviest_weight", "max_duration"]);
+    expect(r.max_duration).toMatchObject({ setId: now.setId, valueMilli: 90_000, previousValueMilli: null });
+    expect(r.heaviest_weight).toMatchObject({ setId: now.setId, valueMilli: 20_000, previousValueMilli: null });
   });
 });
