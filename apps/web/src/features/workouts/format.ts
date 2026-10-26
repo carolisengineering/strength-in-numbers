@@ -59,6 +59,9 @@ export function formatDuration(totalSeconds: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }
 
+/** A count grouped like every other figure ("1,200"); Spec 18.1 §6.5 uses it for calories. */
+export const formatCount = (n: number): string => NUMBER.format(n);
+
 const orDash = (value: number | null, render: (n: number) => string): string =>
   value === null ? "–" : render(value);
 
@@ -85,9 +88,9 @@ export function formatSetParts(set: SetEntry, modality: Modality): { core: strin
     case "distance_duration":
       core = `${withUnit(set.distance, set.distanceUnit)} · ${orDash(set.durationS, formatDuration)}`;
       break;
-    // Spec 05.3 Phase A: plain fallbacks (the set's own measures); the UI spec (18.1) owns their display.
+    // Spec 18.1 §6.5: "·" between the measures, never "×" — a carry is not weight times distance (D8).
     case "calories":
-      core = orDash(set.calories, (n) => `${n} cal`);
+      core = orDash(set.calories, (n) => `${formatCount(n)} cal`);
       break;
     case "weight_distance":
       core = `${withUnit(set.weight, set.weightUnit)} · ${withUnit(set.distance, set.distanceUnit)}`;

@@ -2,7 +2,7 @@ import { createContext, useSyncExternalStore } from "react";
 import type { Modality } from "@sin/core";
 
 import { formatWeight } from "../routines/targetFormat";
-import { formatDuration } from "./format";
+import { formatCount, formatDuration } from "./format";
 import { parseDraft, type SetDraft } from "./setDraft";
 
 /**
@@ -28,9 +28,9 @@ export function logLabel(modality: Modality, draft: SetDraft, unitPreference: "k
       return `Log ${duration}`;
     case "distance_duration":
       return `Log ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""} · ${duration}`;
-    // Spec 05.3 Phase A: plain fallbacks; the UI spec (18.1) owns the new types' entry.
+    // Spec 18.1 §6.5: the weight carries its unit only when it differs from the profile's, as for weight × reps.
     case "calories":
-      return `Log ${String(body.calories ?? 0)} cal`;
+      return `Log ${formatCount(body.calories ?? 0)} cal`;
     case "weight_distance":
       return `Log ${weight} · ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""}`;
     case "weight_duration":
