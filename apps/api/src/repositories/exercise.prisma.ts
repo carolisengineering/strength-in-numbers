@@ -20,6 +20,7 @@ import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
+  ExerciseRoutineRecord,
   ExerciseUpdateResult,
   ExerciseWriteFields,
   ExerciseWritePatch,
@@ -380,6 +381,18 @@ export function createExerciseRepository(
       // #24: ownership cannot change under a caller, so a row that is still owned and
       // active here means an invariant broke — surface it as one, not as "use fork".
       throw new InternalError("updateExercise: the gated UPDATE matched no row for an owned, active exercise");
+    },
+
+    async listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]> {
+      await loadVisibleRow(actingUserId, id); // 404 for invisible or malformed; no is_active gate (AC22)
+      const rows = await prisma.$queryRaw<{ id: string; name: string; one_off_until: Date | null }[]>`
+        SELECT r.id::text AS id, r.name, r.one_off_until
+        FROM "routine" r
+        WHERE r.user_id = ${actingUserId}::uuid
+          AND EXISTS (SELECT 1 FROM "routine_item" ri WHERE ri.routine_id = r.id AND ri.exercise_id = ${id}::uuid)
+        ORDER BY lower(r.name), r.id
+      `;
+      return rows.map((r) => ({ id: r.id, name: r.name, oneOffUntil: r.one_off_until }));
     },
 
     async forkExercise(

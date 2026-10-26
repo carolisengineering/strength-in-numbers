@@ -48,6 +48,8 @@ import {
   compatibleModalities,
   canChangeModality,
   lineageRootId,
+  ExerciseRoutinesResponseSchema,
+  type ExerciseRoutineRef,
   miToM,
   lbToKg,
   noControlChars,
@@ -109,6 +111,8 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(ftToM).toBeFunction();
     expectTypeOf(mToFt).toBeFunction();
     expectTypeOf(RECORD_MEASURES_BY_MODALITY.calories).toEqualTypeOf<readonly ("reps" | "weight" | "distance" | "duration" | "calories")[]>();
+    expectTypeOf<ExerciseRoutineRef>().toEqualTypeOf<{ id: ExerciseRoutineRef["id"]; name: string; oneOffUntil: string | null }>();
+    expectTypeOf(ExerciseRoutinesResponseSchema.parse).toBeFunction();
     expectTypeOf(modalitiesCompatible).toBeFunction();
     expectTypeOf(compatibleModalities).toBeFunction();
     expectTypeOf(canChangeModality).toBeFunction();

@@ -154,6 +154,9 @@ const EXPECTED = [
   "progressPoints",
   "setChangeAffectsRecords",
   "RECORD_MEASURES_BY_MODALITY",
+  // dto/exercise-reads.ts (Spec 03.4 §5.1–§5.2)
+  "ExerciseRoutineRefSchema",
+  "ExerciseRoutinesResponseSchema",
   // modality-change.ts (Spec 03.4 §6.1)
   "modalitiesCompatible",
   "compatibleModalities",
