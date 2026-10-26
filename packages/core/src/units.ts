@@ -17,6 +17,8 @@ export const LB_TO_KG = 0.45359237;
 export const KM_TO_M = 1000;
 /** Miles → metres (exact: 1 mi = 1609.344 m). */
 export const MI_TO_M = 1609.344;
+/** Feet → meters (exact: 1 ft = 0.3048 m; Spec 05.3 AC39). */
+export const FT_TO_M = 0.3048;
 
 /**
  * Compile-time exhaustiveness guard. Adding a member to `WeightUnit` /
@@ -48,6 +50,8 @@ export function toCanonicalMeters(value: number, unit: DistanceUnit): number {
       return value * KM_TO_M;
     case "mi":
       return value * MI_TO_M;
+    case "ft":
+      return value * FT_TO_M;
     default:
       return assertUnreachable(unit);
   }
@@ -75,4 +79,12 @@ export function miToM(mi: number): number {
 
 export function mToMi(m: number): number {
   return m / MI_TO_M;
+}
+
+export function ftToM(ft: number): number {
+  return ft * FT_TO_M;
+}
+
+export function mToFt(m: number): number {
+  return m / FT_TO_M;
 }

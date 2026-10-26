@@ -5,8 +5,10 @@ import {
   estimate1rm,
   milliToDecimalString,
   parseWeightKgMilli,
+  setRecordValueMilli,
   type RecordSet,
 } from "../src/records.js";
+import { MODALITY_VALUES } from "../src/enums.js";
 
 let n = 0;
 const set = (over: Partial<RecordSet> & Pick<RecordSet, "workoutId">): RecordSet => ({
@@ -173,5 +175,19 @@ describe("AC8 — chronology is the input order; workouts must be contiguous", (
       "best_est_1rm",
       "best_set_volume",
     ]);
+  });
+});
+
+describe("05.3 Phase A — new record types produce nothing yet", () => {
+  const NEW_TYPES = ["max_calories", "max_distance", "max_duration"] as const;
+  for (const recordType of NEW_TYPES) {
+    for (const modality of MODALITY_VALUES) {
+      it(`${recordType} on ${modality} is null`, () => {
+        expect(setRecordValueMilli(recordType, set({ workoutId: "w1", modality }))).toBeNull();
+      });
+    }
+  }
+  it("computeRecords over a calories set returns []", () => {
+    expect(computeRecords([set({ workoutId: "w1", modality: "calories", weightKgMilli: null, reps: null })])).toEqual([]);
   });
 });

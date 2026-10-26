@@ -36,6 +36,9 @@ describe("catalog DTO types (Spec 03.1 §5)", () => {
       | "weighted_bodyweight"
       | "duration"
       | "distance_duration"
+      | "calories"
+      | "weight_distance"
+      | "weight_duration"
     >();
   });
 

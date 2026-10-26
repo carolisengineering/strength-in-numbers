@@ -53,6 +53,8 @@ function reference(ws: Workout[]): ComputedRecord[] {
   const ordered = chronological(ws);
   const value = (t: (typeof RECORD_TYPE_VALUES)[number], s: RecordSet): number | null => {
     const reps = s.reps !== null && s.reps >= 1 ? s.reps : null;
+    // Spec 05.3 Phase A: the three new record types produce nothing yet.
+    if (t === "max_calories" || t === "max_distance" || t === "max_duration") return null;
     if (t === "max_reps") return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;
     if (!["weight_reps", "weighted_bodyweight"].includes(s.modality) || reps === null) return null;
     if (s.weightKgMilli === null || s.weightKgMilli <= 0) return null;
