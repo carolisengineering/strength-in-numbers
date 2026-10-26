@@ -14,11 +14,13 @@ const DraftFieldsSchema = z.object({
   minutes: z.string(),
   seconds: z.string(),
   rpe: z.string(),
+  // Spec 18.1 AC14: a file written by the previous bundle has no calories; it still loads.
+  calories: z.string().default(""),
   weightUnit: z.enum(WEIGHT_UNIT_VALUES),
   distanceUnit: z.enum(DISTANCE_UNIT_VALUES),
   setType: z.enum(SET_TYPE_VALUES),
 });
-/** The nine entry-row fields. `attemptKey` is deliberately absent: it is re-minted on restore (§4). */
+/** The ten entry-row fields. `attemptKey` is deliberately absent: it is re-minted on restore (§4). */
 export type DraftFields = z.infer<typeof DraftFieldsSchema>;
 
 const DraftFileSchema = z.object({
@@ -136,6 +138,7 @@ export function createDraftStore(deps: DraftStoreDeps): DraftStore {
         minutes: fields.minutes,
         seconds: fields.seconds,
         rpe: fields.rpe,
+        calories: fields.calories,
         weightUnit: fields.weightUnit,
         distanceUnit: fields.distanceUnit,
         setType: fields.setType,

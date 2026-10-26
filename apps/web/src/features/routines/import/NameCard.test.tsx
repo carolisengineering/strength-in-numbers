@@ -1,3 +1,4 @@
+import { MODALITY_VALUES } from "@sin/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +76,15 @@ describe("10.4 AC25 — Choose another exercise", () => {
     expect(matches[0]).toBeChecked();
     expect(matches[0]).toHaveFocus();
     expect(within(card).queryByRole("button", { name: `${CHANGE}: Overhead press` })).toBeNull();
+  });
+});
+
+describe("18.1 AC1 — the New card offers all eight types", () => {
+  it("the Type group's radios are MODALITY_VALUES' labels", async () => {
+    await openNames();
+    const hand = await cardGroup("Hand Release Pushups");
+    const types = within(within(hand).getByRole("group", { name: TYPE_LABEL })).getAllByRole("radio").map((r) => (r as HTMLInputElement).value);
+    expect(types).toEqual([...MODALITY_VALUES]);
   });
 });
 

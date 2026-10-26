@@ -37,6 +37,11 @@ function nextText(exercise: WorkoutExerciseDetail, row: PlannedSet, logged: numb
     case "bodyweight_reps":
       core = repsOnly;
       break;
+    // Spec 18.1 AC18: a planned carry or hold has a weight and never reps; calories has neither, so it is "set N".
+    case "weight_distance":
+    case "weight_duration":
+      core = weight ?? `set ${logged + 1}`;
+      break;
     default:
       core = `set ${logged + 1}`;
   }

@@ -1,4 +1,5 @@
 import {
+  SET_CALORIES_MAX,
   SET_DISTANCE_MAX,
   SET_DURATION_S_MAX,
   SET_REPS_MAX,
@@ -16,7 +17,7 @@ import { formatWeight } from "../routines/targetFormat";
 import { visibleMeasures } from "./measures";
 import { nextPlanned } from "./plannedSets";
 
-export type DraftField = "weight" | "reps" | "distance" | "minutes" | "seconds" | "rpe";
+export type DraftField = "weight" | "reps" | "distance" | "minutes" | "seconds" | "rpe" | "calories";
 
 /** What the lifter has typed but not yet logged. Strings, because "12." and "" are legitimate while typing. */
 export interface SetDraft {
@@ -26,6 +27,8 @@ export interface SetDraft {
   minutes: string;
   seconds: string;
   rpe: string;
+  /** Whole calories (Spec 18.1). */
+  calories: string;
   weightUnit: WeightUnit;
   distanceUnit: DistanceUnit;
   setType: SetType;
@@ -44,9 +47,15 @@ export type ParseResult =
   | { ok: true; body: SetBody }
   | { ok: false; errors: Partial<Record<DraftField, string>> };
 
-/** D26: the weight unit follows the preference; the distance unit is derived from it. */
-export const unitDefaultsFor = (pref: "kg" | "lb"): UnitDefaults =>
-  pref === "kg" ? { weightUnit: "kg", distanceUnit: "km" } : { weightUnit: "lb", distanceUnit: "mi" };
+/**
+ * D26: the weight unit follows the preference; the distance unit is derived from it. Spec 18.1 AC9: a carry
+ * (`weight_distance`) starts in meters whatever the profile says — carries are tens of meters, not km or miles.
+ */
+export const unitDefaultsFor = (pref: "kg" | "lb", modality?: Modality): UnitDefaults => {
+  const weightUnit: WeightUnit = pref;
+  if (modality === "weight_distance") return { weightUnit, distanceUnit: "m" };
+  return pref === "kg" ? { weightUnit, distanceUnit: "km" } : { weightUnit, distanceUnit: "mi" };
+};
 
 // Static messages: never echo what was typed.
 const MSG = {
@@ -125,6 +134,11 @@ export function parseDraft(modality: Modality, d: SetDraft): ParseResult {
       }
     }
   }
+  if (visible.includes("calories")) {
+    const p = parseWhole(d.calories, SET_CALORIES_MAX);
+    if ("error" in p) errors.calories = p.error;
+    else body.calories = p.value;
+  }
   // Spec 17.1 Phase A: RPE has no input any more, so it is read but never an error the lifter could not see
   // or fix. A valid value (a stored set's own, or an old draft's) is sent as before; an unparsable one is dropped.
   if (d.rpe.trim() !== "") {
@@ -144,6 +158,7 @@ const INPUT_FOR_MEASURE: Record<string, DraftField> = {
   distance: "distance",
   distanceUnit: "distance",
   durationS: "minutes",
+  calories: "calories",
   // No `rpe`: it has no input (Spec 17.1 Phase A), so a server error on it is a form-level message.
 };
 
@@ -170,6 +185,7 @@ export function diffForPatch(set: SetEntry, body: SetBody): Partial<SetBody> | n
   if (body.distance !== undefined && body.distance !== set.distance) out.distance = body.distance;
   if (body.distanceUnit !== undefined && body.distanceUnit !== set.distanceUnit) out.distanceUnit = body.distanceUnit;
   if (body.durationS !== undefined && body.durationS !== set.durationS) out.durationS = body.durationS;
+  if (body.calories !== undefined && body.calories !== set.calories) out.calories = body.calories;
   return Object.keys(out).length === 0 ? null : out;
 }
 
@@ -186,6 +202,7 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
       minutes: "",
       seconds: "",
       rpe: "",
+      calories: "",
       ...defaults,
       setType: "working",
       attemptKey,
@@ -198,6 +215,7 @@ export function draftFromSet(set: SetEntry | null, defaults: UnitDefaults, attem
     minutes: set.durationS === null ? "" : String(Math.floor(set.durationS / 60)),
     seconds: set.durationS === null ? "" : String(set.durationS % 60),
     rpe: text(set.rpe),
+    calories: text(set.calories),
     weightUnit: set.weightUnit ?? defaults.weightUnit,
     distanceUnit: set.distanceUnit ?? defaults.distanceUnit,
     setType: "working",

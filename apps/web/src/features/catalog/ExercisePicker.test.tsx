@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Exercise } from "@sin/core";
+import { MODALITY_VALUES, type Exercise } from "@sin/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -167,6 +167,20 @@ describe("AC25 — picker layout", () => {
     renderPicker();
 
     expect(search()).not.toHaveFocus();
+  });
+
+  it("18.1 AC1 — a Calories row's meta reads \"Calories · Rowing machine\"; the inline create offers all eight types", async () => {
+    server.use(
+      http.get(EQUIPMENT_URL, () =>
+        HttpResponse.json({ equipment: [{ id: "rower", name: "Rowing machine", displayOrder: 1 }] }),
+      ),
+    );
+    const bike = makeExercise({ id: exerciseId(7), name: "Row Erg", modality: "calories", equipmentId: "rower" });
+    const { user } = renderPicker({ storage: seededStorage([squat, bike], []) });
+    const row = within(allRegion()).getByRole("button", { name: /Row Erg/ });
+    await waitFor(() => expect(row).toHaveTextContent("Calories · Rowing machine"));
+    await user.click(screen.getByRole("button", { name: "Create a custom exercise" }));
+    expect(screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value)).toEqual([...MODALITY_VALUES]);
   });
 
   it("shows the modality label, the equipment name, and a Custom tag only for owned rows", async () => {

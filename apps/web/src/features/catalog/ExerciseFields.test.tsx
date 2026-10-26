@@ -1,4 +1,8 @@
-import type { Equipment, MuscleGroup } from "@sin/core";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { MODALITY_VALUES, type Equipment, type MuscleGroup } from "@sin/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
@@ -94,10 +98,40 @@ describe("10.4 AC26 — ExerciseFields is the one set of create-exercise inputs"
     }));
 });
 
-describe("05.3 AC21 — the type choices are the legacy five", () => {
-  it("renders exactly five modality radios, in order", () => {
+describe("18.1 AC1 — eight types", () => {
+  it("the radio values are MODALITY_VALUES, in order", () => {
     render(<Harness />);
-    const radios = screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value);
-    expect(radios).toEqual(["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"]);
+    expect(screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value)).toEqual([...MODALITY_VALUES]);
+  });
+  it("no source file under src/ names CREATABLE_MODALITIES", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.(ts|tsx)$/.test(entry.name) && !path.endsWith("ExerciseFields.test.tsx") && readFileSync(path, "utf8").includes("CREATABLE_MODALITIES")) hits.push(path);
+      }
+    };
+    walk(root);
+    expect(hits).toEqual([]);
+  });
+});
+
+describe("18.1 AC3 — a hint under the choices", () => {
+  it("shows nothing before a choice", () => {
+    render(<Harness />);
+    expect(screen.queryByText("Calories only, like an Echo Bike.")).toBeNull();
+    expect(screen.getByRole("group", { name: "Modality" })).not.toHaveAttribute("aria-describedby");
+  });
+  it("after choosing Calories the hint shows and describes the group", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("radio", { name: "Calories" }));
+    const hint = screen.getByText("Calories only, like an Echo Bike.");
+    expect(screen.getByRole("group", { name: "Modality" }).getAttribute("aria-describedby")?.split(" ")).toContain(hint.id);
+    await user.click(screen.getByRole("radio", { name: "Weight + duration" }));
+    expect(screen.getByText("Weight and time, like a weighted hold.")).toBeInTheDocument();
+    expect(screen.queryByText("Calories only, like an Echo Bike.")).toBeNull();
   });
 });

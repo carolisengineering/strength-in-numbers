@@ -46,7 +46,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
   const create = useEditCreateSet();
   const update = useEditUpdateSet();
   const del = useEditDeleteSet();
-  const defaults = unitDefaultsFor(unitPreference);
+  const defaults = unitDefaultsFor(unitPreference, modality);
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
     target.kind === "add"
       ? seedDraft({ plannedSets: [], sets: target.sets, defaults, attemptKey: crypto.randomUUID() })

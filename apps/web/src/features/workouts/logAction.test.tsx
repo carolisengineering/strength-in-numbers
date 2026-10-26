@@ -12,6 +12,7 @@ const draft = (o: Partial<SetDraft> = {}): SetDraft => ({
   minutes: "",
   seconds: "",
   rpe: "",
+  calories: "",
   weightUnit: "lb",
   distanceUnit: "km",
   setType: "working",

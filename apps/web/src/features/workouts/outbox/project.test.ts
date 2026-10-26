@@ -136,3 +136,15 @@ describe("06.2 AC1 — project() overlays pending ops", () => {
     expect(twice.workout.exercises).toEqual(once.workout.exercises);
   });
 });
+
+describe("18.1 AC16 / AC40 — queued new-type sets", () => {
+  it("a queued calories create shows its calories", () => {
+    const row = view([create({ body: { clientGeneratedId: KEY, calories: 20, isComplete: true } })]).workout.exercises[0]!.sets.at(-1)!;
+    expect(row).toMatchObject({ calories: 20, reps: null, weight: null });
+  });
+  it("a queued carry in ft projects distanceM = distance × 0.3048, and weightKg from its weight", () => {
+    const row = view([create({ body: { clientGeneratedId: KEY, weight: 24, weightUnit: "kg", distance: 40, distanceUnit: "ft", isComplete: true } })]).workout.exercises[0]!.sets.at(-1)!;
+    expect(row.distanceM).toBeCloseTo(12.192, 3);
+    expect(row.weightKg).toBe(24);
+  });
+});

@@ -22,12 +22,12 @@ export interface DraftPersistenceInput {
 export function useDraftPersistence({ workoutId, workoutExerciseId, draft, untouched }: DraftPersistenceInput): { clear: () => void } {
   const stores = useDraftStores();
   const store = stores ? stores.forWorkout(workoutId) : null;
-  const { weight, reps, distance, minutes, seconds, rpe, weightUnit, distanceUnit, setType } = draft;
+  const { weight, reps, distance, minutes, seconds, rpe, calories, weightUnit, distanceUnit, setType } = draft;
 
   useEffect(() => {
     if (!store || untouched) return;
-    store.set(workoutExerciseId, { weight, reps, distance, minutes, seconds, rpe, weightUnit, distanceUnit, setType });
-  }, [store, workoutExerciseId, untouched, weight, reps, distance, minutes, seconds, rpe, weightUnit, distanceUnit, setType]);
+    store.set(workoutExerciseId, { weight, reps, distance, minutes, seconds, rpe, calories, weightUnit, distanceUnit, setType });
+  }, [store, workoutExerciseId, untouched, weight, reps, distance, minutes, seconds, rpe, calories, weightUnit, distanceUnit, setType]);
 
   useEffect(() => {
     if (!store) return;

@@ -53,6 +53,13 @@ const FIELDS: Partial<Record<Modality, { shown: string[]; hidden: string[]; unit
   distance_duration: { shown: ["Distance", "Minutes", "Seconds"], hidden: ["Weight", "Added weight", "Reps"], units: ["Distance unit"] },
 };
 
+describe("18.1 AC2 — the card's type line", () => {
+  it("a weight_distance exercise reads Weight + distance", async () => {
+    await setup([{ modality: "weight_distance", name: "Farmer Carry" }]);
+    expect(within(card("Farmer Carry")).getByText("Weight + distance")).toBeInTheDocument();
+  });
+});
+
 describe("AC21 — entry row fields per modality", () => {
   it.each(Object.keys(FIELDS) as Modality[])("%s shows exactly its measures and no forbidden one", async (modality) => {
     const { user } = await setup([{ modality, name: "X" }]);
