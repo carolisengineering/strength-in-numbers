@@ -153,6 +153,7 @@ const EXPECTED = [
   "setRecordValueMilli",
   "progressPoints",
   "setChangeAffectsRecords",
+  "RECORD_MEASURES_BY_MODALITY",
   // dto — progress series (Spec 07.2 §5)
   "ProgressPointSchema",
   "ProgressSeriesSchema",

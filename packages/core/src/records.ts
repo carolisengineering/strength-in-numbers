@@ -9,7 +9,7 @@
  * comparison is exact (D3). The largest value is SET_DURATION_S_MAX × 1000
  * ≈ 2.1e12, far inside Number.MAX_SAFE_INTEGER, so no BigInt is needed.
  */
-import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type RecordType, type RecordUnit, type SetType } from "./enums.js";
+import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type Modality, type RecordType, type RecordUnit, type SetType } from "./enums.js";
 
 /** One qualifying set (working, in a finished workout), caller-sorted by
  * (workout started_at, workout id, workout_exercise position, set_number). */
@@ -245,22 +245,52 @@ export function progressPoints(sets: readonly RecordSet[]): ProgressPointMilli[]
   }));
 }
 
-/** The only set fields personal records read (07.0 D5): `is_complete`, `rpe`, distance and duration are inert. */
+/** A set as the finished-edit predicate sees it. Which measures matter depends on the
+ * modality (Spec 05.3 §6.4); `is_complete` and `rpe` never do. */
 export interface RecordRelevantSet {
   setType: SetType;
+  /** The parent workout_exercise's modality_snapshot. */
+  modality: string;
   reps: number | null;
   weightKgMilli: number | null;
+  distanceMMilli: number | null;
+  durationS: number | null;
+  calories: number | null;
 }
+
+type RecordMeasure = "reps" | "weight" | "distance" | "duration" | "calories";
+
+/** Spec 05.3 §6.4 — the measures each modality's records read (§6.2); every other measure is inert. */
+export const RECORD_MEASURES_BY_MODALITY: Readonly<Record<Modality, readonly RecordMeasure[]>> = {
+  weight_reps: ["reps", "weight"],
+  bodyweight_reps: ["reps"],
+  weighted_bodyweight: ["reps", "weight"],
+  duration: [],
+  distance_duration: [],
+  calories: ["calories"],
+  weight_distance: ["weight", "distance"],
+  weight_duration: ["weight", "duration"],
+};
+
+const MEASURE_FIELD: Readonly<Record<RecordMeasure, (s: RecordRelevantSet) => number | null>> = {
+  reps: (s) => s.reps,
+  weight: (s) => s.weightKgMilli,
+  distance: (s) => s.distanceMMilli,
+  duration: (s) => s.durationS,
+  calories: (s) => s.calories,
+};
 
 /**
  * Spec 07.4 §6.2 / AC8 — whether a finished-workout set write can change any record, so an
  * edit that cannot (an rpe-only patch, a warm-up) skips the lineage recompute. `null` means the
- * set does not exist on that side (a create or a delete).
+ * set does not exist on that side (a create or a delete). Spec 05.3 §6.4: only the measures the
+ * set's modality records read are compared, so a legacy distance or duration edit stays a no-op.
  */
 export function setChangeAffectsRecords(before: RecordRelevantSet | null, after: RecordRelevantSet | null): boolean {
   const wasWorking = before?.setType === "working";
   const isWorking = after?.setType === "working";
   if (!wasWorking && !isWorking) return false;
   if (before === null || after === null || wasWorking !== isWorking) return true;
-  return before.reps !== after.reps || before.weightKgMilli !== after.weightKgMilli;
+  const measures = RECORD_MEASURES_BY_MODALITY[after.modality as Modality] ?? [];
+  return measures.some((m) => MEASURE_FIELD[m](before) !== MEASURE_FIELD[m](after));
 }

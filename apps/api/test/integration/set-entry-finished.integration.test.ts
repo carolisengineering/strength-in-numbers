@@ -131,6 +131,35 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.4 Phase A — set writes on a 
     });
   });
 
+  describe("05.3 AC29 — finished edits follow the set's modality", () => {
+    it("a calories change on a calories set recomputes its lineage", async () => {
+      const user = await insertUser(db);
+      const bike = await insertExercise(db, { modality: "calories" });
+      const w = await logWorkout(db, user, { startedAt: day(1), exercises: [{ exerciseId: bike, modality: "calories", sets: [{ calories: 20 }] }] });
+      await rebuild(user, [bike]);
+      const patched = await repo().updateSet(user, w.setIds[0]![0]!, { calories: 30 });
+      expect(patched.finishedEdit).toMatchObject({ recordsRecomputed: true, rootCount: 1 });
+      await expectEqualsRebuild(user, [bike]);
+    });
+
+    it("an rpe-only patch and a legacy distance_duration distance patch recompute nothing", async () => {
+      const user = await insertUser(db);
+      const row = await insertExercise(db, { modality: "distance_duration" });
+      const w = await logWorkout(db, user, {
+        startedAt: day(1),
+        exercises: [{ exerciseId: row, modality: "distance_duration", sets: [{ distance: 5000, durationS: 1500 }] }],
+      });
+      await rebuild(user, [row]);
+      const before = await recordsOf(db, user);
+      const rpe = await repo().updateSet(user, w.setIds[0]![0]!, { rpe: 8 });
+      expect(rpe.finishedEdit).toMatchObject({ recordsRecomputed: false, rootCount: 0 });
+      const dist = await repo().updateSet(user, w.setIds[0]![0]!, { distance: 6000 });
+      expect(dist.set.distanceM).toBe(6000);
+      expect(dist.finishedEdit).toMatchObject({ recordsRecomputed: false, rootCount: 0 });
+      expect(await recordsOf(db, user)).toEqual(before);
+    });
+  });
+
   describe("07.4 AC9 — finished-mode integrity", () => {
     it("a working set without reps is a ValidationError naming reps; nothing is written", async () => {
       const { user, late, lateCard } = await history();

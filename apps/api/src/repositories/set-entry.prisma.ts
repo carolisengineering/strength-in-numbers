@@ -133,13 +133,18 @@ async function lockedWorkoutSpan(tx: RawClient, workoutId: string, notFound: str
   return rows[0];
 }
 
-/** The fields records read (07.0 D5), from a stored or returned row: `weight_kg` is the generated
- * canonical column the PR engine itself reads, so no unit conversion here can drift from it. */
-function recordRelevant(set: SetEntryRecord): RecordRelevantSet {
+/** The fields records read (07.0 D5, 05.3 §6.4), from a stored or returned row: `weight_kg` and
+ * `distance_m` are the generated canonical columns the PR engine itself reads, so no unit
+ * conversion here can drift from it. `modality` is the parent's `modality_snapshot`. */
+function recordRelevant(set: SetEntryRecord, modality: Modality): RecordRelevantSet {
   return {
     setType: set.setType as SetType,
+    modality,
     reps: set.reps,
     weightKgMilli: set.weightKg === null ? null : Math.round(set.weightKg * 1000),
+    distanceMMilli: set.distanceM === null ? null : Math.round(set.distanceM * 1000),
+    durationS: set.durationS,
+    calories: set.calories,
   };
 }
 
@@ -295,7 +300,7 @@ export function createSetEntryMethods(
         `;
         const set = toSetRecord(inserted[0]!);
         if (mode === "live") return { set, modalitySnapshot: modality, created: true, finishedEdit: null };
-        const roots = setChangeAffectsRecords(null, recordRelevant(set)) ? [await rootOfWorkoutExercise(tx, workoutExerciseId)] : [];
+        const roots = setChangeAffectsRecords(null, recordRelevant(set, modality)) ? [await rootOfWorkoutExercise(tx, workoutExerciseId)] : [];
         const finishedEdit = await recomputeTimed(tx, actingUserId, parent.workout_id, roots);
         return { set, modalitySnapshot: modality, created: true, finishedEdit };
       });
@@ -342,7 +347,7 @@ export function createSetEntryMethods(
         `;
         const set = toSetRecord(updated[0]!);
         if (mode === "live") return { set, finishedEdit: null };
-        const roots = setChangeAffectsRecords(recordRelevant(before), recordRelevant(set))
+        const roots = setChangeAffectsRecords(recordRelevant(before, modality), recordRelevant(set, modality))
           ? [await rootOfWorkoutExercise(tx, set.workoutExerciseId)]
           : [];
         return { set, finishedEdit: await recomputeTimed(tx, actingUserId, owner.workout_id, roots) };

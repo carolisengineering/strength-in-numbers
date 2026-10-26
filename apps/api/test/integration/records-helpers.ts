@@ -16,6 +16,9 @@ export interface SetSpec {
   weight?: number | null;
   weightUnit?: "kg" | "lb";
   durationS?: number | null;
+  distance?: number | null;
+  distanceUnit?: "m" | "km" | "mi" | "ft";
+  calories?: number | null;
   isComplete?: boolean;
 }
 export interface ExerciseSpec {
@@ -67,8 +70,9 @@ export async function logWorkout(
     for (const [i, s] of ex.sets.entries()) {
       const id = uuidv7();
       await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","duration_s","is_complete")
-         VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","duration_s","is_complete",
+                                  "distance","distance_unit","calories")
+         VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         id,
         weId,
         i + 1,
@@ -78,6 +82,9 @@ export async function logWorkout(
         s.weight == null ? null : (s.weightUnit ?? "kg"),
         s.durationS ?? null,
         s.isComplete ?? true,
+        s.distance ?? null,
+        s.distance == null ? null : (s.distanceUnit ?? "m"),
+        s.calories ?? null,
       );
       ids.push(id);
     }
