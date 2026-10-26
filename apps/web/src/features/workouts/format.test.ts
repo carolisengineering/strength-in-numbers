@@ -73,3 +73,10 @@ describe("18.0 AC34 — the today form of formatStartedAt", () => {
     expect(formatStartedAt("2026-10-16T23:30:00Z", { ...london, today: new Date("2026-10-17T08:00:00Z") })).toBe("00:30");
   });
 });
+
+describe("05.3 AC21 — a set typed in feet displays with its unit", () => {
+  it("formatSetParts of a distance_duration set in ft includes 40 ft", () => {
+    const set = makeSet({ distance: 40, distanceUnit: "ft", durationS: 60, reps: null, weight: null, weightUnit: null });
+    expect(formatSetParts(set, "distance_duration").core).toContain("40 ft");
+  });
+});

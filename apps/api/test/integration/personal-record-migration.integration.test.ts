@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
-import { RECORD_UNIT_BY_TYPE } from "@sin/core";
 import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
+
+// 0008 describes history: its legal pairs are the legacy four (the live list is guarded against 0015, Spec 05.3 D14).
+const LEGACY_UNIT_BY_TYPE = { heaviest_weight: "kg", best_est_1rm: "kg", best_set_volume: "kg_reps", max_reps: "reps" } as const;
 
 const MIGRATIONS = [
   "0001_create_user",
@@ -120,7 +122,7 @@ describe.skipIf(!shouldRunIntegration())("AC1/AC2 — 0008_create_personal_recor
     await expect(insertRecord("heaviest_weight", "lb")).rejects.toThrow(/personal_record_(type_)?unit_check/);
     await expect(insertRecord("max_reps", "kg")).rejects.toThrow(/personal_record_type_unit_check/);
     await expect(insertRecord("heaviest_weight", "kg", "0")).rejects.toThrow(/personal_record_value_check/);
-    for (const [type, unit] of Object.entries(RECORD_UNIT_BY_TYPE)) {
+    for (const [type, unit] of Object.entries(LEGACY_UNIT_BY_TYPE)) {
       await expect(insertRecord(type, unit)).resolves.toBeUndefined();
     }
   });

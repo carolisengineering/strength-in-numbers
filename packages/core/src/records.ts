@@ -95,6 +95,8 @@ export function sumVolumeMilli(
  * ineligible (07.0 §6.1 table, D5). Exported for Spec 07.2's progress series —
  * one per-set rule for PRs and charts. */
 export function setRecordValueMilli(recordType: RecordType, s: RecordSet): number | null {
+  // Spec 05.3 Phase B fills these three; until then they produce nothing.
+  if (recordType === "max_calories" || recordType === "max_distance" || recordType === "max_duration") return null;
   const reps = s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 ? s.reps : null;
   if (recordType === "max_reps") {
     return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;

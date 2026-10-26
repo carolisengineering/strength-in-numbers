@@ -40,6 +40,7 @@ export function makeSet(overrides: Record<string, unknown> = {}): SetEntry {
     distanceUnit: null,
     distanceM: null,
     durationS: null,
+    calories: null,
     rpe: null,
     isComplete: true,
     completedAt: T0,

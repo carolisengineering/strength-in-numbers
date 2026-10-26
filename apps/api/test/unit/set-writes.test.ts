@@ -18,6 +18,7 @@ const EMPTY: SetMeasures = {
   distance: null,
   distanceUnit: null,
   durationS: null,
+  calories: null,
   isComplete: false,
 };
 
@@ -27,6 +28,7 @@ const FILL: Record<MeasureName, Partial<SetMeasures>> = {
   weight: { weight: 100, weightUnit: "kg" },
   distance: { distance: 5, distanceUnit: "km" },
   durationS: { durationS: 60 },
+  calories: { calories: 20 },
 };
 const REQUIRED: Record<Modality, MeasureName[]> = {
   weight_reps: ["weight", "reps"],
@@ -34,13 +36,19 @@ const REQUIRED: Record<Modality, MeasureName[]> = {
   weighted_bodyweight: ["reps", "weight"],
   duration: ["durationS"],
   distance_duration: ["distance", "durationS"],
+  calories: ["calories"],
+  weight_distance: ["weight", "distance"],
+  weight_duration: ["weight", "durationS"],
 };
 const FORBIDDEN: Record<Modality, MeasureName[]> = {
-  weight_reps: ["durationS", "distance"],
-  bodyweight_reps: ["weight", "durationS", "distance"],
-  weighted_bodyweight: ["durationS", "distance"],
-  duration: ["weight", "reps", "distance"],
-  distance_duration: ["weight", "reps"],
+  weight_reps: ["durationS", "distance", "calories"],
+  bodyweight_reps: ["weight", "durationS", "distance", "calories"],
+  weighted_bodyweight: ["durationS", "distance", "calories"],
+  duration: ["weight", "reps", "distance", "calories"],
+  distance_duration: ["weight", "reps", "calories"],
+  calories: ["weight", "reps", "distance", "durationS"],
+  weight_distance: ["reps", "durationS", "calories"],
+  weight_duration: ["reps", "distance", "calories"],
 };
 const complete = (modality: Modality): SetMeasures =>
   Object.assign({ ...EMPTY, isComplete: true }, ...REQUIRED[modality].map((n) => FILL[n]));
@@ -171,9 +179,9 @@ describe("Review Focus 1 / D11 — distance is bounded after conversion to metre
 
 describe("§6.5 — isWorkingSetComplete", () => {
   it("true iff every required measure is non-null", () => {
-    expect(isWorkingSetComplete("weight_reps", { reps: 5, weight: 100, distance: null, durationS: null })).toBe(true);
-    expect(isWorkingSetComplete("weight_reps", { reps: null, weight: 100, distance: null, durationS: null })).toBe(false);
-    expect(isWorkingSetComplete("duration", { reps: null, weight: null, distance: null, durationS: 0 })).toBe(true);
+    expect(isWorkingSetComplete("weight_reps", { reps: 5, weight: 100, distance: null, durationS: null, calories: null })).toBe(true);
+    expect(isWorkingSetComplete("weight_reps", { reps: null, weight: 100, distance: null, durationS: null, calories: null })).toBe(false);
+    expect(isWorkingSetComplete("duration", { reps: null, weight: null, distance: null, durationS: 0, calories: null })).toBe(true);
   });
 });
 
@@ -191,6 +199,7 @@ const stored = (o: Partial<SetEntryRecord> = {}): SetEntryRecord => ({
   distanceUnit: null,
   distanceM: null,
   durationS: null,
+  calories: null,
   rpe: 8,
   isComplete: false,
   completedAt: null,
@@ -209,6 +218,7 @@ describe("AC8 / AC20 — mergeSetPatch: omitted keeps, null clears", () => {
       distance: null,
       distanceUnit: null,
       durationS: null,
+      calories: null,
       rpe: 8,
       isComplete: false,
     });
@@ -243,8 +253,58 @@ describe("fieldsToMeasures — create-side defaults", () => {
       distance: null,
       distanceUnit: null,
       durationS: null,
+      calories: null,
       rpe: null,
       isComplete: false,
     });
+  });
+});
+
+describe("05.3 AC9 — forbidden and half-filled matrix", () => {
+  const MODALITIES = Object.keys(REQUIRED) as Modality[];
+  for (const modality of MODALITIES) {
+    for (const name of FORBIDDEN[modality]) {
+      it(`${modality}: ${name} is refused with path ${name}`, () => {
+        expect(fieldPaths(() => assertSetMeasuresValid(modality, { ...EMPTY, ...FILL[name] }))).toEqual([name]);
+      });
+    }
+    it(`${modality}: an empty isComplete: false set passes`, () => {
+      expect(() => assertSetMeasuresValid(modality, EMPTY)).not.toThrow();
+    });
+    it(`${modality}: a complete set passes`, () => {
+      expect(() => assertSetMeasuresValid(modality, complete(modality))).not.toThrow();
+    });
+  }
+  it("calories is refused on each of the five legacy modalities", () => {
+    for (const m of ["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"] as const) {
+      expect(fieldPaths(() => assertSetMeasuresValid(m, { ...complete(m), calories: 20 }))).toEqual(["calories"]);
+    }
+  });
+  it("weight_distance: weightUnit with no weight yields exactly the pairing error", () => {
+    expect(fieldPaths(() => assertSetMeasuresValid("weight_distance", { ...EMPTY, weightUnit: "kg", reps: 5 }))).toEqual(["weight"]);
+  });
+  it("weight_distance: distanceUnit with no distance yields exactly the pairing error", () => {
+    expect(fieldPaths(() => assertSetMeasuresValid("weight_distance", { ...EMPTY, distanceUnit: "ft", calories: 3 }))).toEqual(["distance"]);
+  });
+  it("weight_duration: a complete set missing durationS names it", () => {
+    expect(fieldPaths(() => assertSetMeasuresValid("weight_duration", { ...complete("weight_duration"), durationS: null }))).toEqual(["durationS"]);
+  });
+});
+
+describe("05.3 — mergeSetPatch keeps calories", () => {
+  it("an omitted key keeps the stored 20, null clears it, 25 replaces it", () => {
+    const s = stored({ calories: 20, reps: null, weight: null, weightUnit: null, weightKg: null });
+    expect(mergeSetPatch(s, {}).calories).toBe(20);
+    expect(mergeSetPatch(s, { calories: null }).calories).toBeNull();
+    expect(mergeSetPatch(s, { calories: 25 }).calories).toBe(25);
+  });
+  it("Review Focus 1 — PATCH { isComplete: true } on a stored weight_reps set merges calories: null and passes", () => {
+    const next = mergeSetPatch(stored(), { isComplete: true });
+    expect(next.calories).toBeNull();
+    expect(() => assertSetMeasuresValid("weight_reps", next)).not.toThrow();
+  });
+  it("fieldsToMeasures defaults an absent calories to null and keeps a sent one", () => {
+    expect(fieldsToMeasures({}).calories).toBeNull();
+    expect(fieldsToMeasures({ calories: 12 }).calories).toBe(12);
   });
 });

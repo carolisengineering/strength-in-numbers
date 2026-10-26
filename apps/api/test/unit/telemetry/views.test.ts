@@ -62,6 +62,12 @@ describe("Spec 13.0 §6.4 — business counters", () => {
     expect(sets.map((p) => p.attributes)).toEqual([{ modality: "weight_reps" }]);
   });
 
+  it("05.3 AC20 — a calories set carries modality: calories (a bounded enum, no allowlist change)", async () => {
+    recordSetLogged("calories");
+    const sets = await metricPoints(reader, METRIC_NAMES.setsLogged);
+    expect(sets.map((p) => p.attributes)).toEqual([{ modality: "calories" }]);
+  });
+
   it("re-bind to a newly registered global MeterProvider (no stale no-op instruments)", async () => {
     await provider.shutdown();
     metrics.disable();

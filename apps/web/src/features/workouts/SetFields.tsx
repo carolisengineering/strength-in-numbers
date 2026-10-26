@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SET_TYPE_VALUES, type Modality } from "@sin/core";
+import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type Modality } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
@@ -24,7 +24,7 @@ export interface SetFieldsProps {
 }
 
 const WEIGHT_UNITS = ["kg", "lb"] as const;
-const DISTANCE_UNITS = ["m", "km", "mi"] as const;
+const DISTANCE_UNITS = DISTANCE_UNIT_VALUES; // Spec 05.3 D20: ft joins m, km, mi
 
 type Common = Omit<SetFieldsProps, "variant"> & { id: (name: string) => string };
 

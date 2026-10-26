@@ -109,7 +109,7 @@ function makeHandler(state) {
         setNumber: (we?.sets.length ?? 0) + 1, setType: b.setType ?? "working", reps: b.reps ?? null,
         weight: b.weight ?? null, weightUnit: b.weightUnit ?? null, weightKg: b.weightUnit === "lb" ? b.weight * 0.45359237 : b.weight ?? null,
         distance: b.distance ?? null, distanceUnit: b.distanceUnit ?? null, distanceM: null, durationS: b.durationS ?? null,
-        rpe: b.rpe ?? null, isComplete: b.isComplete ?? true, completedAt: t, createdAt: t, updatedAt: t,
+        calories: b.calories ?? null, rpe: b.rpe ?? null, isComplete: b.isComplete ?? true, completedAt: t, createdAt: t, updatedAt: t,
       }, 201);
     } else {
       unmatched.add(`${m} ${p}${url.search}`);

@@ -228,6 +228,7 @@ function makeSet(weId, setNumber, ex, s, completedMs) {
     distanceUnit: s.distance != null ? "m" : null,
     distanceM: s.distance ?? null,
     durationS: s.durationS ?? null,
+    calories: s.calories ?? null,
     rpe: s.rpe ?? null,
     isComplete: true,
     completedAt: iso(completedMs),
@@ -419,7 +420,7 @@ export const activeDone = (() => {
       ex.sets.push({
         id: uuid("d9000000", n), workoutExerciseId: ex.id, clientGeneratedId: uuid("c9000000", n), setNumber: i + 1,
         setType: row.setType, reps: isDuration ? null : (row.repsLow ?? 10), weight: row.weight, weightUnit: row.weight === null ? null : row.weightUnit,
-        weightKg: kg, distance: null, distanceUnit: null, distanceM: null, durationS: isDuration ? 45 : null,
+        weightKg: kg, distance: null, distanceUnit: null, distanceM: null, durationS: isDuration ? 45 : null, calories: null,
         rpe: null, isComplete: true, completedAt: iso(t), createdAt: iso(t), updatedAt: iso(t),
       });
     }

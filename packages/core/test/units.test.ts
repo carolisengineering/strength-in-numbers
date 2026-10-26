@@ -11,6 +11,9 @@ import {
   miToM,
   toCanonicalKg,
   toCanonicalMeters,
+  FT_TO_M,
+  ftToM,
+  mToFt,
 } from "../src/units.js";
 
 describe("AC6 — weight → canonical kg matches the DB generated-column formula", () => {
@@ -91,5 +94,14 @@ describe("AC8 — conversion never rounds", () => {
     // 0.1 lb → a value that only survives if nothing rounds it.
     expect(toCanonicalKg(0.1, "lb")).toBe(0.1 * 0.45359237);
     expect(toCanonicalMeters(0.001, "mi")).toBe(0.001 * 1609.344);
+  });
+});
+
+describe("05.3 AC39 — feet", () => {
+  it("FT_TO_M is exactly 0.3048", () => expect(FT_TO_M).toBe(0.3048));
+  it("toCanonicalMeters(40, ft) is 12.192", () => expect(toCanonicalMeters(40, "ft")).toBeCloseTo(12.192, 9));
+  it("ftToM(mToFt(5)) round-trips", () => expect(ftToM(mToFt(5))).toBeCloseTo(5, 9));
+  it("an unknown unit (yd) still throws", () => {
+    expect(() => toCanonicalMeters(1, "yd" as never)).toThrow();
   });
 });

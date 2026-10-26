@@ -14,6 +14,7 @@ import {
   SET_WEIGHT_MAX,
   SET_DISTANCE_MAX,
   SET_DURATION_S_MAX,
+  SET_CALORIES_MAX,
   SetEntrySchema,
   CreateSetSchema,
   UpdateSetSchema,
@@ -34,10 +35,13 @@ import {
   LB_TO_KG,
   MeSchema,
   MI_TO_M,
+  FT_TO_M,
   MODALITY_VALUES,
   MuscleGroupSchema,
   mToKm,
   mToMi,
+  ftToM,
+  mToFt,
   miToM,
   lbToKg,
   noControlChars,
@@ -80,6 +84,7 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(SET_WEIGHT_MAX).not.toBeAny();
     expectTypeOf(SET_DISTANCE_MAX).not.toBeAny();
     expectTypeOf(SET_DURATION_S_MAX).not.toBeAny();
+    expectTypeOf(SET_CALORIES_MAX).not.toBeAny();
     expectTypeOf(SetEntrySchema).not.toBeAny();
     expectTypeOf(CreateSetSchema).not.toBeAny();
     expectTypeOf(UpdateSetSchema).not.toBeAny();
@@ -95,12 +100,15 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(mToKm).toBeFunction();
     expectTypeOf(miToM).toBeFunction();
     expectTypeOf(mToMi).toBeFunction();
+    expectTypeOf(ftToM).toBeFunction();
+    expectTypeOf(mToFt).toBeFunction();
     expectTypeOf(LB_TO_KG).toBeNumber();
     expectTypeOf(KM_TO_M).toBeNumber();
     expectTypeOf(MI_TO_M).toBeNumber();
+    expectTypeOf(FT_TO_M).toBeNumber();
     expectTypeOf(UNIT_PREFERENCE_VALUES).toEqualTypeOf<readonly ["kg", "lb"]>();
     expectTypeOf(WEIGHT_UNIT_VALUES).toEqualTypeOf<readonly ["kg", "lb"]>();
-    expectTypeOf(DISTANCE_UNIT_VALUES).toEqualTypeOf<readonly ["m", "km", "mi"]>();
+    expectTypeOf(DISTANCE_UNIT_VALUES).toEqualTypeOf<readonly ["m", "km", "mi", "ft"]>();
     expectTypeOf(MODALITY_VALUES).items.toBeString();
     expectTypeOf(SET_TYPE_VALUES).items.toBeString();
     expectTypeOf(RECORD_TYPE_VALUES).items.toBeString();

@@ -6,6 +6,7 @@ import {
   MODALITY_VALUES,
   requiredMeasuresFor,
   SET_DISTANCE_MAX,
+  SET_CALORIES_MAX,
   SET_DURATION_S_MAX,
   SET_REPS_MAX,
   SET_WEIGHT_MAX,
@@ -17,17 +18,24 @@ import {
   type Modality,
 } from "../src/index.js";
 
-// Spec 05.1 §6.1's table, restated independently of MEASURE_RULES so a typo
-// in the source table can't also be in the expectation.
+// Spec 05.3 §6.1's table (05.1's five rows plus calories, and three new rows),
+// restated independently of MEASURE_RULES so a typo in the source table can't
+// also be in the expectation.
 const TABLE: Record<Modality, { required: MeasureName[]; forbidden: MeasureName[] }> = {
-  weight_reps: { required: ["weight", "reps"], forbidden: ["durationS", "distance"] },
-  bodyweight_reps: { required: ["reps"], forbidden: ["weight", "durationS", "distance"] },
-  weighted_bodyweight: { required: ["reps", "weight"], forbidden: ["durationS", "distance"] },
-  duration: { required: ["durationS"], forbidden: ["weight", "reps", "distance"] },
-  distance_duration: { required: ["distance", "durationS"], forbidden: ["weight", "reps"] },
+  weight_reps: { required: ["weight", "reps"], forbidden: ["durationS", "distance", "calories"] },
+  bodyweight_reps: { required: ["reps"], forbidden: ["weight", "durationS", "distance", "calories"] },
+  weighted_bodyweight: { required: ["reps", "weight"], forbidden: ["durationS", "distance", "calories"] },
+  duration: { required: ["durationS"], forbidden: ["weight", "reps", "distance", "calories"] },
+  distance_duration: { required: ["distance", "durationS"], forbidden: ["weight", "reps", "calories"] },
+  calories: { required: ["calories"], forbidden: ["weight", "reps", "distance", "durationS"] },
+  weight_distance: { required: ["weight", "distance"], forbidden: ["reps", "durationS", "calories"] },
+  weight_duration: { required: ["weight", "durationS"], forbidden: ["reps", "distance", "calories"] },
 };
 
-describe("AC17 — requiredMeasuresFor / forbiddenMeasuresFor match §6.1's table exhaustively", () => {
+describe("05.3 AC3 — measure rules: requiredMeasuresFor / forbiddenMeasuresFor match §6.1 for all eight", () => {
+  it("MEASURE_NAMES is reps, weight, distance, durationS, calories", () => {
+    expect([...MEASURE_NAMES]).toEqual(["reps", "weight", "distance", "durationS", "calories"]);
+  });
   for (const modality of MODALITY_VALUES) {
     it(`${modality}: required`, () => {
       expect([...requiredMeasuresFor(modality)].sort()).toEqual([...TABLE[modality].required].sort());
@@ -101,6 +109,7 @@ const validSet = {
   distanceUnit: null,
   distanceM: null,
   durationS: null,
+  calories: null,
   rpe: null,
   isComplete: true,
   completedAt: "2026-09-27T10:00:00.000Z",
@@ -165,5 +174,45 @@ describe("AC17 — SetEntrySchema and the WorkoutDetail extension (D12)", () => 
     expect(WorkoutExerciseDetailSchema.safeParse({ ...we, sets: [validSet] }).success).toBe(true);
     expect(WorkoutExerciseDetailSchema.safeParse(we).success).toBe(false);
     expect(WorkoutDetailSchema.shape.exercises.element).toBe(WorkoutExerciseDetailSchema);
+  });
+});
+
+describe("05.3 AC4 — calories on the wire", () => {
+  const base = { isComplete: true };
+  it.each([20, 0, SET_CALORIES_MAX, null])("CreateSetSchema accepts calories: %s", (calories) => {
+    expect(CreateSetSchema.safeParse({ ...base, calories }).success).toBe(true);
+  });
+  it("CreateSetSchema accepts an absent calories key", () => {
+    expect(CreateSetSchema.safeParse(base).success).toBe(true);
+  });
+  it.each([20.5, -1, SET_CALORIES_MAX + 1, "20"])("CreateSetSchema rejects calories: %s", (calories) => {
+    expect(CreateSetSchema.safeParse({ ...base, calories }).success).toBe(false);
+  });
+  it("SetEntrySchema requires the key: null passes, absent fails", () => {
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: null }).success).toBe(true);
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: 20 }).success).toBe(true);
+    const without: Record<string, unknown> = { ...validSet };
+    delete without.calories;
+    expect(SetEntrySchema.safeParse(without).success).toBe(false);
+  });
+  it("SET_CALORIES_MAX is the SMALLINT ceiling", () => expect(SET_CALORIES_MAX).toBe(32_767));
+  it("UpdateSetSchema accepts calories", () => {
+    expect(UpdateSetSchema.safeParse({ calories: 25 }).success).toBe(true);
+    expect(UpdateSetSchema.safeParse({ calories: null }).success).toBe(true);
+  });
+  it("an unknown key is still rejected", () => {
+    expect(CreateSetSchema.safeParse({ calorie: 20 }).success).toBe(false);
+  });
+});
+
+describe("05.3 AC39 — feet on the wire", () => {
+  it("CreateSetSchema accepts distanceUnit ft with a distance", () => {
+    expect(CreateSetSchema.safeParse({ distance: 40, distanceUnit: "ft" }).success).toBe(true);
+    expect(UpdateSetSchema.safeParse({ distance: 40, distanceUnit: "ft" }).success).toBe(true);
+  });
+  it("rejects yd with a static message", () => {
+    const r = CreateSetSchema.safeParse({ distance: 40, distanceUnit: "yd" });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).not.toContain("yd\"");
   });
 });

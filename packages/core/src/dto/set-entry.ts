@@ -10,17 +10,21 @@ import { z } from "zod";
 import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, WEIGHT_UNIT_VALUES, type Modality } from "../enums.js";
 import { SetEntryIdSchema, WorkoutExerciseIdSchema } from "../ids.js";
 
-/** The four modality-governed measures. `rpe` is optional on every modality. */
-export const MEASURE_NAMES = Object.freeze(["reps", "weight", "distance", "durationS"] as const);
+/** The five modality-governed measures. `rpe` is optional on every modality. */
+export const MEASURE_NAMES = Object.freeze(["reps", "weight", "distance", "durationS", "calories"] as const);
 export type MeasureName = (typeof MEASURE_NAMES)[number];
 
-/** §6.1's table, as data. Order matters only for stable error-field ordering. */
+/** §6.1's table (Spec 05.1, widened by Spec 05.3), as data. Order matters only
+ * for stable error-field ordering. */
 const MEASURE_RULES: Record<Modality, { required: readonly MeasureName[]; forbidden: readonly MeasureName[] }> = {
-  weight_reps: { required: ["weight", "reps"], forbidden: ["durationS", "distance"] },
-  bodyweight_reps: { required: ["reps"], forbidden: ["weight", "durationS", "distance"] },
-  weighted_bodyweight: { required: ["reps", "weight"], forbidden: ["durationS", "distance"] },
-  duration: { required: ["durationS"], forbidden: ["weight", "reps", "distance"] },
-  distance_duration: { required: ["distance", "durationS"], forbidden: ["weight", "reps"] },
+  weight_reps: { required: ["weight", "reps"], forbidden: ["durationS", "distance", "calories"] },
+  bodyweight_reps: { required: ["reps"], forbidden: ["weight", "durationS", "distance", "calories"] },
+  weighted_bodyweight: { required: ["reps", "weight"], forbidden: ["durationS", "distance", "calories"] },
+  duration: { required: ["durationS"], forbidden: ["weight", "reps", "distance", "calories"] },
+  distance_duration: { required: ["distance", "durationS"], forbidden: ["weight", "reps", "calories"] },
+  calories: { required: ["calories"], forbidden: ["weight", "reps", "distance", "durationS"] },
+  weight_distance: { required: ["weight", "distance"], forbidden: ["reps", "durationS", "calories"] },
+  weight_duration: { required: ["weight", "durationS"], forbidden: ["reps", "distance", "calories"] },
 };
 
 export const requiredMeasuresFor = (m: Modality): readonly MeasureName[] => MEASURE_RULES[m].required;
@@ -36,11 +40,13 @@ export const SET_REPS_MAX = 32_767; // smallint
 export const SET_WEIGHT_MAX = 9_999.999; // numeric(7,3)
 export const SET_DISTANCE_MAX = 999_999.999; // numeric(9,3)
 export const SET_DURATION_S_MAX = 2_147_483_647; // integer
+export const SET_CALORIES_MAX = 32_767; // smallint (Spec 05.3 D2)
 
 const Reps = z.number().int().min(0).max(SET_REPS_MAX);
 const Weight = z.number().nonnegative().max(SET_WEIGHT_MAX);
 const Distance = z.number().nonnegative().max(SET_DISTANCE_MAX);
 const DurationS = z.number().int().nonnegative().max(SET_DURATION_S_MAX);
+const Calories = z.number().int().min(0).max(SET_CALORIES_MAX);
 // RPE bounds: DESIGN glossary "1-10"; numeric(3,1) holds one decimal.
 const Rpe = z.number().min(1).max(10).multipleOf(0.1);
 
@@ -65,6 +71,7 @@ export const SetEntrySchema = z.object({
   distanceUnit: z.enum(DISTANCE_UNIT_VALUES).nullable(),
   distanceM: z.number().nonnegative().nullable(),
   durationS: z.number().int().nonnegative().nullable(),
+  calories: z.number().int().min(0).nullable(),
   rpe: z.number().nullable(),
   isComplete: z.boolean(),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -94,6 +101,7 @@ export const CreateSetSchema = z.strictObject({
   distance: Distance.nullable().optional(),
   distanceUnit: z.enum(DISTANCE_UNIT_VALUES).nullable().optional(),
   durationS: DurationS.nullable().optional(),
+  calories: Calories.nullable().optional(),
   rpe: Rpe.nullable().optional(),
   isComplete: z.boolean().optional(),
 });

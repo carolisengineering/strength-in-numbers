@@ -19,17 +19,20 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
     expect([...WEIGHT_UNIT_VALUES]).toEqual(["kg", "lb"]);
   });
 
-  it("DISTANCE_UNIT_VALUES = m | km | mi (DESIGN §4.0)", () => {
-    expect([...DISTANCE_UNIT_VALUES]).toEqual(["m", "km", "mi"]);
+  it("05.3 AC39 — DISTANCE_UNIT_VALUES = m | km | mi | ft (DESIGN §4.0, legacy order kept)", () => {
+    expect([...DISTANCE_UNIT_VALUES]).toEqual(["m", "km", "mi", "ft"]);
   });
 
-  it("MODALITY_VALUES matches the DESIGN §4.2 exercise.modality list", () => {
+  it("05.3 AC1 — MODALITY_VALUES is the legacy five, then the three new types", () => {
     expect([...MODALITY_VALUES]).toEqual([
       "weight_reps",
       "bodyweight_reps",
       "weighted_bodyweight",
       "duration",
       "distance_duration",
+      "calories",
+      "weight_distance",
+      "weight_duration",
     ]);
   });
 
@@ -37,23 +40,30 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
     expect([...SET_TYPE_VALUES]).toEqual(["warmup", "working", "drop", "failure"]);
   });
 
-  it("RECORD_TYPE_VALUES = the four v1 PR kinds (DESIGN §4.5, Spec 07.0 D2)", () => {
+  it("05.3 AC2 — RECORD_TYPE_VALUES = the four v1 PR kinds, then max_calories, max_distance, max_duration", () => {
     expect([...RECORD_TYPE_VALUES]).toEqual([
       "heaviest_weight",
       "best_est_1rm",
       "best_set_volume",
       "max_reps",
+      "max_calories",
+      "max_distance",
+      "max_duration",
     ]);
   });
 
-  it("RECORD_UNIT_VALUES and RECORD_UNIT_BY_TYPE pair every type with exactly one unit (Spec 07.0 §4)", () => {
-    expect([...RECORD_UNIT_VALUES]).toEqual(["kg", "kg_reps", "reps"]);
+  it("05.3 AC2 — RECORD_UNIT_VALUES and RECORD_UNIT_BY_TYPE pair every type with exactly one unit", () => {
+    expect([...RECORD_UNIT_VALUES]).toEqual(["kg", "kg_reps", "reps", "cal", "m", "s"]);
     expect(RECORD_UNIT_BY_TYPE).toEqual({
       heaviest_weight: "kg",
       best_est_1rm: "kg",
       best_set_volume: "kg_reps",
       max_reps: "reps",
+      max_calories: "cal",
+      max_distance: "m",
+      max_duration: "s",
     });
+    expect(Object.keys(RECORD_UNIT_BY_TYPE)).toEqual([...RECORD_TYPE_VALUES]);
     expect(Object.isFrozen(RECORD_UNIT_BY_TYPE)).toBe(true);
   });
 

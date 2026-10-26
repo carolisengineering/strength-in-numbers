@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MODALITY_VALUES } from "@sin/core";
+// Describes migration history; the live list is guarded against 0015 (Spec 05.3 D14).
+const LEGACY_MODALITIES = ["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"] as const;
 
 /**
  * AC2 drift-guard (Spec 03.1 §10). The `modality` CHECK in
- * `0002_create_exercise_catalog` is a second copy of `@sin/core` `MODALITY_VALUES`
+ * `0002_create_exercise_catalog` is a second copy of `@sin/core` `LEGACY_MODALITIES`
  * — a vocabulary change that forgets the migration must fail here. This is a
  * string-containment check on the `.sql` file, *not* a parse of
  * `pg_get_constraintdef()` (Postgres rewrites `IN (...)` to `= ANY (ARRAY[...])`,
@@ -20,13 +21,13 @@ const migrationSql = readFileSync(
 );
 
 describe("AC2 — modality CHECK cannot silently drift from @sin/core", () => {
-  it("renders the exact MODALITY_VALUES list, in order, in the CHECK clause", () => {
-    const rendered = MODALITY_VALUES.map((v) => `'${v}'`).join(", ");
+  it("renders the exact LEGACY_MODALITIES list, in order, in the CHECK clause", () => {
+    const rendered = LEGACY_MODALITIES.map((v) => `'${v}'`).join(", ");
     expect(migrationSql).toContain(`"modality" IN (${rendered})`);
   });
 
   it("names every modality value somewhere in the CHECK", () => {
-    for (const value of MODALITY_VALUES) {
+    for (const value of LEGACY_MODALITIES) {
       expect(migrationSql).toContain(`'${value}'`);
     }
   });

@@ -36,7 +36,7 @@ export const SET_ENTRY_COLUMNS = Prisma.sql`
   id, workout_exercise_id, client_generated_id, set_number, set_type, reps,
   weight::float8 AS weight, weight_unit, weight_kg::float8 AS weight_kg,
   distance::float8 AS distance, distance_unit, distance_m::float8 AS distance_m,
-  duration_s, rpe::float8 AS rpe, is_complete, completed_at, created_at, updated_at`;
+  duration_s, calories, rpe::float8 AS rpe, is_complete, completed_at, created_at, updated_at`;
 
 export interface SetEntryDbRow {
   id: string;
@@ -52,6 +52,7 @@ export interface SetEntryDbRow {
   distance_unit: string | null;
   distance_m: number | null;
   duration_s: number | null;
+  calories: number | null;
   rpe: number | null;
   is_complete: boolean;
   completed_at: Date | null;
@@ -74,6 +75,7 @@ export function toSetRecord(r: SetEntryDbRow): SetEntryRecord {
     distanceUnit: r.distance_unit,
     distanceM: r.distance_m,
     durationS: r.duration_s,
+    calories: r.calories,
     rpe: r.rpe,
     isComplete: r.is_complete,
     completedAt: r.completed_at,
@@ -188,16 +190,17 @@ export async function assertWorkingSetsComplete(client: RawClient, workoutId: st
       weight: number | null;
       distance: number | null;
       duration_s: number | null;
+      calories: number | null;
     }[]
   >`
     SELECT we.modality_snapshot, se.reps, se.weight::float8 AS weight,
-           se.distance::float8 AS distance, se.duration_s
+           se.distance::float8 AS distance, se.duration_s, se.calories
     FROM "workout_exercise" we
     JOIN "set_entry" se ON se.workout_exercise_id = we.id
     WHERE we.workout_id = ${workoutId}::uuid AND se.set_type = 'working'
   `;
   for (const r of rows) {
-    const measures = { reps: r.reps, weight: r.weight, distance: r.distance, durationS: r.duration_s };
+    const measures = { reps: r.reps, weight: r.weight, distance: r.distance, durationS: r.duration_s, calories: r.calories };
     if (!isWorkingSetComplete(r.modality_snapshot as Modality, measures)) {
       throw new IncompleteWorkingSetsError();
     }
@@ -277,12 +280,12 @@ export function createSetEntryMethods(
         const inserted = await tx.$queryRaw<SetEntryDbRow[]>`
           INSERT INTO "set_entry"
             (id, workout_exercise_id, set_number, set_type, reps, weight, weight_unit,
-             distance, distance_unit, duration_s, rpe, is_complete, completed_at, created_at, updated_at,
+             distance, distance_unit, duration_s, calories, rpe, is_complete, completed_at, created_at, updated_at,
              client_generated_id)
           VALUES
             (${uuidv7()}::uuid, ${workoutExerciseId}::uuid, ${setNumber}::smallint, ${next.setType},
              ${next.reps}::smallint, ${next.weight}::numeric, ${next.weightUnit},
-             ${next.distance}::numeric, ${next.distanceUnit}, ${next.durationS}::integer,
+             ${next.distance}::numeric, ${next.distanceUnit}, ${next.durationS}::integer, ${next.calories}::smallint,
              ${next.rpe}::numeric, ${next.isComplete}::boolean,
              CASE WHEN ${next.isComplete}::boolean
                   THEN LEAST(GREATEST(now(), ${spanStart}::timestamptz), ${spanEnd}::timestamptz) ELSE NULL END,
@@ -328,7 +331,7 @@ export function createSetEntryMethods(
           SET set_type = ${next.setType}, reps = ${next.reps}::smallint,
               weight = ${next.weight}::numeric, weight_unit = ${next.weightUnit},
               distance = ${next.distance}::numeric, distance_unit = ${next.distanceUnit},
-              duration_s = ${next.durationS}::integer, rpe = ${next.rpe}::numeric,
+              duration_s = ${next.durationS}::integer, calories = ${next.calories}::smallint, rpe = ${next.rpe}::numeric,
               is_complete = ${next.isComplete}::boolean,
               completed_at = CASE WHEN ${next.isComplete}::boolean
                                   THEN COALESCE(completed_at, LEAST(GREATEST(now(), ${spanStart}::timestamptz), ${spanEnd}::timestamptz))

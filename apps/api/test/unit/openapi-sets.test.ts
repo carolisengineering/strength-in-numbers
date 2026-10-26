@@ -67,3 +67,32 @@ describe("AC18 — the three set routes are in the published contract", () => {
     expect(patch.properties!.sets).toBeUndefined();
   });
 });
+
+describe("05.3 AC19 — calories and the widened enums in the published contract", () => {
+  type S = Schema & { anyOf?: S[]; enum?: unknown[]; maximum?: number };
+  const flat = (s: S | undefined): S[] => (s ? [s, ...(s.anyOf ?? []).flatMap(flat)] : []);
+  it("SetEntry requires calories (integer or null); create takes an optional calories ≤ 32767", async () => {
+    const d = await doc();
+    const post = d.paths["/v1/workout-exercises/{id}/sets"]!.post!;
+    const entry = post.responses["201"]!.content!["application/json"]!.schema as S;
+    expect(entry.required).toContain("calories");
+    expect(JSON.stringify(entry.properties!.calories)).toContain("integer");
+    expect(JSON.stringify(entry.properties!.calories)).toContain("null");
+    const body = post.requestBody!.content["application/json"]!.schema as S;
+    expect(body.required ?? []).not.toContain("calories");
+    expect(flat(body.properties!.calories as S).some((s) => s.maximum === 32767)).toBe(true);
+    const patch = d.paths["/v1/sets/{id}"]!.patch!.requestBody!.content["application/json"]!.schema as S;
+    expect(Object.keys(patch.properties!)).toContain("calories");
+  });
+  it("the distance unit enum lists ft", async () => {
+    const d = await doc();
+    const entry = d.paths["/v1/workout-exercises/{id}/sets"]!.post!.responses["201"]!.content!["application/json"]!.schema as S;
+    expect(JSON.stringify(entry.properties!.distanceUnit)).toContain('"ft"');
+  });
+  it("the modality enum has eight values and the record-type enum seven", async () => {
+    const text = JSON.stringify(await doc());
+    for (const v of ["calories", "weight_distance", "weight_duration", "max_calories", "max_distance", "max_duration"]) {
+      expect(text).toContain(`"${v}"`);
+    }
+  });
+});

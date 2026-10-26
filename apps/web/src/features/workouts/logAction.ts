@@ -28,6 +28,13 @@ export function logLabel(modality: Modality, draft: SetDraft, unitPreference: "k
       return `Log ${duration}`;
     case "distance_duration":
       return `Log ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""} · ${duration}`;
+    // Spec 05.3 Phase A: plain fallbacks; the UI spec (18.1) owns the new types' entry.
+    case "calories":
+      return `Log ${String(body.calories ?? 0)} cal`;
+    case "weight_distance":
+      return `Log ${weight} · ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""}`;
+    case "weight_duration":
+      return `Log ${weight} · ${duration}`;
   }
 }
 
