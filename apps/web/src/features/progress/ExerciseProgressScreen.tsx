@@ -14,6 +14,7 @@ import { formatLocalDateWithYear } from "./dates";
 import { groupByExercise } from "./exercises";
 import { LineChart } from "./LineChart";
 import {
+  INTEGER_METRICS,
   METRICS,
   availableMetrics,
   captionFor,
@@ -120,7 +121,7 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
             <p className={styles.caption}>{captionFor(metric, pref)}</p>
             <LineChart
               points={points}
-              integer={metric === "reps"}
+              integer={INTEGER_METRICS.has(metric)}
               selectedId={selected.id}
               onSelect={setSelectedId}
               summary={chartSummary({ metric, range: view.range, points, pref })}

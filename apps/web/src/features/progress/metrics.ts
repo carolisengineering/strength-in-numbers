@@ -2,18 +2,27 @@ import { kgToLb, type ProgressPoint, type ProgressSeries, type RecordUnit, type 
 import { formatRecordValue, roundedE1rm } from "../units/format";
 import { rangeLabel, type Range } from "./range";
 
-/** The four chartable metrics (Spec 08.1 AC2), in display order. */
-export type Metric = "est1rm" | "topSet" | "volume" | "reps";
-type MetricField = "bestE1rm" | "topSetWeight" | "totalVolume" | "maxReps";
+/** The chartable metrics (Spec 08.1 AC2; Spec 18.1 AC31 adds the last three), in display order. */
+export type Metric = "est1rm" | "topSet" | "volume" | "reps" | "calories" | "distance" | "duration";
+type MetricField = "bestE1rm" | "topSetWeight" | "totalVolume" | "maxReps" | "maxCalories" | "maxDistance" | "maxDuration";
 
-export const METRIC_ORDER: readonly Metric[] = ["est1rm", "topSet", "volume", "reps"];
+export const METRIC_ORDER: readonly Metric[] = ["est1rm", "topSet", "volume", "reps", "calories", "distance", "duration"];
 
 export const METRICS: Record<Metric, { label: string; field: MetricField; unit: RecordUnit }> = {
   est1rm: { label: "Est. 1RM", field: "bestE1rm", unit: "kg" },
   topSet: { label: "Top set", field: "topSetWeight", unit: "kg" },
   volume: { label: "Volume", field: "totalVolume", unit: "kg_reps" },
   reps: { label: "Reps", field: "maxReps", unit: "reps" },
+  calories: { label: "Calories", field: "maxCalories", unit: "cal" },
+  distance: { label: "Distance", field: "maxDistance", unit: "m" },
+  duration: { label: "Time", field: "maxDuration", unit: "s" },
 };
+
+/** Whole-number y-axis ticks (`LineChart integer`): counts and seconds; a distance can be fractional. */
+export const INTEGER_METRICS: ReadonlySet<Metric> = new Set<Metric>(["reps", "calories", "duration"]);
+
+/** Spec 18.1 AC32: only weights convert to lb — never reps, calories, meters or seconds. */
+const convertsToLb = (unit: RecordUnit): boolean => unit === "kg" || unit === "kg_reps";
 
 /** `canonical` is the served number; `y` is what is scaled (lb when the lifter reads lb). */
 export interface ChartPoint {
@@ -28,7 +37,7 @@ const valueOf = (point: ProgressPoint, metric: Metric): number | null => point[M
 /** One metric's points, oldest → newest; a `null` is skipped, never plotted as 0 (D3). */
 export function pointsFor(series: ProgressSeries | undefined, metric: Metric | undefined, pref: UnitPreference): ChartPoint[] {
   if (!series || !metric) return [];
-  const convert = METRICS[metric].unit !== "reps" && pref === "lb";
+  const convert = convertsToLb(METRICS[metric].unit) && pref === "lb";
   return series.points.flatMap((point) => {
     const canonical = valueOf(point, metric);
     if (canonical === null) return [];
@@ -41,9 +50,9 @@ export function availableMetrics(series?: ProgressSeries): Metric[] {
   return METRIC_ORDER.filter((m) => series.points.some((p) => valueOf(p, m) !== null));
 }
 
-/** Est. 1RM, else top set, else reps — never volume (a session sum, not the set PR; 07.2 D12). */
+/** Est. 1RM, else top set, else reps, then the 18.1 metrics — never volume (a session sum, not the set PR; 07.2 D12). */
 export function defaultMetric(available: readonly Metric[]): Metric | undefined {
-  return (["est1rm", "topSet", "reps"] as const).find((m) => available.includes(m));
+  return (["est1rm", "topSet", "reps", "calories", "distance", "duration"] as const).find((m) => available.includes(m));
 }
 
 export function resolveMetric(chosen: Metric | null | undefined, available: readonly Metric[]): Metric | undefined {
@@ -59,8 +68,21 @@ export function formatPointValue(point: ChartPoint, metric: Metric, pref: UnitPr
 
 export function captionFor(metric: Metric, pref: UnitPreference): string {
   const { label, unit } = METRICS[metric];
-  if (unit === "reps") return label;
-  return unit === "kg_reps" ? `${label} (${pref} × reps)` : `${label} (${pref})`;
+  switch (unit) {
+    case "reps":
+      return label;
+    case "kg_reps":
+      return `${label} (${pref} × reps)`;
+    case "kg":
+      return `${label} (${pref})`;
+    // Spec 18.1 §6.10: the axis plots the canonical number, so the caption names its unit.
+    case "cal":
+      return "Calories";
+    case "m":
+      return "Distance (m)";
+    case "s":
+      return "Time (seconds)";
+  }
 }
 
 export function chartSummary({

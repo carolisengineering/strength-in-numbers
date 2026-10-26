@@ -12,6 +12,18 @@ import { kgToLb, type RecordType, type RecordUnit, type UnitPreference } from "@
 const KG =new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 const LB = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 const COUNT = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
+/** Up to 3 decimals: the stored millimeter, never float noise from a subtraction ("+0.002 m"). */
+const DISTANCE = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
+
+/** Spec 18.1 O3: seconds in words, zero parts omitted — "45 s", "1 min 30 s", "2 min", "1 h 2 min 5 s"; 0 is "0 s". */
+export function formatSeconds(totalSeconds: number): string {
+  const total = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(total / 3600);
+  const min = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const parts = [h > 0 ? `${COUNT.format(h)} h` : null, min > 0 ? `${min} min` : null, s > 0 ? `${s} s` : null].filter((p): p is string => p !== null);
+  return parts.length === 0 ? "0 s" : parts.join(" ");
+}
 
 function inUnit(kg: number, pref: UnitPreference): string {
   return pref === "lb" ? `${LB.format(kgToLb(kg))} lb` : `${KG.format(kg)} kg`;
@@ -34,13 +46,13 @@ export function formatRecordValue(value: number, unit: RecordUnit, pref: UnitPre
       return formatVolumeKg(value, pref);
     case "reps":
       return value === 1 ? "1 rep" : `${COUNT.format(value)} reps`;
-    // Spec 05.3 Phase A: plain text so a first new-type record never crashes the screen; the UI spec (18.1) styles them.
     case "cal":
       return `${COUNT.format(value)} cal`;
+    // Spec 18.1 D6: a record distance is meters for every account, even when typed in feet (05.3 D19).
     case "m":
-      return `${COUNT.format(value)} m`;
+      return `${DISTANCE.format(value)} m`;
     case "s":
-      return `${COUNT.format(value)} s`;
+      return formatSeconds(value);
     default: {
       const unreachable: never = unit;
       throw new Error(`Unhandled record unit: ${String(unreachable)}`);
