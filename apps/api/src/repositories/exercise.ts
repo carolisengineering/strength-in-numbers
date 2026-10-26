@@ -60,6 +60,12 @@ export interface ExerciseWriteFields {
 /** A partial edit — `PATCH` body or `/fork` overlay body (Spec 03.2 §5, §6). */
 export type ExerciseWritePatch = Partial<ExerciseWriteFields>;
 
+/** Spec 03.4 AC20: the updated row, and whether its stored type changed (for the log line). */
+export interface ExerciseUpdateResult {
+  readonly exercise: ExerciseRecord;
+  readonly modalityChanged: boolean;
+}
+
 export interface ExerciseRepository {
   /**
    * The caller-visible catalog. No `since` → the full pull: visible rows with
@@ -103,13 +109,14 @@ export interface ExerciseRepository {
    * an edit to a row that just became retired. Throws `NotFoundError` (not
    * visible), `ExerciseRetiredError` (target soft-deleted or retired, whoever owns it),
    * `ExerciseImmutableUseForkError` (target is an active global row), or `ValidationError`
-   * (merged result fails the cross-field check).
+   * (merged result fails the cross-field check), or — Spec 03.4 — `ExerciseTypeLockedError` (an incompatible type
+   * change on a lineage with the caller's logged sets).
    */
   updateExercise(
     actingUserId: string,
     id: string,
     patch: ExerciseWritePatch,
-  ): Promise<ExerciseRecord>;
+  ): Promise<ExerciseUpdateResult>;
 
   /**
    * Copy-on-write forks a global, active row (Spec 03.2 §6): copies its

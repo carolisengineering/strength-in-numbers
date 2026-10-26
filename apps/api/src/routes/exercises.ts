@@ -15,6 +15,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
+  ExerciseTypeLockedError,
   NotFoundError,
   SyncTokenExpiredError,
 } from "../errors/app-error.js";
@@ -130,17 +131,21 @@ export function registerExerciseRoutes(
         body: UpdateExerciseSchema,
         response: { 200: ExerciseSchema },
       },
-      config: { published: true, problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError], writeGroup: "exercises" },
+      config: {
+        published: true,
+        problems: [NotFoundError, ExerciseImmutableUseForkError, ExerciseRetiredError, ExerciseTypeLockedError],
+        writeGroup: "exercises",
+      },
     },
     async (request) => {
       const actingUserId = request.user!.id;
-      const updated = await deps.exerciseRepository.updateExercise(
+      const { exercise: updated, modalityChanged } = await deps.exerciseRepository.updateExercise(
         actingUserId,
         request.params.id,
         request.body,
       );
       request.log.info(
-        { exercise_id: updated.id, owner_user_id: actingUserId },
+        { exercise_id: updated.id, owner_user_id: actingUserId, modality_changed: modalityChanged },
         "custom_exercise_updated",
       );
       return toExerciseDto(updated);

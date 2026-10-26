@@ -341,7 +341,7 @@ describe.skipIf(!shouldRunIntegration())(
         await insertExercise(db, { id, name: "Old Name", ownerUserId: userId });
         const before = await repo.findVisibleById(userId, id);
 
-        const updated = await repo.updateExercise(userId, id, { name: "New Name" });
+        const { exercise: updated } = await repo.updateExercise(userId, id, { name: "New Name" });
         expect(updated.id).toBe(id);
         expect(updated.name).toBe("New Name");
         expect(updated.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
@@ -688,7 +688,7 @@ describe.skipIf(!shouldRunIntegration())(
         );
         const forked = await repo.forkExercise(userId, originId, {});
 
-        const updated = await repo.updateExercise(userId, forked.id, { name: "Renamed" });
+        const { exercise: updated } = await repo.updateExercise(userId, forked.id, { name: "Renamed" });
 
         expect(updated.name).toBe("Renamed");
         expect(updated.secondaryMuscleIds).toEqual(["m1", "m2", "m3", "m4", "m5"]);

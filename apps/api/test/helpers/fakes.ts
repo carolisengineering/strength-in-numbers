@@ -15,6 +15,8 @@ import {
   ROUTINE_SECTIONS_MAX,
   rpeToTenths,
   MAX_CUSTOM_EXERCISES_PER_USER,
+  lineageRootId,
+  modalitiesCompatible,
   offsetMinutesForZone,
   parseWeightKgMilli,
   sumVolumeMilli,
@@ -35,6 +37,7 @@ import type {
 import type {
   CatalogPage,
   ExerciseRecord,
+  ExerciseUpdateResult,
   ExerciseRepository,
   ExerciseWriteFields,
   ExerciseWritePatch,
@@ -46,6 +49,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
+  ExerciseTypeLockedError,
   IncompleteWorkingSetsError,
   NotFoundError,
   RoutineLimitError,
@@ -256,6 +260,9 @@ export class FakeExerciseRepository implements ExerciseRepository {
   /** Overridable in tests to exercise the cap boundary without 500 inserts. */
   cap = MAX_CUSTOM_EXERCISES_PER_USER;
 
+  /** Spec 03.4: whether the lineage rooted at `rootId` has the caller's logged sets; overridable to simulate a lock. */
+  hasSets: (rootId: string) => boolean = () => false;
+
   lastActingUserId: string | null = null;
   lastSince: string | null = null;
   /** One-shot: thrown by the next `findCatalog` (e.g. a SyncTokenExpiredError). */
@@ -353,20 +360,26 @@ export class FakeExerciseRepository implements ExerciseRepository {
     actingUserId: string,
     id: string,
     patch: ExerciseWritePatch,
-  ): Promise<ExerciseRecord> {
+  ): Promise<ExerciseUpdateResult> {
     const before = await this.findVisibleById(actingUserId, id);
     if (!before.isActive) throw new ExerciseRetiredError(); // retired before global, as the real repository (#25)
     if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
     const merged = mergeWritableFields(before, patch);
     assertMergedFieldsValid(merged, patch);
     this.validateReferences(merged);
+    const from = before.modality as Modality;
+    const to = merged.modality as Modality;
+    // Spec 03.4: the same rule as the real repository, with `hasSets` standing in for the lineage probe.
+    if (to !== from && !modalitiesCompatible(from, to) && this.hasSets(lineageRootId(before))) {
+      throw new ExerciseTypeLockedError(from, to);
+    }
     const updated: ExerciseRecord = {
       ...before,
       ...merged,
       updatedAt: new Date(before.updatedAt.getTime() + 1000),
     };
     this.byId.set(updated.id, updated);
-    return updated;
+    return { exercise: updated, modalityChanged: to !== from };
   }
 
   async forkExercise(
