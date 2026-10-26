@@ -20,6 +20,7 @@ const base = (o: Partial<SetDraft> = {}): SetDraft => ({
   minutes: "",
   seconds: "",
   rpe: "",
+  calories: "",
   weightUnit: "kg",
   distanceUnit: "km",
   setType: "working",

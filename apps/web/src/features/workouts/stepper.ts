@@ -1,4 +1,4 @@
-import { SET_REPS_MAX, SET_WEIGHT_MAX, type WeightUnit } from "@sin/core";
+import { SET_CALORIES_MAX, SET_REPS_MAX, SET_WEIGHT_MAX, type WeightUnit } from "@sin/core";
 
 import { formatWeight } from "../routines/targetFormat";
 
@@ -45,4 +45,17 @@ export function stepReps(text: string, direction: StepDirection): string {
 export function repsAtLimit(text: string, direction: StepDirection): boolean {
   const reps = toWhole(text);
   return direction === "up" ? reps >= SET_REPS_MAX : reps <= 0;
+}
+
+/** Spec 18.1 D7: bike and ski sessions are logged in tens of calories, so one tap is 5; typing covers anything else. */
+export const CALORIES_STEP = 5;
+
+/** ± 5 from where the value is (22 → 27, no snapping), clamped to 0 … SET_CALORIES_MAX. */
+export function stepCalories(text: string, direction: StepDirection): string {
+  return String(clamp(toWhole(text) + (direction === "up" ? CALORIES_STEP : -CALORIES_STEP), 0, SET_CALORIES_MAX));
+}
+
+export function caloriesAtLimit(text: string, direction: StepDirection): boolean {
+  const calories = toWhole(text);
+  return direction === "up" ? calories >= SET_CALORIES_MAX : calories <= 0;
 }

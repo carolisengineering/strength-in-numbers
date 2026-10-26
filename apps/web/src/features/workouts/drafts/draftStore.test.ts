@@ -15,6 +15,7 @@ const FIELDS: DraftFields = {
   minutes: "",
   seconds: "",
   rpe: "",
+  calories: "",
   weightUnit: "kg",
   distanceUnit: "km",
   setType: "working",
@@ -40,7 +41,7 @@ const make = (storage: StorageAdapter = memoryStorageAdapter(), report = vi.fn()
 });
 
 describe("06.5 AC1 — a draft round-trips through storage", () => {
-  it("writes exactly the nine fields under one key, never attemptKey, and a fresh store reads them back", () => {
+  it("writes exactly the ten fields under one key, never attemptKey, and a fresh store reads them back", () => {
     const { storage, store } = make();
     store.set(EX, { ...FIELDS, attemptKey: "must-not-be-written" } as DraftFields);
     store.flush();
@@ -245,5 +246,38 @@ describe("06.5 AC11 — drafts follow the user and the workout", () => {
     const storage = memoryStorageAdapter({ [DRAFTS_KEY]: JSON.stringify({ v: 1, userId: USER, workoutId: "w9", byExercise: {} }) });
     createDraftStores(storage, USER).clearWorkout("w9");
     expect(storage.get(DRAFTS_KEY)).toBeNull();
+  });
+});
+
+describe("18.1 AC14 — stored drafts carry calories", () => {
+  it("a file written before 18.1 (no calories) still loads; its draft has calories \"\"", () => {
+    const storage = memoryStorageAdapter();
+    const older: Partial<DraftFields> = { ...FIELDS };
+    delete older.calories;
+    storage.set(DRAFTS_KEY, JSON.stringify({ v: 1, userId: USER, workoutId: WORKOUT, byExercise: { [EX]: older } }));
+    const { store, report } = make(storage);
+    expect(store.get(EX)).toEqual({ ...older, calories: "" });
+    expect(report).not.toHaveBeenCalled();
+  });
+  it("an edited calories draft round-trips with exactly ten keys and no attemptKey", () => {
+    const storage = memoryStorageAdapter();
+    const { store } = make(storage);
+    store.set(EX, { ...FIELDS, weight: "", reps: "", calories: "25" });
+    store.flush();
+    const saved = stored(storage).byExercise[EX];
+    expect(Object.keys(saved).sort()).toEqual(
+      ["calories", "distance", "distanceUnit", "minutes", "reps", "rpe", "seconds", "setType", "weight", "weightUnit"],
+    );
+    expect(make(storage).store.get(EX)).toMatchObject({ calories: "25" });
+  });
+});
+
+describe("18.1 AC40 — a drafts file holding feet loads", () => {
+  it("distanceUnit ft round-trips", () => {
+    const storage = memoryStorageAdapter();
+    const { store } = make(storage);
+    store.set(EX, { ...FIELDS, distance: "100", distanceUnit: "ft" });
+    store.flush();
+    expect(make(storage).store.get(EX)).toMatchObject({ distance: "100", distanceUnit: "ft" });
   });
 });

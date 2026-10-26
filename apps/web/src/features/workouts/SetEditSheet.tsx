@@ -80,7 +80,7 @@ function EditForm({
 }: Omit<SetEditSheetProps, "adding"> & { set: SetEntry }) {
   const update = useUpdateSet();
   const del = useDeleteSet();
-  const [draft, dispatch] = useReducer(reduceDraft, undefined, () => draftForEdit(set, unitDefaultsFor(unitPreference)));
+  const [draft, dispatch] = useReducer(reduceDraft, undefined, () => draftForEdit(set, unitDefaultsFor(unitPreference, modality)));
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);

@@ -16,7 +16,7 @@ import styles from "./EntryRow.module.css";
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
-const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds"]);
+const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "calories"]);
 
 export interface LoggedEvent {
   readonly exerciseId: string;
@@ -48,7 +48,7 @@ export interface EntryRowProps {
 export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
-  const defaults = unitDefaultsFor(unitPreference);
+  const defaults = unitDefaultsFor(unitPreference, exercise.modalitySnapshot);
   const count = exercise.sets.length;
   const plannedSets = exercise.plannedSets;
   // Spec 06.5 §6.3: a stored, edited draft wins over the seed. It gets a fresh attemptKey (never stored)

@@ -11,7 +11,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 const DRAFT: SetDraft = {
-  weight: "62.5", reps: "8", distance: "", minutes: "", seconds: "", rpe: "",
+  weight: "62.5", reps: "8", distance: "", minutes: "", seconds: "", rpe: "", calories: "",
   weightUnit: "kg", distanceUnit: "km", setType: "working", attemptKey: "attempt-1",
 };
 const setup = () => {
