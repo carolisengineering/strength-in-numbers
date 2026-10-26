@@ -208,7 +208,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
     const trophy = line.length <= TROPHY_MAX && !DIGIT_CHAR.test(line) && RESULTS_LINE.test(all[i + 1] ?? "");
-    const score = RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX;
+    // A line with a badge under it is a header ("12 Days of Christmas" on a card with no score yet), never a score.
+    const score = RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX && !isBadgeLine(all[i + 1] ?? "");
     if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || trophy || score) {
       furniture++;
       continue;
@@ -664,8 +665,14 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   return section && countedLineOf(line, s) ? "movement" : null;
 }
 
-/** A counted name that is structure, not a movement ("Rounds for time", "Reps of"). */
-const isStructureName = (name: string) => STRUCTURE_START.test(name) || DANGLING_END.test(name);
+/** Words that qualify a count rather than name a movement ("1 More Round", "5 Each Side", "100 Meters Easy"). */
+const QUALIFIER_WORDS = new Set([
+  "each", "side", "sides", "per", "total", "more", "easy", "attempt", "attempts", "then", "rest", "round", "rounds",
+  "set", "sets", "time", "times", "of", "for", "and", "with", "to", "through", "break",
+]);
+/** A counted name that is structure, not a movement ("Rounds for time", "Reps of", "Each Side"). */
+const isStructureName = (name: string) =>
+  STRUCTURE_START.test(name) || DANGLING_END.test(name) || name.toLowerCase().split(" ").every((w) => QUALIFIER_WORDS.has(w));
 
 /**
  * AC62: an un-bulleted line starting with reps, calories or a distance is a rowless exercise; consecutive ones are one
@@ -732,7 +739,8 @@ export function readWorkoutText(raw: string): ReadResult {
         : isStrictHeading(line)
           ? headingOf(line, false, false)
           : null
-      : headingOf(line, i === clean.lines.length - 1, s.run !== null);
+      : // An AC62 list does not hold off a generic title: a bulleted list of the same lines would not.
+        headingOf(line, i === clean.lines.length - 1, s.run !== null && s.run.kind !== "list");
     const open = s.section === null ? null : s.sections[s.section]!;
     // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
     if (heading && open && headerKey(heading.name) === headerKey(open.name)) {

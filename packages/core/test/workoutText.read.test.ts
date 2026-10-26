@@ -375,6 +375,16 @@ describe("10.4 AC62 — a counted line is an exercise without a lead-in (owner r
     expect(read(["Engine", "10 Air Squats", "Accessory", "10 Lunges"]).items.map((i) => [i.name, i.section, i.run])).toEqual([["Air Squats", 0, 1], ["Lunges", 1, 2]]));
 });
 
+describe("10.4 AC62 — final review fixes", () => {
+  it("an open list does not stop a generic title from heading a section (non-badge paste)", () => {
+    const r = read(["Strength", "10 Push Ups", "12 Air Squats", "Core Work", "20 Sit Ups"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Strength", "Core Work"]);
+    expect(r.items.map((i) => [i.name, i.section])).toEqual([["Push Ups", 0], ["Air Squats", 0], ["Sit Ups", 1]]);
+  });
+  it.each(["1 More Round", "5 Each Side", "12 Total", "3 Attempts", "100 Meters Easy", "400m Then Rest", "10 per side"])(
+    "%s is a qualifier, not an exercise", (l) => expect(read(["Engine", l, "x."]).items).toEqual([]));
+});
+
 describe("10.4 AC63 — notes don't end a N Sets, 1 Set Every run", () => {
   it("movements after 'Accessory Between Sets:' join the lift's run", () => {
     const r = read(["Back Squat", "WEIGHT", "4 Sets, 1 Set Every 4:00", "5 Back Squats @ 60-65% of IRM", "*All sets, same weight across*", "Accessory Between Sets:", "10 TOES elevated DB Romanian deadlifts", "16 Landmine twists", "Score: weight lifted for 4 sets."]);

@@ -198,6 +198,11 @@ describe("10.4 AC57 — the trophy and the score are furniture", () => {
   it("a long numbered line after RESULTS stays", () =>
     expect(cleanWorkoutText("RESULTS (2)\n10 rounds plus four more reps and a run").lines).toEqual(["10 rounds plus four more reps and a run"]));
   it("a short line not before RESULTS stays", () => expect(cleanWorkoutText("Strength\nY'\nNext").lines).toContain("Y'"));
+  it("a header that starts with a digit is not a score: its badge follows it (final review)", () => {
+    const r = cleanWorkoutText('Workout: "X"\nMetcon\nTIME\n10 Burpees\nRESULTS (3)\n12 Days of Christmas\nTIME\n1 Thruster');
+    expect(r.lines).toEqual(['Workout: "X"', "Metcon", "10 Burpees", "12 Days of Christmas", "1 Thruster"]);
+    expect(r.tagged).toEqual([false, true, false, true, false]);
+  });
 });
 
 describe("10.4 AC58 — combined badges", () => {
