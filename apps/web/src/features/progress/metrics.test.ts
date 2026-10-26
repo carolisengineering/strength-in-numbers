@@ -39,7 +39,7 @@ describe("08.1 AC2 — metrics are data-derived and null-safe", () => {
   });
 
   it("available metrics are those with ≥ 1 non-null point, in display order", () => {
-    expect(METRIC_ORDER).toEqual(["est1rm", "topSet", "volume", "reps"]);
+    expect(METRIC_ORDER).toEqual(["est1rm", "topSet", "volume", "reps", "calories", "distance", "duration"]); // Spec 18.1 AC31 appends three
     expect(availableMetrics(series([a, b, c]))).toEqual(["est1rm", "topSet", "volume"]);
     expect(availableMetrics(series([]))).toEqual([]);
     expect(availableMetrics(undefined)).toEqual([]);
