@@ -44,6 +44,10 @@ import {
   mToFt,
   parseDecimalMilli,
   RECORD_MEASURES_BY_MODALITY,
+  modalitiesCompatible,
+  compatibleModalities,
+  canChangeModality,
+  lineageRootId,
   miToM,
   lbToKg,
   noControlChars,
@@ -105,6 +109,10 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(ftToM).toBeFunction();
     expectTypeOf(mToFt).toBeFunction();
     expectTypeOf(RECORD_MEASURES_BY_MODALITY.calories).toEqualTypeOf<readonly ("reps" | "weight" | "distance" | "duration" | "calories")[]>();
+    expectTypeOf(modalitiesCompatible).toBeFunction();
+    expectTypeOf(compatibleModalities).toBeFunction();
+    expectTypeOf(canChangeModality).toBeFunction();
+    expectTypeOf(lineageRootId).toEqualTypeOf<(e: { id: string; forkedFromExerciseId: string | null }) => string>();
     expectTypeOf(parseDecimalMilli).toEqualTypeOf<(decimalString: string) => number>();
     expectTypeOf(LB_TO_KG).toBeNumber();
     expectTypeOf(KM_TO_M).toBeNumber();

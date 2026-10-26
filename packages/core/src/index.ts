@@ -27,6 +27,7 @@ export * from "./dto/planned-set.js";
 export * from "./time.js";
 export * from "./workout-retime.js";
 export * from "./records.js";
+export * from "./modality-change.js";
 export * from "./routines.js";
 export * from "./plannedSets.js";
 export * from "./supersets.js";

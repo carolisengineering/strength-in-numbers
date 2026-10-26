@@ -154,6 +154,11 @@ const EXPECTED = [
   "progressPoints",
   "setChangeAffectsRecords",
   "RECORD_MEASURES_BY_MODALITY",
+  // modality-change.ts (Spec 03.4 §6.1)
+  "modalitiesCompatible",
+  "compatibleModalities",
+  "canChangeModality",
+  "lineageRootId",
   // dto — progress series (Spec 07.2 §5)
   "ProgressPointSchema",
   "ProgressSeriesSchema",
