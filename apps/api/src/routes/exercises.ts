@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
@@ -59,6 +59,24 @@ export interface ExerciseRouteDeps {
  * `toExerciseDto` in schema order (Spec 03.1 §6.1 step 3). */
 function catalogEtag(sentinel: string, exercises: Exercise[]): string {
   return strongEtag(sentinel, JSON.stringify(exercises));
+}
+
+/**
+ * Spec 03.4 AC20: a refused type change is a lifter's mistake, so it is logged at `info`, once, with ids and enum
+ * values only (never a name), and rethrown for the problem mapper.
+ */
+async function logTypeRefusal<T>(request: FastifyRequest, exerciseId: string, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (err) {
+    if (err instanceof ExerciseTypeLockedError) {
+      request.log.info(
+        { exercise_id: exerciseId, owner_user_id: request.user!.id, from_modality: err.fromModality, to_modality: err.toModality },
+        "custom_exercise_type_change_refused",
+      );
+    }
+    throw err;
+  }
 }
 
 export function registerExerciseRoutes(
@@ -139,10 +157,8 @@ export function registerExerciseRoutes(
     },
     async (request) => {
       const actingUserId = request.user!.id;
-      const { exercise: updated, modalityChanged } = await deps.exerciseRepository.updateExercise(
-        actingUserId,
-        request.params.id,
-        request.body,
+      const { exercise: updated, modalityChanged } = await logTypeRefusal(request, request.params.id, () =>
+        deps.exerciseRepository.updateExercise(actingUserId, request.params.id, request.body),
       );
       request.log.info(
         { exercise_id: updated.id, owner_user_id: actingUserId, modality_changed: modalityChanged },
@@ -177,10 +193,9 @@ export function registerExerciseRoutes(
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      const forked = await deps.exerciseRepository.forkExercise(
-        actingUserId,
-        request.params.id,
-        request.body ?? {},
+      // Spec 03.4 AC20: a refused fork names the origin.
+      const forked = await logTypeRefusal(request, request.params.id, () =>
+        deps.exerciseRepository.forkExercise(actingUserId, request.params.id, request.body ?? {}),
       );
       request.log.info(
         {

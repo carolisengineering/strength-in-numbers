@@ -393,6 +393,11 @@ export class FakeExerciseRepository implements ExerciseRepository {
     const merged = mergeWritableFields(origin, overlay);
     assertMergedFieldsValid(merged, overlay);
     this.validateReferences(merged);
+    const from = origin.modality as Modality;
+    const to = overlay.modality as Modality | undefined;
+    if (to !== undefined && to !== from && !modalitiesCompatible(from, to) && this.hasSets(lineageRootId(origin))) {
+      throw new ExerciseTypeLockedError(from, to);
+    }
     return this.insertOwned(actingUserId, merged, origin.id);
   }
 
