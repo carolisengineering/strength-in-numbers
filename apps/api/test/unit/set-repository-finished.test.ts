@@ -34,7 +34,7 @@ const isPrLock = (sql: string, values: unknown[]) => PR_LOCK.test(sql) && String
 const setRow = (o: Record<string, unknown> = {}) => ({
   id: uuidv7(), workout_exercise_id: uuidv7(), client_generated_id: null, set_number: 1, set_type: "warmup",
   reps: 5, weight: 40, weight_unit: "kg", weight_kg: 40, distance: null, distance_unit: null, distance_m: null,
-  duration_s: null, rpe: null, is_complete: true, completed_at: ENDED, created_at: new Date(), updated_at: new Date(), ...o,
+  duration_s: null, calories: null, rpe: null, is_complete: true, completed_at: ENDED, created_at: new Date(), updated_at: new Date(), ...o,
 });
 const finishedParent = () => [{ workout_id: uuidv7(), modality_snapshot: "weight_reps", ended_at: ENDED }];
 const lockedFinished = () => [{ ended_at: ENDED, started_at: STARTED }];

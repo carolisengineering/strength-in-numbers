@@ -38,6 +38,7 @@ const setRow = (o: Record<string, unknown> = {}) => ({
   distance_unit: null,
   distance_m: null,
   duration_s: null,
+  calories: null,
   rpe: null,
   is_complete: false,
   completed_at: null,

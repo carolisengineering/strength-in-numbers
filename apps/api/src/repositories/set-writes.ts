@@ -30,6 +30,7 @@ export interface SetMeasures {
   distance: number | null;
   distanceUnit: DistanceUnit | null;
   durationS: number | null;
+  calories: number | null;
   isComplete: boolean;
 }
 
@@ -107,6 +108,7 @@ export function fieldsToMeasures(fields: CreateSetFields): MergedSet {
     distance: fields.distance ?? null,
     distanceUnit: fields.distanceUnit ?? null,
     durationS: fields.durationS ?? null,
+    calories: fields.calories ?? null,
     rpe: fields.rpe ?? null,
     isComplete: fields.isComplete ?? false,
   };
@@ -124,6 +126,7 @@ export function mergeSetPatch(stored: SetEntryRecord, patch: UpdateSetFields): M
     distance: keep(patch.distance, stored.distance),
     distanceUnit: keep(patch.distanceUnit, stored.distanceUnit as DistanceUnit | null),
     durationS: keep(patch.durationS, stored.durationS),
+    calories: keep(patch.calories, stored.calories),
     rpe: keep(patch.rpe, stored.rpe),
     isComplete: patch.isComplete ?? stored.isComplete,
   };

@@ -168,6 +168,7 @@ export function toSetEntryDto(r: SetEntryRecord): SetEntry {
     distanceUnit: r.distanceUnit as SetEntry["distanceUnit"],
     distanceM: r.distanceM,
     durationS: r.durationS,
+    calories: r.calories,
     rpe: r.rpe,
     isComplete: r.isComplete,
     completedAt: r.completedAt?.toISOString() ?? null,

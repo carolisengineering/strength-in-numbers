@@ -6,7 +6,7 @@ import { ValidationError, WorkoutWouldBeEmptyError } from "../../src/errors/app-
 import { assertWouldNotEmpty } from "../../src/repositories/set-entry.prisma.js";
 import { assertFinishedSetComplete } from "../../src/repositories/set-writes.js";
 
-const empty = { reps: null, weight: null, distance: null, durationS: null };
+const empty = { reps: null, weight: null, distance: null, durationS: null, calories: null };
 
 describe("07.4 AC9 — assertFinishedSetComplete", () => {
   it("a weight_reps working set missing reps names `reps`, with a static message", () => {

@@ -155,6 +155,7 @@ export interface SetEntryRecord {
   distanceUnit: string | null;
   distanceM: number | null;
   durationS: number | null;
+  calories: number | null;
   rpe: number | null;
   isComplete: boolean;
   completedAt: Date | null;
@@ -174,6 +175,7 @@ export interface CreateSetFields {
   distance?: number | null;
   distanceUnit?: DistanceUnit | null;
   durationS?: number | null;
+  calories?: number | null;
   rpe?: number | null;
   isComplete?: boolean;
 }
