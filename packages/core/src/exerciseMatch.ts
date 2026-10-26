@@ -13,9 +13,10 @@ const MARKS = /\p{M}/gu;
 const LEADING_BULLET = /^\s*[-•*]+/;
 const ES_PLURAL = /(?:ch|sh|x|z|ss)es$/;
 const ALL_DIGITS = /^\d+$/;
-const GLUED_DISTANCE = /^\d+(?:m|km|mi)$/;
-const UNIT_WORDS = new Set(["m", "meter", "km", "mi", "mile", "min", "minute", "sec", "second", "s", "cal", "calorie"]);
-const DISTANCE_UNITS = new Set(["m", "meter", "km", "mi", "mile"]);
+const GLUED_DISTANCE = /^\d+(?:m|km|mi|ft)$/;
+// Spec 05.3 D20: "ft" only — "feet" / "foot" are words in real exercise names ("Rear Foot Elevated Split Squat").
+const UNIT_WORDS = new Set(["m", "meter", "km", "mi", "mile", "ft", "min", "minute", "sec", "second", "s", "cal", "calorie"]);
+const DISTANCE_UNITS = new Set(["m", "meter", "km", "mi", "mile", "ft"]);
 const DISTANCE_WORDS = new Set(["run", "jog", "sprint", "bike", "erg", "swim"]);
 const BODYWEIGHT_KEYS = ["pushup", "pullup", "chinup", "situp", "burpee", "handrelease"];
 const EXPANSIONS: Readonly<Record<string, string>> = { db: "dumbbell", kb: "kettlebell", bb: "barbell" };
@@ -104,8 +105,12 @@ export function matchExerciseName<R extends MatchableRow>(written: string, rows:
   return best ? { kind: "similar", row: best.row } : { kind: "none" };
 }
 
-/** AC16. `hang` / `hold` count only as the last word, so "Hang Power Clean" keeps its reps (owner, 2026-10-19). */
-export function guessModality(name: string): Modality {
+/**
+ * AC16. `hang` / `hold` count only as the last word, so "Hang Power Clean" keeps its reps (owner, 2026-10-19).
+ * Spec 05.3 AC34: a name the reader saw in a calorie form (`hint.calories`) is Calories, before the distance words.
+ */
+export function guessModality(name: string, hint?: { calories?: boolean }): Modality {
+  if (hint?.calories === true) return "calories";
   const w = words(name);
   const leadingDistance = (ALL_DIGITS.test(w[0] ?? "") && DISTANCE_UNITS.has(w[1] ?? "")) || GLUED_DISTANCE.test(w[0] ?? "");
   if (leadingDistance || w.some((x) => DISTANCE_WORDS.has(x))) return "distance_duration";
