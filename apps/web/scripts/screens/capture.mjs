@@ -762,6 +762,26 @@ try {
     await shoot(page, device, "15-progress-bench", "Exercise progress chart: Bench Press");
     await go(`/app/progress/${D.ids.pullUp}`);
     await shoot(page, device, "16-progress-pullup", "Exercise progress chart: Pull-up (bodyweight, reps metric)");
+    // Spec 18.1 AC35: the new types' records and charts.
+    await tryStep("new exercise types (records and charts)", async () => {
+      await go("/app/progress");
+      await page.getByRole("link", { name: /Echo Bike/ }).first().scrollIntoViewIfNeeded();
+      await shoot(page, device, "64-progress-new-types", "Progress list rows for the new types: Most calories, Longest distance, Longest hold headlines (Spec 18.1 AC28, AC30)");
+      await go(`/app/history/${D.ids.conditioning}`);
+      await page.getByText("Most calories").first().scrollIntoViewIfNeeded();
+      await shoot(page, device, "65-summary-new-type-records", "Workout summary record cards: a calories card and a carry card with a Longest distance chip (Spec 18.1 AC29)");
+      const charts = [
+        [D.ids.echoBike, "66-progress-calories", "Progress chart: Echo Bike, Calories metric, integer ticks (Spec 18.1 AC31, AC32)"],
+        [D.ids.farmerCarry, "67-progress-carry", "Progress chart: Farmer Carry, Top set and Distance chips (Spec 18.1 AC31)"],
+        [D.ids.sandbagHold, "68-progress-hold", "Progress chart: Weighted Sandbag Hold, Top set and Time chips (Spec 18.1 AC31)"],
+      ];
+      for (const [id, file, note] of charts) {
+        await go(`/app/progress/${id}`);
+        await shoot(page, device, file, note);
+      }
+      await page.getByRole("group", { name: "Metric" }).getByRole("button", { name: "Time" }).click();
+      await shoot(page, device, "69-progress-hold-time", "Progress chart: Weighted Sandbag Hold, Time metric in seconds, readout in words (Spec 18.1 AC32)");
+    });
 
     await go("/app/profile");
     await shoot(page, device, "17-profile", "Profile: settings form, export, sign out, delete account");

@@ -374,6 +374,12 @@ export const finished = [
     { key: "farmer_carry", sets: [{ weight: 24, distance: 40 }, { weight: 32, distance: 30 }] },
     { key: "sandbag_hold", sets: [{ weight: 20, durationS: 90 }, { weight: 20, durationS: 75 }] },
   ], { title: "Conditioning" }),
+  // Spec 18.1 AC35: an earlier, lighter session, so each new-type chart has two points and the summary cards show gains.
+  makeWorkout(15, at(20), 22, [
+    { key: "echo_bike", sets: [{ calories: 15 }, { calories: 18 }] },
+    { key: "farmer_carry", sets: [{ weight: 20, distance: 30 }] },
+    { key: "sandbag_hold", sets: [{ weight: 16, durationS: 60 }] },
+  ], { title: "Conditioning (light)" }),
   lowerSession(9, 2, 117.5, 95, 200),
 ].sort(byStart);
 
@@ -491,6 +497,15 @@ function computeRecords() {
           }
         } else if (we.modalitySnapshot === "bodyweight_reps" && s.reps > 0) {
           cands.push(["max_reps", s.reps, "reps"]);
+        } else if (we.modalitySnapshot === "calories" && s.calories >= 1) {
+          // Spec 18.1 AC35: the three new types, as Spec 05.3 §6.2 decides them.
+          cands.push(["max_calories", s.calories, "cal"]);
+        } else if (we.modalitySnapshot === "weight_distance" && s.distanceM > 0) {
+          if (s.weightKg > 0) cands.push(["heaviest_weight", s.weightKg, "kg"]);
+          cands.push(["max_distance", s.distanceM, "m"]);
+        } else if (we.modalitySnapshot === "weight_duration" && s.durationS >= 1) {
+          if (s.weightKg > 0) cands.push(["heaviest_weight", s.weightKg, "kg"]);
+          cands.push(["max_duration", s.durationS, "s"]);
         }
         for (const [type, value, unit] of cands) {
           const k = `${we.exerciseId}|${type}`;
@@ -523,10 +538,20 @@ export function progressFor(exerciseId) {
   for (const w of finished) {
     const wes = w.exercises.filter((we) => we.exerciseId === exerciseId);
     if (wes.length === 0) continue;
-    let top = null, e1 = null, vol = 0, reps = null;
+    let top = null, e1 = null, vol = 0, reps = null, cal = null, dist = null, dur = null;
     for (const we of wes) for (const s of we.sets) {
       if (s.setType !== "working") continue;
       if (we.modalitySnapshot === "bodyweight_reps") { reps = Math.max(reps ?? 0, s.reps ?? 0) || null; continue; }
+      // Spec 18.1 AC35: the new types' series, from the same per-set rules as the records above.
+      if (we.modalitySnapshot === "calories") { if (s.calories >= 1) cal = Math.max(cal ?? 0, s.calories); continue; }
+      if (we.modalitySnapshot === "weight_distance") {
+        if (s.distanceM > 0) { dist = Math.max(dist ?? 0, s.distanceM); if (s.weightKg > 0) top = Math.max(top ?? 0, s.weightKg); }
+        continue;
+      }
+      if (we.modalitySnapshot === "weight_duration") {
+        if (s.durationS >= 1) { dur = Math.max(dur ?? 0, s.durationS); if (s.weightKg > 0) top = Math.max(top ?? 0, s.weightKg); }
+        continue;
+      }
       if (!(s.weightKg > 0) || !(s.reps > 0)) continue;
       top = Math.max(top ?? 0, s.weightKg);
       const e = epley(s.weightKg, s.reps);
@@ -536,7 +561,7 @@ export function progressFor(exerciseId) {
     points.push({
       workoutId: w.id, localDate: w.localDate, startedAt: w.startedAt,
       topSetWeight: top, bestE1rm: e1, totalVolume: vol > 0 ? round(vol) : null, maxReps: reps,
-      maxCalories: null, maxDistance: null, maxDuration: null,
+      maxCalories: cal, maxDistance: dist, maxDuration: dur,
     });
   }
   return { exerciseId, points };
@@ -579,6 +604,9 @@ export const ids = {
   plankOnly: finished.find((w) => w.title === "Plank only").id,
   oneSet: finished.find((w) => w.title === "Quick single").id,
   conditioning: finished.find((w) => w.title === "Conditioning").id,
+  echoBike: exByKey.echo_bike.id,
+  farmerCarry: exByKey.farmer_carry.id,
+  sandbagHold: exByKey.sandbag_hold.id,
   activeId: active.id,
 };
 
