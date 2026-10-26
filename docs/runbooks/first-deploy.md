@@ -510,7 +510,7 @@ eligible sets.
    SELECT md5(string_agg(id::text || coalesce(distance_m::text,''), ',' ORDER BY id)) FROM set_entry;  -- note the hash
    ```
 
-   A non-zero first count is a row whose `distance_m` would change from miles to NULL (D18): stop and fix it by hand first.
+   A non-zero first count is a row whose `distance_m` would change from miles to NULL (D18): stop and fix it by hand first. No CHECK forbids such a row; only the API's unit-pairing rule (Spec 05.1 AC20) keeps it from being written, so expect 0.
 2. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy`, then `db:migrate:status` (do not assume) and `\d set_entry` (a `calories smallint` column; `distance_m` still `numeric(9,3)` generated). Re-run the `md5` query: the hash must be unchanged. The `distance_m` rebuild briefly takes `ACCESS EXCLUSIVE` on `set_entry`; the old API's statements wait, then succeed (the column keeps its name and type). Expand-only, so the running API is unaffected.
 3. Merge Phase A (Render deploys; the static site redeploys in the same commit, so for a few minutes the new bundle requires `calories` on every set, which the old API does not send — accepted on staging, as in 0010–0014). Run the staging API smoke. No UI offers a new type yet.
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0015` by hand the same way before approving the release.

@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
+import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
+
 // 0008 describes history: its legal pairs are the legacy four (the live list is guarded against 0015, Spec 05.3 D14).
 const LEGACY_UNIT_BY_TYPE = { heaviest_weight: "kg", best_est_1rm: "kg", best_set_volume: "kg_reps", max_reps: "reps" } as const;
-import { applyMigrationFile, shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
 
 const MIGRATIONS = [
   "0001_create_user",
