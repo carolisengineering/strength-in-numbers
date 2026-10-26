@@ -69,22 +69,20 @@ export async function logWorkout(
     const ids: string[] = [];
     for (const [i, s] of ex.sets.entries()) {
       const id = uuidv7();
+      const base = [id, weId, i + 1, s.setType ?? "working", s.reps ?? null, s.weight ?? null,
+        s.weight == null ? null : (s.weightUnit ?? "kg"), s.durationS ?? null, s.isComplete ?? true];
+      // Spec 05.3's columns are named only when a set uses them, so the older migration tests,
+      // which run this helper on a schema from before 0015, keep working.
+      const extra = s.distance != null || s.calories != null;
       await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","duration_s","is_complete",
-                                  "distance","distance_unit","calories")
-         VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        id,
-        weId,
-        i + 1,
-        s.setType ?? "working",
-        s.reps ?? null,
-        s.weight ?? null,
-        s.weight == null ? null : (s.weightUnit ?? "kg"),
-        s.durationS ?? null,
-        s.isComplete ?? true,
-        s.distance ?? null,
-        s.distance == null ? null : (s.distanceUnit ?? "m"),
-        s.calories ?? null,
+        extra
+          ? `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","duration_s","is_complete",
+                                      "distance","distance_unit","calories")
+             VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
+          : `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","duration_s","is_complete")
+             VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9)`,
+        ...base,
+        ...(extra ? [s.distance ?? null, s.distance == null ? null : (s.distanceUnit ?? "m"), s.calories ?? null] : []),
       );
       ids.push(id);
     }
