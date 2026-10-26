@@ -344,7 +344,11 @@ interface MutableItem {
   calories: boolean;
 }
 /** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
-type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number; strict?: boolean };
+/** `list`: AC62, counted lines with no lead-in; its items are rowless. */
+type Run =
+  | { id: number; kind: "scheme"; reps: number[]; text: string }
+  | { id: number; kind: "lead-in"; n: number; strict?: boolean }
+  | { id: number; kind: "list" };
 
 /** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
 function isGenericTitle(line: string): boolean {
@@ -395,6 +399,8 @@ const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
 const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cals?|calories?)$/i;
 /** AC48: "3 Sets, 1 Set Every 4:00" — a set count with more after a comma. */
 const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
+/** AC61: "3-4 Sets" — a set-count range. */
+const LEAD_IN_RANGE = /^(\d{1,2})\s*[-–]\s*(\d{1,2})\s+(?:sets?|rounds?):?$/i;
 /** AC49: interval lines that describe the work, not a movement. */
 const WORK_REST = /^(?:\d{1,3}x\s+)?\d{1,3}(?::\d{2})?s?\s+on\s*\/\s*\d{1,3}(?::\d{2})?s?\s+rest$/i;
 const REST_LINE = /^rest\b/i;
@@ -406,7 +412,7 @@ const REST_PAUSE_MOVEMENT =
   /^rest[\s\-–]*pause\s+(?!.*\b(?:as|between|for|after|until|each|per|on|of|then|and|with|to|needed|secs?|seconds?)\b)\D+$/i;
 const isRestLine = (text: string): boolean => REST_LINE.test(text) && !(text.length <= 60 && REST_PAUSE_MOVEMENT.test(text));
 /** A counted line that is structure, not a movement, once its comma goes ("5 Rounds of,", "8 Rest,"): #155 review. */
-const STRUCTURE_START = /^(?:rounds?|sets?|supersets?|times?|rest)\b/i;
+const STRUCTURE_START = /^(?:rounds?|sets?|supersets?|times?|rest|break)\b/i;
 const DANGLING_END = /\s(?:of|through|for|then|and|with|to)$/i;
 /**
  * Item 69: "Rx", "Rx:", "Rx (95/65 lb)", "Rx'd: 95/65" name the prescribed version, so the movements after it are the
@@ -423,7 +429,17 @@ const PLUS = /\s\+\s/;
 const TRAILING_PLUS = /\s?\+$/;
 /** "Max Cal", "with remaining time" → "Max Cal, with remaining time". */
 const maxNote = (max: RegExpExecArray) => [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
-const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+/** AC11, AC50; AC62: a split value (`250/200m`) is one measure. */
+const LEADING_MEASURE =
+  /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+/** AC62: only a distance starts a counted line with no lead-in; a time never does ("20 Minute Cap"). */
+const LEADING_DISTANCE = /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft))(?:\s|$)/i;
+/** AC60: a load after " @ " ("5 Back Squats @ 60-65% of IRM") is the exercise's note, not its name. */
+const LOAD_MARK = " @ ";
+function splitLoad(text: string): { text: string; load: string | null } {
+  const at = text.indexOf(LOAD_MARK);
+  return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
+}
 /**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
  * alone and the measure its note; the number is never a target (FI-11). "Calf" never matches: a space must follow.
@@ -511,7 +527,7 @@ function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">):
 /** One movement under an open run (AC8–AC11): rows from the run, the rep form or leading distance as its note. */
 function pushMovement(
   s: ReadState,
-  run: Run,
+  run: Exclude<Run, { kind: "list" }>,
   text: string,
   form: RepForm | null,
   extraNotes: readonly string[] = [],
@@ -568,6 +584,12 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
     return "note";
   }
+  // AC61: "3-4 Sets" opens a run of the low end and stays in the note, so the range is not lost.
+  const range = LEAD_IN_RANGE.exec(line);
+  if (range && Number(range[1]) >= 1 && Number(range[1]) <= Number(range[2])) {
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]) };
+    return "note";
+  }
   const n = leadInCount(line);
   if (n !== null) {
     s.run = { id: ++s.runs, kind: "lead-in", n };
@@ -582,57 +604,92 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   }
 
   // 7. A movement under an open run (AC8–AC11, AC49–AC51).
-  if (s.run !== null) {
+  if (s.run !== null && s.run.kind !== "list") {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
-    const raw = dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
+    const { text: raw, load } = splitLoad(dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, "")));
+    const loadNote = load === null ? [] : [load];
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
     if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
-    // AC51: "A + B" with a rep form on every side is one exercise per side.
+    // AC51: "A + B" with a rep form on every side is one exercise per side; a load belongs to the last side.
     const parts = raw.split(PLUS);
     if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
-      for (const part of parts) pushMovement(s, s.run, part, repFormOf(part));
+      const run = s.run;
+      parts.forEach((part, i) => pushMovement(s, run, part, repFormOf(part), i === parts.length - 1 ? loadNote : []));
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
     // "Max" is a rep count, never part of a name: "Max Hang" is Hang (owner, 2026-10-24; replaces item 70's fix).
     const max = MAX_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
-      pushMovement(s, s.run, max[2]!, null, [maxNote(max)], MAX_CAL.test(max[1]!));
+      pushMovement(s, s.run, max[2]!, null, [maxNote(max), ...loadNote], MAX_CAL.test(max[1]!));
       return "movement";
     }
     // Spec 05.3 AC36: "20 Cal Row" → Row, with "20 Cal" as its note and the calories hint.
     const cal = leadingCalorieOf(raw);
     if (cal) {
-      pushMovement(s, s.run, cal.movement, null, [cal.measure], true);
+      pushMovement(s, s.run, cal.movement, null, [cal.measure, ...loadNote], true);
       return "movement";
     }
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
     if (s.run.kind === "lead-in" && s.run.strict && repFormOf(raw) === null && !LEADING_MEASURE.test(raw)) return "note";
     if (!isMovementText(raw)) return null;
-    pushMovement(s, s.run, raw, repFormOf(raw));
+    pushMovement(s, s.run, raw, repFormOf(raw), loadNote);
     return "movement";
   }
 
-  // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50).
+  // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list.
   if (BULLET.test(line)) {
-    const text = dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    s.run = null;
+    const { text, load } = splitLoad(dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, "")));
+    const loadNote = load === null ? [] : [load];
     const max = MAX_LINE.exec(text);
     if (max && isMovementText(max[2]!)) {
-      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], run: null, calories: MAX_CAL.test(max[1]!) });
+      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max), ...loadNote], run: null, calories: MAX_CAL.test(max[1]!) });
       return "movement";
     }
     const cal = leadingCalorieOf(text);
     if (cal) {
-      pushItem(s, { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], run: null, calories: true });
+      pushItem(s, { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure, ...loadNote], run: null, calories: true });
       return "movement";
     }
     const form = repFormOf(text);
     if (!form) return null;
-    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null, calories: false });
+    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: [...(form.note ? [form.note] : []), ...loadNote], run: null, calories: false });
     return "movement";
   }
-  return null;
+
+  // 9. AC62 (owner ruling 2026-10-26): inside a section, a counted line with no lead-in is a rowless exercise.
+  return section && countedLineOf(line, s) ? "movement" : null;
+}
+
+/** A counted name that is structure, not a movement ("Rounds for time", "Reps of"). */
+const isStructureName = (name: string) => STRUCTURE_START.test(name) || DANGLING_END.test(name);
+
+/**
+ * AC62: an un-bulleted line starting with reps, calories or a distance is a rowless exercise; consecutive ones are one
+ * list (a superset). Reached only inside a non-Warmup section, outside a run, before a variant label.
+ */
+function countedLineOf(line: string, s: ReadState): boolean {
+  const { text, load } = splitLoad(line.replace(TRAILING_PLUS, ""));
+  if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text) || !isMovementText(text)) return false;
+  let item: Omit<MutableItem, "nameKey" | "section" | "run"> | null = null;
+  const cal = leadingCalorieOf(text);
+  const form = cal ? null : repFormOf(text);
+  const distance = cal || form ? null : LEADING_DISTANCE.exec(text);
+  if (cal) {
+    item = { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], calories: true };
+  } else if (form && !isStructureName(form.name)) {
+    item = { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], calories: false };
+  } else if (distance) {
+    const rest = text.slice(distance[0].length).trim();
+    if (LETTER.test(rest) && !isStructureName(rest)) item = { name: text, rows: null, quickReps: null, repsText: null, noteLines: [distance[1]!], calories: false };
+  }
+  if (item === null) return false;
+  if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
+  pushItem(s, { ...item, noteLines: load === null ? item.noteLines : [...item.noteLines, load], run: s.run.id });
+  return true;
 }
 
 /** AC52: the first words that name an alternative version of the workout (lowercase). */
