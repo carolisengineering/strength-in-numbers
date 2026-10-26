@@ -259,4 +259,84 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.3 Phase A — new modalities o
       expect((await historyRow(workoutId)).totalVolume).toBe(500);
     });
   });
+  describe("05.3 AC5 — exercise writes accept the new values", () => {
+    const create = (payload: object, headers = JSON_A) => app.inject({ method: "POST", url: "/v1/exercises", headers, payload });
+    it("create each new modality; fork with a weight_distance overlay; PATCH to weight_duration; GET serves it", async () => {
+      await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_A });
+      for (const modality of ["calories", "weight_distance", "weight_duration"] as const) {
+        const r = await create({ name: `Custom ${modality}`, modality });
+        expect(r.statusCode).toBe(201);
+        expect(r.json().modality).toBe(modality);
+      }
+      const globalId = uuidv7();
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "exercise" ("id", "name", "modality", "is_active") VALUES ($1::uuid, 'Farmer Carry', 'weight_reps', true)`, globalId);
+      const fork = await app.inject({ method: "POST", url: `/v1/exercises/${globalId}/fork`, headers: JSON_A, payload: { modality: "weight_distance" } });
+      expect(fork.statusCode).toBe(201);
+      expect(fork.json().modality).toBe("weight_distance");
+      const patched = await app.inject({ method: "PATCH", url: `/v1/exercises/${fork.json().id}`, headers: JSON_A, payload: { modality: "weight_duration" } });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.json().modality).toBe("weight_duration");
+      const list = await app.inject({ method: "GET", url: "/v1/exercises", headers: BEARER_A });
+      expect(list.statusCode).toBe(200);
+      expect(JSON.stringify(list.json())).toContain("weight_duration");
+    });
+    it("a ninth value is 422; another user's new-type exercise is 404", async () => {
+      await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_A });
+      expect((await create({ name: "Row", modality: "rowing" })).statusCode).toBe(422);
+      await app.inject({ method: "GET", url: "/v1/me", headers: JSON_B });
+      const theirs = await create({ name: "Their Bike", modality: "calories" }, JSON_B);
+      const r = await app.inject({ method: "PATCH", url: `/v1/exercises/${theirs.json().id}`, headers: JSON_A, payload: { name: "Mine" } });
+      expect(r.statusCode).toBe(404);
+    });
+  });
+
+  describe("05.3 AC12 — routine targets and planned sets", () => {
+    async function exerciseOf(modality: Modality) {
+      await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_A });
+      return (await app.inject({ method: "POST", url: "/v1/exercises", headers: JSON_A, payload: { name: `R ${modality} ${uuidv7().slice(-4)}`, modality } })).json().id as string;
+    }
+    const createRoutine = (items: object[]) =>
+      app.inject({ method: "POST", url: "/v1/routines", headers: JSON_A, payload: { name: `R ${uuidv7().slice(-6)}`, items } });
+    it("weight_distance takes weight rows, refuses reps rows; start snapshots modality and planned rows", async () => {
+      const ex = await exerciseOf("weight_distance");
+      const ok = await createRoutine([{ exerciseId: ex, sets: [{ setType: "working", weight: 24, weightUnit: "kg" }] }]);
+      expect(ok.statusCode).toBe(201);
+      const bad = await createRoutine([{ exerciseId: ex, sets: [{ setType: "working", weight: 24, weightUnit: "kg", repsLow: 5, repsHigh: 5 }] }]);
+      expect(bad.statusCode).toBe(422);
+      expect(JSON.stringify(bad.json())).toContain("not allowed for this exercise type");
+      const w = await app.inject({
+        method: "POST", url: "/v1/workouts", headers: JSON_A,
+        payload: { clientGeneratedId: uuidv7(), startedAt: new Date().toISOString(), routineId: ok.json().id },
+      });
+      expect(w.statusCode).toBe(201);
+      const detail = await app.inject({ method: "GET", url: `/v1/workouts/${w.json().id}`, headers: BEARER_A });
+      const card = detail.json().exercises[0];
+      expect(card.modalitySnapshot).toBe("weight_distance");
+      expect(card.plannedSets).toEqual([{ setType: "working", repsLow: null, repsHigh: null, weight: 24, weightUnit: "kg" }]);
+    });
+    it("calories takes set-type-only rows and refuses weight; quick-line reps are refused on all three", async () => {
+      const cal = await exerciseOf("calories");
+      expect((await createRoutine([{ exerciseId: cal, sets: [{ setType: "working" }] }])).statusCode).toBe(201);
+      expect((await createRoutine([{ exerciseId: cal, sets: [{ setType: "working", weight: 10, weightUnit: "kg" }] }])).statusCode).toBe(422);
+      for (const m of ["calories", "weight_distance", "weight_duration"] as const) {
+        const ex = await exerciseOf(m);
+        expect((await createRoutine([{ exerciseId: ex, targetRepsLow: 10 }])).statusCode, m).toBe(422);
+        expect((await createRoutine([{ exerciseId: ex, targetSets: 3, restSeconds: 60 }])).statusCode, m).toBe(201);
+      }
+    });
+  });
+
+  describe("05.3 AC13 — snapshots", () => {
+    it("an added calories card snapshots calories, and a later exercise PATCH leaves it", async () => {
+      await app.inject({ method: "GET", url: "/v1/me", headers: BEARER_A });
+      const ex = (await app.inject({ method: "POST", url: "/v1/exercises", headers: JSON_A, payload: { name: "Echo Bike", modality: "calories" } })).json().id;
+      const w = await app.inject({ method: "POST", url: "/v1/workouts", headers: JSON_A, payload: { clientGeneratedId: uuidv7(), startedAt: new Date().toISOString() } });
+      const we = await app.inject({ method: "POST", url: `/v1/workouts/${w.json().id}/exercises`, headers: JSON_A, payload: { exerciseId: ex } });
+      expect(we.json().modalitySnapshot).toBe("calories");
+      await app.inject({ method: "PATCH", url: `/v1/exercises/${ex}`, headers: JSON_A, payload: { modality: "duration" } });
+      const detail = await app.inject({ method: "GET", url: `/v1/workouts/${w.json().id}`, headers: BEARER_A });
+      expect(detail.json().exercises[0].modalitySnapshot).toBe("calories");
+    });
+  });
 });
