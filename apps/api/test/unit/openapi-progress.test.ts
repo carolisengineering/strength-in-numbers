@@ -17,3 +17,26 @@ describe("AC16 — GET /v1/progress/exercises/{id} is in the published contract"
     expect(op.parameters?.some((p) => p.in === "path" && p.name === "id")).toBe(true);
   });
 });
+
+describe("05.3 AC31 — ProgressPoint publishes the three new metrics as required-nullable", () => {
+  it("maxCalories, maxDistance and maxDuration are required and allow null", async () => {
+    const { app } = await buildTestApp();
+    await app.ready();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as Doc;
+    const ok = doc.paths["/v1/progress/exercises/{id}"]!.get!.responses["200"];
+    type Obj = { properties?: Record<string, unknown>; required?: string[] };
+    let point: Obj | undefined;
+    const walk = (n: unknown): void => {
+      if (point || n === null || typeof n !== "object") return;
+      const o = n as Obj;
+      if (o.properties && "topSetWeight" in o.properties) point = o;
+      else for (const v of Object.values(n)) walk(v);
+    };
+    walk(ok);
+    expect(point).toBeDefined();
+    for (const f of ["maxCalories", "maxDistance", "maxDuration"]) {
+      expect(point!.required).toContain(f);
+      expect(JSON.stringify(point!.properties![f])).toContain("null");
+    }
+  });
+});

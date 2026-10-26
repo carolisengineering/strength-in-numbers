@@ -34,6 +34,9 @@ export function toProgressPointDto(r: ProgressPointRecord): ProgressPoint {
     bestE1rm: decimal(r.bestE1rmMilli),
     totalVolume: decimal(r.totalVolumeMilli),
     maxReps: decimal(r.maxRepsMilli), // reps × 1000 → an integer count
+    maxCalories: decimal(r.maxCaloriesMilli),
+    maxDistance: decimal(r.maxDistanceMilli),
+    maxDuration: decimal(r.maxDurationMilli),
   };
 }
 

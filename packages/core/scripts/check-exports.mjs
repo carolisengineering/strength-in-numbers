@@ -144,6 +144,7 @@ const EXPECTED = [
   "UpdatedWorkoutSchema",
   // records.ts (Spec 07.0 §6.1)
   "parseWeightKgMilli",
+  "parseDecimalMilli",
   "milliToDecimalString",
   "estimate1rm",
   "computeRecords",
@@ -152,6 +153,7 @@ const EXPECTED = [
   "setRecordValueMilli",
   "progressPoints",
   "setChangeAffectsRecords",
+  "RECORD_MEASURES_BY_MODALITY",
   // dto — progress series (Spec 07.2 §5)
   "ProgressPointSchema",
   "ProgressSeriesSchema",

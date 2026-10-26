@@ -247,6 +247,8 @@ export interface ReadItem {
   readonly noteLines: readonly string[];
   /** Items sharing a run id are a superset candidate. */
   readonly run: number | null;
+  /** Spec 05.3 AC34: read from a calorie form ("Max Cal …", "20 Cal …"). */
+  readonly calories: boolean;
 }
 export interface ReadName {
   /** normalizeExerciseName(written), or `written:<name>` when that is empty (#169). */
@@ -254,6 +256,8 @@ export interface ReadName {
   readonly written: string;
   /** Names of the sections using it (loose omitted). */
   readonly sections: readonly string[];
+  /** True iff any item with this key was read from a calorie form: the hint for guessModality. */
+  readonly calories: boolean;
 }
 export type LinePlacement = "heading" | "set-line" | "scheme" | "lead-in" | "separator" | "movement" | "note";
 export interface ReadResult {
@@ -303,6 +307,7 @@ interface MutableItem {
   repsText: string | null;
   noteLines: string[];
   run: number | null;
+  calories: boolean;
 }
 /** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
 type Run = { id: number; kind: "scheme"; reps: number[]; text: string } | { id: number; kind: "lead-in"; n: number; strict?: boolean };
@@ -353,7 +358,7 @@ const MOVEMENT_PUNCTUATION = /[:.!?;]/;
 const RANGE_FORM = /^(\d{1,3})\s*[-–]\s*(\d{1,3})\s+(.+)$/;
 const SPLIT_FORM = /^(\d{1,3})\/(\d{1,3})\s+(.+)$/;
 const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
-const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?)$/i;
+const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cals?|calories?)$/i;
 /** AC48: "3 Sets, 1 Set Every 4:00" — a set count with more after a comma. */
 const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC49: interval lines that describe the work, not a movement. */
@@ -384,7 +389,19 @@ const PLUS = /\s\+\s/;
 const TRAILING_PLUS = /\s?\+$/;
 /** "Max Cal", "with remaining time" → "Max Cal, with remaining time". */
 const maxNote = (max: RegExpExecArray) => [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
-const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+const LEADING_MEASURE = /^(\d{1,6}(?:[.,]\d{1,3})?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+/**
+ * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
+ * alone and the measure its note; the number is never a target (FI-11). "Calf" never matches: a space must follow.
+ */
+const LEADING_CAL = /^(\d{1,4}\s?(?:cals?|calories?))\s+(\S.*)$/i;
+/** The leading calorie form, when what follows is one movement (never an "A + B" pair, AC37). */
+function leadingCalorieOf(text: string): { measure: string; movement: string } | null {
+  const m = LEADING_CAL.exec(text);
+  if (!m || PLUS.test(m[2]!) || !isMovementText(m[2]!)) return null;
+  return { measure: m[1]!, movement: m[2]! };
+}
+const MAX_CAL = /cal/i;
 
 /** A leading rep form (AC9): reps for every set, the text as written, and a note for `a/b`. */
 interface RepForm {
@@ -430,6 +447,8 @@ function leadInCount(line: string): number | null {
 function dropMovementComma(text: string): string {
   if (!text.endsWith(",")) return text;
   const bare = text.slice(0, -1).trimEnd();
+  // Spec 05.3: a leading calorie line ("20 Cal Row,") is a counted movement too.
+  if (leadingCalorieOf(bare) !== null) return bare;
   const form = repFormOf(bare);
   return form && isMovementText(bare) && !STRUCTURE_START.test(form.name) && !DANGLING_END.test(form.name) ? bare : text;
 }
@@ -456,14 +475,21 @@ function pushItem(s: ReadState, item: Omit<MutableItem, "nameKey" | "section">):
 }
 
 /** One movement under an open run (AC8–AC11): rows from the run, the rep form or leading distance as its note. */
-function pushMovement(s: ReadState, run: Run, text: string, form: RepForm | null, extraNotes: readonly string[] = []): void {
+function pushMovement(
+  s: ReadState,
+  run: Run,
+  text: string,
+  form: RepForm | null,
+  extraNotes: readonly string[] = [],
+  calories = false,
+): void {
   const noteLines: string[] = [];
   let name = text;
   if (form) {
     name = form.name;
     if (run.kind === "scheme") noteLines.push(form.text);
     else if (form.note) noteLines.push(form.note);
-  } else {
+  } else if (!calories) {
     const measure = LEADING_MEASURE.exec(text);
     if (measure) noteLines.push(measure[1]!);
   }
@@ -472,7 +498,7 @@ function pushMovement(s: ReadState, run: Run, text: string, form: RepForm | null
     run.kind === "scheme"
       ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
       : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
-  pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id });
+  pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id, calories });
 }
 
 /** Steps 3–8: place the line as a construct ("note" keeps it in the note with the run open), or null to leave it to the note. */
@@ -485,7 +511,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     s.run = null;
     const reps = Number(set[2]);
     if (!section.strength) {
-      pushItem(s, { name: section.name, rows: [], quickReps: null, repsText: null, noteLines: [], run: null });
+      pushItem(s, { name: section.name, rows: [], quickReps: null, repsText: null, noteLines: [], run: null, calories: false });
       section.strength = s.items[s.items.length - 1]!;
     }
     const item = section.strength;
@@ -538,7 +564,13 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     // "Max" is a rep count, never part of a name: "Max Hang" is Hang (owner, 2026-10-24; replaces item 70's fix).
     const max = MAX_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
-      pushMovement(s, s.run, max[2]!, null, [maxNote(max)]);
+      pushMovement(s, s.run, max[2]!, null, [maxNote(max)], MAX_CAL.test(max[1]!));
+      return "movement";
+    }
+    // Spec 05.3 AC36: "20 Cal Row" → Row, with "20 Cal" as its note and the calories hint.
+    const cal = leadingCalorieOf(raw);
+    if (cal) {
+      pushMovement(s, s.run, cal.movement, null, [cal.measure], true);
       return "movement";
     }
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
@@ -553,12 +585,17 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const text = dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const max = MAX_LINE.exec(text);
     if (max && isMovementText(max[2]!)) {
-      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], run: null });
+      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], run: null, calories: MAX_CAL.test(max[1]!) });
+      return "movement";
+    }
+    const cal = leadingCalorieOf(text);
+    if (cal) {
+      pushItem(s, { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], run: null, calories: true });
       return "movement";
     }
     const form = repFormOf(text);
     if (!form) return null;
-    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null });
+    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], run: null, calories: false });
     return "movement";
   }
   return null;
@@ -655,10 +692,11 @@ export function readWorkoutText(raw: string): ReadResult {
     placed.push({ text: line, as: "note" });
   });
 
-  const names: { key: string; written: string; sections: string[] }[] = [];
+  const names: { key: string; written: string; sections: string[]; calories: boolean }[] = [];
   for (const item of s.items) {
     let entry = names.find((n) => n.key === item.nameKey);
-    if (!entry) names.push((entry = { key: item.nameKey, written: item.name, sections: [] }));
+    if (!entry) names.push((entry = { key: item.nameKey, written: item.name, sections: [], calories: false }));
+    if (item.calories) entry.calories = true;
     const sectionName = item.section === null ? null : s.sections[item.section]!.name;
     if (sectionName !== null && !entry.sections.includes(sectionName)) entry.sections.push(sectionName);
   }

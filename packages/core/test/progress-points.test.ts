@@ -35,8 +35,8 @@ describe("AC13/AC7 — progressPoints, hand-computed", () => {
       set({ setId: "d", workoutId: "w2", weightKgMilli: 140_000, reps: 13 }),
     ]);
     expect(pts).toEqual([
-      { workoutId: "w1", topSetWeightMilli: 100_000, bestE1rmMilli: 116_667, totalVolumeMilli: 1_220_000, maxRepsMilli: null },
-      { workoutId: "w2", topSetWeightMilli: 140_000, bestE1rmMilli: 108_500, totalVolumeMilli: 1_925_000, maxRepsMilli: null },
+      { workoutId: "w1", topSetWeightMilli: 100_000, bestE1rmMilli: 116_667, totalVolumeMilli: 1_220_000, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
+      { workoutId: "w2", topSetWeightMilli: 140_000, bestE1rmMilli: 108_500, totalVolumeMilli: 1_925_000, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
     ]);
   });
   it("Epley window boundaries: 0 and 13 reps give no e1RM; 1 and 12 do", () => {
@@ -51,7 +51,7 @@ describe("AC13/AC7 — progressPoints, hand-computed", () => {
       set({ setId: "a", modality: "bodyweight_reps", weightKgMilli: null, reps: 8 }),
       set({ setId: "b", modality: "bodyweight_reps", weightKgMilli: null, reps: 10 }),
     ]);
-    expect(p).toEqual({ workoutId: "w", topSetWeightMilli: null, bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: 10_000 });
+    expect(p).toEqual({ workoutId: "w", topSetWeightMilli: null, bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: 10_000, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null });
   });
   it("lb-derived weight (135 lb → 61.235 kg) and an ineligible set mixed in", () => {
     const [p] = progressPoints([
@@ -62,7 +62,7 @@ describe("AC13/AC7 — progressPoints, hand-computed", () => {
   });
   it("AC6 — working sets that fail every metric give an all-null point (D7)", () => {
     expect(progressPoints([set({ modality: "duration", weightKgMilli: null, reps: null })])).toEqual([
-      { workoutId: "w", topSetWeightMilli: null, bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: null },
+      { workoutId: "w", topSetWeightMilli: null, bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
     ]);
   });
   it("empty input → []; non-contiguous workout throws", () => {
@@ -78,5 +78,31 @@ describe("AC14 — totalVolume is deliberately outside the guarantee", () => {
     const sets = ["a", "b", "c"].map((id) => set({ setId: id, workoutId: "w1" }));
     expect(progressPoints(sets)[0]!.totalVolumeMilli).toBe(1_500_000);
     expect(computeRecords(sets).find((r) => r.recordType === "best_set_volume")!.valueMilli).toBe(500_000);
+  });
+});
+
+describe("05.3 AC31 — the new metrics fill only for their own types", () => {
+  const NULLS = { topSetWeightMilli: null, bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null };
+  it("calories: only maxCalories", () => {
+    expect(progressPoints([
+      set({ setId: "a", modality: "calories", weightKgMilli: null, reps: null, calories: 20 }),
+      set({ setId: "b", modality: "calories", weightKgMilli: null, reps: null, calories: 25 }),
+    ])).toEqual([{ ...NULLS, workoutId: "w", maxCaloriesMilli: 25_000 }]);
+  });
+  it("weight_distance: topSetWeight and maxDistance, from different sets", () => {
+    expect(progressPoints([
+      set({ setId: "a", modality: "weight_distance", weightKgMilli: 40_000, reps: null, distanceMMilli: 20_000 }),
+      set({ setId: "b", modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 60_000 }),
+    ])).toEqual([{ ...NULLS, workoutId: "w", topSetWeightMilli: 40_000, maxDistanceMilli: 60_000 }]);
+  });
+  it("weight_duration: topSetWeight and maxDuration", () => {
+    expect(progressPoints([set({ modality: "weight_duration", weightKgMilli: 20_000, reps: null, durationS: 90 })])).toEqual([
+      { ...NULLS, workoutId: "w", topSetWeightMilli: 20_000, maxDurationMilli: 90_000 },
+    ]);
+  });
+  it("a legacy weight_reps lineage keeps its four values and has the three new fields null", () => {
+    expect(progressPoints([set({ weightKgMilli: 100_000, reps: 5 })])).toEqual([
+      { ...NULLS, workoutId: "w", topSetWeightMilli: 100_000, bestE1rmMilli: 116_667, totalVolumeMilli: 500_000 },
+    ]);
   });
 });

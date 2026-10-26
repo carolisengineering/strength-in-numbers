@@ -15,10 +15,14 @@ export function prng(seed: number): () => number {
 
 export interface GeneratedWorkout { id: string; startedAt: number; sets: RecordSet[] }
 
-export function history(seed: number): GeneratedWorkout[] {
+/** `withNewModalities` adds Spec 05.3's three types (and their measures); off by default, so
+ * existing callers see the same histories for the same seeds. */
+export function history(seed: number, opts: { withNewModalities?: boolean } = {}): GeneratedWorkout[] {
   const rnd = prng(seed);
   const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
-  const modalities = ["weight_reps", "weighted_bodyweight", "bodyweight_reps", "duration"] as const;
+  const modalities: readonly string[] = opts.withNewModalities
+    ? ["weight_reps", "weighted_bodyweight", "bodyweight_reps", "duration", "calories", "weight_distance", "weight_duration"]
+    : ["weight_reps", "weighted_bodyweight", "bodyweight_reps", "duration"];
   const workouts: GeneratedWorkout[] = [];
   const count = 1 + Math.floor(rnd() * 25);
   for (let w = 0; w < count; w++) {
@@ -27,13 +31,20 @@ export function history(seed: number): GeneratedWorkout[] {
     const setCount = Math.floor(rnd() * 6);
     for (let s = 0; s < setCount; s++) {
       const modality = pick(modalities);
-      sets.push({
+      const set: RecordSet = {
         setId: `${id}-s${s}`,
         workoutId: id,
         modality,
-        weightKgMilli: modality === "bodyweight_reps" || modality === "duration" ? null : pick([0, 2_500, 60_000, 61_235, 100_000]),
-        reps: modality === "duration" ? null : pick([0, 1, 5, 12, 13]),
-      });
+        weightKgMilli:
+          modality === "bodyweight_reps" || modality === "duration" || modality === "calories"
+            ? null
+            : pick([0, 2_500, 60_000, 61_235, 100_000]),
+        reps: modality === "duration" || !["weight_reps", "weighted_bodyweight", "bodyweight_reps"].includes(modality) ? null : pick([0, 1, 5, 12, 13]),
+      };
+      if (modality === "calories") set.calories = pick([0, 1, 20, 25]);
+      if (modality === "weight_distance") set.distanceMMilli = pick([0, 1, 40_000, 60_000]);
+      if (modality === "weight_duration") set.durationS = pick([0, 1, 90, 600]);
+      sets.push(set);
     }
     workouts.push({ id, startedAt: Math.floor(rnd() * 10), sets });
   }

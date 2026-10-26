@@ -9,6 +9,9 @@ const point = {
   bestE1rm: 116.667,
   totalVolume: 1220,
   maxReps: null,
+  maxCalories: null,
+  maxDistance: null,
+  maxDuration: null,
 };
 
 describe("AC17 — ProgressPointSchema / ProgressSeriesSchema", () => {
@@ -25,6 +28,20 @@ describe("AC17 — ProgressPointSchema / ProgressSeriesSchema", () => {
     expect(ProgressPointSchema.safeParse({ ...point, topSetWeight: -1 }).success).toBe(false);
     expect(ProgressPointSchema.safeParse({ ...point, totalVolume: 0 }).success).toBe(false);
     expect(ProgressPointSchema.safeParse({ ...point, maxReps: 10.5 }).success).toBe(false);
+  });
+});
+
+describe("05.3 AC31 — maxCalories, maxDistance and maxDuration are required-nullable", () => {
+  it("each is required (no default), positive, and integer except distance", () => {
+    for (const f of ["maxCalories", "maxDistance", "maxDuration"] as const) {
+      const missing: Record<string, unknown> = { ...point };
+      delete missing[f];
+      expect(ProgressPointSchema.safeParse(missing).success, f).toBe(false);
+      expect(ProgressPointSchema.safeParse({ ...point, [f]: 0 }).success, f).toBe(false);
+    }
+    expect(ProgressPointSchema.parse({ ...point, maxCalories: 25, maxDistance: 30.48, maxDuration: 90 })).toMatchObject({ maxDistance: 30.48 });
+    expect(ProgressPointSchema.safeParse({ ...point, maxCalories: 25.5 }).success).toBe(false);
+    expect(ProgressPointSchema.safeParse({ ...point, maxDuration: 90.5 }).success).toBe(false);
   });
 });
 

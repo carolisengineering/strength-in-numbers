@@ -3,12 +3,13 @@
  * shared by the API's finish / delete / rebuild paths and, later, the clients.
  *
  * Every value is an integer in thousandths ("milli"): kg × 1000 for the load
- * types, reps × kg × 1000 for set volume, reps × 1000 for max_reps — so one
- * `numeric(12,3)` column and one formatter serve all four, and every
- * comparison is exact (D3). Magnitudes stay below 3.3e11, far inside
- * Number.MAX_SAFE_INTEGER, so no BigInt is needed.
+ * types, reps × kg × 1000 for set volume, reps × 1000 for max_reps, and
+ * calories / meters / seconds × 1000 for the Spec 05.3 types — so one
+ * `numeric(14,3)` column and one formatter serve all seven, and every
+ * comparison is exact (D3). The largest value is SET_DURATION_S_MAX × 1000
+ * ≈ 2.1e12, far inside Number.MAX_SAFE_INTEGER, so no BigInt is needed.
  */
-import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type RecordType, type RecordUnit, type SetType } from "./enums.js";
+import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type Modality, type RecordType, type RecordUnit, type SetType } from "./enums.js";
 
 /** One qualifying set (working, in a finished workout), caller-sorted by
  * (workout started_at, workout id, workout_exercise position, set_number). */
@@ -19,6 +20,12 @@ export interface RecordSet {
   modality: string;
   weightKgMilli: number | null;
   reps: number | null;
+  /** distance_m in milli-meters (Spec 05.3); absent = null. */
+  distanceMMilli?: number | null;
+  /** duration_s in whole seconds; absent = null. */
+  durationS?: number | null;
+  /** Whole calories; absent = null. */
+  calories?: number | null;
 }
 
 export interface ComputedRecord {
@@ -42,6 +49,9 @@ export function parseWeightKgMilli(decimalString: string): number {
   return milli;
 }
 
+/** The same parser under a neutral name, for meters (Spec 05.3 AC35). */
+export const parseDecimalMilli = parseWeightKgMilli;
+
 /** `61235` → `"61.235"` — string arithmetic, no division. */
 export function milliToDecimalString(milli: number): string {
   if (!Number.isSafeInteger(milli) || milli < 0) {
@@ -64,7 +74,19 @@ export function estimate1rm(weightKgMilli: number, reps: number): number | null 
   return divFloor(weightKgMilli * (30 + reps) + 15, 30);
 }
 
+/** The rep-load modalities: they alone have e1RM and set volume, which need reps. */
 const LOAD_MODALITIES = new Set(["weight_reps", "weighted_bodyweight"]);
+
+const repsAtLeastOne = (s: RecordSet): boolean => s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1;
+
+/** Spec 05.3 §6.2: the load modalities and the second measure each needs
+ * positive before its weight can be a heaviest_weight. Gates only that type. */
+const HEAVIEST_LOAD: Readonly<Record<string, (s: RecordSet) => boolean>> = {
+  weight_reps: repsAtLeastOne,
+  weighted_bodyweight: repsAtLeastOne,
+  weight_distance: (s) => (s.distanceMMilli ?? 0) > 0,
+  weight_duration: (s) => (s.durationS ?? 0) >= 1,
+};
 
 /**
  * The one definition of a set's volume (Spec 07.1 D4): reps × weight in milli,
@@ -95,9 +117,24 @@ export function sumVolumeMilli(
  * ineligible (07.0 §6.1 table, D5). Exported for Spec 07.2's progress series —
  * one per-set rule for PRs and charts. */
 export function setRecordValueMilli(recordType: RecordType, s: RecordSet): number | null {
-  // Spec 05.3 Phase B fills these three; until then they produce nothing.
-  if (recordType === "max_calories" || recordType === "max_distance" || recordType === "max_duration") return null;
-  const reps = s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 ? s.reps : null;
+  // Spec 05.3 §6.2: each new type reads one measure of one modality.
+  if (recordType === "max_calories") {
+    const c = s.calories ?? null;
+    return s.modality === "calories" && c !== null && c >= 1 ? c * 1000 : null;
+  }
+  if (recordType === "max_distance") {
+    const d = s.distanceMMilli ?? null;
+    return s.modality === "weight_distance" && d !== null && d > 0 ? d : null;
+  }
+  if (recordType === "max_duration") {
+    const t = s.durationS ?? null;
+    return s.modality === "weight_duration" && t !== null && t >= 1 ? t * 1000 : null;
+  }
+  if (recordType === "heaviest_weight") {
+    const w = s.weightKgMilli;
+    return HEAVIEST_LOAD[s.modality]?.(s) === true && w !== null && w > 0 ? w : null;
+  }
+  const reps = repsAtLeastOne(s) ? s.reps : null;
   if (recordType === "max_reps") {
     return s.modality === "bodyweight_reps" && reps !== null ? reps * 1000 : null;
   }
@@ -109,12 +146,7 @@ export function setRecordValueMilli(recordType: RecordType, s: RecordSet): numbe
   if (!LOAD_MODALITIES.has(s.modality) || reps === null) return null;
   const w = s.weightKgMilli;
   if (w === null || w <= 0) return null;
-  switch (recordType) {
-    case "heaviest_weight":
-      return w;
-    case "best_est_1rm":
-      return estimate1rm(w, reps);
-  }
+  return estimate1rm(w, reps);
 }
 
 /** Contiguous per-workout runs of `sets`, in input order. Throws if a
@@ -183,6 +215,12 @@ export interface ProgressPointMilli {
   totalVolumeMilli: number | null;
   /** reps × 1000, bodyweight_reps only. */
   maxRepsMilli: number | null;
+  /** calories × 1000, calories only (Spec 05.3 §6.5). */
+  maxCaloriesMilli: number | null;
+  /** meters × 1000, weight_distance only. */
+  maxDistanceMilli: number | null;
+  /** seconds × 1000, weight_duration only. */
+  maxDurationMilli: number | null;
 }
 
 /** The workout's best value of one type (computeRecords' own `v > 0` guard). */
@@ -199,7 +237,7 @@ function bestOf(recordType: RecordType, group: readonly RecordSet[]): number | n
  * Spec 07.2 §6.2 — one point per workout, in input order, from the SAME
  * per-set function as computeRecords, so the series max of topSetWeight /
  * bestE1rm / maxReps equals the heaviest_weight / best_est_1rm / max_reps PR
- * (AC14). Input: one lineage's working sets, sorted as computeRecords needs.
+ * (AC14), and likewise maxCalories / maxDistance / maxDuration (Spec 05.3 AC32). Input: one lineage's working sets, sorted as computeRecords needs.
  * Each point depends only on its own workout, so a date-range filter upstream
  * changes which points appear, never their values (D10).
  */
@@ -210,25 +248,58 @@ export function progressPoints(sets: readonly RecordSet[]): ProgressPointMilli[]
     bestE1rmMilli: bestOf("best_est_1rm", group),
     totalVolumeMilli: sumVolumeMilli(group),
     maxRepsMilli: bestOf("max_reps", group),
+    maxCaloriesMilli: bestOf("max_calories", group),
+    maxDistanceMilli: bestOf("max_distance", group),
+    maxDurationMilli: bestOf("max_duration", group),
   }));
 }
 
-/** The only set fields personal records read (07.0 D5): `is_complete`, `rpe`, distance and duration are inert. */
+/** A set as the finished-edit predicate sees it. Which measures matter depends on the
+ * modality (Spec 05.3 §6.4); `is_complete` and `rpe` never do. */
 export interface RecordRelevantSet {
   setType: SetType;
+  /** The parent workout_exercise's modality_snapshot. */
+  modality: string;
   reps: number | null;
   weightKgMilli: number | null;
+  distanceMMilli: number | null;
+  durationS: number | null;
+  calories: number | null;
 }
+
+type RecordMeasure = "reps" | "weight" | "distance" | "duration" | "calories";
+
+/** Spec 05.3 §6.4 — the measures each modality's records read (§6.2); every other measure is inert. */
+export const RECORD_MEASURES_BY_MODALITY: Readonly<Record<Modality, readonly RecordMeasure[]>> = {
+  weight_reps: ["reps", "weight"],
+  bodyweight_reps: ["reps"],
+  weighted_bodyweight: ["reps", "weight"],
+  duration: [],
+  distance_duration: [],
+  calories: ["calories"],
+  weight_distance: ["weight", "distance"],
+  weight_duration: ["weight", "duration"],
+};
+
+const MEASURE_FIELD: Readonly<Record<RecordMeasure, (s: RecordRelevantSet) => number | null>> = {
+  reps: (s) => s.reps,
+  weight: (s) => s.weightKgMilli,
+  distance: (s) => s.distanceMMilli,
+  duration: (s) => s.durationS,
+  calories: (s) => s.calories,
+};
 
 /**
  * Spec 07.4 §6.2 / AC8 — whether a finished-workout set write can change any record, so an
  * edit that cannot (an rpe-only patch, a warm-up) skips the lineage recompute. `null` means the
- * set does not exist on that side (a create or a delete).
+ * set does not exist on that side (a create or a delete). Spec 05.3 §6.4: only the measures the
+ * set's modality records read are compared, so a legacy distance or duration edit stays a no-op.
  */
 export function setChangeAffectsRecords(before: RecordRelevantSet | null, after: RecordRelevantSet | null): boolean {
   const wasWorking = before?.setType === "working";
   const isWorking = after?.setType === "working";
   if (!wasWorking && !isWorking) return false;
   if (before === null || after === null || wasWorking !== isWorking) return true;
-  return before.reps !== after.reps || before.weightKgMilli !== after.weightKgMilli;
+  const measures = RECORD_MEASURES_BY_MODALITY[after.modality as Modality] ?? [];
+  return measures.some((m) => MEASURE_FIELD[m](before) !== MEASURE_FIELD[m](after));
 }

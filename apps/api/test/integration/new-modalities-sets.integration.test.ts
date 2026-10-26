@@ -90,6 +90,56 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.3 Phase A — new modalities o
     app.inject({ method: "PATCH", url: `/v1/workouts/${workoutId}`, headers: JSON_A, payload: { endedAt: new Date().toISOString() } });
   const paths = (res: { json: () => { errors?: { path: string }[] } }) => (res.json().errors ?? []).map((e) => e.path).sort();
 
+  describe("05.3 AC27 / AC28 / AC33 — records for the new types over HTTP", () => {
+    const records = (query = "") => app.inject({ method: "GET", url: `/v1/personal-records${query}`, headers: BEARER_A });
+    const byType = (rows: { recordType: string }[]) => Object.fromEntries(rows.map((r) => [r.recordType, r]));
+
+    it("finish writes them, the GET reads them as numbers in their units, and filters work", async () => {
+      const { workoutId, weIds } = await workoutWith(["calories", "weight_distance", "weight_duration"]);
+      expect((await postSet(weIds[0]!, { calories: 20, isComplete: true })).statusCode).toBe(201);
+      expect((await postSet(weIds[1]!, { weight: 24, weightUnit: "kg", distance: 40, distanceUnit: "m", isComplete: true })).statusCode).toBe(201);
+      expect((await postSet(weIds[2]!, { weight: 20, weightUnit: "kg", durationS: 90, isComplete: true })).statusCode).toBe(201);
+      const done = await finish(workoutId);
+      expect(done.statusCode).toBe(200);
+      const fresh = done.json().newRecords as { recordType: string; value: number; unit: string; previousValue: number | null }[];
+      expect(fresh.map((r) => `${r.recordType}:${r.value}${r.unit}`).sort()).toEqual([
+        "heaviest_weight:20kg",
+        "heaviest_weight:24kg",
+        "max_calories:20cal",
+        "max_distance:40m",
+        "max_duration:90s",
+      ]);
+      const all = await records();
+      expect(all.statusCode).toBe(200);
+      const rows = all.json().records as { recordType: string; value: number; unit: string; exerciseId: string }[];
+      expect(rows).toHaveLength(5);
+      const calRow = rows.find((r) => r.recordType === "max_calories")!;
+      expect(calRow).toMatchObject({ value: 20, unit: "cal" });
+      expect(rows.find((r) => r.recordType === "max_distance")).toMatchObject({ value: 40, unit: "m" });
+      expect(rows.find((r) => r.recordType === "max_duration")).toMatchObject({ value: 90, unit: "s" });
+      expect((await records(`?exerciseId=${calRow.exerciseId}`)).json().records.map((r: { recordType: string }) => r.recordType)).toEqual(["max_calories"]);
+      expect((await records(`?workoutId=${workoutId}`)).json().records).toHaveLength(5);
+    });
+
+    it("a later finish reports the earlier best as previousValue; History's recordCount equals the finish summary", async () => {
+      const first = await workoutWith(["calories"]);
+      await postSet(first.weIds[0]!, { calories: 20, isComplete: true });
+      await finish(first.workoutId);
+      const exerciseId = (await app.inject({ method: "GET", url: `/v1/workouts/${first.workoutId}`, headers: BEARER_A })).json().exercises[0].exerciseId;
+      const second = await workoutWith([]);
+      const we = await app.inject({ method: "POST", url: `/v1/workouts/${second.workoutId}/exercises`, headers: JSON_A, payload: { exerciseId } });
+      await postSet(we.json().id, { calories: 25, isComplete: true });
+      const done = await finish(second.workoutId);
+      const fresh = done.json().newRecords as { recordType: string; value: number; previousValue: number | null }[];
+      expect(fresh).toHaveLength(1);
+      expect(byType(fresh).max_calories).toMatchObject({ value: 25, previousValue: 20 });
+      const summaryCount = fresh.filter((r) => r.recordType !== "best_set_volume").length;
+      const history = (await app.inject({ method: "GET", url: "/v1/workouts", headers: BEARER_A })).json().items as { id: string; recordCount: number }[];
+      expect(history.find((h) => h.id === second.workoutId)!.recordCount).toBe(summaryCount);
+      expect(history.find((h) => h.id === first.workoutId)!.recordCount).toBe(0);
+    });
+  });
+
   describe("05.3 AC6 — calories sets", () => {
     it("create, patch, clear, delete and replay", async () => {
       const { weIds } = await workoutWith(["calories"]);
@@ -199,12 +249,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.3 Phase A — new modalities o
         expect((await finish(workoutId)).statusCode).toBe(200);
       });
     }
-    it("Review Focus 3 — finishing a complete calories workout writes no personal_record row", async () => {
+    it("Review Focus 3 — finishing a complete calories workout writes only its max_calories row (Phase B)", async () => {
       const { workoutId, weIds } = await workoutWith(["calories"]);
       await postSet(weIds[0]!, { calories: 20, isComplete: true });
       expect((await finish(workoutId)).statusCode).toBe(200);
-      const rows = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "personal_record"`);
-      expect(Number(rows[0]!.n)).toBe(0);
+      const rows = await db.prisma.$queryRawUnsafe<{ record_type: string }[]>(`SELECT record_type FROM "personal_record"`);
+      expect(rows.map((r) => r.record_type)).toEqual(["max_calories"]);
     });
   });
 
