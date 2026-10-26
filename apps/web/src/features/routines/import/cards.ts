@@ -61,7 +61,7 @@ export function initialCards(names: readonly ReadName[], visible: readonly Exerc
       match,
       pickedId: null,
       selected: match ? "match" : "new",
-      newValue: { ...EMPTY_EXERCISE_FIELDS, name: name.written.trim(), modality: guessModality(name.written) },
+      newValue: { ...EMPTY_EXERCISE_FIELDS, name: name.written.trim(), modality: guessModality(name.written, { calories: name.calories }) },
       detailsOpen: false,
     };
   });

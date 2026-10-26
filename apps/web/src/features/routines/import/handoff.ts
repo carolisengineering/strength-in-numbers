@@ -42,6 +42,8 @@ export function buildHandoff(args: {
   const { read, cards, rows, placeholderFor } = args;
   const rowById = new Map<string, Exercise>(rows.map((row) => [row.id, row]));
   const writtenOf = new Map(read.names.map((name) => [name.key, name.written]));
+  // Spec 18.1 AC34: the reader's calories hint (a "Max Cal …" or "20 Cal …" line) seeds both fallback guesses.
+  const caloriesOf = new Map(read.names.map((name) => [name.key, name.calories]));
   const exerciseIdOf = new Map<string, string>();
   const pending = new Map<string, PendingExercise>();
   const modality = new Map<string, Modality>();
@@ -58,9 +60,10 @@ export function buildHandoff(args: {
     const id = card.selected === "picked" ? card.pickedId : (card.match?.exerciseId ?? null);
     if (id === null) continue;
     exerciseIdOf.set(card.key, id);
-    modality.set(card.key, rowById.get(id)?.modality ?? guessModality(card.written));
+    modality.set(card.key, rowById.get(id)?.modality ?? guessModality(card.written, { calories: caloriesOf.get(card.key) === true }));
   }
 
-  const modalityOf = (key: string): Modality => modality.get(key) ?? guessModality(writtenOf.get(key) ?? "");
+  const modalityOf = (key: string): Modality =>
+    modality.get(key) ?? guessModality(writtenOf.get(key) ?? "", { calories: caloriesOf.get(key) === true });
   return { plan: buildImportPlan(read, modalityOf), exerciseIdOf, pending };
 }
