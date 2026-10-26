@@ -48,7 +48,7 @@ model Exercise {
   ownerUserId        String?      @map("owner_user_id") @db.Uuid // null = global/curated
   owner              User?        @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   name               String
-  modality           String // CHECK ('weight_reps', ...) — literal list in the migration
+  modality           String // CHECK: weight_reps, bodyweight_reps, weighted_bodyweight, duration, distance_duration, calories, weight_distance, weight_duration (0015)
   primaryMuscleId    String?      @map("primary_muscle_id")
   primaryMuscle      MuscleGroup? @relation(fields: [primaryMuscleId], references: [id], onDelete: Restrict)
   secondaryMuscleIds String[]     @default([]) @map("secondary_muscle_ids") // muscle_group ids, authoring order
@@ -259,10 +259,11 @@ model SetEntry {
   /// GENERATED ALWAYS AS ... STORED (0006). Read-only by convention; never written by the app.
   weightKg          Decimal?        @map("weight_kg") @db.Decimal(7, 3)
   distance          Decimal?        @db.Decimal(9, 3)
-  distanceUnit      String?         @map("distance_unit")
-  /// GENERATED ALWAYS AS ... STORED (0006). Read-only by convention; never written by the app.
+  distanceUnit      String?         @map("distance_unit") // CHECK: m, km, mi, ft (0015)
+  /// GENERATED ALWAYS AS ... STORED (0006; rebuilt with an ft arm in 0015). Read-only by convention; never written by the app.
   distanceM         Decimal?        @map("distance_m") @db.Decimal(9, 3)
   durationS         Int?            @map("duration_s")
+  calories          Int?            @db.SmallInt // Spec 05.3: a count, no unit; CHECK >= 0
   rpe               Decimal?        @db.Decimal(3, 1)
   isComplete        Boolean         @default(false) @map("is_complete")
   completedAt       DateTime?       @map("completed_at") @db.Timestamptz(6)
@@ -288,9 +289,9 @@ model PersonalRecord {
   exerciseId       String    @map("exercise_id") @db.Uuid
   exercise         Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
   recordType       String    @map("record_type")
-  value            Decimal   @db.Decimal(12, 3)
+  value            Decimal   @db.Decimal(14, 3)
   unit             String
-  previousValue    Decimal?  @map("previous_value") @db.Decimal(12, 3)
+  previousValue    Decimal?  @map("previous_value") @db.Decimal(14, 3)
   sourceSetEntryId String    @map("source_set_entry_id") @db.Uuid
   sourceSetEntry   SetEntry  @relation(fields: [sourceSetEntryId], references: [id], onDelete: Cascade)
   workoutId        String    @map("workout_id") @db.Uuid

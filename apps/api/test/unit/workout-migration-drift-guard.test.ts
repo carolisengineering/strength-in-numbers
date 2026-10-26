@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MODALITY_VALUES, WORKOUT_SOURCE_VALUES } from "@sin/core";
+import { WORKOUT_SOURCE_VALUES } from "@sin/core";
+
+// Describes migration history; the live list is guarded against 0015 (Spec 05.3 D14).
+const LEGACY_MODALITIES = ["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"] as const;
 
 const migrationSql = readFileSync(
   new URL(
@@ -16,8 +19,8 @@ describe("AC2 — both CHECK literal lists cannot silently drift from @sin/core"
     expect(migrationSql).toContain(`"source" IN (${rendered})`);
   });
 
-  it("renders MODALITY_VALUES verbatim in the workout_exercise.modality_snapshot CHECK", () => {
-    const rendered = MODALITY_VALUES.map((v) => `'${v}'`).join(", ");
+  it("renders the frozen legacy modality list verbatim in the workout_exercise.modality_snapshot CHECK", () => {
+    const rendered = LEGACY_MODALITIES.map((v) => `'${v}'`).join(", ");
     expect(migrationSql).toContain(`"modality_snapshot" IN (${rendered})`);
   });
 });

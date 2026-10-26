@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  DISTANCE_UNIT_VALUES,
   KM_TO_M,
   LB_TO_KG,
   MI_TO_M,
   SET_TYPE_VALUES,
   WEIGHT_UNIT_VALUES,
 } from "@sin/core";
+
+// The 0006 distance-unit list describes history; the live list is guarded against 0015 (Spec 05.3 D14, AC17).
+const LEGACY_DISTANCE_UNITS = ["m", "km", "mi"] as const;
 
 const migrationSql = readFileSync(
   new URL("../../prisma/migrations/0006_create_set_entry/migration.sql", import.meta.url),
@@ -19,9 +21,9 @@ describe("AC2 — set_entry's CHECK literal lists cannot silently drift from @si
   it("renders SET_TYPE_VALUES verbatim in the set_type CHECK", () => {
     expect(migrationSql).toContain(`"set_type" IN (${render(SET_TYPE_VALUES)})`);
   });
-  it("renders WEIGHT_UNIT_VALUES and DISTANCE_UNIT_VALUES verbatim in the unit CHECKs", () => {
+  it("renders WEIGHT_UNIT_VALUES and the frozen legacy distance units verbatim in the unit CHECKs", () => {
     expect(migrationSql).toContain(`"weight_unit" IN (${render(WEIGHT_UNIT_VALUES)})`);
-    expect(migrationSql).toContain(`"distance_unit" IN (${render(DISTANCE_UNIT_VALUES)})`);
+    expect(migrationSql).toContain(`"distance_unit" IN (${render(LEGACY_DISTANCE_UNITS)})`);
   });
 });
 
