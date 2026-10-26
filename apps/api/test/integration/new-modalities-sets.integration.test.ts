@@ -180,4 +180,83 @@ describe.skipIf(!shouldRunIntegration())("Spec 05.3 Phase A — new modalities o
       expect(run.json()).toMatchObject({ distanceUnit: "ft", distanceM: 30.48 });
     });
   });
+  describe("05.3 AC10 — finish integrity for the new types", () => {
+    const cases: [Modality, object, object][] = [
+      ["calories", {}, { calories: 20 }],
+      ["weight_distance", { weight: 24, weightUnit: "kg" }, { distance: 40, distanceUnit: "m" }],
+      ["weight_duration", { durationS: 60 }, { weight: 20, weightUnit: "kg" }],
+    ];
+    for (const [modality, half, rest] of cases) {
+      it(`${modality}: a half-filled working set blocks the finish (409); filled, it finishes`, async () => {
+        const { workoutId, weIds } = await workoutWith([modality]);
+        const s = await postSet(weIds[0]!, { setType: "working", ...half });
+        expect(s.statusCode).toBe(201);
+        await postSet(weIds[0]!, { setType: "warmup" });
+        const blocked = await finish(workoutId);
+        expect(blocked.statusCode).toBe(409);
+        expect(blocked.json().type).toContain("incomplete-working-sets");
+        expect((await patchSet(s.json().id, { ...rest, isComplete: true })).statusCode).toBe(200);
+        expect((await finish(workoutId)).statusCode).toBe(200);
+      });
+    }
+    it("Review Focus 3 — finishing a complete calories workout writes no personal_record row", async () => {
+      const { workoutId, weIds } = await workoutWith(["calories"]);
+      await postSet(weIds[0]!, { calories: 20, isComplete: true });
+      expect((await finish(workoutId)).statusCode).toBe(200);
+      const rows = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "personal_record"`);
+      expect(Number(rows[0]!.n)).toBe(0);
+    });
+  });
+
+  describe("05.3 AC11 — finished-workout edit integrity", () => {
+    it("a weight_duration working set without durationS is 422 on a finished workout; a warmup is 201", async () => {
+      const { workoutId, weIds } = await workoutWith(["weight_duration"]);
+      await postSet(weIds[0]!, { weight: 20, weightUnit: "kg", durationS: 90, isComplete: true });
+      expect((await finish(workoutId)).statusCode).toBe(200);
+      const body = { weight: 20, weightUnit: "kg", isComplete: true };
+      const refused = await postSet(weIds[0]!, { setType: "working", ...body });
+      expect(refused.statusCode).toBe(422);
+      expect(paths(refused)).toEqual(["durationS"]);
+      const detail = await app.inject({ method: "GET", url: `/v1/workouts/${workoutId}`, headers: BEARER_A });
+      expect(detail.json().exercises[0].sets).toHaveLength(1);
+      expect((await postSet(weIds[0]!, { setType: "warmup", weight: 20, weightUnit: "kg" })).statusCode).toBe(201);
+    });
+  });
+
+  describe("05.3 AC14 — export", () => {
+    it("a calories set equals GET /v1/workouts/{id}; modalities are served; a legacy set carries calories: null", async () => {
+      const { workoutId, weIds } = await workoutWith(["calories", "weight_reps"]);
+      await postSet(weIds[0]!, { calories: 20, isComplete: true });
+      await postSet(weIds[1]!, { weight: 60, weightUnit: "kg", reps: 5, isComplete: true });
+      await finish(workoutId);
+      const detail = (await app.inject({ method: "GET", url: `/v1/workouts/${workoutId}`, headers: BEARER_A })).json();
+      const exp = await app.inject({ method: "GET", url: "/v1/account/export", headers: BEARER_A });
+      expect(exp.statusCode).toBe(200);
+      const exported = exp.json().workouts.find((w: { id: string }) => w.id === workoutId);
+      expect(exported.exercises[0].modalitySnapshot).toBe("calories");
+      expect(exported.exercises[0].sets[0]).toEqual(detail.exercises[0].sets[0]);
+      const legacy = exported.exercises[1].sets[0];
+      expect(Object.keys(legacy)).toContain("calories");
+      expect(legacy.calories).toBeNull();
+    });
+  });
+
+  describe("05.3 AC15 — History volume", () => {
+    const historyRow = async (workoutId: string) =>
+      (await app.inject({ method: "GET", url: "/v1/workouts", headers: BEARER_A })).json().items.find((w: { id: string }) => w.id === workoutId);
+    it("a calories-only workout has totalVolume null and its working-set count", async () => {
+      const { workoutId, weIds } = await workoutWith(["calories"]);
+      await postSet(weIds[0]!, { calories: 20, isComplete: true });
+      await postSet(weIds[0]!, { calories: 25, isComplete: true });
+      await finish(workoutId);
+      expect(await historyRow(workoutId)).toMatchObject({ totalVolume: null, workingSetCount: 2, exerciseCount: 1 });
+    });
+    it("a weight_reps + weight_distance workout's volume is the weight_reps sets alone", async () => {
+      const { workoutId, weIds } = await workoutWith(["weight_reps", "weight_distance"]);
+      await postSet(weIds[0]!, { weight: 100, weightUnit: "kg", reps: 5, isComplete: true });
+      await postSet(weIds[1]!, { weight: 50, weightUnit: "kg", distance: 40, distanceUnit: "m", isComplete: true });
+      await finish(workoutId);
+      expect((await historyRow(workoutId)).totalVolume).toBe(500);
+    });
+  });
 });

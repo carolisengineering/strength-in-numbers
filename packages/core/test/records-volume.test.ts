@@ -73,3 +73,9 @@ describe("AC15 — computeRecords' best_set_volume goes through setVolumeMilli (
     expect(vol!.valueMilli).toBe(setVolumeMilli("weight_reps", 61_235, 3));
   });
 });
+
+describe("05.3 AC15 — setVolumeMilli is null for the new types", () => {
+  it.each(["calories", "weight_distance", "weight_duration"] as const)("%s → null whatever the measures", (m) => {
+    expect(setVolumeMilli(m, 100_000, 5)).toBeNull();
+  });
+});
