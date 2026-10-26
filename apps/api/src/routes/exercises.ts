@@ -171,7 +171,7 @@ export function registerExerciseRoutes(
       },
       config: {
         published: true,
-        problems: [NotFoundError, ExerciseAlreadyOwnedError, ExerciseRetiredError, CustomExerciseLimitError],
+        problems: [NotFoundError, ExerciseAlreadyOwnedError, ExerciseRetiredError, CustomExerciseLimitError, ExerciseTypeLockedError],
         writeGroup: "exercises",
       },
     },

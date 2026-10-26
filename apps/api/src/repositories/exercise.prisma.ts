@@ -395,6 +395,14 @@ export function createExerciseRepository(
       assertMergedFieldsValid(merged, overlay);
       await validateReferences(merged);
 
+      // Spec 03.4 AC17: the overlay cannot bypass the type rule. A plain read before the capped insert (§6.2): a set
+      // logged in that instant is the accepted residual of D7.
+      const from = origin.modality as Modality;
+      const to = overlay.modality as Modality | undefined;
+      if (to !== undefined && to !== from && !modalitiesCompatible(from, to) && (await lineageHasSets(actingUserId, lineageRootId(origin)))) {
+        throw new ExerciseTypeLockedError(from, to);
+      }
+
       const row = await insertWithCap(actingUserId, merged, origin.id);
       if (!row) throw new CustomExerciseLimitError();
       return toRecord(row);

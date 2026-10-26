@@ -257,14 +257,66 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise typ
     });
   });
 
-  describe("03.4 AC6 / AC4 — over HTTP", () => {
+  describe("03.4 AC17 — the fork overlay obeys the rule", () => {
+    const activeCount = async (user: string) =>
+      Number((await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "exercise" WHERE owner_user_id = $1::uuid AND is_active`, user))[0]!.n);
+    it("with the caller's sets on the origin: incompatible is 409 and inserts nothing; compatible is 201", async () => {
+      const user = await insertUser(db);
+      const builtIn = await insertExercise(db, { modality: "weight_reps" });
+      await logOn(user, builtIn, "weight_reps", [{ reps: 5, weight: 100 }]);
+      const before = await activeCount(user);
+      await expect(repo().forkExercise(user, builtIn, { modality: "duration" })).rejects.toBeInstanceOf(ExerciseTypeLockedError);
+      expect(await activeCount(user)).toBe(before);
+      const forks = await db.prisma.$queryRawUnsafe<unknown[]>(`SELECT id FROM "exercise" WHERE forked_from_exercise_id = $1::uuid`, builtIn);
+      expect(forks).toEqual([]);
+      expect((await repo().forkExercise(user, builtIn, { modality: "weighted_bodyweight" })).modality).toBe("weighted_bodyweight");
+    });
+    it("Review Focus 5 — the origin's own type is 201 and never reads sets", async () => {
+      const user = await insertUser(db);
+      const builtIn = await insertExercise(db, { modality: "weight_reps" });
+      await logOn(user, builtIn, "weight_reps", [{ reps: 5, weight: 100 }]);
+      const w = watched();
+      expect((await w.repo.forkExercise(user, builtIn, { modality: "weight_reps" })).modality).toBe("weight_reps");
+      expect(w.touchedSets()).toBe(false);
+    });
+    it("with no sets in the lineage, every type forks", async () => {
+      const user = await insertUser(db);
+      for (const to of MODALITY_VALUES) {
+        const builtIn = await insertExercise(db, { modality: "weight_reps" });
+        expect((await repo().forkExercise(user, builtIn, { modality: to })).modality).toBe(to);
+      }
+    });
+  });
+
+  describe("03.4 AC18 — fork characterization", () => {
+    it("a bodiless fork copies the origin and points at it; a name overlay applies; a second fork shares the root", async () => {
+      const user = await insertUser(db);
+      const builtIn = await insertExercise(db, { name: "Back Squat", modality: "weight_reps" });
+      const first = await repo().forkExercise(user, builtIn, {});
+      expect(first).toMatchObject({ name: "Back Squat", modality: "weight_reps", forkedFromExerciseId: builtIn, ownerUserId: user });
+      const named = await repo().forkExercise(user, builtIn, { name: "My Squat" });
+      expect(named).toMatchObject({ name: "My Squat", forkedFromExerciseId: builtIn });
+      expect(new Set([first.forkedFromExerciseId, named.forkedFromExerciseId])).toEqual(new Set([builtIn]));
+    });
+    it("counts against the shared cap: the 500th succeeds, the 501st is exercise-limit-reached", async () => {
+      const user = await insertUser(db);
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "exercise" ("id","owner_user_id","name","modality","is_active")
+         SELECT gen_random_uuid(), $1::uuid, 'Seed ' || g, 'weight_reps', true FROM generate_series(1, 499) g`, user);
+      const builtIn = await insertExercise(db, { modality: "weight_reps" });
+      await expect(repo().forkExercise(user, builtIn, {})).resolves.toMatchObject({ ownerUserId: user });
+      await expect(repo().forkExercise(user, builtIn, {})).rejects.toMatchObject({ slug: "exercise-limit-reached" });
+    });
+  });
+
+  describe("03.4 AC6 / AC4 / AC18 — over HTTP", () => {
     let app: FastifyInstance | undefined;
     afterEach(async () => {
       await app?.close();
       app = undefined;
     });
-    it("the problem body, and a later delta does not contain the row", async () => {
-      app = await buildApp({
+    const httpApp = () =>
+      buildApp({
         config: testConfig(),
         logger: false,
         checkReadiness: () => checkDatabaseReady(db.prisma),
@@ -277,6 +329,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise typ
         accountExportRepository: createAccountExportRepository(db.prisma),
         rateLimits: GENEROUS_LIMITS,
       });
+    it("the fork route answers 201 with a Location for a bodiless fork", async () => {
+      app = await httpApp();
+      const headers = { authorization: "Bearer t", "content-type": "application/json" };
+      await app.inject({ method: "GET", url: "/v1/me", headers });
+      const builtIn = await insertExercise(db, { modality: "weight_reps" });
+      const res = await app.inject({ method: "POST", url: `/v1/exercises/${builtIn}/fork`, headers: { authorization: "Bearer t" } });
+      expect(res.statusCode).toBe(201);
+      expect(res.headers.location).toBe(`/v1/exercises/${res.json().id}`);
+    });
+    it("the problem body, and a later delta does not contain the row", async () => {
+      app = await httpApp();
       const headers = { authorization: "Bearer t", "content-type": "application/json" };
       const me = (await app.inject({ method: "GET", url: "/v1/me", headers })).json() as { id: string };
       const id = await owned(me.id);

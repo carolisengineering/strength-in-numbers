@@ -52,7 +52,7 @@ const MATRIX: Record<string, Slugs> = {
   }),
   "POST /v1/exercises/{id}/fork": withCentral("body", {
     404: ["not-found"],
-    409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached"],
+    409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached", "exercise-type-locked"],
   }),
   "DELETE /v1/exercises/{id}": withCentral("body", {
     403: ["exercise-immutable"],
