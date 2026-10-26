@@ -22,6 +22,7 @@
     "bench:finish": "tsx scripts/bench-finish.ts",
     "bench:history": "tsx scripts/bench-history.ts",
     "bench:progress": "tsx scripts/bench-progress.ts",
+    "bench:exercise-usage": "tsx scripts/bench-exercise-usage.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {
