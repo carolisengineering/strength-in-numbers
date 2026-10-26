@@ -4,6 +4,7 @@ import {
   computeRecords,
   estimate1rm,
   milliToDecimalString,
+  parseDecimalMilli,
   parseWeightKgMilli,
   setRecordValueMilli,
   type RecordSet,
@@ -288,5 +289,13 @@ describe("05.3 AC26 — legacy unchanged, mixed snapshots", () => {
     expect(Object.keys(r).sort()).toEqual(["heaviest_weight", "max_duration"]);
     expect(r.max_duration).toMatchObject({ setId: now.setId, valueMilli: 90_000, previousValueMilli: null });
     expect(r.heaviest_weight).toMatchObject({ setId: now.setId, valueMilli: 20_000, previousValueMilli: null });
+  });
+});
+
+describe("05.3 AC35 — parseDecimalMilli is parseWeightKgMilli under a neutral name", () => {
+  it("is the same function: exact meters from Postgres text", () => {
+    expect(parseDecimalMilli).toBe(parseWeightKgMilli);
+    expect(parseDecimalMilli("30.480")).toBe(30_480);
+    expect(parseDecimalMilli("999999.999")).toBe(999_999_999);
   });
 });
