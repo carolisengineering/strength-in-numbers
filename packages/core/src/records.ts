@@ -215,6 +215,12 @@ export interface ProgressPointMilli {
   totalVolumeMilli: number | null;
   /** reps × 1000, bodyweight_reps only. */
   maxRepsMilli: number | null;
+  /** calories × 1000, calories only (Spec 05.3 §6.5). */
+  maxCaloriesMilli: number | null;
+  /** meters × 1000, weight_distance only. */
+  maxDistanceMilli: number | null;
+  /** seconds × 1000, weight_duration only. */
+  maxDurationMilli: number | null;
 }
 
 /** The workout's best value of one type (computeRecords' own `v > 0` guard). */
@@ -231,7 +237,7 @@ function bestOf(recordType: RecordType, group: readonly RecordSet[]): number | n
  * Spec 07.2 §6.2 — one point per workout, in input order, from the SAME
  * per-set function as computeRecords, so the series max of topSetWeight /
  * bestE1rm / maxReps equals the heaviest_weight / best_est_1rm / max_reps PR
- * (AC14). Input: one lineage's working sets, sorted as computeRecords needs.
+ * (AC14), and likewise maxCalories / maxDistance / maxDuration (Spec 05.3 AC32). Input: one lineage's working sets, sorted as computeRecords needs.
  * Each point depends only on its own workout, so a date-range filter upstream
  * changes which points appear, never their values (D10).
  */
@@ -242,6 +248,9 @@ export function progressPoints(sets: readonly RecordSet[]): ProgressPointMilli[]
     bestE1rmMilli: bestOf("best_est_1rm", group),
     totalVolumeMilli: sumVolumeMilli(group),
     maxRepsMilli: bestOf("max_reps", group),
+    maxCaloriesMilli: bestOf("max_calories", group),
+    maxDistanceMilli: bestOf("max_distance", group),
+    maxDurationMilli: bestOf("max_duration", group),
   }));
 }
 

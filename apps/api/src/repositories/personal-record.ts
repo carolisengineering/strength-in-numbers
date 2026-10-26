@@ -45,6 +45,9 @@ export interface ProgressPointRecord {
   bestE1rmMilli: number | null;
   totalVolumeMilli: number | null;
   maxRepsMilli: number | null;
+  maxCaloriesMilli: number | null;
+  maxDistanceMilli: number | null;
+  maxDurationMilli: number | null;
 }
 
 export interface ProgressSeriesRecord {

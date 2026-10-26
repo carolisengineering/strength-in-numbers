@@ -513,6 +513,7 @@ export function progressFor(exerciseId) {
     points.push({
       workoutId: w.id, localDate: w.localDate, startedAt: w.startedAt,
       topSetWeight: top, bestE1rm: e1, totalVolume: vol > 0 ? round(vol) : null, maxReps: reps,
+      maxCalories: null, maxDistance: null, maxDuration: null,
     });
   }
   return { exerciseId, points };

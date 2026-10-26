@@ -16,6 +16,9 @@ const point = (day: number) => ({
   bestE1rmMilli: 116_667,
   totalVolumeMilli: 1_220_000,
   maxRepsMilli: null,
+  maxCaloriesMilli: null,
+  maxDistanceMilli: null,
+  maxDurationMilli: null,
 });
 
 async function setup(logger?: ReturnType<typeof pino>) {
@@ -41,6 +44,11 @@ describe("AC1/AC8 — contract and serialization", () => {
     expect(dto.topSetWeight).toBe(Number("61.235"));
     expect(dto.maxReps).toBe(12);
     expect(Number.isInteger(dto.maxReps)).toBe(true);
+  });
+  it("05.3 AC31 — the new metrics convert the same way: integer calories and seconds, meters to the millimeter", () => {
+    const dto = toProgressPointDto({ ...point(1), maxCaloriesMilli: 25_000, maxDistanceMilli: 30_480, maxDurationMilli: 2_147_483_647_000 });
+    expect([dto.maxCalories, dto.maxDistance, dto.maxDuration]).toEqual([25, 30.48, 2_147_483_647]);
+    expect(toProgressPointDto(point(1))).toMatchObject({ maxCalories: null, maxDistance: null, maxDuration: null });
   });
   it("AC4 — the response exerciseId is the repository's lineage root, not the requested id", async () => {
     const { app, prRepo, userId } = await setup();

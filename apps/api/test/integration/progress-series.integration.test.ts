@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError } from "../../src/errors/app-error.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { createPersonalRecordRepository, lockUserRecords, recomputeRecordsForRoots } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
@@ -124,6 +124,48 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.2 — getProgressSeries (real 
       });
       expect((await series(u, bench)).points[0]).toMatchObject({ topSetWeightMilli: 61_235, totalVolumeMilli: 183_705 });
       expect((await series(u, pullup)).points[0]).toMatchObject({ maxRepsMilli: 11_000, topSetWeightMilli: null });
+    });
+  });
+
+  describe("05.3 AC31 / AC32 — the new types through Postgres", () => {
+    it("each lineage fills only its own metrics; the series max equals the record; a range filters points, never values", async () => {
+      const u = await insertUser(db);
+      const bike = await insertExercise(db, { modality: "calories" });
+      const sled = await insertExercise(db, { modality: "weight_distance" });
+      const hold = await insertExercise(db, { modality: "weight_duration" });
+      for (const [d, cal, dist, sec] of [[1, 20, 40, 60], [2, 25, 30, 90], [3, 22, 50, 75]] as const) {
+        await logWorkout(db, u, {
+          startedAt: at(d),
+          exercises: [
+            { exerciseId: bike, modality: "calories", sets: [{ calories: cal }] },
+            { exerciseId: sled, modality: "weight_distance", sets: [{ weight: 24 + d, distance: dist }] },
+            { exerciseId: hold, modality: "weight_duration", sets: [{ weight: 20, durationS: sec }] },
+          ],
+        });
+      }
+      const NULL4 = { bestE1rmMilli: null, totalVolumeMilli: null, maxRepsMilli: null };
+      const calPts = (await series(u, bike)).points;
+      expect(calPts.map((p) => p.maxCaloriesMilli)).toEqual([20_000, 25_000, 22_000]);
+      for (const p of calPts) expect(p).toMatchObject({ ...NULL4, topSetWeightMilli: null, maxDistanceMilli: null, maxDurationMilli: null });
+      const sledPts = (await series(u, sled)).points;
+      expect(sledPts.map((p) => [p.topSetWeightMilli, p.maxDistanceMilli])).toEqual([[25_000, 40_000], [26_000, 30_000], [27_000, 50_000]]);
+      for (const p of sledPts) expect(p).toMatchObject({ ...NULL4, maxCaloriesMilli: null, maxDurationMilli: null });
+      const holdPts = (await series(u, hold)).points;
+      expect(holdPts.map((p) => p.maxDurationMilli)).toEqual([60_000, 90_000, 75_000]);
+      // The series max equals the PR a rebuild writes for the same history (07.2 AC14 extended).
+      await db.prisma.$transaction(async (tx) => {
+        await lockUserRecords(tx, u);
+        await recomputeRecordsForRoots(tx, u, [bike, sled, hold]);
+      });
+      const prs = await db.prisma.$queryRawUnsafe<{ record_type: string; value: string }[]>(
+        `SELECT record_type, value::text FROM "personal_record" WHERE user_id = $1::uuid`, u);
+      const pr = (t: string) => Math.round(Number(prs.find((r) => r.record_type === t)!.value) * 1000);
+      const max = (xs: (number | null)[]) => Math.max(...xs.filter((x): x is number => x !== null));
+      expect(max(calPts.map((p) => p.maxCaloriesMilli))).toBe(pr("max_calories"));
+      expect(max(sledPts.map((p) => p.maxDistanceMilli))).toBe(pr("max_distance"));
+      expect(max(holdPts.map((p) => p.maxDurationMilli))).toBe(pr("max_duration"));
+      const ranged = (await series(u, sled, { from: "2026-09-02", to: "2026-09-02" })).points;
+      expect(ranged).toEqual([sledPts[1]]);
     });
   });
 

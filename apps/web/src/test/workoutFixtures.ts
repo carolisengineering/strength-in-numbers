@@ -191,6 +191,9 @@ export function makeProgressPoint(overrides: Record<string, unknown> = {}): Prog
     bestE1rm: 116.667,
     totalVolume: 500,
     maxReps: null,
+    maxCalories: null,
+    maxDistance: null,
+    maxDuration: null,
     ...overrides,
   });
 }

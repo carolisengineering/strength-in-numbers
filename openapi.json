@@ -14118,6 +14118,41 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "maxCalories": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "maxDistance": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "maxDuration": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -14127,7 +14162,10 @@
                           "topSetWeight",
                           "bestE1rm",
                           "totalVolume",
-                          "maxReps"
+                          "maxReps",
+                          "maxCalories",
+                          "maxDistance",
+                          "maxDuration"
                         ],
                         "additionalProperties": false
                       }

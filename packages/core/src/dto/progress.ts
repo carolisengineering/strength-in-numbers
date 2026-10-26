@@ -18,6 +18,12 @@ export const ProgressPointSchema = z.object({
   totalVolume: z.number().positive().nullable(),
   /** reps — bodyweight_reps only. */
   maxReps: z.number().int().positive().nullable(),
+  /** calories — calories only (Spec 05.3). */
+  maxCalories: z.number().int().positive().nullable(),
+  /** meters (canonical, whatever unit was typed) — weight_distance only. */
+  maxDistance: z.number().positive().nullable(),
+  /** seconds — weight_duration only. */
+  maxDuration: z.number().int().positive().nullable(),
 });
 export type ProgressPoint = z.infer<typeof ProgressPointSchema>;
 
