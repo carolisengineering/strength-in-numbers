@@ -9,12 +9,18 @@ import { normalizeExerciseName } from "./exerciseMatch.js";
 /** The paste box's limit (Phase B); the reader itself accepts any length. */
 export const IMPORT_TEXT_MAX = 40_000;
 
-/** A status-bar time; AC42: optionally one icon after it (a space and ≤ 3 characters with no letter or digit). */
-export const CLOCK_LINE = /^\d{1,2}:\d{2}(?: ?[AP]M)?(?: [^\p{L}\p{N}\s]{1,3})?$/iu;
+/**
+ * A status-bar time; AC42: optionally one icon after it (a space and ≤ 3 characters with no letter or digit).
+ * AC55: the muted bell also reads as one digit stuck on (`3:524`), one letter after a space (`3:52 A`), or an
+ * icon in front (`€ 3:53`).
+ */
+export const CLOCK_LINE = /^(?:[^\p{L}\p{N}\s]{1,3} )?\d{1,2}:\d{2}(?:\d|(?: ?[AP]M)?(?: (?:[^\p{L}\p{N}\s]{1,3}|\p{L}))?)$/iu;
 export const RESULTS_LINE = /^RESULTS \(\d{1,6}\)$/i;
 export const BADGE_LINES: readonly string[] = ["NO SCORE", "WEIGHT", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD", "Log result"];
 export const GYM_LINES: readonly string[] = ["HIRAYA TRAINING HOUSE", "HIRAYA", "TRAINING HOUSE"];
 export const NAV_LINES: readonly string[] = ["Home", "Schedule", "Workouts", "Social"];
+/** AC56: the cellular network names a status bar shows. */
+export const NETWORK_NAMES: readonly string[] = ["LTE", "5G", "5G+", "5GE", "4G", "3G"];
 
 /** AC45: the badges that sit beside a section header ("Log result" is a button, not a badge). */
 const HEADER_BADGES = new Set(BADGE_LINES.filter((l) => l !== "Log result").map((l) => l.toLowerCase()));
@@ -29,7 +35,11 @@ const LATIN_OR_DIGIT = /[A-Za-z0-9\u00C0-\u024F]/;
 const NON_ASCII = /[^ -~]/;
 /** The signal-strength bars as Live Text reads them: a dot, then up to three bar-like characters. */
 const SIGNAL_BARS = /^[•·][•·.0oOlI|]{0,3}$/;
-const BARE_NUMBER = /^\d{1,6}$/;
+const DIGIT_CHAR = /\d/;
+const DIGIT_START = /^\d/;
+/** AC57: the trophy icon as Live Text reads it (`Y'`, `只'`). */
+const TROPHY_MAX = 3;
+const SCORE_WORDS_MAX = 6;
 
 /** Control characters become spaces, whitespace runs collapse to one space, ends trimmed. */
 export function collapseLine(line: string): string {
@@ -54,9 +64,29 @@ function isScriptIconLine(l: string): boolean {
   return l.length <= ICON_MAX_LENGTH && !LATIN_OR_DIGIT.test(l) && NON_ASCII.test(l);
 }
 
+const NETWORK = new Set(NETWORK_NAMES.map((n) => n.toLowerCase()));
+/** Before the network name: the signal bars, as bar-like characters (`•ll`, `Il`, `all`, `•ill`). */
+const SIGNAL_TOKEN = /^[•·.0oOlIia|]{1,4}$/;
+/** After it: a network suffix or the battery (`UW`, `O`, `C`). */
+const STATUS_TAIL_MAX = 3;
+
+/** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. */
+export function isStatusBarLine(line: string): boolean {
+  const tokens = collapseLine(line).split(" ");
+  if (tokens.length < 2 || tokens.length > 3) return false;
+  const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
+  return network >= 0 && tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= STATUS_TAIL_MAX));
+}
+
+/** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
+export function isBadgeLine(line: string): boolean {
+  const parts = collapseLine(line).split("/").map((p) => p.trim().toLowerCase());
+  return parts.every((p) => HEADER_BADGES.has(p));
+}
+
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l);
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l) || isStatusBarLine(l) || isBadgeLine(l);
 }
 
 const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
@@ -72,6 +102,8 @@ const SAME_SHAPE_UPPER = /[COSUVWXZGL]/g;
  */
 export function ocrKey(line: string): string {
   return collapseLine(line)
+    // AC59: Live Text reads one word two ways ("We're" / "Were", "weeks" / "week's").
+    .replace(/['’‘`]/g, "")
     .replace(SAME_SHAPE_UPPER, (c) => c.toLowerCase())
     .replace(/[0915|]/g, (c) => LOOK_ALIKES[c]!);
 }
@@ -168,14 +200,16 @@ export function cleanWorkoutText(raw: string): CleanResult {
       chunks.push([]);
       continue;
     }
-    if (HEADER_BADGES.has(line.toLowerCase())) {
+    if (isBadgeLine(line)) {
       // A badge that opens a screenshot belongs to the header that ended the one before.
       const before = chunk.length > 0 ? chunk : [...chunks].reverse().find((c) => c.length > 0);
       const above = before?.[before.length - 1];
       if (above) above.tagged = true;
     }
-    // AC43: a results count ("RESULTS (2)" then "49") is screen furniture too.
-    if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || (BARE_NUMBER.test(line) && RESULTS_LINE.test(after))) {
+    // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
+    const trophy = line.length <= TROPHY_MAX && !DIGIT_CHAR.test(line) && RESULTS_LINE.test(all[i + 1] ?? "");
+    const score = RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX;
+    if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || trophy || score) {
       furniture++;
       continue;
     }
