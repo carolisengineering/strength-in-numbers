@@ -59,6 +59,8 @@ function makeHandler(state) {
       res = r ? json(r) : problem(404, "not-found", "Not found");
     } else if (m === "POST" && /^\/v1\/routines\/[^/]+\/keep$/.test(p)) {
       res = { status: 204, body: "" };
+    } else if (m === "GET" && p === "/v1/workouts/active" && state.newTypes) {
+      res = json(state.newTypes);
     } else if (m === "GET" && p === "/v1/workouts/active" && state.sectioned) {
       res = json(state.sectioned);
     } else if (state.sectioned && (res = sectionRoute(state.sectioned, m, p, req.postData()))) {
@@ -594,6 +596,38 @@ try {
       await shoot(page, device, "57-edit-sections", "Edit screen of a finished workout with sections: headings with Edit, the empty added section, the line, Add exercise and Add section (Spec 10.6 AC17)");
     });
     state.editSectioned = null;
+    // Spec 18.1 AC25: the three new types — each live card current, the create form with Calories chosen, a carry's edit sheet.
+    await tryStep("new exercise types (live)", async () => {
+      state.newTypes = structuredClone(D.activeNewTypes);
+      await page.evaluate(() => { try { window.localStorage.clear(); } catch { /* storage blocked */ } });
+      const cards = [
+        ["Echo Bike", "59-new-type-calories", "Live card for a Calories exercise: the calories stepper (steps of 5), the bar reads Log … cal (Spec 18.1 AC5, AC15)"],
+        ["Farmer Carry", "60-new-type-carry", "Live card for a Weight + distance exercise: weight stepper, Distance (m), planned weight prefilled (Spec 18.1 AC7, AC9, AC12)"],
+        ["Weighted Sandbag Hold", "61-new-type-hold", "Live card for a Weight + duration exercise: weight stepper, Minutes and Seconds (Spec 18.1 AC8)"],
+      ];
+      for (const [name, file, note] of cards) {
+        await go("/app/workouts");
+        const header = page.getByRole("article", { name }).getByRole("heading", { level: 2 }).getByRole("button");
+        if (await header.count()) await header.click();
+        await page.getByRole("article", { name }).scrollIntoViewIfNeeded();
+        await shoot(page, device, file, note);
+      }
+      await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await page.getByRole("button", { name: "Create a custom exercise" }).click();
+      await page.getByRole("radio", { name: "Calories" }).check();
+      await page.getByText("Calories only, like an Echo Bike.").scrollIntoViewIfNeeded();
+      await shoot(page, device, "62-create-exercise-calories", "Create exercise: all eight types, Calories chosen, its hint under the choices (Spec 18.1 AC1–AC3)");
+      await page.keyboard.press("Escape");
+    });
+    state.newTypes = null;
+    await tryStep("new exercise types (edit)", async () => {
+      await go(`/app/history/${D.ids.conditioning}/edit`);
+      await page.getByRole("article", { name: "Farmer Carry" }).getByRole("button", { name: /24 kg · 40 m/ }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await shoot(page, device, "63-edit-carry-sheet", "Edit screen: a Weight + distance set's sheet, Weight + unit and Distance + unit (Spec 18.1 AC20)");
+      await page.keyboard.press("Escape");
+    });
     await tryStep("summary sections", async () => {
       await go(`/app/history/${D.ids.latestPush}`);
       await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();

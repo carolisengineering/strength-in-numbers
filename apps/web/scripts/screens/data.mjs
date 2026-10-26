@@ -58,6 +58,10 @@ const EX = [
   ["weighted_dip", "Weighted Dip", "weighted_bodyweight", "triceps", ["chest"], "bodyweight"],
   ["plank", "Plank", "duration", "core", [], "bodyweight"],
   ["row_erg", "Rowing Machine", "distance_duration", "cardio", ["back"], "rower"],
+  // Spec 18.1 AC25: one exercise of each new type.
+  ["echo_bike", "Echo Bike", "calories", "cardio", [], "machine"],
+  ["farmer_carry", "Farmer Carry", "weight_distance", "core", [], "dumbbell"],
+  ["sandbag_hold", "Weighted Sandbag Hold", "weight_duration", "core", [], "bodyweight"],
 ];
 
 export const exercises = EX.map(([key, name, modality, primary, secondary, equip], i) => ({
@@ -363,6 +367,13 @@ export const finished = [
   pushSession(8, 4, 82.5, 47.5, 26, 10, true, { title: "Heavy bench day", notes: "Shoulder felt tight on set 3.\nDropped the last lateral set." }),
   // Spec 18.0 AC49: a one-set workout, so deleting its set shows "Delete this whole workout instead?".
   makeWorkout(13, at(3), 9, [{ key: "bench_press", sets: [W(5, 60)] }], { title: "Quick single" }),
+  // Spec 18.1 AC25: a finished workout of the three new types, in the middle of the list (so the first, latest and
+  // newest-Push captures keep their workouts). No records: Phase B computes them.
+  makeWorkout(14, at(12), 24, [
+    { key: "echo_bike", sets: [{ calories: 20 }, { calories: 25 }] },
+    { key: "farmer_carry", sets: [{ weight: 24, distance: 40 }, { weight: 32, distance: 30 }] },
+    { key: "sandbag_hold", sets: [{ weight: 20, durationS: 90 }, { weight: 20, durationS: 75 }] },
+  ], { title: "Conditioning" }),
   lowerSession(9, 2, 117.5, 95, 200),
 ].sort(byStart);
 
@@ -430,6 +441,18 @@ export const activeDone = (() => {
 
 /** Spec 10.5 AC26: the same all-logged session, started from the one-off (its Finish dialog shows the line). */
 export const activeOneOff = { ...activeDone, routineName: CLASS.name, routineIsOneOff: true };
+
+// Spec 18.1 AC25: a live workout with a current card of each new type and one planned carry.
+const newTypesStart = NOW - 15 * MIN;
+const CARRY_PLAN = [
+  { setType: "working", repsLow: null, repsHigh: null, weight: 24, weightUnit: "kg" },
+  { setType: "working", repsLow: null, repsHigh: null, weight: 32, weightUnit: "kg" },
+];
+export const activeNewTypes = makeWorkout(52, newTypesStart, 0, [
+  { key: "echo_bike", sets: [{ calories: 20 }] },
+  { key: "farmer_carry", routineItem: { targetSets: 2, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: 120, supersetGroup: null, notes: null, sets: CARRY_PLAN }, sets: [] },
+  { key: "sandbag_hold", sets: [] },
+], { active: true });
 
 // Spec 10.6 AC28: a live workout with a copied section (with its note), a section added during the workout (empty),
 // a superset in the copied section, and a loose Rowing Machine card logged before any section existed.
@@ -555,6 +578,7 @@ export const ids = {
   volumeOnly: finished.find((w) => w.title === "Bench volume day").id,
   plankOnly: finished.find((w) => w.title === "Plank only").id,
   oneSet: finished.find((w) => w.title === "Quick single").id,
+  conditioning: finished.find((w) => w.title === "Conditioning").id,
   activeId: active.id,
 };
 
@@ -577,6 +601,7 @@ export function payloadChecks() {
     ["active, from a one-off", "WorkoutDetailSchema", activeOneOff],
     ["active, back-dated with a took", "WorkoutDetailSchema", activePlanned],
     ["active, with workout sections", "WorkoutDetailSchema", activeSections],
+    ["active, the three new types", "WorkoutDetailSchema", activeNewTypes],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
   ];
 }
