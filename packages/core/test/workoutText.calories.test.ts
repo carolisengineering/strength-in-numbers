@@ -96,6 +96,20 @@ describe("05.3 AC36 — leading calorie lines", () => {
     expect(read(["- 20 Cals Row"]).items.map(view)).toEqual([{ name: "Row", noteLines: ["20 Cals"], rows: null, quickReps: null, repsText: null, calories: true }]);
   });
   it("five digits is not a calorie line", () => expect(read(["3 Sets:", "12345 Cal Row"]).items[0]!.calories).toBe(false));
+  it.each([
+    ["20 Cal Row,", "20 Cal"],
+    ["20 Cals Row,", "20 Cals"],
+  ])("#155 — a trailing comma is dropped: %s under a run is Row", (line, note) => {
+    const r = read(["3 Rounds:", line, "15 Burpees,"]);
+    expect(r.items.map(view)).toEqual([
+      { name: "Row", noteLines: [note], rows: NULL_ROWS, quickReps: null, repsText: null, calories: true },
+      { name: "Burpees", noteLines: [], rows: [[15, 15], [15, 15], [15, 15]], quickReps: null, repsText: "15", calories: false },
+    ]);
+  });
+  it("#155 — a trailing comma is dropped on a bare bullet: - 20 Cal Row, is Row", () =>
+    expect(read(["- 20 Cal Row,"]).items.map(view)).toEqual([
+      { name: "Row", noteLines: ["20 Cal"], rows: null, quickReps: null, repsText: null, calories: true },
+    ]));
 });
 
 /**

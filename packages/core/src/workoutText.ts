@@ -447,6 +447,8 @@ function leadInCount(line: string): number | null {
 function dropMovementComma(text: string): string {
   if (!text.endsWith(",")) return text;
   const bare = text.slice(0, -1).trimEnd();
+  // Spec 05.3: a leading calorie line ("20 Cal Row,") is a counted movement too.
+  if (leadingCalorieOf(bare) !== null) return bare;
   const form = repFormOf(bare);
   return form && isMovementText(bare) && !STRUCTURE_START.test(form.name) && !DANGLING_END.test(form.name) ? bare : text;
 }
