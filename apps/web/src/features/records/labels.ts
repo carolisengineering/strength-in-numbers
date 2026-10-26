@@ -11,6 +11,12 @@ export function recordLabel(type: RecordType): string {
       return "Best set volume";
     case "max_reps":
       return "Most reps";
+    case "max_calories":
+      return "Most calories";
+    case "max_distance":
+      return "Longest distance";
+    case "max_duration":
+      return "Longest hold";
     default: {
       const unreachable: never = type;
       throw new Error(`Unhandled record type: ${String(unreachable)}`);
@@ -29,6 +35,12 @@ export function shortRecordLabel(type: RecordType): string {
       return "Set volume";
     case "max_reps":
       return "Most reps";
+    case "max_calories":
+      return "Most calories";
+    case "max_distance":
+      return "Longest distance";
+    case "max_duration":
+      return "Longest hold";
     default: {
       const unreachable: never = type;
       throw new Error(`Unhandled record type: ${String(unreachable)}`);

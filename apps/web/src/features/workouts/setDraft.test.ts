@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODALITY_VALUES, SET_REPS_MAX, SetEntrySchema, type PlannedSet, type SetEntry } from "@sin/core";
+import { SET_REPS_MAX, SetEntrySchema, type PlannedSet, type SetEntry } from "@sin/core";
 import {
   createDraftReducer,
   diffForPatch,
@@ -42,6 +42,7 @@ const set = (o: Record<string, unknown> = {}): SetEntry =>
     distanceUnit: null,
     distanceM: null,
     durationS: null,
+    calories: null,
     rpe: null,
     isComplete: true,
     completedAt: "2026-10-02T10:00:00.000Z",
@@ -139,7 +140,8 @@ describe("AC6 — parseDraft", () => {
     expect(none.ok && "rpe" in none.body).toBe(false);
   });
 
-  it.each(MODALITY_VALUES)("%s never emits a measure the modality forbids", (modality) => {
+  // The legacy five: the new types' drafts are Spec 18.1's (05.3 Phase A ships no entry UI for them).
+  it.each(["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"] as const)("%s never emits a measure the modality forbids", (modality) => {
     const r = parseDraft(modality, base({ weight: "1", reps: "1", distance: "1", minutes: "1" }));
     expect(r.ok).toBe(true);
     if (!r.ok) return;

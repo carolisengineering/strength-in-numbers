@@ -64,6 +64,7 @@ function newRow(op: CreateOp, exercise: WorkoutExerciseDetail, setNumber: number
     distanceUnit: null,
     distanceM: null,
     durationS: null,
+    calories: null,
     rpe: null,
     isComplete: false,
     completedAt: null,

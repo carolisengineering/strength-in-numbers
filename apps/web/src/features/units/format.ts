@@ -34,6 +34,13 @@ export function formatRecordValue(value: number, unit: RecordUnit, pref: UnitPre
       return formatVolumeKg(value, pref);
     case "reps":
       return value === 1 ? "1 rep" : `${COUNT.format(value)} reps`;
+    // Spec 05.3 Phase A: plain text so a first new-type record never crashes the screen; the UI spec (18.1) styles them.
+    case "cal":
+      return `${COUNT.format(value)} cal`;
+    case "m":
+      return `${COUNT.format(value)} m`;
+    case "s":
+      return `${COUNT.format(value)} s`;
     default: {
       const unreachable: never = unit;
       throw new Error(`Unhandled record unit: ${String(unreachable)}`);

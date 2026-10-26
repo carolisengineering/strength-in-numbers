@@ -85,6 +85,16 @@ export function formatSetParts(set: SetEntry, modality: Modality): { core: strin
     case "distance_duration":
       core = `${withUnit(set.distance, set.distanceUnit)} · ${orDash(set.durationS, formatDuration)}`;
       break;
+    // Spec 05.3 Phase A: plain fallbacks (the set's own measures); the UI spec (18.1) owns their display.
+    case "calories":
+      core = orDash(set.calories, (n) => `${n} cal`);
+      break;
+    case "weight_distance":
+      core = `${withUnit(set.weight, set.weightUnit)} · ${withUnit(set.distance, set.distanceUnit)}`;
+      break;
+    case "weight_duration":
+      core = `${withUnit(set.weight, set.weightUnit)} · ${orDash(set.durationS, formatDuration)}`;
+      break;
   }
   // Spec 17.1 Phase A: RPE is stored but never shown.
   return { core, typeSuffix: set.setType === "working" ? "" : ` (${SET_TYPE_LABELS[set.setType]})` };

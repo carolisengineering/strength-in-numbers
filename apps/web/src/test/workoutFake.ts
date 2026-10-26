@@ -10,6 +10,7 @@ import {
   PersonalRecordsResponseSchema,
   ProgressSeriesSchema,
   SetEntrySchema,
+  type DistanceUnit,
   UpdatedWorkoutSchema,
   UpdateSetSchema,
   UpdateWorkoutExerciseSchema,
@@ -337,7 +338,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     const weight = (merged["weight"] as number | null | undefined) ?? null;
     const weightUnit = (merged["weightUnit"] as "kg" | "lb" | null | undefined) ?? null;
     const distance = (merged["distance"] as number | null | undefined) ?? null;
-    const distanceUnit = (merged["distanceUnit"] as "m" | "km" | "mi" | null | undefined) ?? null;
+    const distanceUnit = (merged["distanceUnit"] as DistanceUnit | null | undefined) ?? null;
     return SetEntrySchema.parse({
       id: base.id ?? uuid(),
       workoutExerciseId: base.workoutExerciseId,
@@ -352,6 +353,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       distanceUnit,
       distanceM: distance === null || distanceUnit === null ? null : toCanonicalMeters(distance, distanceUnit),
       durationS: merged["durationS"] ?? null,
+      calories: merged["calories"] ?? null,
       rpe: merged["rpe"] ?? null,
       isComplete: merged["isComplete"] ?? false,
       completedAt: merged["isComplete"] ? (base.completedAt ?? now()) : null,

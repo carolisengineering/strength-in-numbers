@@ -191,7 +191,8 @@ describe("05.3 AC4 — calories on the wire", () => {
   it("SetEntrySchema requires the key: null passes, absent fails", () => {
     expect(SetEntrySchema.safeParse({ ...validSet, calories: null }).success).toBe(true);
     expect(SetEntrySchema.safeParse({ ...validSet, calories: 20 }).success).toBe(true);
-    const { calories: _omit, ...without } = validSet;
+    const without: Record<string, unknown> = { ...validSet };
+    delete without.calories;
     expect(SetEntrySchema.safeParse(without).success).toBe(false);
   });
   it("SET_CALORIES_MAX is the SMALLINT ceiling", () => expect(SET_CALORIES_MAX).toBe(32_767));

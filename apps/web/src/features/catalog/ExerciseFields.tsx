@@ -1,9 +1,9 @@
-import { MODALITY_VALUES, type Equipment, type Modality, type MuscleGroup } from "@sin/core";
+import type { Equipment, Modality, MuscleGroup } from "@sin/core";
 import type { ReactNode } from "react";
 
 import { Field } from "../../ui/Field";
 import styles from "./ExerciseFields.module.css";
-import { MODALITY_LABELS } from "./labels";
+import { CREATABLE_MODALITIES, MODALITY_LABELS } from "./labels";
 
 export interface ExerciseFieldValues {
   readonly name: string;
@@ -112,7 +112,7 @@ export function ExerciseFields({
       <fieldset className={styles.group}>
         <legend className={styles.legend}>{modalityLabel}</legend>
         <div className={styles.choices}>
-          {MODALITY_VALUES.map((value) => (
+          {CREATABLE_MODALITIES.map((value) => (
             <label key={value} className={styles.choice}>
               <input
                 type="radio"

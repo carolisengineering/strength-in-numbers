@@ -93,3 +93,11 @@ describe("10.4 AC26 — ExerciseFields is the one set of create-exercise inputs"
       equipmentId: null,
     }));
 });
+
+describe("05.3 AC21 — the type choices are the legacy five", () => {
+  it("renders exactly five modality radios, in order", () => {
+    render(<Harness />);
+    const radios = screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value);
+    expect(radios).toEqual(["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration"]);
+  });
+});

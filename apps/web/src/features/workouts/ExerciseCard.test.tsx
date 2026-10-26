@@ -44,7 +44,8 @@ const setPosts = (fake: ReturnType<typeof createWorkoutFake>) =>
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
 
-const FIELDS: Record<Modality, { shown: string[]; hidden: string[]; units: string[] }> = {
+// The legacy five; the new types' entry fields are Spec 18.1's (05.3 Phase A ships no entry UI for them).
+const FIELDS: Partial<Record<Modality, { shown: string[]; hidden: string[]; units: string[] }>> = {
   weight_reps: { shown: ["Weight", "Reps"], hidden: ["Added weight", "Minutes", "Seconds", "Distance"], units: ["Weight unit"] },
   bodyweight_reps: { shown: ["Reps"], hidden: ["Weight", "Added weight", "Minutes", "Seconds", "Distance"], units: [] },
   weighted_bodyweight: { shown: ["Added weight", "Reps"], hidden: ["Weight", "Minutes", "Seconds", "Distance"], units: ["Weight unit"] },
@@ -53,15 +54,15 @@ const FIELDS: Record<Modality, { shown: string[]; hidden: string[]; units: strin
 };
 
 describe("AC21 — entry row fields per modality", () => {
-  it.each(MODALITY_VALUES)("%s shows exactly its measures and no forbidden one", async (modality) => {
+  it.each(Object.keys(FIELDS) as Modality[])("%s shows exactly its measures and no forbidden one", async (modality) => {
     const { user } = await setup([{ modality, name: "X" }]);
     await openSetOptions(user, card("X"));
     const row = within(card("X"));
 
-    for (const label of FIELDS[modality].shown) expect(row.getByLabelText(label)).toBeInTheDocument();
-    for (const label of FIELDS[modality].units) expect(row.getByLabelText(label)).toBeInTheDocument();
-    for (const label of FIELDS[modality].hidden) expect(row.queryByLabelText(label)).not.toBeInTheDocument();
-    if (FIELDS[modality].units.length === 0) expect(row.queryByLabelText(/unit/)).not.toBeInTheDocument();
+    for (const label of FIELDS[modality]!.shown) expect(row.getByLabelText(label)).toBeInTheDocument();
+    for (const label of FIELDS[modality]!.units) expect(row.getByLabelText(label)).toBeInTheDocument();
+    for (const label of FIELDS[modality]!.hidden) expect(row.queryByLabelText(label)).not.toBeInTheDocument();
+    if (FIELDS[modality]!.units.length === 0) expect(row.queryByLabelText(/unit/)).not.toBeInTheDocument();
   });
 
   it.each(MODALITY_VALUES)("%s also offers Set type (default Working); no RPE, no More (17.1 AC1)", async (modality) => {
