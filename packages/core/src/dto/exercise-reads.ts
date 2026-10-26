@@ -3,7 +3,7 @@
  * stored, so the account export does not carry them.
  */
 import { z } from "zod";
-import { RoutineIdSchema } from "../ids.js";
+import { ExerciseIdSchema, RoutineIdSchema } from "../ids.js";
 
 /** A routine that uses an exercise: just enough for the delete warning. */
 export const ExerciseRoutineRefSchema = z.object({
@@ -17,3 +17,15 @@ export type ExerciseRoutineRef = z.infer<typeof ExerciseRoutineRefSchema>;
 /** `GET /v1/exercises/{id}/routines` — ordered `lower(name)`, `id`. */
 export const ExerciseRoutinesResponseSchema = z.object({ routines: z.array(ExerciseRoutineRefSchema) });
 export type ExerciseRoutinesResponse = z.infer<typeof ExerciseRoutinesResponseSchema>;
+
+/** Last logged per lineage root (Spec 03.4 §5.2): `rootId` is the built-in's id for a fork; map rows with `lineageRootId`. */
+export const ExerciseUsageSchema = z.object({
+  rootId: ExerciseIdSchema,
+  /** `workout.local_date`, `YYYY-MM-DD`, never through a JS Date. */
+  lastLoggedOn: z.iso.date(),
+});
+export type ExerciseUsage = z.infer<typeof ExerciseUsageSchema>;
+
+/** `GET /v1/exercises/usage` — ordered `lastLoggedOn` descending, then `rootId`. */
+export const ExerciseUsageResponseSchema = z.object({ exercises: z.array(ExerciseUsageSchema) });
+export type ExerciseUsageResponse = z.infer<typeof ExerciseUsageResponseSchema>;

@@ -22,6 +22,7 @@ import type {
   ExerciseRepository,
   ExerciseRoutineRecord,
   ExerciseUpdateResult,
+  ExerciseUsageRecord,
   ExerciseWriteFields,
   ExerciseWritePatch,
   ReferenceRecord,
@@ -393,6 +394,21 @@ export function createExerciseRepository(
         ORDER BY lower(r.name), r.id
       `;
       return rows.map((r) => ({ id: r.id, name: r.name, oneOffUntil: r.one_off_until }));
+    },
+
+    async findUsage(actingUserId: string): Promise<ExerciseUsageRecord[]> {
+      const rows = await prisma.$queryRaw<{ root_id: string; last_logged_on: string }[]>`
+        SELECT COALESCE(x.forked_from_exercise_id, x.id)::text AS root_id,
+               max(w.local_date)::text AS last_logged_on
+        FROM "workout" w
+        JOIN "workout_exercise" we ON we.workout_id = w.id
+        JOIN "exercise" x          ON x.id = we.exercise_id
+        WHERE w.user_id = ${actingUserId}::uuid
+          AND EXISTS (SELECT 1 FROM "set_entry" se WHERE se.workout_exercise_id = we.id)
+        GROUP BY 1
+        ORDER BY 2 DESC, 1
+      `;
+      return rows.map((r) => ({ rootId: r.root_id, lastLoggedOn: r.last_logged_on }));
     },
 
     async forkExercise(

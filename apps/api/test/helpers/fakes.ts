@@ -39,6 +39,7 @@ import type {
   ExerciseRecord,
   ExerciseRoutineRecord,
   ExerciseUpdateResult,
+  ExerciseUsageRecord,
   ExerciseRepository,
   ExerciseWriteFields,
   ExerciseWritePatch,
@@ -404,6 +405,11 @@ export class FakeExerciseRepository implements ExerciseRepository {
 
   /** Spec 03.4: seeded by route tests; the real statement is pinned by the integration tests. */
   routinesUsing = new Map<string, ExerciseRoutineRecord[]>();
+  usage: ExerciseUsageRecord[] = [];
+
+  async findUsage(): Promise<ExerciseUsageRecord[]> {
+    return this.usage;
+  }
 
   async listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]> {
     await this.findVisibleById(actingUserId, id);

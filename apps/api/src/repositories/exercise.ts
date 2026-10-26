@@ -60,6 +60,12 @@ export interface ExerciseWriteFields {
 /** A partial edit — `PATCH` body or `/fork` overlay body (Spec 03.2 §5, §6). */
 export type ExerciseWritePatch = Partial<ExerciseWriteFields>;
 
+/** Spec 03.4 §5.2: last logged per lineage root; `lastLoggedOn` is `YYYY-MM-DD` text from Postgres. */
+export interface ExerciseUsageRecord {
+  readonly rootId: string;
+  readonly lastLoggedOn: string;
+}
+
 /** Spec 03.4 §5.1: a routine that uses an exercise. */
 export interface ExerciseRoutineRecord {
   readonly id: string;
@@ -80,6 +86,12 @@ export interface ExerciseRepository {
    * answers, so the warning list survives a delete. One statement: no sweep, no write.
    */
   listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]>;
+
+  /**
+   * Spec 03.4 §6.7 — the latest `local_date` of the caller's workouts holding any set under each lineage root,
+   * ordered `lastLoggedOn` descending then `rootId`. Retired exercises count; other users' workouts never do.
+   */
+  findUsage(actingUserId: string): Promise<ExerciseUsageRecord[]>;
 
   /**
    * The caller-visible catalog. No `since` → the full pull: visible rows with
