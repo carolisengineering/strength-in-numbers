@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isExerciseId, MAX_CUSTOM_EXERCISES_PER_USER } from "@sin/core";
+import { isExerciseId, lineageRootId, MAX_CUSTOM_EXERCISES_PER_USER, modalitiesCompatible, type Modality } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
   CustomExerciseLimitError,
@@ -7,6 +7,7 @@ import {
   ExerciseImmutableError,
   ExerciseImmutableUseForkError,
   ExerciseRetiredError,
+  ExerciseTypeLockedError,
   InternalError,
   NotFoundError,
   SyncTokenExpiredError,
@@ -19,6 +20,7 @@ import type {
   CatalogPage,
   ExerciseRecord,
   ExerciseRepository,
+  ExerciseUpdateResult,
   ExerciseWriteFields,
   ExerciseWritePatch,
   ReferenceRecord,
@@ -72,6 +74,26 @@ type CatalogDbRow = { token: string; since_is_future?: boolean } & {
 const isDataRow = (r: CatalogDbRow): r is CatalogDbRow & ExerciseDbRow =>
   r.id !== null;
 
+/**
+ * Spec 03.4 §6.2 — the one copy of "the caller has logged sets in this lineage": any `set_entry` row (any type,
+ * complete or not, live or finished) in the caller's workouts, on the root or any of the caller's forks of it,
+ * retired forks included. `w.user_id` keeps other users' sets on a shared built-in out. Used as the `NOT EXISTS`
+ * conjunct on the guarded `UPDATE` and as the fork pre-check, so the two can never disagree.
+ */
+export function lineageHasSetsSql(actingUserId: string, rootId: string): Prisma.Sql {
+  return Prisma.sql`EXISTS (
+    SELECT 1
+    FROM "workout_exercise" we
+    JOIN "workout" w    ON w.id = we.workout_id AND w.user_id = ${actingUserId}::uuid
+    JOIN "set_entry" se ON se.workout_exercise_id = we.id
+    WHERE we.exercise_id IN (
+      SELECT id FROM "exercise" WHERE id = ${rootId}::uuid
+      UNION ALL
+      SELECT id FROM "exercise" WHERE owner_user_id = ${actingUserId}::uuid AND forked_from_exercise_id = ${rootId}::uuid
+    )
+  )`;
+}
+
 function toRecord(r: ExerciseDbRow): ExerciseRecord {
   return {
     id: r.id,
@@ -116,6 +138,11 @@ function toCatalogPage(rows: CatalogDbRow[]): CatalogPage {
 export function createExerciseRepository(
   prisma: PrismaClient,
 ): ExerciseRepository {
+  async function lineageHasSets(actingUserId: string, rootId: string): Promise<boolean> {
+    const rows = await prisma.$queryRaw<{ has_sets: boolean }[]>`SELECT ${lineageHasSetsSql(actingUserId, rootId)} AS has_sets`;
+    return rows[0]?.has_sets === true;
+  }
+
   /** Visibility-filtered row lookup, shared by every write method that needs the
    * existing-row/404 check before branching on ownership/state (spec §6, §7). */
   async function loadVisibleRow(
@@ -310,7 +337,7 @@ export function createExerciseRepository(
       actingUserId: string,
       id: string,
       patch: ExerciseWritePatch,
-    ): Promise<ExerciseRecord> {
+    ): Promise<ExerciseUpdateResult> {
       const before = toRecord(await loadVisibleRow(actingUserId, id));
       // Retired before global (#25): a retired global row cannot be forked either, so "use fork" would be a dead end.
       if (!before.isActive) throw new ExerciseRetiredError();
@@ -320,26 +347,39 @@ export function createExerciseRepository(
       assertMergedFieldsValid(merged, patch);
       await validateReferences(merged);
 
-      const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
+      // Spec 03.4 §6.3: only an incompatible type change consults sets; otherwise the statement is today's.
+      const from = before.modality as Modality;
+      const to = merged.modality as Modality;
+      const modalityChanged = to !== from;
+      const guarded = modalityChanged && !modalitiesCompatible(from, to);
+      const rootId = lineageRootId(before);
+      const typeGuard = guarded ? Prisma.sql`AND NOT ${lineageHasSetsSql(actingUserId, rootId)}` : Prisma.empty;
+      const write = () => prisma.$queryRaw<ExerciseDbRow[]>`
         UPDATE "exercise"
         SET name = ${merged.name}, modality = ${merged.modality},
             primary_muscle_id = ${merged.primaryMuscleId},
             secondary_muscle_ids = ${merged.secondaryMuscleIds}::text[],
             equipment_id = ${merged.equipmentId}, updated_at = now()
         WHERE id = ${id}::uuid AND owner_user_id = ${actingUserId}::uuid AND is_active = true
+          ${typeGuard}
         RETURNING ${exerciseColumns()}
       `;
-      const updated = rows[0];
-      if (!updated) {
-        // Lost a race against a concurrent DELETE on the same row (§6 atomicity
-        // note) — re-derive the correct 404/409 rather than assume one.
-        const recheck = toRecord(await loadVisibleRow(actingUserId, id));
-        if (!recheck.isActive) throw new ExerciseRetiredError();
-        // #24: ownership cannot change under a caller, so a row that is still owned and
-        // active here means an invariant broke — surface it as one, not as "use fork".
-        throw new InternalError("updateExercise: the gated UPDATE matched no row for an owned, active exercise");
+      const updated = (await write())[0];
+      if (updated) return { exercise: toRecord(updated), modalityChanged };
+
+      // Lost a race against a concurrent DELETE on the same row (§6 atomicity
+      // note) — re-derive the correct 404/409 rather than assume one.
+      const recheck = toRecord(await loadVisibleRow(actingUserId, id));
+      if (!recheck.isActive) throw new ExerciseRetiredError();
+      if (guarded) {
+        // Spec 03.4 AC15: the NOT EXISTS refused it — unless the set it saw was deleted in the gap; then once more.
+        if (await lineageHasSets(actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
+        const retried = (await write())[0];
+        if (retried) return { exercise: toRecord(retried), modalityChanged };
       }
-      return toRecord(updated);
+      // #24: ownership cannot change under a caller, so a row that is still owned and
+      // active here means an invariant broke — surface it as one, not as "use fork".
+      throw new InternalError("updateExercise: the gated UPDATE matched no row for an owned, active exercise");
     },
 
     async forkExercise(
@@ -354,6 +394,14 @@ export function createExerciseRepository(
       const merged = mergeWritableFields(origin, overlay);
       assertMergedFieldsValid(merged, overlay);
       await validateReferences(merged);
+
+      // Spec 03.4 AC17: the overlay cannot bypass the type rule. A plain read before the capped insert (§6.2): a set
+      // logged in that instant is the accepted residual of D7.
+      const from = origin.modality as Modality;
+      const to = overlay.modality as Modality | undefined;
+      if (to !== undefined && to !== from && !modalitiesCompatible(from, to) && (await lineageHasSets(actingUserId, lineageRootId(origin)))) {
+        throw new ExerciseTypeLockedError(from, to);
+      }
 
       const row = await insertWithCap(actingUserId, merged, origin.id);
       if (!row) throw new CustomExerciseLimitError();

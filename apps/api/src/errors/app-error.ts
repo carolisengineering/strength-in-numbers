@@ -6,6 +6,7 @@
  * (Error.message) is the *internal* reason and is for server logs only; it is
  * never placed in a response body. The problem+json mapper lives in ./problem.
  */
+import type { Modality } from "@sin/core";
 
 export interface FieldError {
   readonly path: string;
@@ -157,6 +158,28 @@ export class CustomExerciseLimitError extends AppError {
 
   constructor(internal = "per-user active custom exercise cap exceeded") {
     super(internal);
+  }
+}
+
+/**
+ * Spec 03.4 AC4: the type of an exercise whose lineage has logged sets can change only to one that logs the same
+ * measures. The two modalities ride along for the route's log line only — never in the detail or the message (#57).
+ */
+export class ExerciseTypeLockedError extends AppError {
+  readonly status = 409;
+  readonly slug = "exercise-type-locked";
+  readonly title = "Exercise type locked";
+  readonly publicDetail =
+    "This exercise already has logged sets, so its type can only change to one that logs the same measures. Create a new exercise instead.";
+
+  readonly fromModality: Modality | null;
+  readonly toModality: Modality | null;
+
+  /** Optional only so the OpenAPI problem list can instantiate it (`ProblemClass` is `new () => AppError`). */
+  constructor(fromModality?: Modality, toModality?: Modality) {
+    super("type change refused: the exercise lineage has logged sets and the types log different measures");
+    this.fromModality = fromModality ?? null;
+    this.toModality = toModality ?? null;
   }
 }
 

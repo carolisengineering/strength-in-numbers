@@ -2884,7 +2884,7 @@
             }
           },
           "409": {
-            "description": "Exercise immutable — use fork / Exercise retired",
+            "description": "Exercise immutable — use fork / Exercise retired / Exercise type locked",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2897,7 +2897,8 @@
                         "type": {
                           "enum": [
                             "https://strengthinnumbers.app/problems/exercise-immutable-use-fork",
-                            "https://strengthinnumbers.app/problems/exercise-retired"
+                            "https://strengthinnumbers.app/problems/exercise-retired",
+                            "https://strengthinnumbers.app/problems/exercise-type-locked"
                           ]
                         }
                       }
@@ -3532,7 +3533,7 @@
             }
           },
           "409": {
-            "description": "Exercise already owned / Exercise retired / Custom exercise limit reached",
+            "description": "Exercise already owned / Exercise retired / Custom exercise limit reached / Exercise type locked",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3546,7 +3547,8 @@
                           "enum": [
                             "https://strengthinnumbers.app/problems/exercise-already-owned",
                             "https://strengthinnumbers.app/problems/exercise-retired",
-                            "https://strengthinnumbers.app/problems/exercise-limit-reached"
+                            "https://strengthinnumbers.app/problems/exercise-limit-reached",
+                            "https://strengthinnumbers.app/problems/exercise-type-locked"
                           ]
                         }
                       }

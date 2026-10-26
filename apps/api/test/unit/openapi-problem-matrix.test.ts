@@ -48,11 +48,11 @@ const MATRIX: Record<string, Slugs> = {
   "POST /v1/exercises": withCentral("body", { 409: ["exercise-limit-reached"] }),
   "PATCH /v1/exercises/{id}": withCentral("body", {
     404: ["not-found"],
-    409: ["exercise-immutable-use-fork", "exercise-retired"],
+    409: ["exercise-immutable-use-fork", "exercise-retired", "exercise-type-locked"],
   }),
   "POST /v1/exercises/{id}/fork": withCentral("body", {
     404: ["not-found"],
-    409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached"],
+    409: ["exercise-already-owned", "exercise-retired", "exercise-limit-reached", "exercise-type-locked"],
   }),
   "DELETE /v1/exercises/{id}": withCentral("body", {
     403: ["exercise-immutable"],
