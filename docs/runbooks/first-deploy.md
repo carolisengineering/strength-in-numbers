@@ -501,6 +501,21 @@ eligible sets.
 4. Spec 10.6 (the UI) may merge only after step 3 is clean.
 5. Rollback: revert the code commit; the column stays, inert. Old code ignores it: sections added in workouts remain (ordinary rows; the old UI draws them as sections and cannot edit them). If 10.6 is merged, revert it first. Nothing to convert: no data is hidden by a rollback.
 
+### 0015 — new exercise modalities (Spec 05.3)
+
+1. Before merging 05.3 Phase A, read-only checks on the target database (Neon **direct** host):
+
+   ```sql
+   SELECT count(*) FROM set_entry WHERE distance IS NOT NULL AND distance_unit IS NULL;  -- expect 0
+   SELECT md5(string_agg(id::text || coalesce(distance_m::text,''), ',' ORDER BY id)) FROM set_entry;  -- note the hash
+   ```
+
+   A non-zero first count is a row whose `distance_m` would change from miles to NULL (D18): stop and fix it by hand first.
+2. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy`, then `db:migrate:status` (do not assume) and `\d set_entry` (a `calories smallint` column; `distance_m` still `numeric(9,3)` generated). Re-run the `md5` query: the hash must be unchanged. The `distance_m` rebuild briefly takes `ACCESS EXCLUSIVE` on `set_entry`; the old API's statements wait, then succeed (the column keeps its name and type). Expand-only, so the running API is unaffected.
+3. Merge Phase A (Render deploys; the static site redeploys in the same commit, so for a few minutes the new bundle requires `calories` on every set, which the old API does not send — accepted on staging, as in 0010–0014). Run the staging API smoke. No UI offers a new type yet.
+4. Production (Spec 15): `deploy-prod` never migrates. Apply `0015` by hand the same way before approving the release.
+5. Rollback: revert the code; `0015` stays (harmless to old code). Caveat: old code's `z.enum` rejects a new modality, record type or `ft` unit in a response. Before a rollback with such rows: `DELETE FROM personal_record WHERE record_type IN ('max_calories','max_distance','max_duration');`, move new-type exercises (and their snapshots) back to a legacy type by hand, and as a last resort convert feet (`UPDATE set_entry SET distance = round(distance_m, 3), distance_unit = 'm' WHERE distance_unit = 'ft';`, which loses the typed unit). Until Spec 18.1 ships, only a deliberate API call creates such rows.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
