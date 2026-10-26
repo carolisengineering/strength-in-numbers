@@ -92,7 +92,7 @@ function renderForm(
 const saveButton = () => screen.getByRole("button", { name: "Save" });
 
 describe("AC28 — create form layout", () => {
-  it("prefills the name and offers the five modality options as a radio group", () => {
+  it("prefills the name and offers the modality options as a radio group (eight since Spec 18.1)", () => {
     renderForm();
 
     expect(screen.getByLabelText("Name")).toHaveValue("Zercher Curl");
@@ -102,6 +102,9 @@ describe("AC28 — create form layout", () => {
       "Weighted bodyweight",
       "Duration",
       "Distance + duration",
+      "Calories",
+      "Weight + distance",
+      "Weight + duration",
     ]);
     expect(screen.getAllByRole("radio").every((r) => !(r as HTMLInputElement).checked)).toBe(true);
   });
@@ -163,6 +166,16 @@ describe("AC28 — create form layout", () => {
     }
     expect(screen.getByRole("checkbox", { name: "Muscle F", hidden: true })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Muscle B", hidden: true })).toBeEnabled();
+  });
+});
+
+describe("18.1 AC1 — a new type is created with its modality", () => {
+  it("choosing Calories posts modality: calories", async () => {
+    const { user, onCreated } = renderForm({ initialName: "Echo Bike" });
+    await user.click(screen.getByRole("radio", { name: "Calories" }));
+    await user.click(saveButton());
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    expect(postBodies).toEqual([expect.objectContaining({ name: "Echo Bike", modality: "calories" })]);
   });
 });
 

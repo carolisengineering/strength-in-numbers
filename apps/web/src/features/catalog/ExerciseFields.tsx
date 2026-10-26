@@ -1,9 +1,9 @@
-import type { Equipment, Modality, MuscleGroup } from "@sin/core";
+import { MODALITY_VALUES, type Equipment, type Modality, type MuscleGroup } from "@sin/core";
 import type { ReactNode } from "react";
 
 import { Field } from "../../ui/Field";
 import styles from "./ExerciseFields.module.css";
-import { CREATABLE_MODALITIES, MODALITY_LABELS } from "./labels";
+import { MODALITY_HINTS, MODALITY_LABELS } from "./labels";
 
 export interface ExerciseFieldValues {
   readonly name: string;
@@ -79,6 +79,11 @@ export function ExerciseFields({
   nameNotice,
 }: ExerciseFieldsProps) {
   const set = (patch: Partial<ExerciseFieldValues>) => onChange({ ...values, ...patch });
+  // Spec 18.1 AC3: the hint describes the group once a type is picked; an error is announced first.
+  const hintId = `${idPrefix}-modality-hint`;
+  const errorId = `${idPrefix}-modality-error`;
+  const described = [errors.modality ? errorId : null, values.modality !== null ? hintId : null].filter((x) => x !== null);
+  const modalityDescribedBy = described.length > 0 ? described.join(" ") : undefined;
 
   const choosePrimary = (id: string) =>
     // The API rejects a secondary that restates the primary.
@@ -109,10 +114,10 @@ export function ExerciseFields({
       </Field>
       {nameNotice}
 
-      <fieldset className={styles.group}>
+      <fieldset className={styles.group} aria-describedby={modalityDescribedBy}>
         <legend className={styles.legend}>{modalityLabel}</legend>
         <div className={styles.choices}>
-          {CREATABLE_MODALITIES.map((value) => (
+          {MODALITY_VALUES.map((value) => (
             <label key={value} className={styles.choice}>
               <input
                 type="radio"
@@ -125,8 +130,13 @@ export function ExerciseFields({
             </label>
           ))}
         </div>
+        {values.modality !== null ? (
+          <p id={hintId} className={styles.hint}>
+            {MODALITY_HINTS[values.modality]}
+          </p>
+        ) : null}
         {errors.modality ? (
-          <p className={styles.fieldError} role="alert">
+          <p id={errorId} className={styles.fieldError} role="alert">
             {errors.modality}
           </p>
         ) : null}
