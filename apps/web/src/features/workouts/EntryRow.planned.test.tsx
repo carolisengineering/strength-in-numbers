@@ -340,3 +340,46 @@ describe("10.2 AC33 — nothing planned reaches analytics or error reports", () 
     expect(everything).not.toMatch(/82\.5|plannedSets|Set 1 of/);
   });
 });
+
+describe("18.1 AC12 — planned prefill for the new types", () => {
+  const carryPlan = [planned("working", null, 24), planned("working", null, 32)];
+  it("a carry's planned weight is prefilled; logging advances to the next planned row", async () => {
+    const { fake, user } = await setup([{ modality: "weight_distance", name: "Carry", plannedSets: carryPlan }]);
+    await makeCurrent(user, "Carry");
+    expect(field("Carry", "Weight")).toHaveValue("24");
+    expect(within(card("Carry")).getByText("Set 1 of 2")).toBeInTheDocument();
+    await user.type(field("Carry", "Distance (m)"), "40");
+    await user.click(logButton("Carry"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    expect(setPosts(fake)[0]!.body).toMatchObject({ weight: 24, weightUnit: "kg", distance: 40, distanceUnit: "m" });
+    await waitFor(() => expect(field("Carry", "Weight")).toHaveValue("32"));
+    expect(within(card("Carry")).getByText("Set 2 of 2")).toBeInTheDocument();
+  });
+  it("a calories planned row prefills only the set type", async () => {
+    const { user } = await setup([{ modality: "calories", name: "Bike", plannedSets: [planned("warmup", null, null), planned("working", null, null)] }]);
+    await makeCurrent(user, "Bike");
+    expect(field("Bike", "Calories")).toHaveValue("");
+    await openSetOptions(user, card("Bike"));
+    expect(field("Bike", "Set type")).toHaveValue("warmup");
+  });
+  it("an edited carry draft is not overwritten when the count changes by another route", async () => {
+    const { fake, queryClient, user } = await setup([{ modality: "weight_distance", name: "Carry", plannedSets: carryPlan }]);
+    await makeCurrent(user, "Carry");
+    await user.clear(field("Carry", "Weight"));
+    await user.type(field("Carry", "Weight"), "30");
+    // Another device logs the first carry: the refetch raises the count.
+    const active = fake.state.active!;
+    fake.state.active = {
+      ...active,
+      exercises: active.exercises.map((e) => ({
+        ...e,
+        sets: [logged(1, { workoutExerciseId: e.id, reps: null, weight: 24, distance: 40, distanceUnit: "m", distanceM: 40 })],
+      })),
+    };
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+    });
+    await within(card("Carry")).findByText("Set 2 of 2");
+    expect(field("Carry", "Weight")).toHaveValue("30");
+  });
+});

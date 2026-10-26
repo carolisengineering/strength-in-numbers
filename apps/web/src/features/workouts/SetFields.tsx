@@ -7,7 +7,7 @@ import { SET_TYPE_LABELS } from "./format";
 import { visibleMeasures } from "./measures";
 import type { DraftField, SetDraft } from "./setDraft";
 import { NumberStepper } from "./NumberStepper";
-import { WEIGHT_STEP, repsAtLimit, stepReps, stepWeight, weightAtLimit } from "./stepper";
+import { CALORIES_STEP, WEIGHT_STEP, caloriesAtLimit, repsAtLimit, stepCalories, stepReps, stepWeight, weightAtLimit } from "./stepper";
 import styles from "./SetFields.module.css";
 
 export type DraftEditField = keyof Omit<SetDraft, "attemptKey">;
@@ -109,6 +109,8 @@ function SheetFields(props: Common) {
                   <TextField name="seconds" label="Seconds" inputMode="numeric" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={styles.input} />
                 </div>
               );
+            case "calories":
+              return <TextField key={measure} name="calories" label="Calories" inputMode="numeric" value={draft.calories} error={errors.calories} onChange={(v) => onChange("calories", v)} id={id} className={styles.input} />;
           }
         })}
       </div>
@@ -116,7 +118,7 @@ function SheetFields(props: Common) {
   );
 }
 
-/** Spec 17.1 §6.4–§6.5: steppers for weight and reps, figure-sized fields for duration and distance, and "Set options". */
+/** Spec 17.1 §6.4–§6.5: steppers for weight, reps and calories (18.1), figure-sized fields for duration and distance, and "Set options". */
 function EntryFields(props: Common) {
   const { modality, draft, errors, onChange, id } = props;
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -166,7 +168,39 @@ function EntryFields(props: Common) {
                 />
               );
             case "distance":
-              return <TextField key={measure} name="distance" label="Distance" inputMode="decimal" value={draft.distance} error={errors.distance} onChange={(v) => onChange("distance", v)} id={id} className={figure} />;
+              // Spec 18.1 D5: a carry's label names its unit ("Distance (ft)"), since its unit select is under Set options.
+              return (
+                <TextField
+                  key={measure}
+                  name="distance"
+                  label={modality === "weight_distance" ? `Distance (${draft.distanceUnit})` : "Distance"}
+                  inputMode="decimal"
+                  value={draft.distance}
+                  error={errors.distance}
+                  onChange={(v) => onChange("distance", v)}
+                  id={id}
+                  className={figure}
+                />
+              );
+            case "calories":
+              return (
+                <NumberStepper
+                  key={measure}
+                  id={id("calories")}
+                  label="Calories"
+                  unit="cal"
+                  value={draft.calories}
+                  inputMode="numeric"
+                  error={errors.calories}
+                  decreaseLabel={`Decrease calories by ${CALORIES_STEP}`}
+                  increaseLabel={`Increase calories by ${CALORIES_STEP}`}
+                  canDecrease={!caloriesAtLimit(draft.calories, "down")}
+                  canIncrease={!caloriesAtLimit(draft.calories, "up")}
+                  onChange={(v) => onChange("calories", v)}
+                  onDecrease={() => onChange("calories", stepCalories(draft.calories, "down"))}
+                  onIncrease={() => onChange("calories", stepCalories(draft.calories, "up"))}
+                />
+              );
             case "durationS":
               return (
                 <div className={styles.duration} key={measure}>
