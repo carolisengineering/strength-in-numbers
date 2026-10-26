@@ -2,6 +2,7 @@
 import {
   computeRecords,
   milliToDecimalString,
+  parseDecimalMilli,
   parseWeightKgMilli,
   progressPoints,
   type RecordSet,
@@ -79,6 +80,10 @@ export interface LineageSetRow {
   set_id: string;
   reps: number | null;
   weight_kg: string | null;
+  /** Spec 05.3: the measures the new record types read. */
+  calories: number | null;
+  duration_s: number | null;
+  distance_m: string | null;
   modality_snapshot: string;
   source_exercise_id: string;
   exercise_name_snapshot: string;
@@ -133,7 +138,8 @@ export async function loadLineageSets(
   const rootList = [...roots];
   const rows = await client.$queryRaw<LineageSetRow[]>`
     SELECT root.id::text AS root_id, se.id::text AS set_id, se.reps,
-           se.weight_kg::text AS weight_kg, we.modality_snapshot,
+           se.weight_kg::text AS weight_kg, se.calories, se.duration_s, se.distance_m::text AS distance_m,
+           we.modality_snapshot,
            we.exercise_id::text AS source_exercise_id, we.exercise_name_snapshot,
            w.id::text AS workout_id, w.started_at, w.local_date
     FROM "set_entry" se
@@ -152,6 +158,22 @@ export async function loadLineageSets(
     else byRoot.set(row.root_id, [row]);
   }
   return byRoot;
+}
+
+/** The one mapping from a loader row to the PR engine's input (Spec 05.3 §6.3), shared by the
+ * recompute and the progress series so the two can never read a set differently. Decimals go
+ * through their strings, never a float. */
+export function toRecordSet(r: LineageSetRow): RecordSet {
+  return {
+    setId: r.set_id,
+    workoutId: r.workout_id,
+    modality: r.modality_snapshot,
+    weightKgMilli: r.weight_kg === null ? null : parseWeightKgMilli(r.weight_kg),
+    reps: r.reps,
+    distanceMMilli: r.distance_m === null ? null : parseDecimalMilli(r.distance_m),
+    durationS: r.duration_s,
+    calories: r.calories,
+  };
 }
 
 /**
@@ -178,13 +200,7 @@ export async function recomputeRecordsForRoots(
   const written: PersonalRecordRecord[] = [];
   for (const [rootId, group] of byRoot) {
     const bySetId = new Map(group.map((r) => [r.set_id, r]));
-    const sets: RecordSet[] = group.map((r) => ({
-      setId: r.set_id,
-      workoutId: r.workout_id,
-      modality: r.modality_snapshot,
-      weightKgMilli: r.weight_kg === null ? null : parseWeightKgMilli(r.weight_kg),
-      reps: r.reps,
-    }));
+    const sets: RecordSet[] = group.map(toRecordSet);
     for (const c of computeRecords(sets)) {
       const src = bySetId.get(c.setId)!;
       const localDate = src.local_date.toISOString().slice(0, 10);
@@ -275,15 +291,7 @@ export function createPersonalRecordRepository(prisma: RawClient): PersonalRecor
       const rows = (await loadLineageSets(prisma, actingUserId, [root], range)).get(root) ?? [];
       const firstRowOf = new Map<string, LineageSetRow>();
       for (const r of rows) if (!firstRowOf.has(r.workout_id)) firstRowOf.set(r.workout_id, r);
-      const points = progressPoints(
-        rows.map((r) => ({
-          setId: r.set_id,
-          workoutId: r.workout_id,
-          modality: r.modality_snapshot,
-          weightKgMilli: r.weight_kg === null ? null : parseWeightKgMilli(r.weight_kg),
-          reps: r.reps,
-        })),
-      ).map((p) => {
+      const points = progressPoints(rows.map(toRecordSet)).map((p) => {
         const row = firstRowOf.get(p.workoutId)!;
         return { ...p, localDate: row.local_date.toISOString().slice(0, 10), startedAt: row.started_at };
       });
