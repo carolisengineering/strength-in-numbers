@@ -275,6 +275,11 @@ const EXPECTED = [
   "HevyPostSetSchema",
   "HevyPostExerciseSchema",
   "HevyPostWorkoutSchema",
+  // hevy — pairing (Spec 19.0 AC4, AC5, AC15)
+  "canonicalModalityForHevyType",
+  "hevyPairingProblem",
+  "defaultMeasureRule",
+  "hevyTypeForModality",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));
