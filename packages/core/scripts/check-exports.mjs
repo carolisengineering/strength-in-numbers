@@ -294,6 +294,11 @@ const EXPECTED = [
   "sectionKey",
   "sectionTreatment",
   "sectionFromPlaceholder",
+  // hevy — export and fingerprint (Spec 19.0 AC11–AC13)
+  "exportPairFor",
+  "buildHevyWorkout",
+  "HEVY_FINGERPRINT_VERSION",
+  "hevyFingerprintSource",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

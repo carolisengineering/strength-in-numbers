@@ -5,3 +5,6 @@ export * from "./pairing.js";
 export * from "./rpe.js";
 export * from "./sets.js";
 export * from "./sections.js";
+export * from "./types.js";
+export * from "./exportWorkout.js";
+export * from "./fingerprint.js";
