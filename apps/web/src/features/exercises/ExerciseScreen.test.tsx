@@ -102,7 +102,7 @@ describe("18.2 AC19 — resolution on screen", () => {
   it("a Records row for a forked built-in lands on the copy, by replace", async () => {
     const fork = makeExercise({ id: FORK, name: "My bench", ownerUserId: USER_ID, forkedFromExerciseId: ID, createdAt: "2026-05-01T00:00:00.000Z" });
     // The API resolves a fork's id to its root (07.2 AC4); the fake keys series by id, so serve both.
-    const { router, user } = setup({ catalog: [bench, fork], path: "/app/exercises/records", fake: { progress: { [ID]: points, [FORK]: points } } });
+    const { queryClient, router, user } = setup({ catalog: [bench, fork], path: "/app/exercises/records", fake: { progress: { [ID]: points, [FORK]: points } } });
     const list = await screen.findByRole("list", { name: "Exercises" });
     await user.click(within(list).getByRole("link", { name: /^Bench \(from records\)/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe(exercisePath(FORK)));
@@ -112,6 +112,8 @@ describe("18.2 AC19 — resolution on screen", () => {
     expect(screen.getByRole("link", { name: EXERCISES_COPY.backToRecords })).toHaveAttribute("href", "/app/exercises/records");
     await router.navigate(-1);
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/exercises/records"));
+    // Records refetches on return; let it land before the test ends (deferred minor 121).
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   });
 
   it("a synced unknown id with records is the deleted variant", async () => {
@@ -193,6 +195,28 @@ describe("18.2 AC22 — never logged", () => {
     expect(progressGets(fake)).toEqual([]);
   });
 
+  it("deferred minor 119 — a cached never-logged answer waits for the visit's usage read; no series or records meanwhile", async () => {
+    const usage = deferred<void>();
+    const { fake, router, queryClient } = setup({ path: "/app/history" });
+    await screen.findByRole("heading", { level: 1, name: "History" });
+    // An earlier visit said never logged; a set has been logged since.
+    queryClient.setQueryData(EXERCISE_KEYS.usage, []);
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises/usage`, async () => {
+        await usage.promise;
+        return HttpResponse.json({ exercises: [{ rootId: ID, lastLoggedOn: "2026-10-08" }] });
+      }),
+    );
+    fake.requests.length = 0;
+    await router.navigate(exercisePath(ID));
+    await screen.findByRole("heading", { level: 1, name: "Barbell bench press" });
+    expect(screen.queryByText(EXERCISES_COPY.neverLogged)).toBeNull();
+    expect(progressGets(fake)).toEqual([]);
+    usage.resolve();
+    expect(await screen.findByRole("img", { name: /3 months/ })).toBeInTheDocument();
+    expect(screen.queryByText(EXERCISES_COPY.neverLogged)).toBeNull();
+  });
+
   it("usage still pending: the body renders", async () => {
     const usage = deferred<void>();
     setup();
@@ -226,6 +250,65 @@ describe("18.2 AC24 — deleted", () => {
   it("no records: Removed exercise", async () => {
     setup({ path: exercisePath(GONE), fake: { progress: { [GONE]: points }, records: [] } });
     expect(await screen.findByRole("heading", { level: 1, name: EXERCISES_COPY.removedExercise })).toBeInTheDocument();
+  });
+});
+
+describe("deferred minors 117 / 118 — an unknown id waits for its series and records", () => {
+  it("a made-up id shows the spinner, then Not found, never the deleted page", async () => {
+    const series = deferred<void>();
+    const fake = createWorkoutFake({ records: [] });
+    fake.failNext({ method: "GET", path: SERIES }, () => problemResponse(404, "not-found"));
+    prepareApp({ auth, fake, catalog: [bench] });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/progress/exercises/:id`, async () => {
+        await series.promise;
+      }),
+    );
+    renderApp(exercisePath(GONE));
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.queryByText(EXERCISES_COPY.deleted)).toBeNull();
+    series.resolve();
+    expect(await screen.findByTestId("not-found")).toBeInTheDocument();
+  });
+
+  it("a deleted exercise's title is its records name from the first paint", async () => {
+    const records = deferred<void>();
+    setup({ path: exercisePath(GONE), fake: { progress: { [GONE]: points }, records: [makePersonalRecord({ exerciseId: GONE, exerciseName: "Old lift" })] } });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/personal-records`, async () => {
+        await records.promise;
+      }),
+    );
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: EXERCISES_COPY.removedExercise })).toBeNull();
+    records.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Old lift" })).toBeInTheDocument();
+  });
+});
+
+describe("deferred minor 120 — loading and error keep a heading and Back", () => {
+  it("loading: an Exercise heading and Back to Exercises", async () => {
+    const sync = deferred<void>();
+    setup({ catalog: [] });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises`, async () => {
+        await sync.promise;
+        return HttpResponse.json({ exercises: [bench], syncToken: "1.200" });
+      }),
+    );
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: EXERCISES_COPY.exerciseTitle })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToExercises })).toHaveAttribute("href", "/app/exercises");
+    sync.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Barbell bench press" })).toBeInTheDocument();
+  });
+
+  it("error: an Exercise heading and Back to Exercises beside the notice", async () => {
+    setup({ catalog: [] });
+    server.use(http.get(`${API_BASE_URL}/v1/exercises`, () => problemResponse(500, "internal")));
+    expect(await screen.findByRole("alert")).toHaveTextContent(EXERCISES_COPY.loadExercisesFailed);
+    expect(screen.getByRole("heading", { level: 1, name: EXERCISES_COPY.exerciseTitle })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToExercises })).toBeInTheDocument();
   });
 });
 

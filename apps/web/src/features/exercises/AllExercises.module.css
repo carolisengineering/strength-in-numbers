@@ -38,6 +38,16 @@
   font-size: var(--font-size-sm);
 }
 
+/* With no query the count line is empty: out of the layout, still in the accessibility tree (as `.notice:empty`). */
+.count:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .list {
   display: flex;
   flex-direction: column;

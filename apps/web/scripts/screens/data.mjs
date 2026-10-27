@@ -419,7 +419,7 @@ export const finished = [
   // Spec 18.0 AC49: a one-set workout, so deleting its set shows "Delete this whole workout instead?".
   makeWorkout(13, at(3), 9, [{ key: "bench_press", sets: [W(5, 60)] }], { title: "Quick single" }),
   // Spec 18.1 AC25: a finished workout of the three new types, in the middle of the list (so the first, latest and
-  // newest-Push captures keep their workouts). No records: Phase B computes them.
+  // newest-Push captures keep their workouts). Its records' previous values come from the workout 20 days back.
   makeWorkout(14, at(12), 24, [
     { key: "echo_bike", sets: [{ calories: 20 }, { calories: 25 }] },
     { key: "farmer_carry", sets: [{ weight: 24, distance: 40 }, { weight: 32, distance: 30 }] },

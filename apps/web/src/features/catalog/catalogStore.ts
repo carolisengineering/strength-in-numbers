@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 
 import type { ApiClient } from "../../api/client";
+import { ApiError } from "../../api/problem";
 import { reportError } from "../../observability/reportError";
 import { track } from "../../observability/track";
 import type { StorageAdapter } from "../../storage/storage";
@@ -305,7 +306,12 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
   // A row this store doesn't hold (another device removed it) still resolves. Telemetry is the hook's
   // (it knows the routine count).
   async function deleteCustom(id: string): Promise<void> {
-    await api.delete(exercisePath(id));
+    try {
+      await api.delete(exercisePath(id));
+    } catch (error) {
+      // A 404 is "already gone" (Spec 18.2 AC50): drop the row now rather than wait for the refresh.
+      if (!(error instanceof ApiError && error.status === 404)) throw error;
+    }
     const row = state.rows.find((r) => r.id === id);
     if (row) {
       setState({ rows: mergeCatalogRows(state.rows, [{ ...row, isActive: false }]) });

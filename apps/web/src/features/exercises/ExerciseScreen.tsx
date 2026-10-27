@@ -18,7 +18,7 @@ import { ExerciseActions } from "./ExerciseActions";
 import { ExerciseDetails } from "./ExerciseDetails";
 import styles from "./ExerciseScreen.module.css";
 import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, exercisePath, FROM_RECORDS, RECORDS_PATH } from "./paths";
+import { EXERCISES_PATH, exercisePath, FROM_RECORDS, isFromRecords, RECORDS_PATH } from "./paths";
 import { useExerciseUsage } from "./usage";
 import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
 import type { Resolution } from "./resolveExercise";
@@ -45,9 +45,13 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const usage = useExerciseUsage();
   const { refresh } = useCatalog();
   const location = useLocation();
-  const neverLogged =
+  const cachedNever =
     resolution.kind === "found" && usage.data !== undefined && !usage.data.has(lineageRootId(resolution.row));
-  const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !neverLogged);
+  // A cached "never logged" may predate a set just logged (live or finished); usage refetches on every visit, so
+  // the line waits for that read, and the body sends nothing meanwhile (deferred minor 119).
+  const rechecking = cachedNever && usage.isFetching;
+  const neverLogged = cachedNever && !usage.isFetching;
+  const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !cachedNever);
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
   // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
@@ -66,19 +70,22 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       await del.mutateAsync({ id: row.id, routineCount });
       void navigate(EXERCISES_PATH, { replace: true, state: { notice: "deleted", name: row.name } });
     } catch (error) {
+      const kind = classifyExerciseError(error);
       setDeletingRow(null);
       setDeleteOpen(false);
-      setDeleteError(exerciseErrorMessage(classifyExerciseError(error), "delete"));
+      setDeleteError(exerciseErrorMessage(kind, "delete"));
+      // A stale row that is really a built-in: the refresh corrects it (deferred minor 127).
+      if (kind === "built-in") void refresh(true);
     }
   };
 
   // AC43: the copy lands here with `{ notice: "copied" }`. Read it from the location (not a state initializer:
   // the page may already be mounted by the built-in's own redirect), then clear it so a reload doesn't repeat it.
-  const routerState = location.state as { from?: unknown; notice?: unknown } | null;
+  const routerState = location.state as { notice?: unknown } | null;
   useEffect(() => {
     if (routerState?.notice !== "copied") return;
     setStatus(EXERCISES_COPY.copyReady);
-    void navigate(location.pathname, { replace: true, state: routerState.from === "records" ? FROM_RECORDS : null });
+    void navigate(location.pathname, { replace: true, state: isFromRecords(routerState) ? FROM_RECORDS : null });
     titleRef.current?.focus();
   }, [routerState, location.pathname, navigate]);
   const statusLine = (
@@ -91,23 +98,36 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const gone = series.data === undefined && series.error ? classifyWorkoutError(series.error).kind : null;
   if (gone === "not-found" || gone === "validation") return <NotFound />;
 
-  if (resolution.kind === "loading") return <Spinner label={EXERCISES_COPY.loadingExercise} />;
-  if (resolution.kind === "error") {
-    return (
-      <InlineNotice tone="error" actionLabel={EXERCISES_COPY.retry} onAction={() => void refresh(true)}>
-        {EXERCISES_COPY.loadExercisesFailed}
-      </InlineNotice>
-    );
-  }
   // The state goes along, so a Records row that lands on a copy still offers "Back to Records".
   if (resolution.kind === "redirect") return <Navigate replace to={exercisePath(resolution.to)} state={location.state} />;
 
-  const fromRecords = (location.state as { from?: unknown } | null)?.from === "records";
+  const fromRecords = isFromRecords(location.state);
   const back = fromRecords ? (
     <BackLink to={RECORDS_PATH} label={EXERCISES_COPY.backToRecords} />
   ) : (
     <BackLink to={EXERCISES_PATH} label={EXERCISES_COPY.backToExercises} />
   );
+
+  // Loading and error keep the page's heading and Back (deferred minor 120). An id the store doesn't know also
+  // waits for its series and records: a made-up one is Not found, and a deleted one's title is its records name,
+  // so neither the deleted line nor "Removed exercise" shows first (deferred minors 117, 118).
+  const waiting = resolution.kind === "loading" || (resolution.kind === "deleted" && (series.isPending || records.isPending));
+  if (waiting) {
+    return (
+      <Screen title={EXERCISES_COPY.exerciseTitle} lead={back}>
+        <Spinner label={EXERCISES_COPY.loadingExercise} />
+      </Screen>
+    );
+  }
+  if (resolution.kind === "error") {
+    return (
+      <Screen title={EXERCISES_COPY.exerciseTitle} lead={back}>
+        <InlineNotice tone="error" actionLabel={EXERCISES_COPY.retry} onAction={() => void refresh(true)}>
+          {EXERCISES_COPY.loadExercisesFailed}
+        </InlineNotice>
+      </Screen>
+    );
+  }
 
   if (resolution.kind === "deleted") {
     const title = (records.data ? groupByExercise(records.data)[0]?.name : undefined) ?? EXERCISES_COPY.removedExercise;
@@ -134,7 +154,11 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       />
       {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
       {statusLine}
-      {neverLogged ? <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p> : <ExerciseProgressBody exerciseId={exerciseId} />}
+      {neverLogged ? (
+        <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p>
+      ) : rechecking ? null : (
+        <ExerciseProgressBody exerciseId={exerciseId} />
+      )}
       {/* Mounted only while open: its routines read then unsubscribes on close, so `gcTime: 0` drops the answer and a
           reopening can never show (or enable Delete on) the last one (AC46, D12). */}
       {resolution.row.ownerUserId !== null && deleteOpen ? (

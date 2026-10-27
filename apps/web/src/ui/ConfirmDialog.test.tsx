@@ -77,6 +77,18 @@ describe("AC31 — <ConfirmDialog>", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it("deferred minor 125 — not dismissible: Escape is ignored and a native close reopens the dialog", () => {
+    // A second Escape closes a dialog natively even when the first was prevented; the work must stay on screen.
+    const { onCancel } = renderDialog({ busy: true, dismissible: false });
+    const dialog = screen.getByRole("dialog");
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onCancel).not.toHaveBeenCalled();
+    (dialog as HTMLDialogElement).close();
+    fireEvent(dialog, new Event("close"));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(dialog).toHaveAttribute("open");
+  });
+
   it("a close caused by the parent flipping open to false is not reported back", () => {
     const { container, rerender, onConfirm, onCancel } = renderDialog();
 

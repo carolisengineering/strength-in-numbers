@@ -246,7 +246,7 @@ describe("08.1 AC21 / 18.2 AC23 — series failure", () => {
   it("first load fails → chart-area notice, chips usable, records unaffected; unknown is reported", async () => {
     const fake = createWorkoutFake({ progress: { [ID]: recent }, records: [makePersonalRecord({ exerciseId: ID })] });
     fake.failNext({ method: "GET", path: SERIES }, () => problemResponse(418, "teapot"));
-    prepareApp({ auth, fake });
+    prepareApp({ auth, fake, catalog });
     const { user } = renderApp(`/app/progress/${ID}`);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't load this chart");
@@ -317,7 +317,7 @@ describe("08.1 AC22 / 18.2 AC23 — records failure on the exercise screen", () 
   it("block-local notice; chart unaffected", async () => {
     const fake = createWorkoutFake({ progress: { [ID]: recent }, records: [makePersonalRecord({ exerciseId: ID })] });
     fake.failNext({ method: "GET", path: /^\/v1\/personal-records$/ }, () => problemResponse(500, "internal"));
-    prepareApp({ auth, fake });
+    prepareApp({ auth, fake, catalog });
     renderApp(`/app/progress/${ID}`);
     const block = await screen.findByRole("region", { name: "Personal records" });
     expect(within(block).getByRole("alert")).toHaveTextContent("Couldn't load records");

@@ -74,5 +74,7 @@ describe("18.2 AC3 — redirects", () => {
     const { router } = setup("/app/progress/a%2Fb");
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/exercises/a%2Fb"));
     expect(router.state.historyAction).toBe("REPLACE");
+    // The page settles before the test ends, so no request lands after the handlers are gone (deferred minor 121).
+    expect(await screen.findByTestId("not-found")).toBeInTheDocument();
   });
 });

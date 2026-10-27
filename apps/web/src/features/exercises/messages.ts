@@ -38,10 +38,14 @@ export const EXERCISES_COPY = {
   deleted: "This exercise was deleted. Past workouts keep its sets, and the history below stays.",
   removedExercise: "Removed exercise",
   loadingExercise: "Loading exercise…",
+  /** The page's heading while the exercise loads or fails to (deferred minor 120). */
+  exerciseTitle: "Exercise",
   // Phase B: edit, copy and delete failures (AC42, AC45).
   alreadyDeleted: "This exercise was already deleted.",
   forkGone: "This exercise is no longer available.",
   builtInCantEdit: "This is a built-in exercise, so it can't be edited. Make your own copy instead.",
+  /** A delete answered `403 exercise-immutable` (a stale row; deferred minor 127). */
+  builtInCantDelete: "This is a built-in exercise, so it can't be deleted.",
   offline: "You're offline. Editing an exercise needs a connection.",
   tooFast: "You're doing that too fast. Try again in a moment.",
   couldntSave: "Couldn't save. Try again.",

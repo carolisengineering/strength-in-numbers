@@ -104,6 +104,5 @@ export function importNoticeText(notice: ImportNotice): string {
 }
 
 // Save (AC32).
-export const EXERCISE_LIMIT = "You've reached the maximum number of custom exercises.";
 /** Names the exercise the owner chose on its card (already on screen), never other pasted text. */
 export const createFailed = (name: string) => `Couldn't create “${name}”. The routine wasn't saved.`;

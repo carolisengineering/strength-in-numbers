@@ -11,8 +11,10 @@ export interface ExerciseEntry {
   headline: PersonalRecord | null;
 }
 
-/** `best_set_volume` is never the headline: it is a single set, the chart's volume a session sum (07.2 D12). */
-// Spec 18.1 AC30: the new types headline only when nothing above them exists.
+/**
+ * `best_set_volume` is never the headline: it is a single set, the chart's volume a session sum (07.2 D12).
+ * Spec 18.1 AC30: the new types headline only when nothing above them exists.
+ */
 const HEADLINE: readonly RecordType[] = ["best_est_1rm", "heaviest_weight", "max_reps", "max_calories", "max_distance", "max_duration"];
 
 const at = (r: PersonalRecord) => Date.parse(r.achievedAt);

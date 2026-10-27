@@ -17,6 +17,7 @@ describe("18.2 AC54 — the status lines stay in the accessibility tree while em
   it.each([
     ["ExerciseScreen.module.css", ".status:empty"],
     ["AllExercises.module.css", ".notice:empty"],
+    ["AllExercises.module.css", ".count:empty"],
   ])("%s %s collapses without leaving the tree", (file, selector) => {
     const body = ruleBody(file, selector);
     // `display: none` / `visibility: hidden` remove the live region, and VoiceOver then skips the text it gets.

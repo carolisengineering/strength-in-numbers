@@ -15,7 +15,8 @@ import { toRoutineInput } from "../validateDraft";
 import { cardNames, initialCards } from "./cards";
 import { buildHandoff, type PendingExercise } from "./handoff";
 import { draftFromImport } from "./importDraft";
-import { EXERCISE_LIMIT, createFailed } from "./messages";
+import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
+import { createFailed } from "./messages";
 import { prepareImportBody, referencedPending, withExerciseIds, type SaveImportDeps, type SaveRecord } from "./saveImport";
 
 const read = readWorkoutText(HIRAYA_TEXT);
@@ -122,7 +123,7 @@ describe("10.4 AC32 — failure and retry never create twice", () => {
   });
 
   it.each([
-    [409, "exercise-limit-reached", EXERCISE_LIMIT, null],
+    [409, "exercise-limit-reached", EXERCISE_LIMIT_MESSAGE, null],
     [429, "rate-limited", RATE_LIMITED, null],
     [422, "validation-error", createFailed("Hand Release Pushups"), "req-x"],
   ] as const)("%i %s → its message", async (status, type, message, requestId) => {

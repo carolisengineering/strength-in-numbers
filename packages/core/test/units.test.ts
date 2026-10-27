@@ -49,7 +49,7 @@ describe("AC6 — weight → canonical kg matches the DB generated-column formul
   });
 });
 
-describe("AC7 — distance → canonical metres", () => {
+describe("AC7 — distance → canonical meters", () => {
   it("m is identity", () => {
     for (const v of [0, 1, 400, 1234.5]) expect(toCanonicalMeters(v, "m")).toBe(v);
   });
@@ -69,7 +69,7 @@ describe("AC7 — distance → canonical metres", () => {
     expect(MI_TO_M).toBe(1609.344);
   });
 
-  it("metre ↔ km / mi round-trip within 1e-9", () => {
+  it("meter ↔ km / mi round-trip within 1e-9", () => {
     for (const x of [1, 5, 10, 42.195]) {
       expect(mToKm(kmToM(x))).toBeCloseTo(x, 9);
       expect(mToMi(miToM(x))).toBeCloseTo(x, 9);

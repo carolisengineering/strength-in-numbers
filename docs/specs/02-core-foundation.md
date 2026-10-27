@@ -114,7 +114,7 @@ by CI and review — see §10 for the method against each.
    `toCanonicalKg(v, "kg")` is identity; `kgToLb(lbToKg(x))` round-trips within
    `1e-9`. The formula is the one DESIGN §4.8 requires the `set_entry.weight_kg`
    generated column (Spec 05) to reuse.
-7. **Distance → canonical metres.** `toCanonicalMeters(v, unit)` handles
+7. **Distance → canonical meters.** `toCanonicalMeters(v, unit)` handles
    `m | km | mi` with `km` = `v * 1000` and `mi` = `v * 1609.344`; identity for
    `m`. These are the constants DESIGN §4.8 requires the `set_entry.distance_m`
    generated column (Spec 05) to reuse. Exported as named constants

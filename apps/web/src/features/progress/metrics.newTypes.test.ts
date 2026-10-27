@@ -55,7 +55,7 @@ describe("18.1 AC32 — units on the chart", () => {
   });
 });
 
-describe("18.1 AC33 — series equals record", () => {
+describe("18.1 AC33 — the best point and its record read the same (formatting only; the server keeps the values equal)", () => {
   const cases: [string, ProgressSeries, Metric, string, string][] = [
     ["calories", calories, "calories", "max_calories", "cal"],
     ["carry distance", carry, "distance", "max_distance", "m"],

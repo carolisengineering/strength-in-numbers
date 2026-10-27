@@ -30,7 +30,8 @@ import { routes } from "../../../app/router";
 import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { OFFLINE_SAVE, SAVE_FAILED } from "../messages";
 import { IMPORT_PATH } from "../paths";
-import { EXERCISE_LIMIT, createFailed } from "./messages";
+import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
+import { createFailed } from "./messages";
 
 const EXERCISES = /^\/v1\/exercises$/;
 
@@ -148,7 +149,7 @@ describe("10.4 AC32 — failures keep the draft; retries create nothing twice", 
     fake.failNext({ method: "POST", path: EXERCISES }, () => problemResponse(409, "exercise-limit-reached"));
     await toEditor(user);
     await user.click(save());
-    expect(await screen.findByText(EXERCISE_LIMIT)).toBeInTheDocument();
+    expect(await screen.findByText(EXERCISE_LIMIT_MESSAGE)).toBeInTheDocument();
     expect(posts()).toEqual(["/v1/exercises"]);
   });
 });

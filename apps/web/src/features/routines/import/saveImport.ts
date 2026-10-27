@@ -2,12 +2,14 @@ import { normalizeExerciseName, type CreateExercise, type Exercise } from "@sin/
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
+import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
+import { classifyExerciseError } from "../../exercises/exerciseErrors";
 import { LIMIT_MESSAGE, OFFLINE_SAVE, RATE_LIMITED } from "../messages";
 import type { PreparedBody } from "../RoutineEditor";
 import type { Draft } from "../routineDraft";
 import type { RoutineWriteInput } from "../validateDraft";
 import type { PendingExercise } from "./handoff";
-import { EXERCISE_LIMIT, createFailed } from "./messages";
+import { createFailed } from "./messages";
 
 /**
  * Spec 10.4 AC31–AC33, D17: Save's first half for an import. Creates each pending exercise an item still
@@ -42,9 +44,11 @@ export function withExerciseIds(body: RoutineWriteInput, ids: ReadonlyMap<string
 
 function failureOf(error: unknown, name: string): PreparedBody {
   if (error instanceof ApiError) {
-    if (error.isNetworkError) return { ok: false, message: OFFLINE_SAVE, requestId: null };
-    if (error.status === 409 && error.type === "exercise-limit-reached") return { ok: false, message: EXERCISE_LIMIT, requestId: null };
-    if (error.status === 429) return { ok: false, message: RATE_LIMITED, requestId: null };
+    // The exercise writes' one classifier (deferred minor 35); the import keeps its own wording.
+    const kind = classifyExerciseError(error);
+    if (kind === "network") return { ok: false, message: OFFLINE_SAVE, requestId: null };
+    if (kind === "limit") return { ok: false, message: EXERCISE_LIMIT_MESSAGE, requestId: null };
+    if (kind === "rate-limited") return { ok: false, message: RATE_LIMITED, requestId: null };
     return { ok: false, message: createFailed(name), requestId: error.requestId };
   }
   reportError(error, { source: "routine-import", op: "create-exercise" });

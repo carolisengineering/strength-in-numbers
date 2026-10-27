@@ -60,12 +60,13 @@ export function AllExercises() {
       <p className={styles.notice} role="status">
         {notice}
       </p>
-      <ExerciseList />
+      {/* The first search keystroke clears it, so a stale line doesn't sit above the results (deferred minor 129). */}
+      <ExerciseList onSearch={() => setNotice("")} />
     </>
   );
 }
 
-function ExerciseList() {
+function ExerciseList({ onSearch }: { onSearch: () => void }) {
   const { visible, state, refresh } = useCatalog();
   const usage = useExerciseUsage();
   const today = useContext(ProgressClockContext)();
@@ -114,17 +115,19 @@ function ExerciseList() {
           aria-label={EXERCISES_COPY.searchLabel}
           placeholder={`${EXERCISES_COPY.searchLabel}…`}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            onSearch();
+          }}
         />
         <Button variant="secondary" onClick={openCreate}>
           <span aria-hidden="true">+</span> {EXERCISES_COPY.newExercise}
         </Button>
       </div>
-      {searching ? (
-        <p role="status" className={styles.count}>
-          {EXERCISES_COPY.count(shown.length)}
-        </p>
-      ) : null}
+      {/* Mounted and empty while there is no query, so VoiceOver announces the first count (deferred minor 122). */}
+      <p role="status" className={styles.count} data-testid="exercise-count">
+        {searching ? EXERCISES_COPY.count(shown.length) : ""}
+      </p>
       {visible.length === 0 ? (
         <p>{EXERCISES_COPY.noExercises}</p>
       ) : shown.length === 0 ? (
