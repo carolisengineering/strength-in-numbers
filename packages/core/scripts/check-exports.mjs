@@ -240,6 +240,17 @@ const EXPECTED = [
   "cutNote",
   "cutName",
   "buildImportPlan",
+  // hevy — vocabulary (Spec 19.0 AC1)
+  "HEVY_TYPE_VALUES",
+  "HEVY_SET_TYPE_VALUES",
+  "HEVY_RPE_STEPS",
+  "MEASURE_RULE_VALUES",
+  "PAIR_ROLE_VALUES",
+  "SECTION_TREATMENT_VALUES",
+  "HEVY_LINK_ORIGIN_VALUES",
+  "HEVY_PAIRS_MAX",
+  "HEVY_SECTION_RULES_MAX",
+  "HEVY_LINK_CLAIM_TTL_S",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

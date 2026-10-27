@@ -1048,7 +1048,8 @@
                           "source": {
                             "type": "string",
                             "enum": [
-                              "manual"
+                              "manual",
+                              "hevy"
                             ]
                           },
                           "createdAt": {
@@ -4546,7 +4547,8 @@
                     "source": {
                       "type": "string",
                       "enum": [
-                        "manual"
+                        "manual",
+                        "hevy"
                       ]
                     },
                     "createdAt": {
@@ -4657,7 +4659,8 @@
                     "source": {
                       "type": "string",
                       "enum": [
-                        "manual"
+                        "manual",
+                        "hevy"
                       ]
                     },
                     "createdAt": {
@@ -5028,7 +5031,8 @@
                           "source": {
                             "type": "string",
                             "enum": [
-                              "manual"
+                              "manual",
+                              "hevy"
                             ]
                           },
                           "createdAt": {
@@ -5336,7 +5340,8 @@
                     "source": {
                       "type": "string",
                       "enum": [
-                        "manual"
+                        "manual",
+                        "hevy"
                       ]
                     },
                     "createdAt": {
@@ -6088,7 +6093,8 @@
                     "source": {
                       "type": "string",
                       "enum": [
-                        "manual"
+                        "manual",
+                        "hevy"
                       ]
                     },
                     "createdAt": {
@@ -6935,7 +6941,8 @@
                     "source": {
                       "type": "string",
                       "enum": [
-                        "manual"
+                        "manual",
+                        "hevy"
                       ]
                     },
                     "createdAt": {

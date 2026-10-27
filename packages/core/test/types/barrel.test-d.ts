@@ -3,6 +3,21 @@ import { describe, expectTypeOf, it } from "vitest";
 // re-exporting any of these, `vitest --typecheck` fails here — no hardcoded
 // name list to drift out of sync with check-exports.mjs.
 import {
+  HEVY_LINK_ORIGIN_VALUES,
+  HEVY_RPE_STEPS,
+  HEVY_SET_TYPE_VALUES,
+  HEVY_TYPE_VALUES,
+  MEASURE_RULE_VALUES,
+  PAIR_ROLE_VALUES,
+  SECTION_TREATMENT_VALUES,
+  type HevyLinkOrigin,
+  type HevyRpe,
+  type HevySetType,
+  type HevyType,
+  type MeasureRule,
+  type PairRole,
+  type SectionTreatment,
+  type WorkoutSource,
   brandId,
   SetEntryIdSchema,
   parseSetEntryId,
@@ -164,5 +179,19 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf<MuscleGroup>().not.toBeAny();
     expectTypeOf<Equipment>().not.toBeAny();
     expectTypeOf<ExerciseId>().toMatchTypeOf<string>();
+  });
+
+  it("19.0 AC1 / AC2 — the Hevy vocabulary tuples and the widened source", () => {
+    expectTypeOf<WorkoutSource>().toEqualTypeOf<"manual" | "hevy">();
+    expectTypeOf<HevyType>().toEqualTypeOf<(typeof HEVY_TYPE_VALUES)[number]>();
+    expectTypeOf<HevySetType>().toEqualTypeOf<"warmup" | "normal" | "failure" | "dropset">();
+    expectTypeOf<HevyRpe>().toEqualTypeOf<(typeof HEVY_RPE_STEPS)[number]>();
+    expectTypeOf<MeasureRule>().toEqualTypeOf<"calories_as_reps" | "assist_weight_ignored">();
+    expectTypeOf<PairRole>().toEqualTypeOf<(typeof PAIR_ROLE_VALUES)[number]>();
+    expectTypeOf<SectionTreatment>().toEqualTypeOf<(typeof SECTION_TREATMENT_VALUES)[number]>();
+    expectTypeOf<HevyLinkOrigin>().toEqualTypeOf<"sent" | "imported" | "matched">();
+    expectTypeOf(HEVY_SET_TYPE_VALUES).items.toBeString();
+    expectTypeOf(MEASURE_RULE_VALUES).items.toBeString();
+    expectTypeOf(HEVY_LINK_ORIGIN_VALUES).items.toBeString();
   });
 });
