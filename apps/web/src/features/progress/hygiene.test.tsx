@@ -21,6 +21,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
+import { makeExercise } from "../../test/catalogFixtures";
 import { makePersonalRecord, makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -57,7 +58,8 @@ describe("08.1 AC27 — observability carries static tags only; no new events", 
     });
     fake.failNext({ method: "GET", path: /^\/v1\/personal-records$/ }, () => problemResponse(418, "teapot"), 2);
     fake.failNext({ method: "GET", path: /^\/v1\/progress\/exercises\// }, () => problemResponse(418, "teapot"));
-    prepareApp({ auth, fake });
+    // A known exercise, so the page draws the body at once (an unknown id waits for its own reads first).
+    prepareApp({ auth, fake, catalog: [makeExercise({ id: ID, name: "Bench", ownerUserId: null })] });
     const { router } = renderApp("/app/progress");
     await screen.findByRole("alert");
     await router.navigate(`/app/progress/${ID}`);
