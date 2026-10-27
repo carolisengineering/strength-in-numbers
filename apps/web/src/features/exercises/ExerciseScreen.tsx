@@ -1,6 +1,6 @@
 import { lineageRootId } from "@sin/core";
-import { useState } from "react";
-import { Navigate, useLocation, useParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 
 import { NotFound } from "../../screens/NotFound";
 import { BackLink } from "../../ui/BackLink";
@@ -17,7 +17,7 @@ import { ExerciseActions } from "./ExerciseActions";
 import { ExerciseDetails } from "./ExerciseDetails";
 import styles from "./ExerciseScreen.module.css";
 import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, exercisePath, RECORDS_PATH } from "./paths";
+import { EXERCISES_PATH, exercisePath, FROM_RECORDS, RECORDS_PATH } from "./paths";
 import { useExerciseUsage } from "./usage";
 import { useExercisePage } from "./useExercisePage";
 
@@ -44,6 +44,18 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
   // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
   const [status, setStatus] = useState("");
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const navigate = useNavigate();
+
+  // AC43: the copy lands here with `{ notice: "copied" }`. Read it from the location (not a state initializer:
+  // the page may already be mounted by the built-in's own redirect), then clear it so a reload doesn't repeat it.
+  const routerState = location.state as { from?: unknown; notice?: unknown } | null;
+  useEffect(() => {
+    if (routerState?.notice !== "copied") return;
+    setStatus(EXERCISES_COPY.copyReady);
+    void navigate(location.pathname, { replace: true, state: routerState.from === "records" ? FROM_RECORDS : null });
+    titleRef.current?.focus();
+  }, [routerState, location.pathname, navigate]);
   const statusLine = (
     // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
     <p className={styles.status} role="status" data-testid="exercise-status">
@@ -84,7 +96,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   }
 
   return (
-    <Screen title={resolution.row.name} lead={back}>
+    <Screen title={resolution.row.name} lead={back} titleRef={titleRef}>
       <ExerciseDetails row={resolution.row} />
       <ExerciseActions row={resolution.row} onStatus={setStatus} onDelete={() => undefined} />
       {statusLine}

@@ -56,6 +56,7 @@ export const EXERCISES_COPY = {
   cancel: "Cancel",
   save: "Save",
   saved: "Saved.",
+  copyReady: "Your copy is ready. Edit it to change the name, type, muscles or equipment.",
   renameNote: "Renaming doesn't change past workouts. History keeps the name each workout was logged with.",
   typeLocked:
     "This exercise already has logged sets, so its type can only change to one that logs the same measures. Create a new exercise instead.",
