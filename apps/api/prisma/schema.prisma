@@ -33,6 +33,11 @@ model User {
   personalRecords PersonalRecord[]
   // Spec 09: back-reference for `routine.user_id`.
   routines Routine[]
+  // Spec 19.0: back-references for the hevy_ tables (all cascade from user).
+  hevyPairs        HevyExercisePair[]
+  hevySectionRules HevySectionRule[]
+  hevyLinks        HevyLink[]
+  hevyAccount      HevyAccount?
 
   @@index([email], map: "user_email_idx")
   @@map("user")
@@ -67,6 +72,8 @@ model Exercise {
   personalRecords    PersonalRecord[]
   // Spec 09: back-reference for `routine_item.exercise_id`.
   routineItems       RoutineItem[]
+  // Spec 19.0: back-reference for `hevy_exercise_pair.exercise_id`.
+  hevyPairs          HevyExercisePair[]
   createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
   // Spec 03.3 §4 — commit-ordered sync stamp, set by the exercise_change_xid trigger.
@@ -118,7 +125,7 @@ model Workout {
   localDate          DateTime  @map("local_date") @db.Date
   tzOffsetMinutes    Int       @map("tz_offset_minutes") @db.SmallInt
   clientGeneratedId  String    @map("client_generated_id") @db.Uuid
-  source             String    @default("manual")
+  source             String    @default("manual") // CHECK: manual, hevy (0016)
   // Spec 09 §4: set at start-from-routine; the FK is ON DELETE SET NULL, the snapshot survives.
   routineId           String?   @map("routine_id") @db.Uuid
   routine             Routine?  @relation(fields: [routineId], references: [id], onDelete: SetNull)
@@ -132,6 +139,8 @@ model Workout {
   sections           WorkoutSection[]
   // Spec 07.0: back-reference for `personal_record.workout_id`.
   personalRecords    PersonalRecord[]
+  // Spec 19.0: back-reference for `hevy_link.workout_id` (SET NULL: a deleted workout leaves a tombstone).
+  hevyLinks          HevyLink[]
 
   @@unique([userId, clientGeneratedId], map: "workout_user_client_id_key")
   @@index([userId, startedAt(sort: Desc)], map: "workout_user_started_idx")
@@ -338,4 +347,63 @@ model WorkoutSection {
 
   @@unique([workoutId, position], map: "workout_section_workout_position_key")
   @@map("workout_section")
+}
+
+// Spec 19.0 §4 (0016): the Hevy mapping and links. The migration SQL is hand-authored and the source of truth: the
+// CHECK lists, and the partial unique indexes (export_as, placeholders, Hevy id, workout), are SQL-only. Every
+// statement on these tables is raw SQL.
+model HevyExercisePair {
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "hevy_exercise_pair_user_fkey")
+  hevyTemplateId String    @map("hevy_template_id")
+  hevyTitle      String    @map("hevy_title")
+  hevyType       String?   @map("hevy_type") // NULL only on a skip of an unsupported Hevy template (D19)
+  role           String    @default("exercise")
+  exerciseId     String?   @map("exercise_id") @db.Uuid
+  exercise       Exercise? @relation(fields: [exerciseId], references: [id], onDelete: Cascade, map: "hevy_exercise_pair_exercise_fkey")
+  measureRule    String?   @map("measure_rule")
+  exportAs       Boolean   @default(false) @map("export_as")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([userId, hevyTemplateId], map: "hevy_exercise_pair_pkey")
+  @@index([exerciseId], map: "hevy_exercise_pair_exercise_idx")
+  @@map("hevy_exercise_pair")
+}
+
+model HevySectionRule {
+  userId    String @map("user_id") @db.Uuid
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade, map: "hevy_section_rule_user_fkey")
+  nameKey   String @map("name_key") // lower(trim(name))
+  name      String
+  treatment String
+
+  @@id([userId, nameKey], map: "hevy_section_rule_pkey")
+  @@map("hevy_section_rule")
+}
+
+model HevyLink {
+  id                String    @id(map: "hevy_link_pkey") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "hevy_link_user_fkey")
+  workoutId         String?   @map("workout_id") @db.Uuid // NULL = tombstone
+  workout           Workout?  @relation(fields: [workoutId], references: [id], onDelete: SetNull, map: "hevy_link_workout_fkey")
+  hevyWorkoutId     String?   @map("hevy_workout_id") // NULL while only a claim
+  origin            String
+  claimedAt         DateTime? @map("claimed_at") @db.Timestamptz(6)
+  syncedFingerprint String?   @map("synced_fingerprint")
+  syncedAt          DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("hevy_link")
+}
+
+model HevyAccount {
+  userId       String   @id(map: "hevy_account_pkey") @map("user_id") @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "hevy_account_user_fkey")
+  recordsStale Boolean  @default(false) @map("records_stale")
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("hevy_account")
 }
