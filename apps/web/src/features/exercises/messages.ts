@@ -38,4 +38,11 @@ export const EXERCISES_COPY = {
   deleted: "This exercise was deleted. Past workouts keep its sets, and the history below stays.",
   removedExercise: "Removed exercise",
   loadingExercise: "Loading exercise…",
+  // Phase B: edit, copy and delete failures (AC42, AC45).
+  alreadyDeleted: "This exercise was already deleted.",
+  forkGone: "This exercise is no longer available.",
+  builtInCantEdit: "This is a built-in exercise, so it can't be edited. Make your own copy instead.",
+  offline: "You're offline. Editing an exercise needs a connection.",
+  tooFast: "You're doing that too fast. Try again in a moment.",
+  couldntSave: "Couldn't save. Try again.",
 } as const;
