@@ -22,7 +22,7 @@ describe("AC13 — the construction sweep only removes the catalog's own keys", 
     });
 
     createCatalogStore({
-      api: { request: vi.fn(), post: vi.fn() } as unknown as Pick<ApiClient, "request" | "post">,
+      api: { request: vi.fn(), post: vi.fn() } as unknown as Pick<ApiClient, "request" | "post" | "patch" | "delete">,
       storage,
       userId: USER,
     });

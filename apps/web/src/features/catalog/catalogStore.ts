@@ -3,6 +3,7 @@ import {
   ExercisesResponse,
   type CreateExercise,
   type Exercise,
+  type UpdateExercise,
 } from "@sin/core";
 import { z } from "zod";
 
@@ -33,11 +34,15 @@ export interface CatalogStore {
   refresh(force?: boolean): Promise<void>;
   /** Rejects with the API client's `ApiError`. */
   createCustom(input: CreateExercise): Promise<Exercise>;
+  /** Spec 18.2 AC32: the three writes merge the server's answer like `createCustom`; each rejects with the `ApiError`. */
+  updateCustom(id: string, patch: UpdateExercise): Promise<Exercise>;
+  forkExercise(id: string): Promise<Exercise>;
+  deleteCustom(id: string): Promise<void>;
   recordPick(id: string): void;
 }
 
 export interface CatalogStoreDeps {
-  api: Pick<ApiClient, "request" | "post">;
+  api: Pick<ApiClient, "request" | "post" | "patch" | "delete">;
   storage: StorageAdapter;
   userId: string;
   /** Defaults to `Date.now`; tests inject a clock. */
@@ -274,6 +279,41 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
     return created;
   }
 
+  const exercisePath = (id: string) => `/v1/exercises/${encodeURIComponent(id)}`;
+
+  // Spec 18.2 AC32 — the server's row wins whole (updatedAt included); the forced refresh lets the token catch up.
+  async function updateCustom(id: string, patch: UpdateExercise): Promise<Exercise> {
+    const updated = await api.patch<Exercise>(exercisePath(id), patch, ExerciseSchema);
+    setState({ rows: mergeCatalogRows(state.rows, [updated]) });
+    persistCatalog();
+    track("custom_exercise_updated", { typeChanged: "modality" in patch });
+    void refresh(true);
+    return updated;
+  }
+
+  // Bodiless (Spec 18.2 D6): the copy is edited afterwards. Its arrival hides the built-in (`visibleRows`).
+  async function forkExercise(id: string): Promise<Exercise> {
+    const copy = await api.post<Exercise>(`${exercisePath(id)}/fork`, undefined, ExerciseSchema);
+    setState({ rows: mergeCatalogRows(state.rows, [copy]) });
+    persistCatalog();
+    recordPick(copy.id);
+    track("custom_exercise_forked");
+    void refresh(true);
+    return copy;
+  }
+
+  // A row this store doesn't hold (another device removed it) still resolves. Telemetry is the hook's
+  // (it knows the routine count).
+  async function deleteCustom(id: string): Promise<void> {
+    await api.delete(exercisePath(id));
+    const row = state.rows.find((r) => r.id === id);
+    if (row) {
+      setState({ rows: mergeCatalogRows(state.rows, [{ ...row, isActive: false }]) });
+      persistCatalog();
+    }
+    void refresh(true);
+  }
+
   return {
     getState: () => state,
     subscribe: (listener) => {
@@ -284,6 +324,9 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
     },
     refresh,
     createCustom,
+    updateCustom,
+    forkExercise,
+    deleteCustom,
     recordPick,
   };
 }

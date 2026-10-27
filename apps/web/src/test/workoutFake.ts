@@ -8,6 +8,10 @@ import {
   ExerciseIdSchema,
   ExerciseSchema,
   ExerciseUsageResponseSchema,
+  ExerciseRoutinesResponseSchema,
+  UpdateExerciseSchema,
+  canChangeModality,
+  lineageRootId,
   PersonalRecordsResponseSchema,
   ProgressSeriesSchema,
   SetEntrySchema,
@@ -131,6 +135,8 @@ export interface WorkoutFakeOptions {
    * (a custom row, recorded and subject to `failNext` / `loseNextResponse` / `setOffline`).
    */
   serveExercises?: boolean;
+  /** Spec 18.2: with `serveExercises`, a fork past this many own rows answers `409 exercise-limit-reached`. */
+  customLimit?: number;
   /** Spec 10.5: the routine the seeded `active` workout was started from. */
   activeRoutineId?: string;
   /** Spec 10.5: the fake's clock for `oneOffUntil`. Default `Date.now`. */
@@ -601,6 +607,53 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
             });
             catalog.push(row);
             return HttpResponse.json(row, { status: 201 });
+          }),
+          // Spec 18.2 Phase B: the three writes and the routines read, on the fake's catalog (03.2, 03.4 rules).
+          handle("patch", "/exercises/:id", ({ params, body }) => {
+            const index = catalog.findIndex((e) => e.id === params["id"]);
+            const row = catalog[index];
+            if (!row) return notFound();
+            if (!row.isActive) return problemResponse(409, "exercise-retired");
+            if (row.ownerUserId === null) return problemResponse(409, "exercise-immutable-use-fork");
+            const parsed = parseBody(UpdateExerciseSchema, body);
+            if (!parsed.ok) return parsed.response;
+            const patch = parsed.data;
+            const hasLoggedSets = usage.some((u) => u.rootId === lineageRootId(row));
+            if (patch.modality !== undefined && !canChangeModality({ from: row.modality, to: patch.modality, hasLoggedSets })) {
+              return problemResponse(409, "exercise-type-locked");
+            }
+            const updated = ExerciseSchema.parse({ ...row, ...patch, updatedAt: now() });
+            catalog[index] = updated;
+            return HttpResponse.json(updated);
+          }),
+          handle("post", "/exercises/:id/fork", ({ params }) => {
+            const origin = catalog.find((e) => e.id === params["id"]);
+            if (!origin) return notFound();
+            if (!origin.isActive) return problemResponse(409, "exercise-retired");
+            const own = catalog.filter((e) => e.ownerUserId !== null && e.isActive).length;
+            if (options.customLimit !== undefined && own >= options.customLimit) return problemResponse(409, "exercise-limit-reached");
+            const at = now();
+            const copy = ExerciseSchema.parse({ ...origin, id: uuid(), catalogKey: null, ownerUserId: USER_ID, forkedFromExerciseId: origin.id, createdAt: at, updatedAt: at });
+            catalog.push(copy);
+            return HttpResponse.json(copy, { status: 201 });
+          }),
+          handle("delete", "/exercises/:id", ({ params }) => {
+            const index = catalog.findIndex((e) => e.id === params["id"] && e.isActive && e.ownerUserId !== null);
+            const row = catalog[index];
+            if (!row) return notFound();
+            catalog[index] = ExerciseSchema.parse({ ...row, isActive: false, updatedAt: now() });
+            return new HttpResponse(null, { status: 204 });
+          }),
+          handle("get", "/exercises/:id/routines", ({ params }) => {
+            const using = [...state.routines.values()]
+              .filter((r) => r.items.some((item) => item.exerciseId === params["id"]))
+              .sort((x, y) => {
+                const a = x.name.toLowerCase();
+                const b = y.name.toLowerCase();
+                return a !== b ? (a < b ? -1 : 1) : x.id < y.id ? -1 : 1;
+              })
+              .map((r) => ({ id: r.id, name: r.name, oneOffUntil: r.oneOffUntil }));
+            return HttpResponse.json(ExerciseRoutinesResponseSchema.parse({ routines: using }));
           }),
         ]
       : []),
