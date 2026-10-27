@@ -26,6 +26,7 @@ describe("19.0 AC20 — 0016 renders the live lists", () => {
   });
 
   it("has no data statement", () => {
-    expect(sql).not.toMatch(/\bINSERT\b|\bUPDATE\b|\bDELETE FROM\b/i);
+    // A statement starts a line; `ON UPDATE CASCADE` on a foreign key is not one.
+    expect(sql).not.toMatch(/^\s*(INSERT|UPDATE|DELETE)\b/im);
   });
 });
