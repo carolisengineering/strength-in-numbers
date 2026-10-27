@@ -1,6 +1,7 @@
 import {
   CatalogName,
   CreateExerciseSchema,
+  EXERCISE_NAME_MAX,
   buildImportPlan,
   guessModality,
   matchExerciseName,
@@ -81,7 +82,7 @@ export type CardProblem =
 function nameProblem(name: string): string | null {
   const trimmed = name.trim();
   if (trimmed === "") return NEW_NAME_REQUIRED;
-  if (trimmed.length > 120) return NEW_NAME_TOO_LONG;
+  if (trimmed.length > EXERCISE_NAME_MAX) return NEW_NAME_TOO_LONG;
   return CatalogName.safeParse(trimmed).success ? null : NEW_NAME_INVALID;
 }
 

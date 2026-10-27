@@ -27,8 +27,11 @@ export const noControlChars = (s: string): boolean => {
   return true;
 };
 
+/** The longest catalog name, in characters: the schema's bound, the import's check and the name input's `maxLength`. */
+export const EXERCISE_NAME_MAX = 120;
+
 /**
- * A catalog display name: 1–120 chars, no control characters. The API stores it
+ * A catalog display name: 1–`EXERCISE_NAME_MAX` chars, no control characters. The API stores it
  * verbatim — output-encoding at render time is Spec 06's job — so this bound is
  * the point-of-entry limit on abuse and payload bloat. Shared by `ExerciseSchema`
  * here, the seed, and 03.2.
@@ -36,7 +39,7 @@ export const noControlChars = (s: string): boolean => {
 export const CatalogName = z
   .string()
   .min(1)
-  .max(120)
+  .max(EXERCISE_NAME_MAX)
   .refine(noControlChars, "control characters not allowed");
 
 /**

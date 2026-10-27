@@ -1,4 +1,4 @@
-import { MODALITY_VALUES, type Equipment, type Modality, type MuscleGroup } from "@sin/core";
+import { EXERCISE_NAME_MAX, MODALITY_VALUES, type Equipment, type Modality, type MuscleGroup } from "@sin/core";
 import type { ReactNode } from "react";
 
 import { Field } from "../../ui/Field";
@@ -109,9 +109,9 @@ export function ExerciseFields({
           <input
             {...control}
             type="text"
-            // Typing stops at 120; a value set by code (an import's prefill) is not clipped. The schema check, not
+            // Typing stops at the limit; a value set by code (an import's prefill) is not clipped. The schema check, not
             // maxLength, is the gate: it shows the too-long message and blocks Continue (DM-28).
-            maxLength={120}
+            maxLength={EXERCISE_NAME_MAX}
             autoComplete="off"
             value={values.name}
             onChange={(event) => set({ name: event.target.value })}
