@@ -91,14 +91,6 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const gone = series.data === undefined && series.error ? classifyWorkoutError(series.error).kind : null;
   if (gone === "not-found" || gone === "validation") return <NotFound />;
 
-  if (resolution.kind === "loading") return <Spinner label={EXERCISES_COPY.loadingExercise} />;
-  if (resolution.kind === "error") {
-    return (
-      <InlineNotice tone="error" actionLabel={EXERCISES_COPY.retry} onAction={() => void refresh(true)}>
-        {EXERCISES_COPY.loadExercisesFailed}
-      </InlineNotice>
-    );
-  }
   // The state goes along, so a Records row that lands on a copy still offers "Back to Records".
   if (resolution.kind === "redirect") return <Navigate replace to={exercisePath(resolution.to)} state={location.state} />;
 
@@ -108,6 +100,27 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   ) : (
     <BackLink to={EXERCISES_PATH} label={EXERCISES_COPY.backToExercises} />
   );
+
+  // Loading and error keep the page's heading and Back (deferred minor 120). An id the store doesn't know also
+  // waits for its series and records: a made-up one is Not found, and a deleted one's title is its records name,
+  // so neither the deleted line nor "Removed exercise" shows first (deferred minors 117, 118).
+  const waiting = resolution.kind === "loading" || (resolution.kind === "deleted" && (series.isPending || records.isPending));
+  if (waiting) {
+    return (
+      <Screen title={EXERCISES_COPY.exerciseTitle} lead={back}>
+        <Spinner label={EXERCISES_COPY.loadingExercise} />
+      </Screen>
+    );
+  }
+  if (resolution.kind === "error") {
+    return (
+      <Screen title={EXERCISES_COPY.exerciseTitle} lead={back}>
+        <InlineNotice tone="error" actionLabel={EXERCISES_COPY.retry} onAction={() => void refresh(true)}>
+          {EXERCISES_COPY.loadExercisesFailed}
+        </InlineNotice>
+      </Screen>
+    );
+  }
 
   if (resolution.kind === "deleted") {
     const title = (records.data ? groupByExercise(records.data)[0]?.name : undefined) ?? EXERCISES_COPY.removedExercise;
@@ -143,6 +156,8 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
           row={resolution.row}
           busy={deletingRow !== null}
           onCancel={() => {
+            // Escape mid-delete would hide a delete that still completes (deferred minor 125); Cancel is disabled too.
+            if (deletingRow !== null) return;
             setDeleteOpen(false);
             // The native dialog restores focus to the opener; this does the same where it doesn't (AC54).
             deleteRef.current?.focus();

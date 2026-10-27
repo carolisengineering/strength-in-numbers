@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -222,14 +222,44 @@ describe("18.2 AC50 — confirm and after", () => {
     expect(observability.track).toHaveBeenCalledWith("custom_exercise_deleted", { routineCount: 1 });
   });
 
-  it("a 404 is success", async () => {
+  it("a 404 is success; the row leaves the list before any refresh lands (deferred minor 124)", async () => {
+    const sync = deferred<void>();
     const { fake, user, router } = setup();
-    fake.failNext({ method: "DELETE", path: DELETE }, () => problemResponse(404, "not-found"));
     const dialog = await openDelete(user);
     await waitFor(() => expect(confirmButton(dialog)).toBeEnabled());
+    // Already deleted elsewhere: the server answers 404, and the refresh that follows is held.
+    fake.failNext({ method: "DELETE", path: DELETE }, () => {
+      fake.state.catalog.splice(0, 1, { ...echo, isActive: false });
+      return problemResponse(404, "not-found");
+    });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises`, async () => {
+        await sync.promise;
+      }),
+    );
     await user.click(confirmButton(dialog));
     await waitFor(() => expect(router.state.location.pathname).toBe(EXERCISES_PATH));
     expect(await screen.findByText("Deleted Echo Bike.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Echo Bike/ })).toBeNull();
+    sync.resolve();
+  });
+
+  it("deferred minor 125 — Escape while the delete is out leaves the dialog up", async () => {
+    const held = deferred<void>();
+    const { user, router } = setup();
+    const dialog = await openDelete(user);
+    await waitFor(() => expect(confirmButton(dialog)).toBeEnabled());
+    server.use(
+      http.delete(`${API_BASE_URL}/v1/exercises/:id`, async () => {
+        await held.promise;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await user.click(confirmButton(dialog));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(screen.getByRole("dialog", { name: EXERCISES_COPY.deleteTitle("Echo Bike") })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(router.state.location.pathname).toBe(EXERCISES_PATH));
   });
 
   it("a 429 closes the dialog and shows the text on the page", async () => {

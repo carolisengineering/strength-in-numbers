@@ -1,5 +1,6 @@
 import { hashKey, type QueryClient } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
+import { EXERCISE_KEYS } from "../exercises/keys";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { ROUTINE_KEYS } from "../routines/queries";
@@ -45,6 +46,7 @@ export function applyEditedCaches(queryClient: QueryClient): void {
   void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
   void queryClient.invalidateQueries({ queryKey: PROGRESS_KEYS.all });
   void queryClient.invalidateQueries({ queryKey: RECORDS_KEYS.all });
+  resetUsage(queryClient);
 }
 
 function invalidateOthers(queryClient: QueryClient, own: readonly unknown[]): void {
@@ -53,4 +55,13 @@ function invalidateOthers(queryClient: QueryClient, own: readonly unknown[]): vo
   // A finished or deleted session changes every chart it appears in (Spec 08.1 AC8).
   void queryClient.invalidateQueries({ queryKey: PROGRESS_KEYS.all });
   void queryClient.invalidateQueries({ queryKey: RECORDS_KEYS.all, predicate: (q) => q.queryHash !== ownHash });
+  resetUsage(queryClient);
+}
+
+/**
+ * Which exercises have sets (Spec 18.2 AC7) changes with any finished-workout write. Reset, not invalidated: a kept
+ * answer would still say "Not logged yet" on a page whose exercise was just logged until its refetch landed.
+ */
+function resetUsage(queryClient: QueryClient): void {
+  void queryClient.resetQueries({ queryKey: EXERCISE_KEYS.usage });
 }

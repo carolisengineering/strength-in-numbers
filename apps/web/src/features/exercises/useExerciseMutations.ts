@@ -56,15 +56,8 @@ export function useDeleteExercise() {
   const store = useCatalogStore();
   const queryClient = useQueryClient();
   return useMutation<void, unknown, { id: string; routineCount: number }>({
-    // A 404 is "already gone": success (AC50); the refresh drops the row if this store still holds it.
-    mutationFn: async ({ id }) => {
-      try {
-        await store.deleteCustom(id);
-      } catch (error) {
-        if (classifyExerciseError(error) !== "gone" || (error as { status?: number }).status !== 404) throw error;
-        void store.refresh(true);
-      }
-    },
+    // A 404 is "already gone": the store resolves it as a success and drops the row (AC50).
+    mutationFn: ({ id }) => store.deleteCustom(id),
     networkMode: "always",
     retry: false,
     onSuccess: (_data, { id, routineCount }) => {

@@ -229,6 +229,65 @@ describe("18.2 AC24 — deleted", () => {
   });
 });
 
+describe("deferred minors 117 / 118 — an unknown id waits for its series and records", () => {
+  it("a made-up id shows the spinner, then Not found, never the deleted page", async () => {
+    const series = deferred<void>();
+    const fake = createWorkoutFake({ records: [] });
+    fake.failNext({ method: "GET", path: SERIES }, () => problemResponse(404, "not-found"));
+    prepareApp({ auth, fake, catalog: [bench] });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/progress/exercises/:id`, async () => {
+        await series.promise;
+      }),
+    );
+    renderApp(exercisePath(GONE));
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.queryByText(EXERCISES_COPY.deleted)).toBeNull();
+    series.resolve();
+    expect(await screen.findByTestId("not-found")).toBeInTheDocument();
+  });
+
+  it("a deleted exercise's title is its records name from the first paint", async () => {
+    const records = deferred<void>();
+    setup({ path: exercisePath(GONE), fake: { progress: { [GONE]: points }, records: [makePersonalRecord({ exerciseId: GONE, exerciseName: "Old lift" })] } });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/personal-records`, async () => {
+        await records.promise;
+      }),
+    );
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: EXERCISES_COPY.removedExercise })).toBeNull();
+    records.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Old lift" })).toBeInTheDocument();
+  });
+});
+
+describe("deferred minor 120 — loading and error keep a heading and Back", () => {
+  it("loading: an Exercise heading and Back to Exercises", async () => {
+    const sync = deferred<void>();
+    setup({ catalog: [] });
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises`, async () => {
+        await sync.promise;
+        return HttpResponse.json({ exercises: [bench], syncToken: "1.200" });
+      }),
+    );
+    expect(await screen.findByText(EXERCISES_COPY.loadingExercise)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: EXERCISES_COPY.exerciseTitle })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToExercises })).toHaveAttribute("href", "/app/exercises");
+    sync.resolve();
+    expect(await screen.findByRole("heading", { level: 1, name: "Barbell bench press" })).toBeInTheDocument();
+  });
+
+  it("error: an Exercise heading and Back to Exercises beside the notice", async () => {
+    setup({ catalog: [] });
+    server.use(http.get(`${API_BASE_URL}/v1/exercises`, () => problemResponse(500, "internal")));
+    expect(await screen.findByRole("alert")).toHaveTextContent(EXERCISES_COPY.loadExercisesFailed);
+    expect(screen.getByRole("heading", { level: 1, name: EXERCISES_COPY.exerciseTitle })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToExercises })).toBeInTheDocument();
+  });
+});
+
 describe("18.2 AC25 — gone is still gone", () => {
   it.each([
     ["404", () => problemResponse(404, "not-found")],

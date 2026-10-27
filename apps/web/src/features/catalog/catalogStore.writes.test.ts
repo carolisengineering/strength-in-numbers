@@ -91,6 +91,15 @@ describe("18.2 AC32 — store writes", () => {
     expect(del).toHaveBeenCalledTimes(1);
   });
 
+  it("deferred minor 124 — a delete answered 404 is already gone: it resolves and drops the row at once", async () => {
+    const { store, del, request, stored } = setup();
+    del.mockRejectedValue(new ApiError({ status: 404, type: "https://api.strengthinnumbers.app/problems/not-found", title: "x", requestId: "req" }));
+    await expect(store.deleteCustom(mine.id)).resolves.toBeUndefined();
+    expect(store.getState().rows.some((r) => r.id === mine.id)).toBe(false);
+    expect(stored().some((r) => r.id === mine.id)).toBe(false);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  });
+
   it("a rejection is the same ApiError, and the store is unchanged", async () => {
     const { store, patch, post, del } = setup();
     const before = store.getState();
