@@ -3,7 +3,13 @@
   color: var(--color-muted);
 }
 
-/* Phase B: the polite status line; empty, it takes no room. */
+/* Phase B: the polite status line. Empty, it leaves the layout but stays in the accessibility tree (as
+   `ui/VisuallyHidden`), so VoiceOver announces the text when it arrives (AC54). */
 .status:empty {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
