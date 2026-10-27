@@ -280,6 +280,15 @@ const EXPECTED = [
   "hevyPairingProblem",
   "defaultMeasureRule",
   "hevyTypeForModality",
+  // hevy — sets and RPE (Spec 19.0 AC6–AC9)
+  "roundRpeForHevy",
+  "roundToTenth",
+  "HEVY_TO_SIN_SET_TYPE",
+  "SIN_TO_HEVY_SET_TYPE",
+  "SET_DROP_REASONS",
+  "hevySetToSin",
+  "HEVY_EXPORT_NOTICES",
+  "sinSetToHevy",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));
