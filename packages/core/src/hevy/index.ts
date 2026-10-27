@@ -4,3 +4,4 @@ export * from "../dto/hevy-api.js";
 export * from "./pairing.js";
 export * from "./rpe.js";
 export * from "./sets.js";
+export * from "./sections.js";

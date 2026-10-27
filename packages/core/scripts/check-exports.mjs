@@ -289,6 +289,11 @@ const EXPECTED = [
   "hevySetToSin",
   "HEVY_EXPORT_NOTICES",
   "sinSetToHevy",
+  // hevy — sections (Spec 19.0 AC10)
+  "SECTION_DEFAULT_RULES",
+  "sectionKey",
+  "sectionTreatment",
+  "sectionFromPlaceholder",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));
