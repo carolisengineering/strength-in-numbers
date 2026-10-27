@@ -58,13 +58,15 @@ describe("AC9/AC15 — deleteWorkout", () => {
 
     // In order: PR advisory lock (Spec 07.0 D9 — before any row lock),
     // SELECT ownership (FOR UPDATE), SELECT count, SELECT roots (finished
-    // workouts only), then DELETE.
-    expect(stub.calls).toHaveLength(5);
+    // workouts only), the Hevy claim-only link (Spec 19.0 AC31), then DELETE.
+    expect(stub.calls).toHaveLength(6);
     expect(stub.calls[0]!.sql).toContain("pg_advisory_xact_lock");
     expect(stub.calls[1]!.sql).toContain("FOR UPDATE");
     expect(stub.calls[2]!.sql).toContain("SELECT");
     expect(stub.calls[3]!.sql).toContain("COALESCE");
-    expect(stub.calls[4]!.sql).toContain("DELETE FROM");
+    expect(stub.calls[4]!.sql).toContain('DELETE FROM "hevy_link"');
+    expect(stub.calls[4]!.sql).toContain("hevy_workout_id IS NULL");
+    expect(stub.calls[5]!.sql).toContain('DELETE FROM "workout"');
     expect(result).toEqual({ wasFinished: true, exerciseCount: 4 });
   });
 
@@ -83,7 +85,7 @@ describe("AC9/AC15 — deleteWorkout", () => {
 });
 
 describe("AC16 — deleting an in-progress workout runs no recompute", () => {
-  it("issues exactly PR lock, ownership SELECT (FOR UPDATE), count SELECT, DELETE — no roots query, no personal_record statement", async () => {
+  it("issues exactly PR lock, ownership SELECT (FOR UPDATE), count SELECT, the Hevy claim delete (19.0 AC31), DELETE — no roots query, no personal_record statement", async () => {
     const userId = uuidv7();
     const id = uuidv7();
     const stub = new ScriptedPrisma();
@@ -93,7 +95,7 @@ describe("AC16 — deleting an in-progress workout runs no recompute", () => {
 
     await repo.deleteWorkout(userId, id);
 
-    expect(stub.calls).toHaveLength(4);
+    expect(stub.calls).toHaveLength(5);
     expect(stub.calls[0]!.sql).toContain("pg_advisory_xact_lock");
     expect(stub.calls[1]!.sql).toContain("FOR UPDATE");
     expect(stub.calls.some((c) => c.sql.includes("COALESCE"))).toBe(false);

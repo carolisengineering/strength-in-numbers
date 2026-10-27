@@ -1,8 +1,11 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import {
+  HEVY_LINK_CLAIM_TTL_S,
   HEVY_PAIRS_MAX,
+  isWorkoutId,
   normalizeExportAs,
   sectionKey,
+  type HevyLinkState,
   type HevyMapping,
   type HevyMappingPatch,
   type HevyMappingPut,
@@ -11,9 +14,20 @@ import {
   type HevySectionRule,
   type Modality,
 } from "@sin/core";
-import { ValidationError } from "../errors/app-error.js";
+import {
+  HevyIdInUseError,
+  HevyLinkConflictError,
+  HevyNoClaimError,
+  HevySendInProgressError,
+  HevyWorkoutNotFinishedError,
+  NotFoundError,
+  ValidationError,
+} from "../errors/app-error.js";
+import { fingerprintSourceOf, fingerprintVersion, hevyFingerprint } from "../hevy/fingerprint.js";
 import { validateMappingInput, type VisibleExercise } from "../hevy/mappingValidation.js";
-import type { HevyRepository, HevyStatusRecord } from "./hevy.js";
+import type { HevyLinkBeginRecord, HevyRepository, HevyStatusRecord } from "./hevy.js";
+import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
+import { readWorkoutDetail } from "./workout.prisma.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -122,6 +136,55 @@ async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string
 }
 
 const TOO_MANY_PAIRS = "the mapping would hold more pairs than allowed";
+
+interface LinkRow {
+  id: string;
+  hevy_workout_id: string | null;
+  origin: string;
+  claimed_at: Date | null;
+  synced_fingerprint: string | null;
+  synced_at: Date | null;
+  fresh: boolean;
+}
+
+const NOT_FOUND = "workout not found or not owned by the acting user";
+const NONE: HevyLinkState = { state: "none", hevyWorkoutId: null, origin: null, syncedAt: null };
+
+/** The link row of a workout, with whether its claim is younger than the TTL (compared in SQL, against `now()`). */
+async function linkRow(db: Tx | PrismaClient, userId: string, workoutId: string, forUpdate: boolean): Promise<LinkRow | null> {
+  const rows = forUpdate
+    ? await db.$queryRaw<LinkRow[]>`
+        SELECT id::text, hevy_workout_id, origin, claimed_at, synced_fingerprint, synced_at,
+               coalesce(claimed_at > now() - make_interval(secs => ${HEVY_LINK_CLAIM_TTL_S}), false) AS fresh
+        FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`
+    : await db.$queryRaw<LinkRow[]>`
+        SELECT id::text, hevy_workout_id, origin, claimed_at, synced_fingerprint, synced_at,
+               coalesce(claimed_at > now() - make_interval(secs => ${HEVY_LINK_CLAIM_TTL_S}), false) AS fresh
+        FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
+  return rows[0] ?? null;
+}
+
+/**
+ * Spec 19.0 AC26: `none` (no row, a live workout, or only a stale claim), `sending` (a fresh claim, no Hevy id),
+ * `sent` (linked and the stored fingerprint equals the current one, or carries another version), `changed`.
+ */
+async function readLinkState(db: Tx | PrismaClient, userId: string, workoutId: string): Promise<HevyLinkState> {
+  const detail = await readWorkoutDetail(db, userId, workoutId);
+  if (!detail) throw new NotFoundError(NOT_FOUND);
+  if (detail.endedAt === null) return NONE;
+  const row = await linkRow(db, userId, workoutId, false);
+  if (!row) return NONE;
+  if (row.hevy_workout_id === null) return row.fresh ? { state: "sending", hevyWorkoutId: null, origin: null, syncedAt: null } : NONE;
+  const stored = row.synced_fingerprint;
+  const current = hevyFingerprint(fingerprintSourceOf(detail));
+  const sent = stored !== null && (stored === current || fingerprintVersion(stored) !== fingerprintVersion(current));
+  return {
+    state: sent ? "sent" : "changed",
+    hevyWorkoutId: row.hevy_workout_id,
+    origin: row.origin as HevyLinkState["origin"],
+    syncedAt: row.synced_at?.toISOString() ?? null,
+  };
+}
 const DUPLICATE_MARKER = "only one pair may have this role";
 
 /**
@@ -129,10 +192,6 @@ const DUPLICATE_MARKER = "only one pair may have this role";
  * migration's, `0016`). No advisory lock key (D16): mapping writes lock the user row, a begin locks the workout row.
  */
 export function createHevyRepository(prisma: PrismaClient): HevyRepository {
-  const notYet = (what: string) => async (): Promise<never> => {
-    throw new Error(`HevyRepository.${what}: not implemented`);
-  };
-
   return {
     async status(userId): Promise<HevyStatusRecord> {
       const rows = await prisma.$queryRaw<{ pairs: bigint; links: bigint; stale: boolean | null }[]>`
@@ -202,9 +261,90 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
       });
     },
 
-    readLink: notYet("readLink"),
-    beginLink: notYet("beginLink"),
-    completeLink: notYet("completeLink"),
-    releaseLink: notYet("releaseLink"),
+    async readLink(userId, workoutId) {
+      if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
+      return readLinkState(prisma, userId, workoutId);
+    },
+
+    // §6.6: one transaction; the workout row lock serializes two begins. No lockUserRecords (D16).
+    async beginLink(userId, workoutId, opts): Promise<HevyLinkBeginRecord> {
+      if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
+      return prisma.$transaction(async (tx) => {
+        const owned = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+          SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;
+        if (!owned[0]) throw new NotFoundError(NOT_FOUND);
+        if (owned[0].ended_at === null) throw new HevyWorkoutNotFinishedError();
+
+        const row = await linkRow(tx, userId, workoutId, true);
+        let begun: Omit<HevyLinkBeginRecord, "source">;
+        if (!row) {
+          await tx.$executeRaw`
+            INSERT INTO "hevy_link" (id, user_id, workout_id, origin, claimed_at)
+            VALUES (gen_random_uuid(), ${userId}::uuid, ${workoutId}::uuid, 'sent', now())`;
+          begun = { mode: "create", hevyWorkoutId: null, staleClaim: false };
+        } else {
+          if (row.claimed_at !== null && row.fresh) throw new HevySendInProgressError();
+          const staleClaim = row.claimed_at !== null;
+          if (row.hevy_workout_id === null || opts.relink) {
+            // A claim-only row taken over, or a relink after the Hevy copy was deleted in Hevy (Spec 20.2 AC12).
+            await tx.$executeRaw`
+              UPDATE "hevy_link" SET hevy_workout_id = NULL, origin = 'sent', claimed_at = now(), updated_at = now()
+              WHERE id = ${row.id}::uuid`;
+            begun = { mode: "create", hevyWorkoutId: null, staleClaim };
+          } else {
+            await tx.$executeRaw`UPDATE "hevy_link" SET claimed_at = now(), updated_at = now() WHERE id = ${row.id}::uuid`;
+            begun = { mode: "update", hevyWorkoutId: row.hevy_workout_id, staleClaim };
+          }
+        }
+        const detail = await readWorkoutDetail(tx, userId, workoutId);
+        return { ...begun, source: fingerprintSourceOf(detail!) };
+      });
+    },
+
+    async completeLink(userId, workoutId, body) {
+      if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
+      await prisma.$transaction(async (tx) => {
+        const owned = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
+        if (!owned[0]) throw new NotFoundError(NOT_FOUND);
+        const row = await linkRow(tx, userId, workoutId, true);
+        if (!row) throw new HevyNoClaimError();
+        // A replay of the same completion: nothing to write (Review Focus 5).
+        if (row.claimed_at === null && row.hevy_workout_id === body.hevyWorkoutId && row.synced_fingerprint === body.fingerprint) return;
+        if (row.claimed_at === null) throw new HevyNoClaimError();
+        if (row.hevy_workout_id !== null && row.hevy_workout_id !== body.hevyWorkoutId) throw new HevyLinkConflictError();
+        const holder = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text FROM "hevy_link"
+          WHERE user_id = ${userId}::uuid AND hevy_workout_id = ${body.hevyWorkoutId} AND id <> ${row.id}::uuid`;
+        if (holder[0]) throw new HevyIdInUseError();
+        try {
+          await tx.$executeRaw`
+            UPDATE "hevy_link"
+            SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = ${body.fingerprint}, synced_at = now(),
+                claimed_at = NULL, updated_at = now()
+            WHERE id = ${row.id}::uuid AND claimed_at IS NOT NULL`;
+        } catch (err) {
+          // §6.6: a racing complete that took the same Hevy id; named by its columns ($queryRaw has no constraint name).
+          if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, hevy_workout_id") throw new HevyIdInUseError();
+          throw err;
+        }
+      });
+      return readLinkState(prisma, userId, workoutId);
+    },
+
+    // AC30: idempotent; deletes a claim-only row, clears the claim on a linked row, never unlinks.
+    async releaseLink(userId, workoutId) {
+      if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
+      await prisma.$transaction(async (tx) => {
+        const owned = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
+        if (!owned[0]) throw new NotFoundError(NOT_FOUND);
+        await tx.$executeRaw`
+          DELETE FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid AND hevy_workout_id IS NULL`;
+        await tx.$executeRaw`
+          UPDATE "hevy_link" SET claimed_at = NULL, updated_at = now()
+          WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid AND claimed_at IS NOT NULL`;
+      });
+    },
   };
 }

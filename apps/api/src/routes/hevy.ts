@@ -124,11 +124,13 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
     r.post(
       "/workouts/:id/hevy-link",
       {
-        schema: { params: workoutIdParams, body: HevyLinkBeginBodySchema.optional(), response: { 200: HevyLinkBeginSchema } },
+        schema: { params: workoutIdParams, body: HevyLinkBeginBodySchema.nullish(), response: { 200: HevyLinkBeginSchema } },
         config: { writeGroup: "hevy", problems: [NotFoundError, HevySendInProgressError, HevyWorkoutNotFinishedError] },
       },
       async (request) => {
         const begun = await repo.beginLink(request.user!.id, request.params.id, { relink: request.body?.relink === true });
+        // AC37: never a Hevy id.
+        request.log.info({ user_id: request.user!.id, mode: begun.mode, stale_claim: begun.staleClaim }, "hevy_link_begun");
         return { mode: begun.mode, hevyWorkoutId: begun.hevyWorkoutId, staleClaim: begun.staleClaim, fingerprint: hevyFingerprint(begun.source) };
       },
     );
@@ -142,7 +144,11 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
           problems: [NotFoundError, HevyNoClaimError, HevyLinkConflictError, HevyIdInUseError],
         },
       },
-      async (request) => repo.completeLink(request.user!.id, request.params.id, request.body),
+      async (request) => {
+        const state = await repo.completeLink(request.user!.id, request.params.id, request.body);
+        request.log.info({ user_id: request.user!.id }, "hevy_link_completed");
+        return state;
+      },
     );
 
     r.delete(
@@ -153,6 +159,7 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
       },
       async (request, reply) => {
         await repo.releaseLink(request.user!.id, request.params.id);
+        request.log.info({ user_id: request.user!.id }, "hevy_link_released");
         reply.code(204).send();
         return reply;
       },

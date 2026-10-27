@@ -270,6 +270,71 @@ async function finishedPatch(
   };
 }
 
+/** A client the detail read runs on: the repository's own, or a transaction's (Spec 19.0's begin reads in its own). */
+type DetailClient = Prisma.TransactionClient | PrismaClient;
+
+async function loadExercises(db: DetailClient, workoutId: string): Promise<WorkoutExerciseRecord[]> {
+  const rows = await db.$queryRaw<WorkoutExerciseDbRow[]>`
+    SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
+           modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
+           ${WE_PLANNED_SETS} AS planned_sets
+    FROM "workout_exercise"
+    WHERE workout_id = ${workoutId}::uuid
+    ORDER BY position ASC
+  `;
+  return rows.map(toExerciseRecord);
+}
+
+/** One statement: the routine's note snapshot, the workout's sections and (Spec 09.3) whether its routine is a
+ * one-off. Only the detail path reads these; every other `workout` SELECT is untouched (AC1, D14). */
+async function loadSectionSnapshot(db: DetailClient, workoutId: string) {
+  const rows = await db.$queryRaw<
+    { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
+  >`
+    SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
+           ${ROUTINE_IS_ONE_OFF("w")} AS routine_is_one_off
+    FROM "workout" w WHERE w.id = ${workoutId}::uuid
+  `;
+  const row = rows[0];
+  return {
+    routineNotes: row?.routine_notes_snapshot ?? null,
+    sections: (row?.sections ?? []).map(toWorkoutSectionRecord),
+    routineIsOneOff: row?.routine_is_one_off ?? false,
+  };
+}
+
+async function toDetailWith(db: DetailClient, w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
+  const exercises = await loadExercises(db, w.id);
+  const sets = await loadSetsForWorkout(db, w.id);
+  const byExercise = new Map<string, SetEntryRecord[]>();
+  for (const s of sets) {
+    const list = byExercise.get(s.workoutExerciseId) ?? [];
+    list.push(s);
+    byExercise.set(s.workoutExerciseId, list);
+  }
+  const withSets: WorkoutExerciseDetailRecord[] = exercises.map((e) => ({
+    ...e,
+    sets: byExercise.get(e.id) ?? [],
+  }));
+  const snapshot = await loadSectionSnapshot(db, w.id);
+  return { ...toRecord(w), exercises: withSets, ...snapshot };
+}
+
+/**
+ * The workout detail (`GET /v1/workouts/{id}`'s record), on the given client; `null` when the id is malformed, absent
+ * or another user's. Spec 19.0 reads it inside the Hevy begin transaction for the fingerprint.
+ */
+export async function readWorkoutDetail(db: DetailClient, userId: string, id: string): Promise<WorkoutDetailRecord | null> {
+  if (!isWorkoutId(id)) return null;
+  const rows = await db.$queryRaw<WorkoutDbRow[]>`
+    SELECT id, user_id, title, notes, started_at, ended_at, local_date,
+           tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
+    FROM "workout"
+    WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
+  `;
+  return rows[0] ? toDetailWith(db, rows[0]) : null;
+}
+
 export function createWorkoutRepository(
   prisma: PrismaClient,
   exerciseRepository: ExerciseRepository,
@@ -406,52 +471,7 @@ export function createWorkoutRepository(
     }
   }
 
-  async function loadExercises(workoutId: string): Promise<WorkoutExerciseRecord[]> {
-    const rows = await prisma.$queryRaw<WorkoutExerciseDbRow[]>`
-      SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
-             modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
-             ${WE_PLANNED_SETS} AS planned_sets
-      FROM "workout_exercise"
-      WHERE workout_id = ${workoutId}::uuid
-      ORDER BY position ASC
-    `;
-    return rows.map(toExerciseRecord);
-  }
-
-  /** One statement: the routine's note snapshot, the workout's sections and (Spec 09.3) whether its routine is a
-   * one-off. Only the detail path reads these; every other `workout` SELECT is untouched (AC1, D14). */
-  async function loadSectionSnapshot(workoutId: string) {
-    const rows = await prisma.$queryRaw<
-      { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
-    >`
-      SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
-             ${ROUTINE_IS_ONE_OFF("w")} AS routine_is_one_off
-      FROM "workout" w WHERE w.id = ${workoutId}::uuid
-    `;
-    const row = rows[0];
-    return {
-      routineNotes: row?.routine_notes_snapshot ?? null,
-      sections: (row?.sections ?? []).map(toWorkoutSectionRecord),
-      routineIsOneOff: row?.routine_is_one_off ?? false,
-    };
-  }
-
-  async function toDetail(w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
-    const exercises = await loadExercises(w.id);
-    const sets = await loadSetsForWorkout(prisma, w.id);
-    const byExercise = new Map<string, SetEntryRecord[]>();
-    for (const s of sets) {
-      const list = byExercise.get(s.workoutExerciseId) ?? [];
-      list.push(s);
-      byExercise.set(s.workoutExerciseId, list);
-    }
-    const withSets: WorkoutExerciseDetailRecord[] = exercises.map((e) => ({
-      ...e,
-      sets: byExercise.get(e.id) ?? [],
-    }));
-    const snapshot = await loadSectionSnapshot(w.id);
-    return { ...toRecord(w), exercises: withSets, ...snapshot };
-  }
+  const toDetail = (w: WorkoutDbRow): Promise<WorkoutDetailRecord> => toDetailWith(prisma, w);
 
   async function findByClientGeneratedId(
     actingUserId: string,
@@ -562,17 +582,11 @@ export function createWorkoutRepository(
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
-        SELECT id, user_id, title, notes, started_at, ended_at, local_date,
-               tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
-        FROM "workout"
-        WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
-      `;
-      const foundRow = rows[0];
-      if (!foundRow) {
+      const detail = await readWorkoutDetail(prisma, actingUserId, id);
+      if (!detail) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      return toDetail(foundRow);
+      return detail;
     },
 
     async updateWorkout(
@@ -714,6 +728,10 @@ export function createWorkoutRepository(
         // Spec 07.0 §6.3: only a finished workout can have sourced records.
         // Capture its lineage roots before the DELETE cascades its exercises away.
         const roots = wasFinished ? await rootsForWorkout(tx, id) : [];
+
+        // Spec 19.0 AC31: a Hevy send's claim-only row goes with the workout (the FK is SET NULL, which would leave an
+        // orphan "sending" row); a linked row stays as a tombstone so the Hevy id stays taken.
+        await tx.$executeRaw`DELETE FROM "hevy_link" WHERE workout_id = ${id}::uuid AND hevy_workout_id IS NULL`;
 
         // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE
         // exemption — allowed on an in-progress or finished workout, no
