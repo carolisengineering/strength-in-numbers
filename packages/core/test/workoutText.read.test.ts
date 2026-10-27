@@ -91,7 +91,7 @@ describe("10.4 AC10 — bare lists and numbered sentences", () => {
     expect(r.items.map((i) => [i.name, i.rows, i.quickReps, i.run])).toEqual([
       ["Goblet Squat", null, { repsLow: 8, repsHigh: 8 }, null], ["Curl", null, { repsLow: 10, repsHigh: 12 }, null]]);
   });
-  it("an un-bulleted numbered line with no lead-in is a note", () => {
+  it("an un-bulleted numbered sentence is a note (AC62 keeps AC8's limits)", () => {
     const l = "5 Minutes to build to first strict press weight (build by 3-5 reps)";
     expect(read(["Strength", l, "x."]).sections[0]!.notes).toBe(`${l}\nx.`);
   });
@@ -139,8 +139,12 @@ describe("10.4 AC47 — the repeated first line of a card is dropped", () => {
   });
   it("a later repeat of the header word continues the section (it is a header, not a note)", () =>
     expect(read(["Warmup", "NO SCORE", "Stretch", "Warmup"]).sections[0]!.notes).toBe("Stretch"));
-  it("a first line that only resembles a non-strict header stays", () =>
-    expect(read(["Front Rack", "WEIGHT", "Front Rack Carry", "10 Lunges"]).sections[0]!.notes).toBe("Front Rack Carry\n10 Lunges"));
+  it("a first line that only resembles a non-strict header stays", () => {
+    const r = read(["Front Rack", "WEIGHT", "Front Rack Carry", "10 Lunges"]);
+    expect(r.sections[0]!.notes).toBe("Front Rack Carry");
+    // AC62 (owner ruling 2026-10-26): the counted line after it is an exercise.
+    expect(r.items.map((i) => i.name)).toEqual(["Lunges"]);
+  });
 });
 
 describe("10.4 AC52 — alternatives after a label are notes", () => {
@@ -284,7 +288,9 @@ describe("10.4 AC45 / AC52 / AC48 — code review fixes", () => {
     expect(r.sections[0]!.notes.split("\n")).toEqual(["5 Sets, 1 Set Every 2:00", "Build to a heavy 5", "Tempo 3-1-1"]);
   });
   it("a *** separator still ends the run", () =>
-    expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => i.name)).toEqual(["Pushups"]));
+    // AC62 (owner ruling 2026-10-26): "400m Run" after it is its own rowless exercise, outside the 3-round run.
+    expect(read(["Strength", "REPS", "3 Rounds:", "10 Pushups", "***", "400m Run"]).items.map((i) => [i.name, i.run, i.rows?.length ?? null])).toEqual([
+      ["Pushups", 1, 3], ["400m Run", 2, null]]));
 });
 
 describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74 and the owner's Max ruling", () => {
@@ -318,4 +324,85 @@ describe("10.4 AC49 / AC50 / AC51 / AC52 — deferred minors 69, 70, 74 and the 
     ["10 Tuckups + 15 Hollow Rocks +", ["Tuckups", "Hollow Rocks"]],
   ])("a trailing + is dropped before every branch: %s (item 74)", (line, names) =>
     expect(read(["Accessory", "NO SCORE", "3 Sets:", line]).items.map((i) => i.name)).toEqual(names));
+});
+
+describe("10.4 AC60 — a load after @ is the exercise's note", () => {
+  it("under a set run", () => {
+    const r = read(["Back Squat", "4 Sets, 1 Set Every 4:00", "5 Back Squats @ 60-65% of IRM", "x."]);
+    expect(r.items.map((i) => [i.name, rowsOf(i), i.noteLines])).toEqual([["Back Squats", [[5, 5], [5, 5], [5, 5], [5, 5]], ["@ 60-65% of IRM"]]]);
+  });
+  it("under a scheme", () => expect(read(["Engine", "21-15-9", "Thrusters @ 95/65", "x."]).items[0]).toMatchObject({ name: "Thrusters", noteLines: ["@ 95/65"] }));
+  it("on a bullet", () => expect(read(["Strength", "- 8 Goblet Squat @ 24 kg", "x."]).items[0]).toMatchObject({ name: "Goblet Squat", noteLines: ["@ 24 kg"] }));
+  it("a load summary with no name stays a note", () => expect(read(["Strength", "4x5 @ 60%", "x."]).items).toEqual([]));
+});
+
+describe("10.4 AC61 — a set-count range opens a run", () => {
+  it.each([["3-4 Sets", 3], ["3–4 Rounds:", 3], ["2-3 sets", 2]] as const)("%s opens a run of the low end and stays in the note", (l, n) => {
+    const r = read(["Accessory", l, "12 Cossack Squats", "5/5 KB Windmill"]);
+    expect(r.items.map((i) => [i.name, rowsOf(i)?.length, i.run])).toEqual([["Cossack Squats", n, 1], ["KB Windmill", n, 1]]);
+    expect(r.sections[0]!.notes).toBe(l);
+  });
+  it.each(["4-3 Sets", "0-2 Sets", "3-100 Sets"])("%s does not", (l) => expect(read(["Accessory", l, "x."]).items).toEqual([]));
+});
+
+describe("10.4 AC62 — a counted line is an exercise without a lead-in (owner ruling 2026-10-26)", () => {
+  it("an AMRAP list is rowless and one run; AMRAP stays in the note", () => {
+    const r = read(['Workout: "MORRO BAY"', "AMRAP 15", "250/200m Row", "18 Alternating Double DB Reverse Lunges", "200 Meter Run", "18 Double DB Alternating Strict Press", "Score: Total rounds + reps."]);
+    expect(r.items.map((i) => [i.name, i.rows, i.quickReps, i.noteLines, i.run])).toEqual([
+      ["250/200m Row", null, null, ["250/200m"], 1],
+      ["Alternating Double DB Reverse Lunges", null, { repsLow: 18, repsHigh: 18 }, [], 1],
+      ["200 Meter Run", null, null, ["200 Meter"], 1],
+      ["Double DB Alternating Strict Press", null, { repsLow: 18, repsHigh: 18 }, [], 1],
+    ]);
+    expect(r.sections[0]!.notes).toBe("AMRAP 15\nScore: Total rounds + reps.");
+  });
+  it("a calorie line and a/b reps", () =>
+    expect(read(["Engine", "20 Cal Row", "5/5 KB Windmill", "x."]).items.map((i) => [i.name, i.noteLines, i.calories])).toEqual([["Row", ["20 Cal"], true], ["KB Windmill", ["5/5"], false]]));
+  it.each(["20 Minute Cap", "10 minutes rest", "2 min break", "2 Rounds for time", "3 times through", "8 Rest", "10 Reps of", "5 Minutes to build to first strict press weight (build by 3-5 reps)", "18 reps are intentional, representing a date.", "(10 each side)"])(
+    "%s stays a note (Review Focus 3)", (l) => expect(read(["Engine", l, "x."]).items).toEqual([]));
+  it("Warmup, the preamble and lines after a variant label get no list", () => {
+    expect(read(["Warmup", "10 Air Squats", "x."]).items).toEqual([]);
+    expect(read(["10 Air Squats", "Strength", "x."]).items).toEqual([]);
+    expect(read(["Engine", "Scaled:", "10 Air Squats"]).items).toEqual([]);
+  });
+  it("any other line closes the list; the next list is a new run (Review Focus 4)", () => {
+    const r = read(["Engine", "10 Air Squats", "10 Push-ups", "Rest as needed.", "10 Lunges", "3 Sets:", "10 Curl"]);
+    expect(r.items.map((i) => [i.name, i.run, i.rows?.length ?? null])).toEqual([["Air Squats", 1, null], ["Push-ups", 1, null], ["Lunges", 2, null], ["Curl", 3, 3]]);
+  });
+  it("a bullet closes the list and stays ungrouped (AC10)", () =>
+    expect(read(["Engine", "10 Air Squats", "- 8 Goblet Squat", "10 Lunges"]).items.map((i) => [i.name, i.run])).toEqual([["Air Squats", 1], ["Goblet Squat", null], ["Lunges", 2]]));
+  it("a heading closes the list", () =>
+    expect(read(["Engine", "10 Air Squats", "Accessory", "10 Lunges"]).items.map((i) => [i.name, i.section, i.run])).toEqual([["Air Squats", 0, 1], ["Lunges", 1, 2]]));
+});
+
+describe("10.4 AC62 — final review fixes", () => {
+  it("an open list does not stop a generic title from heading a section (non-badge paste)", () => {
+    const r = read(["Strength", "10 Push Ups", "12 Air Squats", "Core Work", "20 Sit Ups"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Strength", "Core Work"]);
+    expect(r.items.map((i) => [i.name, i.section])).toEqual([["Push Ups", 0], ["Air Squats", 0], ["Sit Ups", 1]]);
+  });
+  it.each(["1 More Round", "5 Each Side", "12 Total", "3 Attempts", "100 Meters Easy", "400m Then Rest", "10 per side"])(
+    "%s is a qualifier, not an exercise", (l) => expect(read(["Engine", l, "x."]).items).toEqual([]));
+});
+
+describe("10.4 AC60 / AC62 — /code-review fixes", () => {
+  it("A + B with no lead-in is two exercises in the list", () =>
+    expect(read(["Metcon", "NO SCORE", "10 Burpees + 10 Air Squats", "12 Pull-ups"]).items.map((i) => [i.name, i.run])).toEqual([
+      ["Burpees", 1], ["Air Squats", 1], ["Pull-ups", 1]]));
+  it("a trailing comma does not end the list (#155)", () =>
+    expect(read(["Metcon", "NO SCORE", "10 Burpees", "10 Push-ups,", "12 Pull-ups"]).items.map((i) => [i.name, i.run])).toEqual([
+      ["Burpees", 1], ["Push-ups", 1], ["Pull-ups", 1]]));
+  it.each([["3 Rounds", "5 Back Squats @ 62.5 kg,"], ["3 Rounds", "10 Front Squats @ 60-65% of your 1RM,"]])(
+    "a comma after the load is not part of the load: %s / %s", (lead, l) => {
+      const r = read(["Strength", lead, l, "x."]);
+      expect(r.items).toHaveLength(1);
+      expect(r.items[0]!.noteLines.at(-1)).not.toMatch(/,$/);
+    });
+});
+
+describe("10.4 AC63 — notes don't end a N Sets, 1 Set Every run", () => {
+  it("movements after 'Accessory Between Sets:' join the lift's run", () => {
+    const r = read(["Back Squat", "WEIGHT", "4 Sets, 1 Set Every 4:00", "5 Back Squats @ 60-65% of IRM", "*All sets, same weight across*", "Accessory Between Sets:", "10 TOES elevated DB Romanian deadlifts", "16 Landmine twists", "Score: weight lifted for 4 sets."]);
+    expect(r.items.map((i) => [i.name, rowsOf(i)?.length, i.run])).toEqual([["Back Squats", 4, 1], ["TOES elevated DB Romanian deadlifts", 4, 1], ["Landmine twists", 4, 1]]);
+  });
 });

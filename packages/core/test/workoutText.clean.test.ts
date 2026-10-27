@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { cleanWorkoutText, collapseLine, isFurnitureLine, isIconLine, ocrKey } from "../src/workoutText.js";
+import { cleanWorkoutText, collapseLine, isBadgeLine, isFurnitureLine, isIconLine, isStatusBarLine, ocrKey } from "../src/workoutText.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
 const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
+const FIXTURE_26 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-26.txt");
 
 describe("10.4 AC2 — furniture lines are dropped by exact whole-line match", () => {
   it.each(["11:41", "7:05 PM", "07:05pm", "  no   score ", "Weight", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD",
@@ -166,4 +167,72 @@ describe("#170 — the screenshot count is every screenshot pasted (owner ruling
     expect(r.lines).toEqual(["Warmup", "10 Squats", "3 Sets:"]);
     expect(r.chunks).toBe(3);
   });
+});
+
+describe("10.4 AC55 — more clock shapes", () => {
+  it.each(["3:524", "3:52 A", "€ 3:53", "3:53"])("%s splits screenshots", (clock) =>
+    expect(cleanWorkoutText(`Intro\n${clock}\nNext`).chunks).toBe(2));
+  it.each(["4:00 AMRAP", "5:00 to Build to Working Weight", "12:30 A note", "3:5244", "€€€€ 3:53", "A 3:53"])("%s is text, not a clock (Review Focus 1)", (line) => {
+    const r = cleanWorkoutText(`Intro\n${line}`);
+    expect(r.chunks).toBe(1);
+    expect(r.lines).toContain(line);
+  });
+  it("the 2026-10-26 paste cleans to 5 screenshots", () => expect(cleanWorkoutText(readFileSync(FIXTURE_26, "utf8")).chunks).toBe(5));
+});
+
+describe("10.4 AC56 — the cellular status bar is furniture", () => {
+  it.each(["•ll LTE O", "•I LTE C", "Il LTE O", "all LTE L", "•ill LTE C", "•ll 5G", "ll 5G UW", "•l 5G+ O"])("%s is dropped anywhere", (l) => {
+    expect(isStatusBarLine(l)).toBe(true);
+    expect(cleanWorkoutText(`Workout: "X"\n${l}\nAMRAP 15`).lines).toEqual(['Workout: "X"', "AMRAP 15"]);
+  });
+  it.each(["LTE coverage is spotty today", "5G Burpees", "LTE", "Row LTE"])("%s stays", (l) => expect(isStatusBarLine(l)).toBe(false));
+});
+
+describe("10.4 AC57 — the trophy and the score are furniture", () => {
+  it.each(["Y'", "只'"])("%s before RESULTS is dropped", (t) =>
+    expect(cleanWorkoutText(`A note.\n${t}\nRESULTS (6)\n3 + 0\nAccessory`).lines).toEqual(["A note.", "Accessory"]));
+  it.each(["49", "3 + 0", "5 @ 130 Lbs", "12 rounds + 4"])("score %s after RESULTS is dropped", (s) =>
+    expect(cleanWorkoutText(`A note.\nRESULTS (6)\n${s}\nAccessory`).lines).toEqual(["A note.", "Accessory"]));
+  it("a header straight after RESULTS stays (Review Focus 2)", () =>
+    expect(cleanWorkoutText("A note.\nRESULTS (0)\nAccessory\nNO SCORE").lines).toEqual(["A note.", "Accessory"]));
+  it("a long numbered line after RESULTS stays", () =>
+    expect(cleanWorkoutText("RESULTS (2)\n10 rounds plus four more reps and a run").lines).toEqual(["10 rounds plus four more reps and a run"]));
+  it("a short line not before RESULTS stays", () => expect(cleanWorkoutText("Strength\nY'\nNext").lines).toContain("Y'"));
+  it("a header that starts with a digit is not a score: its badge follows it (final review)", () => {
+    const r = cleanWorkoutText('Workout: "X"\nMetcon\nTIME\n10 Burpees\nRESULTS (3)\n12 Days of Christmas\nTIME\n1 Thruster');
+    expect(r.lines).toEqual(['Workout: "X"', "Metcon", "10 Burpees", "12 Days of Christmas", "1 Thruster"]);
+    expect(r.tagged).toEqual([false, true, false, true, false]);
+  });
+  it("…even with a status-bar line between the header and its badge (/code-review)", () =>
+    expect(cleanWorkoutText("10 Burpees\nRESULTS (2)\n12 Days of Christmas\n•ll LTE O\nTIME\n12 Thrusters").lines).toEqual([
+      "10 Burpees", "12 Days of Christmas", "12 Thrusters"]));
+  it.each(["Run", "Row", "Rx", "Ski"])("a real word %s above RESULTS stays (/code-review)", (w) =>
+    expect(cleanWorkoutText(`Metcon\n10 Burpees\n${w}\nRESULTS (2)`).lines).toContain(w));
+});
+
+describe("10.4 AC55 — a bulleted time is not a clock (/code-review)", () => {
+  it.each(["- 1:30", "• 2:00", "* 1:00"])("%s stays text", (l) => {
+    const r = cleanWorkoutText(`Strength\n10 Push-ups\n${l}\n10 Squats`);
+    expect(r.chunks).toBe(1);
+    expect(r.lines).toContain(l);
+  });
+});
+
+describe("10.4 AC58 — combined badges", () => {
+  it.each(["ROUNDS/REPS", "TIME/REPS", "rounds / reps"])("%s is a badge and tags the line above", (b) => {
+    expect(isBadgeLine(b)).toBe(true);
+    const r = cleanWorkoutText(`Workout: "MORRO BAY"\nIl LTE O\n${b}\nAMRAP 15`);
+    expect(r.lines).toEqual(['Workout: "MORRO BAY"', "AMRAP 15"]);
+    expect(r.tagged).toEqual([true, false]);
+  });
+  it.each(["Log result/REPS", "ROUNDS/", "Push/Pull"])("%s is not", (b) => expect(isBadgeLine(b)).toBe(false));
+});
+
+describe("10.4 AC59 — the overlap ignores apostrophes", () => {
+  it("We're / Were and weeks / week's match at a boundary", () => {
+    const r = cleanWorkoutText("1:00\nIntro\nWe're keeping it light for next weeks test.\n1:01\nWere keeping it light for next week's test.\nNext");
+    expect(r.lines).toEqual(["Intro", "We're keeping it light for next weeks test.", "Next"]);
+    expect(r.overlap).toBe(1);
+  });
+  it("ocrKey drops ' ’ ‘ `", () => expect(ocrKey("We’re ‘it’ `x` 'y'")).toBe(ocrKey("Were it x y")));
 });
