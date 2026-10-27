@@ -1,5 +1,5 @@
 /**
- * Unit conversion. Canonical units are **kilograms** and **metres**.
+ * Unit conversion. Canonical units are **kilograms** and **meters**.
  *
  * These functions define the constants that DESIGN §4.8 requires the Spec 05
  * `set_entry.weight_kg` / `set_entry.distance_m` generated columns to reuse
@@ -13,9 +13,9 @@ import type { DistanceUnit, WeightUnit } from "./enums.js";
 
 /** Pounds → kilograms (exact, international avoirdupois pound). */
 export const LB_TO_KG = 0.45359237;
-/** Kilometres → metres. */
+/** Kilometers → meters. */
 export const KM_TO_M = 1000;
-/** Miles → metres (exact: 1 mi = 1609.344 m). */
+/** Miles → meters (exact: 1 mi = 1609.344 m). */
 export const MI_TO_M = 1609.344;
 /** Feet → meters (exact: 1 ft = 0.3048 m; Spec 05.3 AC39). */
 export const FT_TO_M = 0.3048;
@@ -41,7 +41,7 @@ export function toCanonicalKg(value: number, unit: WeightUnit): number {
   }
 }
 
-/** A distance in its entered unit → metres (canonical). */
+/** A distance in its entered unit → meters (canonical). */
 export function toCanonicalMeters(value: number, unit: DistanceUnit): number {
   switch (unit) {
     case "m":

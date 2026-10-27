@@ -49,7 +49,7 @@ describe("AC6 — weight → canonical kg matches the DB generated-column formul
   });
 });
 
-describe("AC7 — distance → canonical metres", () => {
+describe("AC7 — distance → canonical meters", () => {
   it("m is identity", () => {
     for (const v of [0, 1, 400, 1234.5]) expect(toCanonicalMeters(v, "m")).toBe(v);
   });

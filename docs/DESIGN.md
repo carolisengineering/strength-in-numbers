@@ -213,7 +213,7 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
   comparison and aggregation. The user's number is never lossily converted; the
   canonical column cannot drift because the DB owns it. See `set_entry` and §4.8.
 - **Allowed units:** `weight_unit ∈ {kg, lb}`, `distance_unit ∈ {m, km, mi, ft}` (`ft` added by Spec 05.3, migration `0015`);
-  canonical units are **kg** and **metres**. Vocabularies and conversion factors
+  canonical units are **kg** and **meters**. Vocabularies and conversion factors
   live in one place — §4.8 (and `packages/core`, Spec 02).
 - **Timestamps** are `timestamptz` (UTC). Anything that appears on a *calendar*
   (streaks, "this week", month view) additionally stores a `local_date DATE` and
@@ -539,11 +539,11 @@ dedup without touching the v1 schema. *(The first importer, Hevy (Spec 19.0, Q34
   verbatim.
 - `set_entry.weight_kg` = `GENERATED ALWAYS AS` (kg if unit is kg, else
   `weight × 0.45359237`) `STORED`. Every PR comparison, chart, and aggregate uses
-  only `weight_kg`. Same pattern for `distance` / `distance_m`: metres if unit is
+  only `weight_kg`. Same pattern for `distance` / `distance_m`: meters if unit is
   `m`, `distance × 1000` for `km`, `distance × 1609.344` for `mi`, `distance × 0.3048` for `ft`
   (every unit named explicitly in the expression, no catch-all arm; the column was rebuilt by `0015`, Spec 05.3 D18).
 - **Allowed units:** `weight_unit ∈ {kg, lb}`, `distance_unit ∈ {m, km, mi, ft}`.
-  Canonical units are **kg** and **metres**. The conversion factors above are
+  Canonical units are **kg** and **meters**. The conversion factors above are
   defined once in `packages/core` (Spec 02); the `weight_kg` / `distance_m`
   generated columns (Spec 05.1) must use the identical constants — drift between
   them silently corrupts PRs and charts (R4).

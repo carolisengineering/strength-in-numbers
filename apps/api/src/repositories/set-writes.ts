@@ -76,7 +76,7 @@ export function assertSetMeasuresValid(modality: Modality, m: SetMeasures): void
     m.distanceUnit !== null &&
     toCanonicalMeters(storedDistance, m.distanceUnit) > SET_DISTANCE_MAX
   ) {
-    errors.push({ path: "distance", message: `must not exceed ${SET_DISTANCE_MAX} metres` });
+    errors.push({ path: "distance", message: `must not exceed ${SET_DISTANCE_MAX} meters` });
   }
   if (errors.length > 0) throw new ValidationError(errors, `set: ${modality} measure rules`);
 }

@@ -154,7 +154,17 @@ describe("AC20 — unit accompanies value, checked first", () => {
   });
 });
 
-describe("Review Focus 1 / D11 — distance is bounded after conversion to metres", () => {
+describe("Review Focus 1 / D11 — distance is bounded after conversion to meters", () => {
+  it("deferred minor 87 — the message spells meters the American way", () => {
+    try {
+      assertSetMeasuresValid("distance_duration", { ...EMPTY, durationS: 60, distance: 1000, distanceUnit: "km" });
+    } catch (e) {
+      expect((e as ValidationError).fieldErrors).toEqual([{ path: "distance", message: "must not exceed 999999.999 meters" }]);
+      return;
+    }
+    throw new Error("expected ValidationError");
+  });
+
   it("999.999 km fits distance_m; 1000 km does not; 700 mi does not", () => {
     const base = { ...EMPTY, durationS: 60 };
     expect(() =>

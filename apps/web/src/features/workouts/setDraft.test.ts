@@ -84,7 +84,7 @@ describe("AC6 — parseDraft", () => {
     });
   });
 
-  it("distance_duration carries distance + unit + duration; rejects metres beyond the bound", () => {
+  it("distance_duration carries distance + unit + duration; rejects meters beyond the bound", () => {
     expect(
       parseDraft("distance_duration", base({ distance: "5", distanceUnit: "km", minutes: "25" })),
     ).toEqual({
