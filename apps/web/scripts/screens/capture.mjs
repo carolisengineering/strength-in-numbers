@@ -48,7 +48,9 @@ function makeHandler(state) {
     }
     if (m === "GET" && p === "/v1/me") res = json(D.me);
     else if (m === "PATCH" && p === "/v1/me") res = json({ ...D.me, ...JSON.parse(req.postData() ?? "{}") });
-    else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: D.exercises, syncToken: "1.100" });
+    // Spec 18.2 AC27: `catalog` swaps the whole list (the 600-row capture); `hideExercise` serves it as deleted.
+    else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: state.catalog ?? D.exercises.filter((e) => e.id !== state.hideExercise), syncToken: "1.100" });
+    else if (m === "GET" && p === "/v1/exercises/usage") res = state.failUsage ? problem(500, "internal", "Internal error") : json(D.usage());
     else if (m === "GET" && p === "/v1/muscle-groups") res = json({ muscleGroups: D.muscleGroups });
     else if (m === "GET" && p === "/v1/equipment") res = json({ equipment: D.equipment });
     // Spec 10.5 AC26: the one-off is listed only while `showClass` is on, until the one-off finish removes it.
@@ -85,9 +87,10 @@ function makeHandler(state) {
     } else if (m === "GET" && p === "/v1/personal-records") {
       const ex = url.searchParams.get("exerciseId");
       const wo = url.searchParams.get("workoutId");
-      res = json({ records: D.records.filter((r) => (!ex || r.exerciseId === ex) && (!wo || r.workoutId === wo)) });
+      // Records and series resolve a fork's id to its lineage root, as the API does (07.0, 07.2 AC4).
+      res = json({ records: D.records.filter((r) => (!ex || r.exerciseId === D.rootOf(ex)) && (!wo || r.workoutId === wo)) });
     } else if (m === "GET" && (seg = /^\/v1\/progress\/exercises\/([^/]+)$/.exec(p))) {
-      const series = D.progressFor(decodeURIComponent(seg[1]));
+      const series = D.progressFor(D.rootOf(decodeURIComponent(seg[1])));
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
       series.points = series.points.filter((pt) => (!from || pt.localDate >= from) && (!to || pt.localDate <= to));
@@ -756,15 +759,54 @@ try {
       await page.keyboard.press("Escape");
     });
 
-    await go("/app/progress");
-    await shoot(page, device, "14-progress", "Progress list (exercises with records)");
-    await go(`/app/progress/${D.ids.bench}`);
-    await shoot(page, device, "15-progress-bench", "Exercise progress chart: Bench Press");
-    await go(`/app/progress/${D.ids.pullUp}`);
-    await shoot(page, device, "16-progress-pullup", "Exercise progress chart: Pull-up (bodyweight, reps metric)");
+    // Spec 18.2 AC27: the Exercises tab (All exercises, search, Records) and the exercise page.
+    await go("/app/exercises");
+    await shoot(page, device, "70-exercises-all", "All exercises: logged first by last-logged date, then Yours / Built in; a copy of a built-in (Spec 18.2 AC8–AC11)");
+    await tryStep("All exercises search", async () => {
+      await page.getByRole("searchbox", { name: "Search exercises" }).fill("press");
+      await shoot(page, device, "71-exercises-search", "All exercises searched for 'press': the count line, order kept (Spec 18.2 AC12)");
+      await page.getByRole("searchbox", { name: "Search exercises" }).fill("zercher");
+      await shoot(page, device, "72-exercises-search-none", "All exercises with no match: create it, prefilled (Spec 18.2 AC16)");
+    });
+    await go("/app/exercises/records");
+    await shoot(page, device, "14-progress", "Exercises > Records: today's Progress list under the view switch (Spec 18.2 AC5, AC6)");
+    await go(`/app/exercises/${D.ids.bench}`);
+    await shoot(page, device, "15-progress-bench", "Exercise page: Bench Press (built-in), details then the chart (Spec 18.2 AC20, AC21, AC23)");
+    await go(`/app/exercises/${D.ids.pullUp}`);
+    await shoot(page, device, "16-progress-pullup", "Exercise page: Pull-up (bodyweight, reps metric)");
+    await go(`/app/exercises/${D.ids.pushPress}`);
+    await shoot(page, device, "73-exercise-never-logged", "Exercise page: an own exercise never logged (Spec 18.2 AC22)");
+    await go(`/app/exercises/${D.ids.rowingCopy}`);
+    await shoot(page, device, "74-exercise-copy", "Exercise page: your copy of a logged built-in, with its history (Spec 18.2 AC21)");
+    await tryStep("deleted exercise page and the usage-failed list", async () => {
+      // A fresh context whose catalog no longer serves Barbell Curl (its records still do), and whose usage read fails.
+      const dctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await dctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false, hideExercise: D.ids.curl, failUsage: true }));
+      const dp = await dctx.newPage();
+      dp.setDefaultTimeout(8000);
+      await dp.goto(BASE + `/app/exercises/${D.ids.curl}`);
+      await dp.getByText("This exercise was deleted.", { exact: false }).waitFor();
+      await shoot(dp, device, "75-exercise-deleted", "Exercise page: a deleted exercise keeps its history, no details (Spec 18.2 AC24)");
+      await dp.goto(BASE + "/app/exercises");
+      await dp.getByText("Couldn't load when you last logged these").waitFor();
+      await shoot(dp, device, "76-exercises-usage-failed", "All exercises when the usage read fails: A–Z, type-only lines, Try again (Spec 18.2 AC14)");
+      await dctx.close();
+    });
+    if (device === "mobile") {
+      await tryStep("600 exercises", async () => {
+        const mctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        await mctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false, catalog: D.manyExercises(600) }));
+        const mp = await mctx.newPage();
+        mp.setDefaultTimeout(8000);
+        await mp.goto(BASE + "/app/exercises");
+        await mp.getByRole("link", { name: /^Exercise 600/ }).waitFor();
+        await shoot(mp, device, "77-exercises-600", "All exercises with 600 rows, not virtualized (Spec 18.2 AC18, D8)");
+        await mctx.close();
+      });
+    }
     // Spec 18.1 AC35: the new types' records and charts.
     await tryStep("new exercise types (records and charts)", async () => {
-      await go("/app/progress");
+      await go("/app/exercises/records");
       await page.getByRole("link", { name: /Echo Bike/ }).first().scrollIntoViewIfNeeded();
       await shoot(page, device, "64-progress-new-types", "Progress list rows for the new types: Most calories, Longest distance, Longest hold headlines (Spec 18.1 AC28, AC30)");
       await go(`/app/history/${D.ids.conditioning}`);
@@ -776,7 +818,7 @@ try {
         [D.ids.sandbagHold, "68-progress-hold", "Progress chart: Weighted Sandbag Hold, Top set and Time chips (Spec 18.1 AC31)"],
       ];
       for (const [id, file, note] of charts) {
-        await go(`/app/progress/${id}`);
+        await go(`/app/exercises/${id}`);
         await shoot(page, device, file, note);
       }
       await page.getByRole("group", { name: "Metric" }).getByRole("button", { name: "Time" }).click();

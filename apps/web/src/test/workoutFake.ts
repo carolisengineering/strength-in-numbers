@@ -7,6 +7,7 @@ import {
   CreateWorkoutSectionSchema,
   ExerciseIdSchema,
   ExerciseSchema,
+  ExerciseUsageResponseSchema,
   PersonalRecordsResponseSchema,
   ProgressSeriesSchema,
   SetEntrySchema,
@@ -116,6 +117,11 @@ export interface WorkoutFakeOptions {
   newRecordsOnFinish?: PersonalRecord[];
   /** Series served by `GET /v1/progress/exercises/:id`, keyed by lineage root (Spec 08.1). */
   progress?: Record<string, ProgressPoint[]>;
+  /**
+   * Spec 18.2: `GET /v1/exercises/usage`. When omitted it is derived from `progress`: each root with points
+   * gets its latest `localDate`, sorted date desc then root id.
+   */
+  usage?: { rootId: string; lastLoggedOn: string }[];
   /** Routines served by /v1/routines (Spec 10.0). */
   routines?: Routine[];
   /** Spec 18.0 §10: after every successful write to a finished workout, its records become `recordsFor(updated)` (07.4: recomputed in the write's transaction). */
@@ -205,6 +211,17 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     ),
   };
   const catalog = state.catalog;
+  const usage =
+    options.usage ??
+    Object.entries(options.progress ?? {})
+      .filter(([, points]) => points.length > 0)
+      .map(([rootId, points]) => ({
+        rootId,
+        lastLoggedOn: points.reduce((max, p) => (p.localDate > max ? p.localDate : max), ""),
+      }))
+      .sort((a, b) =>
+        a.lastLoggedOn !== b.lastLoggedOn ? (a.lastLoggedOn > b.lastLoggedOn ? -1 : 1) : a.rootId < b.rootId ? -1 : 1,
+      );
   const clock = options.now ?? Date.now;
   /** Spec 09.3: a linked live workout reads the mark from its routine; otherwise the stored flag stands. */
   const detailOut = (detail: WorkoutDetail) => {
@@ -561,6 +578,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       );
       return HttpResponse.json(PersonalRecordsResponseSchema.parse({ records }));
     }),
+    // Spec 18.2: always served (every exercise page asks), and before any `/exercises/:id` handler.
+    handle("get", "/exercises/usage", () => HttpResponse.json(ExerciseUsageResponseSchema.parse({ exercises: usage }))),
     // Spec 07.2: one lineage's series; from/to inclusive on localDate; 422 malformed id, 404 unseen.
     // Spec 09 routines (Spec 10.0's screens).
     ...(options.serveExercises

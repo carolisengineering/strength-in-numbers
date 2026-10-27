@@ -1,17 +1,20 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
 import { InlineNotice } from "../../ui/InlineNotice";
-import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { useMe } from "../me/useMe";
+import { groupByExercise, headlineText } from "../progress/exercises";
 import { useAllRecords } from "../records/queries";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
-import { groupByExercise, headlineText } from "./exercises";
-import styles from "./ProgressScreen.module.css";
+import { exercisePath, FROM_RECORDS } from "./paths";
+import styles from "./RecordsView.module.css";
 
-/** Exercises the lifter holds records for, newest record first (Spec 08.1 §5.2, D6). */
-export function ProgressScreen() {
+/**
+ * Exercises the lifter holds records for, newest record first (Spec 08.1 §5.2, D6): the Exercises tab's
+ * Records view (Spec 18.2 AC6). The layout draws the `Screen`; each row opens the exercise page.
+ */
+export function RecordsView() {
   const query = useAllRecords();
   const { data: me } = useMe();
   const unitPreference = me?.unitPreference ?? "kg";
@@ -26,18 +29,16 @@ export function ProgressScreen() {
 
   if (query.data === undefined) {
     return (
-      <Screen title="Progress">
-        <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
-          Couldn't load your progress
-        </InlineNotice>
-      </Screen>
+      <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
+        Couldn't load your progress
+      </InlineNotice>
     );
   }
 
   const entries = groupByExercise(query.data);
 
   return (
-    <Screen title="Progress">
+    <>
       {query.isRefetchError ? (
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
           Couldn't refresh your progress
@@ -54,7 +55,7 @@ export function ProgressScreen() {
         <ul className={styles.list} aria-label="Exercises">
           {entries.map((entry) => (
             <li key={entry.exerciseId}>
-              <Link className={styles.row} to={`/app/progress/${encodeURIComponent(entry.exerciseId)}`}>
+              <Link className={styles.row} to={exercisePath(entry.exerciseId)} state={FROM_RECORDS}>
                 <span className={styles.name}>{entry.name}</span>
                 <span className={styles.meta}>{headlineText(entry, unitPreference)}</span>
               </Link>
@@ -62,6 +63,6 @@ export function ProgressScreen() {
           ))}
         </ul>
       )}
-    </Screen>
+    </>
   );
 }

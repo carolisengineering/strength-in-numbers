@@ -47,10 +47,15 @@ export function useAllRecords(): UseQueryResult<PersonalRecord[]> {
 }
 
 /** One lineage's records — the exercise screen (Spec 08.1 AC19). */
-export function useExerciseRecords(exerciseId: string): UseQueryResult<PersonalRecord[]> {
+export function useExerciseRecords(
+  exerciseId: string,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<PersonalRecord[]> {
   const client = useRecordsClient();
   return useQuery({
     queryKey: RECORDS_KEYS.forExercise(exerciseId),
+    // Spec 18.2 AC22: no records request for a never-logged exercise's page.
+    enabled: options.enabled ?? true,
     queryFn: () => client.listRecords({ exerciseId }),
     retry: false,
     networkMode: "always",

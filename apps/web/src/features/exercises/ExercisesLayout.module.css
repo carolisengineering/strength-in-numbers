@@ -1,0 +1,10 @@
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A view link is a secondary Button with ChoiceGroup's selected look (classes reused, so no new color use). */
+.view {
+  text-decoration: none;
+}

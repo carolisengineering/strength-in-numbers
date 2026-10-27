@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 
+import { EXERCISES_PATH } from "../features/exercises/paths";
 import {
   ChartIcon,
   ClockIcon,
@@ -25,7 +26,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/app/workouts", label: "Workouts", icon: DumbbellIcon },
   { to: "/app/history", label: "History", icon: ClockIcon },
-  { to: "/app/progress", label: "Progress", icon: ChartIcon },
+  { to: EXERCISES_PATH, label: "Exercises", icon: ChartIcon },
   { to: "/app/profile", label: "Profile", icon: PersonIcon },
 ];
 

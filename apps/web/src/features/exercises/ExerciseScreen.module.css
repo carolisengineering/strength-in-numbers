@@ -1,0 +1,4 @@
+/* The never-logged and deleted lines (Spec 18.2 AC22, AC24). */
+.line {
+  color: var(--color-muted);
+}

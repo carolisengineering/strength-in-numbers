@@ -33,7 +33,7 @@ describe("10.0 AC14 — routes and navigation", () => {
     renderApp(`/app/workouts/routines/${routineId(1)}`);
     await screen.findByRole("heading", { level: 1, name: "Push A" });
     expect(screen.getByRole("link", { name: "Workouts" })).toHaveAttribute("aria-current", "page");
-    for (const name of ["History", "Progress", "Profile"]) {
+    for (const name of ["History", "Exercises", "Profile"]) {
       expect(screen.getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });

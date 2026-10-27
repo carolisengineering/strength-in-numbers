@@ -28,11 +28,17 @@ export const ProgressClockContext = createContext<() => string>(() => todayLocal
  * `networkMode: "always"`: offline must fail as a `network` error (D11) — TanStack's default pauses
  * instead, which would leave the last range's chart under the new range's chip with no notice.
  */
-export function useSeries(exerciseId: string, range: Range): UseQueryResult<ProgressSeries> {
+export function useSeries(
+  exerciseId: string,
+  range: Range,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ProgressSeries> {
   const client = useProgressClient();
   const today = useContext(ProgressClockContext);
   return useQuery({
     queryKey: PROGRESS_KEYS.series(exerciseId, range),
+    // Spec 18.2 AC22: the exercise page holds the request back for a never-logged exercise.
+    enabled: options.enabled ?? true,
     queryFn: () => {
       const from = rangeStart(today(), range);
       return client.getSeries(exerciseId, from === undefined ? {} : { from });
