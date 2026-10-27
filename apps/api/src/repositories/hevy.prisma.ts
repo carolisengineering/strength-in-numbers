@@ -73,9 +73,12 @@ export async function readHevyMapping(db: Tx | PrismaClient, userId: string): Pr
   };
 }
 
-/** §6.7: serializes two mapping writers for one user without a new advisory key (D16). */
+/**
+ * §6.7: serializes two mapping writers for one user without a new advisory key (D16). `NO KEY UPDATE`, so rows that
+ * point at the user (a workout start, an exercise create: FK `KEY SHARE`) are not held up (deferred minor 143).
+ */
 async function lockUser(tx: Tx, userId: string): Promise<void> {
-  await tx.$queryRaw`SELECT 1 FROM "user" WHERE id = ${userId}::uuid FOR UPDATE`;
+  await tx.$queryRaw`SELECT 1 FROM "user" WHERE id = ${userId}::uuid FOR NO KEY UPDATE`;
 }
 
 /** The exercises a write names that the caller can see (the 03.2 predicate); retired ones are reported as such. */
@@ -110,9 +113,10 @@ async function insertPairs(tx: Tx, userId: string, pairs: readonly HevyPairInput
 
 /**
  * AC24: after a patch, every exercise with pairs has exactly one exportAs. Clear first, then set: the partial unique
- * index (one exportAs per user and exercise) is checked row by row.
+ * index (one exportAs per user and exercise) is checked row by row. A pair upserted with `exportAs: false` gives up
+ * the flag to the exercise's oldest other pair, keeping it only when it is the exercise's one pair (deferred minor 141).
  */
-async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string, string>): Promise<void> {
+async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string, string>, demoted: ReadonlySet<string>): Promise<void> {
   const rows = await tx.$queryRaw<{ hevy_template_id: string; role: string; exercise_id: string | null; export_as: boolean }[]>`
     SELECT hevy_template_id, role, exercise_id::text AS exercise_id, export_as FROM "hevy_exercise_pair"
     WHERE user_id = ${userId}::uuid ORDER BY created_at, hevy_template_id`;
@@ -120,9 +124,14 @@ async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string
     id: r.hevy_template_id,
     role: r.role as HevyPair["role"],
     exerciseId: r.exercise_id,
-    exportAs: r.exercise_id !== null && marked.has(r.exercise_id) ? marked.get(r.exercise_id) === r.hevy_template_id : r.export_as,
+    exportAs:
+      r.exercise_id !== null && marked.has(r.exercise_id)
+        ? marked.get(r.exercise_id) === r.hevy_template_id
+        : r.export_as && !demoted.has(r.hevy_template_id),
   }));
-  const winners = normalizeExportAs(proposed).filter((p) => p.exportAs).map((p) => p.id);
+  // Demoted pairs last, so an exercise left with none marked promotes its oldest other pair first.
+  const ordered = [...proposed.filter((p) => !demoted.has(p.id)), ...proposed.filter((p) => demoted.has(p.id))];
+  const winners = normalizeExportAs(ordered).filter((p) => p.exportAs).map((p) => p.id);
   if (winners.length === 0) {
     // No exercise pair left (only skips and markers): nothing may stay flagged.
     await tx.$executeRaw`UPDATE "hevy_exercise_pair" SET export_as = false, updated_at = now() WHERE user_id = ${userId}::uuid AND export_as`;
@@ -257,7 +266,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         await insertPairs(tx, userId, upserts, () => false);
         const marked = new Map<string, string>();
         for (const p of upserts) if (p.role === "exercise" && p.exportAs && p.exerciseId !== null) marked.set(p.exerciseId, p.hevyTemplateId);
-        await settleExportAs(tx, userId, marked);
+        const demoted = new Set(upserts.filter((p) => !p.exportAs).map((p) => p.hevyTemplateId));
+        await settleExportAs(tx, userId, marked, demoted);
         return readHevyMapping(tx, userId);
       });
     },
@@ -305,8 +315,10 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
     async completeLink(userId, workoutId, body) {
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
       await prisma.$transaction(async (tx) => {
+        // FOR SHARE, before the link row (deleteWorkout's order): a delete that lands first is a 404, not
+        // hevy-no-claim (deferred minor 140).
         const owned = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
+          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR SHARE`;
         if (!owned[0]) throw new NotFoundError(NOT_FOUND);
         const row = await linkRow(tx, userId, workoutId, true);
         if (!row) throw new HevyNoClaimError();

@@ -105,6 +105,40 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
     });
   });
 
+  describe("deferred minor 140 — a delete that lands while a complete waits", () => {
+    it("the complete answers 404, not hevy-no-claim", async () => {
+      const { workoutId } = await finished();
+      const b = await begin(workoutId);
+      const fp = (b.json() as { fingerprint: string }).fingerprint;
+      let release!: () => void;
+      const released = new Promise<void>((r) => (release = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      // The statements deleteWorkout runs, held open: the claim-only link row, then the workout.
+      const deleter = db.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(`SELECT 1 FROM workout WHERE id = $1::uuid FOR UPDATE`, workoutId);
+          await tx.$executeRawUnsafe(`DELETE FROM hevy_link WHERE workout_id = $1::uuid AND hevy_workout_id IS NULL`, workoutId);
+          await tx.$executeRawUnsafe(`DELETE FROM workout WHERE id = $1::uuid`, workoutId);
+          held();
+          await released;
+        },
+        { timeout: 30_000 },
+      );
+      await heldP;
+      const completeP = complete(workoutId, "H1", fp);
+      for (let i = 0; ; i++) {
+        const rows = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`);
+        if (rows[0]!.n >= 1) break;
+        if (i > 200) throw new Error("the complete never waited");
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      release();
+      await deleter;
+      expect((await completeP).statusCode).toBe(404);
+    }, 30_000);
+  });
+
   describe("19.0 AC27 — begin", () => {
     it("the first begin claims (create); a second is 409; an aged claim is taken over", async () => {
       const { workoutId } = await finished();

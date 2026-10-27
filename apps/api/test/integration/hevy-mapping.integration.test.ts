@@ -200,6 +200,62 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy mapping (re
       expect(await invariant()).toEqual([]);
     });
 
+    // Oldest first: P1 (holder), then P2.
+    async function twoPairs(): Promise<void> {
+      await patch({ upsert: [pair({ hevyTemplateId: "P1", hevyTitle: "a", exerciseId: mine })] });
+      await patch({ upsert: [pair({ hevyTemplateId: "P2", hevyTitle: "b", exerciseId: mine })] });
+      await db.prisma.$executeRawUnsafe(`UPDATE hevy_exercise_pair SET created_at = now() - (interval '1 minute' * CASE hevy_template_id WHEN 'P1' THEN 2 ELSE 1 END)`);
+      expect(await flags()).toEqual([["P1", true], ["P2", false]]);
+    }
+
+    it("an upsert of the exportAs pair with exportAs false hands the flag to the oldest other pair (deferred minor 141)", async () => {
+      await twoPairs();
+      await patch({ upsert: [pair({ hevyTemplateId: "P1", hevyTitle: "a", exerciseId: mine, exportAs: false })] });
+      expect(await flags()).toEqual([["P1", false], ["P2", true]]);
+      expect(await invariant()).toEqual([]);
+    });
+
+    it("the exportAs pair patched to a skip promotes the other pair (deferred minor 142)", async () => {
+      await twoPairs();
+      await patch({ upsert: [pair({ hevyTemplateId: "P1", hevyTitle: "a", role: "skip", exerciseId: null, exportAs: false })] });
+      expect(await flags()).toEqual([["P1", false], ["P2", true]]);
+      expect(await invariant()).toEqual([]);
+    });
+
+    it("the exportAs pair patched to another exercise promotes the other pair and flags itself there (deferred minor 142)", async () => {
+      await twoPairs();
+      await patch({ upsert: [pair({ hevyTemplateId: "P1", hevyTitle: "a", exerciseId: mine2, exportAs: true })] });
+      expect(await flags()).toEqual([["P1", true], ["P2", true]]);
+      const owners = await db.prisma.$queryRawUnsafe<{ id: string; ex: string }[]>(
+        `SELECT hevy_template_id AS id, exercise_id::text AS ex FROM hevy_exercise_pair WHERE export_as ORDER BY 1`,
+      );
+      expect(owners).toEqual([{ id: "P1", ex: mine2 }, { id: "P2", ex: mine }]);
+      expect(await invariant()).toEqual([]);
+    });
+
+    it("a patch does not wait on a key-share lock of the user row, as a workout start's FK takes (deferred minor 143)", async () => {
+      let release!: () => void;
+      const released = new Promise<void>((r) => (release = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      const holder = db.prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRawUnsafe(`SELECT 1 FROM "user" WHERE id = $1::uuid FOR KEY SHARE`, A_ID);
+          held();
+          await released;
+        },
+        { timeout: 30_000 },
+      );
+      await heldP;
+      const outcome = await Promise.race([
+        patch({ upsert: [pair({ hevyTemplateId: "P1", exerciseId: mine })] }).then((r) => r.statusCode),
+        new Promise<string>((r) => setTimeout(() => r("blocked"), 3000)),
+      ]);
+      release();
+      await holder;
+      expect(outcome).toBe(200);
+    }, 30_000);
+
     it("an unknown id in remove is ignored; {} is 422", async () => {
       expect((await patch({ remove: ["nope"] })).statusCode).toBe(200);
       expect((await patch({})).statusCode).toBe(422);
