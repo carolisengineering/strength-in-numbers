@@ -312,8 +312,10 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         if (!row) throw new HevyNoClaimError();
         // A replay of the same completion: nothing to write (Review Focus 5).
         if (row.claimed_at === null && row.hevy_workout_id === body.hevyWorkoutId && row.synced_fingerprint === body.fingerprint) return;
-        if (row.claimed_at === null) throw new HevyNoClaimError();
+        // AC28: another Hevy id on a linked workout is a conflict whether or not a claim is held (a stale tab
+        // completing after a newer send), so it is checked before the claim.
         if (row.hevy_workout_id !== null && row.hevy_workout_id !== body.hevyWorkoutId) throw new HevyLinkConflictError();
+        if (row.claimed_at === null) throw new HevyNoClaimError();
         const holder = await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text FROM "hevy_link"
           WHERE user_id = ${userId}::uuid AND hevy_workout_id = ${body.hevyWorkoutId} AND id <> ${row.id}::uuid`;

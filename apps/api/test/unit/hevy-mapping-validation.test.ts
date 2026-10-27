@@ -54,10 +54,10 @@ describe("19.0 AC23 — mapping validation", () => {
     expect(replace([pair(), pair({ exportAs: false })]).map((e) => e.path)).toEqual(["pairs.1.hevyTemplateId"]);
   });
 
-  it("two exportAs for one exercise in replace mode: pairs.1.exportAs; patch mode allows it", () => {
+  it("two exportAs for one exercise are refused in a replace and in a patch's upserts (AC24 applies AC23; final review ruling)", () => {
     const twice = [pair(), pair({ hevyTemplateId: "T2" })];
     expect(replace(twice).map((e) => e.path)).toEqual(["pairs.1.exportAs"]);
-    expect(validateMappingInput(twice, [], visible, { mode: "patch" })).toEqual([]);
+    expect(validateMappingInput(twice, [], visible, { mode: "patch", prefix: "upsert" }).map((e) => e.path)).toEqual(["upsert.1.exportAs"]);
   });
 
   it("exportAs or a rule on a marker", () => {

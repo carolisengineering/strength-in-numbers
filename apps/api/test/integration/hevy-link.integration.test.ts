@@ -176,6 +176,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
       expect((await complete(w2, "H1", fp2)).json()).toMatchObject({ type: expect.stringContaining("hevy-id-in-use") });
     });
 
+    it("final review I1: a stale tab completing a different id on a linked workout with no claim is hevy-link-conflict, not hevy-no-claim", async () => {
+      const { workoutId } = await finished();
+      const stale = ((await begin(workoutId)).json() as { fingerprint: string }).fingerprint;
+      await age(workoutId);
+      await send(workoutId, "H2"); // the newer tab took the claim over and finished
+      const res = await complete(workoutId, "H1", stale);
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ type: expect.stringContaining("hevy-link-conflict") });
+      expect((await state(workoutId)).hevyWorkoutId).toBe("H2");
+    });
+
     it("a fingerprint that is not well formed is 422", async () => {
       const { workoutId } = await finished();
       await begin(workoutId);

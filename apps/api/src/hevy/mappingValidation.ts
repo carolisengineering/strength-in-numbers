@@ -21,8 +21,8 @@ const DUPLICATE_RULE = "must be unique (ignoring case and spacing)";
 
 /**
  * Spec 19.0 AC23: the checks a mapping write makes beyond its schema, as field errors with a path such as
- * `pairs.3.exerciseId` (one per pair, the first that fails). `replace` refuses two `exportAs` pairs for one exercise;
- * a `patch` upsert may mark one, and the write then clears its siblings (AC24). Pure: the caller looks up `visible`.
+ * `pairs.3.exerciseId` (one per pair, the first that fails). Two `exportAs` pairs for one exercise are refused in a
+ * replace and in a patch's upserts (AC24 applies AC23); a patch's one marked upsert clears its siblings. Pure: the caller looks up `visible`.
  */
 export function validateMappingInput(
   pairs: readonly HevyPairInput[],
@@ -47,7 +47,7 @@ export function validateMappingInput(
       if (!ex || !ex.isActive) return fail(i, "exerciseId", EXERCISE_NOT_AVAILABLE);
       if (hevyPairingProblem(p.hevyType!, ex.modality, p.measureRule) !== null) return fail(i, "measureRule", PAIRING_PROBLEM);
       if (p.exportAs) {
-        if (opts.mode === "replace" && exported.has(p.exerciseId!)) return fail(i, "exportAs", DUPLICATE_EXPORT);
+        if (exported.has(p.exerciseId!)) return fail(i, "exportAs", DUPLICATE_EXPORT);
         exported.add(p.exerciseId!);
       }
       return;
