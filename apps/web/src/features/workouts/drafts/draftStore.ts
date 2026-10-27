@@ -130,7 +130,7 @@ export function createDraftStore(deps: DraftStoreDeps): DraftStore {
     get: (id) => byExercise.get(id),
     set: (id, fields) => {
       if (disposed) return;
-      // Copy the nine fields by name: a caller passing a wider object must not leak `attemptKey` to disk.
+      // Copy the ten fields by name: a caller passing a wider object must not leak `attemptKey` to disk.
       byExercise.set(id, {
         weight: fields.weight,
         reps: fields.reps,

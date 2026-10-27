@@ -15,7 +15,10 @@ const COUNT = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 /** Up to 3 decimals: the stored millimeter, never float noise from a subtraction ("+0.002 m"). */
 const DISTANCE = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 
-/** Spec 18.1 O3: seconds in words, zero parts omitted — "45 s", "1 min 30 s", "2 min", "1 h 2 min 5 s"; 0 is "0 s". */
+/**
+ * Spec 18.1 O3: seconds in words, zero parts omitted — "45 s", "1 min 30 s", "2 min", "1 h 2 min 5 s"; 0 is "0 s".
+ * A fractional input is rounded and a negative one reads "0 s"; neither occurs today (stored seconds are whole, gains positive).
+ */
 export function formatSeconds(totalSeconds: number): string {
   const total = Math.max(0, Math.round(totalSeconds));
   const h = Math.floor(total / 3600);

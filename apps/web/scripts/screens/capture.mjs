@@ -731,7 +731,7 @@ try {
     await shoot(page, device, "11-workout-finished", "Finished workout (Push Day, 4 days ago) under the Workouts tab");
 
     await go("/app/history");
-    await shoot(page, device, "12-history", "History list (12 finished workouts: badges with counts, and rows with none)");
+    await shoot(page, device, "12-history", `History list (${D.finished.length} finished workouts: badges with counts, and rows with none)`);
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
     // #107: Back and the Workout menu lead the summary; open, the menu reveals Delete workout.
