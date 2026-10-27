@@ -110,8 +110,23 @@ exercises.push({
   updatedAt: iso(NOW - 10 * DAY),
 });
 
+/**
+ * Spec 18.2 Phase B: the lifter's own copy of Bench Press, served only by the manage-exercise captures (so every
+ * other capture keeps the built-in), with routines that now use the copy.
+ */
+export const benchCopy = {
+  ...exByKey.bench_press,
+  id: uuid("e0000000", EX.length + 3),
+  catalogKey: null,
+  ownerUserId: me.id,
+  name: "Bench Press (mine)",
+  forkedFromExerciseId: exByKey.bench_press.id,
+  createdAt: iso(NOW - 5 * DAY),
+  updatedAt: iso(NOW - 5 * DAY),
+};
+
 /** An exercise's lineage root: a fork's built-in, else itself (Spec 03.4 `lineageRootId`). */
-export const rootOf = (id) => exercises.find((e) => e.id === id)?.forkedFromExerciseId ?? id;
+export const rootOf = (id) => [...exercises, benchCopy].find((e) => e.id === id)?.forkedFromExerciseId ?? id;
 
 /** Spec 18.2 AC27: a schema-valid catalog of `n` own exercises, for the 600-row capture. */
 export function manyExercises(n) {
@@ -652,6 +667,22 @@ export const ids = {
 
 export const allWorkouts = [...finished, active];
 
+/** The routines (the one-off class among them) as they read once the lifter swapped Bench Press for the copy. */
+export const routinesWithBenchCopy = [CLASS, ...routines].map((r) => ({
+  ...r,
+  items: r.items.map((i) => (i.exerciseId === benchCopy.forkedFromExerciseId ? { ...i, exerciseId: benchCopy.id } : i)),
+}));
+
+/** `GET /v1/exercises/{id}/routines` (Spec 03.4 §5.3): exact id, ordered by lower(name), then id. */
+export function routinesUsing(id, list = [CLASS, ...routines]) {
+  return {
+    routines: list
+      .filter((r) => r.items.some((i) => i.exerciseId === id))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id))
+      .map((r) => ({ id: r.id, name: r.name, oneOffUntil: r.oneOffUntil })),
+  };
+}
+
 /** `GET /v1/exercises/usage` (Spec 03.4 §5.2): the latest local date per lineage root, live workouts included. */
 export function usage() {
   const last = new Map();
@@ -683,6 +714,10 @@ export function payloadChecks() {
     ["records", "PersonalRecordsResponseSchema", { records }],
     ["exercise usage", "ExerciseUsageResponseSchema", usage()],
     ["600 exercises", "ExercisesResponse", { exercises: manyExercises(600), syncToken: "1.100" }],
+    ["exercises with the bench copy", "ExercisesResponse", { exercises: [...exercises, benchCopy], syncToken: "1.100" }],
+    ["routines using the bench copy", "ExerciseRoutinesResponseSchema", routinesUsing(benchCopy.id, routinesWithBenchCopy)],
+    ["routines using none", "ExerciseRoutinesResponseSchema", routinesUsing(ids.pushPress)],
+    ["routines with the bench copy", "RoutineListResponseSchema", { routines: routinesWithBenchCopy }],
     ...allWorkouts.map((w) => [`workout ${w.id}`, "WorkoutDetailSchema", w]),
     ["active, all planned logged", "WorkoutDetailSchema", activeDone],
     ["active, from a one-off", "WorkoutDetailSchema", activeOneOff],

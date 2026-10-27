@@ -38,4 +38,49 @@ export const EXERCISES_COPY = {
   deleted: "This exercise was deleted. Past workouts keep its sets, and the history below stays.",
   removedExercise: "Removed exercise",
   loadingExercise: "Loading exercise…",
+  // Phase B: edit, copy and delete failures (AC42, AC45).
+  alreadyDeleted: "This exercise was already deleted.",
+  forkGone: "This exercise is no longer available.",
+  builtInCantEdit: "This is a built-in exercise, so it can't be edited. Make your own copy instead.",
+  offline: "You're offline. Editing an exercise needs a connection.",
+  tooFast: "You're doing that too fast. Try again in a moment.",
+  couldntSave: "Couldn't save. Try again.",
+  // Phase B: the page's actions and the Edit sheet (AC34, AC35, AC40, AC41).
+  edit: "Edit",
+  deleteExercise: "Delete exercise",
+  makeCopy: "Make your own copy",
+  builtInNote:
+    "Built-in exercises can't be edited. Make your own copy to change the name, type, muscles or equipment. Your history and records come with it.",
+  editTitle: "Edit exercise",
+  typeLabel: "Type",
+  cancel: "Cancel",
+  save: "Save",
+  saved: "Saved.",
+  copyReady: "Your copy is ready. Edit it to change the name, type, muscles or equipment.",
+  renameNote: "Renaming doesn't change past workouts. History keeps the name each workout was logged with.",
+  typeLocked:
+    "This exercise already has logged sets, so its type can only change to one that logs the same measures. Create a new exercise instead.",
+  // Phase B: the Delete dialog (AC46–AC50).
+  deleteTitle: (name: string) => `Delete ${name}?`,
+  deleteConfirm: "Delete",
+  checkingRoutines: "Checking your routines…",
+  routinesCheckFailed: "Couldn't check which routines use this exercise.",
+  deleteKeepsHistory: "Past workouts keep their sets and still show this exercise. You won't be able to add it to new workouts.",
+  usedIn: (n: number) => `Used in ${n} ${n === 1 ? "routine" : "routines"}:`,
+  oneOffRoutine: (name: string) => `${name} (one-off)`,
+  andMore: (n: number) => `and ${n} more`,
+  routinesBreak: (n: number) =>
+    `${n === 1 ? "This routine shows" : "These routines show"} “Removed exercise” in its place and won't start or save until you take the exercise out in the routine editor. Deleting doesn't change your routines.`,
+  copyComesBack: (originName: string | null) =>
+    `${originName === null ? "The built-in exercise" : `The built-in ${originName}`} will be back in your list. Your history and records stay with it.`,
+  deletedNotice: (name: string) => `Deleted ${name}.`,
+  // Phase B: the Edit sheet's type notes (AC37–AC39).
+  typeLimitedTo: (partners: string) =>
+    `This exercise has logged sets, so its type can only change to ${partners}. To use another type, create a new exercise.`,
+  typeFixed: "This exercise has logged sets, so its type can't change. To use another type, create a new exercise.",
+  typeChecking: "Checking whether this exercise has logged sets…",
+  typeCheckFailed:
+    "Couldn't check whether this exercise has logged sets, so its type can't be changed right now. Everything else can.",
+  weightMeaning:
+    "Weight × reps counts the full weight and Weighted bodyweight counts only the added weight. Your history keeps its numbers, so this exercise's charts and records will compare the two.",
 } as const;

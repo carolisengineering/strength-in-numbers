@@ -59,6 +59,10 @@ export interface ExerciseFieldsProps {
   onDetailsOpenChange: (open: boolean) => void;
   /** Rendered directly under the Name field. */
   nameNotice?: ReactNode;
+  /** Spec 18.2 AC37: types that can't be chosen stay listed, disabled and muted. */
+  disabledModalities?: ReadonlySet<Modality>;
+  /** Spec 18.2 AC37–AC39: notes under the type choices, inside the group. */
+  modalityNotice?: ReactNode;
 }
 
 /**
@@ -77,6 +81,8 @@ export function ExerciseFields({
   detailsOpen,
   onDetailsOpenChange,
   nameNotice,
+  disabledModalities,
+  modalityNotice,
 }: ExerciseFieldsProps) {
   const set = (patch: Partial<ExerciseFieldValues>) => onChange({ ...values, ...patch });
   // Spec 18.1 AC3: the hint describes the group once a type is picked; an error is announced first.
@@ -117,24 +123,29 @@ export function ExerciseFields({
       <fieldset className={styles.group} aria-describedby={modalityDescribedBy}>
         <legend className={styles.legend}>{modalityLabel}</legend>
         <div className={styles.choices}>
-          {MODALITY_VALUES.map((value) => (
-            <label key={value} className={styles.choice}>
-              <input
-                type="radio"
-                name={`${idPrefix}-modality`}
-                value={value}
-                checked={values.modality === value}
-                onChange={() => set({ modality: value })}
-              />
-              {MODALITY_LABELS[value]}
-            </label>
-          ))}
+          {MODALITY_VALUES.map((value) => {
+            const disabled = disabledModalities?.has(value) ?? false;
+            return (
+              <label key={value} className={disabled ? `${styles.choice} ${styles.choiceDisabled}` : styles.choice}>
+                <input
+                  type="radio"
+                  name={`${idPrefix}-modality`}
+                  value={value}
+                  checked={values.modality === value}
+                  disabled={disabled}
+                  onChange={() => set({ modality: value })}
+                />
+                {MODALITY_LABELS[value]}
+              </label>
+            );
+          })}
         </div>
         {values.modality !== null ? (
           <p id={hintId} className={styles.hint}>
             {MODALITY_HINTS[values.modality]}
           </p>
         ) : null}
+        {modalityNotice}
         {errors.modality ? (
           <p id={errorId} className={styles.fieldError} role="alert">
             {errors.modality}

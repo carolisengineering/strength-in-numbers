@@ -32,6 +32,9 @@ export function useCatalog() {
     recents,
     refresh: store.refresh,
     createCustom: store.createCustom,
+    updateCustom: store.updateCustom,
+    forkExercise: store.forkExercise,
+    deleteCustom: store.deleteCustom,
     recordPick: store.recordPick,
   };
 }

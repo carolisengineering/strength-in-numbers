@@ -64,7 +64,7 @@ function setup(storage: StorageAdapter) {
   const request = vi.fn<(path: string, options?: { cache?: RequestCache }) => Promise<unknown>>();
   const post = vi.fn<(path: string, body?: unknown, schema?: unknown) => Promise<unknown>>();
   const store = createCatalogStore({
-    api: { request, post } as unknown as Pick<ApiClient, "request" | "post">,
+    api: { request, post } as unknown as Pick<ApiClient, "request" | "post" | "patch" | "delete">,
     storage,
     userId: USER,
     now: () => 1_000_000,

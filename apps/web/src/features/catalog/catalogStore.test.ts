@@ -51,7 +51,7 @@ function setup(options: { storage?: StorageAdapter; userId?: string } = {}) {
   const storage = options.storage ?? memoryStorageAdapter();
   let clock = 1_000_000;
   const store = createCatalogStore({
-    api: { request, post } as unknown as Pick<ApiClient, "request" | "post">,
+    api: { request, post } as unknown as Pick<ApiClient, "request" | "post" | "patch" | "delete">,
     storage,
     userId: options.userId ?? USER,
     now: () => clock,

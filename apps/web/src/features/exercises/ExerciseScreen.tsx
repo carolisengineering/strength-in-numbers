@@ -1,5 +1,6 @@
-import { lineageRootId } from "@sin/core";
-import { Navigate, useLocation, useParams } from "react-router";
+import { lineageRootId, type Exercise } from "@sin/core";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 
 import { NotFound } from "../../screens/NotFound";
 import { BackLink } from "../../ui/BackLink";
@@ -12,11 +13,16 @@ import { groupByExercise } from "../progress/exercises";
 import { useSeries } from "../progress/queries";
 import { useExerciseRecords } from "../records/queries";
 import { classifyWorkoutError } from "../workouts/errors";
+import { DeleteExerciseDialog } from "./DeleteExerciseDialog";
+import { ExerciseActions } from "./ExerciseActions";
 import { ExerciseDetails } from "./ExerciseDetails";
 import styles from "./ExerciseScreen.module.css";
 import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, exercisePath, RECORDS_PATH } from "./paths";
+import { EXERCISES_PATH, exercisePath, FROM_RECORDS, RECORDS_PATH } from "./paths";
 import { useExerciseUsage } from "./usage";
+import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
+import type { Resolution } from "./resolveExercise";
+import { useDeleteExercise } from "./useExerciseMutations";
 import { useExercisePage } from "./useExercisePage";
 
 /** Keys the page by id, so moving between exercises starts from the default range and metric (AC20). */
@@ -31,7 +37,11 @@ export function ExerciseRoute() {
  * whatever the catalog says.
  */
 export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
-  const resolution = useExercisePage(exerciseId);
+  const resolved = useExercisePage(exerciseId);
+  // AC50: a confirmed delete drops the row from the store before the navigation away; until then the page keeps
+  // drawing the exercise it is deleting, so the deleted variant never flashes.
+  const [deletingRow, setDeletingRow] = useState<Exercise | null>(null);
+  const resolution: Resolution = deletingRow && resolved.kind === "deleted" ? { kind: "found", row: deletingRow } : resolved;
   const usage = useExerciseUsage();
   const { refresh } = useCatalog();
   const location = useLocation();
@@ -40,6 +50,43 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !neverLogged);
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
+  // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
+  const [status, setStatus] = useState("");
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const del = useDeleteExercise();
+
+  // Owned here, not by the dialog: the handler must outlive the `found` branch it was started from.
+  const confirmDelete = async (row: Exercise, routineCount: number) => {
+    setDeletingRow(row);
+    try {
+      await del.mutateAsync({ id: row.id, routineCount });
+      void navigate(EXERCISES_PATH, { replace: true, state: { notice: "deleted", name: row.name } });
+    } catch (error) {
+      setDeletingRow(null);
+      setDeleteOpen(false);
+      setDeleteError(exerciseErrorMessage(classifyExerciseError(error), "delete"));
+    }
+  };
+
+  // AC43: the copy lands here with `{ notice: "copied" }`. Read it from the location (not a state initializer:
+  // the page may already be mounted by the built-in's own redirect), then clear it so a reload doesn't repeat it.
+  const routerState = location.state as { from?: unknown; notice?: unknown } | null;
+  useEffect(() => {
+    if (routerState?.notice !== "copied") return;
+    setStatus(EXERCISES_COPY.copyReady);
+    void navigate(location.pathname, { replace: true, state: routerState.from === "records" ? FROM_RECORDS : null });
+    titleRef.current?.focus();
+  }, [routerState, location.pathname, navigate]);
+  const statusLine = (
+    // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
+    <p className={styles.status} role="status" data-testid="exercise-status">
+      {status}
+    </p>
+  );
 
   const gone = series.data === undefined && series.error ? classifyWorkoutError(series.error).kind : null;
   if (gone === "not-found" || gone === "validation") return <NotFound />;
@@ -67,15 +114,42 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
     return (
       <Screen title={title} lead={back}>
         <p className={styles.line}>{EXERCISES_COPY.deleted}</p>
+        {statusLine}
         <ExerciseProgressBody exerciseId={exerciseId} />
       </Screen>
     );
   }
 
   return (
-    <Screen title={resolution.row.name} lead={back}>
+    <Screen title={resolution.row.name} lead={back} titleRef={titleRef}>
       <ExerciseDetails row={resolution.row} />
+      <ExerciseActions
+        row={resolution.row}
+        onStatus={setStatus}
+        deleteRef={deleteRef}
+        onDelete={() => {
+          setDeleteError(null);
+          setDeleteOpen(true);
+        }}
+      />
+      {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
+      {statusLine}
       {neverLogged ? <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p> : <ExerciseProgressBody exerciseId={exerciseId} />}
+      {/* Mounted only while open: its routines read then unsubscribes on close, so `gcTime: 0` drops the answer and a
+          reopening can never show (or enable Delete on) the last one (AC46, D12). */}
+      {resolution.row.ownerUserId !== null && deleteOpen ? (
+        <DeleteExerciseDialog
+          open={deleteOpen}
+          row={resolution.row}
+          busy={deletingRow !== null}
+          onCancel={() => {
+            setDeleteOpen(false);
+            // The native dialog restores focus to the opener; this does the same where it doesn't (AC54).
+            deleteRef.current?.focus();
+          }}
+          onConfirm={(routineCount) => void confirmDelete(resolution.row, routineCount)}
+        />
+      ) : null}
     </Screen>
   );
 }

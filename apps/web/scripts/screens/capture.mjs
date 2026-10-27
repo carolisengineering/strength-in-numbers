@@ -33,6 +33,8 @@ function problem(status, slug, title) {
   return { status, contentType: "application/problem+json", body: JSON.stringify({ type: `https://api.strengthinnumbers.app/problems/${slug}`, title, status, detail: title }) };
 }
 const json = (body, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+/** A lineage root, including a copy made during the run (it lives only in the context's catalog). */
+const rootIn = (state, id) => (state.catalog ?? []).find((e) => e.id === id)?.forkedFromExerciseId ?? D.rootOf(id);
 
 function makeHandler(state) {
   return async (route) => {
@@ -51,10 +53,30 @@ function makeHandler(state) {
     // Spec 18.2 AC27: `catalog` swaps the whole list (the 600-row capture); `hideExercise` serves it as deleted.
     else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: state.catalog ?? D.exercises.filter((e) => e.id !== state.hideExercise), syncToken: "1.100" });
     else if (m === "GET" && p === "/v1/exercises/usage") res = state.failUsage ? problem(500, "internal", "Internal error") : json(D.usage());
+    // Spec 18.2 AC55: the routines read and the three writes, on the context's catalog.
+    else if (m === "GET" && (seg = /^\/v1\/exercises\/([^/]+)\/routines$/.exec(p))) {
+      res = state.failRoutines ? problem(500, "internal", "Internal error") : json(D.routinesUsing(decodeURIComponent(seg[1]), state.routines));
+    } else if (m === "POST" && (seg = /^\/v1\/exercises\/([^/]+)\/fork$/.exec(p))) {
+      const catalog = state.catalog ?? D.exercises;
+      const origin = catalog.find((e) => e.id === decodeURIComponent(seg[1]));
+      const at = new Date().toISOString();
+      const copy = { ...origin, id: crypto.randomUUID(), catalogKey: null, ownerUserId: D.me.id, forkedFromExerciseId: origin.id, createdAt: at, updatedAt: at };
+      state.catalog = [...catalog, copy];
+      res = json(copy, 201);
+    } else if (m === "PATCH" && (seg = /^\/v1\/exercises\/([^/]+)$/.exec(p))) {
+      const catalog = state.catalog ?? D.exercises;
+      const row = catalog.find((e) => e.id === decodeURIComponent(seg[1]));
+      res = state.typeLocked
+        ? problem(409, "exercise-type-locked", "Exercise type locked")
+        : json({ ...row, ...JSON.parse(req.postData() ?? "{}"), updatedAt: new Date().toISOString() });
+    } else if (m === "DELETE" && (seg = /^\/v1\/exercises\/([^/]+)$/.exec(p))) {
+      state.catalog = (state.catalog ?? D.exercises).filter((e) => e.id !== decodeURIComponent(seg[1]));
+      res = { status: 204, body: "" };
+    }
     else if (m === "GET" && p === "/v1/muscle-groups") res = json({ muscleGroups: D.muscleGroups });
     else if (m === "GET" && p === "/v1/equipment") res = json({ equipment: D.equipment });
     // Spec 10.5 AC26: the one-off is listed only while `showClass` is on, until the one-off finish removes it.
-    else if (m === "GET" && p === "/v1/routines") res = json({ routines: state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines });
+    else if (m === "GET" && p === "/v1/routines") res = json({ routines: state.routines ?? (state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines) });
     else if (m === "GET" && (seg = /^\/v1\/routines\/([^/]+)$/.exec(p))) {
       const listed = state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines;
       const r = listed.find((x) => x.id === decodeURIComponent(seg[1]));
@@ -88,9 +110,9 @@ function makeHandler(state) {
       const ex = url.searchParams.get("exerciseId");
       const wo = url.searchParams.get("workoutId");
       // Records and series resolve a fork's id to its lineage root, as the API does (07.0, 07.2 AC4).
-      res = json({ records: D.records.filter((r) => (!ex || r.exerciseId === D.rootOf(ex)) && (!wo || r.workoutId === wo)) });
+      res = json({ records: D.records.filter((r) => (!ex || r.exerciseId === rootIn(state, ex)) && (!wo || r.workoutId === wo)) });
     } else if (m === "GET" && (seg = /^\/v1\/progress\/exercises\/([^/]+)$/.exec(p))) {
-      const series = D.progressFor(D.rootOf(decodeURIComponent(seg[1])));
+      const series = D.progressFor(rootIn(state, decodeURIComponent(seg[1])));
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
       series.points = series.points.filter((pt) => (!from || pt.localDate >= from) && (!to || pt.localDate <= to));
@@ -804,6 +826,78 @@ try {
         await mctx.close();
       });
     }
+    // Spec 18.2 AC55: Edit, Make your own copy and Delete, in a context whose catalog holds the lifter's copy of
+    // Bench Press and whose routines (the one-off class among them) use it.
+    await tryStep("manage exercises (edit, copy, delete)", async () => {
+      const ms = { active: false, catalog: [...D.exercises, D.benchCopy], routines: D.routinesWithBenchCopy };
+      const xctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await xctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler(ms));
+      const xp = await xctx.newPage();
+      xp.setDefaultTimeout(8000);
+      const open = async (id) => {
+        await xp.goto(BASE + `/app/exercises/${id}`);
+        await settle(xp);
+      };
+      const editSheet = () => xp.getByRole("dialog", { name: "Edit exercise" });
+      const deleteDialog = (name) => xp.getByRole("dialog", { name: `Delete ${name}?` });
+
+      await open(D.ids.pushPress);
+      await shoot(xp, device, "80-exercise-own", "Exercise page: an own exercise with Edit and Delete exercise (Spec 18.2 AC34)");
+      await open(D.ids.bench);
+      await shoot(xp, device, "81-exercise-builtin", "Exercise page: a built-in with the copy note and Make your own copy (Spec 18.2 AC34)");
+
+      await open(D.ids.pushPress);
+      await xp.getByRole("button", { name: "Edit" }).click();
+      await editSheet().waitFor();
+      await shoot(xp, device, "82-edit-unlogged", "Edit sheet, never logged: all eight types enabled, the rename note (Spec 18.2 AC35, AC37, AC40)");
+      await xp.keyboard.press("Escape");
+
+      await open(D.benchCopy.id);
+      await xp.getByRole("button", { name: "Edit" }).click();
+      await editSheet().getByText("can only change to").waitFor();
+      await shoot(xp, device, "83-edit-locked", "Edit sheet with logged sets: the other types disabled and muted, the note (Spec 18.2 AC37)");
+      await editSheet().getByRole("radio", { name: "Weighted bodyweight" }).check();
+      await editSheet().getByText("counts only the added weight", { exact: false }).scrollIntoViewIfNeeded();
+      await shoot(xp, device, "84-edit-weight-note", "Edit sheet: Weighted bodyweight selected, the weight-meaning note (Spec 18.2 AC39)");
+      await xp.keyboard.press("Escape");
+
+      ms.typeLocked = true;
+      await open(D.ids.pushPress);
+      await xp.getByRole("button", { name: "Edit" }).click();
+      await editSheet().getByRole("radio", { name: "Calories" }).check();
+      await editSheet().getByRole("button", { name: "Save" }).click();
+      await editSheet().getByText("already has logged sets", { exact: false }).waitFor();
+      await shoot(xp, device, "85-edit-type-locked", "Edit sheet after 409 exercise-type-locked: the type reset, the error (Spec 18.2 AC41)");
+      await xp.keyboard.press("Escape");
+      ms.typeLocked = false;
+
+      await open(D.benchCopy.id);
+      await xp.getByRole("button", { name: "Delete exercise" }).click();
+      await deleteDialog(D.benchCopy.name).getByText("Used in", { exact: false }).waitFor();
+      await shoot(xp, device, "86-delete-routines", "Delete dialog naming two routines, one of them one-off, and the built-in coming back (Spec 18.2 AC47, AC49)");
+      await xp.keyboard.press("Escape");
+
+      await open(D.ids.pushPress);
+      await xp.getByRole("button", { name: "Delete exercise" }).click();
+      await deleteDialog("Push Press").getByText("Past workouts keep their sets", { exact: false }).waitFor();
+      await shoot(xp, device, "87-delete-none", "Delete dialog with no routines (Spec 18.2 AC47)");
+      await xp.keyboard.press("Escape");
+
+      ms.failRoutines = true;
+      await open(D.ids.pushPress);
+      await xp.getByRole("button", { name: "Delete exercise" }).click();
+      await deleteDialog("Push Press").getByText("Couldn't check which routines", { exact: false }).waitFor();
+      await shoot(xp, device, "88-delete-check-failed", "Delete dialog when the routines check fails: Try again, Delete disabled (Spec 18.2 AC48)");
+      await xp.keyboard.press("Escape");
+      ms.failRoutines = false;
+
+      const deadlift = D.exercises.find((e) => e.name === "Deadlift");
+      await open(deadlift.id);
+      await xp.getByRole("button", { name: "Make your own copy" }).click();
+      await xp.getByText("Your copy is ready.", { exact: false }).waitFor();
+      await shoot(xp, device, "89-exercise-copied", "The copy's page after Make your own copy: the status line (Spec 18.2 AC43)");
+      await xctx.close();
+    });
     // Spec 18.1 AC35: the new types' records and charts.
     await tryStep("new exercise types (records and charts)", async () => {
       await go("/app/exercises/records");

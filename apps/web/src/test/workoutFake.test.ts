@@ -7,7 +7,7 @@ import { API_BASE_URL, stubWebEnv } from "./catalogHarness";
 import { exerciseId, makeExercise } from "./catalogFixtures";
 import { server } from "./msw/server";
 import { RETIME_MESSAGES, RoutineSchema, type WorkoutDetail } from "@sin/core";
-import { makePersonalRecord, makeProgressPoint, makeRoutine, makeSet, makeWorkoutDetail, routineId } from "./workoutFixtures";
+import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, makeSet, makeWorkoutDetail, routineId } from "./workoutFixtures";
 import { catalogHandlers, createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "./workoutFake";
 
 const bench = makeExercise({ id: exerciseId(1), name: "Bench Press", modality: "weight_reps" });
@@ -682,6 +682,49 @@ describe("18.0 §10 — the fake applies Change Time through resolveRetime", () 
     await call("PATCH", `/workouts/${id}`, { endedAt: "2026-10-16T18:00:00.000Z" });
     const list = await call("GET", "/workouts");
     expect((list.json!["items"] as { localDate: string }[]).map((w) => w.localDate)).toEqual(["2026-10-17", "2026-10-16", "2026-10-15"]);
+  });
+});
+
+describe("18.2 AC32 — the fake answers the exercise writes", () => {
+  const mine = makeExercise({ id: exerciseId(11), name: "Echo Bike", ownerUserId: "00000000-0000-4000-8000-0000000000aa", modality: "weight_reps" });
+  const gone = makeExercise({ id: exerciseId(12), name: "Gone", ownerUserId: "00000000-0000-4000-8000-0000000000aa", isActive: false });
+
+  it("PATCH merges, and refuses unknown, retired, built-in and type-locked changes", async () => {
+    const fake = createWorkoutFake({ serveExercises: true, catalog: [bench, mine, gone], usage: [{ rootId: mine.id, lastLoggedOn: "2026-10-01" }] });
+    server.use(...fake.handlers);
+    const ok = await call("PATCH", `/exercises/${mine.id}`, { name: "Assault Bike" });
+    expect(ok.status).toBe(200);
+    expect(ok.json!["name"]).toBe("Assault Bike");
+    expect(fake.state.catalog.find((e) => e.id === mine.id)?.name).toBe("Assault Bike");
+    expect((await call("PATCH", `/exercises/${exerciseId(99)}`, { name: "x" })).status).toBe(404);
+    expect(slugOf((await call("PATCH", `/exercises/${gone.id}`, { name: "x" })).json)).toBe("exercise-retired");
+    expect(slugOf((await call("PATCH", `/exercises/${bench.id}`, { name: "x" })).json)).toBe("exercise-immutable-use-fork");
+    expect(slugOf((await call("PATCH", `/exercises/${mine.id}`, { modality: "duration" })).json)).toBe("exercise-type-locked");
+    expect((await call("PATCH", `/exercises/${mine.id}`, { modality: "weighted_bodyweight" })).status).toBe(200);
+  });
+
+  it("fork copies the origin as an own row, up to the custom limit", async () => {
+    const fake = createWorkoutFake({ serveExercises: true, catalog: [bench], customLimit: 1 });
+    server.use(...fake.handlers);
+    const res = await call("POST", `/exercises/${bench.id}/fork`);
+    expect(res.status).toBe(201);
+    expect(res.json).toMatchObject({ name: bench.name, modality: bench.modality, forkedFromExerciseId: bench.id, isActive: true });
+    expect(res.json!["ownerUserId"]).not.toBeNull();
+    expect(slugOf((await call("POST", `/exercises/${bench.id}/fork`)).json)).toBe("exercise-limit-reached");
+  });
+
+  it("DELETE retires the row; routines lists the routines using the id, by lower(name) then id", async () => {
+    const routines = [
+      makeRoutine({ id: routineId(2), name: "push", items: [makeRoutineItem({ exerciseId: mine.id })] }),
+      makeRoutine({ id: routineId(1), name: "Cardio", items: [makeRoutineItem({ exerciseId: mine.id })] }),
+      makeRoutine({ id: routineId(3), name: "Legs", items: [makeRoutineItem({ exerciseId: bench.id })] }),
+    ];
+    const fake = createWorkoutFake({ serveExercises: true, catalog: [bench, mine], routines });
+    server.use(...fake.handlers);
+    const list = await call("GET", `/exercises/${mine.id}/routines`);
+    expect((list.json!["routines"] as { name: string }[]).map((r) => r.name)).toEqual(["Cardio", "push"]);
+    expect((await call("DELETE", `/exercises/${mine.id}`)).status).toBe(204);
+    expect(fake.state.catalog.find((e) => e.id === mine.id)?.isActive).toBe(false);
   });
 });
 

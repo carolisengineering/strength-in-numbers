@@ -1,6 +1,6 @@
 import type { Exercise } from "@sin/core";
 import { memo, useContext, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useOutletContext } from "react-router";
 
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -14,6 +14,7 @@ import { ProgressClockContext } from "../progress/queries";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import styles from "./AllExercises.module.css";
 import { buildExerciseRows, metaLine } from "./exerciseRows";
+import type { ExercisesOutletContext } from "./ExercisesLayout";
 import { EXERCISES_COPY } from "./messages";
 import { exercisePath } from "./paths";
 import { useExerciseUsage } from "./usage";
@@ -38,6 +39,33 @@ const ExerciseListRow = memo(function ExerciseListRow({ id, name, meta }: { id: 
  * never jumps under a finger; once usage is known (or has failed) it renders at once.
  */
 export function AllExercises() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { titleRef } = useOutletContext<ExercisesOutletContext>();
+  const [notice, setNotice] = useState("");
+
+  // Spec 18.2 AC50: a delete lands here with `{ notice: "deleted", name }` (display only); announce it once, clear
+  // it from the history entry so a reload doesn't repeat it, and put focus on the title.
+  const routerState = location.state as { notice?: unknown; name?: unknown } | null;
+  useEffect(() => {
+    if (routerState?.notice !== "deleted" || typeof routerState.name !== "string") return;
+    setNotice(EXERCISES_COPY.deletedNotice(routerState.name));
+    void navigate(location.pathname, { replace: true, state: null });
+    titleRef.current?.focus();
+  }, [routerState, location.pathname, navigate, titleRef]);
+
+  return (
+    <>
+      {/* Mounted from first paint, so the notice is announced when it arrives. */}
+      <p className={styles.notice} role="status">
+        {notice}
+      </p>
+      <ExerciseList />
+    </>
+  );
+}
+
+function ExerciseList() {
   const { visible, state, refresh } = useCatalog();
   const usage = useExerciseUsage();
   const today = useContext(ProgressClockContext)();

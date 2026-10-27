@@ -69,7 +69,7 @@ describe("AC13 — a catalog refresh resolving after logoutAndClear leaves no ca
         }),
     );
     const store = createCatalogStore({
-      api: { request, post: vi.fn() } as unknown as Pick<ApiClient, "request" | "post">,
+      api: { request, post: vi.fn() } as unknown as Pick<ApiClient, "request" | "post" | "patch" | "delete">,
       storage: localStorageAdapter(),
       userId: USER,
     });

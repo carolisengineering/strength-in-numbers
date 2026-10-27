@@ -1,3 +1,14 @@
+/* Spec 18.2 AC50: the "Deleted …" line. Empty, it leaves the layout but stays in the accessibility tree (as
+   `ui/VisuallyHidden`), so VoiceOver announces the text when it arrives (AC54). */
+.notice:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .view {
   display: flex;
   flex-direction: column;
