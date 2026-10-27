@@ -31,6 +31,16 @@ export function sectionTreatment(name: string, rules: readonly SectionRule[]): S
 
 export type SectionNotice = "section_name_cut" | "section_note_cut";
 
+/**
+ * The first `max` UTF-16 units (SIN's limits count units), less a trailing high surrogate, so a cut never ends in
+ * half an emoji (deferred minor 136).
+ */
+function cutUnits(text: string, max: number): string {
+  const cut = text.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 function noteOf(lines: readonly string[], notices: SectionNotice[]): string | null {
   const note = lines
     .map((line) => line.trim())
@@ -39,7 +49,7 @@ function noteOf(lines: readonly string[], notices: SectionNotice[]): string | nu
   if (note === "") return null;
   if (note.length <= SECTION_NOTES_MAX) return note;
   notices.push("section_note_cut");
-  return note.slice(0, SECTION_NOTES_MAX);
+  return cutUnits(note, SECTION_NOTES_MAX);
 }
 
 /**
@@ -59,7 +69,7 @@ export function sectionFromPlaceholder(
   if (first === -1) return { name: "Workout", note: null, notices };
   let name = lines[first]!.trim();
   if (name.length > SECTION_NAME_MAX) {
-    name = name.slice(0, SECTION_NAME_MAX).trim();
+    name = cutUnits(name, SECTION_NAME_MAX).trim();
     notices.push("section_name_cut");
   }
   return { name, note: noteOf(lines.slice(first + 1), notices), notices };
