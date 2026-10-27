@@ -7,7 +7,7 @@ import { InlineNotice } from "../../ui/InlineNotice";
 import { useCatalog } from "../catalog/useCatalog";
 import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
 import { EXERCISES_COPY } from "./messages";
-import { exercisePath, FROM_RECORDS } from "./paths";
+import { exercisePath, FROM_RECORDS, isFromRecords } from "./paths";
 import { useForkExercise } from "./useExerciseMutations";
 
 /**
@@ -21,7 +21,7 @@ export function ForkButton({ row, onStatus }: { row: Exercise; onStatus: (text: 
   const { refresh } = useCatalog();
   const navigate = useNavigate();
   const location = useLocation();
-  const fromRecords = (location.state as { from?: unknown } | null)?.from === "records";
+  const fromRecords = isFromRecords(location.state);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // AC44 (03.4 D11): a second tap before React re-renders must not start a second copy.
@@ -32,6 +32,7 @@ export function ForkButton({ row, onStatus }: { row: Exercise; onStatus: (text: 
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    onStatus("");
     try {
       const copy = await fork.mutateAsync({ id: row.id });
       // Busy stays set: the page is going away.

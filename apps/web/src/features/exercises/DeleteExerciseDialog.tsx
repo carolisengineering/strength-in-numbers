@@ -77,6 +77,8 @@ export function DeleteExerciseDialog({ open, row, busy, onCancel, onConfirm }: D
       confirmLabel={EXERCISES_COPY.deleteConfirm}
       confirmDisabled={list === undefined}
       busy={busy}
+      // Escape mid-delete would hide a delete that still completes (deferred minor 125).
+      dismissible={!busy}
       onCancel={onCancel}
       onConfirm={() => {
         if (list !== undefined) onConfirm(list.length);

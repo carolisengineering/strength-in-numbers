@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
-import { EXERCISE_KEYS } from "../exercises/keys";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches } from "./cache";
@@ -122,19 +121,5 @@ describe("10.5 AC15 — a finish refreshes the routines", () => {
     applyDeletedCaches(qc, W);
     expect(invalidated(qc, ["routines", "list"])).toBe(false);
     expect(invalidated(qc, ["routines", "detail", "r1"])).toBe(false);
-  });
-});
-
-describe("deferred minor 119 — every finished-workout change drops the cached exercise usage", () => {
-  // Kept, the old answer would say "Not logged yet" on a page whose exercise was just logged, until the refetch.
-  it.each([
-    ["applyFinishedCaches", (qc: ReturnType<typeof seeded>) => applyFinishedCaches(qc, W, [])],
-    ["applyDeletedCaches", (qc: ReturnType<typeof seeded>) => applyDeletedCaches(qc, W)],
-    ["applyEditedCaches", (qc: ReturnType<typeof seeded>) => applyEditedCaches(qc)],
-  ])("%s", (_name, apply) => {
-    const qc = seeded();
-    qc.setQueryData(EXERCISE_KEYS.usage, [{ rootId: "r", lastLoggedOn: "2026-10-01" }]);
-    apply(qc);
-    expect(qc.getQueryData(EXERCISE_KEYS.usage)).toBeUndefined();
   });
 });

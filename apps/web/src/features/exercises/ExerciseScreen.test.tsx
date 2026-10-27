@@ -195,6 +195,28 @@ describe("18.2 AC22 — never logged", () => {
     expect(progressGets(fake)).toEqual([]);
   });
 
+  it("deferred minor 119 — a cached never-logged answer waits for the visit's usage read; no series or records meanwhile", async () => {
+    const usage = deferred<void>();
+    const { fake, router, queryClient } = setup({ path: "/app/history" });
+    await screen.findByRole("heading", { level: 1, name: "History" });
+    // An earlier visit said never logged; a set has been logged since.
+    queryClient.setQueryData(EXERCISE_KEYS.usage, []);
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises/usage`, async () => {
+        await usage.promise;
+        return HttpResponse.json({ exercises: [{ rootId: ID, lastLoggedOn: "2026-10-08" }] });
+      }),
+    );
+    fake.requests.length = 0;
+    await router.navigate(exercisePath(ID));
+    await screen.findByRole("heading", { level: 1, name: "Barbell bench press" });
+    expect(screen.queryByText(EXERCISES_COPY.neverLogged)).toBeNull();
+    expect(progressGets(fake)).toEqual([]);
+    usage.resolve();
+    expect(await screen.findByRole("img", { name: /3 months/ })).toBeInTheDocument();
+    expect(screen.queryByText(EXERCISES_COPY.neverLogged)).toBeNull();
+  });
+
   it("usage still pending: the body renders", async () => {
     const usage = deferred<void>();
     setup();

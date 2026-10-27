@@ -131,6 +131,18 @@ describe("18.2 AC45 — copy errors", () => {
     expect(screen.getByTestId("exercise-status")).toHaveTextContent(EXERCISES_COPY.forkGone);
   });
 
+  it("deferred minor 126 — the next try clears a stale no-longer-available line", async () => {
+    const { fake, router, user } = setup();
+    await openPlank(router);
+    fake.failNext({ method: "POST", path: FORK }, () => problemResponse(404, "not-found"));
+    await user.click(await copyButton());
+    await waitFor(() => expect(screen.getByTestId("exercise-status")).toHaveTextContent(EXERCISES_COPY.forkGone));
+    fake.failNext({ method: "POST", path: FORK }, () => problemResponse(429, "rate-limited"));
+    await user.click(await copyButton());
+    expect(await screen.findByText(EXERCISES_COPY.tooFast)).toBeInTheDocument();
+    expect(screen.getByTestId("exercise-status")).toBeEmptyDOMElement();
+  });
+
   it("offline: the offline text", async () => {
     const { fake, router, user } = setup();
     await openPlank(router);

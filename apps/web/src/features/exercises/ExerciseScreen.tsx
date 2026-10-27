@@ -18,7 +18,7 @@ import { ExerciseActions } from "./ExerciseActions";
 import { ExerciseDetails } from "./ExerciseDetails";
 import styles from "./ExerciseScreen.module.css";
 import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, exercisePath, FROM_RECORDS, RECORDS_PATH } from "./paths";
+import { EXERCISES_PATH, exercisePath, FROM_RECORDS, isFromRecords, RECORDS_PATH } from "./paths";
 import { useExerciseUsage } from "./usage";
 import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
 import type { Resolution } from "./resolveExercise";
@@ -45,9 +45,13 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const usage = useExerciseUsage();
   const { refresh } = useCatalog();
   const location = useLocation();
-  const neverLogged =
+  const cachedNever =
     resolution.kind === "found" && usage.data !== undefined && !usage.data.has(lineageRootId(resolution.row));
-  const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !neverLogged);
+  // A cached "never logged" may predate a set just logged (live or finished); usage refetches on every visit, so
+  // the line waits for that read, and the body sends nothing meanwhile (deferred minor 119).
+  const rechecking = cachedNever && usage.isFetching;
+  const neverLogged = cachedNever && !usage.isFetching;
+  const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !cachedNever);
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
   // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
@@ -77,11 +81,11 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
 
   // AC43: the copy lands here with `{ notice: "copied" }`. Read it from the location (not a state initializer:
   // the page may already be mounted by the built-in's own redirect), then clear it so a reload doesn't repeat it.
-  const routerState = location.state as { from?: unknown; notice?: unknown } | null;
+  const routerState = location.state as { notice?: unknown } | null;
   useEffect(() => {
     if (routerState?.notice !== "copied") return;
     setStatus(EXERCISES_COPY.copyReady);
-    void navigate(location.pathname, { replace: true, state: routerState.from === "records" ? FROM_RECORDS : null });
+    void navigate(location.pathname, { replace: true, state: isFromRecords(routerState) ? FROM_RECORDS : null });
     titleRef.current?.focus();
   }, [routerState, location.pathname, navigate]);
   const statusLine = (
@@ -97,7 +101,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   // The state goes along, so a Records row that lands on a copy still offers "Back to Records".
   if (resolution.kind === "redirect") return <Navigate replace to={exercisePath(resolution.to)} state={location.state} />;
 
-  const fromRecords = (location.state as { from?: unknown } | null)?.from === "records";
+  const fromRecords = isFromRecords(location.state);
   const back = fromRecords ? (
     <BackLink to={RECORDS_PATH} label={EXERCISES_COPY.backToRecords} />
   ) : (
@@ -150,7 +154,11 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       />
       {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
       {statusLine}
-      {neverLogged ? <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p> : <ExerciseProgressBody exerciseId={exerciseId} />}
+      {neverLogged ? (
+        <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p>
+      ) : rechecking ? null : (
+        <ExerciseProgressBody exerciseId={exerciseId} />
+      )}
       {/* Mounted only while open: its routines read then unsubscribes on close, so `gcTime: 0` drops the answer and a
           reopening can never show (or enable Delete on) the last one (AC46, D12). */}
       {resolution.row.ownerUserId !== null && deleteOpen ? (
@@ -159,8 +167,6 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
           row={resolution.row}
           busy={deletingRow !== null}
           onCancel={() => {
-            // Escape mid-delete would hide a delete that still completes (deferred minor 125); Cancel is disabled too.
-            if (deletingRow !== null) return;
             setDeleteOpen(false);
             // The native dialog restores focus to the opener; this does the same where it doesn't (AC54).
             deleteRef.current?.focus();

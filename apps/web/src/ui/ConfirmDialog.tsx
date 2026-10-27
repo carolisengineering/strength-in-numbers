@@ -14,6 +14,11 @@ export interface ConfirmDialogProps {
   variant?: "primary" | "danger";
   /** An in-flight confirm: disables both buttons so a double-tap cannot fire twice. */
   busy?: boolean;
+  /**
+   * `false`: Escape does nothing and a native close (a second Escape) reopens the dialog, so work in flight stays on
+   * screen (deferred minor 125; like `Sheet`'s `dismissible`). Default `true`: Spec 12's delete lets Escape close it.
+   */
+  dismissible?: boolean;
   /** Disables only the confirm button (Spec 12: the double-tap settle window). */
   confirmDisabled?: boolean;
   /** Changing this while open moves focus back to Cancel (Spec 12: step 1 → step 2 in place). */
@@ -39,6 +44,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   variant = "primary",
   busy = false,
+  dismissible = true,
   confirmDisabled = false,
   focusKey,
   onConfirm,
@@ -78,13 +84,15 @@ export function ConfirmDialog({
       onCancel={(event) => {
         // Controlled: tell the parent, and let it flip `open`.
         event.preventDefault();
-        onCancel();
+        if (dismissible) onCancel();
       }}
       onClose={() => {
         // A second Escape / Android back without intervening user activation closes the dialog
         // natively. Left alone, the parent's `open` stays true and the next tap on Finish / Discard /
-        // Remove would do nothing for the rest of the session.
-        if (openRef.current) onCancel();
+        // Remove would do nothing for the rest of the session. A non-dismissible dialog reopens instead.
+        if (!openRef.current) return;
+        if (dismissible) onCancel();
+        else ref.current?.showModal();
       }}
     >
       {open ? (
