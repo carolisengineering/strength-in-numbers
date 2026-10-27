@@ -21,10 +21,11 @@ export function visibleRows(rows: readonly Exercise[]): Exercise[] {
 }
 
 // Pinned to "en" so the order never depends on the device or CI locale (AC6).
-const collator = new Intl.Collator("en", { sensitivity: "base" });
+// Also the Exercises tab's name order (Spec 18.2 AC8).
+export const nameCollator = new Intl.Collator("en", { sensitivity: "base" });
 
 export function sortByName(rows: readonly Exercise[]): Exercise[] {
-  return [...rows].sort((a, b) => collator.compare(a.name, b.name));
+  return [...rows].sort((a, b) => nameCollator.compare(a.name, b.name));
 }
 
 /** Strip diacritics and case so "Café" and "cafe" compare equal (AC7). */
