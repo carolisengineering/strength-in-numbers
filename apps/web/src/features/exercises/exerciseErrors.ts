@@ -41,7 +41,7 @@ export function exerciseErrorMessage(kind: ExerciseErrorKind, op: "update" | "fo
     case "limit":
       return EXERCISE_LIMIT_MESSAGE;
     case "built-in":
-      return EXERCISES_COPY.builtInCantEdit;
+      return op === "delete" ? EXERCISES_COPY.builtInCantDelete : EXERCISES_COPY.builtInCantEdit;
     case "network":
       return EXERCISES_COPY.offline;
     case "rate-limited":

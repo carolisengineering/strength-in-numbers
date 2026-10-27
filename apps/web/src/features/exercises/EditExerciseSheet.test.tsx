@@ -26,6 +26,7 @@ import { makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { MODALITY_LABELS } from "../catalog/labels";
+import { EXERCISE_KEYS } from "./keys";
 import { EXERCISES_COPY } from "./messages";
 import { exercisePath } from "./paths";
 
@@ -146,6 +147,26 @@ describe("18.2 AC38 — usage on open", () => {
     await user.click(within(sheet).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patches(fake)).toHaveLength(1));
     expect(patches(fake)[0]!.body).toEqual({ primaryMuscleId: "chest" });
+  });
+
+  it("deferred minor 128 (pin, no change) — after a failed read, the open-time retry shows the checking note: a never-loaded query is pending again while it refetches", async () => {
+    const held = deferred<void>();
+    const fake = createWorkoutFake({ serveExercises: true, catalog: [own], usage: [], progress: { [ID]: [makeProgressPoint()] } });
+    fake.failNext({ method: "GET", path: /^\/v1\/exercises\/usage$/ }, () => problemResponse(500, "internal"));
+    prepareApp({ auth, fake, catalog: [own] });
+    const { user, queryClient } = renderApp(exercisePath(ID));
+    await waitFor(() => expect(queryClient.getQueryState(EXERCISE_KEYS.usage)?.status).toBe("error"));
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises/usage`, async () => {
+        await held.promise;
+        return HttpResponse.json({ exercises: [] });
+      }),
+    );
+    const sheet = await openEdit(user);
+    expect(within(sheet).getByText(EXERCISES_COPY.typeChecking)).toBeInTheDocument();
+    expect(within(sheet).queryByText(EXERCISES_COPY.typeCheckFailed)).toBeNull();
+    held.resolve();
+    await waitFor(() => expect(within(sheet).queryByText(EXERCISES_COPY.typeChecking)).toBeNull());
   });
 
   it("the checking note shows while the first usage read is still out", async () => {

@@ -66,9 +66,12 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       await del.mutateAsync({ id: row.id, routineCount });
       void navigate(EXERCISES_PATH, { replace: true, state: { notice: "deleted", name: row.name } });
     } catch (error) {
+      const kind = classifyExerciseError(error);
       setDeletingRow(null);
       setDeleteOpen(false);
-      setDeleteError(exerciseErrorMessage(classifyExerciseError(error), "delete"));
+      setDeleteError(exerciseErrorMessage(kind, "delete"));
+      // A stale row that is really a built-in: the refresh corrects it (deferred minor 127).
+      if (kind === "built-in") void refresh(true);
     }
   };
 

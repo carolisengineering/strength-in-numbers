@@ -28,7 +28,7 @@ export function ExerciseActions({ row, onStatus, onDelete, deleteRef }: Exercise
     return (
       <div className={styles.actions}>
         <p className={styles.note}>{EXERCISES_COPY.builtInNote}</p>
-        <ForkButton row={row} />
+        <ForkButton row={row} onStatus={onStatus} />
       </div>
     );
   }

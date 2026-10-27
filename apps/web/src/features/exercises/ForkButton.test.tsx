@@ -20,7 +20,7 @@ import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { EXERCISE_LIMIT_MESSAGE } from "../catalog/fieldErrors";
 import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, exercisePath } from "./paths";
+import { EXERCISES_PATH, exercisePath, FROM_RECORDS, RECORDS_PATH } from "./paths";
 
 afterEach(() => cleanupApp());
 
@@ -69,6 +69,19 @@ describe("18.2 AC43 — the flow", () => {
   });
 });
 
+describe("deferred minor 123 — a copy started from Records keeps Back to Records", () => {
+  it("the copy's page offers Back to Records", async () => {
+    const { fake, router, user } = setup();
+    await screen.findByRole("heading", { level: 1, name: "History" });
+    await router.navigate(exercisePath(ID), { state: FROM_RECORDS });
+    await screen.findByRole("heading", { level: 1, name: "Plank" });
+    await user.click(await copyButton());
+    await waitFor(() => expect(forks(fake)).toHaveLength(1));
+    expect(await screen.findByText(EXERCISES_COPY.copyReady)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToRecords })).toHaveAttribute("href", RECORDS_PATH);
+  });
+});
+
 describe("18.2 AC44 — disabled on tap", () => {
   it("two taps in one tick send one fork; the button stays disabled until it settles and comes back after a failure", async () => {
     const { fake, router } = setup();
@@ -104,6 +117,18 @@ describe("18.2 AC45 — copy errors", () => {
     await user.click(await copyButton());
     expect(await screen.findByText(EXERCISES_COPY.forkGone)).toBeInTheDocument();
     expect(fake.requests.slice(syncsBefore).some((r) => r.method === "GET" && r.path === "/v1/exercises")).toBe(true);
+  });
+
+  it("deferred minor 126 — 404 with the built-in gone after the refresh: the deleted page carries the text", async () => {
+    const { fake, router, user } = setup();
+    await openPlank(router);
+    fake.failNext({ method: "POST", path: FORK }, () => {
+      fake.state.catalog.splice(0, 1, { ...plank, isActive: false });
+      return problemResponse(404, "not-found");
+    });
+    await user.click(await copyButton());
+    expect(await screen.findByText(EXERCISES_COPY.deleted)).toBeInTheDocument();
+    expect(screen.getByTestId("exercise-status")).toHaveTextContent(EXERCISES_COPY.forkGone);
   });
 
   it("offline: the offline text", async () => {

@@ -244,6 +244,18 @@ describe("18.2 AC50 — confirm and after", () => {
     sync.resolve();
   });
 
+  it("deferred minor 127 — a 403 exercise-immutable: the delete wording, after a forced refresh", async () => {
+    const { fake, user } = setup();
+    fake.failNext({ method: "DELETE", path: DELETE }, () => problemResponse(403, "exercise-immutable"));
+    const dialog = await openDelete(user);
+    await waitFor(() => expect(confirmButton(dialog)).toBeEnabled());
+    const before = fake.requests.length;
+    await user.click(confirmButton(dialog));
+    expect(await screen.findByText(EXERCISES_COPY.builtInCantDelete)).toBeInTheDocument();
+    expect(screen.queryByText(EXERCISES_COPY.builtInCantEdit)).toBeNull();
+    await waitFor(() => expect(fake.requests.slice(before).some((r) => r.method === "GET" && r.path === "/v1/exercises")).toBe(true));
+  });
+
   it("deferred minor 125 — Escape while the delete is out leaves the dialog up", async () => {
     const held = deferred<void>();
     const { user, router } = setup();
