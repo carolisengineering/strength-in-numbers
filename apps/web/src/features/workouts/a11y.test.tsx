@@ -233,12 +233,12 @@ describe("08.0 AC23 — History and the records block, accessibly", () => {
   });
 });
 
-describe("08.1 AC25 — Progress screens, accessibly", () => {
+describe("08.1 AC25 / 18.2 AC5 — Exercises screens, accessibly", () => {
   const ID = "10000000-0000-4000-8000-0000000000b1";
 
   it("list: one h1, a named list of links", async () => {
     prepareApp({ auth, fake: createWorkoutFake({ records: [makePersonalRecord({ exerciseId: ID })] }) });
-    renderApp("/app/progress");
+    renderApp("/app/exercises/records");
     const list = await screen.findByRole("list", { name: "Exercises" });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     for (const link of within(list).getAllByRole("link")) expect(link).toHaveAccessibleName();
@@ -252,7 +252,7 @@ describe("08.1 AC25 — Progress screens, accessibly", () => {
         records: [makePersonalRecord({ exerciseId: ID })],
       }),
     });
-    renderApp(`/app/progress/${ID}`);
+    renderApp(`/app/exercises/${ID}`);
     const svg = await screen.findByRole("img");
     expect(svg).toHaveAccessibleName();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -268,16 +268,16 @@ describe("08.1 AC25 — Progress screens, accessibly", () => {
   });
 
   it.each([
-    ["../progress/ProgressScreen.module.css", ".row"],
-    ["../progress/ProgressScreen.module.css", ".emptyLink"],
+    ["../exercises/RecordsView.module.css", ".row"],
+    ["../exercises/RecordsView.module.css", ".emptyLink"],
     ["../progress/ExerciseProgressScreen.module.css", ".session"],
     ["../progress/ExerciseProgressScreen.module.css", ".back"],
   ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
     expect(hasTapTarget(file, selector)).toBe(true);
   });
 
-  it("no raw interactive element in progress/ is left unstyled", () => {
-    const sources = import.meta.glob(["../progress/*.tsx", "!../progress/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+  it("no raw interactive element in progress/ or exercises/ is left unstyled", () => {
+    const sources = import.meta.glob(["../progress/*.tsx", "!../progress/*.test.tsx", "../exercises/*.tsx", "!../exercises/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
     expect(Object.keys(sources).length).toBeGreaterThan(0);
     const unstyled: string[] = [];
     for (const [path, source] of Object.entries(sources)) {

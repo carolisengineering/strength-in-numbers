@@ -42,44 +42,52 @@ function setup(options: { records?: typeof records; unitPreference?: "kg" | "lb"
   const fake = createWorkoutFake({ records: options.records ?? records, progress: { [BENCH]: [makeProgressPoint({ localDate: "2026-10-06" })] } });
   if (options.fail) fake.failNext(LIST, options.fail);
   prepareApp({ auth, fake, ...(options.unitPreference ? { unitPreference: options.unitPreference } : {}) });
-  return { fake, ...renderApp("/app/progress") };
+  return { fake, ...renderApp("/app/exercises/records") };
 }
 
-describe("08.1 AC10 — routes and navigation", () => {
-  it("/app/progress renders Progress; no nav item is coming soon", async () => {
+describe("08.1 AC10 / 18.2 AC6 — routes and navigation", () => {
+  it("/app/exercises/records renders the Records view under Exercises; no nav item is coming soon", async () => {
     setup();
-    expect(await screen.findByRole("heading", { level: 1, name: "Progress" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Exercises" })).toBeInTheDocument();
     expect(NAV_ITEMS.filter((i) => i.comingSoon)).toEqual([]);
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getByRole("link", { name: "Progress" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Exercises" })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByTestId("coming-soon")).toBeNull();
   });
 
-  it("/app/progress/:id keeps Progress highlighted", async () => {
+  it("an exercise page keeps Exercises highlighted", async () => {
     const { router } = setup();
     await screen.findByRole("list", { name: "Exercises" });
-    await router.navigate(`/app/progress/${BENCH}`);
+    await router.navigate(`/app/exercises/${BENCH}`);
     await screen.findByRole("img", { name: /^Est\. 1RM, / });
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getByRole("link", { name: "Progress" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Exercises" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "History" })).not.toHaveAttribute("aria-current");
   });
 });
 
-describe("08.1 AC11 — a Progress list row", () => {
+describe("08.1 AC11 / 18.2 AC6 — a Records row", () => {
   it("one link per exercise, newest record first, name and headline · date", async () => {
     const { fake } = setup();
     const list = await screen.findByRole("list", { name: "Exercises" });
     const links = within(list).getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual([`/app/progress/${BENCH}`, `/app/progress/${PULL}`]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([`/app/exercises/${BENCH}`, `/app/exercises/${PULL}`]);
     expect(links[0]).toHaveTextContent("Barbell bench press");
     expect(links[0]).toHaveTextContent("Best est. 1RM 122.5 kg · Tue 6 Oct");
     expect(links[1]).toHaveTextContent("Most reps 15 reps · Sun 4 Oct");
     expect(fake.requests.filter((r) => r.path === "/v1/personal-records")).toEqual([expect.objectContaining({ search: "" })]);
   });
+
+  it("a row click opens the exercise page with { from: 'records' }", async () => {
+    const { router, user } = setup();
+    const list = await screen.findByRole("list", { name: "Exercises" });
+    await user.click(within(list).getAllByRole("link")[1]!);
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/exercises/${PULL}`));
+    expect(router.state.location.state).toEqual({ from: "records" });
+  });
 });
 
-describe("08.1 AC12 — list states", () => {
+describe("08.1 AC12 / 18.2 AC6 — list states", () => {
   it("empty: text and a link to Workouts", async () => {
     setup({ records: [] });
     expect(await screen.findByText("No records yet — finish a workout to see your progress")).toBeInTheDocument();
@@ -105,14 +113,14 @@ describe("08.1 AC12 — list states", () => {
     );
   });
 
-  it("signal lost, then Progress opened → the network notice, not an endless spinner (code review #1)", async () => {
+  it("signal lost, then Records opened → the network notice, not an endless spinner (code review #1)", async () => {
     const fake = createWorkoutFake({ records });
     prepareApp({ auth, fake });
     const { router } = renderApp("/app/history");
     await screen.findByRole("heading", { level: 1, name: "History" });
     fake.setOffline(true);
     onlineManager.setOnline(false);
-    await router.navigate("/app/progress");
+    await router.navigate("/app/exercises/records");
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your progress");
   });
 
@@ -126,7 +134,7 @@ describe("08.1 AC12 — list states", () => {
   });
 });
 
-describe("08.1 AC24 — list units follow the profile", () => {
+describe("08.1 AC24 / 18.2 AC6 — list units follow the profile", () => {
   it("lb profile → headline in lb", async () => {
     setup({ unitPreference: "lb" });
     const list = await screen.findByRole("list", { name: "Exercises" });

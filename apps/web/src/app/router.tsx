@@ -3,8 +3,12 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { Callback } from "../auth/Callback";
 import { HistoryScreen } from "../features/history/HistoryScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
-import { ExerciseProgressRoute } from "../features/progress/ExerciseProgressScreen";
-import { ProgressScreen } from "../features/progress/ProgressScreen";
+import { AllExercises } from "../features/exercises/AllExercises";
+import { ExerciseRoute } from "../features/exercises/ExerciseScreen";
+import { ExercisesLayout } from "../features/exercises/ExercisesLayout";
+import { RECORDS_PATH } from "../features/exercises/paths";
+import { RecordsView } from "../features/exercises/RecordsView";
+import { RedirectProgressExercise } from "../features/exercises/redirects";
 import { ImportEditRoute } from "../features/routines/import/ImportEdit";
 import { ImportNames } from "../features/routines/import/ImportNames";
 import { ImportPaste } from "../features/routines/import/ImportPaste";
@@ -42,8 +46,11 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
  *   /app/history/:id/edit                                             > EditWorkoutScreen section="history" (Spec 18.0)
  *   /app/history                                                      > HistoryScreen  protected (Spec 08.0)
- *   /app/progress                                                     > ProgressScreen protected (Spec 08.1)
- *   /app/progress/:exerciseId                                         > ExerciseProgressScreen (Spec 08.1)
+ *   /app/exercises                                                    > ExercisesLayout > AllExercises (Spec 18.2)
+ *   /app/exercises/records                                            > ExercisesLayout > RecordsView (Spec 18.2; outranks :id)
+ *   /app/exercises/:id                                                > ExerciseScreen, keyed by id (Spec 18.2)
+ *   /app/progress                                                     > redirect (replace) to the Records view (Spec 18.2, permanent)
+ *   /app/progress/:exerciseId                                         > redirect (replace) to the exercise page (Spec 18.2, permanent)
  *   /app/*       …                                                    > NotFound       protected catch-all
  *   *            NotFound                                                              public catch-all
  *
@@ -91,8 +98,19 @@ export const routes: RouteObject[] = [
               { path: "history", element: <HistoryScreen /> },
               { path: "history/:id", element: <FinishedWorkoutScreen section="history" /> },
               { path: "history/:id/edit", element: <EditWorkoutScreen section="history" /> },
-              { path: "progress", element: <ProgressScreen /> },
-              { path: "progress/:exerciseId", element: <ExerciseProgressRoute /> },
+              {
+                path: "exercises",
+                element: <ExercisesLayout />,
+                children: [
+                  { index: true, element: <AllExercises /> },
+                  { path: "records", element: <RecordsView /> },
+                ],
+              },
+              // Spec 18.2 D2: a sibling of the layout, since the page draws its own Screen.
+              { path: "exercises/:id", element: <ExerciseRoute /> },
+              // Spec 18.2 AC3: the old Progress paths redirect for good (bookmarks, a captured returnTo).
+              { path: "progress", element: <Navigate to={RECORDS_PATH} replace /> },
+              { path: "progress/:exerciseId", element: <RedirectProgressExercise /> },
               { path: "*", element: <NotFound /> },
             ],
           },

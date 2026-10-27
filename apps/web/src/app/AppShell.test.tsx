@@ -203,10 +203,10 @@ describe("AC3 — shell mounts only when authed + bootstrapped (Spec 04.1 §2)",
   });
 
   it("the ComingSoon stub (kept for later sections, Spec 08.1 D12) renders under its section title", async () => {
-    const router = createMemoryRouter([{ path: "/app/progress", element: <ComingSoon /> }], { initialEntries: ["/app/progress"] });
+    const router = createMemoryRouter([{ path: "/app/exercises", element: <ComingSoon /> }], { initialEntries: ["/app/exercises"] });
     render(<RouterProvider router={router} />);
     expect(await screen.findByTestId("coming-soon")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Progress");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Exercises");
   });
 });
 

@@ -15,7 +15,7 @@ const newestFirst = (a: Exercise, b: Exercise): number => {
 };
 
 /**
- * What the exercise page shows for `id` (Spec 18.2 AC19, Review Focus 1). `rows` is the raw store
+ * What the exercise page shows for `id` (Spec 18.2 AC19). `rows` is the raw store
  * (origins included). A row in the store resolves at once, whatever the sync status; a fork origin
  * with an active fork redirects to its newest active fork; only after a sync can an unknown id be
  * called deleted.

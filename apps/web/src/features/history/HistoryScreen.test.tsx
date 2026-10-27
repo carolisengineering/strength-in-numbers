@@ -103,8 +103,8 @@ describe("08.0 AC10 — routes and navigation", () => {
     expect(within(nav).getByRole("link", { name: "History" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Workouts" })).not.toHaveAttribute("aria-current");
 
-    await router.navigate("/app/progress");
-    expect(await screen.findByRole("heading", { level: 1, name: "Progress" })).toBeInTheDocument();
+    await router.navigate("/app/exercises");
+    expect(await screen.findByRole("heading", { level: 1, name: "Exercises" })).toBeInTheDocument();
   });
 
   it("an unfinished id under /app/history still redirects to /app/workouts", async () => {
