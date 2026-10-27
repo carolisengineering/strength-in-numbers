@@ -1,3 +1,8 @@
+/* Spec 18.2 AC50: the "Deleted …" line; empty, it takes no room. */
+.notice:empty {
+  display: none;
+}
+
 .view {
   display: flex;
   flex-direction: column;

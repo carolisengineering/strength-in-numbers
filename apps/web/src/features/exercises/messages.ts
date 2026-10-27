@@ -60,6 +60,20 @@ export const EXERCISES_COPY = {
   renameNote: "Renaming doesn't change past workouts. History keeps the name each workout was logged with.",
   typeLocked:
     "This exercise already has logged sets, so its type can only change to one that logs the same measures. Create a new exercise instead.",
+  // Phase B: the Delete dialog (AC46–AC50).
+  deleteTitle: (name: string) => `Delete ${name}?`,
+  deleteConfirm: "Delete",
+  checkingRoutines: "Checking your routines…",
+  routinesCheckFailed: "Couldn't check which routines use this exercise.",
+  deleteKeepsHistory: "Past workouts keep their sets and still show this exercise. You won't be able to add it to new workouts.",
+  usedIn: (n: number) => `Used in ${n} ${n === 1 ? "routine" : "routines"}:`,
+  oneOffRoutine: (name: string) => `${name} (one-off)`,
+  andMore: (n: number) => `and ${n} more`,
+  routinesBreak: (n: number) =>
+    `${n === 1 ? "This routine shows" : "These routines show"} “Removed exercise” in its place and won't start or save until you take the exercise out in the routine editor. Deleting doesn't change your routines.`,
+  copyComesBack: (originName: string | null) =>
+    `${originName === null ? "The built-in exercise" : `The built-in ${originName}`} will be back in your list. Your history and records stay with it.`,
+  deletedNotice: (name: string) => `Deleted ${name}.`,
   // Phase B: the Edit sheet's type notes (AC37–AC39).
   typeLimitedTo: (partners: string) =>
     `This exercise has logged sets, so its type can only change to ${partners}. To use another type, create a new exercise.`,
