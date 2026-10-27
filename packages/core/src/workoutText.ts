@@ -12,9 +12,9 @@ export const IMPORT_TEXT_MAX = 40_000;
 /**
  * A status-bar time; AC42: optionally one icon after it (a space and ≤ 3 characters with no letter or digit).
  * AC55: the muted bell also reads as one digit stuck on (`3:524`), one letter after a space (`3:52 A`), or an
- * icon in front (`€ 3:53`).
+ * icon in front (`€ 3:53`) — never a bullet mark, so `- 1:30` stays a line of the workout.
  */
-export const CLOCK_LINE = /^(?:[^\p{L}\p{N}\s]{1,3} )?\d{1,2}:\d{2}(?:\d|(?: ?[AP]M)?(?: (?:[^\p{L}\p{N}\s]{1,3}|\p{L}))?)$/iu;
+export const CLOCK_LINE = /^(?:[^\p{L}\p{N}\s\-*•]{1,3} )?\d{1,2}:\d{2}(?:\d|(?: ?[AP]M)?(?: (?:[^\p{L}\p{N}\s]{1,3}|\p{L}))?)$/iu;
 export const RESULTS_LINE = /^RESULTS \(\d{1,6}\)$/i;
 export const BADGE_LINES: readonly string[] = ["NO SCORE", "WEIGHT", "TIME", "REPS", "ROUNDS", "DISTANCE", "CALORIES", "LOAD", "Log result"];
 export const GYM_LINES: readonly string[] = ["HIRAYA TRAINING HOUSE", "HIRAYA", "TRAINING HOUSE"];
@@ -39,7 +39,21 @@ const DIGIT_CHAR = /\d/;
 const DIGIT_START = /^\d/;
 /** AC57: the trophy icon as Live Text reads it (`Y'`, `只'`). */
 const TROPHY_MAX = 3;
+/** Something other than a plain ASCII letter, digit or space. */
+const TROPHY_MARK = /[^A-Za-z0-9 ]/;
 const SCORE_WORDS_MAX = 6;
+
+/**
+ * The first line after `i` that is not status-bar chrome (a clock, the cellular bar, an icon), or "". Only reached for a
+ * line right after `RESULTS (n)` that starts with a digit; such a line is never chrome, so the scans never overlap.
+ */
+function nextTextLine(all: readonly string[], i: number): string {
+  for (let j = i + 1; j < all.length; j++) {
+    const l = all[j]!;
+    if (!CLOCK_LINE.test(l) && !isStatusBarLine(l) && !isIconLine(l)) return l;
+  }
+  return "";
+}
 
 /** Control characters become spaces, whitespace runs collapse to one space, ends trimmed. */
 export function collapseLine(line: string): string {
@@ -207,9 +221,12 @@ export function cleanWorkoutText(raw: string): CleanResult {
       if (above) above.tagged = true;
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
-    const trophy = line.length <= TROPHY_MAX && !DIGIT_CHAR.test(line) && RESULTS_LINE.test(all[i + 1] ?? "");
-    // A line with a badge under it is a header ("12 Days of Christmas" on a card with no score yet), never a score.
-    const score = RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX && !isBadgeLine(all[i + 1] ?? "");
+    // The trophy reads with a mark (`Y'`, `只'`); a plain short word there (`Run`, `Rx`) is the card's text.
+    const trophy = line.length <= TROPHY_MAX && !DIGIT_CHAR.test(line) && TROPHY_MARK.test(line) && RESULTS_LINE.test(all[i + 1] ?? "");
+    // A line with a badge under it is a header ("12 Days of Christmas" on a card with no score yet), never a score;
+    // status-bar lines and clocks can sit between the two.
+    const score =
+      RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX && !isBadgeLine(nextTextLine(all, i));
     if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || trophy || score) {
       furniture++;
       continue;
@@ -442,6 +459,15 @@ function splitLoad(text: string): { text: string; load: string | null } {
   return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
 }
 /**
+ * A movement line's name part and load: the load comes off first, then a trailing comma (which belongs to the line, not
+ * the load) is read on the name part by #155's rule.
+ */
+function splitMovement(raw: string): { text: string; load: string | null } {
+  const { text, load } = splitLoad(raw);
+  if (load === null || !load.endsWith(",")) return { text: dropMovementComma(text), load };
+  return { text: dropMovementComma(`${text},`), load: load.slice(0, -1).trimEnd() };
+}
+/**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
  * alone and the measure its note; the number is never a target (FI-11). "Calf" never matches: a space must follow.
  */
@@ -608,7 +634,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (s.run !== null && s.run.kind !== "list") {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
-    const { text: raw, load } = splitLoad(dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, "")));
+    const { text: raw, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
@@ -643,7 +669,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list.
   if (BULLET.test(line)) {
     s.run = null;
-    const { text, load } = splitLoad(dropMovementComma(line.replace(BULLET, "").replace(TRAILING_PLUS, "")));
+    const { text, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     const max = MAX_LINE.exec(text);
     if (max && isMovementText(max[2]!)) {
@@ -674,28 +700,39 @@ const QUALIFIER_WORDS = new Set([
 const isStructureName = (name: string) =>
   STRUCTURE_START.test(name) || DANGLING_END.test(name) || name.toLowerCase().split(" ").every((w) => QUALIFIER_WORDS.has(w));
 
+type CountedItem = Omit<MutableItem, "nameKey" | "section" | "run">;
+
+/** One counted movement with no lead-in: calories, then reps, then a leading distance (AC62), or null. */
+function countedItemOf(text: string): CountedItem | null {
+  if (!isMovementText(text)) return null;
+  const cal = leadingCalorieOf(text);
+  if (cal) return { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], calories: true };
+  const form = repFormOf(text);
+  if (form) {
+    return isStructureName(form.name)
+      ? null
+      : { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], calories: false };
+  }
+  const distance = LEADING_DISTANCE.exec(text);
+  if (!distance) return null;
+  const rest = text.slice(distance[0].length).trim();
+  return LETTER.test(rest) && !isStructureName(rest) ? { name: text, rows: null, quickReps: null, repsText: null, noteLines: [distance[1]!], calories: false } : null;
+}
+
 /**
  * AC62: an un-bulleted line starting with reps, calories or a distance is a rowless exercise; consecutive ones are one
- * list (a superset). Reached only inside a non-Warmup section, outside a run, before a variant label.
+ * list (a superset). "A + B" is one exercise per side (AC51). Reached only inside a non-Warmup section, outside a run,
+ * before a variant label.
  */
 function countedLineOf(line: string, s: ReadState): boolean {
-  const { text, load } = splitLoad(line.replace(TRAILING_PLUS, ""));
-  if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text) || !isMovementText(text)) return false;
-  let item: Omit<MutableItem, "nameKey" | "section" | "run"> | null = null;
-  const cal = leadingCalorieOf(text);
-  const form = cal ? null : repFormOf(text);
-  const distance = cal || form ? null : LEADING_DISTANCE.exec(text);
-  if (cal) {
-    item = { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], calories: true };
-  } else if (form && !isStructureName(form.name)) {
-    item = { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], calories: false };
-  } else if (distance) {
-    const rest = text.slice(distance[0].length).trim();
-    if (LETTER.test(rest) && !isStructureName(rest)) item = { name: text, rows: null, quickReps: null, repsText: null, noteLines: [distance[1]!], calories: false };
-  }
-  if (item === null) return false;
+  const { text, load } = splitMovement(line.replace(TRAILING_PLUS, ""));
+  if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
+  const parts = text.split(PLUS);
+  const items = parts.map(countedItemOf);
+  if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
-  pushItem(s, { ...item, noteLines: load === null ? item.noteLines : [...item.noteLines, load], run: s.run.id });
+  const run = s.run.id;
+  items.forEach((it, i) => pushItem(s, { ...it!, noteLines: load !== null && i === items.length - 1 ? [...it!.noteLines, load] : it!.noteLines, run }));
   return true;
 }
 

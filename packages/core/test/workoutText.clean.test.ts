@@ -203,6 +203,19 @@ describe("10.4 AC57 — the trophy and the score are furniture", () => {
     expect(r.lines).toEqual(['Workout: "X"', "Metcon", "10 Burpees", "12 Days of Christmas", "1 Thruster"]);
     expect(r.tagged).toEqual([false, true, false, true, false]);
   });
+  it("…even with a status-bar line between the header and its badge (/code-review)", () =>
+    expect(cleanWorkoutText("10 Burpees\nRESULTS (2)\n12 Days of Christmas\n•ll LTE O\nTIME\n12 Thrusters").lines).toEqual([
+      "10 Burpees", "12 Days of Christmas", "12 Thrusters"]));
+  it.each(["Run", "Row", "Rx", "Ski"])("a real word %s above RESULTS stays (/code-review)", (w) =>
+    expect(cleanWorkoutText(`Metcon\n10 Burpees\n${w}\nRESULTS (2)`).lines).toContain(w));
+});
+
+describe("10.4 AC55 — a bulleted time is not a clock (/code-review)", () => {
+  it.each(["- 1:30", "• 2:00", "* 1:00"])("%s stays text", (l) => {
+    const r = cleanWorkoutText(`Strength\n10 Push-ups\n${l}\n10 Squats`);
+    expect(r.chunks).toBe(1);
+    expect(r.lines).toContain(l);
+  });
 });
 
 describe("10.4 AC58 — combined badges", () => {

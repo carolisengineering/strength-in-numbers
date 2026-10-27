@@ -385,6 +385,21 @@ describe("10.4 AC62 — final review fixes", () => {
     "%s is a qualifier, not an exercise", (l) => expect(read(["Engine", l, "x."]).items).toEqual([]));
 });
 
+describe("10.4 AC60 / AC62 — /code-review fixes", () => {
+  it("A + B with no lead-in is two exercises in the list", () =>
+    expect(read(["Metcon", "NO SCORE", "10 Burpees + 10 Air Squats", "12 Pull-ups"]).items.map((i) => [i.name, i.run])).toEqual([
+      ["Burpees", 1], ["Air Squats", 1], ["Pull-ups", 1]]));
+  it("a trailing comma does not end the list (#155)", () =>
+    expect(read(["Metcon", "NO SCORE", "10 Burpees", "10 Push-ups,", "12 Pull-ups"]).items.map((i) => [i.name, i.run])).toEqual([
+      ["Burpees", 1], ["Push-ups", 1], ["Pull-ups", 1]]));
+  it.each([["3 Rounds", "5 Back Squats @ 62.5 kg,"], ["3 Rounds", "10 Front Squats @ 60-65% of your 1RM,"]])(
+    "a comma after the load is not part of the load: %s / %s", (lead, l) => {
+      const r = read(["Strength", lead, l, "x."]);
+      expect(r.items).toHaveLength(1);
+      expect(r.items[0]!.noteLines.at(-1)).not.toMatch(/,$/);
+    });
+});
+
 describe("10.4 AC63 — notes don't end a N Sets, 1 Set Every run", () => {
   it("movements after 'Accessory Between Sets:' join the lift's run", () => {
     const r = read(["Back Squat", "WEIGHT", "4 Sets, 1 Set Every 4:00", "5 Back Squats @ 60-65% of IRM", "*All sets, same weight across*", "Accessory Between Sets:", "10 TOES elevated DB Romanian deadlifts", "16 Landmine twists", "Score: weight lifted for 4 sets."]);
