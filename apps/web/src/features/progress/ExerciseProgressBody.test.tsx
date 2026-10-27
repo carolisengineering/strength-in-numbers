@@ -21,10 +21,12 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 
 import type { ProgressPoint } from "@sin/core";
 import { API_BASE_URL } from "../../test/catalogHarness";
+import { makeExercise } from "../../test/catalogFixtures";
 import { server } from "../../test/msw/server";
 import { makePersonalRecord, makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { exercisePath } from "../exercises/paths";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 8, 12) });
@@ -45,6 +47,10 @@ const recent: ProgressPoint[] = [
   makeProgressPoint({ localDate: "2026-09-01", bestE1rm: 115, topSetWeight: 95, totalVolume: 950 }),
   makeProgressPoint({ localDate: "2026-10-06", bestE1rm: 122.5, topSetWeight: 100, totalVolume: 1000 }),
 ];
+const catalog = [
+  makeExercise({ id: ID, name: "Barbell bench press", ownerUserId: null }),
+  makeExercise({ id: OTHER, name: "Pull-up", ownerUserId: null }),
+];
 const older = makeProgressPoint({ localDate: "2026-01-15", bestE1rm: 95, topSetWeight: 80, totalVolume: 800 });
 
 function setup(
@@ -61,8 +67,8 @@ function setup(
       makePersonalRecord({ exerciseId: ID, exerciseName: "Barbell bench press", recordType: "best_est_1rm", value: 122.5, previousValue: 115 }),
     ],
   });
-  prepareApp({ auth, fake, ...(options.unitPreference ? { unitPreference: options.unitPreference } : {}) });
-  return { fake, ...renderApp(options.path ?? `/app/progress/${ID}`) };
+  prepareApp({ auth, fake, catalog, ...(options.unitPreference ? { unitPreference: options.unitPreference } : {}) });
+  return { fake, ...renderApp(options.path ?? exercisePath(ID)) };
 }
 
 const seriesGets = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => SERIES.test(r.path));
@@ -72,24 +78,18 @@ const rangeGroup = () => screen.getByRole("group", { name: "Range" });
 const sessions = () => within(screen.getByRole("list", { name: "Sessions" })).getAllByRole("button");
 const readout = () => document.querySelector("[aria-live='polite']")!;
 
-describe("08.1 AC13 — the exercise screen's frame", () => {
-  it("title falls back, then shows the name; Back to Progress; defaults est. 1RM and 3M", async () => {
+describe("08.1 AC13 / 18.2 AC23 — the body's defaults", () => {
+  it("defaults est. 1RM and 3M; the body draws no title or back link of its own", async () => {
     setup();
-    expect(await screen.findByRole("heading", { level: 1, name: "Barbell bench press" })).toBeInTheDocument();
     await screen.findByRole("img", { name: /^Est\. 1RM, 3 months:/ });
     expect(within(metricGroup()).getByRole("button", { name: "Est. 1RM" })).toHaveAttribute("aria-pressed", "true");
     expect(within(rangeGroup()).getByRole("button", { name: "3M" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("link", { name: "Back to Progress" })).toHaveAttribute("href", "/app/progress");
-  });
-
-  it("no records → the fallback title stays", async () => {
-    setup({ records: [] });
-    await screen.findByRole("img", { name: /^Est\. 1RM/ });
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Exercise progress");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Back to Progress" })).toBeNull();
   });
 });
 
-describe("08.1 AC14 — the metric control", () => {
+describe("08.1 AC14 / 18.2 AC23 — the metric control", () => {
   it("offers only metrics with data; the choice survives a range without it", async () => {
     const points = [
       makeProgressPoint({ localDate: "2026-01-10", bestE1rm: null, topSetWeight: 80, totalVolume: null }),
@@ -125,7 +125,7 @@ describe("08.1 AC14 — the metric control", () => {
   });
 });
 
-describe("08.1 AC15 — the range chips", () => {
+describe("08.1 AC15 / 18.2 AC23 — the range chips", () => {
   it("3M / 1Y / All send the right from (fixed clock)", async () => {
     const { fake, user } = setup();
     await screen.findByRole("img", { name: /3 months/ });
@@ -161,7 +161,7 @@ describe("08.1 AC15 — the range chips", () => {
   });
 });
 
-describe("08.1 AC17 — selection and the readout", () => {
+describe("08.1 AC17 / 18.2 AC23 — selection and the readout", () => {
   it("defaults to the newest point; tapping a dot moves the readout and the Open workout link", async () => {
     const { user } = setup();
     await screen.findByRole("img", { name: /3 months/ });
@@ -183,7 +183,7 @@ describe("08.1 AC17 — selection and the readout", () => {
   });
 });
 
-describe("08.1 AC18 — the sessions list", () => {
+describe("08.1 AC18 / 18.2 AC23 — the sessions list", () => {
   it("newest first; aria-pressed; a row selects the same point as its dot (keyboard too)", async () => {
     const { user } = setup();
     await screen.findByRole("img", { name: /3 months/ });
@@ -211,7 +211,7 @@ describe("08.1 AC18 — the sessions list", () => {
   });
 });
 
-describe("08.1 AC19 — the exercise's personal records", () => {
+describe("08.1 AC19 / 18.2 AC23 — the exercise's personal records", () => {
   it("shows the lineage's records via RecordsSection", async () => {
     setup();
     const block = await screen.findByRole("region", { name: "Personal records" });
@@ -219,7 +219,7 @@ describe("08.1 AC19 — the exercise's personal records", () => {
   });
 });
 
-describe("08.1 AC20 — empty and thin ranges", () => {
+describe("08.1 AC20 / 18.2 AC23 — empty and thin ranges", () => {
   it("no points in 3M → range wording; chips usable; no metric control", async () => {
     const { user } = setup({ points: [older] });
     expect(await screen.findByText("No sessions in the last 3 months")).toBeInTheDocument();
@@ -242,7 +242,7 @@ describe("08.1 AC20 — empty and thin ranges", () => {
   });
 });
 
-describe("08.1 AC21 — series failure", () => {
+describe("08.1 AC21 / 18.2 AC23 — series failure", () => {
   it("first load fails → chart-area notice, chips usable, records unaffected; unknown is reported", async () => {
     const fake = createWorkoutFake({ progress: { [ID]: recent }, records: [makePersonalRecord({ exerciseId: ID })] });
     fake.failNext({ method: "GET", path: SERIES }, () => problemResponse(418, "teapot"));
@@ -313,7 +313,7 @@ describe("08.1 AC21 — series failure", () => {
   });
 });
 
-describe("08.1 AC22 — records failure on the exercise screen", () => {
+describe("08.1 AC22 / 18.2 AC23 — records failure on the exercise screen", () => {
   it("block-local notice; chart unaffected", async () => {
     const fake = createWorkoutFake({ progress: { [ID]: recent }, records: [makePersonalRecord({ exerciseId: ID })] });
     fake.failNext({ method: "GET", path: /^\/v1\/personal-records$/ }, () => problemResponse(500, "internal"));
@@ -325,7 +325,7 @@ describe("08.1 AC22 — records failure on the exercise screen", () => {
   });
 });
 
-describe("08.1 AC23 — unknown and malformed ids", () => {
+describe("08.1 AC23 / 18.2 AC23 — unknown and malformed ids", () => {
   it("404 → NotFound, not reported", async () => {
     setup({ path: "/app/progress/10000000-0000-4000-8000-0000000000ff", records: [] });
     expect(await screen.findByTestId("not-found")).toBeInTheDocument();
@@ -339,7 +339,7 @@ describe("08.1 AC23 — unknown and malformed ids", () => {
   });
 });
 
-describe("08.1 AC24 — units follow the profile", () => {
+describe("08.1 AC24 / 18.2 AC23 — units follow the profile", () => {
   it("lb: summary, readout and sessions in lb", async () => {
     setup({ unitPreference: "lb" });
     await screen.findByRole("img", { name: "Est. 1RM, 3 months: 231 lb to 270 lb, best 270 lb" });
@@ -349,7 +349,7 @@ describe("08.1 AC24 — units follow the profile", () => {
   });
 });
 
-describe("08.1 Review Focus 3 — moving between exercises starts from defaults", () => {
+describe("08.1 Review Focus 3 / 18.2 AC23 — moving between exercises starts from defaults", () => {
   it("A at 1Y → B shows 3M", async () => {
     const { user, router } = setup();
     await screen.findByRole("img", { name: /3 months/ });

@@ -1,0 +1,20 @@
+/* Two columns, labels sized to the longest one; each row's wrapper drops out of the grid. */
+.details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.row {
+  display: contents;
+}
+
+.label {
+  color: var(--color-muted);
+}
+
+.value {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

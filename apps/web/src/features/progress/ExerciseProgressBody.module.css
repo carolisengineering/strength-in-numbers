@@ -39,13 +39,6 @@
 }
 
 .link,
-.back {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap-target-min);
-  color: var(--color-signal);
-}
-
 .sessions {
   display: flex;
   flex-direction: column;

@@ -270,8 +270,7 @@ describe("08.1 AC25 / 18.2 AC5 — Exercises screens, accessibly", () => {
   it.each([
     ["../exercises/RecordsView.module.css", ".row"],
     ["../exercises/RecordsView.module.css", ".emptyLink"],
-    ["../progress/ExerciseProgressScreen.module.css", ".session"],
-    ["../progress/ExerciseProgressScreen.module.css", ".back"],
+    ["../progress/ExerciseProgressBody.module.css", ".session"],
   ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
     expect(hasTapTarget(file, selector)).toBe(true);
   });

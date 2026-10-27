@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link } from "react-router";
 import type { ProgressSeries } from "@sin/core";
 import { InlineNotice } from "../../ui/InlineNotice";
-import { Screen } from "../../ui/Screen";
-import { NotFound } from "../../screens/NotFound";
 import { useMe } from "../me/useMe";
 import { useExerciseRecords } from "../records/queries";
 import { RecordsSection } from "../records/RecordsSection";
@@ -11,7 +9,6 @@ import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import { ChoiceGroup } from "./ChoiceGroup";
 import { formatLocalDateWithYear } from "./dates";
-import { groupByExercise } from "./exercises";
 import { LineChart } from "./LineChart";
 import {
   INTEGER_METRICS,
@@ -26,22 +23,17 @@ import {
 } from "./metrics";
 import { useSeries } from "./queries";
 import { RANGES, RANGE_CHIP, emptyRangeText, rangeLabel, type Range } from "./range";
-import styles from "./ExerciseProgressScreen.module.css";
-
-/** Keys the screen by exercise so moving between exercises starts from defaults (§6.4). */
-export function ExerciseProgressRoute() {
-  const { exerciseId = "" } = useParams();
-  return <ExerciseProgressScreen key={exerciseId} exerciseId={exerciseId} />;
-}
+import styles from "./ExerciseProgressBody.module.css";
 
 const RANGE_OPTIONS = RANGES.map((r) => ({ value: r, label: RANGE_CHIP[r] }));
 
 /**
- * One exercise's progress (Spec 08.1 §5.3). `chosen` and `selectedId` are preferences re-validated
+ * One exercise's progress (Spec 08.1 §5.3), drawn under the exercise page (Spec 18.2 AC23): the page owns
+ * the title, the back link and the gone rule; this body is the controls, the chart and the records. `chosen` and `selectedId` are preferences re-validated
  * against the data on every render — no effect-driven state sync (§6.4). `lastShown` keeps the last
  * real `{ range, series }` so a failed new range never blanks the chart or mislabels it (D8).
  */
-export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
+export function ExerciseProgressBody({ exerciseId }: { exerciseId: string }) {
   const { data: me } = useMe();
   const pref = me?.unitPreference ?? "kg";
   const [range, setRange] = useState<Range>("3m");
@@ -67,9 +59,6 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
         : lastShown.current;
 
   const failure = series.error ? classifyWorkoutError(series.error, { op: "load-progress-series" }) : null;
-  if (!view && failure && (failure.kind === "not-found" || failure.kind === "validation")) return <NotFound />;
-
-  const name = records.data && records.data.length > 0 ? groupByExercise(records.data)[0]?.name : undefined;
   const available = availableMetrics(view?.series);
   const metric = resolveMetric(chosen, available);
   const points = pointsFor(view?.series, metric, pref);
@@ -142,7 +131,7 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
   }
 
   return (
-    <Screen title={name ?? "Exercise progress"}>
+    <>
       <div className={styles.controls}>
         {metric ? (
           <ChoiceGroup
@@ -163,9 +152,6 @@ export function ExerciseProgressScreen({ exerciseId }: { exerciseId: string }) {
         {chartArea}
       </div>
       <RecordsSection query={records} unitPreference={pref} />
-      <Link className={styles.back} to="/app/progress">
-        Back to Progress
-      </Link>
-    </Screen>
+    </>
   );
 }

@@ -20,7 +20,7 @@ const SIGNAL_ALLOWED = [
   "features/progress/ChoiceGroup.module.css",
   "features/progress/LineChart.module.css",
   "features/exercises/RecordsView.module.css",
-  "features/progress/ExerciseProgressScreen.module.css",
+  "features/progress/ExerciseProgressBody.module.css",
   "features/routines/UnitToggle.module.css",
   "features/routines/RoutinesSection.module.css",
   // Issue #98: the shared "‹ Back to …" text link (interactive), as on FinishedWorkoutScreen.
@@ -81,7 +81,7 @@ describe("AC12 — panels separate by tint, not outline", () => {
     ["features/history/HistoryScreen.module.css", ".row"],
     ["features/workouts/RoutineNotePanel.module.css", ".panel"],
     ["features/exercises/RecordsView.module.css", ".row"],
-    ["features/progress/ExerciseProgressScreen.module.css", ".session"],
+    ["features/progress/ExerciseProgressBody.module.css", ".session"],
     ["features/routines/RoutinesSection.module.css", ".row"],
     ["features/routines/RoutineEditor.module.css", ".card"],
     ["features/workouts/FinishedWorkoutScreen.module.css", ".exercise"],
