@@ -67,9 +67,13 @@ function cell(value: string | null): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+const trimmed = (v: string | null) => (v === null ? null : v.trim());
+/** Cells trimmed as the parse trims them, before sorting, so a second pass reads and orders the same (minor 134). */
+const trimLine = (l: MappingCsvLine): MappingCsvLine => ({ ...l, hevyId: trimmed(l.hevyId), hevyTitle: trimmed(l.hevyTitle), sinId: trimmed(l.sinId), sinName: trimmed(l.sinName) });
+
 /** Spec 19.0 AC14: RFC 4180, CRLF line ends, UTF-8 without a BOM, in the canonical order. */
 export function formatMappingCsv(lines: readonly MappingCsvLine[]): string {
-  const rows = [...lines].sort(compareLines).map((l) =>
+  const rows = lines.map(trimLine).sort(compareLines).map((l) =>
     [l.kind, l.hevyId, l.hevyTitle, l.sinId, l.sinName, l.rule, l.kind === "exercise" && l.exportAs !== null ? (l.exportAs ? "yes" : "no") : null]
       .map(cell)
       .join(","),
@@ -77,7 +81,10 @@ export function formatMappingCsv(lines: readonly MappingCsvLine[]): string {
   return [MAPPING_CSV_HEADER, ...rows].map((row) => `${row}\r\n`).join("");
 }
 
-/** RFC 4180 records with the 1-based physical line each starts on. Quoted cells may hold commas, quotes and line ends. */
+/**
+ * RFC 4180 records with the 1-based physical line each starts on. Quoted cells may hold commas, quotes and line ends.
+ * A line ends in `\r\n`, `\n` or a lone `\r` (Excel's "CSV (Macintosh)").
+ */
 function records(text: string): { line: number; cells: string[] }[] {
   const out: { line: number; cells: string[] }[] = [];
   let cells: string[] = [];
@@ -93,7 +100,7 @@ function records(text: string): { line: number; cells: string[] }[] {
         i++;
       } else if (c === '"') quoted = false;
       else {
-        if (c === "\n") line++;
+        if (c === "\n" || (c === "\r" && text[i + 1] !== "\n")) line++;
         value += c;
       }
     } else if (c === '"') quoted = true;
@@ -101,7 +108,7 @@ function records(text: string): { line: number; cells: string[] }[] {
       cells.push(value);
       value = "";
     } else if (c === "\r" && text[i + 1] === "\n") continue;
-    else if (c === "\n") {
+    else if (c === "\n" || c === "\r") {
       cells.push(value);
       out.push({ line: start, cells });
       cells = [];
@@ -125,13 +132,14 @@ const RULES_FOR: Readonly<Record<MappingCsvKind, readonly string[]>> = {
 };
 
 /**
- * Spec 19.0 AC14: the file back into lines. Accepts a leading BOM, `\n` or `\r\n`, and blank lines (skipped). Each
+ * Spec 19.0 AC14: the file back into lines. Accepts a leading BOM, `\n`, `\r\n` or `\r`, and blank lines (skipped). Each
  * error carries its 1-based line and a code, never the cell's text; a bad header stops the parse.
  */
 export function parseMappingCsv(text: string): { lines: MappingCsvLine[]; errors: MappingCsvError[] } {
-  if (utf8Length(text) > MAPPING_CSV_MAX_BYTES) return { lines: [], errors: [{ line: 1, code: "file_too_large" }] };
+  // UTF-8 never takes fewer bytes than UTF-16 units, so an over-long string is refused without the walk (minor 138).
+  if (text.length > MAPPING_CSV_MAX_BYTES || utf8Length(text) > MAPPING_CSV_MAX_BYTES) return { lines: [], errors: [{ line: 1, code: "file_too_large" }] };
   const body = text.replace(/^\uFEFF/, "");
-  const physical = body.replace(/(\r?\n)+$/, "").split(/\r?\n/).length;
+  const physical = body.replace(/(\r\n|\r|\n)+$/, "").split(/\r\n|\r|\n/).length;
   if (physical > MAPPING_CSV_MAX_LINES) return { lines: [], errors: [{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }] };
 
   const rows = records(body).filter((r) => r.cells.some((c) => c.trim() !== ""));

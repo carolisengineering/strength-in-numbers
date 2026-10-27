@@ -107,6 +107,15 @@ describe("19.0 AC11 — buildHevyWorkout", () => {
     expect(r.ok && r.notices).toEqual([{ code: "section_no_placeholder", count: 1, names: ["Finisher"] }]);
   });
 
+  it("a markerless section split into two runs is counted and named once (deferred minor 137)", () => {
+    const warm = section(0, "Warm-up");
+    const d = detail({
+      sections: [warm],
+      exercises: [exercise(0, { sectionId: warm.id }), exercise(1), exercise(2, { sectionId: warm.id })],
+    });
+    expect(notices(d, mappingFor(6, { placeholders: false }))).toEqual([{ code: "section_no_placeholder", count: 1, names: ["Warm-up"] }]);
+  });
+
   it("a user rule changes the treatment", () => {
     const fin = section(0, "Finisher", { notes: "fast" });
     const mapping = { ...mappingFor(6), sectionRules: [{ name: "finisher", treatment: "notes_on_first" as const }] };

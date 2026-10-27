@@ -80,6 +80,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
     expect(b.statusCode).toBe(200);
     expect((await complete(w, hevyId, (b.json() as { fingerprint: string }).fingerprint)).statusCode).toBe(200);
   }
+  /** Polls until a request's statement (not this poller's) is waiting on a lock. */
+  async function waitForLockWait(): Promise<void> {
+    for (let i = 0; i <= 200; i++) {
+      const rows = await db.prisma.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query NOT ILIKE '%pg_stat_activity%'`,
+      );
+      if (rows[0]!.n >= 1) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error("the request never waited on a lock");
+  }
   const age = (w: string) => db.prisma.$executeRawUnsafe(`UPDATE hevy_link SET claimed_at = now() - interval '121 seconds' WHERE workout_id = $1::uuid`, w);
 
   describe("19.0 AC26 — read", () => {
@@ -103,6 +114,68 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
         expect((await app.inject({ method: "GET", url: url(w), headers: A })).statusCode, w).toBe(404);
       }
     });
+  });
+
+  describe("deferred minor 140 — a delete that lands while a complete or release waits", () => {
+    it("the complete answers 404, not hevy-no-claim", async () => {
+      const { workoutId } = await finished();
+      const b = await begin(workoutId);
+      const fp = (b.json() as { fingerprint: string }).fingerprint;
+      let release!: () => void;
+      const released = new Promise<void>((r) => (release = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      // The statements deleteWorkout runs, held open: the claim-only link row, then the workout.
+      const deleter = db.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(`SELECT 1 FROM workout WHERE id = $1::uuid FOR UPDATE`, workoutId);
+          await tx.$executeRawUnsafe(`DELETE FROM hevy_link WHERE workout_id = $1::uuid AND hevy_workout_id IS NULL`, workoutId);
+          await tx.$executeRawUnsafe(`DELETE FROM workout WHERE id = $1::uuid`, workoutId);
+          held();
+          await released;
+        },
+        { timeout: 30_000 },
+      );
+      await heldP;
+      const completeP = complete(workoutId, "H1", fp);
+      try {
+        await waitForLockWait();
+      } finally {
+        release();
+        await deleter;
+      }
+      expect((await completeP).statusCode).toBe(404);
+    }, 30_000);
+
+    it("a release answers 404 and leaves no claim on the tombstone", async () => {
+      const { workoutId } = await finished();
+      await send(workoutId, "H5");
+      expect((await begin(workoutId)).statusCode).toBe(200);
+      let release_!: () => void;
+      const released = new Promise<void>((r) => (release_ = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      const deleter = db.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(`SELECT 1 FROM workout WHERE id = $1::uuid FOR UPDATE`, workoutId);
+          await tx.$executeRawUnsafe(`DELETE FROM workout WHERE id = $1::uuid`, workoutId);
+          held();
+          await released;
+        },
+        { timeout: 30_000 },
+      );
+      await heldP;
+      const releaseP = release(workoutId);
+      try {
+        await waitForLockWait();
+      } finally {
+        release_();
+        await deleter;
+      }
+      expect((await releaseP).statusCode).toBe(404);
+      const tomb = await db.prisma.$queryRawUnsafe<{ claimed: boolean }[]>(`SELECT claimed_at IS NOT NULL AS claimed FROM hevy_link WHERE hevy_workout_id = 'H5'`);
+      expect(tomb).toEqual([{ claimed: true }]);
+    }, 30_000);
   });
 
   describe("19.0 AC27 — begin", () => {

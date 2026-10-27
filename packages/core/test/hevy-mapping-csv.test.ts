@@ -80,6 +80,23 @@ describe("19.0 AC14 — round trip", () => {
     expect(parsed.lines).toEqual(m);
     expect(formatMappingCsv(parsed.lines)).toBe(formatMappingCsv(m));
   });
+
+  it("a cell with edge spaces is written trimmed, so it reads back as written (deferred minor 134)", () => {
+    const spaced = line({ kind: "exercise", hevyId: " E1 ", hevyTitle: " Bench ", sinId: ID_A, sinName: "Bench Press  ", exportAs: true });
+    const text = formatMappingCsv([spaced]);
+    expect(text.split("\r\n")[1]).toBe(`exercise,E1,Bench,${ID_A},Bench Press,,yes`);
+    const parsed = parseMappingCsv(text);
+    expect(formatMappingCsv(parsed.lines)).toBe(text);
+  });
+
+  it("lines sort by their trimmed titles, so a second pass keeps the order", () => {
+    const text = formatMappingCsv([
+      line({ kind: "skip", hevyId: "Z1", hevyTitle: " Zed" }),
+      line({ kind: "skip", hevyId: "A1", hevyTitle: "Apple" }),
+    ]);
+    expect(text.split("\r\n").slice(1, 3)).toEqual(["skip,A1,Apple,,,,", "skip,Z1,Zed,,,,"]);
+    expect(formatMappingCsv(parseMappingCsv(text).lines)).toBe(text);
+  });
 });
 
 describe("19.0 AC14 — tolerant input (Review Focus 4)", () => {
@@ -89,6 +106,7 @@ describe("19.0 AC14 — tolerant input (Review Focus 4)", () => {
     ["LF line ends", clean.replace(/\r\n/g, "\n")],
     ["a trailing blank line", `${clean}\r\n`],
     ["no final line end", clean.slice(0, -2)],
+    ["CR-only line ends (Excel's CSV Macintosh, deferred minor 133)", clean.replace(/\r\n/g, "\r")],
   ])("%s parses the same", (_l, text) => {
     const parsed = parseMappingCsv(text);
     expect(parsed.errors).toEqual([]);
@@ -126,6 +144,16 @@ describe("19.0 AC14 — errors", () => {
     const parsed = parseMappingCsv(text);
     expect(parsed.errors).toEqual([{ line: lineNo, code }]);
     expect(JSON.stringify(parsed.errors)).not.toContain("Secret Title");
+  });
+
+  it("CR-only line ends keep 1-based line numbers (deferred minor 133)", () => {
+    const text = [MAPPING_CSV_HEADER, "skip,S,Stretching,,,,", "exercise,X,Secret Title,,Squat,"].join("\r");
+    expect(parseMappingCsv(text).errors).toEqual([{ line: 3, code: "missing_column" }]);
+  });
+
+  it("too_many_lines counts CR-only line ends too", () => {
+    const text = [MAPPING_CSV_HEADER, ...Array.from({ length: MAPPING_CSV_MAX_LINES }, (_, i) => `skip,S${i},Stretching,,,,`)].join("\r");
+    expect(parseMappingCsv(text).errors).toEqual([{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }]);
   });
 
   it("a placeholder needs warmup or workout; a skip takes no rule", () => {

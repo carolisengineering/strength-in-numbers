@@ -86,6 +86,8 @@ export function buildHevyWorkout(
 
   const out: HevyPostExercise[] = [];
   let previousSection: string | null = null;
+  // A markerless section is counted and named once, however many runs it has (deferred minor 137).
+  const markerlessIds = new Set<string>();
   for (const ex of exercises) {
     let notes = ex.notes;
     const sec = ex.sectionId === null ? undefined : sections.get(ex.sectionId);
@@ -105,8 +107,11 @@ export function buildHevyWorkout(
           });
         } else {
           notes = joinNotes(nameAndNote(sec), notes);
-          count("section_no_placeholder");
-          markerless.push(sec.name);
+          if (!markerlessIds.has(sec.id)) {
+            markerlessIds.add(sec.id);
+            count("section_no_placeholder");
+            markerless.push(sec.name);
+          }
         }
       }
     }

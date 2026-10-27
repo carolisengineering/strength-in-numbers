@@ -59,4 +59,20 @@ describe("19.0 AC10 — sections from Hevy placeholders", () => {
     expect(r.note).toHaveLength(2000);
     expect(r.notices).toEqual(["section_note_cut"]);
   });
+
+  it("a cut note does not end in a space", () => {
+    const r = sectionFromPlaceholder("warmup_placeholder", `${"y".repeat(1999)} zzz`);
+    expect(r.note).toBe("y".repeat(1999));
+  });
+
+  it("a cut never splits a surrogate pair (deferred minor 136)", () => {
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const named = sectionFromPlaceholder("workout_placeholder", `${"x".repeat(39)}\u{1F4AA}zzz`);
+    expect(named.name).toBe("x".repeat(39));
+    expect(named.notices).toEqual(["section_name_cut"]);
+    const noted = sectionFromPlaceholder("warmup_placeholder", `${"y".repeat(1999)}\u{1F4AA}zzz`);
+    expect(noted.note).toBe("y".repeat(1999));
+    expect(noted.note).not.toMatch(lone);
+    expect(noted.notices).toEqual(["section_note_cut"]);
+  });
 });

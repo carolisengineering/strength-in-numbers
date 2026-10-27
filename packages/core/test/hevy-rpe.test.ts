@@ -27,6 +27,9 @@ describe("19.0 AC6 — roundToTenth (half away from zero, with the floating guar
     [0.05, 0.1],
     [44.9999985, 45],
     [-0.05, -0.1],
+    // A hair under a half: only the toFixed(6) guard rounds these up (deferred minor 132).
+    [1.1499999999, 1.2],
+    [0.0499999999, 0.1],
   ])("%s → %s", (x, expected) => {
     expect(roundToTenth(x)).toBe(expected);
   });
