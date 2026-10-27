@@ -135,7 +135,9 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
       {statusLine}
       {neverLogged ? <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p> : <ExerciseProgressBody exerciseId={exerciseId} />}
-      {resolution.row.ownerUserId !== null ? (
+      {/* Mounted only while open: its routines read then unsubscribes on close, so `gcTime: 0` drops the answer and a
+          reopening can never show (or enable Delete on) the last one (AC46, D12). */}
+      {resolution.row.ownerUserId !== null && deleteOpen ? (
         <DeleteExerciseDialog
           open={deleteOpen}
           row={resolution.row}

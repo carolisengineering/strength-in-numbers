@@ -88,6 +88,38 @@ describe("18.2 AC46 — the dialog opens and asks", () => {
   });
 });
 
+describe("18.2 AC46 / AC48 — a reopened dialog never shows the last answer", () => {
+  it("reopening holds Delete until the fresh read answers, and a failed fresh read is a failure", async () => {
+    const { fake, user } = setup();
+    let dialog = await openDelete(user);
+    await within(dialog).findByText(EXERCISES_COPY.deleteKeepsHistory);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    // The routine list changed elsewhere; the fresh read is still out.
+    const held = deferred<void>();
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises/:id/routines`, async () => {
+        await held.promise;
+        return HttpResponse.json({ routines: [{ id: routineId(1), name: "Cardio day", oneOffUntil: null }] });
+      }),
+    );
+    dialog = await openDelete(user);
+    expect(within(dialog).getByText(EXERCISES_COPY.checkingRoutines)).toBeInTheDocument();
+    expect(within(dialog).queryByText(EXERCISES_COPY.deleteKeepsHistory)).toBeNull();
+    expect(confirmButton(dialog)).toBeDisabled();
+    held.resolve();
+    expect(await within(dialog).findByText("Used in 1 routine:")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    server.resetHandlers();
+    prepareAgain(fake);
+    fake.failNext({ method: "GET", path: ROUTINES }, () => problemResponse(500, "internal"));
+    dialog = await openDelete(user);
+    expect(await within(dialog).findByText(EXERCISES_COPY.routinesCheckFailed)).toBeInTheDocument();
+    expect(confirmButton(dialog)).toBeDisabled();
+  });
+});
+
 /** After `server.resetHandlers()`, put the fake's handlers back. */
 function prepareAgain(fake: ReturnType<typeof createWorkoutFake>) {
   server.use(...fake.handlers);
