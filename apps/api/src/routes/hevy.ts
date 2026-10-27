@@ -22,6 +22,7 @@ import {
 import { hevyFingerprint } from "../hevy/fingerprint.js";
 import type { HevyRepository } from "../repositories/hevy.js";
 import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
+import { toHevyPairDto, toHevySectionRuleDto } from "./mappers.js";
 
 export interface HevyRouteDeps {
   hevyRepository: HevyRepository;
@@ -65,7 +66,9 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
         config: { problems: [NotFoundError], httpCache: "revalidate" },
       },
       async (request, reply) => {
-        const mapping = await repo.getMapping(request.user!.id);
+        const stored = await repo.getMapping(request.user!.id);
+        // AC35: the same mappers as the account export.
+        const mapping = { pairs: stored.pairs.map(toHevyPairDto), sectionRules: stored.sectionRules.map(toHevySectionRuleDto) };
         const etag = strongEtag("hevy-mapping", JSON.stringify(mapping));
         reply.header("etag", etag);
         if (ifNoneMatchHits(request.headers["if-none-match"], etag)) {

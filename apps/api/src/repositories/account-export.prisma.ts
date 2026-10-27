@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type { AccountExportRepository, AccountSnapshot } from "./account-export.js";
+import type { AccountExportRepository, AccountSnapshot, HevyExportLinkRecord } from "./account-export.js";
+import { readHevyMapping } from "./hevy.prisma.js";
 import { exerciseColumns, toExerciseRecord, type ExerciseDbRow } from "./exercise.prisma.js";
 import { ROUTINE_WITH_ITEMS, toRoutine, type RoutineDbRow } from "./routine.prisma.js";
 import { SET_ENTRY_COLUMNS, toSetRecord, type RawClient, type SetEntryDbRow } from "./set-entry.prisma.js";
@@ -101,12 +102,27 @@ export function createAccountExportRepository(
             sections: w.sections.map(toWorkoutSectionRecord),
             routineIsOneOff: w.routine_is_one_off,
           }));
+          // Spec 19.0 AC35: in the same snapshot, through the mapping read's own statements.
+          const mapping = await readHevyMapping(tx, userId);
+          const links = await tx.$queryRaw<{ workout_id: string | null; hevy_workout_id: string | null; origin: string; synced_at: Date | null }[]>`
+            SELECT workout_id::text AS workout_id, hevy_workout_id, origin, synced_at
+            FROM "hevy_link" WHERE user_id = ${userId}::uuid ORDER BY created_at, id`;
           return {
             exportedAt: clock!.exported_at,
             user: toUserRecord(user),
             exercises: exerciseRows.map(toExerciseRecord),
             routines: routineRows.map(toRoutine),
             workouts,
+            hevy: {
+              pairs: mapping.pairs,
+              sectionRules: mapping.sectionRules,
+              links: links.map((l) => ({
+                workoutId: l.workout_id,
+                hevyWorkoutId: l.hevy_workout_id,
+                origin: l.origin as HevyExportLinkRecord["origin"],
+                syncedAt: l.synced_at,
+              })),
+            },
           };
         },
         {

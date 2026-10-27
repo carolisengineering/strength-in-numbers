@@ -1584,6 +1584,171 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "hevy": {
+                      "type": "object",
+                      "properties": {
+                        "pairs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "hevyTemplateId": {
+                                "type": "string"
+                              },
+                              "hevyTitle": {
+                                "type": "string"
+                              },
+                              "hevyType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "weight_reps",
+                                      "reps_only",
+                                      "bodyweight_reps",
+                                      "bodyweight_assisted_reps",
+                                      "duration",
+                                      "weight_duration",
+                                      "distance_duration",
+                                      "short_distance_weight"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "exercise",
+                                  "skip",
+                                  "warmup_placeholder",
+                                  "workout_placeholder"
+                                ]
+                              },
+                              "exerciseId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "exerciseActive": {
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              },
+                              "measureRule": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "calories_as_reps",
+                                      "assist_weight_ignored"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "exportAs": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "hevyTemplateId",
+                              "hevyTitle",
+                              "hevyType",
+                              "role",
+                              "exerciseId",
+                              "exerciseActive",
+                              "measureRule",
+                              "exportAs"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "sectionRules": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "treatment": {
+                                "type": "string",
+                                "enum": [
+                                  "warmup_placeholder",
+                                  "workout_placeholder",
+                                  "notes_on_first"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "treatment"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "links": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "workoutId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "hevyWorkoutId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "origin": {
+                                "type": "string",
+                                "enum": [
+                                  "sent",
+                                  "imported",
+                                  "matched"
+                                ]
+                              },
+                              "syncedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "workoutId",
+                              "hevyWorkoutId",
+                              "origin",
+                              "syncedAt"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "pairs",
+                        "sectionRules",
+                        "links"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -1592,7 +1757,8 @@
                     "profile",
                     "exercises",
                     "routines",
-                    "workouts"
+                    "workouts",
+                    "hevy"
                   ],
                   "additionalProperties": false
                 }

@@ -22,6 +22,7 @@ const DOC = {
   exercises: [],
   routines: [],
   workouts: [],
+  hevy: { pairs: [], sectionRules: [], links: [] }, // Spec 19.0 AC35
 };
 
 describe("AC34 — account DTOs compose the read DTOs", () => {

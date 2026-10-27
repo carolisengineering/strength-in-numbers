@@ -125,3 +125,20 @@ export const HevyLinkCompleteSchema = z.strictObject({
   fingerprint: z.string().regex(/^v1:[0-9a-f]{64}$/, FINGERPRINT_FORMAT),
 });
 export type HevyLinkComplete = z.infer<typeof HevyLinkCompleteSchema>;
+
+/** Spec 19.0 §5.6: one link in the account export; a deleted workout's link keeps its Hevy id with `workoutId: null`. */
+export const HevyExportLinkSchema = z.object({
+  workoutId: z.string().nullable(),
+  hevyWorkoutId: z.string().nullable(),
+  origin: z.enum(HEVY_LINK_ORIGIN_VALUES),
+  syncedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type HevyExportLink = z.infer<typeof HevyExportLinkSchema>;
+
+/** Spec 19.0 §5.6 / AC35: the account export's `hevy` block, for every user (empty arrays when there is none). */
+export const HevyExportSchema = z.object({
+  pairs: z.array(HevyPairSchema),
+  sectionRules: z.array(HevySectionRuleSchema),
+  links: z.array(HevyExportLinkSchema),
+});
+export type HevyExport = z.infer<typeof HevyExportSchema>;

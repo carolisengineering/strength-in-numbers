@@ -10,7 +10,7 @@ import {
 import { AccountDeletedError } from "../errors/app-error.js";
 import type { AccountExportRepository } from "../repositories/account-export.js";
 import type { UserRepository } from "../repositories/user.js";
-import { toExerciseDto, toMeDto, toRoutineDto, toWorkoutDetailDto } from "./mappers.js";
+import { toExerciseDto, toHevyExportLinkDto, toHevyPairDto, toHevySectionRuleDto, toMeDto, toRoutineDto, toWorkoutDetailDto } from "./mappers.js";
 
 /**
  * `routes/account.ts` — Spec 11 §5. The account acted on is always
@@ -46,6 +46,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
         exercises: s.exercises.map(toExerciseDto),
         routines: s.routines.map(toRoutineDto),
         workouts: s.workouts.map(toWorkoutDetailDto),
+        hevy: {
+          pairs: s.hevy.pairs.map(toHevyPairDto),
+          sectionRules: s.hevy.sectionRules.map(toHevySectionRuleDto),
+          links: s.hevy.links.map(toHevyExportLinkDto),
+        },
       };
       const setCount = s.workouts.reduce((n, w) => n + w.exercises.reduce((m, e) => m + e.sets.length, 0), 0);
       request.log.info(

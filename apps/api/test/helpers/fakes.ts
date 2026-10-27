@@ -1348,6 +1348,7 @@ export class FakeAccountExportRepository implements AccountExportRepository {
       exercises: [],
       routines: [],
       workouts: [],
+      hevy: { pairs: [], sectionRules: [], links: [] },
       ...this.next,
       user: this.users.getById(userId),
     };
