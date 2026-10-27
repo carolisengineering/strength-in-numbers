@@ -684,3 +684,34 @@ describe("18.0 §10 — the fake applies Change Time through resolveRetime", () 
     expect((list.json!["items"] as { localDate: string }[]).map((w) => w.localDate)).toEqual(["2026-10-17", "2026-10-16", "2026-10-15"]);
   });
 });
+
+describe("18.2 AC7 — the fake serves GET /v1/exercises/usage", () => {
+  it("derives usage from the progress series when not given: latest date per root, date desc then id", async () => {
+    const fake = createWorkoutFake({
+      progress: {
+        [exerciseId(2)]: [makeProgressPoint({ localDate: "2026-10-01" }), makeProgressPoint({ localDate: "2026-10-05" })],
+        [exerciseId(1)]: [makeProgressPoint({ localDate: "2026-10-05" })],
+        [exerciseId(3)]: [],
+      },
+    });
+    server.use(...fake.handlers);
+    const res = await call("GET", "/exercises/usage");
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({
+      exercises: [
+        { rootId: exerciseId(1), lastLoggedOn: "2026-10-05" },
+        { rootId: exerciseId(2), lastLoggedOn: "2026-10-05" },
+      ],
+    });
+  });
+
+  it("serves the given usage, and honors failNext and setOffline", async () => {
+    const fake = createWorkoutFake({ usage: [{ rootId: exerciseId(4), lastLoggedOn: "2026-09-01" }] });
+    server.use(...fake.handlers);
+    expect((await call("GET", "/exercises/usage")).json).toEqual({ exercises: [{ rootId: exerciseId(4), lastLoggedOn: "2026-09-01" }] });
+    fake.failNext({ method: "GET", path: /\/exercises\/usage$/ }, () => problemResponse(500, "about:blank"));
+    expect((await call("GET", "/exercises/usage")).status).toBe(500);
+    fake.setOffline(true);
+    await expect(call("GET", "/exercises/usage")).rejects.toThrow();
+  });
+});
