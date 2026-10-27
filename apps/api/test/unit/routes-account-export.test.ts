@@ -37,7 +37,7 @@ describe("AC2 / AC9 — envelope and headers", () => {
     const exportRepo = new FakeAccountExportRepository(users, { exportedAt: new Date("2026-10-11T23:59:59.000Z") });
     const { app } = await buildTestApp({ userRepository: users, accountExportRepository: exportRepo, rateLimits: GENEROUS_LIMITS });
     const res = await app.inject({ method: "GET", url: "/v1/account/export", headers: BEARER });
-    expect(Object.keys(res.json()).sort()).toEqual(["exercises", "exportedAt", "formatVersion", "profile", "routines", "workouts"]);
+    expect(Object.keys(res.json()).sort()).toEqual(["exercises", "exportedAt", "formatVersion", "hevy", "profile", "routines", "workouts"]); // hevy: Spec 19.0 AC35
     expect(res.json().formatVersion).toBe(1);
     expect(res.json().profile).not.toHaveProperty("isNewUser");
     expect(res.headers["content-disposition"]).toBe('attachment; filename="strength-in-numbers-export-2026-10-11.json"');

@@ -7,6 +7,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import type { RateLimitConfig } from "../../src/plugins/rate-limit.js";
@@ -33,6 +34,7 @@ export function makeAccountApp(
     personalRecordRepository: createPersonalRecordRepository(db.prisma),
     routineRepository: createRoutineRepository(db.prisma),
     accountExportRepository: createAccountExportRepository(db.prisma),
+    hevyRepository: createHevyRepository(db.prisma),
     rateLimits: opts.rateLimits ?? GENEROUS_LIMITS,
   });
 }
@@ -46,7 +48,8 @@ export const TRUNCATE_ACCOUNTS =
 export async function tableHash(db: IntegrationDb, table: string, omit: string[] = []): Promise<string> {
   const minus = omit.map((k) => ` - '${k}'`).join("");
   const rows = await db.prisma.$queryRawUnsafe<{ h: string | null }[]>(
-    `SELECT md5(string_agg((to_jsonb(t)${minus})::text, ',' ORDER BY t.id::text)) AS h FROM "${table}" t`,
+    // Spec 19.0: the id-less hevy tables order by their whole content.
+    `SELECT md5(string_agg((to_jsonb(t)${minus})::text, ',' ORDER BY COALESCE(to_jsonb(t)->>'id', to_jsonb(t)::text))) AS h FROM "${table}" t`,
   );
   return rows[0]!.h ?? "empty";
 }
@@ -55,4 +58,5 @@ export const USER_TABLES = [
   "user", "exercise", "workout", "workout_exercise", "set_entry", "routine", "routine_item", "personal_record",
   "routine_item_set", "workout_planned_set", // Spec 09.1
   "routine_section", "workout_section", // Spec 09.2
+  "hevy_exercise_pair", "hevy_section_rule", "hevy_link", "hevy_account", // Spec 19.0
 ] as const;

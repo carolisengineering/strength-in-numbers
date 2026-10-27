@@ -3,6 +3,7 @@
  * export is a composition of the existing read DTOs; no field is redeclared
  * (D6), so the file and the read routes cannot disagree.
  */
+import { HevyExportSchema } from "./hevy.js";
 import { z } from "zod";
 import { MeSchema } from "./me.js";
 import { ExerciseSchema } from "./exercise.js";
@@ -28,6 +29,8 @@ export const AccountExportSchema = z.object({
   routines: z.array(RoutineSchema),
   /** Every workout, finished and in-progress, oldest first. */
   workouts: z.array(WorkoutDetailSchema),
+  /** Spec 19.0 AC35: the Hevy mapping and links (an added field; the format version stays 1). */
+  hevy: HevyExportSchema,
 });
 export type AccountExport = z.infer<typeof AccountExportSchema>;
 

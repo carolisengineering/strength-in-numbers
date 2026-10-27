@@ -18,6 +18,7 @@ import { authPlugin, type AuthPluginDeps } from "./plugins/auth.js";
 import { registerV1CachePolicy } from "./plugins/cache-policy.js";
 import { CORS_METHODS, assertCorsAllowsMethod } from "./plugins/cors-methods.js";
 import { registerV1Routes } from "./routes/v1.js";
+import type { HevyRepository } from "./repositories/hevy.js";
 import type { ExerciseRepository } from "./repositories/exercise.js";
 import type { WorkoutRepository } from "./repositories/workout.js";
 import type { PersonalRecordRepository } from "./repositories/personal-record.js";
@@ -87,6 +88,8 @@ export interface BuildAppDeps extends AuthPluginDeps {
   routineRepository: RoutineRepository;
   /** Spec 11. */
   accountExportRepository: AccountExportRepository;
+  /** Spec 19.0. */
+  hevyRepository: HevyRepository;
   /** Spec 05.2 — tests only; production uses `RATE_LIMITS`. No env var (D7). */
   rateLimits?: RateLimitConfig;
 }
@@ -282,6 +285,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         personalRecordRepository: deps.personalRecordRepository,
         routineRepository: deps.routineRepository,
         accountExportRepository: deps.accountExportRepository,
+        hevyRepository: deps.hevyRepository,
+        hevyEnabledUserIds: config.hevyEnabledUserIds,
       });
     },
     { prefix: "/v1" },

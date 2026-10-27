@@ -4,6 +4,8 @@
  * cannot disagree on a field. Keys stay in schema order — the ETag routes hash
  * `JSON.stringify` of these objects as the wire bytes (Spec 03.1 §6.1).
  */
+import type { HevyExportLink, HevyPair, HevySectionRule } from "@sin/core";
+import type { HevyExportLinkRecord } from "../repositories/account-export.js";
 import {
   tenthsToRpe,
   type Exercise,
@@ -187,4 +189,27 @@ export function toWorkoutDetailDto(r: WorkoutDetailRecord): WorkoutDetail {
     sections: r.sections.map(toWorkoutSectionDto),
     routineIsOneOff: r.routineIsOneOff,
   };
+}
+
+/** Spec 19.0 §5.2: a pair as every read shows it (the mapping `GET` and the account export, AC35). */
+export function toHevyPairDto(p: HevyPair): HevyPair {
+  return {
+    hevyTemplateId: p.hevyTemplateId,
+    hevyTitle: p.hevyTitle,
+    hevyType: p.hevyType,
+    role: p.role,
+    exerciseId: p.exerciseId,
+    exerciseActive: p.exerciseActive,
+    measureRule: p.measureRule,
+    exportAs: p.exportAs,
+  };
+}
+
+export function toHevySectionRuleDto(r: HevySectionRule): HevySectionRule {
+  return { name: r.name, treatment: r.treatment };
+}
+
+/** Spec 19.0 §5.6: one link in the account export. */
+export function toHevyExportLinkDto(l: HevyExportLinkRecord): HevyExportLink {
+  return { workoutId: l.workoutId, hevyWorkoutId: l.hevyWorkoutId, origin: l.origin, syncedAt: l.syncedAt?.toISOString() ?? null };
 }

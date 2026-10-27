@@ -1,3 +1,4 @@
+import type { HevyLinkOrigin, HevyPair, HevySectionRule } from "@sin/core";
 import type { ExerciseRecord } from "./exercise.js";
 import type { RoutineRecord } from "./routine.js";
 import type { UserRecord } from "./user.js";
@@ -14,6 +15,20 @@ export interface AccountSnapshot {
   routines: RoutineRecord[];
   /** Finished and in-progress, `started_at, id`; exercises by position, sets by set number. */
   workouts: WorkoutDetailRecord[];
+  /** Spec 19.0 AC35: the Hevy mapping (same shapes as the read) and every link, tombstones included. */
+  hevy: {
+    pairs: HevyPair[];
+    sectionRules: HevySectionRule[];
+    links: HevyExportLinkRecord[];
+  };
+}
+
+/** One `hevy_link` row as the export carries it (`workoutId: null` is a tombstone). */
+export interface HevyExportLinkRecord {
+  workoutId: string | null;
+  hevyWorkoutId: string | null;
+  origin: HevyLinkOrigin;
+  syncedAt: Date | null;
 }
 
 export interface AccountExportRepository {

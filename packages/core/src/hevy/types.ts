@@ -7,7 +7,8 @@ import type { HevyType, MeasureRule, PairRole, SectionTreatment } from "./vocabu
 export interface HevyPair {
   hevyTemplateId: string;
   hevyTitle: string;
-  hevyType: HevyType;
+  /** `null` only on a skip of a Hevy template whose type this app does not support (`readHevyType`, D19). */
+  hevyType: HevyType | null;
   role: PairRole;
   exerciseId: string | null;
   exerciseActive: boolean | null;

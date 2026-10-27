@@ -113,6 +113,8 @@ import type {
 import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 import type { FinishedEdit } from "../../src/repositories/write-mode.js";
 import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
+import type { HevyLinkBeginRecord, HevyRepository, HevyStatusRecord } from "../../src/repositories/hevy.js";
+import type { HevyLinkComplete, HevyLinkState, HevyMapping, HevyMappingPatch, HevyMappingPut } from "@sin/core";
 import type {
   PersonalRecordFilter,
   PersonalRecordRecord,
@@ -1346,8 +1348,69 @@ export class FakeAccountExportRepository implements AccountExportRepository {
       exercises: [],
       routines: [],
       workouts: [],
+      hevy: { pairs: [], sectionRules: [], links: [] },
       ...this.next,
       user: this.users.getById(userId),
     };
+  }
+}
+
+/**
+ * Spec 19.0: an in-memory HevyRepository for the route-unit tests (shapes and statuses). The SQL invariants are
+ * pinned by the integration tests against the real repository.
+ */
+export class FakeHevyRepository implements HevyRepository {
+  readonly mappings = new Map<string, HevyMapping>();
+  readonly links: { userId: string; workoutId: string | null; hevyWorkoutId: string | null; claimed: boolean }[] = [];
+  releaseCalls = 0;
+
+  async status(userId: string): Promise<HevyStatusRecord> {
+    return {
+      pairCount: this.mappings.get(userId)?.pairs.length ?? 0,
+      linkCount: this.links.filter((l) => l.userId === userId && l.hevyWorkoutId !== null).length,
+      recordsStale: false,
+    };
+  }
+
+  async getMapping(userId: string): Promise<HevyMapping> {
+    return this.mappings.get(userId) ?? { pairs: [], sectionRules: [] };
+  }
+
+  async replaceMapping(userId: string, input: HevyMappingPut): Promise<HevyMapping> {
+    const mapping: HevyMapping = { pairs: input.pairs.map((p) => ({ ...p, exerciseActive: p.exerciseId === null ? null : true })), sectionRules: input.sectionRules };
+    this.mappings.set(userId, mapping);
+    return mapping;
+  }
+
+  async patchMapping(userId: string, patch: HevyMappingPatch): Promise<HevyMapping> {
+    const current = await this.getMapping(userId);
+    const removed = new Set(patch.remove ?? []);
+    const upserts = (patch.upsert ?? []).map((p) => ({ ...p, exerciseActive: p.exerciseId === null ? null : true }));
+    const ids = new Set(upserts.map((p) => p.hevyTemplateId));
+    const pairs = [...current.pairs.filter((p) => !removed.has(p.hevyTemplateId) && !ids.has(p.hevyTemplateId)), ...upserts];
+    const mapping = { pairs, sectionRules: current.sectionRules };
+    this.mappings.set(userId, mapping);
+    return mapping;
+  }
+
+  async readLink(userId: string, workoutId: string): Promise<HevyLinkState> {
+    const link = this.links.find((l) => l.userId === userId && l.workoutId === workoutId);
+    if (!link) return { state: "none", hevyWorkoutId: null, origin: null, syncedAt: null };
+    return { state: link.hevyWorkoutId === null ? "sending" : "sent", hevyWorkoutId: link.hevyWorkoutId, origin: "sent", syncedAt: null };
+  }
+
+  async beginLink(userId: string, workoutId: string): Promise<HevyLinkBeginRecord> {
+    this.links.push({ userId, workoutId, hevyWorkoutId: null, claimed: true });
+    return { mode: "create", hevyWorkoutId: null, staleClaim: false, source: `v1["${workoutId}"]` };
+  }
+
+  async completeLink(userId: string, workoutId: string, body: HevyLinkComplete): Promise<HevyLinkState> {
+    const link = this.links.find((l) => l.userId === userId && l.workoutId === workoutId);
+    if (link) Object.assign(link, { hevyWorkoutId: body.hevyWorkoutId, claimed: false });
+    return this.readLink(userId, workoutId);
+  }
+
+  async releaseLink(): Promise<void> {
+    this.releaseCalls++;
   }
 }

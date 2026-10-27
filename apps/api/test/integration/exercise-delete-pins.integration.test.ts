@@ -4,6 +4,7 @@ import { uuidv7 } from "uuidv7";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
@@ -44,6 +45,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase B — the delete pins 
       personalRecordRepository: createPersonalRecordRepository(db.prisma),
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
+      hevyRepository: createHevyRepository(db.prisma),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

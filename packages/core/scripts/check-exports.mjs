@@ -333,6 +333,8 @@ const EXPECTED = [
   "HevyLinkBeginBodySchema",
   "HevyLinkBeginSchema",
   "HevyLinkCompleteSchema",
+  "HevyExportLinkSchema",
+  "HevyExportSchema",
 ];
 
 const missing = EXPECTED.filter((name) => !(name in mod));

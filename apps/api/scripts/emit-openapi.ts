@@ -18,6 +18,7 @@ import type { UserRepository } from "../src/repositories/user.js";
 import type { ExerciseRepository } from "../src/repositories/exercise.js";
 import type { WorkoutRepository } from "../src/repositories/workout.js";
 import type { PersonalRecordRepository } from "../src/repositories/personal-record.js";
+import type { HevyRepository } from "../src/repositories/hevy.js";
 import type { RoutineRepository } from "../src/repositories/routine.js";
 import type { AccountExportRepository } from "../src/repositories/account-export.js";
 
@@ -55,6 +56,12 @@ const inertAccountExportRepository = new Proxy({} as AccountExportRepository, {
   },
 });
 
+const inertHevyRepository = new Proxy({} as HevyRepository, {
+  get() {
+    throw new Error("hevy repository is not used during OpenAPI emit");
+  },
+});
+
 const inertRoutineRepository = new Proxy({} as RoutineRepository, {
   get() {
     throw new Error("routine repository is not used during OpenAPI emit");
@@ -83,6 +90,7 @@ async function main(): Promise<void> {
     personalRecordRepository: inertPersonalRecordRepository,
     routineRepository: inertRoutineRepository,
     accountExportRepository: inertAccountExportRepository,
+    hevyRepository: inertHevyRepository,
   });
   await app.ready();
   const doc = app.swagger();

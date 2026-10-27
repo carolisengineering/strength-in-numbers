@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { AccountExportSchema, ExerciseSchema, MeSchema, RoutineItemSchema, RoutineSchema, RoutineSectionSchema, SetEntrySchema, WorkoutExerciseSchema, WorkoutSchema, WorkoutSectionSchema } from "@sin/core";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
@@ -203,5 +204,51 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     expect(body.workouts).toHaveLength(400);
     expect(body.exercises).toHaveLength(500);
     expect(body.routines).toHaveLength(50);
+  });
+
+  describe("19.0 AC35 — the hevy block", () => {
+    it("a user with no Hevy data exports empty arrays; the format version stays 1", async () => {
+      app = await makeAccountApp(db);
+      await me("hevy-empty");
+      const body = (await exportOf("hevy-empty")).json() as { formatVersion: number; hevy: unknown };
+      expect(body.formatVersion).toBe(1);
+      expect(body.hevy).toEqual({ pairs: [], sectionRules: [], links: [] });
+    });
+
+    it("pairs equal the mapping read; rules; links include a tombstone", async () => {
+      app = await makeAccountApp(db);
+      const { id } = await me("hevy-full");
+      const custom = await insertExercise(db, { ownerUserId: id, name: "Bench" });
+      const hevy = createHevyRepository(db.prisma);
+      await hevy.replaceMapping(id, {
+        pairs: [
+          { hevyTemplateId: "T1", hevyTitle: "Bench Press", hevyType: "weight_reps", role: "exercise", exerciseId: custom, measureRule: null, exportAs: true },
+          { hevyTemplateId: "S1", hevyTitle: "Stair machine", hevyType: null, role: "skip", exerciseId: null, measureRule: null, exportAs: false },
+        ],
+        sectionRules: [{ name: "Accessory", treatment: "notes_on_first" }],
+      });
+      const kept = await logWorkout(db, id, { startedAt: daysAgo(2), exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 100 }] }] });
+      const gone = await logWorkout(db, id, { startedAt: daysAgo(3), exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 100 }] }] });
+      for (const [w, hevyId] of [[kept.workoutId, "H1"], [gone.workoutId, "H2"]] as const) {
+        await db.prisma.$executeRawUnsafe(
+          `INSERT INTO "hevy_link" (id, user_id, workout_id, hevy_workout_id, origin, synced_fingerprint, synced_at)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'sent', 'v1:x', now())`,
+          id,
+          w,
+          hevyId,
+        );
+      }
+      await db.prisma.$executeRawUnsafe(`DELETE FROM "workout" WHERE id = $1::uuid`, gone.workoutId);
+
+      const body = (await exportOf("hevy-full")).json() as {
+        hevy: { pairs: unknown[]; sectionRules: unknown[]; links: { workoutId: string | null; hevyWorkoutId: string | null; origin: string; syncedAt: string | null }[] };
+      };
+      expect(AccountExportSchema.safeParse(body).success).toBe(true);
+      expect(body.hevy.pairs).toEqual((await hevy.getMapping(id)).pairs);
+      expect(body.hevy.sectionRules).toEqual([{ name: "Accessory", treatment: "notes_on_first" }]);
+      expect(body.hevy.links).toHaveLength(2);
+      expect(body.hevy.links).toContainEqual({ workoutId: kept.workoutId, hevyWorkoutId: "H1", origin: "sent", syncedAt: expect.any(String) });
+      expect(body.hevy.links).toContainEqual({ workoutId: null, hevyWorkoutId: "H2", origin: "sent", syncedAt: expect.any(String) });
+    });
   });
 });

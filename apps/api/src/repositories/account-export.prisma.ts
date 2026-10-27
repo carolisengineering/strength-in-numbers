@@ -1,5 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type { AccountExportRepository, AccountSnapshot } from "./account-export.js";
+import type { AccountExportRepository, AccountSnapshot, HevyExportLinkRecord } from "./account-export.js";
+import { toHevyPair, type HevyPairRow } from "./hevy.prisma.js";
+import type { HevySectionRule } from "@sin/core";
 import { exerciseColumns, toExerciseRecord, type ExerciseDbRow } from "./exercise.prisma.js";
 import { ROUTINE_WITH_ITEMS, toRoutine, type RoutineDbRow } from "./routine.prisma.js";
 import { SET_ENTRY_COLUMNS, toSetRecord, type RawClient, type SetEntryDbRow } from "./set-entry.prisma.js";
@@ -59,7 +61,31 @@ export function createAccountExportRepository(
           // D7: must precede the first data statement. If Prisma's own
           // isolation SET makes this fail, drop it and keep the AC7 probe.
           await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-          const [clock] = await tx.$queryRaw<{ exported_at: Date }[]>`SELECT clock_timestamp() AS exported_at`;
+          // Spec 19.0 AC35: the Hevy block rides on the clock statement, so AC8's count is unchanged. Pairs keep the
+          // mapping read's order and row shape (`toHevyPair`); links include tombstones (`workout_id` NULL).
+          const [clock] = await tx.$queryRaw<
+            {
+              exported_at: Date;
+              pairs: HevyPairRow[];
+              rules: { name: string; treatment: string }[];
+              links: { workout_id: string | null; hevy_workout_id: string | null; origin: string; synced_at: string | null }[];
+            }[]
+          >`
+            SELECT clock_timestamp() AS exported_at,
+              (SELECT coalesce(json_agg(json_build_object(
+                         'hevy_template_id', p.hevy_template_id, 'hevy_title', p.hevy_title, 'hevy_type', p.hevy_type,
+                         'role', p.role, 'exercise_id', p.exercise_id::text, 'is_active', e.is_active,
+                         'measure_rule', p.measure_rule, 'export_as', p.export_as)
+                       ORDER BY lower(p.hevy_title), p.hevy_template_id), '[]'::json)
+                 FROM "hevy_exercise_pair" p LEFT JOIN "exercise" e ON e.id = p.exercise_id
+                WHERE p.user_id = ${userId}::uuid) AS pairs,
+              (SELECT coalesce(json_agg(json_build_object('name', name, 'treatment', treatment) ORDER BY name_key), '[]'::json)
+                 FROM "hevy_section_rule" WHERE user_id = ${userId}::uuid) AS rules,
+              (SELECT coalesce(json_agg(json_build_object(
+                         'workout_id', workout_id::text, 'hevy_workout_id', hevy_workout_id, 'origin', origin, 'synced_at', synced_at)
+                       ORDER BY created_at, id), '[]'::json)
+                 FROM "hevy_link" WHERE user_id = ${userId}::uuid) AS links`;
+          const hevy = clock!;
           const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
           const exerciseRows = await tx.$queryRaw<ExerciseDbRow[]>`
             SELECT ${exerciseColumns()}
@@ -101,12 +127,27 @@ export function createAccountExportRepository(
             sections: w.sections.map(toWorkoutSectionRecord),
             routineIsOneOff: w.routine_is_one_off,
           }));
+          const mapping = {
+            pairs: hevy.pairs.map(toHevyPair),
+            sectionRules: hevy.rules.map((r) => ({ name: r.name, treatment: r.treatment as HevySectionRule["treatment"] })),
+          };
+          const links = hevy.links.map((l) => ({ ...l, synced_at: l.synced_at === null ? null : new Date(l.synced_at) }));
           return {
             exportedAt: clock!.exported_at,
             user: toUserRecord(user),
             exercises: exerciseRows.map(toExerciseRecord),
             routines: routineRows.map(toRoutine),
             workouts,
+            hevy: {
+              pairs: mapping.pairs,
+              sectionRules: mapping.sectionRules,
+              links: links.map((l) => ({
+                workoutId: l.workout_id,
+                hevyWorkoutId: l.hevy_workout_id,
+                origin: l.origin as HevyExportLinkRecord["origin"],
+                syncedAt: l.synced_at,
+              })),
+            },
           };
         },
         {

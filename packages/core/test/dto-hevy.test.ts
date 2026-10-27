@@ -58,6 +58,14 @@ describe("19.0 §5 — the HTTP DTOs accept the spec's examples", () => {
   });
 });
 
+describe("19.0 D19 — an unsupported Hevy template is a skip with no type", () => {
+  it("the pair schemas take a null hevyType (the server refuses it on any role but skip)", () => {
+    const skip = { ...pairInput, role: "skip", exerciseId: null, exportAs: false, hevyType: null };
+    expect(HevyPairInputSchema.safeParse(skip).success).toBe(true);
+    expect(HevyMappingSchema.safeParse({ pairs: [{ ...skip, exerciseActive: null }], sectionRules: [] }).success).toBe(true);
+  });
+});
+
 describe("19.0 AC23 / AC34 — the request schemas refuse", () => {
   it("an apiKey on the mapping replace (strict)", () => {
     expect(HevyMappingPutSchema.safeParse({ pairs: [], sectionRules: [], apiKey: "k" }).success).toBe(false);

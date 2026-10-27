@@ -7,11 +7,13 @@ import type { WorkoutRepository } from "../../src/repositories/workout.js";
 import type { PersonalRecordRepository } from "../../src/repositories/personal-record.js";
 import type { RoutineRepository } from "../../src/repositories/routine.js";
 import type { AccountExportRepository } from "../../src/repositories/account-export.js";
+import type { HevyRepository } from "../../src/repositories/hevy.js";
 import { RATE_LIMITS, type RateLimitConfig, type WriteGroup } from "../../src/plugins/rate-limit.js";
 import {
   FakeExerciseRepository,
   FakePersonalRecordRepository,
   FakeAccountExportRepository,
+  FakeHevyRepository,
   FakeRoutineRepository,
   FakeUserRepository,
   FakeWorkoutRepository,
@@ -48,6 +50,8 @@ export interface TestAppOptions<
   routineRepository?: RoutineRepository;
   /** Spec 11 — defaults to a fake over the fake user repository. */
   accountExportRepository?: AccountExportRepository;
+  /** Spec 19.0 — defaults to an in-memory fake over the fake workout repository. */
+  hevyRepository?: HevyRepository;
   logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
@@ -61,7 +65,7 @@ export const GENEROUS_LIMITS: RateLimitConfig = {
   ip: 1_000_000,
   docs: 1_000_000,
   exportPerUser: 1_000_000,
-  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, routines: 1_000_000, me: 1_000_000 },
+  groups: { sets: 1_000_000, workouts: 1_000_000, exercises: 1_000_000, routines: 1_000_000, me: 1_000_000, hevy: 1_000_000 },
   inflight: 1_000_000,
 };
 
@@ -104,6 +108,7 @@ export async function buildTestApp<
     personalRecordRepository: opts.personalRecordRepository ?? new FakePersonalRecordRepository(),
     routineRepository: routineRepo,
     accountExportRepository: opts.accountExportRepository ?? new FakeAccountExportRepository(repo),
+    hevyRepository: opts.hevyRepository ?? new FakeHevyRepository(),
     rateLimits: opts.rateLimits,
   };
   const app = await buildApp(deps);

@@ -58,6 +58,20 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
     );
     const { workoutId } = await logWorkout(db, userId, { startedAt: daysAgo(2), finish: "none", exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 100 }] }, { exerciseId: sharedGlobal, sets: [{ reps: 3, weight: 60 }] }] });
     await workouts().updateWorkout(userId, workoutId, { endedAt: new Date(daysAgo(2).getTime() + 3_600_000).toISOString() }); // creates personal_record rows
+    // Spec 19.0 AC35: a row in each hevy_ table, so the purge's discovery has something to empty there too.
+    await db.prisma.$executeRawUnsafe(
+      `INSERT INTO "hevy_exercise_pair" (user_id, hevy_template_id, hevy_title, hevy_type, role, exercise_id, export_as)
+       VALUES ($1::uuid, 'T-' || $1, 'Bench', 'weight_reps', 'exercise', $2::uuid, true)`,
+      userId,
+      custom,
+    );
+    await db.prisma.$executeRawUnsafe(`INSERT INTO "hevy_section_rule" VALUES ($1::uuid, 'accessory', 'Accessory', 'notes_on_first')`, userId);
+    await db.prisma.$executeRawUnsafe(
+      `INSERT INTO "hevy_link" (id, user_id, workout_id, hevy_workout_id, origin) VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'H-' || $1, 'sent')`,
+      userId,
+      workoutId,
+    );
+    await db.prisma.$executeRawUnsafe(`INSERT INTO "hevy_account" (user_id) VALUES ($1::uuid)`, userId);
     // The in-progress workout is started from the routine, so workout_planned_set has
     // victim rows (AC23's vacuous-pass guard; routineFixture's legacy items expand to rows).
     await workouts().createWorkout(
@@ -66,6 +80,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
       "UTC",
     );
   }
+
+  /** A row's identity: its id, or (Spec 19.0's id-less hevy tables) its whole content. */
+  const ROW_KEY = "COALESCE(to_jsonb(t)->>'id', to_jsonb(t)::text)";
 
   async function fkEdges(): Promise<Edge[]> {
     return db.prisma.$queryRawUnsafe<Edge[]>(`
@@ -87,7 +104,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
         const parentIds = ids.get(strip(e.parent));
         if (!parentIds || parentIds.size === 0) continue;
         const rows = await db.prisma.$queryRawUnsafe<{ id: string }[]>(
-          `SELECT id::text FROM ${e.child} WHERE ${e.col}::text = ANY($1::text[])`, [...parentIds]);
+          `SELECT ${ROW_KEY} AS id FROM ${e.child} t WHERE ${e.col}::text = ANY($1::text[])`, [...parentIds]);
         const set = ids.get(strip(e.child)) ?? new Set<string>();
         const before = set.size;
         for (const r of rows) set.add(r.id);
@@ -119,7 +136,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
 
     for (const [table, set] of before) {
       const left = await db.prisma.$queryRawUnsafe<{ n: number }[]>(
-        `SELECT count(*)::int AS n FROM "${table}" WHERE id::text = ANY($1::text[])`, [...set]);
+        `SELECT count(*)::int AS n FROM "${table}" t WHERE ${ROW_KEY} = ANY($1::text[])`, [...set]);
       expect(left[0]!.n, `${table} rows left`).toBe(0);
     }
   });
@@ -140,7 +157,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
       for (const [table, set] of bystanderRows) {
         expect(set.size, `fixture has no bystander ${table} rows (vacuous)`).toBeGreaterThan(0);
         perTable[table] = await db.prisma.$queryRawUnsafe(
-          `SELECT count(*)::int AS n, md5(string_agg(to_jsonb(t)::text, ',' ORDER BY t.id::text)) AS h FROM "${table}" t WHERE t.id::text = ANY($1::text[])`,
+          `SELECT count(*)::int AS n, md5(string_agg(to_jsonb(t)::text, ',' ORDER BY ${ROW_KEY})) AS h FROM "${table}" t WHERE ${ROW_KEY} = ANY($1::text[])`,
           [...set],
         );
       }
