@@ -267,6 +267,10 @@ describe("19.0 AC16 — HEVY_ENABLED_USER_IDS", () => {
     expect(() => loadConfig({ ...base, HEVY_ENABLED_USER_IDS: "abc" })).toThrow(/HEVY_ENABLED_USER_IDS/);
   });
 
+  it("an id written in upper case still matches", () => {
+    expect(loadConfig({ ...base, HEVY_ENABLED_USER_IDS: A.toUpperCase() }).hevyEnabledUserIds.has(A)).toBe(true);
+  });
+
   it("the set is frozen", () => {
     expect(Object.isFrozen(loadConfig({ ...base, HEVY_ENABLED_USER_IDS: A }).hevyEnabledUserIds)).toBe(true);
   });

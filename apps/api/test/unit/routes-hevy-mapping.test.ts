@@ -4,7 +4,7 @@ import { AS_A, buildHevyApp } from "../helpers/hevy-users.js";
 const EX = "0192a1b2-0000-7000-8000-000000000101";
 const pair = { hevyTemplateId: "T1", hevyTitle: "Bench", hevyType: "weight_reps", role: "exercise", exerciseId: EX, measureRule: null, exportAs: true };
 
-describe("19.0 AC21 / AC22 / AC24 — mapping route shapes (fake repository)", () => {
+describe("19.0 AC21 / AC22 / AC24 / AC33 — mapping route shapes and caching (fake repository)", () => {
   it("GET: the mapping shape, a strong ETag, 304 on a match, private no-cache", async () => {
     const { app } = await buildHevyApp();
     const res = await app.inject({ method: "GET", url: "/v1/hevy/mapping", headers: AS_A });

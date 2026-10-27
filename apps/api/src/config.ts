@@ -121,7 +121,7 @@ const schema = z.object({
     .transform((s) =>
       (s ?? "")
         .split(",")
-        .map((id) => id.trim())
+        .map((id) => id.trim().toLowerCase())
         .filter((id) => id.length > 0),
     )
     .refine((ids) => ids.every((id) => z.guid().safeParse(id).success), "must be a comma-separated list of user ids"),

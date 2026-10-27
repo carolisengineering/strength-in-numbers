@@ -517,6 +517,15 @@ eligible sets.
 5. After 05.3 **Phase B** is deployed (no migration), run `DATABASE_URL='<neon direct url>' pnpm --filter @sin/api run records:rebuild` (B5a) so earlier calories, weight + distance and weight + duration sets get their records. Check `GET /v1/personal-records` for the test user: the legacy records are unchanged, and only new-type records are added. The rebuild is idempotent, so a second run changes nothing. On production it is not required until new-type data exists there (Spec 05.3 D17); running it anyway is harmless.
 6. Rollback: revert the code; `0015` stays (harmless to old code). Caveat: old code's `z.enum` rejects a new modality, record type or `ft` unit in a response. Before a rollback with such rows: `DELETE FROM personal_record WHERE record_type IN ('max_calories','max_distance','max_duration');`, move new-type exercises (and their snapshots) back to a legacy type by hand, and as a last resort convert feet (`UPDATE set_entry SET distance = round(distance_m, 3), distance_unit = 'm' WHERE distance_unit = 'ft';`, which loses the typed unit). Until Spec 18.1 ships, only a deliberate API call creates such rows.
 
+### 0016 — Hevy integration (Spec 19.0)
+
+1. Before merging 19.0 Phase B: `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds four empty tables (`hevy_exercise_pair`, `hevy_section_rule`, `hevy_link`, `hevy_account`) and widens `workout_source_check` to `('manual', 'hevy')`; there is no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link`. Expand-only, so the running API is unaffected.
+2. Merge Phase B (Render deploys). Phase A (#189, the `"hevy"` source value in every bundle) is already live, so the rollout order of AC39 holds.
+3. Turn the feature on for Carol only: read her user id from `GET /v1/me`, then set `HEVY_ENABLED_USER_IDS` to it in the Render dashboard (`api-shared` env group). Not in `render.yaml`. Until it is set, every Hevy route answers `404`.
+4. Staging smoke (§11): `GET /v1/hevy/status` is `200` for Carol and `404` for the e2e test user; `PUT /v1/hevy/mapping` with one pair, then `GET` it back (an `ETag`; the same request with `If-None-Match` is `304`); `POST` then `DELETE /v1/workouts/{id}/hevy-link` on one of her finished workouts.
+5. Production (Spec 15): `deploy-prod` never migrates. Apply `0016` by hand the same way before approving the release, then set `hevy_enabled_user_ids` in Terraform by hand (Part F) after her first production sign-in; it is not in `infra/prod.tfvars`.
+6. Rollback: revert the code; the tables stay, unused. Once Spec 19.1 has written rows with `source = 'hevy'`, the widened CHECK cannot be narrowed back without deleting them. No `records:rebuild` (nothing here writes a set).
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

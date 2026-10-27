@@ -83,7 +83,8 @@ describe("19.0 AC23 — mapping validation", () => {
     ]);
   });
 
-  it("AC36: no message carries a Hevy title, an id or a value", () => {
+  // 19.0 AC36: the new @sin/core schemas are probed by packages/core/test/static-issue-messages.test.ts through the barrel.
+  it("19.0 AC36 — no message carries a Hevy title, an id or a value", () => {
     const errors = replace([
       pair({ exerciseId: RETIRED }),
       pair({ hevyType: "duration" }),

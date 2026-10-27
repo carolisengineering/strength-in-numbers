@@ -4,7 +4,7 @@ import { AS_A, buildHevyApp } from "../helpers/hevy-users.js";
 const WORKOUT = "0192a1b2-0000-7000-8000-000000000001";
 const url = `/v1/workouts/${WORKOUT}/hevy-link`;
 
-describe("19.0 AC26–AC30 — link route shapes (fake repository)", () => {
+describe("19.0 AC26–AC30 / AC33 — link route shapes and no-store (fake repository)", () => {
   it("begin with no body (the usual case) is 200 with a v1 fingerprint the server computed", async () => {
     const { app } = await buildHevyApp();
     const res = await app.inject({ method: "POST", url, headers: AS_A });
