@@ -4,22 +4,17 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
 import styles from "./CreateExerciseForm.module.css";
-import { EMPTY_EXERCISE_FIELDS, ExerciseFields, toCreateExerciseInput, type ExerciseFieldValues } from "./ExerciseFields";
+import {
+  EMPTY_EXERCISE_FIELDS,
+  ExerciseFields,
+  toCreateExerciseInput,
+  type ExerciseFieldName,
+  type ExerciseFieldValues,
+} from "./ExerciseFields";
+import { EXERCISE_LIMIT_MESSAGE, mapExerciseFieldErrors } from "./fieldErrors";
 import { useCatalog } from "./useCatalog";
 
-const FIELD_NAMES = [
-  "name",
-  "modality",
-  "primaryMuscleId",
-  "secondaryMuscleIds",
-  "equipmentId",
-] as const;
-type FieldName = (typeof FIELD_NAMES)[number];
-const isFieldName = (value: string): value is FieldName =>
-  (FIELD_NAMES as readonly string[]).includes(value);
-
-/** The fields rendered inside "More details". */
-const DETAIL_FIELDS: readonly FieldName[] = ["primaryMuscleId", "secondaryMuscleIds", "equipmentId"];
+type FieldName = ExerciseFieldName;
 
 export interface CreateExerciseFormProps {
   /** Prefill for the name — the picker passes its search text. */
@@ -84,24 +79,15 @@ export function CreateExerciseForm({
         error.status === 409 &&
         error.type === "exercise-limit-reached"
       ) {
-        setFormError("You've reached the maximum number of custom exercises.");
+        setFormError(EXERCISE_LIMIT_MESSAGE);
         return;
       }
       if (error instanceof ApiError && error.isValidation()) {
-        const next: Partial<Record<FieldName, string>> = {};
-        const unplaced: string[] = [];
-        for (const { path, message } of error.errors) {
-          // The API joins nested paths with "." (`secondaryMuscleIds.0`).
-          const field = path.split(".")[0] ?? "";
-          if (isFieldName(field)) next[field] ??= message;
-          else unplaced.push(message);
-        }
-        setFieldErrors(next);
+        const mapped = mapExerciseFieldErrors(error);
+        setFieldErrors(mapped.fieldErrors);
         // A message under a collapsed section would be invisible.
-        if (DETAIL_FIELDS.some((field) => next[field] !== undefined)) setDetailsOpen(true);
-        if (unplaced.length > 0 || error.errors.length === 0) {
-          setFormError(unplaced.join(" ") || "Some of these values were not accepted.");
-        }
+        if (mapped.openDetails) setDetailsOpen(true);
+        if (mapped.formError !== undefined) setFormError(mapped.formError);
         return;
       }
       setFormError("Couldn't save. Try again.");

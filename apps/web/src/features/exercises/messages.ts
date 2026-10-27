@@ -45,4 +45,13 @@ export const EXERCISES_COPY = {
   offline: "You're offline. Editing an exercise needs a connection.",
   tooFast: "You're doing that too fast. Try again in a moment.",
   couldntSave: "Couldn't save. Try again.",
+  // Phase B: the Edit sheet's type notes (AC37–AC39).
+  typeLimitedTo: (partners: string) =>
+    `This exercise has logged sets, so its type can only change to ${partners}. To use another type, create a new exercise.`,
+  typeFixed: "This exercise has logged sets, so its type can't change. To use another type, create a new exercise.",
+  typeChecking: "Checking whether this exercise has logged sets…",
+  typeCheckFailed:
+    "Couldn't check whether this exercise has logged sets, so its type can't be changed right now. Everything else can.",
+  weightMeaning:
+    "Weight × reps counts the full weight and Weighted bodyweight counts only the added weight. Your history keeps its numbers, so this exercise's charts and records will compare the two.",
 } as const;
