@@ -31,7 +31,8 @@ import { readWorkoutDetail } from "./workout.prisma.js";
 
 type Tx = Prisma.TransactionClient;
 
-interface PairRow {
+/** A pair row as the mapping read and the account export select it. */
+export interface HevyPairRow {
   hevy_template_id: string;
   hevy_title: string;
   hevy_type: string | null;
@@ -43,7 +44,7 @@ interface PairRow {
 }
 
 /** A stored pair as the read shape (§5.2). `exerciseActive` is `null` for a role other than exercise. */
-export function toHevyPair(row: PairRow): HevyPair {
+export function toHevyPair(row: HevyPairRow): HevyPair {
   return {
     hevyTemplateId: row.hevy_template_id,
     hevyTitle: row.hevy_title,
@@ -58,7 +59,7 @@ export function toHevyPair(row: PairRow): HevyPair {
 
 /** Spec 19.0 AC21: pairs by lowercase title then id, rules by name key. Never another user's rows. */
 export async function readHevyMapping(db: Tx | PrismaClient, userId: string): Promise<HevyMapping> {
-  const pairs = await db.$queryRaw<PairRow[]>`
+  const pairs = await db.$queryRaw<HevyPairRow[]>`
     SELECT p.hevy_template_id, p.hevy_title, p.hevy_type, p.role, p.exercise_id::text AS exercise_id, e.is_active,
            p.measure_rule, p.export_as
     FROM "hevy_exercise_pair" p LEFT JOIN "exercise" e ON e.id = p.exercise_id
