@@ -17,6 +17,7 @@ import {
   HevyWorkoutCountSchema,
   HevyWorkoutPageSchema,
   HevyWorkoutSchema,
+  readHevyType,
 } from "../src/index.js";
 
 const fixture = (name: string): unknown =>
@@ -166,8 +167,25 @@ describe("19.0 AC3 — Hevy reply schemas", () => {
     expect(HevyWorkoutPageSchema.safeParse(withValue(fixture("workouts-page.json"), ["page"], "1")).success).toBe(false);
   });
 
-  it("a template type outside the list fails", () => {
-    expect(HevyTemplateSchema.safeParse(withValue(fixture("template.json"), ["type"], "cardio")).success).toBe(false);
+  it.each([
+    ["bodyweight_weighted", "bodyweight_reps"],
+    ["bodyweight_assisted", "bodyweight_assisted_reps"],
+    ["weight_reps", "weight_reps"],
+    ["bodyweight_reps", "bodyweight_reps"],
+  ] as const)("D19: Hevy's real type %s reads as %s", (raw, type) => {
+    expect(HevyTemplateSchema.parse(withValue(fixture("template.json"), ["type"], raw)).type).toBe(type);
+    expect(readHevyType(raw)).toBe(type);
+  });
+
+  it.each(["floors_duration", "steps_duration", "cardio"])("D19: an unsupported type (%s) parses as null, so one template never fails a page", (raw) => {
+    expect(HevyTemplateSchema.parse(withValue(fixture("template.json"), ["type"], raw)).type).toBe(null);
+    const page = fixture("templates-page.json") as { exercise_templates: unknown[] };
+    const mixed = { ...page, exercise_templates: [...page.exercise_templates, withValue(fixture("template.json"), ["type"], raw)] };
+    expect(HevyTemplatePageSchema.safeParse(mixed).success).toBe(true);
+  });
+
+  it("a template type that is not a string still fails", () => {
+    expect(HevyTemplateSchema.safeParse(withValue(fixture("template.json"), ["type"], 3)).success).toBe(false);
   });
 
   it("a set with an unknown type parses and keeps the string (Spec 20.1 D9)", () => {

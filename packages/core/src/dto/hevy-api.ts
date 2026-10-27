@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { HEVY_RPE_STEPS, HEVY_SET_TYPE_VALUES, HEVY_TYPE_VALUES } from "../hevy/vocabulary.js";
+import { HEVY_RPE_STEPS, HEVY_SET_TYPE_VALUES, HEVY_TYPE_VALUES, type HevyType } from "../hevy/vocabulary.js";
 
 /**
  * Spec 19.0 AC3: Hevy's public API, as this app reads and writes it (field names exactly those of Hevy's OpenAPI
@@ -10,6 +10,26 @@ import { HEVY_RPE_STEPS, HEVY_SET_TYPE_VALUES, HEVY_TYPE_VALUES } from "../hevy/
  * whole page (Spec 20.1 D9 marks that workout unreadable). The bodies we send are strict. Messages are Zod's
  * defaults: static, never the parsed value (#57).
  */
+
+/**
+ * Spec 19.0 D19 (Carol's data, 2026-10-27): Hevy's replies name two types differently from its documented enum.
+ * They are read as the vocabulary's names, so the pairing table, the stored `hevy_type` and the create body keep one
+ * vocabulary.
+ */
+export const HEVY_TYPE_ALIASES: Readonly<Record<string, HevyType>> = Object.freeze({
+  bodyweight_weighted: "bodyweight_reps",
+  bodyweight_assisted: "bodyweight_assisted_reps",
+});
+
+/**
+ * A template `type` as Hevy sends it, in the vocabulary; `null` for a type this app does not support (the stair
+ * machines' `floors_duration` / `steps_duration`, or any new one), so one such template never fails a whole page. An
+ * unsupported template can only be paired as a skip.
+ */
+export function readHevyType(raw: string): HevyType | null {
+  if ((HEVY_TYPE_VALUES as readonly string[]).includes(raw)) return raw as HevyType;
+  return Object.hasOwn(HEVY_TYPE_ALIASES, raw) ? HEVY_TYPE_ALIASES[raw]! : null;
+}
 
 /** Hevy's muscle groups (its `MuscleGroup` enum), for the bodies we send. Read schemas keep any string. */
 export const HEVY_MUSCLE_VALUES = Object.freeze([
@@ -146,7 +166,7 @@ export type HevyFolderPage = z.infer<typeof HevyFolderPageSchema>;
 export const HevyTemplateSchema = z.object({
   id: z.string(),
   title: z.string(),
-  type: z.enum(HEVY_TYPE_VALUES),
+  type: z.string().transform(readHevyType),
   is_custom: z.boolean(),
   // Kept as strings: a value outside Hevy's list maps to "Not set" through the reference tables (AC15).
   primary_muscle_group: optionalString,

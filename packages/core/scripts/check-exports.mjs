@@ -254,6 +254,8 @@ const EXPECTED = [
   // dto — Hevy API (Spec 19.0 AC3)
   "HEVY_MUSCLE_VALUES",
   "HEVY_EQUIPMENT_VALUES",
+  "HEVY_TYPE_ALIASES",
+  "readHevyType",
   "HevySetSchema",
   "HevyWorkoutExerciseSchema",
   "HevyWorkoutSchema",
