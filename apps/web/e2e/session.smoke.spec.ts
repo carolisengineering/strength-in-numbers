@@ -170,13 +170,18 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
   });
 
   // Spec 08.1 AC28 — no value is asserted (08.0 D12): the row exists whenever any finished workout trained the lift.
-  await test.step("Spec 08.1 — Progress lists the bench press and opens its chart", async () => {
-    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.progress }).click();
+  // Spec 18.2 AC28: the tab is Exercises (All exercises by default); the old Progress path still redirects.
+  await test.step("Spec 08.1 / 18.2 — Exercises lists the bench press and opens its chart", async () => {
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.exercises }).click();
     const row = page.getByRole("link", { name: NAMES.benchRow });
     await expect(row).toBeVisible();
     await row.click();
     await expect(page.getByRole("img", { name: NAMES.chartSummary })).toBeVisible();
     await expect(page.getByRole("group", { name: NAMES.metricGroup })).toBeVisible();
+    // A full load: it may go through the Auth0 round trip (memory-only tokens) before the redirect.
+    await page.goto("/app/progress");
+    await expect(page).toHaveURL(/\/app\/exercises\/records$/, { timeout: 15_000 });
+    await expect(page.getByRole("navigation", { name: "Exercise views" })).toBeVisible();
   });
 
   // Spec 08.0 AC26 — no PR content is asserted: whether a run sets a record depends on the account's history (D12).

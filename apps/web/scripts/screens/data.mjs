@@ -94,6 +94,42 @@ exercises.push({
   updatedAt: iso(NOW - 30 * DAY),
 });
 const exByKey = Object.fromEntries(exercises.map((e) => [e.catalogKey, e]));
+// Spec 18.2 AC27: the lifter's copy of a logged built-in (the list shows the copy, dated by the built-in's sets).
+exercises.push({
+  id: uuid("e0000000", EX.length + 2),
+  catalogKey: null,
+  ownerUserId: me.id,
+  name: "Rowing Machine (mine)",
+  modality: "distance_duration",
+  primaryMuscleId: "cardio",
+  secondaryMuscleIds: ["back"],
+  equipmentId: "rower",
+  isActive: true,
+  forkedFromExerciseId: exByKey.row_erg.id,
+  createdAt: iso(NOW - 10 * DAY),
+  updatedAt: iso(NOW - 10 * DAY),
+});
+
+/** An exercise's lineage root: a fork's built-in, else itself (Spec 03.4 `lineageRootId`). */
+export const rootOf = (id) => exercises.find((e) => e.id === id)?.forkedFromExerciseId ?? id;
+
+/** Spec 18.2 AC27: a schema-valid catalog of `n` own exercises, for the 600-row capture. */
+export function manyExercises(n) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: uuid("e1000000", i + 1),
+    catalogKey: null,
+    ownerUserId: me.id,
+    name: `Exercise ${String(i + 1).padStart(3, "0")}`,
+    modality: i % 3 === 0 ? "bodyweight_reps" : "weight_reps",
+    primaryMuscleId: null,
+    secondaryMuscleIds: [],
+    equipmentId: null,
+    isActive: true,
+    forkedFromExerciseId: null,
+    createdAt: iso(NOW - 100 * DAY),
+    updatedAt: iso(NOW - 100 * DAY),
+  }));
+}
 
 // ---------------------------------------------------------------- routines
 const ps = (setType, repsLow, repsHigh, weight) => ({
@@ -605,12 +641,33 @@ export const ids = {
   oneSet: finished.find((w) => w.title === "Quick single").id,
   conditioning: finished.find((w) => w.title === "Conditioning").id,
   echoBike: exByKey.echo_bike.id,
+  // Spec 18.2 AC27: the never-logged own exercise, the copy of a logged built-in, and the one the deleted capture hides.
+  pushPress: exercises.find((e) => e.name === "Push Press").id,
+  rowingCopy: exercises.find((e) => e.name === "Rowing Machine (mine)").id,
+  curl: exByKey.barbell_curl.id,
   farmerCarry: exByKey.farmer_carry.id,
   sandbagHold: exByKey.sandbag_hold.id,
   activeId: active.id,
 };
 
 export const allWorkouts = [...finished, active];
+
+/** `GET /v1/exercises/usage` (Spec 03.4 §5.2): the latest local date per lineage root, live workouts included. */
+export function usage() {
+  const last = new Map();
+  for (const w of allWorkouts) {
+    for (const we of w.exercises) {
+      if (we.sets.length === 0) continue;
+      const root = rootOf(we.exerciseId);
+      if (!last.has(root) || last.get(root) < w.localDate) last.set(root, w.localDate);
+    }
+  }
+  return {
+    exercises: [...last]
+      .map(([rootId, lastLoggedOn]) => ({ rootId, lastLoggedOn }))
+      .sort((a, b) => b.lastLoggedOn.localeCompare(a.lastLoggedOn) || a.rootId.localeCompare(b.rootId)),
+  };
+}
 
 /** The payloads to check, as [name, schemaExportName, value]. Validated in the browser against
  * @sin/core's TypeScript source (served by the harness Vite server), so a stale dist can't fool it. */
@@ -624,6 +681,8 @@ export function payloadChecks() {
     ["routines with the one-off", "RoutineListResponseSchema", { routines: [CLASS, ...routines] }],
     ["history", "WorkoutHistoryResponseSchema", history],
     ["records", "PersonalRecordsResponseSchema", { records }],
+    ["exercise usage", "ExerciseUsageResponseSchema", usage()],
+    ["600 exercises", "ExercisesResponse", { exercises: manyExercises(600), syncToken: "1.100" }],
     ...allWorkouts.map((w) => [`workout ${w.id}`, "WorkoutDetailSchema", w]),
     ["active, all planned logged", "WorkoutDetailSchema", activeDone],
     ["active, from a one-off", "WorkoutDetailSchema", activeOneOff],
