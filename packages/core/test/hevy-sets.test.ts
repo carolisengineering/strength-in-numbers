@@ -12,7 +12,8 @@ import {
 } from "../src/index.js";
 
 const NULLS = { weight_kg: null, reps: null, distance_meters: null, duration_seconds: null, custom_metric: null, rpe: null };
-const hevy = (o: Partial<HevySet> & { type?: "warmup" | "normal" | "failure" | "dropset" }) => ({ ...NULLS, type: "normal" as const, ...o });
+type HevyInput = Partial<Omit<HevySet, "type">> & { type?: "warmup" | "normal" | "failure" | "dropset" };
+const hevy = (o: HevyInput) => ({ ...NULLS, type: "normal" as const, ...o });
 const ctx = (hevyType: HevyType, modality: Modality, rule: MeasureRule | null = null, unit: "kg" | "lb" = "kg"): HevyImportCtx => ({
   hevyType,
   modality,
@@ -52,7 +53,7 @@ describe("19.0 AC6 — weight rounding", () => {
 });
 
 describe("19.0 AC6 — measures per type × modality", () => {
-  const CASES: [string, HevyImportCtx, Partial<HevySet>, Record<string, unknown>][] = [
+  const CASES: [string, HevyImportCtx, HevyInput, Record<string, unknown>][] = [
     ["weight_reps → weight_reps", ctx("weight_reps", "weight_reps"), { weight_kg: 100, reps: 5 }, { weight: 100, weightUnit: "kg", reps: 5 }],
     ["weight_reps → weighted_bodyweight", ctx("weight_reps", "weighted_bodyweight"), { weight_kg: 100, reps: 5 }, { weight: 100, reps: 5 }],
     ["bodyweight_reps → weight_reps", ctx("bodyweight_reps", "weight_reps"), { weight_kg: 10, reps: 8 }, { weight: 10, reps: 8 }],

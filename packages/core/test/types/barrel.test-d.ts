@@ -4,12 +4,12 @@ import { describe, expectTypeOf, it } from "vitest";
 // name list to drift out of sync with check-exports.mjs.
 import {
   HEVY_LINK_ORIGIN_VALUES,
-  HEVY_RPE_STEPS,
+  type HEVY_RPE_STEPS,
   HEVY_SET_TYPE_VALUES,
-  HEVY_TYPE_VALUES,
+  type HEVY_TYPE_VALUES,
   MEASURE_RULE_VALUES,
-  PAIR_ROLE_VALUES,
-  SECTION_TREATMENT_VALUES,
+  type PAIR_ROLE_VALUES,
+  type SECTION_TREATMENT_VALUES,
   type HevyLinkOrigin,
   type HevyRpe,
   type HevySetType,
