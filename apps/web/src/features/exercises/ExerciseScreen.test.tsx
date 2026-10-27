@@ -108,6 +108,8 @@ describe("18.2 AC19 — resolution on screen", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(exercisePath(FORK)));
     expect(router.state.historyAction).toBe("REPLACE");
     expect(await screen.findByRole("heading", { level: 1, name: "My bench" })).toBeInTheDocument();
+    // The redirect keeps the Records row's state, so Back still returns to Records (AC20).
+    expect(screen.getByRole("link", { name: EXERCISES_COPY.backToRecords })).toHaveAttribute("href", "/app/exercises/records");
     await router.navigate(-1);
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/exercises/records"));
   });

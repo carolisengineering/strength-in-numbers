@@ -52,7 +52,8 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       </InlineNotice>
     );
   }
-  if (resolution.kind === "redirect") return <Navigate replace to={exercisePath(resolution.to)} />;
+  // The state goes along, so a Records row that lands on a copy still offers "Back to Records".
+  if (resolution.kind === "redirect") return <Navigate replace to={exercisePath(resolution.to)} state={location.state} />;
 
   const fromRecords = (location.state as { from?: unknown } | null)?.from === "records";
   const back = fromRecords ? (
