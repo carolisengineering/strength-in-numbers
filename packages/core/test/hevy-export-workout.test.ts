@@ -136,6 +136,22 @@ describe("19.0 AC11 — buildHevyWorkout", () => {
     expect(exportPairFor(fork, mappingFor(1), rootOf)?.hevyTemplateId).toBe("T0");
   });
 
+  it("final review I1: a stale pair whose Hevy type no longer fits the exercise's type is unmapped, never sent empty", () => {
+    // Paired as duration, then retyped to weight_reps while nothing was logged (AC25 keeps the pair).
+    const mapping = { pairs: [pair({ hevyTemplateId: "D", hevyType: "duration", exerciseId: exerciseId(0) })], sectionRules: [] };
+    const d = detail({ exercises: [exercise(0, { exerciseNameSnapshot: "Plank", modalitySnapshot: "weight_reps" })] });
+    expect(buildHevyWorkout(d, mapping, deps)).toEqual({ ok: false, unmapped: [{ exerciseId: exerciseId(0), name: "Plank", modality: "weight_reps" }] });
+    expect(exportPairFor(exerciseId(0), mapping, identityRoot, "weight_reps")).toBe(null);
+  });
+
+  it("final review I1: a fork whose type differs from its root's pair does not borrow it", () => {
+    const fork = exerciseId(40);
+    const rootOf = (id: string) => (id === fork ? exerciseId(0) : id);
+    const d = detail({ exercises: [exercise(0, { exerciseId: fork as never, exerciseNameSnapshot: "My row", modalitySnapshot: "calories" })] });
+    const r = buildHevyWorkout(d, mappingFor(1), { rootOf });
+    expect(r).toEqual({ ok: false, unmapped: [{ exerciseId: fork, name: "My row", modality: "calories" }] });
+  });
+
   it("only an exportAs exercise pair is used", () => {
     const mapping = { pairs: [pair({ hevyTemplateId: "A", exportAs: false }), pair({ hevyTemplateId: "B", exportAs: true })], sectionRules: [] };
     expect(exportPairFor(exerciseId(0), mapping, identityRoot)?.hevyTemplateId).toBe("B");

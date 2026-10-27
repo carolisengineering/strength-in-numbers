@@ -1,6 +1,7 @@
 import type { HevyPostExercise, HevyPostWorkout } from "../dto/hevy-api.js";
 import type { WorkoutDetail, WorkoutExerciseDetail, WorkoutSection } from "../dto/workout.js";
 import type { Modality } from "../enums.js";
+import { hevyPairingProblem } from "./pairing.js";
 import { sectionTreatment } from "./sections.js";
 import { HEVY_EXPORT_NOTICES, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
 import type { HevyMapping, HevyPair } from "./types.js";
@@ -17,9 +18,22 @@ export type HevyWorkoutBuild = { ok: true; body: HevyPostWorkout; notices: Expor
 /**
  * Spec 19.0 AC11: the export pair for a SIN exercise: its own `exportAs` pair, else the `exportAs` pair of any
  * exercise in the same lineage (`rootOf` is injected, so this stays pure). Spec 20.2 lists unmatched exercises with it.
+ * Given the type the sets were logged as, a pair that no longer pairs with it (a stale pair, AC25, or a fork retyped
+ * away from its root's pair) is not usable, so its sets are never sent without their measures.
  */
-export function exportPairFor(exerciseId: string, mapping: HevyMapping, rootOf: (id: string) => string): HevyPair | null {
-  const usable = mapping.pairs.filter((p) => p.role === "exercise" && p.exportAs && p.exerciseId !== null);
+export function exportPairFor(
+  exerciseId: string,
+  mapping: HevyMapping,
+  rootOf: (id: string) => string,
+  modality?: Modality,
+): HevyPair | null {
+  const usable = mapping.pairs.filter(
+    (p) =>
+      p.role === "exercise" &&
+      p.exportAs &&
+      p.exerciseId !== null &&
+      (modality === undefined || hevyPairingProblem(p.hevyType, modality, p.measureRule) === null),
+  );
   const own = usable.find((p) => p.exerciseId === exerciseId);
   if (own) return own;
   const root = rootOf(exerciseId);
@@ -46,7 +60,7 @@ export function buildHevyWorkout(
   const pairs = new Map<WorkoutExerciseDetail, HevyPair>();
   const unmapped = new Map<string, UnmappedExercise>();
   for (const ex of exercises) {
-    const p = exportPairFor(ex.exerciseId, mapping, deps.rootOf);
+    const p = exportPairFor(ex.exerciseId, mapping, deps.rootOf, ex.modalitySnapshot);
     if (p) pairs.set(ex, p);
     else if (!unmapped.has(ex.exerciseId)) unmapped.set(ex.exerciseId, { exerciseId: ex.exerciseId, name: ex.exerciseNameSnapshot, modality: ex.modalitySnapshot });
   }
