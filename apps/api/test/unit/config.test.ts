@@ -243,3 +243,31 @@ describe("15 AC11 — resolveCommit", () => {
   ])("%s", (_, env, expected) => expect(resolveCommit(env)).toBe(expected));
   it("loadConfig carries it", () => expect(loadConfig({ ...base, SIN_COMMIT: A }).commit).toBe(A));
 });
+
+describe("19.0 AC16 — HEVY_ENABLED_USER_IDS", () => {
+  const A = "0192a1b2-0000-7000-8000-00000000000a";
+  const B = "0192a1b2-0000-7000-8000-00000000000b";
+
+  it("unset is an empty set: the feature is off for everyone", () => {
+    expect([...loadConfig(base).hevyEnabledUserIds]).toEqual([]);
+  });
+
+  it.each(["", " , "])("%j is an empty set", (value) => {
+    expect([...loadConfig({ ...base, HEVY_ENABLED_USER_IDS: value }).hevyEnabledUserIds]).toEqual([]);
+  });
+
+  it("a comma-separated list, trimmed", () => {
+    const ids = loadConfig({ ...base, HEVY_ENABLED_USER_IDS: ` ${A} ,${B}` }).hevyEnabledUserIds;
+    expect([...ids].sort()).toEqual([A, B]);
+    expect(ids.has(A)).toBe(true);
+  });
+
+  it("an entry that is not a user id fails boot, naming the variable", () => {
+    expect(() => loadConfig({ ...base, HEVY_ENABLED_USER_IDS: `${A},abc` })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...base, HEVY_ENABLED_USER_IDS: "abc" })).toThrow(/HEVY_ENABLED_USER_IDS/);
+  });
+
+  it("the set is frozen", () => {
+    expect(Object.isFrozen(loadConfig({ ...base, HEVY_ENABLED_USER_IDS: A }).hevyEnabledUserIds)).toBe(true);
+  });
+});

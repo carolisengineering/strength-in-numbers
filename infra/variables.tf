@@ -63,3 +63,9 @@ variable "billing_account_id" {
   type        = string
   description = "The billing account the $1 budget watches."
 }
+
+variable "hevy_enabled_user_ids" {
+  type        = string
+  default     = ""
+  description = "Spec 19.0: comma-separated SIN user ids the Hevy routes answer for. Empty means the feature is off for everyone."
+}

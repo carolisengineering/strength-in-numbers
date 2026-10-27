@@ -62,6 +62,10 @@ resource "google_cloud_run_v2_service" "api" {
         value = "cloud-run"
       }
       env {
+        name  = "HEVY_ENABLED_USER_IDS"
+        value = var.hevy_enabled_user_ids
+      }
+      env {
         name = "DATABASE_URL"
         value_source {
           secret_key_ref {

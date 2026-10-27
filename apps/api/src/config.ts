@@ -113,6 +113,18 @@ const schema = z.object({
 
   // Spec 15 AC25: which proxy chain the client address comes from (`clientAddress()`, plugins/rate-limit.ts).
   CLIENT_IP_SOURCE: z.enum(["render", "cloud-run"]).default("render"),
+
+  // Spec 19.0 AC16: the Hevy integration's allow-list. Unset or empty means nobody; whitespace trimmed.
+  HEVY_ENABLED_USER_IDS: z
+    .string()
+    .optional()
+    .transform((s) =>
+      (s ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    )
+    .refine((ids) => ids.every((id) => z.guid().safeParse(id).success), "must be a comma-separated list of user ids"),
 }).superRefine((data, ctx) => {
   if (data.NODE_ENV !== "production") return;
 
@@ -170,6 +182,8 @@ export interface Config {
   readonly commit: string;
   /** Spec 15 AC25: `render` (CF-Connecting-IP behind a private socket) or `cloud-run` (the right-most X-Forwarded-For). */
   readonly clientIpSource: ClientIpSource;
+  /** Spec 19.0 AC16: the users the Hevy routes answer for; everyone else gets `404`. Frozen; never from the database. */
+  readonly hevyEnabledUserIds: ReadonlySet<string>;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Config {
@@ -209,5 +223,6 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
     logLevel: c.LOG_LEVEL,
     serviceName: c.SERVICE_NAME,
     telemetry: telemetry.config,
+    hevyEnabledUserIds: Object.freeze(new Set(c.HEVY_ENABLED_USER_IDS)),
   });
 }
