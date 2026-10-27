@@ -143,7 +143,7 @@ describe("18.2 AC48 — the check fails", () => {
   });
 });
 
-describe("18.2 AC49 — a copy's sentence", () => {
+describe("18.2 AC49 — the sentence for a copy", () => {
   const copy = makeExercise({ id: ID, name: "My bench", ownerUserId: USER_ID, forkedFromExerciseId: ORIGIN });
   const origin = makeExercise({ id: ORIGIN, name: "Bench Press", ownerUserId: null });
 

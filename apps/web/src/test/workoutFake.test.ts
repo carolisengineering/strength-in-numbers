@@ -685,7 +685,7 @@ describe("18.0 §10 — the fake applies Change Time through resolveRetime", () 
   });
 });
 
-describe("18.2 AC32 — the fake's exercise writes", () => {
+describe("18.2 AC32 — the fake answers the exercise writes", () => {
   const mine = makeExercise({ id: exerciseId(11), name: "Echo Bike", ownerUserId: "00000000-0000-4000-8000-0000000000aa", modality: "weight_reps" });
   const gone = makeExercise({ id: exerciseId(12), name: "Gone", ownerUserId: "00000000-0000-4000-8000-0000000000aa", isActive: false });
 
