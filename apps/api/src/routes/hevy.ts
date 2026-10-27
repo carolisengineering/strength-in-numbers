@@ -83,7 +83,15 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
         schema: { body: HevyMappingPutSchema, response: { 200: HevyMappingSchema } },
         config: { writeGroup: "hevy", problems: [NotFoundError] },
       },
-      async (request) => repo.replaceMapping(request.user!.id, request.body),
+      async (request) => {
+        const mapping = await repo.replaceMapping(request.user!.id, request.body);
+        // AC37: counts only; never a Hevy title, a Hevy id or an exercise name.
+        request.log.info(
+          { user_id: request.user!.id, pairs: mapping.pairs.length, section_rules: mapping.sectionRules.length },
+          "hevy_mapping_replaced",
+        );
+        return mapping;
+      },
     );
 
     r.patch(
@@ -92,7 +100,19 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
         schema: { body: HevyMappingPatchSchema, response: { 200: HevyMappingSchema } },
         config: { writeGroup: "hevy", problems: [NotFoundError] },
       },
-      async (request) => repo.patchMapping(request.user!.id, request.body),
+      async (request) => {
+        const mapping = await repo.patchMapping(request.user!.id, request.body);
+        request.log.info(
+          {
+            user_id: request.user!.id,
+            upserts: request.body.upsert?.length ?? 0,
+            removals: request.body.remove?.length ?? 0,
+            pairs: mapping.pairs.length,
+          },
+          "hevy_mapping_patched",
+        );
+        return mapping;
+      },
     );
 
     r.get(
