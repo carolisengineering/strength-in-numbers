@@ -1,0 +1,13 @@
+{
+  "id": "b459cba5-cd6d-463c-abd6-54f8eafcadcb",
+  "title": "Bench Press (Barbell)",
+  "type": "weight_reps",
+  "primary_muscle_group": "chest",
+  "secondary_muscle_groups": [
+    "triceps",
+    "shoulders"
+  ],
+  "equipment": "barbell",
+  "is_custom": false,
+  "thumbnail_url": null
+}
