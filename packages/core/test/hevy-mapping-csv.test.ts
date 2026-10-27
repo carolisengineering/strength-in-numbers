@@ -88,6 +88,15 @@ describe("19.0 AC14 — round trip", () => {
     const parsed = parseMappingCsv(text);
     expect(formatMappingCsv(parsed.lines)).toBe(text);
   });
+
+  it("lines sort by their trimmed titles, so a second pass keeps the order", () => {
+    const text = formatMappingCsv([
+      line({ kind: "skip", hevyId: "Z1", hevyTitle: " Zed" }),
+      line({ kind: "skip", hevyId: "A1", hevyTitle: "Apple" }),
+    ]);
+    expect(text.split("\r\n").slice(1, 3)).toEqual(["skip,A1,Apple,,,,", "skip,Z1,Zed,,,,"]);
+    expect(formatMappingCsv(parseMappingCsv(text).lines)).toBe(text);
+  });
 });
 
 describe("19.0 AC14 — tolerant input (Review Focus 4)", () => {

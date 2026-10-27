@@ -33,7 +33,7 @@ export type SectionNotice = "section_name_cut" | "section_note_cut";
 
 /**
  * The first `max` UTF-16 units (SIN's limits count units), less a trailing high surrogate, so a cut never ends in
- * half an emoji (deferred minor 136).
+ * half a surrogate pair (deferred minor 136). A multi-code-point grapheme (a ZWJ sequence, a flag) can still be split.
  */
 function cutUnits(text: string, max: number): string {
   const cut = text.slice(0, max);
@@ -49,7 +49,7 @@ function noteOf(lines: readonly string[], notices: SectionNotice[]): string | nu
   if (note === "") return null;
   if (note.length <= SECTION_NOTES_MAX) return note;
   notices.push("section_note_cut");
-  return cutUnits(note, SECTION_NOTES_MAX);
+  return cutUnits(note, SECTION_NOTES_MAX).trimEnd();
 }
 
 /**

@@ -113,8 +113,9 @@ async function insertPairs(tx: Tx, userId: string, pairs: readonly HevyPairInput
 
 /**
  * AC24: after a patch, every exercise with pairs has exactly one exportAs. Clear first, then set: the partial unique
- * index (one exportAs per user and exercise) is checked row by row. A pair upserted with `exportAs: false` gives up
- * the flag to the exercise's oldest other pair, keeping it only when it is the exercise's one pair (deferred minor 141).
+ * index (one exportAs per user and exercise) is checked row by row. Upserted rows are already written unflagged; a
+ * previous holder upserted with `exportAs: false` (`demoted`) gives up the flag to the exercise's oldest other pair,
+ * keeping it only when it is the exercise's one pair (deferred minor 141).
  */
 async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string, string>, demoted: ReadonlySet<string>): Promise<void> {
   const rows = await tx.$queryRaw<{ hevy_template_id: string; role: string; exercise_id: string | null; export_as: boolean }[]>`
@@ -127,7 +128,7 @@ async function settleExportAs(tx: Tx, userId: string, marked: ReadonlyMap<string
     exportAs:
       r.exercise_id !== null && marked.has(r.exercise_id)
         ? marked.get(r.exercise_id) === r.hevy_template_id
-        : r.export_as && !demoted.has(r.hevy_template_id),
+        : r.export_as,
   }));
   // Demoted pairs last, so an exercise left with none marked promotes its oldest other pair first.
   const ordered = [...proposed.filter((p) => !demoted.has(p.id)), ...proposed.filter((p) => demoted.has(p.id))];
@@ -246,8 +247,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         const removed = new Set(patch.remove ?? []);
         const errors = validateMappingInput(upserts, [], await visibleExercises(tx, userId, upserts), { mode: "patch", prefix: "upsert" });
 
-        const current = await tx.$queryRaw<{ hevy_template_id: string; role: string }[]>`
-          SELECT hevy_template_id, role FROM "hevy_exercise_pair" WHERE user_id = ${userId}::uuid`;
+        const current = await tx.$queryRaw<{ hevy_template_id: string; role: string; export_as: boolean }[]>`
+          SELECT hevy_template_id, role, export_as FROM "hevy_exercise_pair" WHERE user_id = ${userId}::uuid`;
         const upsertIds = new Set(upserts.map((p) => p.hevyTemplateId));
         const kept = current.filter((r) => !removed.has(r.hevy_template_id) && !upsertIds.has(r.hevy_template_id));
         upserts.forEach((p, i) => {
@@ -266,7 +267,9 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         await insertPairs(tx, userId, upserts, () => false);
         const marked = new Map<string, string>();
         for (const p of upserts) if (p.role === "exercise" && p.exportAs && p.exerciseId !== null) marked.set(p.exerciseId, p.hevyTemplateId);
-        const demoted = new Set(upserts.filter((p) => !p.exportAs).map((p) => p.hevyTemplateId));
+        // Only a pair that held the flag before this patch is demoted; a retitled non-holder keeps its age.
+        const holders = new Set(current.filter((r) => r.export_as).map((r) => r.hevy_template_id));
+        const demoted = new Set(upserts.filter((p) => !p.exportAs && holders.has(p.hevyTemplateId)).map((p) => p.hevyTemplateId));
         await settleExportAs(tx, userId, marked, demoted);
         return readHevyMapping(tx, userId);
       });
@@ -351,8 +354,9 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
     async releaseLink(userId, workoutId) {
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
       await prisma.$transaction(async (tx) => {
+        // FOR SHARE, as complete: a delete that lands first is a 404, not a 204 that touched nothing.
         const owned = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
+          SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR SHARE`;
         if (!owned[0]) throw new NotFoundError(NOT_FOUND);
         await tx.$executeRaw`
           DELETE FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid AND hevy_workout_id IS NULL`;

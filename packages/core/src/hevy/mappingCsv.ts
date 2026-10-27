@@ -62,16 +62,18 @@ function compareLines(a: MappingCsvLine, b: MappingCsvLine): number {
   return byCodeUnit(lower(a.hevyTitle), lower(b.hevyTitle)) || byCodeUnit(a.hevyId ?? "", b.hevyId ?? "");
 }
 
-/** Trimmed, as the parse trims, so a title with edge spaces reads back as written (deferred minor 134). */
 function cell(value: string | null): string {
   if (value === null) return "";
-  const v = value.trim();
-  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
+
+const trimmed = (v: string | null) => (v === null ? null : v.trim());
+/** Cells trimmed as the parse trims them, before sorting, so a second pass reads and orders the same (minor 134). */
+const trimLine = (l: MappingCsvLine): MappingCsvLine => ({ ...l, hevyId: trimmed(l.hevyId), hevyTitle: trimmed(l.hevyTitle), sinId: trimmed(l.sinId), sinName: trimmed(l.sinName) });
 
 /** Spec 19.0 AC14: RFC 4180, CRLF line ends, UTF-8 without a BOM, in the canonical order. */
 export function formatMappingCsv(lines: readonly MappingCsvLine[]): string {
-  const rows = [...lines].sort(compareLines).map((l) =>
+  const rows = lines.map(trimLine).sort(compareLines).map((l) =>
     [l.kind, l.hevyId, l.hevyTitle, l.sinId, l.sinName, l.rule, l.kind === "exercise" && l.exportAs !== null ? (l.exportAs ? "yes" : "no") : null]
       .map(cell)
       .join(","),

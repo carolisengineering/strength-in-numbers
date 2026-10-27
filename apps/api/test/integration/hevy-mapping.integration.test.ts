@@ -215,6 +215,15 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy mapping (re
       expect(await invariant()).toEqual([]);
     });
 
+    it("removing the holder while retitling a non-holder (exportAs false) still promotes the oldest remaining pair", async () => {
+      await twoPairs();
+      await patch({ upsert: [pair({ hevyTemplateId: "P3", hevyTitle: "c", exerciseId: mine })] });
+      await db.prisma.$executeRawUnsafe(`UPDATE hevy_exercise_pair SET created_at = now() WHERE hevy_template_id = 'P3'`);
+      await patch({ remove: ["P1"], upsert: [pair({ hevyTemplateId: "P2", hevyTitle: "b renamed", exerciseId: mine })] });
+      expect(await flags()).toEqual([["P2", true], ["P3", false]]);
+      expect(await invariant()).toEqual([]);
+    });
+
     it("the exportAs pair patched to a skip promotes the other pair (deferred minor 142)", async () => {
       await twoPairs();
       await patch({ upsert: [pair({ hevyTemplateId: "P1", hevyTitle: "a", role: "skip", exerciseId: null, exportAs: false })] });
@@ -247,12 +256,15 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy mapping (re
         { timeout: 30_000 },
       );
       await heldP;
-      const outcome = await Promise.race([
-        patch({ upsert: [pair({ hevyTemplateId: "P1", exerciseId: mine })] }).then((r) => r.statusCode),
-        new Promise<string>((r) => setTimeout(() => r("blocked"), 3000)),
-      ]);
-      release();
-      await holder;
+      const patchP = patch({ upsert: [pair({ hevyTemplateId: "P1", exerciseId: mine })] }).then((r) => r.statusCode);
+      let outcome: number | string;
+      try {
+        outcome = await Promise.race([patchP, new Promise<string>((r) => setTimeout(() => r("blocked"), 3000))]);
+      } finally {
+        release();
+        await holder;
+      }
+      await patchP; // never left running into the next test
       expect(outcome).toBe(200);
     }, 30_000);
 
