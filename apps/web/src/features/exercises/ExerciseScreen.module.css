@@ -2,3 +2,8 @@
 .line {
   color: var(--color-muted);
 }
+
+/* Phase B: the polite status line; empty, it takes no room. */
+.status:empty {
+  display: none;
+}

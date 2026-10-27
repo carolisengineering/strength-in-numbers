@@ -1,4 +1,5 @@
 import { lineageRootId } from "@sin/core";
+import { useState } from "react";
 import { Navigate, useLocation, useParams } from "react-router";
 
 import { NotFound } from "../../screens/NotFound";
@@ -12,6 +13,7 @@ import { groupByExercise } from "../progress/exercises";
 import { useSeries } from "../progress/queries";
 import { useExerciseRecords } from "../records/queries";
 import { classifyWorkoutError } from "../workouts/errors";
+import { ExerciseActions } from "./ExerciseActions";
 import { ExerciseDetails } from "./ExerciseDetails";
 import styles from "./ExerciseScreen.module.css";
 import { EXERCISES_COPY } from "./messages";
@@ -40,6 +42,14 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !neverLogged);
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
+  // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
+  const [status, setStatus] = useState("");
+  const statusLine = (
+    // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
+    <p className={styles.status} role="status" data-testid="exercise-status">
+      {status}
+    </p>
+  );
 
   const gone = series.data === undefined && series.error ? classifyWorkoutError(series.error).kind : null;
   if (gone === "not-found" || gone === "validation") return <NotFound />;
@@ -67,6 +77,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
     return (
       <Screen title={title} lead={back}>
         <p className={styles.line}>{EXERCISES_COPY.deleted}</p>
+        {statusLine}
         <ExerciseProgressBody exerciseId={exerciseId} />
       </Screen>
     );
@@ -75,6 +86,8 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   return (
     <Screen title={resolution.row.name} lead={back}>
       <ExerciseDetails row={resolution.row} />
+      <ExerciseActions row={resolution.row} onStatus={setStatus} onDelete={() => undefined} />
+      {statusLine}
       {neverLogged ? <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p> : <ExerciseProgressBody exerciseId={exerciseId} />}
     </Screen>
   );

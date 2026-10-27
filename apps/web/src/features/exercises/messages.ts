@@ -45,6 +45,20 @@ export const EXERCISES_COPY = {
   offline: "You're offline. Editing an exercise needs a connection.",
   tooFast: "You're doing that too fast. Try again in a moment.",
   couldntSave: "Couldn't save. Try again.",
+  // Phase B: the page's actions and the Edit sheet (AC34, AC35, AC40, AC41).
+  edit: "Edit",
+  deleteExercise: "Delete exercise",
+  makeCopy: "Make your own copy",
+  builtInNote:
+    "Built-in exercises can't be edited. Make your own copy to change the name, type, muscles or equipment. Your history and records come with it.",
+  editTitle: "Edit exercise",
+  typeLabel: "Type",
+  cancel: "Cancel",
+  save: "Save",
+  saved: "Saved.",
+  renameNote: "Renaming doesn't change past workouts. History keeps the name each workout was logged with.",
+  typeLocked:
+    "This exercise already has logged sets, so its type can only change to one that logs the same measures. Create a new exercise instead.",
   // Phase B: the Edit sheet's type notes (AC37–AC39).
   typeLimitedTo: (partners: string) =>
     `This exercise has logged sets, so its type can only change to ${partners}. To use another type, create a new exercise.`,
