@@ -260,6 +260,19 @@ describe("18.2 AC50 — confirm and after", () => {
     expect(screen.getByRole("dialog", { name: EXERCISES_COPY.deleteTitle("Echo Bike") })).toBeInTheDocument();
     held.resolve();
     await waitFor(() => expect(router.state.location.pathname).toBe(EXERCISES_PATH));
+    expect(await screen.findByText("Deleted Echo Bike.")).toBeInTheDocument();
+    await screen.findByRole("list", { name: EXERCISES_COPY.listLabel });
+  });
+
+  it("deferred minor 129 — the Deleted line clears on the first search keystroke", async () => {
+    const { user, router } = setup({ catalog: [echo, makeExercise({ id: ORIGIN, name: "Row", ownerUserId: null })] });
+    const dialog = await openDelete(user);
+    await waitFor(() => expect(confirmButton(dialog)).toBeEnabled());
+    await user.click(confirmButton(dialog));
+    await waitFor(() => expect(router.state.location.pathname).toBe(EXERCISES_PATH));
+    const notice = await screen.findByText("Deleted Echo Bike.");
+    await user.type(await screen.findByRole("searchbox", { name: EXERCISES_COPY.searchLabel }), "r");
+    expect(notice).toBeEmptyDOMElement();
   });
 
   it("a 429 closes the dialog and shows the text on the page", async () => {

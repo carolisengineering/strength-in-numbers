@@ -80,6 +80,20 @@ describe("18.2 AC11 — row accessibility", () => {
   });
 });
 
+describe("deferred minor 122 — the count line is mounted, empty, before the first query", () => {
+  it("an empty status region from first paint takes the count, then empties again", async () => {
+    const { user } = setup();
+    await list();
+    const count = screen.getByTestId("exercise-count");
+    expect(count).toHaveAttribute("role", "status");
+    expect(count).toBeEmptyDOMElement();
+    await user.type(search(), "bench");
+    expect(count).toHaveTextContent("1 exercise");
+    await user.clear(search());
+    expect(count).toBeEmptyDOMElement();
+  });
+});
+
 describe("18.2 AC12 — search", () => {
   it.each(["BENCH", "bénch"])("%s matches, the status counts, and clearing removes it", async (query) => {
     const { user } = setup();
@@ -188,7 +202,7 @@ describe("18.2 AC15 — offline", () => {
   it("the list and search work, the notice shows, nothing is reported", async () => {
     const fake = createWorkoutFake({ usage: USED });
     prepareApp({ auth, fake, catalog: CATALOG });
-    const { user, router } = renderApp("/app/history");
+    const { user, router, queryClient } = renderApp("/app/history");
     await screen.findByRole("heading", { level: 1, name: "History" });
     fake.setOffline(true);
     onlineManager.setOnline(false);
@@ -197,6 +211,10 @@ describe("18.2 AC15 — offline", () => {
     await user.type(search(), "plank");
     expect(names(await list())).toEqual(["Plank"]);
     expect(observability.reportError).not.toHaveBeenCalled();
+    // Back online, the paused reference reads go out before the test ends (deferred minor 121).
+    fake.setOffline(false);
+    onlineManager.setOnline(true);
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   });
 });
 
@@ -222,7 +240,7 @@ describe("18.2 AC17 — + New exercise", () => {
   it("creates, lands on the new page by push, and Back returns to the list", async () => {
     const fake = createWorkoutFake({ usage: [], serveExercises: true, catalog: CATALOG });
     prepareApp({ auth, fake, catalog: CATALOG });
-    const { user, router } = renderApp("/app/exercises");
+    const { user, router, queryClient } = renderApp("/app/exercises");
     await list();
     const button = screen.getByRole("button", { name: EXERCISES_COPY.newExercise });
     expect(button).toHaveTextContent("+ New exercise");
@@ -238,6 +256,9 @@ describe("18.2 AC17 — + New exercise", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Echo Bike 2" })).toBeInTheDocument();
     await router.navigate(-1);
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/exercises"));
+    // The list's usage read lands before the test ends (deferred minor 121).
+    await list();
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   });
 });
 

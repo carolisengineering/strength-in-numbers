@@ -102,7 +102,7 @@ describe("18.2 AC19 — resolution on screen", () => {
   it("a Records row for a forked built-in lands on the copy, by replace", async () => {
     const fork = makeExercise({ id: FORK, name: "My bench", ownerUserId: USER_ID, forkedFromExerciseId: ID, createdAt: "2026-05-01T00:00:00.000Z" });
     // The API resolves a fork's id to its root (07.2 AC4); the fake keys series by id, so serve both.
-    const { router, user } = setup({ catalog: [bench, fork], path: "/app/exercises/records", fake: { progress: { [ID]: points, [FORK]: points } } });
+    const { queryClient, router, user } = setup({ catalog: [bench, fork], path: "/app/exercises/records", fake: { progress: { [ID]: points, [FORK]: points } } });
     const list = await screen.findByRole("list", { name: "Exercises" });
     await user.click(within(list).getByRole("link", { name: /^Bench \(from records\)/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe(exercisePath(FORK)));
@@ -112,6 +112,8 @@ describe("18.2 AC19 — resolution on screen", () => {
     expect(screen.getByRole("link", { name: EXERCISES_COPY.backToRecords })).toHaveAttribute("href", "/app/exercises/records");
     await router.navigate(-1);
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/exercises/records"));
+    // Records refetches on return; let it land before the test ends (deferred minor 121).
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
   });
 
   it("a synced unknown id with records is the deleted variant", async () => {
