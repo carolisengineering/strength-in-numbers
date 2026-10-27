@@ -375,3 +375,60 @@ export class RateLimitedError extends AppError {
     this.publicDetail = `Too many requests — retry after ${seconds} seconds.`;
   }
 }
+
+// Spec 19.0 §5.5: the Hevy link problems (owner-only, unpublished routes).
+
+export class HevySendInProgressError extends AppError {
+  readonly status = 409;
+  readonly slug = "hevy-send-in-progress";
+  readonly title = "Send in progress";
+  readonly publicDetail = "This workout is already being sent to Hevy. Try again in a moment.";
+
+  constructor(internal = "a fresh hevy_link claim exists") {
+    super(internal);
+  }
+}
+
+export class HevyWorkoutNotFinishedError extends AppError {
+  readonly status = 409;
+  readonly slug = "hevy-workout-not-finished";
+  readonly title = "Workout not finished";
+  readonly publicDetail = "Only a finished workout can be sent to Hevy.";
+
+  constructor(internal = "workout.ended_at IS NULL") {
+    super(internal);
+  }
+}
+
+export class HevyNoClaimError extends AppError {
+  readonly status = 409;
+  readonly slug = "hevy-no-claim";
+  readonly title = "No send in progress";
+  readonly publicDetail = "There is no send in progress for this workout.";
+
+  constructor(internal = "no hevy_link claim to complete") {
+    super(internal);
+  }
+}
+
+export class HevyLinkConflictError extends AppError {
+  readonly status = 409;
+  readonly slug = "hevy-link-conflict";
+  readonly title = "Already linked";
+  readonly publicDetail = "This workout is already linked to a different Hevy workout.";
+
+  constructor(internal = "hevy_link holds another hevy_workout_id") {
+    super(internal);
+  }
+}
+
+export class HevyIdInUseError extends AppError {
+  readonly status = 409;
+  readonly slug = "hevy-id-in-use";
+  readonly title = "Hevy workout already linked";
+  readonly publicDetail = "That Hevy workout is already linked to another workout.";
+
+  constructor(internal = "(user_id, hevy_workout_id) already linked") {
+    super(internal);
+  }
+}

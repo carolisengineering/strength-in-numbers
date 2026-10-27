@@ -8,6 +8,7 @@ import { createExerciseRepository } from "./repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "./repositories/workout.prisma.js";
 import { createRoutineRepository } from "./repositories/routine.prisma.js";
 import { createAccountExportRepository } from "./repositories/account-export.prisma.js";
+import { createHevyRepository } from "./repositories/hevy.prisma.js";
 import { createPersonalRecordRepository } from "./repositories/personal-record.prisma.js";
 import { createGracefulShutdown } from "./shutdown.js";
 import { startupFailureMessage } from "./startup-failure.js";
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
     personalRecordRepository: createPersonalRecordRepository(prisma),
     routineRepository: createRoutineRepository(prisma),
     accountExportRepository: createAccountExportRepository(prisma),
+    hevyRepository: createHevyRepository(prisma),
   });
 
   const shutdown = createGracefulShutdown({ app, prisma, logger, telemetry: getTelemetryHandle() });

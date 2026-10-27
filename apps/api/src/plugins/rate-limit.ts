@@ -9,8 +9,9 @@ import { RateLimitedError, type RateLimitSource } from "../errors/app-error.js";
  * used (D11) and why L3 releases on `onSend` (D13).
  */
 
-export type WriteGroup = "sets" | "workouts" | "exercises" | "routines" | "me";
-export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercises", "routines", "me"];
+/** Spec 19.0 D15 adds `hevy` (the owner-only Hevy routes). */
+export type WriteGroup = "sets" | "workouts" | "exercises" | "routines" | "me" | "hevy";
+export const WRITE_GROUPS: readonly WriteGroup[] = ["sets", "workouts", "exercises", "routines", "me", "hevy"];
 
 declare module "fastify" {
   interface FastifyContextConfig {
@@ -48,7 +49,7 @@ export const RATE_LIMITS: RateLimitConfig = Object.freeze({
   docs: 30,
   // Spec 11 D8: a retry or two after a failed download; caps a few MB/min/user.
   exportPerUser: 3,
-  groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10 }),
+  groups: Object.freeze({ sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10, hevy: 60 }),
   inflight: 4,
 });
 

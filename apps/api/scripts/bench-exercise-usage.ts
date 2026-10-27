@@ -7,6 +7,7 @@
  */
 import { buildApp } from "../src/app.js";
 import { checkDatabaseReady } from "../src/db.js";
+import { createHevyRepository } from "../src/repositories/hevy.prisma.js";
 import { createAccountExportRepository } from "../src/repositories/account-export.prisma.js";
 import { createExerciseRepository } from "../src/repositories/exercise.prisma.js";
 import { createPersonalRecordRepository } from "../src/repositories/personal-record.prisma.js";
@@ -37,6 +38,7 @@ const app = await buildApp({
   personalRecordRepository: createPersonalRecordRepository(db.prisma),
   routineRepository: createRoutineRepository(db.prisma),
   accountExportRepository: createAccountExportRepository(db.prisma),
+  hevyRepository: createHevyRepository(db.prisma),
   rateLimits: GENEROUS_LIMITS,
 });
 const headers = { authorization: "Bearer bench" };

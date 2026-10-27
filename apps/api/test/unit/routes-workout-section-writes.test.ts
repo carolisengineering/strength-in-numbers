@@ -105,7 +105,8 @@ describe("09.4 AC20 — wiring", () => {
   it("RATE_LIMITS is unchanged", () => {
     expect(RATE_LIMITS).toEqual({
       windowMs: 60_000, ip: 600, docs: 30, exportPerUser: 3,
-      groups: { sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10 }, inflight: 4,
+      // Spec 19.0 D15 adds the hevy group.
+      groups: { sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10, hevy: 60 }, inflight: 4,
     });
   });
 });
