@@ -5,6 +5,7 @@ import { hevyPairingProblem } from "./pairing.js";
 import { sectionTreatment } from "./sections.js";
 import { HEVY_EXPORT_NOTICES, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
 import type { HevyMapping, HevyPair } from "./types.js";
+import type { HevyType } from "./vocabulary.js";
 
 /** An exercise in the workout that has no usable export pair. */
 export interface UnmappedExercise {
@@ -26,12 +27,13 @@ export function exportPairFor(
   mapping: HevyMapping,
   rootOf: (id: string) => string,
   modality?: Modality,
-): HevyPair | null {
+): (HevyPair & { hevyType: HevyType }) | null {
   const usable = mapping.pairs.filter(
-    (p) =>
+    (p): p is HevyPair & { hevyType: HevyType } =>
       p.role === "exercise" &&
       p.exportAs &&
       p.exerciseId !== null &&
+      p.hevyType !== null &&
       (modality === undefined || hevyPairingProblem(p.hevyType, modality, p.measureRule) === null),
   );
   const own = usable.find((p) => p.exerciseId === exerciseId);
@@ -57,7 +59,7 @@ export function buildHevyWorkout(
 ): HevyWorkoutBuild {
   const exercises = [...detail.exercises].sort((a, b) => a.position - b.position);
 
-  const pairs = new Map<WorkoutExerciseDetail, HevyPair>();
+  const pairs = new Map<WorkoutExerciseDetail, HevyPair & { hevyType: HevyType }>();
   const unmapped = new Map<string, UnmappedExercise>();
   for (const ex of exercises) {
     const p = exportPairFor(ex.exerciseId, mapping, deps.rootOf, ex.modalitySnapshot);

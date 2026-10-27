@@ -34,7 +34,7 @@ const hevyTitle = z.string().min(1).max(HEVY_TITLE_MAX).refine(noControlChars, C
 export const HevyPairSchema = z.object({
   hevyTemplateId: z.string(),
   hevyTitle: z.string(),
-  hevyType: z.enum(HEVY_TYPE_VALUES),
+  hevyType: z.enum(HEVY_TYPE_VALUES).nullable(),
   role: z.enum(PAIR_ROLE_VALUES),
   exerciseId: z.string().nullable(),
   exerciseActive: z.boolean().nullable(),
@@ -46,7 +46,7 @@ export const HevyPairSchema = z.object({
 export const HevyPairInputSchema = z.strictObject({
   hevyTemplateId: hevyId,
   hevyTitle,
-  hevyType: z.enum(HEVY_TYPE_VALUES),
+  hevyType: z.enum(HEVY_TYPE_VALUES).nullable(),
   role: z.enum(PAIR_ROLE_VALUES),
   exerciseId: z.guid().nullable(),
   measureRule: z.enum(MEASURE_RULE_VALUES).nullable(),
