@@ -69,7 +69,7 @@ const inertHevyImportRepository = new Proxy({} as HevyImportRepository, {
   },
 });
 
-const inertRoutineRepository =new Proxy({} as RoutineRepository, {
+const inertRoutineRepository = new Proxy({} as RoutineRepository, {
   get() {
     throw new Error("routine repository is not used during OpenAPI emit");
   },

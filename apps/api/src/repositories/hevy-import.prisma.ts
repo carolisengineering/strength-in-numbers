@@ -91,7 +91,9 @@ export async function findCandidates(
     JOIN "exercise" e ON e.id = we.exercise_id
     WHERE w.user_id = ${userId}::uuid AND w.ended_at IS NOT NULL AND w.local_date = ${localDate}::date
       AND w.started_at BETWEEN ${startedAt}::timestamptz - interval '1 hour' AND ${startedAt}::timestamptz + interval '1 hour'
-      AND NOT EXISTS (SELECT 1 FROM "hevy_link" l WHERE l.workout_id = w.id AND l.hevy_workout_id IS NOT NULL)
+      -- Any link row, a claim-only one included: §6.3 excludes only linked rows, but a claim (a Send that never
+      -- completed) would make the dry run say duplicate while the real run's insert hits hevy_link_workout_key.
+      AND NOT EXISTS (SELECT 1 FROM "hevy_link" l WHERE l.workout_id = w.id)
     GROUP BY w.id`;
   return rows.map((r) => ({ id: r.id, title: r.title, startedAt: r.started_at, localDate: r.local_date, rootIds: r.roots }));
 }

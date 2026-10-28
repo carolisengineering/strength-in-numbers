@@ -154,6 +154,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import batch (real 
       expect((await run([importWorkoutFixture({ hevyWorkoutId: "H-B" })])).results[0]!.outcome).toBe("create");
     });
 
+    it("a candidate holding a stale claim-only link is not a candidate: dry and real runs agree", async () => {
+      const sin = await sinWorkout("2026-09-10T10:00:00Z");
+      await insertLink(db, { userId: u, workoutId: sin, hevyWorkoutId: null, origin: "sent" });
+      const batch = [importWorkoutFixture({ hevyWorkoutId: "H-A" })];
+      const dry = await run(batch, true);
+      const real = await run(batch);
+      expect(dry.results.map((r) => r.outcome)).toEqual(["create"]);
+      expect(withoutIds(real.results)).toEqual(withoutIds(dry.results));
+    });
+
     it("a Send that links the candidate before the match insert drops it and creates, never a 500", async () => {
       const sin = await sinWorkout("2026-09-10T10:00:00Z");
       const out = await run([importWorkoutFixture({ hevyWorkoutId: "H-A" })], false, {
