@@ -28,7 +28,7 @@ export function useMappingMutations(): MappingMutations {
   const queryClient = useQueryClient();
   const settle = (mapping: HevyMapping) => {
     queryClient.setQueryData(HEVY_KEYS.mapping, mapping);
-    void queryClient.invalidateQueries({ queryKey: HEVY_KEYS.status });
+    void queryClient.invalidateQueries({ queryKey: HEVY_KEYS.statusAll });
   };
   const put = useMutation({
     mutationFn: (body: { pairs: PairInput[]; sectionRules: HevySectionRule[] }) =>

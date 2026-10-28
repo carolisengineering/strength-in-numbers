@@ -63,7 +63,7 @@ describe("20.0 AC1 — direct visit", () => {
 
     server.use(http.get(STATUS_URL, () => HttpResponse.error()));
     await queryClient.refetchQueries({ queryKey: ["hevy", "status"] });
-    expect(queryClient.getQueryState(["hevy", "status"])?.status).toBe("error");
+    expect(queryClient.getQueryState(["hevy", "status", ME.id])?.status).toBe("error");
     // Let React render the errored state before asserting.
     await act(() => new Promise((r) => setTimeout(r, 50)));
     expect(screen.getByRole("heading", { level: 1, name: "Hevy" })).toBeInTheDocument();

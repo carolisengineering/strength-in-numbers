@@ -93,14 +93,14 @@ describe("20.0 AC22 / AC25 — writes", () => {
     const reply = { pairs: [{ ...PAIR, exerciseActive: true }], sectionRules: [{ name: "Warmup", treatment: "warmup_placeholder" }] };
     server.use(http.put(MAPPING_URL, () => HttpResponse.json(reply)), http.patch(MAPPING_URL, () => HttpResponse.json(reply)));
     const queryClient = makeQueryClient();
-    queryClient.setQueryData(HEVY_KEYS.status, { enabled: true, pairCount: 0, linkCount: 0, recordsStale: false });
+    queryClient.setQueryData(HEVY_KEYS.status(USER_ID), { enabled: true, pairCount: 0, linkCount: 0, recordsStale: false });
     const { result } = renderHook(() => useMappingMutations(), { wrapper: wrapperFor(queryClient) });
 
     const body = { pairs: [PAIR], sectionRules: [{ name: "Warmup", treatment: "warmup_placeholder" as const }] };
     await act(() => result.current.put.mutateAsync(body));
     expect(requests.find((r) => r.method === "PUT")?.body).toEqual(body);
     expect(queryClient.getQueryData(HEVY_KEYS.mapping)).toEqual(reply);
-    expect(queryClient.getQueryState(HEVY_KEYS.status)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(HEVY_KEYS.status(USER_ID))?.isInvalidated).toBe(true);
 
     await act(() => result.current.patch.mutateAsync({ remove: ["T9"] }));
     expect(requests.find((r) => r.method === "PATCH")?.body).toEqual({ remove: ["T9"] });

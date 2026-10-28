@@ -10,7 +10,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { API_BASE_URL, renderProfile, stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
+import { API_BASE_URL, ME, renderProfile, stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
 import { server } from "../../test/msw/server";
 import { HEVY_KEYS } from "./keys";
 import { HEVY_PATH } from "./paths";
@@ -69,7 +69,7 @@ describe("20.0 AC1 — hidden by default", () => {
     const link = await screen.findByRole("link", { name: /Hevy/ });
     expect(link).toHaveAttribute("href", HEVY_PATH);
     expect(statusCalls).toBe(1);
-    expect(HEVY_KEYS.status).toEqual(["hevy", "status"]);
-    expect(queryClient.getQueryData(HEVY_KEYS.status)).toEqual(ENABLED);
+    expect(HEVY_KEYS.status(ME.id)).toEqual(["hevy", "status", ME.id]);
+    expect(queryClient.getQueryData(HEVY_KEYS.status(ME.id))).toEqual(ENABLED);
   });
 });
