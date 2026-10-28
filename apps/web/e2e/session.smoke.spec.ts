@@ -184,6 +184,15 @@ test("M1 happy path on staging (Spec 06.3 AC1–AC4)", async ({ page }) => {
     await expect(page.getByRole("navigation", { name: "Exercise views" })).toBeVisible();
   });
 
+  await test.step("Spec 20.0 AC1 — the test user sees no Hevy", async () => {
+    // Wait for the status read to answer first, or the check below would pass before the row could appear.
+    const status = page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/hevy/status");
+    await page.getByRole("link", { name: NAMES.profileLink }).click();
+    await expect(page.getByRole("heading", { level: 1, name: NAMES.profile })).toBeVisible();
+    expect((await status).status()).toBe(404);
+    await expect(page.getByText(/hevy/i)).toHaveCount(0);
+  });
+
   // Spec 08.0 AC26 — no PR content is asserted: whether a run sets a record depends on the account's history (D12).
   await test.step("Spec 08.0 — the finished workout is in History and opens from there", async () => {
     await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: NAMES.history }).click();

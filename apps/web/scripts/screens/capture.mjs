@@ -19,6 +19,9 @@ const { chromium } = require("@playwright/test");
 
 const OUT = path.join(webRoot, ".screens");
 const BASE = process.argv[2] ?? "http://localhost:5287";
+// Spec 20.0: Hevy's paths also start with /v1/, so the fake SIN API answers only on the app's own origin.
+const SIN_ORIGIN = new URL(BASE).origin;
+const isSinApi = (u) => u.origin === SIN_ORIGIN && u.pathname.startsWith("/v1/");
 // SCREENS_THEMES=light (or dark) and SCREENS_DEVICES=mobile (or desktop) narrow a run; default is all four.
 const THEMES = (process.env.SCREENS_THEMES ?? "light,dark").split(",").map((s) => s.trim()).filter(Boolean);
 const DEVICE_FILTER = (process.env.SCREENS_DEVICES ?? "mobile,desktop").split(",").map((s) => s.trim());
@@ -36,6 +39,20 @@ const json = (body, status = 200) => ({ status, contentType: "application/json",
 /** A lineage root, including a copy made during the run (it lives only in the context's catalog). */
 const rootIn = (state, id) => (state.catalog ?? []).find((e) => e.id === id)?.forkedFromExerciseId ?? D.rootOf(id);
 
+/** Spec 20.0: the fake Hevy API — `user/info` accepts only `D.hevyGoodKey`; anything else is unmatched. */
+async function hevyHandler(route) {
+  const req = route.request();
+  const url = new URL(req.url());
+  if (req.method() === "GET" && url.pathname === "/v1/user/info") {
+    const ok = req.headers()["api-key"] === D.hevyGoodKey;
+    await route.fulfill(ok ? json(D.hevyUserInfo) : { status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) });
+    return;
+  }
+  unmatched.add(`HEVY ${req.method()} ${url.pathname}${url.search}`);
+  console.warn(`  UNMATCHED HEVY ${req.method()} ${url.pathname}${url.search}`);
+  await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+}
+
 function makeHandler(state) {
   return async (route) => {
     const req = route.request();
@@ -49,6 +66,7 @@ function makeHandler(state) {
       return; // never fulfilled: the write stays in flight
     }
     if (m === "GET" && p === "/v1/me") res = json(D.me);
+    else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "PATCH" && p === "/v1/me") res = json({ ...D.me, ...JSON.parse(req.postData() ?? "{}") });
     // Spec 18.2 AC27: `catalog` swaps the whole list (the 600-row capture); `hideExercise` serves it as deleted.
     else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: state.catalog ?? D.exercises.filter((e) => e.id !== state.hideExercise), syncToken: "1.100" });
@@ -490,7 +508,7 @@ try {
     console.log(`== ${theme} / ${device}`);
     const state = { active: true };
     const ctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-    await ctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler(state));
+    await ctx.route(isSinApi, makeHandler(state));
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
     page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${page.url()}: ${msg.text().slice(0, 300)}`); });
@@ -803,7 +821,7 @@ try {
     await tryStep("deleted exercise page and the usage-failed list", async () => {
       // A fresh context whose catalog no longer serves Barbell Curl (its records still do), and whose usage read fails.
       const dctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-      await dctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false, hideExercise: D.ids.curl, failUsage: true }));
+      await dctx.route(isSinApi, makeHandler({ active: false, hideExercise: D.ids.curl, failUsage: true }));
       const dp = await dctx.newPage();
       dp.setDefaultTimeout(8000);
       await dp.goto(BASE + `/app/exercises/${D.ids.curl}`);
@@ -817,7 +835,7 @@ try {
     if (device === "mobile") {
       await tryStep("600 exercises", async () => {
         const mctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-        await mctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false, catalog: D.manyExercises(600) }));
+        await mctx.route(isSinApi, makeHandler({ active: false, catalog: D.manyExercises(600) }));
         const mp = await mctx.newPage();
         mp.setDefaultTimeout(8000);
         await mp.goto(BASE + "/app/exercises");
@@ -831,7 +849,7 @@ try {
     await tryStep("manage exercises (edit, copy, delete)", async () => {
       const ms = { active: false, catalog: [...D.exercises, D.benchCopy], routines: D.routinesWithBenchCopy };
       const xctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-      await xctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler(ms));
+      await xctx.route(isSinApi, makeHandler(ms));
       const xp = await xctx.newPage();
       xp.setDefaultTimeout(8000);
       const open = async (id) => {
@@ -921,6 +939,39 @@ try {
 
     await go("/app/profile");
     await shoot(page, device, "17-profile", "Profile: settings form, export, sign out, delete account");
+    // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
+    await tryStep("hevy key screen", async () => {
+      const hevyContext = async (seedKey) => {
+        const hctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        await hctx.route(isSinApi, makeHandler({ active: false }));
+        await hctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
+        if (seedKey) {
+          await hctx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), {
+            k: `sin:hevy:key:${D.me.id}`,
+            v: JSON.stringify({ v: 1, key: seedKey }),
+          });
+        }
+        const hp = await hctx.newPage();
+        hp.setDefaultTimeout(8000);
+        hp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${hp.url()}: ${msg.text().slice(0, 300)}`); });
+        await hp.goto(BASE + "/app/profile/hevy");
+        await hp.getByRole("heading", { level: 1, name: "Hevy" }).waitFor();
+        await settle(hp);
+        return { hctx, hp };
+      };
+      const absent = await hevyContext(null);
+      await shoot(absent.hp, device, "hevy-key-absent", "Hevy screen with no key: paste field, helper, the two save buttons (Spec 20.0 AC4)");
+      await absent.hctx.close();
+      const present = await hevyContext(D.hevyGoodKey);
+      await present.hp.getByText("Signed in to Hevy as carol_lifts").waitFor();
+      await shoot(present.hp, device, "hevy-key-present", "Hevy screen with a key: last four, who it signs in as, Replace and Remove (Spec 20.0 AC5, AC6)");
+      await present.hp.getByRole("button", { name: "Replace" }).click();
+      await present.hp.getByLabel("Hevy API key").fill(D.hevyBadKey);
+      await present.hp.getByRole("button", { name: "Save and remember" }).click();
+      await present.hp.getByText("Hevy didn't accept that key.", { exact: false }).waitFor();
+      await shoot(present.hp, device, "hevy-key-failed", "Hevy screen after a Replace that Hevy refused: the old key stays (Spec 20.0 AC5, AC6)");
+      await present.hctx.close();
+    });
     await tryStep("sign-out guard dialog", async () => {
       // The guard only shows a dialog when sets are unsaved: log one set on the active workout with
       // writes held unanswered, then use Sign out from Profile (client-side nav keeps the outbox).
@@ -961,7 +1012,7 @@ try {
     // Logged out.
     const anon = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
     await anon.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
-    await anon.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+    await anon.route(isSinApi, makeHandler({ active: false }));
     const ap = await anon.newPage();
     ap.on("pageerror", (err) => consoleErrors.push(`${device} anon: PAGEERROR ${err.message.slice(0, 300)}`));
     await ap.goto(BASE + "/");
@@ -1009,7 +1060,7 @@ try {
     if (device === "mobile") {
       const small = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
       await small.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
-      await small.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+      await small.route(isSinApi, makeHandler({ active: false }));
       const sp = await small.newPage();
       await sp.goto(BASE + "/");
       await shoot(sp, "mobile-320", "00-landing", "Landing at 320 x 568");
@@ -1027,7 +1078,7 @@ try {
     THEME = "override-dark";
     const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.addInitScript(() => { try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ } });
-    await ctx.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+    await ctx.route(isSinApi, makeHandler({ active: false }));
     const page = await ctx.newPage();
     await page.goto(BASE + "/app/profile");
     await shoot(page, "mobile", "17-profile", "Profile on a light OS with the Dark override stored");
@@ -1039,7 +1090,7 @@ try {
       window.__SIN_FAKE_AUTH__ = false;
       try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ }
     });
-    await anon.route((u) => u.pathname.startsWith("/v1/"), makeHandler({ active: false }));
+    await anon.route(isSinApi, makeHandler({ active: false }));
     const ap = await anon.newPage();
     await ap.goto(BASE + "/");
     await shoot(ap, "mobile", "00-landing", "Landing on a light OS with the Dark override stored");

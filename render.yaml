@@ -67,11 +67,13 @@ services:
       # Strict CSP + companion security headers (Spec 04.0 §7 / §8.2, AC14).
       # No blob:, no unsafe-inline, no unsafe-eval anywhere. The Auth0
       # refresh-token worker is self-hosted, so worker-src stays 'self'.
-      # `connect-src` = self + the API origin + the Auth0 domain; keep it in
-      # sync with the API's WEB_ORIGIN group whenever a hostname changes.
+      # `connect-src` = self + the API origin + the Auth0 domain + Hevy's API
+      # (Spec 20.0: the browser talks to Hevy with the key, which never reaches
+      # our API); keep it in sync with the API's WEB_ORIGIN group whenever a
+      # hostname changes.
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; connect-src 'self' https://si-api-ft2f.onrender.com https://dev-gncuqvfir0wv0t4l.us.auth0.com; frame-src https://dev-gncuqvfir0wv0t4l.us.auth0.com; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"
+        value: "default-src 'self'; connect-src 'self' https://si-api-ft2f.onrender.com https://dev-gncuqvfir0wv0t4l.us.auth0.com https://api.hevyapp.com; frame-src https://dev-gncuqvfir0wv0t4l.us.auth0.com; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; worker-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

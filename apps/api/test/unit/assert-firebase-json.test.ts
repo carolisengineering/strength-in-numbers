@@ -69,3 +69,20 @@ describe("15 AC22 — only the two Cache-Control rules (final review)", () => {
   it("a third Cache-Control rule on another source is named", () =>
     expect(check(firebase({ rules: (r) => [...r, { source: "**/*.html", headers: [{ key: "Cache-Control", value: "public, max-age=3600" }] }] })).join("\n")).toMatch(/\*\*\/\*\.html/));
 });
+
+describe("20.0 AC13 — connect-src names Hevy", () => {
+  const HEVY = "https://api.hevyapp.com";
+  const connect = (csp: string, f: (tokens: string[]) => string[]) =>
+    csp.replace(/connect-src ([^;]+)/, (_m, list: string) => `connect-src ${f(list.trim().split(/\s+/)).join(" ")}`);
+
+  it("render.yaml's staging CSP allows Hevy, and the matching Firebase CSP passes", () => {
+    expect(STAGING_CSP).toMatch(/connect-src [^;]*https:\/\/api\.hevyapp\.com/);
+    expect(check(firebase())).toEqual([]);
+  });
+  it("a Firebase CSP without the Hevy origin is named", () =>
+    expect(check(firebase({ csp: connect(PROD_CSP, (t) => t.filter((x) => x !== HEVY)) })).join("\n")).toMatch(/connect-src/));
+  it("another hevyapp.com origin is named", () =>
+    expect(check(firebase({ csp: connect(PROD_CSP, (t) => [...t, "https://evil.hevyapp.com"]) })).join("\n")).toMatch(/connect-src/));
+  it.each(["*", "https:"])("a wildcard %s is named", (token) =>
+    expect(check(firebase({ csp: connect(PROD_CSP, (t) => [...t, token]) })).join("\n")).toMatch(/connect-src/));
+});

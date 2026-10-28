@@ -97,7 +97,7 @@ const templateOptional = (p: Path): Path[] => [
 ];
 
 const CASES: Case[] = [
-  { name: "user info", schema: HevyUserInfoSchema, file: "user-info.json", required: [["data"], ["data", "id"]], optional: [["data", "name"], ["data", "url"]], extraKeyAt: ["data"] },
+  { name: "user info", schema: HevyUserInfoSchema, file: "user-info.json", required: [["data"], ["data", "id"], ["data", "is_pro"]], optional: [["data", "username"], ["data", "name"], ["data", "url"]], extraKeyAt: ["data"] },
   { name: "template", schema: HevyTemplateSchema, file: "template.json", required: templateRequired([]), optional: templateOptional([]), extraKeyAt: [] },
   {
     name: "templates page",
@@ -263,5 +263,20 @@ describe("19.0 AC3 — the bodies we send", () => {
     expect(HevyCreateTemplateBodySchema.safeParse(withValue(body, ["exercise", "muscle_group"], "quads")).success).toBe(false);
     expect(HevyCreateTemplateBodySchema.safeParse(withValue(body, ["exercise", "equipment_category"], "cable")).success).toBe(false);
     expect(HevyCreateTemplateBodySchema.safeParse(withValue(body, ["exercise", "extra"], 1)).success).toBe(false);
+  });
+});
+
+describe("20.0 AC5 — user info keeps what the key check reads", () => {
+  it("keeps username and is_pro from Hevy's reply", () => {
+    const parsed = HevyUserInfoSchema.parse(fixture("user-info.json"));
+    expect(parsed.data).toMatchObject({ id: "9c465af3-de7d-42bc-9c7c-f0170396358b", username: "jhon", is_pro: true });
+  });
+
+  it("is_pro is required, username is optional", () => {
+    const reply = fixture("user-info.json") as { data: Record<string, unknown> };
+    const without = (key: string) => ({ data: Object.fromEntries(Object.entries(reply.data).filter(([k]) => k !== key)) });
+    expect(HevyUserInfoSchema.safeParse(without("is_pro")).success).toBe(false);
+    expect(HevyUserInfoSchema.safeParse(without("username")).success).toBe(true);
+    expect(HevyUserInfoSchema.safeParse({ data: { ...reply.data, is_pro: "yes" } }).success).toBe(false);
   });
 });

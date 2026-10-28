@@ -1,0 +1,47 @@
+/* Spec 20.0 §5.1: the key card. Existing tokens only; teal stays on the primary button. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.current,
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ending,
+.who,
+.failure,
+.stays {
+  margin: 0;
+}
+
+.ending {
+  font-weight: 600;
+}
+
+.who,
+.stays {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* Focus moves here after Save and Remove; the line is not a control, so it draws no focus ring. */
+.status {
+  margin: 0;
+  outline: none;
+}

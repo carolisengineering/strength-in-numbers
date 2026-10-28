@@ -23,7 +23,7 @@ describe("06.5 AC25 — hygiene scans", () => {
   it("(a) the only storage key the new files name is sin:workout:drafts, under an existing prefix", () => {
     const keys = NEW.flatMap((p) => [...stripComments(files[p] ?? "").matchAll(/["'`](sin:[a-z-]+:[^"'`]*)["'`]/g)].map((m) => m[1]));
     expect([...new Set(keys)]).toEqual(["sin:workout:drafts"]);
-    expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:"]);
+    expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:", "sin:hevy:"]);
   });
 
   it("(b) no new non-test file names the browser storage globals, comments included", () => {

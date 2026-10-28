@@ -725,5 +725,16 @@ export function payloadChecks() {
     ["active, with workout sections", "WorkoutDetailSchema", activeSections],
     ["active, the three new types", "WorkoutDetailSchema", activeNewTypes],
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
+    ["hevy status", "HevyStatusSchema", hevyStatus],
+    ["hevy user info", "HevyUserInfoSchema", hevyUserInfo],
   ];
 }
+
+// Spec 20.0: the harness user is the owner, so the status answers `enabled`.
+export const hevyStatus = { enabled: true, pairCount: 0, linkCount: 0, recordsStale: false };
+/** The key the fake Hevy accepts; any other key gets a 401. */
+export const hevyGoodKey = "5ec7e7a1-0b5e-4c3d-9a8f-1234deadbeef";
+export const hevyBadKey = "0b0b0b0b-1111-4222-8333-44445555cafe";
+export const hevyUserInfo = {
+  data: { id: "9c465af3-de7d-42bc-9c7c-f0170396358b", username: "carol_lifts", name: "Carol", url: "https://hevy.com/user/carol_lifts", is_pro: true },
+};

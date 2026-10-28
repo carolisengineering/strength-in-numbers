@@ -32,6 +32,9 @@ export const NAMES = {
   workouts: "Workouts",
   backToHistory: "Back to History",
   exercises: "Exercises",
+  profile: "Profile",
+  /** The shell header's link to Profile, named "Profile: <display name or email>". */
+  profileLink: /^Profile: /,
   benchRow: /^Barbell bench press/,
   chartSummary: /^Est\. 1RM, 3 months:/,
   metricGroup: "Metric",

@@ -94,7 +94,7 @@ describe("10.5 AC22 — storage, privacy, text as text", () => {
   const leaked = (spies: ReturnType<typeof consoleSpies>, writes: unknown[]) =>
     JSON.stringify([observability.track.mock.calls, observability.reportError.mock.calls, spies.map((s) => s.mock.calls), writes]);
 
-  it("no new storage key prefix", () => expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:"]));
+  it("no new storage key prefix", () => expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:", "sin:hevy:"]));
 
   it("the list, the preview and Keep (failing, then succeeding) leak no routine text", async () => {
     const spies = consoleSpies();

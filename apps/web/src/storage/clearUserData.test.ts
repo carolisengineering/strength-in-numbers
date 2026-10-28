@@ -10,6 +10,8 @@ describe("AC20 — clearUserData removes every user-scoped key", () => {
       "sin:recents:v1:user-a": "{}",
       "sin:catalog:v1:user-b": "{}",
       "sin:recents:v0:user-b": "{}",
+      // Spec 20.0 AC2: the Hevy key.
+      "sin:hevy:key:user-a": "{}",
       theme: "dark",
       "sin:other": "keep",
     });

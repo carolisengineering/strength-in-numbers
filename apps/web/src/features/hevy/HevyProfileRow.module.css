@@ -1,0 +1,15 @@
+/* Spec 20.0 AC1: a setting row like Theme and Keep screen on, as a link with a decorative chevron. */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+  font-weight: 600;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.chevron {
+  color: var(--color-muted);
+}

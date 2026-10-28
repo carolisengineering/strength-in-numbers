@@ -43,6 +43,12 @@ export function checkCacheControl(path, value) {
   return revalidates && (!maxAge || Number(maxAge[1]) === 0) ? null : `/ Cache-Control "${value ?? ""}" does not revalidate`;
 }
 
+/** Spec 20.0 §11: the live CSP's `connect-src` must name Hevy's API, or the browser's Hevy client is blocked. */
+export function checkHevyOrigin(csp) {
+  const connect = ((csp ?? "").match(/connect-src ([^;]+)/) ?? ["", ""])[1].trim().split(/\s+/);
+  return connect.includes("https://api.hevyapp.com") ? null : "the CSP's connect-src does not allow https://api.hevyapp.com";
+}
+
 /** `<meta name="sin-commit">` must equal the expected commit when one is given. */
 export function checkCommitMeta(html, expect) {
   if (!expect) return null;

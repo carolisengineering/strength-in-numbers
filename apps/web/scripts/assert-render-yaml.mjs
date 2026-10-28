@@ -75,15 +75,23 @@ for (const d of requiredDirectives) {
   assert(csp.includes(d), `CSP contains \`${d}\``);
 }
 
-// connect-src must allow self + the API origin + the Auth0 domain
+// connect-src is exactly self + the API origin + the Auth0 domain + Hevy's API (Spec 20.0 AC13) — no wildcard,
+// no bare https:, no other hevyapp.com origin.
 const connectSrc = (csp.match(/connect-src ([^;]+)/) ?? ["", ""])[1];
-for (const src of [
+const connectTokens = connectSrc.trim().split(/\s+/).filter(Boolean);
+const wantConnect = [
   "'self'",
   "https://si-api-ft2f.onrender.com",
   "https://dev-gncuqvfir0wv0t4l.us.auth0.com",
-]) {
-  assert(connectSrc.includes(src), `CSP connect-src allows ${src}`);
+  "https://api.hevyapp.com",
+];
+for (const src of wantConnect) {
+  assert(connectTokens.includes(src), `CSP connect-src allows ${src}`);
 }
+assert(
+  connectTokens.length === wantConnect.length && connectTokens.every((t) => wantConnect.includes(t)),
+  `CSP connect-src is exactly ${wantConnect.join(" ")}`,
+);
 
 // No relaxations, anywhere in the CSP.
 for (const bad of ["unsafe-eval", "unsafe-inline", "blob:"]) {

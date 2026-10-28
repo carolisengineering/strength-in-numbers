@@ -182,12 +182,17 @@ export const HevyTemplatePageSchema = z.object({
 });
 export type HevyTemplatePage = z.infer<typeof HevyTemplatePageSchema>;
 
-/** `GET /v1/user/info`: the reply is wrapped in `data`. */
+/**
+ * `GET /v1/user/info`: the reply is wrapped in `data`. Spec 20.0 AC5 verifies a pasted key on `is_pro` (required)
+ * and shows `username`.
+ */
 export const HevyUserInfoSchema = z.object({
   data: z.object({
     id: z.string(),
+    username: optionalString,
     name: optionalString,
     url: optionalString,
+    is_pro: z.boolean(),
   }),
 });
 export type HevyUserInfo = z.infer<typeof HevyUserInfoSchema>;
