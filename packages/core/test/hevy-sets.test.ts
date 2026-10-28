@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   HEVY_TYPE_VALUES,
   hevySetToSin,
+  hevyWeightFromKg,
   sinSetToHevy,
   type HevyImportCtx,
   type HevySet,
@@ -229,5 +230,17 @@ describe("19.0 AC9 — RPE in the export", () => {
   it("8 stays 8, no notice", () => {
     const r = send(8);
     expect(r.ok && [r.set.rpe, r.notices]).toEqual([8, []]);
+  });
+});
+
+describe("19.1 AC9 — hevyWeightFromKg (the import's kg to user-unit rounding)", () => {
+  it("keeps kg to the nearest 0.1 and converts lb to the nearest 0.1", () => {
+    expect(hevyWeightFromKg(61.235, "kg")).toBe(61.2);
+    expect(hevyWeightFromKg(61.235, "lb")).toBe(135);
+  });
+
+  it("is the rounding hevySetToSin applies", () => {
+    const r = hevySetToSin(hevy({ weight_kg: 61.235, reps: 5 }), ctx("weight_reps", "weight_reps", null, "lb"));
+    expect(r.ok && r.set.weight).toBe(hevyWeightFromKg(61.235, "lb"));
   });
 });

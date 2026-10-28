@@ -3,6 +3,34 @@ import { describe, expectTypeOf, it } from "vitest";
 // re-exporting any of these, `vitest --typecheck` fails here — no hardcoded
 // name list to drift out of sync with check-exports.mjs.
 import {
+  type CodeCount,
+  type DuplicateSide,
+  type HEVY_IMPORT_DROP_CODES,
+  type HEVY_IMPORT_NOTICE_CODES,
+  type HEVY_IMPORT_OUTCOME_VALUES,
+  type HEVY_ROUTINE_NOTICE_CODES,
+  type HevyImportBatch,
+  type HevyImportContext,
+  type HevyImportDropCode,
+  type HevyImportNoticeCode,
+  type HevyImportOutcome,
+  type HevyImportResult,
+  type HevyRoutineNoticeCode,
+  type HevyRoutineTranslation,
+  type HevyWorkoutTranslation,
+  type ImportedWorkout,
+  type ImportedWorkoutSet,
+  type ImportExerciseInfo,
+  type RoutineWrite,
+  type CreateExercise,
+  assignSupersets,
+  cutCodePoints,
+  exerciseFromHevyTemplate,
+  hevyWeightFromKg,
+  isDuplicateWorkout,
+  titleKey,
+  translateHevyRoutine,
+  translateHevyWorkout,
   HEVY_LINK_ORIGIN_VALUES,
   type HEVY_RPE_STEPS,
   HEVY_SET_TYPE_VALUES,
@@ -193,5 +221,26 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(HEVY_SET_TYPE_VALUES).items.toBeString();
     expectTypeOf(MEASURE_RULE_VALUES).items.toBeString();
     expectTypeOf(HEVY_LINK_ORIGIN_VALUES).items.toBeString();
+  });
+
+  it("19.1 AC14 — the Hevy import surface", () => {
+    expectTypeOf<HevyImportOutcome>().toEqualTypeOf<(typeof HEVY_IMPORT_OUTCOME_VALUES)[number]>();
+    expectTypeOf<HevyImportDropCode>().toEqualTypeOf<(typeof HEVY_IMPORT_DROP_CODES)[number]>();
+    expectTypeOf<HevyImportNoticeCode>().toEqualTypeOf<(typeof HEVY_IMPORT_NOTICE_CODES)[number]>();
+    expectTypeOf<HevyRoutineNoticeCode>().toEqualTypeOf<(typeof HEVY_ROUTINE_NOTICE_CODES)[number]>();
+    expectTypeOf<HevyImportResult["drops"]>().toEqualTypeOf<CodeCount<HevyImportDropCode>[]>();
+    expectTypeOf<HevyImportBatch["workouts"]>().not.toBeAny();
+    expectTypeOf(translateHevyWorkout).returns.toEqualTypeOf<HevyWorkoutTranslation>();
+    expectTypeOf(translateHevyWorkout).parameter(1).toEqualTypeOf<HevyImportContext>();
+    expectTypeOf<HevyImportContext["exercises"]>().toEqualTypeOf<ReadonlyMap<string, ImportExerciseInfo>>();
+    expectTypeOf<ImportedWorkout["exercises"][number]["sets"][number]>().toEqualTypeOf<ImportedWorkoutSet>();
+    expectTypeOf(translateHevyRoutine).returns.toEqualTypeOf<HevyRoutineTranslation>();
+    expectTypeOf<Extract<HevyRoutineTranslation, { ok: true }>["input"]>().toEqualTypeOf<RoutineWrite>();
+    expectTypeOf(exerciseFromHevyTemplate).returns.toEqualTypeOf<{ input: CreateExercise; suggestedRule: MeasureRule | null } | null>();
+    expectTypeOf(isDuplicateWorkout).parameters.toEqualTypeOf<[DuplicateSide, DuplicateSide]>();
+    expectTypeOf(titleKey).returns.toEqualTypeOf<string | null>();
+    expectTypeOf(cutCodePoints).returns.toEqualTypeOf<{ text: string; cut: boolean }>();
+    expectTypeOf(hevyWeightFromKg).returns.toBeNumber();
+    expectTypeOf(assignSupersets<number>).returns.toEqualTypeOf<{ groups: (number | null)[]; overLimit: number; cut: number }>();
   });
 });

@@ -1,0 +1,58 @@
+{
+  "hevyWorkoutId": "sections-1",
+  "title": "Sectioned",
+  "description": null,
+  "startTime": "2026-10-08T10:00:00Z",
+  "endTime": "2026-10-08T11:30:00Z",
+  "tzOffsetMinutes": 0,
+  "exercises": [
+    {
+      "exerciseTemplateId": "BENCH",
+      "notes": null,
+      "supersetId": null,
+      "sets": [{ "type": "normal", "weightKg": 60, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "WARMUP",
+      "notes": "Bike 5 min",
+      "supersetId": null,
+      "sets": [{ "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "PULLUP",
+      "notes": null,
+      "supersetId": null,
+      "sets": [{ "type": "warmup", "weightKg": null, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "WORKOUT",
+      "notes": "Hiraya\nRx: as written",
+      "supersetId": null,
+      "sets": [{ "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "SQUAT",
+      "notes": null,
+      "supersetId": 0,
+      "sets": [{ "type": "normal", "weightKg": 100, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "ROW",
+      "notes": null,
+      "supersetId": 0,
+      "sets": [{ "type": "normal", "weightKg": 70, "reps": 8, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    },
+    {
+      "exerciseTemplateId": "WORKOUT",
+      "notes": "",
+      "supersetId": null,
+      "sets": []
+    },
+    {
+      "exerciseTemplateId": "BENCH",
+      "notes": null,
+      "supersetId": null,
+      "sets": [{ "type": "normal", "weightKg": 50, "reps": 10, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }]
+    }
+  ]
+}

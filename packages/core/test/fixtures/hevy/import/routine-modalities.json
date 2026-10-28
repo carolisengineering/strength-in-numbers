@@ -1,0 +1,16 @@
+{
+  "id": "r-modalities",
+  "title": "Every type",
+  "folder_id": null,
+  "exercises": [
+    { "index": 0, "title": "Bench", "exercise_template_id": "BENCH", "notes": null, "superset_id": null, "rest_seconds": 120, "sets": [{ "type": "normal", "weight_kg": 60, "reps": 5 }] },
+    { "index": 1, "title": "Pull Up", "exercise_template_id": "PULLUP", "notes": null, "superset_id": null, "rest_seconds": 120, "sets": [{ "type": "normal", "weight_kg": 10, "reps": 8 }] },
+    { "index": 2, "title": "Weighted Dip", "exercise_template_id": "DIPW", "notes": null, "superset_id": null, "rest_seconds": 120, "sets": [{ "type": "normal", "weight_kg": 10, "reps": 8 }] },
+    { "index": 3, "title": "Plank", "exercise_template_id": "PLANK", "notes": null, "superset_id": null, "rest_seconds": 60, "sets": [{ "type": "normal", "reps": 1, "duration_seconds": 60 }] },
+    { "index": 4, "title": "Run", "exercise_template_id": "RUN", "notes": null, "superset_id": null, "rest_seconds": 0, "sets": [{ "type": "normal", "reps": 1, "distance_meters": 5000, "duration_seconds": 1500 }] },
+    { "index": 5, "title": "Sled Hold", "exercise_template_id": "SLED", "notes": null, "superset_id": null, "rest_seconds": 90, "sets": [{ "type": "normal", "weight_kg": 40, "reps": 1, "duration_seconds": 30 }] },
+    { "index": 6, "title": "Farmer Carry", "exercise_template_id": "CARRY", "notes": null, "superset_id": null, "rest_seconds": 90, "sets": [{ "type": "normal", "weight_kg": 24, "reps": 1, "distance_meters": 40 }] },
+    { "index": 7, "title": "Echo Bike (Calories)", "exercise_template_id": "ECHO", "notes": null, "superset_id": null, "rest_seconds": 60, "sets": [{ "type": "normal", "reps": 20 }] },
+    { "index": 8, "title": "Assisted Dip", "exercise_template_id": "ASSIST", "notes": null, "superset_id": null, "rest_seconds": 60, "sets": [{ "type": "normal", "weight_kg": 20, "reps": 8 }] }
+  ]
+}

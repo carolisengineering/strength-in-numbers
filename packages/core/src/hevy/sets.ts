@@ -74,6 +74,11 @@ const MAX: Readonly<Record<MeasureName, number>> = Object.freeze({
 });
 const WHOLE: ReadonlySet<MeasureName> = new Set<MeasureName>(["reps", "calories", "durationS"]);
 
+/** Spec 19.0 §6.3, 19.1 AC9: a Hevy kg value in the user's unit, to the nearest 0.1. */
+export function hevyWeightFromKg(kg: number, unit: UnitPreference): number {
+  return roundToTenth(unit === "lb" ? kgToLb(kg) : kg);
+}
+
 /**
  * Spec 19.0 AC6–AC7, §6.3: one Hevy set into SIN, in order: set type, the measure rule, forbidden measures (null or
  * 0 ignored, anything else refused), weight into the user's unit (nearest 0.1), bounds, required measures. An
@@ -106,7 +111,7 @@ export function hevySetToSin(set: HevyImportSet, ctx: HevyImportCtx): HevySetImp
     values[measure] = null;
   }
 
-  if (values.weight !== null) values.weight = roundToTenth(ctx.unit === "lb" ? kgToLb(values.weight) : values.weight);
+  if (values.weight !== null) values.weight = hevyWeightFromKg(values.weight, ctx.unit);
 
   for (const measure of Object.keys(values) as MeasureName[]) {
     const value = values[measure];
