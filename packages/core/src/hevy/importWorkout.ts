@@ -62,6 +62,15 @@ const NOTICE_FOR: Readonly<Record<SetIgnored, HevyImportNoticeCode | null>> = Ob
   zero_forbidden: null,
 });
 
+/**
+ * An RPE SIN can store (`CreateSetSchema`: 1–10 in tenths), else `null`. Hevy sends its own steps, but this request
+ * is whatever the client posts, and a value the column or a later edit would refuse must never be stored.
+ */
+function storableRpe(rpe: number | null): number | null {
+  if (rpe === null || rpe < 1 || rpe > 10) return null;
+  return Math.abs(rpe * 10 - Math.round(rpe * 10)) < 1e-9 ? rpe : null;
+}
+
 /** The request's camelCase set in 19.0's snake_case Hevy shape. */
 function toHevySet(s: HevyImportSetInput): HevyImportSet {
   return {
@@ -161,7 +170,7 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
         const code = NOTICE_FOR[ignored];
         if (code !== null) notices.add(code);
       }
-      sets.push({ ...r.set, setNumber: sets.length + 1 });
+      sets.push({ ...r.set, rpe: storableRpe(r.set.rpe), setNumber: sets.length + 1 });
     }
     if (sets.length === 0) {
       drops.add("exercise_no_sets");

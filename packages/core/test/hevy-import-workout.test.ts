@@ -154,6 +154,15 @@ describe("19.1 AC5 — sets", () => {
   });
 });
 
+describe("19.1 AC5 — an RPE SIN cannot store is not kept", () => {
+  it("an RPE outside 1–10 or not in tenths becomes null; the set is kept", () => {
+    const rpes = [100, 11, 0, -3, 7.25, 0.5, 1, 6.5, 8, 9.9, 10];
+    const w = hworkout([hex("BENCH", rpes.map((rpe) => hset({ weightKg: 60, reps: 5, rpe })))]);
+    const sets = created(translateHevyWorkout(w, ctx)).workout.exercises[0]!.sets;
+    expect(sets.map((s) => s.rpe)).toEqual([null, null, null, null, null, null, 1, 6.5, 8, 9.9, 10]);
+  });
+});
+
 describe("19.1 AC6 — no usable sets", () => {
   it("a placeholder-only workout is no_usable_sets", () => {
     const t = translateHevyWorkout(fixture("placeholder-only"), ctx);
