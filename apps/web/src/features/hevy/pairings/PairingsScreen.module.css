@@ -1,0 +1,67 @@
+/* Spec 20.0 §5.3: the Pairings list. Existing tokens only; no teal, no brass. */
+.body,
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.body {
+  gap: var(--space-6);
+}
+
+.name {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: thin solid var(--color-line);
+}
+
+.hevyTitle {
+  flex: 1 1 12rem;
+}
+
+.meta,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.badge {
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.search {
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: thin solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}

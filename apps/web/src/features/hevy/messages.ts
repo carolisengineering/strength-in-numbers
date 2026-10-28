@@ -91,6 +91,24 @@ export const placeholderMissing = (which: "warmup" | "workout") =>
   `The ${which === "warmup" ? "Warmup" : "workout"} marker in the file wasn't found in Hevy.`;
 export const typeMismatch = (hevyTitle: string, sinName: string) => `${hevyTitle} can't be paired with ${sinName}: the types don't match`;
 
+/** Phase B: the Pairings screen (AC24, AC25, §5.3). */
+export const PAIRINGS_TITLE = "Pairings";
+export const BACK_TO_HEVY = "Back to Hevy";
+export const SEARCH_EXERCISES = "Search exercises";
+export const SENT_AS_THIS = "Sent as this";
+export const SEND_AS_THIS = "Send as this";
+export const REMOVE_PAIRING = "Remove pairing";
+export const deletedHeading = (n: number) => `Exercises you deleted (${n})`;
+export const skippedHeading = (n: number) => `Skipped in Hevy (${n})`;
+export const markersHeading = (n: number) => `Section markers (${n})`;
+export const lastPairingBody = (name: string) => `${name} won't be sent to Hevy until you pair it again.`;
+// Plan copy.
+export const REMOVE_PAIRING_TITLE = "Remove this pairing?";
+export const removePairingBody = (hevyTitle: string) => `${hevyTitle} will no longer be paired.`;
+export const UNNAMED_EXERCISE = "A deleted exercise";
+export const PAIRINGS_PATCH_FAILED = "Couldn't change that pairing. Try again.";
+export const NO_PAIRINGS = "No pairings yet. Load a file on the Hevy screen.";
+
 /** AC18: one sentence per file error, shown as "Line n: …" (plan copy). */
 export const CSV_ERROR_COPY: Readonly<Record<MappingCsvErrorCode, string>> = Object.freeze({
   bad_header: "The first line must be the column names: kind, hevy_id, hevy_title, sin_id, sin_name, rule, export_as.",
