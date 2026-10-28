@@ -22,7 +22,7 @@ export type WriteOutcome =
   /** An invariant failed (the pure re-check, a retired exercise, an FK or CHECK); nothing was written. */
   | { kind: "rejected" };
 
-/** The write statements, in order; `match` is the duplicate link's insert. */
+/** The write statements, in order; `match` fires at the start of the duplicate link's transaction, before its lock. */
 export type HevyImportWriteStep = "workout" | "sections" | "exercises" | "sets" | "link" | "match";
 
 /** Test seams: `onWriteStep` runs after each write statement, inside its transaction (AC24). */

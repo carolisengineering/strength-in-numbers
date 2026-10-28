@@ -254,9 +254,14 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
   async function insertMatchedLink(userId: string, hevyWorkoutId: string, sinWorkoutId: string): Promise<"linked" | "taken" | "already_imported"> {
     try {
       return await prisma.$transaction(async (tx) => {
+        await step("match");
+        // FOR SHARE, as 19.0's link complete: a delete that lands first answers `taken`, not an FK error (a 500), and
+        // a finished-workout edit waits, so the stored fingerprint is of the workout as linked.
+        const owned = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text FROM "workout" WHERE id = ${sinWorkoutId}::uuid AND user_id = ${userId}::uuid FOR SHARE`;
+        if (owned.length === 0) return "taken" as const;
         const detail = await readWorkoutDetail(tx, userId, sinWorkoutId);
         if (detail === null) return "taken" as const;
-        await step("match");
         await tx.$executeRaw`
           INSERT INTO "hevy_link" (id, user_id, workout_id, hevy_workout_id, origin, synced_fingerprint, synced_at)
           VALUES (${uuidv7()}::uuid, ${userId}::uuid, ${sinWorkoutId}::uuid, ${hevyWorkoutId}, 'matched',

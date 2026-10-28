@@ -164,6 +164,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import batch (real 
       expect(withoutIds(real.results)).toEqual(withoutIds(dry.results));
     });
 
+    it("a delete of the matched workout during the match drops it and creates, never a 500", async () => {
+      const sin = await sinWorkout("2026-09-10T10:00:00Z");
+      const out = await run([importWorkoutFixture({ hevyWorkoutId: "H-A" })], false, {
+        onWriteStep: async (step) => {
+          if (step === "match") await db.prisma.$executeRawUnsafe(`DELETE FROM workout WHERE id = $1::uuid`, sin);
+        },
+      });
+      expect(out.results[0]!.outcome).toBe("create");
+    });
+
     it("a Send that links the candidate before the match insert drops it and creates, never a 500", async () => {
       const sin = await sinWorkout("2026-09-10T10:00:00Z");
       const out = await run([importWorkoutFixture({ hevyWorkoutId: "H-A" })], false, {
