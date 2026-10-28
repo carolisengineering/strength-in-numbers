@@ -109,6 +109,26 @@ export const UNNAMED_EXERCISE = "A deleted exercise";
 export const PAIRINGS_PATCH_FAILED = "Couldn't change that pairing. Try again.";
 export const NO_PAIRINGS = "No pairings yet. Load a file on the Hevy screen.";
 
+/** Phase B: the pairing cards (AC26, AC27, §5.4). Verbatim from §5.4 unless marked. */
+export const EXACT_MATCH = "exact match";
+export const SIMILAR_MATCH = "similar";
+export const CHOOSE_ANOTHER = "Choose another…";
+export const NEW_EXERCISE = "New exercise";
+export const SKIP_EXERCISE = "Skip this exercise (its sets are not imported)";
+export const CALORIES_RULE = "Count calories as reps (Hevy has no calories field; your numbers are stored as reps there)";
+export const NO_LONGER_IN_HEVY = "No longer in Hevy";
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+export const usedIn = (workouts: number, routines: number) =>
+  routines === 0 ? `Used in ${plural(workouts, "workout")}` : `${plural(workouts, "workout")}, ${plural(routines, "routine")}`;
+// Plan copy.
+export const ASSIST_RULE = "Ignore the assist weight";
+export const RULE_NEEDED = "Tick the box above to pair these, or choose another exercise.";
+export const typeProblem = (hevyLabel: string, modalityLabel: string) => `A ${hevyLabel} exercise can't be paired with a ${modalityLabel} one.`;
+export const SAME_NEW_NAME = "Another card makes an exercise with this name.";
+export const NEW_INVALID = "Check this exercise's type and details";
+export const PAIRING_GONE = "That exercise is no longer in your list. Choose another.";
+export const UNSUPPORTED_TYPE = "Strength in Numbers can't store this Hevy exercise's type. Skip it.";
+
 /** AC18: one sentence per file error, shown as "Line n: …" (plan copy). */
 export const CSV_ERROR_COPY: Readonly<Record<MappingCsvErrorCode, string>> = Object.freeze({
   bad_header: "The first line must be the column names: kind, hevy_id, hevy_title, sin_id, sin_name, rule, export_as.",

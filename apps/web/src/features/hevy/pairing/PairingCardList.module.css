@@ -1,0 +1,6 @@
+/* Spec 20.0 §5.4: the stack of pairing cards. */
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

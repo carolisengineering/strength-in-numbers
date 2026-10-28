@@ -1,0 +1,47 @@
+/* Spec 20.0 §5.4: one pairing card. Existing tokens only; no teal, no brass. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: thin solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.title {
+  padding: 0;
+  font-weight: 600;
+}
+
+.meta,
+.problem {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.meta {
+  color: var(--color-muted);
+}
+
+.problem {
+  color: var(--color-danger);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+}
+
+.tag {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
