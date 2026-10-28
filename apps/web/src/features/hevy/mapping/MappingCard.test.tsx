@@ -17,7 +17,7 @@ import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/ac
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { hevyKeyStore } from "../keyStore";
-import { CHOOSE_MARKERS, DOWNLOAD_FAILED, MAPPING_OFFLINE, NO_MARKERS, markersLine, pairedCount } from "../messages";
+import { CHANGE_MARKERS, CHOOSE_MARKERS, DOWNLOAD_FAILED, MAPPING_OFFLINE, NO_MARKERS, markersLine, pairedCount } from "../messages";
 import { PAIRINGS_PATH } from "../paths";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -94,5 +94,16 @@ describe("20.0 AC23 — a download whose re-read fails saves nothing (final revi
     await userEvent.click(screen.getByRole("button", { name: "Download file" }));
     await waitFor(() => expect(screen.getByTestId("hevy-mapping-status")).toHaveTextContent(sentence));
     expect(saved.blobs).toEqual([]);
+  });
+});
+
+describe("Minor 183 — with markers set, they can still be changed", () => {
+  it("one marker set: the markers line and a Change markers button that opens the sheet", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    server.use(http.get(MAPPING_URL, () => HttpResponse.json({ pairs: [pair("W", "warmup_placeholder")], sectionRules: [] })));
+    renderHevyScreen();
+    expect(await screen.findByText(markersLine(["Title W"]))).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: CHANGE_MARKERS }));
+    expect(await screen.findByRole("dialog", { name: "Section markers" })).toBeInTheDocument();
   });
 });

@@ -54,6 +54,10 @@ export const LOAD_FILE = "Load a file";
 export const DOWNLOAD_FILE = "Download file";
 export const REVIEW_PAIRINGS = "Review pairings";
 export const CHOOSE_MARKERS = "Choose them";
+export const CHANGE_MARKERS = "Change markers";
+export const REPLACE_PAIRING_TITLE = "Use as a marker instead?";
+export const USE_AS_MARKER = "Use as marker";
+export const replaceExercisePairing = (title: string, exerciseName: string) => `${title} is paired with ${exerciseName}. Use it as a marker instead?`;
 // Plan copy.
 export const MAPPING_LOADING = "Loading your pairings…";
 export const MAPPING_LOAD_FAILED = "Couldn't load your pairings. Try again.";

@@ -3,7 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
+import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { Sheet } from "../../../ui/Sheet";
+import { useCatalog } from "../../catalog/useCatalog";
+import { fold } from "../../catalog/visibility";
 import { HevyError } from "../client/hevyErrors";
 import {
   HEVY_COPY,
@@ -13,15 +16,17 @@ import {
   MARKER_WARMUP,
   MARKER_WORKOUT,
   NO_KEY_FOR_FILE,
+  REPLACE_PAIRING_TITLE,
+  USE_AS_MARKER,
+  replaceExercisePairing,
   SAVE_MARKERS,
   SEARCH_HEVY_EXERCISES,
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
+import { useHevyMapping } from "./useHevyMapping";
 import { useHevyTemplates } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations, type PairInput } from "./useMappingMutations";
 import styles from "./PlaceholderSheet.module.css";
-
-const fold = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
 export interface PlaceholderSheetProps {
   open: boolean;
@@ -36,6 +41,9 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   const client = useHevyClient();
   const templates = useHevyTemplates();
   const { patch } = useMappingMutations();
+  const mapping = useHevyMapping();
+  const { state: catalog } = useCatalog();
+  const [replacing, setReplacing] = useState<string[] | null>(null);
   const [query, setQuery] = useState("");
   const [warmup, setWarmup] = useState<string | null>(null);
   const [workout, setWorkout] = useState<string | null>(null);
@@ -57,7 +65,19 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
     return q === "" ? all : all.filter((t) => fold(t.title).includes(q));
   }, [templates.data, query]);
 
-  function save() {
+  /** Minor 182: the exercise pairings this save would turn into markers, as sentences; empty when none. */
+  function replacedPairings(): string[] {
+    const names = new Map<string, string>(catalog.rows.map((row) => [row.id, row.name]));
+    return (mapping.data?.pairs ?? [])
+      .filter((p) => p.role === "exercise" && (p.hevyTemplateId === warmup || p.hevyTemplateId === workout))
+      .map((p) => replaceExercisePairing(p.hevyTitle, (p.exerciseId !== null ? names.get(p.exerciseId) : undefined) ?? p.hevyTitle));
+  }
+
+  function save(confirmed = false) {
+    if (!confirmed) {
+      const replaced = replacedPairings();
+      if (replaced.length > 0) return setReplacing(replaced);
+    }
     const byId = new Map((templates.data ?? []).map((t) => [t.id, t]));
     const upsert: PairInput[] = [];
     const add = (id: string | null, role: "warmup_placeholder" | "workout_placeholder") => {
@@ -81,7 +101,8 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
     );
   }
 
-  const group = (label: string, value: string | null, set: (id: string | null) => void, name: string) => (
+  // Minor 182: one template can't be both markers, and a type SIN can't read can't be one at all.
+  const group = (label: string, value: string | null, set: (id: string | null) => void, name: string, other: string | null) => (
     <fieldset className={styles.group}>
       <legend className={styles.legend}>{label}</legend>
       <label className={styles.option}>
@@ -90,7 +111,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
       </label>
       {shown.map((t: HevyTemplate) => (
         <label key={t.id} className={styles.option}>
-          <input type="radio" name={name} checked={value === t.id} onChange={() => set(t.id)} />
+          <input type="radio" name={name} checked={value === t.id} disabled={t.type === null || t.id === other} onChange={() => set(t.id)} />
           <span>{t.title}</span>
         </label>
       ))}
@@ -115,14 +136,28 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          {group(MARKER_WARMUP, warmup, setWarmup, "hevy-marker-warmup")}
-          {group(MARKER_WORKOUT, workout, setWorkout, "hevy-marker-workout")}
+          {group(MARKER_WARMUP, warmup, setWarmup, "hevy-marker-warmup", workout)}
+          {group(MARKER_WORKOUT, workout, setWorkout, "hevy-marker-workout", warmup)}
           {failure !== null ? <p role="alert">{failure}</p> : null}
-          <Button busy={patch.isPending} disabled={patch.isPending} onClick={save}>
+          <Button busy={patch.isPending} disabled={patch.isPending} onClick={() => save()}>
             {SAVE_MARKERS}
           </Button>
         </div>
       )}
+      <ConfirmDialog
+        open={replacing !== null}
+        title={REPLACE_PAIRING_TITLE}
+        confirmLabel={USE_AS_MARKER}
+        onConfirm={() => {
+          setReplacing(null);
+          save(true);
+        }}
+        onCancel={() => setReplacing(null)}
+      >
+        {(replacing ?? []).map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </ConfirmDialog>
     </Sheet>
   );
 }

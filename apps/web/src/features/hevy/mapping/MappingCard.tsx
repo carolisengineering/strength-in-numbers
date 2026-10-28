@@ -7,6 +7,7 @@ import { Button } from "../../../ui/Button";
 import { saveBlob } from "../../account/saveBlob";
 import { useCatalog } from "../../catalog/useCatalog";
 import {
+  CHANGE_MARKERS,
   CHOOSE_MARKERS,
   DOWNLOAD_FAILED,
   DOWNLOAD_FILE,
@@ -78,7 +79,13 @@ export function MappingCard() {
         <>
           <p className={styles.count}>{pairedCount(exerciseCount)}</p>
           {markers.length > 0 ? (
-            <p className={styles.muted}>{markersLine(markers)}</p>
+            <div className={styles.markers}>
+              <p className={styles.muted}>{markersLine(markers)}</p>
+              {/* Minor 183: with one marker set, the other must still be settable here, not only by file. */}
+              <Button variant="secondary" onClick={() => setChoosingMarkers(true)}>
+                {CHANGE_MARKERS}
+              </Button>
+            </div>
           ) : (
             <div className={styles.markers}>
               <p className={styles.muted}>{NO_MARKERS}</p>
