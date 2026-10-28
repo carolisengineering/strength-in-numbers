@@ -1,3 +1,4 @@
+import { waitText } from "../../ui/waitText";
 import type { MappingCsvErrorCode } from "@sin/core";
 
 import type { HevyErrorKind } from "./client/hevyErrors";
@@ -77,7 +78,8 @@ export const MAPPING_REJECTED = "The server didn't accept this mapping";
 export const MAPPING_OFFLINE = "You're offline — your changes are still here, try again when connected";
 export const QUIET_MINUTE = "Hevy asks apps to wait during the first minute of each hour. This will go through shortly.";
 export const LOADING_USERNAME = "Checking your Hevy account…";
-export const MAPPING_RATE_LIMITED = "Too many changes in a short time — wait a minute and try again";
+/** Minor 181: a mapping write's 429, with how long to wait. */
+export const mappingRateLimited = (retryAfterMs: number | null | undefined) => `Too many changes in a short time. ${waitText(retryAfterMs)}`;
 // Plan copy.
 export const MAPPING_SAVE_FAILED = "Couldn't save the pairings. Try again.";
 export const COUNT_CALORIES = "Count calories as reps";
@@ -137,6 +139,7 @@ export const usedIn = (workouts: number, routines: number) =>
   routines === 0 ? `Used in ${plural(workouts, "workout")}` : `${plural(workouts, "workout")}, ${plural(routines, "routine")}`;
 // Plan copy.
 export const ASSIST_RULE = "Ignore the assist weight";
+export const RULE_NOT_ALLOWED = "Untick the box above to pair these.";
 export const RULE_NEEDED = "Tick the box above to pair these, or choose another exercise.";
 export const typeProblem = (hevyLabel: string, modalityLabel: string) => `A ${hevyLabel} exercise can't be paired with a ${modalityLabel} one.`;
 export const SAME_NEW_NAME = "Another card makes an exercise with this name.";

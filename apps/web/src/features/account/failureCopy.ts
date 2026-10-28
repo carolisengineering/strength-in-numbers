@@ -1,15 +1,10 @@
 import { ApiError } from "../../api/problem";
+import { waitText } from "../../ui/waitText";
 import { MESSAGES } from "./messages";
 
 export interface FailureCopy {
   readonly text: string;
   readonly requestId?: string;
-}
-
-function waitText(retryAfterMs: number | null | undefined): string {
-  if (retryAfterMs == null) return "Try again in a minute.";
-  const n = Math.max(1, Math.ceil(retryAfterMs / 1000));
-  return `Try again in ${n} ${n === 1 ? "second" : "seconds"}.`;
 }
 
 function map(error: unknown, rateLimited: string, generic: string): FailureCopy {

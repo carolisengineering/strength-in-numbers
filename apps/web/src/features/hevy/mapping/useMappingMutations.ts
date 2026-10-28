@@ -4,6 +4,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { ApiError } from "../../../api";
 import { useApi } from "../../../auth/useApi";
 import { HEVY_KEYS } from "../keys";
+import { MAPPING_OFFLINE, MAPPING_REJECTED, MAPPING_SAVE_FAILED, mappingRateLimited } from "../messages";
 
 /** A pair as written: the read shape minus `exerciseActive` (19.0 §5.3). */
 export type PairInput = HevyPairInput;
@@ -54,4 +55,20 @@ export function classifyMappingError(error: unknown): "offline" | "rate_limited"
   if (error.status === 429) return "rate_limited";
   if (error.status === 422) return "invalid";
   return "other";
+}
+
+/**
+ * Minor 181, 193: the one sentence for a failed mapping write. A 429 says how long to wait; a 422 names only its
+ * first field path (never a title); anything else is the caller's generic sentence.
+ */
+export function mappingErrorMessage(error: unknown, generic: string = MAPPING_SAVE_FAILED): string {
+  const kind = classifyMappingError(error);
+  if (kind === "offline") return MAPPING_OFFLINE;
+  if (!(error instanceof ApiError)) return generic;
+  if (kind === "rate_limited") return mappingRateLimited(error.retryAfterMs);
+  if (kind === "invalid") {
+    const path = error.errors[0]?.path;
+    return path ? `${MAPPING_REJECTED} (${path})` : MAPPING_REJECTED;
+  }
+  return generic;
 }

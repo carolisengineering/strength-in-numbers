@@ -2,7 +2,6 @@ import { normalizeExportAs, parseMappingCsv, type HevyMapping, type HevyTemplate
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { Sheet } from "../../../ui/Sheet";
@@ -25,10 +24,6 @@ import {
   LEFT_OUT_COPY,
   LOAD_SHEET_TITLE,
   NOTICES_LABEL,
-  MAPPING_OFFLINE,
-  MAPPING_RATE_LIMITED,
-  MAPPING_REJECTED,
-  MAPPING_SAVE_FAILED,
   NO_KEY_FOR_FILE,
   SECTIONS_HEADING,
   SHOW_LIST,
@@ -50,7 +45,7 @@ import {
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
 import { applyRule, resolveLines, willBeRemoved, willChange, type LeftOut, type ResolveNotice, type Resolved } from "./resolveLines";
-import { classifyMappingError, useMappingMutations } from "./useMappingMutations";
+import { classifyMappingError, mappingErrorMessage, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
 type Step =
@@ -138,12 +133,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
       onLoaded(loaded(pairs.length));
     } catch (err) {
       const kind = classifyMappingError(err);
-      const path = err instanceof ApiError ? err.errors[0]?.path : undefined;
-      const message =
-        kind === "offline" ? MAPPING_OFFLINE
-        : kind === "rate_limited" ? MAPPING_RATE_LIMITED
-        : kind === "invalid" ? (path ? `${MAPPING_REJECTED} (${path})` : MAPPING_REJECTED)
-        : MAPPING_SAVE_FAILED;
+      const message = mappingErrorMessage(err);
       if (kind === "other") reportError(err instanceof Error ? err : new HevyError("unexpected_reply"), { source: "hevy", op: "mapping-put" });
       setStep({ kind: "preview", resolved, error: message });
     }

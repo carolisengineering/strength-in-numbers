@@ -24,7 +24,7 @@ import {
   FILE_TOO_BIG,
   LEFT_OUT_COPY,
   MAPPING_OFFLINE,
-  MAPPING_RATE_LIMITED,
+  mappingRateLimited,
   MAPPING_REJECTED,
   exportAsTwiceNotice,
   idTitleNotice,
@@ -176,7 +176,7 @@ describe("20.0 AC22 — confirm", () => {
   it.each([
     ["a 422", () => HttpResponse.json({ type: "x/validation", title: "t", status: 422, detail: "d", instance: "i", errors: [{ path: "pairs.0.hevyTitle", message: "m" }] }, { status: 422, headers: { "content-type": "application/problem+json" } }), `${MAPPING_REJECTED} (pairs.0.hevyTitle)`],
     ["offline", () => HttpResponse.error(), MAPPING_OFFLINE],
-    ["a 429", () => HttpResponse.json({ type: "x/rate-limited", title: "t", status: 429, detail: "d", instance: "i" }, { status: 429, headers: { "content-type": "application/problem+json" } }), MAPPING_RATE_LIMITED],
+    ["a 429", () => HttpResponse.json({ type: "x/rate-limited", title: "t", status: 429, detail: "d", instance: "i" }, { status: 429, headers: { "content-type": "application/problem+json" } }), mappingRateLimited(null)],
   ])("%s keeps the preview open with its sentence", async (_label, reply, sentence) => {
     server.use(http.put(MAPPING_URL, reply));
     const dialog = await openSheet();

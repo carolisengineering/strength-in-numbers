@@ -13,8 +13,6 @@ import {
   BACK_TO_HEVY,
   MAPPING_LOAD_FAILED,
   MAPPING_LOADING,
-  MAPPING_OFFLINE,
-  MAPPING_RATE_LIMITED,
   NO_PAIRINGS,
   PAIRINGS_PATCH_FAILED,
   PAIRINGS_TITLE,
@@ -33,7 +31,7 @@ import {
 } from "../messages";
 import { HEVY_PATH } from "../paths";
 import { useHevyMapping } from "../mapping/useHevyMapping";
-import { classifyMappingError, toPairInput, useMappingMutations } from "../mapping/useMappingMutations";
+import { classifyMappingError, mappingErrorMessage, toPairInput, useMappingMutations } from "../mapping/useMappingMutations";
 import { groupPairings } from "./pairingGroups";
 import styles from "./PairingsScreen.module.css";
 
@@ -70,7 +68,7 @@ export function PairingsScreen() {
       onError: (err) => {
         const kind = classifyMappingError(err);
         if (kind === "other") reportError(err, { source: "hevy", op: "mapping-patch" });
-        setFailure(kind === "offline" ? MAPPING_OFFLINE : kind === "rate_limited" ? MAPPING_RATE_LIMITED : PAIRINGS_PATCH_FAILED);
+        setFailure(mappingErrorMessage(err, PAIRINGS_PATCH_FAILED));
       },
     });
   }

@@ -13,6 +13,7 @@ import {
   NO_LONGER_IN_HEVY,
   PAIRING_GONE,
   RULE_NEEDED,
+  RULE_NOT_ALLOWED,
   SAME_NEW_NAME,
   newNameExists,
   SIMILAR_MATCH,
@@ -42,6 +43,8 @@ function problemText(problem: PairingProblem): string | null {
       return typeProblem(problem.hevyLabel, problem.modalityLabel);
     case "rule_needed":
       return RULE_NEEDED;
+    case "rule_not_allowed":
+      return RULE_NOT_ALLOWED;
     case "same-new":
       return SAME_NEW_NAME;
     case "exists":

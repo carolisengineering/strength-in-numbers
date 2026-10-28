@@ -8,9 +8,6 @@ import { HevyError } from "../client/hevyErrors";
 import {
   HEVY_COPY,
   MAPPING_LOADING,
-  MAPPING_OFFLINE,
-  MAPPING_RATE_LIMITED,
-  MAPPING_SAVE_FAILED,
   MARKER_NONE,
   MARKERS_SHEET_TITLE,
   MARKER_WARMUP,
@@ -21,7 +18,7 @@ import {
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
 import { useHevyTemplates } from "./useHevyTemplates";
-import { classifyMappingError, useMappingMutations, type PairInput } from "./useMappingMutations";
+import { classifyMappingError, mappingErrorMessage, useMappingMutations, type PairInput } from "./useMappingMutations";
 import styles from "./PlaceholderSheet.module.css";
 
 const fold = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
@@ -78,7 +75,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
         onError: (err) => {
           const kind = classifyMappingError(err);
           if (kind === "other") reportError(err, { source: "hevy", op: "mapping-patch" });
-          setFailure(kind === "offline" ? MAPPING_OFFLINE : kind === "rate_limited" ? MAPPING_RATE_LIMITED : MAPPING_SAVE_FAILED);
+          setFailure(mappingErrorMessage(err));
         },
       },
     );
