@@ -1,8 +1,13 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
+  isDuplicateWorkout,
+  parseWorkoutId,
   ROUTINE_SECTIONS_MAX,
+  translateHevyWorkout,
   type DuplicateSide,
+  type HevyImportBatch,
   type HevyImportContext,
+  type HevyImportResult,
   type ImportedWorkout,
   type ImportExerciseInfo,
   type Modality,
@@ -12,8 +17,15 @@ import { uuidv7 } from "uuidv7";
 import { ValidationError } from "../errors/app-error.js";
 import { fingerprintSourceOf, hevyFingerprint } from "../hevy/fingerprint.js";
 import { readHevyMapping } from "./hevy.prisma.js";
-import type { HevyImportRepository, HevyImportSeams, HevyImportWriteStep, HevyLinkHit, WriteOutcome } from "./hevy-import.js";
-import type { RawPrismaError } from "./pg-errors.js";
+import type {
+  HevyImportBatchRecord,
+  HevyImportRepository,
+  HevyImportSeams,
+  HevyImportWriteStep,
+  HevyLinkHit,
+  WriteOutcome,
+} from "./hevy-import.js";
+import { isRawUniqueViolation, violatedConstraintColumns, type RawPrismaError } from "./pg-errors.js";
 import { assertSetMeasuresValid } from "./set-writes.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
@@ -231,5 +243,154 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     return { kind: "created", workoutId };
   }
 
-  return { writeImportedWorkout };
+  /**
+   * AC21: links a matched SIN workout in its own short transaction. `taken` when a Send in another tab linked or
+   * claimed it first (`hevy_link_workout_key`) or it vanished; `already_imported` when the Hevy id was linked first.
+   */
+  async function insertMatchedLink(userId: string, hevyWorkoutId: string, sinWorkoutId: string): Promise<"linked" | "taken" | "already_imported"> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const detail = await readWorkoutDetail(tx, userId, sinWorkoutId);
+        if (detail === null) return "taken" as const;
+        await step("match");
+        await tx.$executeRaw`
+          INSERT INTO "hevy_link" (id, user_id, workout_id, hevy_workout_id, origin, synced_fingerprint, synced_at)
+          VALUES (${uuidv7()}::uuid, ${userId}::uuid, ${sinWorkoutId}::uuid, ${hevyWorkoutId}, 'matched',
+                  ${hevyFingerprint(fingerprintSourceOf(detail))}, now())`;
+        return "linked" as const;
+      });
+    } catch (err) {
+      if (!isRawUniqueViolation(err)) throw err;
+      return violatedConstraintColumns(err) === "workout_id" ? "taken" : "already_imported";
+    }
+  }
+
+  async function importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord> {
+    // §6.1: loaded once per request, so the whole batch is translated against one consistent mapping.
+    const ctx = await loadContext(prisma, userId, now);
+    const links = await findLinks(prisma, userId, batch.workouts.map((w) => w.hevyWorkoutId));
+    // What this request has already decided, so a dry run answers as the real run will (D6, Review Focus 1 and 4).
+    const decided = new Map<string, HevyLinkHit["origin"]>();
+    const claimed = new Set<string>();
+    const results: HevyImportResult[] = [];
+    let setsCreated = 0;
+    let setsDropped = 0;
+
+    for (const w of batch.workouts) {
+      const base: HevyImportResult = {
+        hevyWorkoutId: w.hevyWorkoutId,
+        outcome: "create",
+        workoutId: null,
+        matchedWorkoutId: null,
+        unpaired: [],
+        drops: [],
+        notices: [],
+        exerciseCount: 0,
+        setCount: 0,
+      };
+      const answer = (r: Partial<HevyImportResult>) => void results.push({ ...base, ...r });
+
+      // 1. AC20: a link decides, before any translation.
+      const link = links.get(w.hevyWorkoutId);
+      if (link !== undefined) {
+        answer({ outcome: link.workoutId === null ? "deleted_in_sin" : OUTCOME_FOR_ORIGIN[link.origin] });
+        continue;
+      }
+      const earlier = decided.get(w.hevyWorkoutId);
+      if (earlier !== undefined) {
+        answer({ outcome: OUTCOME_FOR_ORIGIN[earlier] });
+        continue;
+      }
+
+      // 2. Translate.
+      const t = translateHevyWorkout(w, ctx);
+      if (t.outcome === "time_invalid") {
+        answer({ outcome: "time_invalid" });
+        continue;
+      }
+      if (t.outcome === "unpaired") {
+        answer({ outcome: "unpaired", unpaired: t.unpaired });
+        continue;
+      }
+      if (t.outcome === "no_usable_sets") {
+        answer({ outcome: "no_usable_sets", drops: t.drops, notices: t.notices });
+        continue;
+      }
+
+      // 3. AC21: duplicates. A candidate a concurrent Send took is dropped and the step re-run once.
+      const hevySide = { localDate: t.workout.localDate, startedAt: t.workout.startedAt, title: t.workout.title, rootIds: t.workout.rootIds };
+      const dropped = new Set<string>();
+      let matched: string | null = null;
+      let alreadyImported = false;
+      for (let attempt = 0; attempt < 2 && matched === null && !alreadyImported; attempt++) {
+        const candidates = await findCandidates(prisma, userId, hevySide.localDate, hevySide.startedAt);
+        const best = nearestMatch(hevySide, candidates.filter((c) => !claimed.has(c.id) && !dropped.has(c.id)));
+        if (best === null) break;
+        if (batch.dryRun) {
+          matched = best;
+          break;
+        }
+        const linked = await insertMatchedLink(userId, w.hevyWorkoutId, best);
+        if (linked === "linked") matched = best;
+        else if (linked === "already_imported") alreadyImported = true;
+        else dropped.add(best);
+      }
+      if (alreadyImported) {
+        answer({ outcome: "already_imported" });
+        continue;
+      }
+      if (matched !== null) {
+        claimed.add(matched);
+        decided.set(w.hevyWorkoutId, "matched");
+        answer({ outcome: "duplicate", matchedWorkoutId: parseWorkoutId(matched) });
+        continue;
+      }
+
+      // 4. A dry run stops here; 5. the write.
+      const created = {
+        drops: t.drops,
+        notices: t.notices,
+        exerciseCount: t.workout.exercises.length,
+        setCount: t.workout.exercises.reduce((n, e) => n + e.sets.length, 0),
+      };
+      let workoutId: string | null = null;
+      if (!batch.dryRun) {
+        const out = await writeImportedWorkout(userId, w.hevyWorkoutId, t.workout);
+        if (out.kind === "already_linked") {
+          answer({ outcome: "already_imported" });
+          continue;
+        }
+        if (out.kind === "rejected") {
+          answer({ outcome: "rejected" });
+          continue;
+        }
+        workoutId = out.workoutId;
+      }
+      decided.set(w.hevyWorkoutId, "imported");
+      setsCreated += created.setCount;
+      setsDropped += t.drops.reduce((n, d) => n + (d.code === "exercise_no_sets" ? 0 : d.count), 0);
+      answer({ outcome: "create", workoutId: workoutId === null ? null : parseWorkoutId(workoutId), ...created });
+    }
+    return { results, setsCreated, setsDropped };
+  }
+
+  return { importBatch, writeImportedWorkout };
+}
+
+const OUTCOME_FOR_ORIGIN: Readonly<Record<HevyLinkHit["origin"], HevyImportResult["outcome"]>> = Object.freeze({
+  sent: "sent_from_sin",
+  imported: "already_imported",
+  matched: "already_matched",
+});
+
+/** AC21: of the candidates `isDuplicateWorkout` accepts, the nearest start, then the lowest id. */
+function nearestMatch(h: DuplicateSide, candidates: readonly (DuplicateSide & { id: string })[]): string | null {
+  const start = Date.parse(h.startedAt);
+  let best: { id: string; gap: number } | null = null;
+  for (const c of candidates) {
+    if (!isDuplicateWorkout(h, c)) continue;
+    const gap = Math.abs(Date.parse(c.startedAt) - start);
+    if (best === null || gap < best.gap || (gap === best.gap && c.id < best.id)) best = { id: c.id, gap };
+  }
+  return best?.id ?? null;
 }

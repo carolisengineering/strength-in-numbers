@@ -1,4 +1,7 @@
-import type { ImportedWorkout } from "@sin/core";
+import type { HevyImportBatch, HevyImportResult, ImportedWorkout } from "@sin/core";
+
+/** Spec 19.1 §8: the batch route's request-body limit. */
+export const HEVY_IMPORT_BODY_LIMIT = 512 * 1024;
 
 /**
  * Spec 19.1 Phase B: the Hevy bulk import, for one user. Every statement is scoped to `userId`; a batch writes one
@@ -27,7 +30,18 @@ export interface HevyImportSeams {
   onWriteStep?: (step: HevyImportWriteStep) => void | Promise<void>;
 }
 
+/** One batch's results, in request order, and the set totals for its log line (AC32). */
+export interface HevyImportBatchRecord {
+  results: HevyImportResult[];
+  /** Sets in `create` results. */
+  setsCreated: number;
+  /** Sets dropped from `create` results (every set-level drop code; `exercise_no_sets` counts exercises). */
+  setsDropped: number;
+}
+
 export interface HevyImportRepository {
+  /** §6.1: every workout of the batch in order; a dry run stops before any write and answers what the real run would. */
+  importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord>;
   /** §6.2: one translated workout in one transaction, with its `imported` link and the stale-records flag. */
   writeImportedWorkout(userId: string, hevyWorkoutId: string, w: ImportedWorkout): Promise<WriteOutcome>;
 }
