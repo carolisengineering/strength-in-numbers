@@ -16,3 +16,4 @@ export * from "../dto/hevy-import.js";
 export * from "./importWorkout.js";
 export * from "./duplicate.js";
 export * from "./importRoutine.js";
+export * from "./importTemplate.js";

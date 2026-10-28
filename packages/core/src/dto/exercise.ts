@@ -89,7 +89,7 @@ export interface MuscleFieldIssue {
  * a data-integrity or resource invariant, so it applies only to an array the
  * current caller actually submitted — see `checkLength` on
  * `muscleIdCrossFieldIssues` below. Don't "simplify" that back to unconditional. */
-const MAX_SECONDARY_MUSCLE_IDS = 4;
+export const MAX_SECONDARY_MUSCLE_IDS = 4;
 
 /**
  * `opts.checkLength` (default `true`) gates only the length cap, per D22 — it
