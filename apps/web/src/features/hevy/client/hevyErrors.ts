@@ -1,6 +1,6 @@
 /**
  * Spec 20.0 AC9: what went wrong talking to Hevy, as a kind. A `HevyError` carries nothing from Hevy's reply (its
- * error text can echo the request, Review Focus 5) and no `cause` (a cause could hold a request with the key): its
+ * error text can echo the request) and no `cause` (a cause could hold a request with the key): its
  * `message` is fixed text and the screen shows `HEVY_COPY[kind]`. React-free.
  */
 

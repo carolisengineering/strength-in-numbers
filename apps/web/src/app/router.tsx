@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 
 import { Callback } from "../auth/Callback";
 import { HistoryScreen } from "../features/history/HistoryScreen";
+import { HevyRoute } from "../features/hevy/HevyRoute";
+import { HevyScreen } from "../features/hevy/HevyScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
 import { AllExercises } from "../features/exercises/AllExercises";
 import { ExerciseRoute } from "../features/exercises/ExerciseScreen";
@@ -33,6 +35,7 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /callback    BootstrapGate > Callback                                 public — transient PKCE handler
  *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > redirect (replace) to /app/workouts (Spec 06.1 D20)
  *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
+ *   /app/profile/hevy                                                 > HevyRoute (status gate) > HevyScreen (Spec 20.0, owner-only)
  *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
  *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
  *   /app/workouts/:id/edit                                            > EditWorkoutScreen section="workouts" (Spec 18.0)
@@ -77,6 +80,15 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <Navigate to="/app/workouts" replace /> },
               { path: "profile", element: <ProfileScreen /> },
+              // Spec 20.0 AC1: owner-only; anyone else gets NotFound from the gate.
+              {
+                path: "profile/hevy",
+                element: (
+                  <HevyRoute>
+                    <HevyScreen />
+                  </HevyRoute>
+                ),
+              },
               { path: "workouts", element: <WorkoutsScreen /> },
               { path: "workouts/:id", element: <FinishedWorkoutScreen section="workouts" /> },
               { path: "workouts/:id/edit", element: <EditWorkoutScreen section="workouts" /> },

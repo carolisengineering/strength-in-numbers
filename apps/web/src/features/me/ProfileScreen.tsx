@@ -16,6 +16,7 @@ import { AccountDataSection } from "../account/AccountDataSection";
 import { DeleteAccountSection } from "../account/DeleteAccountSection";
 import { useExportAccount } from "../account/useExportAccount";
 import styles from "./ProfileScreen.module.css";
+import { HevyProfileRow } from "../hevy/HevyProfileRow";
 import { KeepAwakeSetting } from "./KeepAwakeSetting";
 import { ThemeSetting } from "./ThemeSetting";
 import { listTimeZones } from "./timeZones";
@@ -211,6 +212,7 @@ function ProfileForm({ me }: { me: Me }) {
 
       <ThemeSetting />
       <KeepAwakeSetting />
+      <HevyProfileRow />
 
       <AccountDataSection exporter={exporter} />
 
