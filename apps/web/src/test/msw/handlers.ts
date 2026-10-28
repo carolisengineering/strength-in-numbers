@@ -5,11 +5,13 @@ import { http, HttpResponse, type RequestHandler } from "msw";
  * `server.use(...)` and the shared server is configured `onUnhandledRequest: "error"`, so an un-mocked request fails
  * loudly.
  *
- * The one default: Spec 20.0 AC1. Profile reads `GET /v1/hevy/status` on every render, and for every account but the
- * owner the API answers its unknown-route `404`, so that is the default here. A test that wants the Hevy row
- * overrides it with `server.use(...)`.
+ * The defaults, all Spec 20.0:
+ * - AC1: Profile reads `GET /v1/hevy/status` on every render, and for every account but the owner the API answers
+ *   its unknown-route `404`. A test that wants the Hevy row overrides it with `server.use(...)`.
+ * - AC17: the Hevy screen's mapping card reads `GET /v1/hevy/mapping`; by default the owner has none yet.
  */
 export const handlers: RequestHandler[] = [
+  http.get("*/v1/hevy/mapping", () => HttpResponse.json({ pairs: [], sectionRules: [] })),
   http.get(
     "*/v1/hevy/status",
     () =>

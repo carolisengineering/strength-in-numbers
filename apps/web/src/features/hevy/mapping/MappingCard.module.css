@@ -1,0 +1,47 @@
+/* Spec 20.0 §5.1: the pairings card, laid out like the key card. Existing tokens only; no teal, no brass. */
+.card,
+.markers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.count,
+.muted,
+.status {
+  margin: 0;
+}
+
+.count {
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.review {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Focus moves here after a load; the line is not a control, so it draws no focus ring. */
+.status {
+  outline: none;
+}

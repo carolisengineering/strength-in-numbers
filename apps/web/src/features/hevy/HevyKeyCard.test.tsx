@@ -188,7 +188,8 @@ describe("20.0 AC6 — Replace and Remove", () => {
     expect(hevyKeyStore.get(USER_ID)).toBeNull();
     expect(window.localStorage.getItem(hevyKeyStorageKey(USER_ID))).toBeNull();
     expect(status()).toHaveTextContent(KEY_REMOVED);
-    expect(sinRequests).toEqual([]);
+    // The screen reads the mapping and the catalog on open (Phase B); the key flow itself writes nothing to SIN.
+    expect(sinRequests.filter((r) => !r.startsWith("GET "))).toEqual([]);
   });
 });
 

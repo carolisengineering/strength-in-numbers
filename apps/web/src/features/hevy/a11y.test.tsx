@@ -42,6 +42,7 @@ describe("20.0 AC32 — Hevy screen landmarks and live regions", () => {
     expect(headings.map((h) => [h.tagName, h.textContent])).toEqual([
       ["H1", "Hevy"],
       ["H2", "Hevy key"],
+      ["H2", "Exercise pairings"],
     ]);
     expect(screen.getByRole("region", { name: "Hevy" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Hevy key" })).toBeInTheDocument();
