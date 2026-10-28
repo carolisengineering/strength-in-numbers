@@ -75,6 +75,14 @@ export async function savePairings(
   const creates = decisions.filter((d): d is Extract<PairingDecision, { action: "create" }> => d.action === "create");
   const ids = new Map<string, string>();
   let lastCreateAt: number | null = null;
+  // The shared sleep rejects when the signal aborts; that is a stop (checked right after), not a failed create.
+  const wait = async (ms: number) => {
+    try {
+      await deps.sleep(ms, signal);
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+    }
+  };
   let done = 0;
   for (const d of creates) {
     if (signal?.aborted) return stopped;
@@ -90,7 +98,7 @@ export async function savePairings(
       // D7: creates at least CREATE_GAP_MS apart.
       if (lastCreateAt !== null) {
         const gap = CREATE_GAP_MS - (deps.now() - lastCreateAt);
-        if (gap > 0) await deps.sleep(gap, signal);
+        if (gap > 0) await wait(gap);
         if (signal?.aborted) return stopped;
       }
       let created: Exercise;
@@ -100,7 +108,7 @@ export async function savePairings(
         } catch (error) {
           // One retry after a 429, once its Retry-After has passed.
           if (!(error instanceof ApiError) || error.status !== 429) throw error;
-          await deps.sleep(Math.max(error.retryAfterMs ?? CREATE_GAP_MS, CREATE_GAP_MS), signal);
+          await wait(Math.max(error.retryAfterMs ?? CREATE_GAP_MS, CREATE_GAP_MS));
           if (signal?.aborted) return stopped;
           created = await deps.createCustom(d.create);
         }

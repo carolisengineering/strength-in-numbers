@@ -12,6 +12,7 @@ import { listAll } from "../client/listAll";
 import { HEVY_KEYS } from "../keys";
 import {
   CANCEL_LOAD,
+  CATALOG_NOT_READY,
   CHECKING_FILE,
   CHOOSE_FILE,
   COUNT_CALORIES,
@@ -75,6 +76,9 @@ export interface LoadMappingSheetProps {
 export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappingSheetProps) {
   const client = useHevyClient();
   const { state: catalog } = useCatalog();
+  // The list as it is when the file resolves, not when it was picked: the Hevy read can take a while.
+  const catalogNow = useRef(catalog);
+  catalogNow.current = catalog;
   const queryClient = useQueryClient();
   const { put } = useMappingMutations();
   const [step, setStep] = useState<Step>({ kind: "choose", errors: [] });
@@ -97,6 +101,8 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
       return setStep({ kind: "choose", errors: big ? [FILE_TOO_BIG] : parsed.errors.map((e) => `${lineLabel(e.line)}: ${CSV_ERROR_COPY[e.code]}`) });
     }
     if (client === null) return setStep({ kind: "choose", errors: [NO_KEY_FOR_FILE] });
+    // Never against a list that has not synced: every line would be 'not found' and the replace would wipe the mapping.
+    if (catalogNow.current.syncToken === null) return setStep({ kind: "choose", errors: [CATALOG_NOT_READY] });
 
     let templates = queryClient.getQueryData<HevyTemplate[]>(HEVY_KEYS.templates);
     if (templates === undefined) {
@@ -119,7 +125,8 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
       queryClient.setQueryData(HEVY_KEYS.templates, templates);
     }
     setStep({ kind: "checking" });
-    setStep({ kind: "preview", resolved: resolveLines(parsed, { templates, catalog: catalog.rows }), error: null });
+    if (catalogNow.current.syncToken === null) return setStep({ kind: "choose", errors: [CATALOG_NOT_READY] });
+    setStep({ kind: "preview", resolved: resolveLines(parsed, { templates, catalog: catalogNow.current.rows }), error: null });
   }
 
   async function save(resolved: Resolved) {

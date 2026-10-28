@@ -1,5 +1,5 @@
 import type { HevyTemplate } from "@sin/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
@@ -44,9 +44,12 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   const [workout, setWorkout] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
-  // Pre-select the exact titles once the list arrives (case-sensitive: the file would not guess either).
+  // Pre-select the exact titles once, when the list first arrives (case-sensitive: the file would not guess either);
+  // a later re-read must not overwrite what the lifter chose.
+  const preselected = useRef(false);
   useEffect(() => {
-    if (!open || templates.data === undefined) return;
+    if (!open || templates.data === undefined || preselected.current) return;
+    preselected.current = true;
     setWarmup(templates.data.find((t) => t.title === MARKER_WARMUP)?.id ?? null);
     setWorkout(templates.data.find((t) => t.title === MARKER_WORKOUT)?.id ?? null);
   }, [open, templates.data]);

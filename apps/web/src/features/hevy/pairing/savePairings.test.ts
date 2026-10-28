@@ -5,7 +5,7 @@ import { ApiError } from "../../../api";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
 import type { PairInput } from "../mapping/useMappingMutations";
-import { MAPPING_RATE_LIMITED } from "../messages";
+import { HEVY_COPY, MAPPING_RATE_LIMITED } from "../messages";
 import type { PairingDecision } from "./pairingCards";
 import { CREATE_GAP_MS, PAIR_BATCH_MAX, newPairingSaveRecord, savePairings, type SavePairingsDeps } from "./savePairings";
 
@@ -128,5 +128,36 @@ describe("20.0 AC28, AC29 — savePairings writes only when called, and leaves n
     expect(out.ok).toBe(false);
     expect(deps.createCustom).toHaveBeenCalledTimes(1);
     expect(deps.patchMapping).not.toHaveBeenCalled();
+  });
+});
+
+describe("20.0 AC28 — a cancel during a wait is a stop, not a failure (code review)", () => {
+  /** The real shared sleep rejects with an AbortError when its signal aborts. */
+  const abortingSleep = (controller: AbortController) =>
+    vi.fn(async () => {
+      controller.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+
+  it("during the gap between creates", async () => {
+    const controller = new AbortController();
+    const { deps, patches } = fakes();
+    deps.sleep = abortingSleep(controller);
+    const out = await savePairings({ decisions: [create("A"), create("B")], record: newPairingSaveRecord(), signal: controller.signal }, deps);
+    expect(out).toEqual({ ok: false, message: HEVY_COPY.aborted, stage: "create" });
+    expect(patches).toEqual([]);
+  });
+
+  it("during a 429's Retry-After wait", async () => {
+    const controller = new AbortController();
+    const { deps, patches } = fakes({
+      onCreate: () => {
+        throw problem(429, "rate-limited", { retryAfterMs: 30_000 });
+      },
+    });
+    deps.sleep = abortingSleep(controller);
+    const out = await savePairings({ decisions: [create("A")], record: newPairingSaveRecord(), signal: controller.signal }, deps);
+    expect(out).toEqual({ ok: false, message: HEVY_COPY.aborted, stage: "create" });
+    expect(patches).toEqual([]);
   });
 });

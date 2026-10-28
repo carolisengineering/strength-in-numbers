@@ -87,6 +87,7 @@ export const SECTIONS_HEADING = "Section rules and placeholders";
 export const willBeRemovedLine = (n: number) => `${n} pairings in the app that are not in this file`;
 export const willChangeLine = (n: number) => `${n} pairings in the app that this file changes`;
 export const NOTICES_LABEL = "Notices";
+export const CATALOG_NOT_READY = "Your exercise list hasn't loaded yet. Try again in a moment.";
 export const idTitleNotice = (line: number) => `Line ${line}: the Hevy id and title name different exercises; the id was used`;
 export const exportAsTwiceNotice = (line: number) => `Line ${line}: another line already sends this exercise to Hevy, so this one won't`;
 export const SHOW_LIST = "Show the list";

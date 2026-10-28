@@ -19,6 +19,7 @@ import { server } from "../../../test/msw/server";
 import { hevyKeyStore } from "../keyStore";
 import {
   COUNT_CALORIES,
+  CATALOG_NOT_READY,
   CSV_ERROR_COPY,
   FILE_TOO_BIG,
   LEFT_OUT_COPY,
@@ -220,5 +221,17 @@ describe("20.0 AC19, AC21, AC22 — final review fixes", () => {
     expect(within(preview).getByText(willChangeLine(2))).toBeInTheDocument();
     const changed = within(preview).getByRole("list", { name: "Will change" });
     expect(within(changed).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Bench Press (Barbell)", "Squat"]);
+  });
+});
+
+describe("20.0 AC19 — never resolved against an exercise list that has not synced (code review)", () => {
+  it("a file picked before the first catalog sync is refused, so a replace can't wipe the pairings", async () => {
+    renderHevyScreen(undefined, { unsyncedCatalog: true });
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    expect(await within(dialog).findByText(CATALOG_NOT_READY)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("region", { name: "Preview" })).toBeNull();
+    expect(puts).toEqual([]);
   });
 });

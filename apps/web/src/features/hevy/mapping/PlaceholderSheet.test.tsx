@@ -14,6 +14,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, useInstantPacer, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
+import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { CHOOSE_MARKERS, NO_KEY_FOR_FILE, NO_MARKERS } from "../messages";
 
@@ -105,5 +106,23 @@ describe("20.0 AC30 — section markers", () => {
     const dialog = await openMarkers();
     expect(await within(dialog).findByText(NO_KEY_FOR_FILE)).toBeInTheDocument();
     expect(templateReads).toBe(0);
+  });
+});
+
+describe("20.0 AC30 — a re-read of Hevy's list keeps the lifter's choice (code review)", () => {
+  it("a chosen marker survives a templates refetch", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    const { queryClient } = renderHevyScreen();
+    await userEvent.click(await screen.findByRole("button", { name: CHOOSE_MARKERS }));
+    const dialog = await screen.findByRole("dialog", { name: "Section markers" });
+    const warm = await within(dialog).findByRole("group", { name: "Warmup" });
+    await userEvent.click(within(warm).getByRole("radio", { name: "warmup" }));
+    const before = templateReads;
+    // The re-read finds one more template, so the list is a new object (an equal list keeps its reference).
+    server.use(templatesHandler([...TEMPLATES, tpl("N", "Stretch")]));
+    await queryClient.refetchQueries({ queryKey: HEVY_KEYS.templates });
+    await waitFor(() => expect(templateReads).toBeGreaterThan(before));
+    await within(warm).findByRole("radio", { name: "Stretch" });
+    expect(within(warm).getByRole("radio", { name: "warmup" })).toBeChecked();
   });
 });

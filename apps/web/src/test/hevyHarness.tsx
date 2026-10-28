@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { ME, makeQueryClient } from "./accountHarness";
+import { API_BASE_URL, ME, makeQueryClient } from "./accountHarness";
 import { server } from "./msw/server";
 import { catalogHandlers } from "./workoutFake";
 import { CatalogProvider } from "../features/catalog/CatalogProvider";
@@ -60,12 +60,14 @@ export function clearHevyKey(): void {
  */
 export function renderHevyScreen(
   queryClient: QueryClient = makeQueryClient(),
-  opts: { catalog?: readonly Exercise[]; path?: string; routes?: { path: string; element: ReactElement }[] } = {},
+  opts: { catalog?: readonly Exercise[]; path?: string; routes?: { path: string; element: ReactElement }[]; unsyncedCatalog?: true } = {},
 ): { queryClient: QueryClient; unmount: () => void } {
   const rows = [...(opts.catalog ?? [])];
   server.use(...catalogHandlers(rows));
   queryClient.setQueryData(ME_QUERY_KEY, ME);
-  const storage = memoryStorageAdapter({ [catalogKey(USER_ID)]: JSON.stringify({ version: 1, rows, syncToken: "1.100" }) });
+  // `unsyncedCatalog`: nothing stored and the list request fails, so the catalog has never synced.
+  if (opts.unsyncedCatalog) server.use(http.get(`${API_BASE_URL}/v1/exercises`, () => HttpResponse.json({}, { status: 503 })));
+  const storage = memoryStorageAdapter(opts.unsyncedCatalog ? {} : { [catalogKey(USER_ID)]: JSON.stringify({ version: 1, rows, syncToken: "1.100" }) });
   const router = createMemoryRouter([{ path: "/", element: <HevyScreen /> }, ...(opts.routes ?? [])], { initialEntries: [opts.path ?? "/"] });
   const view = render(
     <QueryClientProvider client={queryClient}>
