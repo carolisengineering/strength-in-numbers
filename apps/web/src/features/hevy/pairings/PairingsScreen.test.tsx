@@ -16,7 +16,7 @@ import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { renderHevyScreen } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { PAIRINGS_PATH } from "../paths";
-import { PAIRINGS_LOADING, PAIRINGS_PATCH_FAILED, lastPairingBody, mappingRateLimited, removedDone, sentAsDone } from "../messages";
+import { NO_PAIRINGS, PAIRINGS_LOADING, PAIRINGS_PATCH_FAILED, lastPairingBody, mappingRateLimited, removedDone, sentAsDone } from "../messages";
 import { PairingsScreen } from "./PairingsScreen";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -158,6 +158,7 @@ describe("Minor 179 — Pairings before the first catalog sync (Review Focus 3)"
     renderHevyScreen(undefined, { unsyncedCatalog: true, path: PAIRINGS_PATH, routes: [{ path: PAIRINGS_PATH, element: <PairingsScreen /> }] });
     expect(await screen.findByText(PAIRINGS_LOADING)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /Exercises you deleted/ })).toBeNull();
+    expect(screen.queryByText(NO_PAIRINGS)).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove pairing/ })).toBeNull();
   });
 });

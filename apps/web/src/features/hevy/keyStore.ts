@@ -89,7 +89,11 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+        if (listeners.size === 0) {
+          // No listener hears another tab's change from here on, so nothing cached may outlive the subscription.
+          cache.clear();
+          if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+        }
       };
     },
   };

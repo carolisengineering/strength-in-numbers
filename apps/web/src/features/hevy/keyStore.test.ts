@@ -166,3 +166,16 @@ describe("Minor 166 — the key must be a version UUID (owner: Hevy keys are)", 
     expect(HEVY_KEY_SHAPE.safeParse(KEY).success).toBe(true);
   });
 });
+
+describe("Minor 174 — another tab's change is heard after the screen has unsubscribed (final review)", () => {
+  it("a key cached while subscribed is re-read once no one listens", () => {
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: KEY }));
+    const store = createKeyStore(storage);
+    const unsubscribe = store.subscribe(() => {});
+    expect(store.get("u")).toBe(KEY);
+    unsubscribe(); // the Hevy screen closed
+    storage.remove("sin:hevy:key:u"); // another tab removed it; no listener heard the event
+    expect(store.get("u")).toBeNull();
+  });
+});

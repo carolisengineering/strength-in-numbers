@@ -26,6 +26,7 @@ import {
 } from "../../test/hevyHarness";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HEVY_KEYS } from "./keys";
 import { hevyKeyStorageKey, hevyKeyStore } from "./keyStore";
 
 /** Every request to Hevy, with the key it carried. */
@@ -277,6 +278,19 @@ describe("Minor 171 — status focus is visible and a later failure is announced
     server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
     hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
     renderHevyScreen();
+    await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+  });
+});
+
+describe("Minor 171 — a refusal after a save in the same visit is announced (final review)", () => {
+  it("'Key saved.' gives way to the bad-key sentence when Hevy later refuses the key", async () => {
+    server.use(userInfoOk());
+    const { queryClient } = renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    await waitFor(() => expect(status()).toHaveTextContent(KEY_SAVED));
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    await queryClient.refetchQueries({ queryKey: HEVY_KEYS.userAll });
     await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
   });
 });

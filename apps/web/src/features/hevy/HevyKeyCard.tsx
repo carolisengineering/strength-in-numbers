@@ -45,11 +45,11 @@ export function HevyKeyCard() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<"remember" | "visit" | null>(null);
-  const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
+  const [announcement, setAnnouncement] = useState({ text: "", seq: 0, at: 0 });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
 
-  const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1 }));
+  const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1, at: Date.now() }));
   // After the line has rendered its new text (and the form has unmounted), so focus lands on the words.
   useEffect(() => {
     if (announcement.seq > 0) statusRef.current?.focus();
@@ -157,7 +157,8 @@ export function HevyKeyCard() {
 
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-key-status">
         {/* Minor 171: a stored key that Hevy now refuses is announced here too, after the last outcome. */}
-        {announcement.text !== "" ? announcement.text : (userFailure ?? "")}
+        {/* Whichever came last: an outcome this visit, or Hevy refusing the stored key after it. */}
+        {userFailure !== null && (announcement.text === "" || user.errorUpdatedAt > announcement.at) ? userFailure : announcement.text}
       </p>
 
       <ConfirmDialog

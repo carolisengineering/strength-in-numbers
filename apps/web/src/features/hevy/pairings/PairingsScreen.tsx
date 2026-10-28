@@ -121,7 +121,7 @@ export function PairingsScreen() {
           />
           {failure !== null ? <p role="alert">{failure}</p> : null}
           {groups.loading.length > 0 ? <p className={styles.muted}>{PAIRINGS_LOADING}</p> : null}
-          {groups.exercises.length + groups.deleted.length + groups.skipped.length + groups.placeholders.length === 0 ? (
+          {groups.exercises.length + groups.deleted.length + groups.skipped.length + groups.placeholders.length + groups.loading.length === 0 ? (
             <p className={styles.muted}>{NO_PAIRINGS}</p>
           ) : null}
 
