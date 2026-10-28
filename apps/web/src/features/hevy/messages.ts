@@ -56,6 +56,7 @@ export const CHOOSE_MARKERS = "Choose them";
 // Plan copy.
 export const MAPPING_LOADING = "Loading your pairings…";
 export const MAPPING_LOAD_FAILED = "Couldn't load your pairings. Try again.";
+export const DOWNLOAD_FAILED = "Couldn't download the file. Try again.";
 
 /** Phase B: loading a file (AC18–AC22, §5.2). */
 export const LOAD_SHEET_TITLE = "Load a mapping file";

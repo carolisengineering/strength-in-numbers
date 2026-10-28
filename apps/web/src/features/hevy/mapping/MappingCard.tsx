@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
+import { ApiError } from "../../../api";
+import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
+import { saveBlob } from "../../account/saveBlob";
+import { useCatalog } from "../../catalog/useCatalog";
 import {
   CHOOSE_MARKERS,
+  DOWNLOAD_FAILED,
   DOWNLOAD_FILE,
+  MAPPING_OFFLINE,
   LOAD_FILE,
   MAPPING_CARD_TITLE,
   MAPPING_LOAD_FAILED,
@@ -16,13 +22,12 @@ import {
 } from "../messages";
 import { PAIRINGS_PATH } from "../paths";
 import { useHevyKey } from "../useHevyKey";
+import { MAPPING_FILENAME, mappingCsvBlob } from "./downloadMapping";
 import { LoadMappingSheet } from "./LoadMappingSheet";
 import { useHevyMapping } from "./useHevyMapping";
 import styles from "./MappingCard.module.css";
 
 export interface MappingCardProps {
-  /** Task 5: downloads the mapping as a file. */
-  onDownload?: () => void;
   /** Task 9: opens the section-marker sheet. */
   onChooseMarkers?: () => void;
 }
@@ -32,15 +37,32 @@ export interface MappingCardProps {
  * section markers, and leads to loading a file, downloading it and reviewing the pairings. Loading needs the key
  * (it reads Hevy's exercise list); the rest needs only the server.
  */
-export function MappingCard({ onDownload, onChooseMarkers }: MappingCardProps) {
+export function MappingCard({ onChooseMarkers }: MappingCardProps) {
   const mapping = useHevyMapping();
   const { hasKey } = useHevyKey();
+  const { state: catalog } = useCatalog();
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
   const statusRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (announcement.seq > 0) statusRef.current?.focus();
   }, [announcement.seq]);
+  const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1 }));
+
+  /** AC23: always the stored mapping as it is now (a fresh read), never a cached one. */
+  async function download() {
+    setDownloading(true);
+    const fresh = await mapping.refetch();
+    setDownloading(false);
+    if (fresh.data === undefined) {
+      const offline = fresh.error instanceof ApiError && fresh.error.isNetworkError;
+      if (!offline) reportError(fresh.error ?? new Error("mapping download failed"), { source: "hevy", op: "file" });
+      return announce(offline ? MAPPING_OFFLINE : DOWNLOAD_FAILED);
+    }
+    const names = new Map<string, string>(catalog.rows.map((row) => [row.id, row.name]));
+    saveBlob(mappingCsvBlob(fresh.data, (id) => names.get(id) ?? null), MAPPING_FILENAME);
+  }
 
   const pairs = mapping.data?.pairs ?? [];
   const exerciseCount = pairs.filter((p) => p.role === "exercise").length;
@@ -72,7 +94,7 @@ export function MappingCard({ onDownload, onChooseMarkers }: MappingCardProps) {
         <Button variant="secondary" disabled={!hasKey || !mapping.isSuccess} onClick={() => setLoading(true)}>
           {LOAD_FILE}
         </Button>
-        <Button variant="secondary" disabled={!mapping.isSuccess} onClick={onDownload}>
+        <Button variant="secondary" busy={downloading} disabled={!mapping.isSuccess || downloading} onClick={() => void download()}>
           {DOWNLOAD_FILE}
         </Button>
       </div>
@@ -90,7 +112,7 @@ export function MappingCard({ onDownload, onChooseMarkers }: MappingCardProps) {
           onClose={() => setLoading(false)}
           onLoaded={(text) => {
             setLoading(false);
-            setAnnouncement((a) => ({ text, seq: a.seq + 1 }));
+            announce(text);
           }}
         />
       ) : null}
