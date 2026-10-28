@@ -16,10 +16,9 @@ import {
  * include a count or a name already on screen, never other pasted text (§6.6).
  */
 
-// Check exercise names: the New card's name (CatalogName's rule, in the app's wording).
-export const NEW_NAME_REQUIRED = "Give the exercise a name";
-export const NEW_NAME_TOO_LONG = "Keep the name to 120 characters or fewer";
-export const NEW_NAME_INVALID = "Remove unusual characters from the name";
+// Check exercise names: the New card's name (CatalogName's rule, in the app's wording). Shared with the Hevy
+// pairing cards, so the text lives in catalog/newExerciseName.ts (Spec 20.0 D8).
+export { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "../../catalog/newExerciseName";
 /** A New card refused for something other than its name (type, muscles, equipment). Defensive: the fields prevent it today. */
 export const NEW_DETAILS_INVALID = "Check this exercise's type and details";
 

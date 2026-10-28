@@ -1,7 +1,5 @@
 import {
-  CatalogName,
   CreateExerciseSchema,
-  EXERCISE_NAME_MAX,
   buildImportPlan,
   guessModality,
   matchExerciseName,
@@ -12,7 +10,7 @@ import {
 } from "@sin/core";
 
 import { EMPTY_EXERCISE_FIELDS, toCreateExerciseInput, type ExerciseFieldValues } from "../../catalog/ExerciseFields";
-import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messages";
+import { duplicateNewNameKeys, newNameProblem } from "../../catalog/newExerciseName";
 
 /**
  * Spec 10.4 AC24–AC27, pure: one card per distinct name, its pre-decided choice, and what blocks a New
@@ -79,13 +77,6 @@ export type CardProblem =
   /** The matched or picked exercise has left the list (a sync dropped it). */
   | { readonly kind: "gone" };
 
-function nameProblem(name: string): string | null {
-  const trimmed = name.trim();
-  if (trimmed === "") return NEW_NAME_REQUIRED;
-  if (trimmed.length > EXERCISE_NAME_MAX) return NEW_NAME_TOO_LONG;
-  return CatalogName.safeParse(trimmed).success ? null : NEW_NAME_INVALID;
-}
-
 /**
  * AC27–AC28: only cards with a problem. Recomputed on the current `visible` rows, so a New name that now
  * exists, or a chosen exercise that a sync dropped, blocks Continue.
@@ -105,13 +96,14 @@ export function cardProblems(cards: readonly CardState[], visible: readonly Exer
     if (key !== "" && !byKey.has(key)) byKey.set(key, row);
   }
   const newKeys = fresh.map((card) => normalizeExerciseName(card.newValue.name));
+  const repeated = duplicateNewNameKeys(fresh.map((card) => card.newValue.name));
   fresh.forEach((card, i) => {
-    const message = nameProblem(card.newValue.name);
+    const message = newNameProblem(card.newValue.name);
     if (message !== null) return void problems.set(card.key, { kind: "name", message });
     const key = newKeys[i]!;
     const existing = key === "" ? undefined : byKey.get(key);
     if (existing) return void problems.set(card.key, { kind: "exists", exercise: existing });
-    if (key !== "" && newKeys.some((other, j) => j !== i && other === key)) return void problems.set(card.key, { kind: "same-new" });
+    if (repeated.has(i)) return void problems.set(card.key, { kind: "same-new" });
     if (!CreateExerciseSchema.safeParse(toCreateExerciseInput(card.newValue)).success) problems.set(card.key, { kind: "invalid" });
   });
   return problems;
