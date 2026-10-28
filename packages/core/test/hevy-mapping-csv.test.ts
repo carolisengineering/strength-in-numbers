@@ -215,3 +215,34 @@ describe("20.0 AC19 — each parsed line keeps its file line number", () => {
     expect(parsed.errors).toEqual([{ line: 4, code: "missing_column" }]);
   });
 });
+
+describe("Minor 189 — formula cells are guarded and round-trip", () => {
+  const TITLES = ["=SUM(A1)", "+1", "-Row", "@x", "'quoted", 'Bench, "Pro"', "Plain"];
+
+  it("each risky text cell starts with one apostrophe, and parse(format(m)) gives the titles back", () => {
+    const m = TITLES.map((title, i) => line({ kind: "skip", hevyId: `S${i}`, hevyTitle: title }));
+    const text = formatMappingCsv(m);
+    const rows = text.split("\r\n").slice(1, -1);
+    const byId = new Map(rows.map((r) => [r.split(",")[1]!, r]));
+    expect(byId.get("S0")).toBe("skip,S0,'=SUM(A1),,,,");
+    expect(byId.get("S1")).toBe("skip,S1,'+1,,,,");
+    expect(byId.get("S2")).toBe("skip,S2,'-Row,,,,");
+    expect(byId.get("S3")).toBe("skip,S3,'@x,,,,");
+    expect(byId.get("S4")).toBe("skip,S4,''quoted,,,,");
+    expect(byId.get("S6")).toBe("skip,S6,Plain,,,,");
+    const parsed = parseMappingCsv(text);
+    expect(parsed.errors).toEqual([]);
+    expect(new Map(parsed.lines.map((l) => [l.hevyId, l.hevyTitle]))).toEqual(new Map(m.map((l) => [l.hevyId, l.hevyTitle])));
+    expect(formatMappingCsv(parsed.lines)).toBe(text);
+  });
+
+  it("an exercise's SIN name is guarded too; the vocabulary columns never are", () => {
+    const text = formatMappingCsv([line({ kind: "exercise", hevyId: "E1", hevyTitle: "Bench", sinId: ID_A, sinName: "=evil", exportAs: true })]);
+    expect(text.split("\r\n")[1]).toBe(`exercise,E1,Bench,${ID_A},'=evil,,yes`);
+  });
+
+  it("a hand-written leading apostrophe is the escape (Review Focus 2)", () => {
+    const parsed = parseMappingCsv(`${MAPPING_CSV_HEADER}\r\nskip,,'Bench,,,,\r\n`);
+    expect(parsed.lines[0]?.hevyTitle).toBe("Bench");
+  });
+});
