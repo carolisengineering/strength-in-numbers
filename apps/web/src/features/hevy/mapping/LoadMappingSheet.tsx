@@ -131,8 +131,10 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
         meta: { onPage: ({ page, pageCount }: { page: number; pageCount: number }) => void (id === readId.current && setStep({ kind: "reading", page, pageCount })) },
       });
     } catch (error) {
-      if (id !== readId.current || isCancelledError(error)) return;
+      if (id !== readId.current) return;
       reading.current = false;
+      // A cancel from elsewhere (a key change removes the cached list) goes back to Choose, never stuck on Reading.
+      if (isCancelledError(error)) return reset();
       const failure = error instanceof HevyError ? error : new HevyError("unexpected_reply");
       if (failure.kind === "unexpected_reply" || failure.kind === "server") reportError(failure, { source: "hevy", op: "templates" });
       return setStep({ kind: "choose", errors: [HEVY_COPY[failure.kind]] });

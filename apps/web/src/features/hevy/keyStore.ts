@@ -12,7 +12,8 @@ import { localStorageAdapter, type StorageAdapter } from "../../storage/storage"
 /** The shape of a Hevy key: an RFC 9562 UUID (version 1–8; the owner checked a real key, minor 166). */
 export const HEVY_KEY_SHAPE = z.uuid();
 
-const StoredKeySchema = z.object({ v: z.literal(1), key: HEVY_KEY_SHAPE });
+// A key already remembered under the old 8-4-4-4-12 check is still read; only a newly pasted key meets `z.uuid()`.
+const StoredKeySchema = z.object({ v: z.literal(1), key: z.guid() });
 
 export const hevyKeyStorageKey = (userId: string): string => `sin:hevy:key:${userId}`;
 
@@ -26,8 +27,9 @@ export interface HevyKeyStore {
 
 export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
   const memory = new Map<string, string>();
-  // Minor 174: the parsed stored key per user, so a render never re-reads and re-parses storage.
-  const cache = new Map<string, string | null>();
+  // Minor 174: the parsed key per user, keyed by the raw stored text, so a render re-parses only when the text changed
+  // (storage is still read, so a same-tab write that skips the store, like logout's clear, is seen).
+  const cache = new Map<string, { raw: string; key: string | null }>();
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
   // Another tab's save or remove reaches this one through the `storage` event.
@@ -49,10 +51,7 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
     get(userId) {
       const inMemory = memory.get(userId);
       if (inMemory !== undefined) return inMemory;
-      if (cache.has(userId)) return cache.get(userId)!;
-      const read = readStored(userId);
-      cache.set(userId, read);
-      return read;
+      return readStored(userId);
     },
 
     set(userId, key, { remember }) {
@@ -89,11 +88,7 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
-        if (listeners.size === 0) {
-          // No listener hears another tab's change from here on, so nothing cached may outlive the subscription.
-          cache.clear();
-          if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
-        }
+        if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onStorage);
       };
     },
   };
@@ -107,6 +102,8 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
       return null;
     }
     if (raw === null) return null;
+    const cached = cache.get(userId);
+    if (cached !== undefined && cached.raw === raw) return cached.key;
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -114,7 +111,10 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
       parsed = undefined;
     }
     const stored = StoredKeySchema.safeParse(parsed);
-    if (stored.success) return stored.data.key;
+    if (stored.success) {
+      cache.set(userId, { raw, key: stored.data.key });
+      return stored.data.key;
+    }
     quietly(() => storage.remove(storageKey));
     return null;
   }

@@ -26,12 +26,12 @@ export interface PacerDeps {
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
-/** The slot moved out of the first minute of its UTC hour. */
 /** Minor 167: true during the first minute of a UTC hour, when every Hevy request waits. */
 export function inQuietMinute(nowMs: number): boolean {
   return outOfQuietMinute(nowMs) !== nowMs;
 }
 
+/** The slot moved out of the first minute of its UTC hour. */
 function outOfQuietMinute(slotMs: number): number {
   const intoHour = ((slotMs % HOUR_MS) + HOUR_MS) % HOUR_MS;
   return intoHour < QUIET_MS ? slotMs - intoHour + QUIET_MS : slotMs;

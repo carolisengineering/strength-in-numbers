@@ -342,3 +342,17 @@ describe("Minor 191 — the sheet and the hook share one template read", () => {
     expect(reads).toEqual([1]);
   });
 });
+
+describe("Minor 184 — a read cancelled from elsewhere goes back to Choose (code review)", () => {
+  it("removing the templates query mid-read does not leave the sheet on Reading", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    server.use(templatesHandler(many, { hold: 2 }));
+    const { queryClient } = renderHevyScreen(undefined, { catalog: CATALOG });
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    await within(dialog).findByText(readingTemplates(1, 3));
+    queryClient.removeQueries({ queryKey: ["hevy", "templates"] });
+    expect(await within(dialog).findByLabelText("Choose a file")).toBeInTheDocument();
+  });
+});

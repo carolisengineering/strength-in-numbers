@@ -125,14 +125,15 @@ describe("Minor 169 — a refused remembered write leaves no older key behind", 
 });
 
 describe("Minor 174 — the parsed key is cached, and another tab's change is heard", () => {
-  it("reads storage once until a set or remove", () => {
+  it("parses a stored value once until it changes", () => {
     const storage = memoryStorageAdapter();
     storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: KEY }));
-    const get = vi.spyOn(storage, "get");
+    const parse = vi.spyOn(JSON, "parse");
     const store = createKeyStore(storage);
     expect(store.get("u")).toBe(KEY);
     expect(store.get("u")).toBe(KEY);
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(parse).toHaveBeenCalledTimes(1);
+    parse.mockRestore();
     store.remove("u");
     expect(store.get("u")).toBeNull();
     store.set("u", OTHER, { remember: true });
@@ -177,5 +178,28 @@ describe("Minor 174 — another tab's change is heard after the screen has unsub
     unsubscribe(); // the Hevy screen closed
     storage.remove("sin:hevy:key:u"); // another tab removed it; no listener heard the event
     expect(store.get("u")).toBeNull();
+  });
+});
+
+describe("Minor 174 — a same-tab clear is seen (code review)", () => {
+  it("logout's clearUserData, which writes storage directly, is not hidden by the cache", () => {
+    const storage = memoryStorageAdapter();
+    const store = createKeyStore(storage);
+    const unsubscribe = store.subscribe(() => {});
+    store.set("u", KEY, { remember: true });
+    expect(store.get("u")).toBe(KEY);
+    clearUserData(storage);
+    expect(store.get("u")).toBeNull();
+    unsubscribe();
+  });
+});
+
+describe("Minor 166 — a key remembered under the old check still loads (code review)", () => {
+  it("a stored 8-4-4-4-12 key with a non-RFC version nibble is kept, not erased", () => {
+    const legacy = "5ec7e7a1-0b5e-0c3d-9a8f-1234deadbeef";
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: legacy }));
+    expect(createKeyStore(storage).get("u")).toBe(legacy);
+    expect(storage.get("sin:hevy:key:u")).not.toBeNull();
   });
 });
