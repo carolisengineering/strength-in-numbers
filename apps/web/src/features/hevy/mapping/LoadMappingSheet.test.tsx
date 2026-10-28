@@ -16,10 +16,15 @@ import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/ac
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
+import { TREATMENT_LABELS } from "../labels";
+import { hevyClientFor } from "../sharedClient";
+import { hevyTemplatesQuery } from "./useHevyTemplates";
 import { hevyKeyStore } from "../keyStore";
 import {
   COUNT_CALORIES,
   CATALOG_NOT_READY,
+  FILE_READ_FAILED,
+  sectionRulesRemovedLine,
   CSV_ERROR_COPY,
   FILE_TOO_BIG,
   LEFT_OUT_COPY,
@@ -233,5 +238,107 @@ describe("20.0 AC19 — never resolved against an exercise list that has not syn
     expect(await within(dialog).findByText(CATALOG_NOT_READY)).toBeInTheDocument();
     expect(within(dialog).queryByRole("region", { name: "Preview" })).toBeNull();
     expect(puts).toEqual([]);
+  });
+});
+
+const HEVY_TEMPLATES = "https://api.hevyapp.com/v1/exercise_templates";
+
+describe("Minor 184 — leaving mid-read stops the Hevy reads", () => {
+  it("unmounting after page 1 sends no request for page 3", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    const asked: number[] = [];
+    let release!: () => void;
+    const page2 = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get(HEVY_TEMPLATES, async ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        asked.push(page);
+        if (page === 2) await page2;
+        return HttpResponse.json({ page, page_count: 3, exercise_templates: many.slice((page - 1) * 100, page * 100) });
+      }),
+    );
+    const { unmount } = renderHevyScreen(undefined, { catalog: CATALOG });
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    await waitFor(() => expect(asked).toContain(2));
+    unmount();
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).not.toContain(3);
+  });
+
+  it("a file the browser can't read says so", async () => {
+    const dialog = await openSheet();
+    const unreadable = new File(["x"], "m.csv", { type: "text/csv" });
+    Object.defineProperty(unreadable, "text", { value: () => Promise.reject(new Error("NotReadableError")) });
+    await userEvent.upload(within(dialog).getByLabelText("Choose a file"), unreadable);
+    expect(await within(dialog).findByText(FILE_READ_FAILED)).toBeInTheDocument();
+  });
+});
+
+describe("Minor 185 — the sheet's live regions are mounted empty", () => {
+  it("the progress and error regions are there, empty, when the sheet opens", async () => {
+    const dialog = await openSheet();
+    expect(within(dialog).getByTestId("hevy-load-progress")).toHaveTextContent("");
+    expect(within(dialog).getByTestId("hevy-load-progress")).toHaveAttribute("role", "status");
+    expect(within(dialog).getByTestId("hevy-load-errors")).toHaveTextContent("");
+    expect(within(dialog).getByTestId("hevy-load-errors")).toHaveAttribute("role", "alert");
+  });
+});
+
+describe("Minor 186 — the preview's sections", () => {
+  it("rules read as words, the file's markers are listed, and a stored rule the file changes is named", async () => {
+    server.use(
+      http.get(MAPPING_URL, () => HttpResponse.json({ pairs: [], sectionRules: [{ name: "Finisher", treatment: "notes_on_first" }] })),
+      templatesHandler([...TEMPLATES, tpl("T-WARM", "Warmup", "reps_only")]),
+    );
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-BENCH,,${BENCH.id},,,`, "placeholder,T-WARM,,,,warmup,", "section,,,,Warm-up,warmup_placeholder,"));
+    const preview = await within(dialog).findByRole("region", { name: "Preview" });
+    expect(within(preview).getByText(`Warm-up: ${TREATMENT_LABELS.warmup_placeholder}`)).toBeInTheDocument();
+    expect(within(preview).queryByText(/warmup_placeholder/)).toBeNull();
+    expect(within(preview).getByText(/Warmup marker: Warmup/)).toBeInTheDocument();
+    expect(within(preview).getByText(sectionRulesRemovedLine(1))).toBeInTheDocument();
+    expect(within(preview).getByText(/Finisher/)).toBeInTheDocument();
+  });
+});
+
+describe("Minor 190 — bad section lines are left out with their line", () => {
+  it("a repeated name (any case) is left out with its line; one Warm-up rule is sent", async () => {
+    server.use(
+      http.put(MAPPING_URL, async ({ request }) => {
+        const body = (await request.json()) as { pairs: object[]; sectionRules: object[] };
+        return HttpResponse.json({ pairs: body.pairs.map((p) => ({ ...p, exerciseActive: true })), sectionRules: body.sectionRules });
+      }),
+    );
+    const dialog = await openSheet();
+    // An empty name is already refused by the parser (no_sin_ref), before any preview.
+    await choose(dialog, csv(`exercise,T-BENCH,,${BENCH.id},,,`, "section,,,,Warm-up,warmup_placeholder,", "section,,,,warm-up,notes_on_first,"));
+    const leftOut = await within(dialog).findByRole("list", { name: "Left out" });
+    expect(within(leftOut).getByText(/Line 4/)).toHaveTextContent(LEFT_OUT_COPY.section_invalid);
+    await userEvent.click(within(dialog).getByRole("button", { name: loadButton(1) }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect((puts[0] as { sectionRules: unknown[] }).sectionRules).toEqual([{ name: "Warm-up", treatment: "warmup_placeholder" }]);
+  });
+});
+
+describe("Minor 191 — the sheet and the hook share one template read", () => {
+  it("a read the markers sheet started is reused, not repeated", async () => {
+    const reads: number[] = [];
+    server.use(
+      http.get(HEVY_TEMPLATES, async ({ request }) => {
+        reads.push(Number(new URL(request.url).searchParams.get("page")));
+        return HttpResponse.json({ page: 1, page_count: 1, exercise_templates: TEMPLATES });
+      }),
+    );
+    const { queryClient } = renderHevyScreen(undefined, { catalog: CATALOG });
+    // The hook's read (the Pairings and markers screens use it), then the sheet's.
+    await queryClient.fetchQuery(hevyTemplatesQuery(hevyClientFor(() => VALID_KEY)));
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    await within(dialog).findByRole("region", { name: "Preview" });
+    expect(reads).toEqual([1]);
   });
 });

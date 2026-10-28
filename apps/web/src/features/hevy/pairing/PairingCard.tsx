@@ -131,11 +131,10 @@ export function PairingCard({ card, problem, missing, rows, muscleGroups, equipm
           <span>{offered === "calories_as_reps" ? CALORIES_RULE : ASSIST_RULE}</span>
         </label>
       ) : null}
-      {message !== null ? (
-        <p className={styles.problem} role="status">
-          {message}
-        </p>
-      ) : null}
+      {/* Minor 185: mounted empty, so a problem that appears later is announced. */}
+      <p className={styles.problem} role="status">
+        {message ?? ""}
+      </p>
       {card.hevyType !== null ? (
         <Button variant="secondary" aria-label={`${CHOOSE_ANOTHER} for ${card.title}`} onClick={onChooseAnother}>
           {CHOOSE_ANOTHER}

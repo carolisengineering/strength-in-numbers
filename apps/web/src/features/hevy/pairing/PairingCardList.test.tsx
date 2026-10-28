@@ -108,3 +108,13 @@ describe("20.0 AC26 — PairingCards", () => {
     expect(requests.filter((r) => !/\/v1\/(exercises|muscle-groups|equipment)$/.test(r.slice(4)))).toEqual([]);
   });
 });
+
+describe("Minor 185 — a card's status line is mounted empty", () => {
+  it("each card has its status region from first paint, with no text while nothing blocks it", async () => {
+    host([{ template: tpl("A", "Bench Press") }]);
+    const card = await screen.findByRole("group", { name: "Bench Press" });
+    const regions = within(card).getAllByRole("status");
+    expect(regions.length).toBeGreaterThanOrEqual(1);
+    expect(regions.some((r) => r.textContent === "")).toBe(true);
+  });
+});

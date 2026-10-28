@@ -143,6 +143,9 @@ export const usedIn = (workouts: number, routines: number) =>
   routines === 0 ? `Used in ${plural(workouts, "workout")}` : `${plural(workouts, "workout")}, ${plural(routines, "routine")}`;
 // Plan copy.
 export const ASSIST_RULE = "Ignore the assist weight";
+export const FILE_READ_FAILED = "Couldn't read that file. Choose it again.";
+export const sectionRulesRemovedLine = (n: number) => `${n} section rules in the app that this file drops or changes`;
+export const markerLine = (which: "warmup" | "workout", title: string) => `${which === "warmup" ? "Warmup marker" : "Workout marker"}: ${title}`;
 export const PAIRINGS_LOADING = "Loading your exercises…";
 export const sentAsDone = (title: string) => `${title} is now sent to Hevy.`;
 export const removedDone = (title: string) => `Removed ${title}.`;
@@ -178,4 +181,5 @@ export const LEFT_OUT_COPY: Readonly<Record<LeftOutReason, string>> = Object.fre
   type_mismatch: "the types don't match",
   retired: "this exercise was deleted",
   duplicate: "this Hevy exercise is already on an earlier line",
+  section_invalid: "a section named twice; only the first counts",
 });
