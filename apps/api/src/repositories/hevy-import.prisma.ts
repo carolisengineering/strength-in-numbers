@@ -16,6 +16,8 @@ import {
 import { uuidv7 } from "uuidv7";
 import { ValidationError } from "../errors/app-error.js";
 import { fingerprintSourceOf, hevyFingerprint } from "../hevy/fingerprint.js";
+import { rebuildUserRecords } from "../records/rebuild.js";
+import { lockUserRecords } from "./personal-record.prisma.js";
 import { readHevyMapping } from "./hevy.prisma.js";
 import type {
   HevyImportBatchRecord,
@@ -374,7 +376,28 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     return { results, setsCreated, setsDropped };
   }
 
-  return { importBatch, writeImportedWorkout };
+  /**
+   * §6.5, AC26: `lockUserRecords` FIRST (07.0 D9), then the flag row. With no row (no batch created yet) or the flag
+   * false, nothing is written; else the caller's records are rebuilt exactly as `records:rebuild --user` does.
+   */
+  async function finishImport(userId: string): Promise<{ recomputed: boolean; rootCount: number }> {
+    return prisma.$transaction(
+      async (tx) => {
+        await lockUserRecords(tx, userId);
+        const rows = await tx.$queryRaw<{ records_stale: boolean }[]>`
+          SELECT records_stale FROM "hevy_account" WHERE user_id = ${userId}::uuid FOR UPDATE`;
+        if (rows[0]?.records_stale !== true) return { recomputed: false, rootCount: 0 };
+        const { rootCount } = await rebuildUserRecords(tx, userId);
+        await tx.$executeRaw`
+          UPDATE "hevy_account" SET records_stale = false, updated_at = now() WHERE user_id = ${userId}::uuid`;
+        return { recomputed: true, rootCount };
+      },
+      // The same bound as `records:rebuild`'s per-user transaction.
+      { timeout: 60_000 },
+    );
+  }
+
+  return { importBatch, writeImportedWorkout, finishImport };
 }
 
 const OUTCOME_FOR_ORIGIN: Readonly<Record<HevyLinkHit["origin"], HevyImportResult["outcome"]>> = Object.freeze({

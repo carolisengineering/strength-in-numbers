@@ -44,4 +44,6 @@ export interface HevyImportRepository {
   importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord>;
   /** §6.2: one translated workout in one transaction, with its `imported` link and the stale-records flag. */
   writeImportedWorkout(userId: string, hevyWorkoutId: string, w: ImportedWorkout): Promise<WriteOutcome>;
+  /** §6.5: rebuilds the caller's records once if a batch left them stale; the only Hevy write that takes the PR lock. */
+  finishImport(userId: string): Promise<{ recomputed: boolean; rootCount: number }>;
 }
