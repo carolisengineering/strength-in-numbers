@@ -133,22 +133,28 @@ const RULES_FOR: Readonly<Record<MappingCsvKind, readonly string[]>> = {
 
 /**
  * Spec 19.0 AC14: the file back into lines. Accepts a leading BOM, `\n`, `\r\n` or `\r`, and blank lines (skipped). Each
- * error carries its 1-based line and a code, never the cell's text; a bad header stops the parse.
+ * error carries its 1-based line and a code, never the cell's text; a bad header stops the parse. `lineNumbers[i]` is
+ * the 1-based line `lines[i]` starts on (Spec 20.0 AC19 names a left-out line by its number).
  */
-export function parseMappingCsv(text: string): { lines: MappingCsvLine[]; errors: MappingCsvError[] } {
+export function parseMappingCsv(text: string): { lines: MappingCsvLine[]; lineNumbers: number[]; errors: MappingCsvError[] } {
   // UTF-8 never takes fewer bytes than UTF-16 units, so an over-long string is refused without the walk (minor 138).
-  if (text.length > MAPPING_CSV_MAX_BYTES || utf8Length(text) > MAPPING_CSV_MAX_BYTES) return { lines: [], errors: [{ line: 1, code: "file_too_large" }] };
+  if (text.length > MAPPING_CSV_MAX_BYTES || utf8Length(text) > MAPPING_CSV_MAX_BYTES) {
+    return { lines: [], lineNumbers: [], errors: [{ line: 1, code: "file_too_large" }] };
+  }
   const body = text.replace(/^\uFEFF/, "");
   const physical = body.replace(/(\r\n|\r|\n)+$/, "").split(/\r\n|\r|\n/).length;
-  if (physical > MAPPING_CSV_MAX_LINES) return { lines: [], errors: [{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }] };
+  if (physical > MAPPING_CSV_MAX_LINES) {
+    return { lines: [], lineNumbers: [], errors: [{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }] };
+  }
 
   const rows = records(body).filter((r) => r.cells.some((c) => c.trim() !== ""));
   const [header, ...rest] = rows;
   if (!header || header.cells.map((c) => c.trim()).join(",") !== MAPPING_CSV_HEADER) {
-    return { lines: [], errors: [{ line: header?.line ?? 1, code: "bad_header" }] };
+    return { lines: [], lineNumbers: [], errors: [{ line: header?.line ?? 1, code: "bad_header" }] };
   }
 
   const lines: MappingCsvLine[] = [];
+  const lineNumbers: number[] = [];
   const errors: MappingCsvError[] = [];
   for (const { line, cells } of rest) {
     const fail = (code: MappingCsvErrorCode) => errors.push({ line, code });
@@ -190,8 +196,9 @@ export function parseMappingCsv(text: string): { lines: MappingCsvLine[]; errors
       rule: orNull(rule) as MappingCsvLine["rule"],
       exportAs: exportAs === "" ? null : exportAs === "yes",
     });
+    lineNumbers.push(line);
   }
-  return { lines, errors };
+  return { lines, lineNumbers, errors };
 }
 
 const PLACEHOLDER_RULE: Readonly<Partial<Record<HevyPair["role"], "warmup" | "workout">>> = {

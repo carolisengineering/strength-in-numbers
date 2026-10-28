@@ -164,14 +164,14 @@ describe("19.0 AC14 — errors", () => {
   it("too_many_lines: 5,001 lines are refused before parsing", () => {
     const text = body(...Array.from({ length: MAPPING_CSV_MAX_LINES }, (_, i) => `skip,S${i},Stretching,,,,`));
     expect(MAPPING_CSV_MAX_LINES).toBe(5000);
-    expect(parseMappingCsv(text)).toEqual({ lines: [], errors: [{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }] });
+    expect(parseMappingCsv(text)).toEqual({ lines: [], lineNumbers: [], errors: [{ line: MAPPING_CSV_MAX_LINES + 1, code: "too_many_lines" }] });
   });
 
   it("file_too_large: 1 MiB + 1 byte is refused before parsing", () => {
     expect(MAPPING_CSV_MAX_BYTES).toBe(1_048_576);
     const text = MAPPING_CSV_HEADER + "\r\n" + "x".repeat(MAPPING_CSV_MAX_BYTES + 1 - MAPPING_CSV_HEADER.length - 2);
     expect(Buffer.byteLength(text, "utf8")).toBe(MAPPING_CSV_MAX_BYTES + 1);
-    expect(parseMappingCsv(text)).toEqual({ lines: [], errors: [{ line: 1, code: "file_too_large" }] });
+    expect(parseMappingCsv(text)).toEqual({ lines: [], lineNumbers: [], errors: [{ line: 1, code: "file_too_large" }] });
   });
 });
 
@@ -196,5 +196,22 @@ describe("19.0 AC14 — mappingToCsvLines", () => {
       line({ kind: "section", sinName: "Finisher", rule: "notes_on_first" }),
       line({ kind: "section", sinName: "Warm-up", rule: "warmup_placeholder" }),
     ]);
+  });
+});
+
+describe("20.0 AC19 — each parsed line keeps its file line number", () => {
+  it("lineNumbers runs beside lines, 1-based, past blank lines, refused lines and quoted line ends", () => {
+    const text = [
+      MAPPING_CSV_HEADER,
+      "skip,S1,Stretching,,,,",
+      "",
+      "exercise,X,Bad,,Squat,",
+      '"exercise",E1,"Two\nline title",,Squat,,yes',
+      "skip,S2,Foam roll,,,,",
+    ].join("\r\n");
+    const parsed = parseMappingCsv(text);
+    expect(parsed.lines.map((l) => l.hevyId)).toEqual(["S1", "E1", "S2"]);
+    expect(parsed.lineNumbers).toEqual([2, 5, 7]);
+    expect(parsed.errors).toEqual([{ line: 4, code: "missing_column" }]);
   });
 });
