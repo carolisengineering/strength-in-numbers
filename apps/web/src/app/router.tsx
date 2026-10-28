@@ -4,6 +4,7 @@ import { Callback } from "../auth/Callback";
 import { HistoryScreen } from "../features/history/HistoryScreen";
 import { HevyRoute } from "../features/hevy/HevyRoute";
 import { HevyScreen } from "../features/hevy/HevyScreen";
+import { PairingsScreen } from "../features/hevy/pairings/PairingsScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
 import { AllExercises } from "../features/exercises/AllExercises";
 import { ExerciseRoute } from "../features/exercises/ExerciseScreen";
@@ -36,6 +37,7 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app         BootstrapGate > ProtectedRoute > ProtectedLayout[AppShell] > redirect (replace) to /app/workouts (Spec 06.1 D20)
  *   /app/profile …                                                    > ProfileScreen  protected (Spec 04.1 slice)
  *   /app/profile/hevy                                                 > HevyRoute (status gate) > HevyScreen (Spec 20.0, owner-only)
+ *   /app/profile/hevy/pairings                                        > HevyRoute > PairingsScreen (Spec 20.0 Phase B)
  *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
  *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
  *   /app/workouts/:id/edit                                            > EditWorkoutScreen section="workouts" (Spec 18.0)
@@ -86,6 +88,14 @@ export const routes: RouteObject[] = [
                 element: (
                   <HevyRoute>
                     <HevyScreen />
+                  </HevyRoute>
+                ),
+              },
+              {
+                path: "profile/hevy/pairings",
+                element: (
+                  <HevyRoute>
+                    <PairingsScreen />
                   </HevyRoute>
                 ),
               },

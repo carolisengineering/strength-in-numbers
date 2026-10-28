@@ -13,8 +13,14 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
-import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, useInstantPacer, userInfoOk } from "../../test/hevyHarness";
+import { MAPPING_CSV_HEADER } from "@sin/core";
+import { http, HttpResponse } from "msw";
+
+import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
+import { exerciseId, makeExercise } from "../../test/catalogFixtures";
+import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, useInstantPacer, userInfoOk } from "../../test/hevyHarness";
+import { PairingsScreen } from "./pairings/PairingsScreen";
+import { PAIRINGS_PATH } from "./paths";
 import { server } from "../../test/msw/server";
 import { filesUnder } from "../../test/sourceScan";
 import { hevyKeyStore } from "./keyStore";
@@ -42,6 +48,7 @@ describe("20.0 AC32 — Hevy screen landmarks and live regions", () => {
     expect(headings.map((h) => [h.tagName, h.textContent])).toEqual([
       ["H1", "Hevy"],
       ["H2", "Hevy key"],
+      ["H2", "Exercise pairings"],
     ]);
     expect(screen.getByRole("region", { name: "Hevy" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Hevy key" })).toBeInTheDocument();
@@ -102,6 +109,49 @@ describe("20.0 AC14 — the screen shell", () => {
   it("the Profile row is a full-height tap target (the token, not a number)", () => {
     const css = readFileSync(join(HERE, "HevyProfileRow.module.css"), "utf8");
     expect(css).toContain("min-height: var(--tap-target-min)");
+  });
+});
+
+describe("20.0 AC32 — preview, Pairings and cards", () => {
+  const BENCH = makeExercise({ id: exerciseId(1), name: "Bench Press" });
+  const ROW = makeExercise({ id: exerciseId(2), name: "Row Erg", modality: "calories" });
+  const tpl = (id: string, title: string, type = "weight_reps") => ({ id, title, type, is_custom: false, primary_muscle_group: "chest", secondary_muscle_groups: [], equipment: "barbell" });
+  const FILE = [MAPPING_CSV_HEADER, `exercise,T-B,,${BENCH.id},,,`, `exercise,T-R,,${ROW.id},,,`, "exercise,,Nope,,Nothing,,"].join("\r\n");
+
+  it("the preview's sections are h3s under the sheet's h2, focus lands on the first, and reasons are text", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    server.use(userInfoOk(), templatesHandler([tpl("T-B", "Bench Press (Barbell)"), tpl("T-R", "Echo Bike (calories)", "reps_only")]));
+    renderHevyScreen(undefined, { catalog: [BENCH, ROW] });
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await userEvent.upload(within(dialog).getByLabelText("Choose a file"), new File([FILE], "m.csv", { type: "text/csv" }));
+    const first = await within(dialog).findByRole("heading", { level: 3, name: "Will be paired: 1" });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(within(dialog).getAllByRole("heading").map((h) => [h.tagName, h.textContent])).toEqual([
+      ["H2", "Load a mapping file"],
+      ["H3", "Will be paired: 1"],
+      ["H3", "Left out: 1"],
+      ["H3", "Section rules and placeholders"],
+    ]);
+    expect(within(dialog).getByRole("list", { name: "Left out" })).toHaveTextContent("not found in Hevy");
+  });
+
+  it("Pairings: one h1, then an h2 per group; rule badges are text", async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/v1/hevy/mapping`, () =>
+        HttpResponse.json({
+          pairs: [{ hevyTemplateId: "T-R", hevyTitle: "Echo Bike (calories)", hevyType: "reps_only", role: "exercise", exerciseId: ROW.id, exerciseActive: true, measureRule: "calories_as_reps", exportAs: true }],
+          sectionRules: [],
+        }),
+      ),
+    );
+    renderHevyScreen(undefined, { catalog: [BENCH, ROW], path: PAIRINGS_PATH, routes: [{ path: PAIRINGS_PATH, element: <PairingsScreen /> }] });
+    await screen.findByRole("heading", { level: 2, name: "Row Erg" });
+    expect(screen.getAllByRole("heading").map((h) => [h.tagName, h.textContent])).toEqual([
+      ["H1", "Pairings"],
+      ["H2", "Row Erg"],
+    ]);
+    expect(screen.getByText("calories as reps")).toBeInTheDocument();
   });
 });
 

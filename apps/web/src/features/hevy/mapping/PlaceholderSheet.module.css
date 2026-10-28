@@ -1,0 +1,38 @@
+/* Spec 20.0 AC30: the section-marker sheet. Existing tokens only; teal stays on the primary button. */
+.body,
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.body {
+  gap: var(--space-4);
+}
+
+.group {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+}
+
+.search {
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: thin solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}

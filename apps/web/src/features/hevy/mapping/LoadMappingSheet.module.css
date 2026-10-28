@@ -1,0 +1,45 @@
+/* Spec 20.0 §5.2: the load sheet's steps. Existing tokens only; teal stays on the primary button. */
+.body,
+.preview,
+.fix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.body p,
+.preview p,
+.preview ul,
+.errors {
+  margin: 0;
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: var(--tap-target-min);
+  font-weight: 600;
+}
+
+.errors {
+  padding-left: var(--space-4);
+  color: var(--color-danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
