@@ -120,5 +120,5 @@ describe("10.4 AC35 — the text stays text and stays here", () => {
     expect(document.body.innerHTML).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 
-  it("USER_DATA_KEY_PREFIXES is unchanged", () => expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:"]));
+  it("USER_DATA_KEY_PREFIXES is unchanged", () => expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:", "sin:hevy:"]));
 });

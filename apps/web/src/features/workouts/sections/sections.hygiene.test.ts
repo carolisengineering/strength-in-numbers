@@ -78,7 +78,7 @@ describe("10.6 AC24 — text as text, no new storage", () => {
 
   it("no browser storage in sections/, and the user-data prefixes are unchanged", () => {
     expect(SOURCES.filter((f) => /localStorage|sessionStorage|StorageAdapter|sin:/.test(stripComments(read(f))))).toEqual([]);
-    expect(USER_DATA_KEY_PREFIXES).toStrictEqual(["sin:catalog:", "sin:recents:", "sin:workout:"]);
+    expect(USER_DATA_KEY_PREFIXES).toStrictEqual(["sin:catalog:", "sin:recents:", "sin:workout:", "sin:hevy:"]);
   });
 });
 

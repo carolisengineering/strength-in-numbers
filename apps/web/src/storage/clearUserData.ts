@@ -9,6 +9,8 @@ export const USER_DATA_KEY_PREFIXES: readonly string[] = [
   "sin:catalog:",
   "sin:recents:",
   "sin:workout:",
+  // Spec 20.0 AC2: the Hevy key (`features/hevy/keyStore.ts`).
+  "sin:hevy:",
 ];
 
 export const isUserDataKey = (key: string): boolean =>
