@@ -75,6 +75,8 @@ export const loaded = (n: number) => `Loaded ${n} pairings.`;
 export const MAPPING_REJECTED = "The server didn't accept this mapping";
 // Copied from routines/messages.ts (OFFLINE_SAVE, RATE_LIMITED), not imported: Hevy imports nothing from routines (AC31).
 export const MAPPING_OFFLINE = "You're offline — your changes are still here, try again when connected";
+export const QUIET_MINUTE = "Hevy asks apps to wait during the first minute of each hour. This will go through shortly.";
+export const LOADING_USERNAME = "Checking your Hevy account…";
 export const MAPPING_RATE_LIMITED = "Too many changes in a short time — wait a minute and try again";
 // Plan copy.
 export const MAPPING_SAVE_FAILED = "Couldn't save the pairings. Try again.";

@@ -198,3 +198,20 @@ describe("20.0 AC10 — one pacer for every client", () => {
     expect(starts[1]! - starts[0]!).toBe(600);
   });
 });
+
+describe("Minor 170 — a Stop during the body read is aborted, not unexpected_reply (Review Focus 5)", () => {
+  it("a 2xx whose body read fails after the signal aborted throws aborted", async () => {
+    const controller = new AbortController();
+    const reply = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      },
+    } as unknown as Response;
+    const h = harness([reply]);
+    await expect(h.client.userInfo(controller.signal)).rejects.toMatchObject({ kind: "aborted" });
+  });
+});

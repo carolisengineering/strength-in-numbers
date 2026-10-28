@@ -97,6 +97,8 @@ export function createHevyClient(deps: HevyClientDeps): HevyClient {
         try {
           json = await response.json();
         } catch {
+          // Minor 170: a Stop during the body read is a stop, not a reply we didn't understand.
+          if (opts.signal?.aborted) throw new HevyError("aborted");
           throw new HevyError("unexpected_reply", { status: response.status });
         }
         const parsed = schema.safeParse(json);

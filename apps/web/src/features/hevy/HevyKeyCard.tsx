@@ -15,6 +15,8 @@ import {
   KEY_SAVED,
   KEY_SAVED_VISIT,
   KEY_STAYS,
+  LOADING_USERNAME,
+  QUIET_MINUTE,
   REMOVE,
   REMOVE_BODY,
   REMOVE_TITLE,
@@ -26,6 +28,7 @@ import {
 } from "./messages";
 import { useHevyKey } from "./useHevyKey";
 import { useHevyUser } from "./useHevyUser";
+import { inQuietMinute } from "./client/pacer";
 import styles from "./HevyKeyCard.module.css";
 
 const KEY_INPUT_ID = "hevy-key";
@@ -89,7 +92,7 @@ export function HevyKeyCard() {
         <div className={styles.current}>
           <p className={styles.ending}>{keyEnding(key.lastFour)}</p>
           {username !== null ? <p className={styles.who}>{signedInAs(username)}</p> : null}
-          {userFailure !== null ? <p className={styles.failure}>{userFailure}</p> : null}
+          {username === null && user.isPending && user.fetchStatus === "fetching" ? <p className={styles.who}>{LOADING_USERNAME}</p> : null}
           {!replacing ? (
             <div className={styles.actions}>
               <Button variant="secondary" onClick={() => setReplacing(true)}>
@@ -126,6 +129,7 @@ export function HevyKeyCard() {
             )}
           </Field>
           <p className={styles.stays}>{KEY_STAYS}</p>
+          {busy !== null && inQuietMinute(Date.now()) ? <p className={styles.stays}>{QUIET_MINUTE}</p> : null}
           <div className={styles.actions}>
             <Button type="submit" busy={busy === "remember"} disabled={busy !== null}>
               {SAVE_AND_REMEMBER}
@@ -152,7 +156,8 @@ export function HevyKeyCard() {
       ) : null}
 
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-key-status">
-        {announcement.text}
+        {/* Minor 171: a stored key that Hevy now refuses is announced here too, after the last outcome. */}
+        {announcement.text !== "" ? announcement.text : (userFailure ?? "")}
       </p>
 
       <ConfirmDialog
