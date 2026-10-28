@@ -45,12 +45,20 @@ export function classifyHevyResponse(status: number, body: unknown): HevyErrorKi
   return "rejected";
 }
 
-/** `Retry-After` in milliseconds from `nowMs`: whole seconds or an HTTP date (a past date is 0); else `null`. */
+/** At most 5 minutes, like the app's own API client (`api/problem.ts`): a huge value must not freeze every request. */
+export const HEVY_RETRY_AFTER_CAP_MS = 5 * 60 * 1000;
+
+/**
+ * `Retry-After` in milliseconds from `nowMs`: whole seconds or an HTTP date (a past date is 0), capped at
+ * `HEVY_RETRY_AFTER_CAP_MS`; anything else is `null`. An HTTP date has a month or weekday name, so a bare number
+ * like `1.5` (which `Date.parse` would read as a year) is not one.
+ */
 export function parseRetryAfter(value: string | null, nowMs: number): number | null {
   if (value === null) return null;
   const trimmed = value.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  if (/^\d+$/.test(trimmed)) return Math.min(Number(trimmed) * 1000, HEVY_RETRY_AFTER_CAP_MS);
+  if (!/[a-z]/i.test(trimmed)) return null;
   const at = Date.parse(trimmed);
   if (Number.isNaN(at)) return null;
-  return Math.max(0, at - nowMs);
+  return Math.min(Math.max(0, at - nowMs), HEVY_RETRY_AFTER_CAP_MS);
 }

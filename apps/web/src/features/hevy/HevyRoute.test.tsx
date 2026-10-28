@@ -70,6 +70,16 @@ describe("20.0 AC1 — direct visit", () => {
     expect(screen.queryByTestId("not-found")).toBeNull();
   });
 
+  it("offline, with no status yet, it says so instead of spinning or claiming not found", async () => {
+    server.use(http.get(STATUS_URL, () => HttpResponse.error()));
+    renderAt(HEVY_PATH);
+    expect(await screen.findByText("Couldn't load this page. Check your connection and try again.")).toBeInTheDocument();
+    expect(screen.queryByTestId("not-found")).toBeNull();
+    expect(screen.queryByTestId("spinner")).toBeNull();
+    // The gate hides the feature from everyone else, so nothing here names it.
+    expect(screen.getByRole("main", { hidden: true }).textContent ?? "").not.toMatch(/hevy/i);
+  });
+
   it("while the status is pending it shows a spinner, never the screen", async () => {
     server.use(http.get(STATUS_URL, () => new Promise<never>(() => {})));
     renderAt(HEVY_PATH);

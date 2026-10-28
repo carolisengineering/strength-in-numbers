@@ -60,10 +60,14 @@ describe("20.0 AC32 — Hevy screen landmarks and live regions", () => {
     renderHevyScreen();
     await userEvent.click(screen.getByLabelText("Hevy API key"));
     await userEvent.paste(VALID_KEY);
-    await userEvent.click(screen.getByRole("button", { name: "Save and remember" }));
     const line = screen.getByTestId("hevy-key-status");
+    // Focus arrives with the words, never on an empty line.
+    let textWhenFocused: string | null = null;
+    line.addEventListener("focus", () => void (textWhenFocused = line.textContent), { once: true });
+    await userEvent.click(screen.getByRole("button", { name: "Save and remember" }));
     await waitFor(() => expect(line).toHaveTextContent(KEY_SAVED));
     await waitFor(() => expect(line).toHaveFocus());
+    expect(textWhenFocused).toBe(KEY_SAVED);
 
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove" }));

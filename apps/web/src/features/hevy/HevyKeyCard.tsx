@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -42,15 +42,15 @@ export function HevyKeyCard() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<"remember" | "visit" | null>(null);
-  const [announcement, setAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
 
-  const announce = (text: string) => {
-    setAnnouncement(text);
-    // After the line renders, so a screen reader reads the new text from the focused line.
-    queueMicrotask(() => statusRef.current?.focus());
-  };
+  const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1 }));
+  // After the line has rendered its new text (and the form has unmounted), so focus lands on the words.
+  useEffect(() => {
+    if (announcement.seq > 0) statusRef.current?.focus();
+  }, [announcement.seq]);
 
   async function save(remember: boolean) {
     setBusy(remember ? "remember" : "visit");
@@ -152,7 +152,7 @@ export function HevyKeyCard() {
       ) : null}
 
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-key-status">
-        {announcement}
+        {announcement.text}
       </p>
 
       <ConfirmDialog

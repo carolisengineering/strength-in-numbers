@@ -39,15 +39,22 @@ export function createPacer(deps: PacerDeps): Pacer {
   return {
     async wait(signal) {
       if (signal?.aborted) throw new HevyError("aborted");
-      const slot = outOfQuietMinute(Math.max(nextSlotMs, deferredUntilMs, deps.now()));
+      let slot = outOfQuietMinute(Math.max(nextSlotMs, deferredUntilMs, deps.now()));
       nextSlotMs = slot + HEVY_MIN_GAP_MS;
-      const ms = slot - deps.now();
-      try {
-        if (ms > 0) await deps.sleep(ms, signal);
-      } catch {
-        throw new HevyError("aborted");
+      for (;;) {
+        const ms = slot - deps.now();
+        try {
+          if (ms > 0) await deps.sleep(ms, signal);
+        } catch {
+          throw new HevyError("aborted");
+        }
+        if (signal?.aborted) throw new HevyError("aborted");
+        // A Retry-After that arrived while this caller slept still holds it back.
+        const later = outOfQuietMinute(Math.max(slot, deferredUntilMs));
+        if (later <= slot) return;
+        slot = later;
+        nextSlotMs = Math.max(nextSlotMs, slot + HEVY_MIN_GAP_MS);
       }
-      if (signal?.aborted) throw new HevyError("aborted");
     },
     deferUntil(atMs) {
       deferredUntilMs = Math.max(deferredUntilMs, atMs);

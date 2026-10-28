@@ -49,6 +49,17 @@ describe("20.0 AC10 — pacing", () => {
     expect(c.now() - start).toBeGreaterThanOrEqual(7000);
   });
 
+  it("a Retry-After that arrives while a request is already queued still holds it back", async () => {
+    const c = clock("2026-10-28T12:30:00.000Z");
+    const pacer = createPacer(c);
+    const start = c.now();
+    await pacer.wait();
+    const queued = pacer.wait();
+    pacer.deferUntil(start + 7000);
+    await queued;
+    expect(c.now()).toBeGreaterThanOrEqual(start + 7000);
+  });
+
   it("an aborted signal rejects at once with kind aborted", async () => {
     const c = clock("2026-10-28T12:30:00.000Z");
     const pacer = createPacer(c);

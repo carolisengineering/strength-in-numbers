@@ -48,4 +48,10 @@ describe("20.0 AC10 — Retry-After", () => {
     expect(parseRetryAfter(null, t)).toBeNull();
     expect(parseRetryAfter(new Date(t - 60_000).toUTCString(), t)).toBe(0);
   });
+
+  it("is capped at 5 minutes, like the app's own API client, and a decimal is not a date", () => {
+    expect(parseRetryAfter("3600", t)).toBe(300_000);
+    expect(parseRetryAfter(new Date(t + 3_600_000).toUTCString(), t)).toBe(300_000);
+    expect(parseRetryAfter("1.5", t)).toBeNull();
+  });
 });
