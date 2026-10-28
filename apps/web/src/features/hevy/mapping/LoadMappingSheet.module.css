@@ -43,3 +43,11 @@
   flex-wrap: wrap;
   gap: var(--space-3);
 }
+
+.progress {
+  margin: 0;
+}
+
+.progress:empty {
+  display: none;
+}

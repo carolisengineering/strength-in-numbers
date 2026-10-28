@@ -18,7 +18,7 @@ import { http, HttpResponse } from "msw";
 
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
-import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, useInstantPacer, userInfoOk } from "../../test/hevyHarness";
+import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../test/hevyHarness";
 import { PairingsScreen } from "./pairings/PairingsScreen";
 import { PAIRINGS_PATH } from "./paths";
 import { server } from "../../test/msw/server";
@@ -31,7 +31,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   window.localStorage.clear();
 });

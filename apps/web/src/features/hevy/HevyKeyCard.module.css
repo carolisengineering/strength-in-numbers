@@ -45,3 +45,8 @@
   margin: 0;
   outline: none;
 }
+
+.status:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: var(--focus-ring-width);
+}

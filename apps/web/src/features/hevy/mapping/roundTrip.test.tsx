@@ -16,7 +16,7 @@ vi.mock("../../account/saveBlob", () => ({ saveBlob: (blob: Blob, filename: stri
 
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
-import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, useInstantPacer, userInfoOk } from "../../../test/hevyHarness";
+import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { hevyKeyStore } from "../keyStore";
 import { leftOutHeading, loadButton, willBeRemovedLine } from "../messages";
@@ -35,6 +35,8 @@ const ORIGINAL: FakeMapping = {
     { hevyTemplateId: "T-B", hevyTitle: 'Développé, "couché"', hevyType: "weight_reps", role: "exercise", exerciseId: BENCH.id, exerciseActive: true, measureRule: null, exportAs: true },
     { hevyTemplateId: "T-R", hevyTitle: "Echo Bike (calories)", hevyType: "reps_only", role: "exercise", exerciseId: ROW.id, exerciseActive: true, measureRule: "calories_as_reps", exportAs: true },
     { hevyTemplateId: "T-S", hevyTitle: "Stretching", hevyType: "duration", role: "skip", exerciseId: null, exerciseActive: null, measureRule: null, exportAs: false },
+    // Minor 189: a title a spreadsheet would run as a formula still round-trips.
+    { hevyTemplateId: "T-F", hevyTitle: '=HYPERLINK("x")', hevyType: "duration", role: "skip", exerciseId: null, exerciseActive: null, measureRule: null, exportAs: false },
     { hevyTemplateId: "T-W", hevyTitle: "Warmup", hevyType: "reps_only", role: "warmup_placeholder", exerciseId: null, exerciseActive: null, measureRule: null, exportAs: false },
     { hevyTemplateId: "T-X", hevyTitle: "Section", hevyType: "reps_only", role: "workout_placeholder", exerciseId: null, exerciseActive: null, measureRule: null, exportAs: false },
   ],
@@ -52,7 +54,7 @@ let reads = 0;
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
   saved.blobs = [];
@@ -103,7 +105,7 @@ describe("20.0 AC23 — round trip", () => {
     await userEvent.click(screen.getByRole("button", { name: "Load a file" }));
     const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
     await userEvent.upload(within(dialog).getByLabelText("Choose a file"), new File([text], "hevy-mapping.csv", { type: "text/csv" }));
-    const confirm = await within(dialog).findByRole("button", { name: loadButton(5) });
+    const confirm = await within(dialog).findByRole("button", { name: loadButton(6) });
     expect(within(dialog).queryByText(leftOutHeading(1), { exact: false })).toBeNull();
     expect(within(dialog).queryByText(/Left out/)).toBeNull();
     expect(within(dialog).queryByText(willBeRemovedLine(1), { exact: false })).toBeNull();

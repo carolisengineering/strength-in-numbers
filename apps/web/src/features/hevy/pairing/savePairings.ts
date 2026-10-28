@@ -5,8 +5,8 @@ import { reportError } from "../../../observability/reportError";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
 import { classifyExerciseError } from "../../exercises/exerciseErrors";
 import type { PairInput } from "../mapping/useMappingMutations";
-import { classifyMappingError } from "../mapping/useMappingMutations";
-import { HEVY_COPY, MAPPING_OFFLINE, MAPPING_RATE_LIMITED, MAPPING_SAVE_FAILED, createFailed } from "../messages";
+import { classifyMappingError, mappingErrorMessage } from "../mapping/useMappingMutations";
+import { HEVY_COPY, MAPPING_OFFLINE, MAPPING_SAVE_FAILED, createFailed, mappingRateLimited } from "../messages";
 import type { PairingDecision } from "./pairingCards";
 
 /**
@@ -37,13 +37,13 @@ export interface SavePairingsDeps {
   now(): number;
 }
 
-export type SavePairingsResult = { ok: true; mapping: HevyMapping } | { ok: false; message: string; stage: "create" | "pairs" };
+export type SavePairingsResult = { ok: true; mapping: HevyMapping } | { ok: false; message: string; stage: "refresh" | "create" | "pairs" };
 
 function createFailure(error: unknown, name: string): SavePairingsResult {
   const kind = classifyExerciseError(error);
   if (kind === "network") return { ok: false, message: MAPPING_OFFLINE, stage: "create" };
   if (kind === "limit") return { ok: false, message: EXERCISE_LIMIT_MESSAGE, stage: "create" };
-  if (kind === "rate-limited") return { ok: false, message: MAPPING_RATE_LIMITED, stage: "create" };
+  if (kind === "rate-limited") return { ok: false, message: mappingRateLimited(error instanceof ApiError ? error.retryAfterMs : null), stage: "create" };
   if (!(error instanceof ApiError)) reportError(error, { source: "hevy", op: "create-exercise" });
   return { ok: false, message: createFailed(name), stage: "create" };
 }
@@ -63,7 +63,14 @@ export async function savePairings(
   const retry = record.attempts > 0;
   record.attempts += 1;
   // An earlier attempt's response may have been lost: look at the list again before creating anything.
-  if (retry) await deps.refresh(true);
+  if (retry) {
+    try {
+      await deps.refresh(true);
+    } catch (error) {
+      // Minor 187: without a fresh list a retry could make an exercise twice; stop, and say so.
+      return { ok: false, message: classifyMappingError(error) === "offline" ? MAPPING_OFFLINE : MAPPING_SAVE_FAILED, stage: "refresh" };
+    }
+  }
   const visible = retry ? deps.visibleRows() : [];
   const visibleIds = new Set<string>(visible.map((row) => row.id));
   const byName = new Map<string, Exercise>();
@@ -138,8 +145,7 @@ export async function savePairings(
     } catch (error) {
       const kind = classifyMappingError(error);
       if (kind === "other") reportError(error, { source: "hevy", op: "mapping-patch" });
-      const message = kind === "offline" ? MAPPING_OFFLINE : kind === "rate_limited" ? MAPPING_RATE_LIMITED : MAPPING_SAVE_FAILED;
-      return { ok: false, message, stage: "pairs" };
+      return { ok: false, message: mappingErrorMessage(error), stage: "pairs" };
     }
   }
   return { ok: true, mapping: mapping ?? { pairs: [], sectionRules: [] } };

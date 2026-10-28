@@ -9,10 +9,11 @@ import { localStorageAdapter, type StorageAdapter } from "../../storage/storage"
  * React-free.
  */
 
-/** The shape of a Hevy key: the lenient 8-4-4-4-12 hex form, as `@sin/core` `ids.ts` reads ids. */
-export const HEVY_KEY_SHAPE = z.guid();
+/** The shape of a Hevy key: an RFC 9562 UUID (version 1–8; the owner checked a real key, minor 166). */
+export const HEVY_KEY_SHAPE = z.uuid();
 
-const StoredKeySchema = z.object({ v: z.literal(1), key: HEVY_KEY_SHAPE });
+// A key already remembered under the old 8-4-4-4-12 check is still read; only a newly pasted key meets `z.uuid()`.
+const StoredKeySchema = z.object({ v: z.literal(1), key: z.guid() });
 
 export const hevyKeyStorageKey = (userId: string): string => `sin:hevy:key:${userId}`;
 
@@ -26,8 +27,18 @@ export interface HevyKeyStore {
 
 export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
   const memory = new Map<string, string>();
+  // Minor 174: the parsed key per user, keyed by the raw stored text, so a render re-parses only when the text changed
+  // (storage is still read, so a same-tab write that skips the store, like logout's clear, is seen).
+  const cache = new Map<string, { raw: string; key: string | null }>();
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
+  // Another tab's save or remove reaches this one through the `storage` event.
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null) cache.clear();
+    else if (event.key.startsWith(hevyKeyStorageKey(""))) cache.delete(event.key.slice(hevyKeyStorageKey("").length));
+    else return;
+    notify();
+  };
   const quietly = (fn: () => void) => {
     try {
       fn();
@@ -40,27 +51,11 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
     get(userId) {
       const inMemory = memory.get(userId);
       if (inMemory !== undefined) return inMemory;
-      const storageKey = hevyKeyStorageKey(userId);
-      let raw: string | null;
-      try {
-        raw = storage.get(storageKey);
-      } catch {
-        return null;
-      }
-      if (raw === null) return null;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = undefined;
-      }
-      const stored = StoredKeySchema.safeParse(parsed);
-      if (stored.success) return stored.data.key;
-      quietly(() => storage.remove(storageKey));
-      return null;
+      return readStored(userId);
     },
 
     set(userId, key, { remember }) {
+      cache.delete(userId);
       const storageKey = hevyKeyStorageKey(userId);
       let remembered = false;
       if (remember) {
@@ -69,6 +64,8 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
           remembered = true;
         } catch {
           remembered = false;
+          // Minor 169: an older remembered key must not come back after a reload.
+          quietly(() => storage.remove(storageKey));
         }
       } else {
         quietly(() => storage.remove(storageKey));
@@ -80,16 +77,47 @@ export function createKeyStore(storage: StorageAdapter): HevyKeyStore {
     },
 
     remove(userId) {
+      cache.delete(userId);
       memory.delete(userId);
       quietly(() => storage.remove(hevyKeyStorageKey(userId)));
       notify();
     },
 
     subscribe(listener) {
+      if (listeners.size === 0 && typeof window !== "undefined") window.addEventListener("storage", onStorage);
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+      };
     },
   };
+
+  function readStored(userId: string): string | null {
+    const storageKey = hevyKeyStorageKey(userId);
+    let raw: string | null;
+    try {
+      raw = storage.get(storageKey);
+    } catch {
+      return null;
+    }
+    if (raw === null) return null;
+    const cached = cache.get(userId);
+    if (cached !== undefined && cached.raw === raw) return cached.key;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = undefined;
+    }
+    const stored = StoredKeySchema.safeParse(parsed);
+    if (stored.success) {
+      cache.set(userId, { raw, key: stored.data.key });
+      return stored.data.key;
+    }
+    quietly(() => storage.remove(storageKey));
+    return null;
+  }
 }
 
 /** The app's store, over the browser's storage. */

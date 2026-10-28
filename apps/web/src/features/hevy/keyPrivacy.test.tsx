@@ -17,7 +17,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: (...args: unkno
 
 import { RootErrorBoundary } from "../../app/RootErrorBoundary";
 import { stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
-import { HEVY_USER_INFO_URL, OTHER_KEY, clearHevyKey, renderHevyScreen, useInstantPacer, userInfoOk } from "../../test/hevyHarness";
+import { HEVY_USER_INFO_URL, OTHER_KEY, clearHevyKey, renderHevyScreen, setInstantPacing, userInfoOk } from "../../test/hevyHarness";
 import { server } from "../../test/msw/server";
 import { HevyError } from "./client/hevyErrors";
 
@@ -30,7 +30,7 @@ let fetches: { url: string; text: string; hevy: boolean; apiKey: string | null }
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   window.localStorage.clear();
   fetches = [];

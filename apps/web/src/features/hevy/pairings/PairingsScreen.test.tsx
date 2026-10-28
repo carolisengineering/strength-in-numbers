@@ -16,7 +16,7 @@ import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { renderHevyScreen } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { PAIRINGS_PATH } from "../paths";
-import { PAIRINGS_PATCH_FAILED, lastPairingBody } from "../messages";
+import { NO_PAIRINGS, PAIRINGS_LOADING, PAIRINGS_PATCH_FAILED, lastPairingBody, mappingRateLimited, removedDone, sentAsDone } from "../messages";
 import { PairingsScreen } from "./PairingsScreen";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -149,5 +149,58 @@ describe("20.0 AC25 — actions", () => {
     expect(await screen.findByText(PAIRINGS_PATCH_FAILED)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send as this: Bench Press - Close Grip (Barbell)" })).toBeInTheDocument();
     expect(calls).toBe(1);
+  });
+});
+
+describe("Minor 179 — Pairings before the first catalog sync (Review Focus 3)", () => {
+  it("shows a loading line, not 'Exercises you deleted', for active pairs whose exercise isn't loaded yet", async () => {
+    server.use(http.get(MAPPING_URL, () => HttpResponse.json({ pairs: [p("B1", "Bench Press (Barbell)", "exercise", BENCH.id, { exportAs: true })], sectionRules: [] })));
+    renderHevyScreen(undefined, { unsyncedCatalog: true, path: PAIRINGS_PATH, routes: [{ path: PAIRINGS_PATH, element: <PairingsScreen /> }] });
+    expect(await screen.findByText(PAIRINGS_LOADING)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Exercises you deleted/ })).toBeNull();
+    expect(screen.queryByText(NO_PAIRINGS)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove pairing/ })).toBeNull();
+  });
+});
+
+describe("Minor 180 — Send as and Remove announce, and Remove keeps focus", () => {
+  const status = () => screen.getByTestId("hevy-pairings-status");
+
+  it("the status line is empty at first paint, then names the Send as, with focus", async () => {
+    server.use(
+      http.patch(MAPPING_URL, () =>
+        HttpResponse.json({ ...MAPPING, pairs: MAPPING.pairs.map((x) => (x.exerciseId === BENCH.id ? { ...x, exportAs: x.hevyTemplateId === "B2" } : x)) }),
+      ),
+    );
+    open();
+    await screen.findByRole("button", { name: "Send as this: Bench Press - Close Grip (Barbell)" });
+    expect(status()).toHaveTextContent("");
+    expect(status()).toHaveAttribute("role", "status");
+    await userEvent.click(screen.getByRole("button", { name: "Send as this: Bench Press - Close Grip (Barbell)" }));
+    await waitFor(() => expect(status()).toHaveTextContent(sentAsDone("Bench Press - Close Grip (Barbell)")));
+    await waitFor(() => expect(status()).toHaveFocus());
+  });
+
+  it("after Remove the status names it and holds focus (not the body)", async () => {
+    server.use(http.patch(MAPPING_URL, () => HttpResponse.json({ ...MAPPING, pairs: MAPPING.pairs.filter((x) => x.hevyTemplateId !== "B2") })));
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: "Remove pairing: Bench Press - Close Grip (Barbell)" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove pairing" }));
+    await waitFor(() => expect(status()).toHaveTextContent(removedDone("Bench Press - Close Grip (Barbell)")));
+    await waitFor(() => expect(status()).toHaveFocus());
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+describe("Minor 181 — Pairings' 429 says how long", () => {
+  it("a PATCH 429 with Retry-After 12 shows the 12-second sentence", async () => {
+    server.use(
+      http.patch(MAPPING_URL, () =>
+        HttpResponse.json({ type: "x/rate-limited", title: "t", status: 429, detail: "d", instance: "i" }, { status: 429, headers: { "content-type": "application/problem+json", "retry-after": "12" } }),
+      ),
+    );
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: "Send as this: Bench Press - Close Grip (Barbell)" }));
+    expect(await screen.findByText(mappingRateLimited(12_000))).toBeInTheDocument();
   });
 });

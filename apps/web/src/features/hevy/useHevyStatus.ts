@@ -3,6 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
+import { useSession } from "../../auth/useSession";
 import { HEVY_KEYS } from "./keys";
 
 /**
@@ -13,8 +14,9 @@ import { HEVY_KEYS } from "./keys";
  */
 export function useHevyStatus(): UseQueryResult<HevyStatus> {
   const api = useApi();
+  const userId = useSession().user?.id ?? null;
   return useQuery({
-    queryKey: HEVY_KEYS.status,
+    queryKey: HEVY_KEYS.status(userId),
     queryFn: () => api.get("/v1/hevy/status", HevyStatusSchema),
     retry: false,
     staleTime: 5 * 60_000,

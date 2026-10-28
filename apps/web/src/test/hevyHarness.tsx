@@ -12,7 +12,7 @@ import { CatalogProvider } from "../features/catalog/CatalogProvider";
 import { catalogKey } from "../features/catalog/constants";
 import { ME_QUERY_KEY } from "../features/me/useMe";
 import { createPacer } from "../features/hevy/client/pacer";
-import { hevyFixtures } from "../features/hevy/client/fixtures";
+import { hevyFixtures } from "./hevyFixtures";
 import { HevyScreen } from "../features/hevy/HevyScreen";
 import { hevyKeyStore } from "../features/hevy/keyStore";
 import { setRetrySleepForTests, setSharedPacerForTests } from "../features/hevy/useHevyClient";
@@ -45,7 +45,7 @@ export function templatesHandler(templates: readonly unknown[], opts: { perPage?
 }
 
 /** A pacer and retry waits that return at once, so tests never sit out the 600 ms gap, the quiet minute or 1–4 s retries. */
-export function useInstantPacer(): void {
+export function setInstantPacing(): void {
   setSharedPacerForTests(createPacer({ now: () => Date.now(), sleep: async () => {} }));
   setRetrySleepForTests(async () => {});
 }

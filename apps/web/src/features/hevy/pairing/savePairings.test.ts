@@ -5,7 +5,7 @@ import { ApiError } from "../../../api";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
 import type { PairInput } from "../mapping/useMappingMutations";
-import { HEVY_COPY, MAPPING_RATE_LIMITED } from "../messages";
+import { HEVY_COPY, MAPPING_SAVE_FAILED, mappingRateLimited } from "../messages";
 import type { PairingDecision } from "./pairingCards";
 import { CREATE_GAP_MS, PAIR_BATCH_MAX, newPairingSaveRecord, savePairings, type SavePairingsDeps } from "./savePairings";
 
@@ -74,7 +74,7 @@ describe("20.0 AC28, AC29 — savePairings writes only when called, and leaves n
 
     const again = fakes({ onCreate: () => void (() => { throw problem(429, "rate-limited", { retryAfterMs: 1000 }); })() });
     const out = await savePairings({ decisions: [create("A")], record: newPairingSaveRecord() }, again.deps);
-    expect(out).toEqual({ ok: false, message: MAPPING_RATE_LIMITED, stage: "create" });
+    expect(out).toEqual({ ok: false, message: mappingRateLimited(1000), stage: "create" });
     expect(again.deps.patchMapping).not.toHaveBeenCalled();
   });
 
@@ -158,6 +158,21 @@ describe("20.0 AC28 — a cancel during a wait is a stop, not a failure (code re
     deps.sleep = abortingSleep(controller);
     const out = await savePairings({ decisions: [create("A")], record: newPairingSaveRecord(), signal: controller.signal }, deps);
     expect(out).toEqual({ ok: false, message: HEVY_COPY.aborted, stage: "create" });
+    expect(patches).toEqual([]);
+  });
+});
+
+describe("Minor 187 — a failed refresh is a result, not a throw", () => {
+  it("on a retry, a refresh that rejects stops before any create or pair", async () => {
+    const { deps, patches } = fakes();
+    deps.refresh = vi.fn(async () => {
+      throw new Error("catalog refresh failed");
+    });
+    const record = newPairingSaveRecord();
+    record.attempts = 1;
+    const out = await savePairings({ decisions: [create("A")], record }, deps);
+    expect(out).toEqual({ ok: false, message: MAPPING_SAVE_FAILED, stage: "refresh" });
+    expect(deps.createCustom).not.toHaveBeenCalled();
     expect(patches).toEqual([]);
   });
 });

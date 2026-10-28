@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { clearUserData, isUserDataKey } from "../../storage/clearUserData";
 import { memoryStorageAdapter, type StorageAdapter } from "../../storage/storage";
-import { createKeyStore, hevyKeyStorageKey } from "./keyStore";
+import { HEVY_KEY_SHAPE, createKeyStore, hevyKeyStorageKey } from "./keyStore";
 
 const KEY = "5ec7e7a1-0b5e-4c3d-9a8f-1234deadbeef";
 const OTHER = "0b0b0b0b-1111-4222-8333-444455556666";
@@ -104,5 +104,102 @@ describe("20.0 AC3 — storage that throws falls back to memory", () => {
     expect(store.get("u")).toBe(KEY);
     expect(() => store.remove("u")).not.toThrow();
     expect(store.get("u")).toBeNull();
+  });
+});
+
+describe("Minor 169 — a refused remembered write leaves no older key behind", () => {
+  it("removes the stored copy when the new remembered write throws", () => {
+    const storage = memoryStorageAdapter();
+    createKeyStore(storage).set("u", KEY, { remember: true });
+    const refusing: StorageAdapter = {
+      get: (k) => storage.get(k),
+      remove: (k) => storage.remove(k),
+      keys: () => storage.keys(),
+      set: () => {
+        throw new Error("quota");
+      },
+    };
+    expect(createKeyStore(refusing).set("u", OTHER, { remember: true })).toEqual({ remembered: false });
+    expect(createKeyStore(storage).get("u")).toBeNull();
+  });
+});
+
+describe("Minor 174 — the parsed key is cached, and another tab's change is heard", () => {
+  it("parses a stored value once until it changes", () => {
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: KEY }));
+    const parse = vi.spyOn(JSON, "parse");
+    const store = createKeyStore(storage);
+    expect(store.get("u")).toBe(KEY);
+    expect(store.get("u")).toBe(KEY);
+    expect(parse).toHaveBeenCalledTimes(1);
+    parse.mockRestore();
+    store.remove("u");
+    expect(store.get("u")).toBeNull();
+    store.set("u", OTHER, { remember: true });
+    expect(store.get("u")).toBe(OTHER);
+  });
+
+  it("a storage event for the key notifies and re-reads (Review Focus 1)", () => {
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: KEY }));
+    const store = createKeyStore(storage);
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    expect(store.get("u")).toBe(KEY);
+    storage.remove("sin:hevy:key:u"); // another tab removed it
+    window.dispatchEvent(new StorageEvent("storage", { key: "sin:hevy:key:u" }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.get("u")).toBeNull();
+    unsubscribe();
+  });
+});
+
+describe("Minor 166 — the key must be a version UUID (owner: Hevy keys are)", () => {
+  it.each([["5ec7e7a1-0b5e-0c3d-9a8f-1234deadbeef"], ["5ec7e7a1-0b5e-4c3d-1a8f-1234deadbeef"]])(
+    "%s is refused",
+    (raw) => {
+      expect(HEVY_KEY_SHAPE.safeParse(raw).success).toBe(false);
+    },
+  );
+
+  it("a v4 key passes", () => {
+    expect(HEVY_KEY_SHAPE.safeParse(KEY).success).toBe(true);
+  });
+});
+
+describe("Minor 174 — another tab's change is heard after the screen has unsubscribed (final review)", () => {
+  it("a key cached while subscribed is re-read once no one listens", () => {
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: KEY }));
+    const store = createKeyStore(storage);
+    const unsubscribe = store.subscribe(() => {});
+    expect(store.get("u")).toBe(KEY);
+    unsubscribe(); // the Hevy screen closed
+    storage.remove("sin:hevy:key:u"); // another tab removed it; no listener heard the event
+    expect(store.get("u")).toBeNull();
+  });
+});
+
+describe("Minor 174 — a same-tab clear is seen (code review)", () => {
+  it("logout's clearUserData, which writes storage directly, is not hidden by the cache", () => {
+    const storage = memoryStorageAdapter();
+    const store = createKeyStore(storage);
+    const unsubscribe = store.subscribe(() => {});
+    store.set("u", KEY, { remember: true });
+    expect(store.get("u")).toBe(KEY);
+    clearUserData(storage);
+    expect(store.get("u")).toBeNull();
+    unsubscribe();
+  });
+});
+
+describe("Minor 166 — a key remembered under the old check still loads (code review)", () => {
+  it("a stored 8-4-4-4-12 key with a non-RFC version nibble is kept, not erased", () => {
+    const legacy = "5ec7e7a1-0b5e-0c3d-9a8f-1234deadbeef";
+    const storage = memoryStorageAdapter();
+    storage.set("sin:hevy:key:u", JSON.stringify({ v: 1, key: legacy }));
+    expect(createKeyStore(storage).get("u")).toBe(legacy);
+    expect(storage.get("sin:hevy:key:u")).not.toBeNull();
   });
 });

@@ -13,7 +13,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { stubAccountEnv, unstubAccountEnv } from "../../test/accountHarness";
 import { server } from "../../test/msw/server";
-import { HEVY_COPY, KEY_NOT_PRO, KEY_NOT_REMEMBERED, KEY_REMOVED, KEY_SAVED, KEY_SAVED_VISIT, KEY_SHAPE_ERROR, REMOVE_TITLE, keyEnding, signedInAs } from "./messages";
+import { HEVY_COPY, LOADING_USERNAME, QUIET_MINUTE, KEY_NOT_PRO, KEY_NOT_REMEMBERED, KEY_REMOVED, KEY_SAVED, KEY_SAVED_VISIT, KEY_SHAPE_ERROR, REMOVE_TITLE, keyEnding, signedInAs } from "./messages";
 import {
   HEVY_USER_INFO_URL,
   OTHER_KEY,
@@ -21,9 +21,12 @@ import {
   VALID_KEY,
   clearHevyKey,
   renderHevyScreen,
-  useInstantPacer,
+  setInstantPacing,
   userInfoOk,
 } from "../../test/hevyHarness";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { HEVY_KEYS } from "./keys";
 import { hevyKeyStorageKey, hevyKeyStore } from "./keyStore";
 
 /** Every request to Hevy, with the key it carried. */
@@ -33,7 +36,7 @@ let sinRequests: string[] = [];
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   window.localStorage.clear();
   hevyRequests = [];
@@ -246,3 +249,48 @@ describe("20.0 AC15 — offline", () => {
 function userInfoReply() {
   return HttpResponse.json({ data: { id: "u1", username: "jhon", name: "John", url: "https://hevy.com/user/jhon", is_pro: true } });
 }
+
+describe("Minor 167 — a wait is explained", () => {
+  it("in the first minute of an hour, a busy Save says why it waits", async () => {
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-28T13:00:10.000Z"));
+    renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    expect(await screen.findByText(QUIET_MINUTE)).toBeInTheDocument();
+  });
+
+  it("with a stored key, a loading line shows while the username is read", async () => {
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    renderHevyScreen();
+    expect(await screen.findByText(LOADING_USERNAME)).toBeInTheDocument();
+  });
+});
+
+describe("Minor 171 — status focus is visible and a later failure is announced", () => {
+  it("the status line has a focus ring from the tokens", () => {
+    const css = readFileSync(join(__dirname, "HevyKeyCard.module.css"), "utf8");
+    expect(css).toMatch(/\.status:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring-width\)\s+solid\s+var\(--color-focus\)/);
+  });
+
+  it("a stored key Hevy now refuses is announced in the status region", async () => {
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    renderHevyScreen();
+    await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+  });
+});
+
+describe("Minor 171 — a refusal after a save in the same visit is announced (final review)", () => {
+  it("'Key saved.' gives way to the bad-key sentence when Hevy later refuses the key", async () => {
+    server.use(userInfoOk());
+    const { queryClient } = renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    await waitFor(() => expect(status()).toHaveTextContent(KEY_SAVED));
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    await queryClient.refetchQueries({ queryKey: HEVY_KEYS.userAll });
+    await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+  });
+});

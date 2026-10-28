@@ -3,6 +3,8 @@ import {
   hevyPairingProblem,
   normalizeExerciseName,
   normalizeExportAs,
+  sectionKey,
+  sectionTreatment,
   type Exercise,
   type HevyMapping,
   type HevyPair,
@@ -25,7 +27,7 @@ import type { PairInput } from "./useMappingMutations";
  * ambiguous with its line number. Every lookup is a map built once, so each line costs O(1).
  */
 
-export type LeftOutReason = "hevy_not_found" | "sin_not_found" | "hevy_ambiguous" | "sin_ambiguous" | "type_mismatch" | "retired" | "duplicate";
+export type LeftOutReason = "hevy_not_found" | "sin_not_found" | "hevy_ambiguous" | "sin_ambiguous" | "type_mismatch" | "retired" | "duplicate" | "section_invalid";
 
 export interface LeftOut {
   line: number;
@@ -96,18 +98,24 @@ export function resolveLines(
   const out: Resolved = { pairs: [], sectionRules: [], leftOut: [], needsRule: [], notices: [], placeholders: { warmup: true, workout: true } };
   const usedTemplates = new Set<string>();
   const markedExport = new Set<string>();
+  const seenSections = new Set<string>();
 
   parsed.lines.forEach((l, i) => {
     const line = parsed.lineNumbers[i] ?? i + 2;
-    if (l.kind === "section") {
-      out.sectionRules.push({ name: l.sinName ?? "", treatment: l.rule as HevySectionRule["treatment"] });
-      return;
-    }
     // The names as written; an id only when the line has no name (a downloaded file carries both).
     const hevyWritten = l.hevyTitle ?? l.hevyId ?? "";
     const sinWritten = l.sinName ?? l.sinId ?? "";
     const leave = (reason: LeftOutReason, extra: Partial<LeftOut> = {}) =>
       void out.leftOut.push({ line, hevyWritten, sinWritten, reason, ...extra });
+
+    if (l.kind === "section") {
+      // Minor 190: a name the file already set (any case) is left out with its line; the parser refuses an empty one.
+      const key = sectionKey(l.sinName ?? "");
+      if (key === "" || seenSections.has(key)) return leave("section_invalid");
+      seenSections.add(key);
+      out.sectionRules.push({ name: l.sinName ?? "", treatment: l.rule as HevySectionRule["treatment"] });
+      return;
+    }
 
     // The Hevy side: the id wins; else an exact title.
     let template = l.hevyId === null ? undefined : templateById.get(l.hevyId);
@@ -212,4 +220,9 @@ export function willChange(current: HevyMapping, next: readonly PairInput[]): He
     const n = byTemplate.get(p.hevyTemplateId);
     return n !== undefined && (n.role !== p.role || n.exerciseId !== p.exerciseId || n.measureRule !== p.measureRule || n.exportAs !== p.exportAs);
   });
+}
+
+/** Minor 186: the stored section rules whose effect the file drops or changes (a default left in place is no change). */
+export function sectionRulesRemoved(current: HevyMapping, next: readonly HevySectionRule[]): HevySectionRule[] {
+  return current.sectionRules.filter((rule) => sectionTreatment(rule.name, next) !== rule.treatment);
 }

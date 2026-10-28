@@ -1,3 +1,4 @@
+import { waitText } from "../../ui/waitText";
 import type { MappingCsvErrorCode } from "@sin/core";
 
 import type { HevyErrorKind } from "./client/hevyErrors";
@@ -53,6 +54,10 @@ export const LOAD_FILE = "Load a file";
 export const DOWNLOAD_FILE = "Download file";
 export const REVIEW_PAIRINGS = "Review pairings";
 export const CHOOSE_MARKERS = "Choose them";
+export const CHANGE_MARKERS = "Change markers";
+export const REPLACE_PAIRING_TITLE = "Use as a marker instead?";
+export const USE_AS_MARKER = "Use as marker";
+export const replaceExercisePairing = (title: string, exerciseName: string) => `${title} is paired with ${exerciseName}. Use it as a marker instead?`;
 // Plan copy.
 export const MAPPING_LOADING = "Loading your pairings…";
 export const MAPPING_LOAD_FAILED = "Couldn't load your pairings. Try again.";
@@ -75,7 +80,10 @@ export const loaded = (n: number) => `Loaded ${n} pairings.`;
 export const MAPPING_REJECTED = "The server didn't accept this mapping";
 // Copied from routines/messages.ts (OFFLINE_SAVE, RATE_LIMITED), not imported: Hevy imports nothing from routines (AC31).
 export const MAPPING_OFFLINE = "You're offline — your changes are still here, try again when connected";
-export const MAPPING_RATE_LIMITED = "Too many changes in a short time — wait a minute and try again";
+export const QUIET_MINUTE = "Hevy asks apps to wait during the first minute of each hour. This will go through shortly.";
+export const LOADING_USERNAME = "Checking your Hevy account…";
+/** Minor 181: a mapping write's 429, with how long to wait. */
+export const mappingRateLimited = (retryAfterMs: number | null | undefined) => `Too many changes in a short time. ${waitText(retryAfterMs)}`;
 // Plan copy.
 export const MAPPING_SAVE_FAILED = "Couldn't save the pairings. Try again.";
 export const COUNT_CALORIES = "Count calories as reps";
@@ -135,6 +143,13 @@ export const usedIn = (workouts: number, routines: number) =>
   routines === 0 ? `Used in ${plural(workouts, "workout")}` : `${plural(workouts, "workout")}, ${plural(routines, "routine")}`;
 // Plan copy.
 export const ASSIST_RULE = "Ignore the assist weight";
+export const FILE_READ_FAILED = "Couldn't read that file. Choose it again.";
+export const sectionRulesRemovedLine = (n: number) => `${n} section rules in the app that this file drops or changes`;
+export const markerLine = (which: "warmup" | "workout", title: string) => `${which === "warmup" ? "Warmup marker" : "Workout marker"}: ${title}`;
+export const PAIRINGS_LOADING = "Loading your exercises…";
+export const sentAsDone = (title: string) => `${title} is now sent to Hevy.`;
+export const removedDone = (title: string) => `Removed ${title}.`;
+export const RULE_NOT_ALLOWED = "Untick the box above to pair these.";
 export const RULE_NEEDED = "Tick the box above to pair these, or choose another exercise.";
 export const typeProblem = (hevyLabel: string, modalityLabel: string) => `A ${hevyLabel} exercise can't be paired with a ${modalityLabel} one.`;
 export const SAME_NEW_NAME = "Another card makes an exercise with this name.";
@@ -166,4 +181,5 @@ export const LEFT_OUT_COPY: Readonly<Record<LeftOutReason, string>> = Object.fre
   type_mismatch: "the types don't match",
   retired: "this exercise was deleted",
   duplicate: "this Hevy exercise is already on an earlier line",
+  section_invalid: "a section named twice; only the first counts",
 });

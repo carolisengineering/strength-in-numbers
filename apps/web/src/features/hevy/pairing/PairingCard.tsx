@@ -13,6 +13,7 @@ import {
   NO_LONGER_IN_HEVY,
   PAIRING_GONE,
   RULE_NEEDED,
+  RULE_NOT_ALLOWED,
   SAME_NEW_NAME,
   newNameExists,
   SIMILAR_MATCH,
@@ -42,6 +43,8 @@ function problemText(problem: PairingProblem): string | null {
       return typeProblem(problem.hevyLabel, problem.modalityLabel);
     case "rule_needed":
       return RULE_NEEDED;
+    case "rule_not_allowed":
+      return RULE_NOT_ALLOWED;
     case "same-new":
       return SAME_NEW_NAME;
     case "exists":
@@ -128,11 +131,10 @@ export function PairingCard({ card, problem, missing, rows, muscleGroups, equipm
           <span>{offered === "calories_as_reps" ? CALORIES_RULE : ASSIST_RULE}</span>
         </label>
       ) : null}
-      {message !== null ? (
-        <p className={styles.problem} role="status">
-          {message}
-        </p>
-      ) : null}
+      {/* Minor 185: mounted empty, so a problem that appears later is announced. */}
+      <p className={styles.problem} role="status">
+        {message ?? ""}
+      </p>
       {card.hevyType !== null ? (
         <Button variant="secondary" aria-label={`${CHOOSE_ANOTHER} for ${card.title}`} onClick={onChooseAnother}>
           {CHOOSE_ANOTHER}

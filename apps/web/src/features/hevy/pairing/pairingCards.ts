@@ -50,6 +50,8 @@ export interface PairingCard {
 export type PairingProblem =
   | { kind: "type"; hevyLabel: string; modalityLabel: string }
   | { kind: "rule_needed"; rule: MeasureRule }
+  /** Minor 178: the ticked rule doesn't fit the chosen exercise; unticking it pairs them. */
+  | { kind: "rule_not_allowed" }
   | { kind: "name"; message: string }
   | { kind: "same-new" }
   /** A New name an existing visible exercise already has (10.4's rule): choose that one instead. */
@@ -119,35 +121,54 @@ function chosenId(card: PairingCard): string | null | undefined {
   return undefined;
 }
 
+/** Lookups over the visible catalog, built once per `validity` (minor 193). */
+export interface CatalogLookup {
+  byId: ReadonlyMap<string, Exercise>;
+  byNameKey: ReadonlyMap<string, Exercise>;
+}
+
+export function catalogLookup(visible: readonly Exercise[]): CatalogLookup {
+  const byId = new Map<string, Exercise>();
+  const byNameKey = new Map<string, Exercise>();
+  for (const row of visible) {
+    byId.set(row.id, row);
+    const key = normalizeExerciseName(row.name);
+    if (key !== "" && !byNameKey.has(key)) byNameKey.set(key, row);
+  }
+  return { byId, byNameKey };
+}
+
 /** AC27: what blocks this card, or `null`. Same-new needs the other cards; `validity` adds it. */
-export function problemFor(card: PairingCard, visible: readonly Exercise[]): PairingProblem | null {
+export function problemFor(card: PairingCard, visible: readonly Exercise[], lookup: CatalogLookup = catalogLookup(visible)): PairingProblem | null {
   if (card.selected === "skip") return null;
   if (card.hevyType === null) return { kind: "unsupported" };
   let modality = card.newValue.modality;
   const id = chosenId(card);
   if (id !== undefined) {
-    const row = id === null ? undefined : visible.find((e) => e.id === id);
+    const row = id === null ? undefined : lookup.byId.get(id);
     if (row === undefined) return { kind: "gone" };
     modality = row.modality;
   } else {
     const message = newNameProblem(card.newValue.name);
     if (message !== null) return { kind: "name", message };
     const key = normalizeExerciseName(card.newValue.name);
-    const existing = key === "" ? undefined : visible.find((e) => normalizeExerciseName(e.name) === key);
+    const existing = key === "" ? undefined : lookup.byNameKey.get(key);
     if (existing !== undefined) return { kind: "exists", exerciseName: existing.name };
     if (!CreateExerciseSchema.safeParse(toCreateExerciseInput(card.newValue)).success || modality === null) return { kind: "invalid" };
   }
   if (hevyPairingProblem(card.hevyType, modality, card.rule) === null) return null;
   const fix = fixableRule(card.hevyType, modality);
   if (fix !== null) return { kind: "rule_needed", rule: fix };
+  if (card.rule !== null && hevyPairingProblem(card.hevyType, modality, null) === null) return { kind: "rule_not_allowed" };
   return { kind: "type", hevyLabel: HEVY_TYPE_LABELS[card.hevyType], modalityLabel: MODALITY_LABELS[modality] };
 }
 
 /** AC27: every card's problem, plus "same New name on two cards". */
 export function validity(cards: readonly PairingCard[], visible: readonly Exercise[]): { valid: boolean; problems: ReadonlyMap<string, PairingProblem> } {
   const problems = new Map<string, PairingProblem>();
+  const lookup = catalogLookup(visible);
   for (const card of cards) {
-    const problem = problemFor(card, visible);
+    const problem = problemFor(card, visible, lookup);
     if (problem !== null) problems.set(card.templateId, problem);
   }
   const fresh = cards.filter((c) => c.selected === "new");

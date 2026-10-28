@@ -1,5 +1,12 @@
+import type * as Core from "@sin/core";
 import type { HevyTemplate, HevyType } from "@sin/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const core = vi.hoisted(() => ({ normalizeCalls: 0 }));
+vi.mock("@sin/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof Core>();
+  return { ...actual, normalizeExerciseName: (name: string) => ((core.normalizeCalls += 1), actual.normalizeExerciseName(name)) };
+});
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { NEW_NAME_REQUIRED } from "../../catalog/newExerciseName";
@@ -87,5 +94,28 @@ describe("20.0 AC27 — a New name that already exists (final review)", () => {
     const renamed = setNewValue(chooseNew(card!), { ...card!.newValue, name: "bench  PRESS" });
     expect(problemFor(renamed, VISIBLE)).toEqual({ kind: "exists", exerciseName: "Bench Press" });
     expect(validity([renamed], VISIBLE).valid).toBe(false);
+  });
+});
+
+describe("Minor 178 — a ticked rule that doesn't fit says to untick it", () => {
+  it("Echo Bike (calories) matched to a Bodyweight reps exercise: rule_not_allowed ticked, fine unticked", () => {
+    const [card] = initialPairingCards([need(tpl("E", "Echo Bike (calories)", "reps_only"))], VISIBLE);
+    const picked = chooseExisting(card!, DIP);
+    expect(picked.rule).toBe("calories_as_reps");
+    expect(problemFor(picked, VISIBLE)).toEqual({ kind: "rule_not_allowed" });
+    expect(problemFor(setRule(picked, null), VISIBLE)).toBeNull();
+  });
+});
+
+describe("Minor 193 — validity scans the catalog once", () => {
+  it("normalizes each visible row and each card name about once, not cards × rows", () => {
+    const rows = Array.from({ length: 300 }, (_, i) => makeExercise({ id: exerciseId(1000 + i), name: `Row ${i}` }));
+    const cards = initialPairingCards(
+      Array.from({ length: 50 }, (_, i) => need(tpl(`T${i}`, `Brand New ${i}`))),
+      [],
+    ).map(chooseNew);
+    core.normalizeCalls = 0;
+    validity(cards, rows);
+    expect(core.normalizeCalls).toBeLessThanOrEqual(2 * cards.length + rows.length);
   });
 });

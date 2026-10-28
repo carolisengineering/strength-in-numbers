@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HevyCreateTemplateBody, HevyPostWorkout } from "@sin/core";
-import { hevyFixtures, jsonReply } from "./fixtures";
+import { hevyFixtures, jsonReply } from "../../../test/hevyFixtures";
 import { createHevyClient, HEVY_ORIGIN, type HevyClientDeps } from "./hevyClient";
 import { createPacer, type Pacer } from "./pacer";
 
@@ -196,5 +196,22 @@ describe("20.0 AC10 — one pacer for every client", () => {
     });
     await Promise.all([createHevyClient(deps()).workoutCount(), createHevyClient(deps()).workoutCount()]);
     expect(starts[1]! - starts[0]!).toBe(600);
+  });
+});
+
+describe("Minor 170 — a Stop during the body read is aborted, not unexpected_reply (Review Focus 5)", () => {
+  it("a 2xx whose body read fails after the signal aborted throws aborted", async () => {
+    const controller = new AbortController();
+    const reply = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        controller.abort();
+        throw new DOMException("aborted", "AbortError");
+      },
+    } as unknown as Response;
+    const h = harness([reply]);
+    await expect(h.client.userInfo(controller.signal)).rejects.toMatchObject({ kind: "aborted" });
   });
 });

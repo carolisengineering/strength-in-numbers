@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { useSession } from "../../auth/useSession";
 import { reportError } from "../../observability/reportError";
@@ -20,6 +20,9 @@ export function useHevyKey() {
   const userId = useSession().user?.id ?? null;
   const queryClient = useQueryClient();
   const key = useSyncExternalStore(hevyKeyStore.subscribe, () => (userId === null ? null : hevyKeyStore.get(userId)));
+  // Minor 175: one controller per check, aborted on unmount and on a user change, so a late reply stores nothing.
+  const checking = useRef<AbortController | null>(null);
+  useEffect(() => () => checking.current?.abort(), [userId]);
 
   const save = useCallback(
     async (raw: string, opts: { remember: boolean }): Promise<SaveKeyResult> => {
@@ -27,14 +30,18 @@ export function useHevyKey() {
       const trimmed = raw.trim();
       if (!HEVY_KEY_SHAPE.safeParse(trimmed).success) return { ok: false, message: KEY_SHAPE_ERROR };
       try {
+        checking.current?.abort();
+        const controller = new AbortController();
+        checking.current = controller;
         // A candidate client: the pasted key, not the stored one, goes to Hevy.
-        const info = await hevyClientFor(() => trimmed).userInfo();
+        const info = await hevyClientFor(() => trimmed).userInfo(controller.signal);
+        if (controller.signal.aborted) return { ok: false, message: HEVY_COPY.aborted };
         if (!info.data.is_pro) return { ok: false, message: KEY_NOT_PRO };
         const { remembered } = hevyKeyStore.set(userId, trimmed, opts);
-        queryClient.removeQueries({ queryKey: HEVY_KEYS.user });
+        queryClient.removeQueries({ queryKey: HEVY_KEYS.userAll });
         // Phase B: another key may see other templates.
         queryClient.removeQueries({ queryKey: HEVY_KEYS.templates });
-        queryClient.setQueryData(HEVY_KEYS.user, info);
+        queryClient.setQueryData(HEVY_KEYS.user(userId), info);
         return { ok: true, username: info.data.username ?? info.data.name ?? null, remembered };
       } catch (err) {
         const kind = err instanceof HevyError ? err.kind : "unexpected_reply";
@@ -50,7 +57,7 @@ export function useHevyKey() {
   const remove = useCallback(() => {
     if (userId === null) return;
     hevyKeyStore.remove(userId);
-    queryClient.removeQueries({ queryKey: HEVY_KEYS.user });
+    queryClient.removeQueries({ queryKey: HEVY_KEYS.userAll });
     queryClient.removeQueries({ queryKey: HEVY_KEYS.templates });
   }, [userId, queryClient]);
 

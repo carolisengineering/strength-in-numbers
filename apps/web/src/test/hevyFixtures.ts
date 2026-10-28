@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
  * Test-only: Hevy's replies, read from the fixtures Spec 19.0 AC3 copied from Hevy's OpenAPI examples, so the web
  * and core tests parse the same bytes.
  */
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../../../../packages/core/test/fixtures/hevy");
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../../packages/core/test/fixtures/hevy");
 const read = (name: string): unknown => JSON.parse(readFileSync(join(FIXTURES, name), "utf8")) as unknown;
 
 export const hevyFixtures = {

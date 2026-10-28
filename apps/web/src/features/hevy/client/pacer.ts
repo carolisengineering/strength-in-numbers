@@ -26,6 +26,11 @@ export interface PacerDeps {
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
+/** Minor 167: true during the first minute of a UTC hour, when every Hevy request waits. */
+export function inQuietMinute(nowMs: number): boolean {
+  return outOfQuietMinute(nowMs) !== nowMs;
+}
+
 /** The slot moved out of the first minute of its UTC hour. */
 function outOfQuietMinute(slotMs: number): number {
   const intoHour = ((slotMs % HOUR_MS) + HOUR_MS) % HOUR_MS;
@@ -41,14 +46,19 @@ export function createPacer(deps: PacerDeps): Pacer {
       if (signal?.aborted) throw new HevyError("aborted");
       let slot = outOfQuietMinute(Math.max(nextSlotMs, deferredUntilMs, deps.now()));
       nextSlotMs = slot + HEVY_MIN_GAP_MS;
+      // Minor 173: a waiter that stops gives its slot back, if no one has queued behind it.
+      const giveBack = () => {
+        if (nextSlotMs === slot + HEVY_MIN_GAP_MS) nextSlotMs = slot;
+        return new HevyError("aborted");
+      };
       for (;;) {
         const ms = slot - deps.now();
         try {
           if (ms > 0) await deps.sleep(ms, signal);
         } catch {
-          throw new HevyError("aborted");
+          throw giveBack();
         }
-        if (signal?.aborted) throw new HevyError("aborted");
+        if (signal?.aborted) throw giveBack();
         // A Retry-After that arrived while this caller slept still holds it back.
         const later = outOfQuietMinute(Math.max(slot, deferredUntilMs));
         if (later <= slot) return;

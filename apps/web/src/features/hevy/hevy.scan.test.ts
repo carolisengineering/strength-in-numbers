@@ -9,7 +9,7 @@ const SRC = `${join(dirname(fileURLToPath(import.meta.url)), "../..")}/`;
 const stripComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const production = filesUnder(SRC, /\.(ts|tsx)$/)
   .map((path) => relative(SRC, path))
-  .filter((path) => !/\.test\.tsx?$/.test(path) && !path.startsWith("test/") && path !== "features/hevy/client/fixtures.ts");
+  .filter((path) => !/\.test\.tsx?$/.test(path) && !path.startsWith("test/"));
 
 describe("20.0 AC7 — only the client sends the key", () => {
   it.each(["api-key", "api.hevyapp.com"])("the literal %s appears only in features/hevy/client/hevyClient.ts", (literal) => {

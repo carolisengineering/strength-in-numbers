@@ -67,6 +67,17 @@ function cell(value: string | null): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+/**
+ * Minor 189: a spreadsheet runs a cell that starts with `=`, `+`, `-` or `@` (or a tab or CR) as a formula, so a text
+ * cell that starts with one, or with the escape itself, is written with one `'` in front; the parse drops one leading
+ * `'` from a text cell, so every cell reads back as it was (AC14) and a hand-written `'Bench` reads as `Bench`.
+ */
+function guarded(value: string | null): string | null {
+  return value !== null && /^[=+\-@\t\r']/.test(value) ? `'${value}` : value;
+}
+
+const unguarded = (value: string): string => (value.startsWith("'") ? value.slice(1) : value);
+
 const trimmed = (v: string | null) => (v === null ? null : v.trim());
 /** Cells trimmed as the parse trims them, before sorting, so a second pass reads and orders the same (minor 134). */
 const trimLine = (l: MappingCsvLine): MappingCsvLine => ({ ...l, hevyId: trimmed(l.hevyId), hevyTitle: trimmed(l.hevyTitle), sinId: trimmed(l.sinId), sinName: trimmed(l.sinName) });
@@ -74,7 +85,7 @@ const trimLine = (l: MappingCsvLine): MappingCsvLine => ({ ...l, hevyId: trimmed
 /** Spec 19.0 AC14: RFC 4180, CRLF line ends, UTF-8 without a BOM, in the canonical order. */
 export function formatMappingCsv(lines: readonly MappingCsvLine[]): string {
   const rows = lines.map(trimLine).sort(compareLines).map((l) =>
-    [l.kind, l.hevyId, l.hevyTitle, l.sinId, l.sinName, l.rule, l.kind === "exercise" && l.exportAs !== null ? (l.exportAs ? "yes" : "no") : null]
+    [l.kind, guarded(l.hevyId), guarded(l.hevyTitle), guarded(l.sinId), guarded(l.sinName), l.rule, l.kind === "exercise" && l.exportAs !== null ? (l.exportAs ? "yes" : "no") : null]
       .map(cell)
       .join(","),
   );
@@ -162,7 +173,8 @@ export function parseMappingCsv(text: string): { lines: MappingCsvLine[]; lineNu
       fail("missing_column");
       continue;
     }
-    const [kind, hevyId, hevyTitle, sinId, sinName, rule, exportAs] = cells.map((c) => c.trim());
+    const [kind, rawHevyId, rawHevyTitle, rawSinId, rawSinName, rule, exportAs] = cells.map((c) => c.trim());
+    const [hevyId, hevyTitle, sinId, sinName] = [rawHevyId!, rawHevyTitle!, rawSinId!, rawSinName!].map(unguarded);
     const orNull = (v: string | undefined) => (v === undefined || v === "" ? null : v);
     if (!KINDS.includes(kind as MappingCsvKind)) {
       fail("unknown_kind");

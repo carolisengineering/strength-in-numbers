@@ -7,7 +7,7 @@ import { createPacer, type Pacer } from "./client/pacer";
  */
 
 /** A real wait that an abort ends early. */
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
     const timer = setTimeout(resolve, ms);
