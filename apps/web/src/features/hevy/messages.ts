@@ -139,6 +139,9 @@ export const usedIn = (workouts: number, routines: number) =>
   routines === 0 ? `Used in ${plural(workouts, "workout")}` : `${plural(workouts, "workout")}, ${plural(routines, "routine")}`;
 // Plan copy.
 export const ASSIST_RULE = "Ignore the assist weight";
+export const PAIRINGS_LOADING = "Loading your exercises…";
+export const sentAsDone = (title: string) => `${title} is now sent to Hevy.`;
+export const removedDone = (title: string) => `Removed ${title}.`;
 export const RULE_NOT_ALLOWED = "Untick the box above to pair these.";
 export const RULE_NEEDED = "Tick the box above to pair these, or choose another exercise.";
 export const typeProblem = (hevyLabel: string, modalityLabel: string) => `A ${hevyLabel} exercise can't be paired with a ${modalityLabel} one.`;

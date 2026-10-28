@@ -1,5 +1,5 @@
 import type { HevyPair } from "@sin/core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportError } from "../../../observability/reportError";
 import { BackLink } from "../../../ui/BackLink";
@@ -14,6 +14,7 @@ import {
   MAPPING_LOAD_FAILED,
   MAPPING_LOADING,
   NO_PAIRINGS,
+  PAIRINGS_LOADING,
   PAIRINGS_PATCH_FAILED,
   PAIRINGS_TITLE,
   REMOVE,
@@ -28,6 +29,8 @@ import {
   markersHeading,
   removePairingBody,
   skippedHeading,
+  removedDone,
+  sentAsDone,
 } from "../messages";
 import { HEVY_PATH } from "../paths";
 import { useHevyMapping } from "../mapping/useHevyMapping";
@@ -53,8 +56,14 @@ export function PairingsScreen() {
   const [query, setQuery] = useState("");
   const [pendingRemove, setPendingRemove] = useState<PendingRemove | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // Minor 180: one polite status line, empty at first paint; focus moves to it after each write.
+  const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (announcement.seq > 0) statusRef.current?.focus();
+  }, [announcement.seq]);
 
-  const groups = useMemo(() => (mapping.data ? groupPairings(mapping.data, catalog.rows) : null), [mapping.data, catalog.rows]);
+  const groups = useMemo(() => (mapping.data ? groupPairings(mapping.data, catalog.rows, { synced: catalog.syncToken !== null }) : null), [mapping.data, catalog.rows, catalog.syncToken]);
   const shown = useMemo(() => {
     if (groups === null) return [];
     if (query.trim() === "") return groups.exercises;
@@ -62,9 +71,10 @@ export function PairingsScreen() {
     return groups.exercises.filter((g) => keep.has(g.exercise.id));
   }, [groups, query]);
 
-  function run(body: { upsert?: ReturnType<typeof toPairInput>[]; remove?: string[] }) {
+  function run(body: { upsert?: ReturnType<typeof toPairInput>[]; remove?: string[] }, done: string) {
     setFailure(null);
     patch.mutate(body, {
+      onSuccess: () => setAnnouncement((a) => ({ text: done, seq: a.seq + 1 })),
       onError: (err) => {
         const kind = classifyMappingError(err);
         if (kind === "other") reportError(err, { source: "hevy", op: "mapping-patch" });
@@ -84,7 +94,7 @@ export function PairingsScreen() {
       </span>
       <span className={styles.actions}>
         {opts.canSend && !pair.exportAs ? (
-          <Button variant="secondary" disabled={busy} aria-label={`${SEND_AS_THIS}: ${pair.hevyTitle}`} onClick={() => run({ upsert: [{ ...toPairInput(pair), exportAs: true }] })}>
+          <Button variant="secondary" disabled={busy} aria-label={`${SEND_AS_THIS}: ${pair.hevyTitle}`} onClick={() => run({ upsert: [{ ...toPairInput(pair), exportAs: true }] }, sentAsDone(pair.hevyTitle))}>
             {SEND_AS_THIS}
           </Button>
         ) : null}
@@ -110,6 +120,7 @@ export function PairingsScreen() {
             onChange={(e) => setQuery(e.target.value)}
           />
           {failure !== null ? <p role="alert">{failure}</p> : null}
+          {groups.loading.length > 0 ? <p className={styles.muted}>{PAIRINGS_LOADING}</p> : null}
           {groups.exercises.length + groups.deleted.length + groups.skipped.length + groups.placeholders.length === 0 ? (
             <p className={styles.muted}>{NO_PAIRINGS}</p>
           ) : null}
@@ -158,13 +169,17 @@ export function PairingsScreen() {
         </div>
       ) : null}
 
+      <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-pairings-status">
+        {announcement.text}
+      </p>
+
       <ConfirmDialog
         open={pendingRemove !== null}
         title={REMOVE_PAIRING_TITLE}
         confirmLabel={REMOVE_PAIRING}
         variant="danger"
         onConfirm={() => {
-          if (pendingRemove !== null) run({ remove: [pendingRemove.pair.hevyTemplateId] });
+          if (pendingRemove !== null) run({ remove: [pendingRemove.pair.hevyTemplateId] }, removedDone(pendingRemove.pair.hevyTitle));
           setPendingRemove(null);
         }}
         onCancel={() => setPendingRemove(null)}

@@ -10,14 +10,17 @@ export interface PairingGroups {
   deleted: { exerciseId: string; name: string | null; pairs: HevyPair[] }[];
   skipped: HevyPair[];
   placeholders: HevyPair[];
+  /** Minor 179: active pairs whose exercise isn't in a catalog that has never synced; neither live nor deleted yet. */
+  loading: HevyPair[];
 }
 
-export function groupPairings(mapping: HevyMapping, rows: readonly Exercise[]): PairingGroups {
+export function groupPairings(mapping: HevyMapping, rows: readonly Exercise[], opts: { synced: boolean } = { synced: true }): PairingGroups {
   const byId = new Map<string, Exercise>(rows.map((row) => [row.id, row]));
   const live = new Map<string, { exercise: Exercise; pairs: HevyPair[] }>();
   const deleted = new Map<string, { exerciseId: string; name: string | null; pairs: HevyPair[] }>();
   const skipped: HevyPair[] = [];
   const placeholders: HevyPair[] = [];
+  const loading: HevyPair[] = [];
 
   for (const pair of mapping.pairs) {
     if (pair.role === "skip") skipped.push(pair);
@@ -28,6 +31,8 @@ export function groupPairings(mapping: HevyMapping, rows: readonly Exercise[]): 
         const group = live.get(row.id) ?? { exercise: row, pairs: [] };
         group.pairs.push(pair);
         live.set(row.id, group);
+      } else if (row === undefined && !opts.synced && pair.exerciseActive !== false) {
+        loading.push(pair);
       } else {
         const group = deleted.get(pair.exerciseId) ?? { exerciseId: pair.exerciseId, name: row?.name ?? null, pairs: [] };
         group.pairs.push(pair);
@@ -40,5 +45,6 @@ export function groupPairings(mapping: HevyMapping, rows: readonly Exercise[]): 
     deleted: [...deleted.values()],
     skipped,
     placeholders,
+    loading,
   };
 }

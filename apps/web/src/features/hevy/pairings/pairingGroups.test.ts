@@ -47,3 +47,15 @@ describe("20.0 AC24 — the list", () => {
     expect(groups.placeholders.map((p) => p.hevyTemplateId)).toEqual(["W"]);
   });
 });
+
+describe("Minor 179 — before the first sync nothing is listed as deleted", () => {
+  it("a missing exercise whose pair is still active waits in loading until the catalog syncs", () => {
+    const mapping = { pairs: [pair("A", "exercise", exerciseId(7)), pair("B", "exercise", exerciseId(8), false)], sectionRules: [] };
+    const before = groupPairings(mapping, [], { synced: false });
+    expect(before.loading.map((x) => x.hevyTemplateId)).toEqual(["A"]);
+    expect(before.deleted.map((d) => d.exerciseId)).toEqual([exerciseId(8)]);
+    const after = groupPairings(mapping, [], { synced: true });
+    expect(after.loading).toEqual([]);
+    expect(after.deleted.map((d) => d.exerciseId)).toEqual([exerciseId(7), exerciseId(8)]);
+  });
+});
