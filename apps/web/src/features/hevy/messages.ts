@@ -128,6 +128,7 @@ export const SAME_NEW_NAME = "Another card makes an exercise with this name.";
 export const NEW_INVALID = "Check this exercise's type and details";
 export const PAIRING_GONE = "That exercise is no longer in your list. Choose another.";
 export const UNSUPPORTED_TYPE = "Strength in Numbers can't store this Hevy exercise's type. Skip it.";
+export const createFailed = (name: string) => `Couldn't create “${name}”. Nothing was paired.`;
 
 /** AC18: one sentence per file error, shown as "Line n: …" (plan copy). */
 export const CSV_ERROR_COPY: Readonly<Record<MappingCsvErrorCode, string>> = Object.freeze({

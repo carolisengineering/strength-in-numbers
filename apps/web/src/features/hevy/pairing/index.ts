@@ -17,3 +17,12 @@ export {
   type PairingNeed,
   type PairingProblem,
 } from "./pairingCards";
+export {
+  CREATE_GAP_MS,
+  PAIR_BATCH_MAX,
+  newPairingSaveRecord,
+  savePairings,
+  type PairingSaveRecord,
+  type SavePairingsDeps,
+  type SavePairingsResult,
+} from "./savePairings";
