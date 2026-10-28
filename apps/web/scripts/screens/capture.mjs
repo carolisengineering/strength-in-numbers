@@ -43,6 +43,13 @@ const rootIn = (state, id) => (state.catalog ?? []).find((e) => e.id === id)?.fo
 async function hevyHandler(route) {
   const req = route.request();
   const url = new URL(req.url());
+  if (req.method() === "GET" && url.pathname === "/v1/exercise_templates") {
+    // Two pages, so the reading line shows a real "page n of 2".
+    const page = Number(url.searchParams.get("page") ?? "1");
+    const half = Math.ceil(D.hevyTemplates.length / 2);
+    await route.fulfill(json({ page, page_count: 2, exercise_templates: D.hevyTemplates.slice((page - 1) * half, page * half) }));
+    return;
+  }
   if (req.method() === "GET" && url.pathname === "/v1/user/info") {
     const ok = req.headers()["api-key"] === D.hevyGoodKey;
     await route.fulfill(ok ? json(D.hevyUserInfo) : { status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) });
@@ -67,6 +74,11 @@ function makeHandler(state) {
     }
     if (m === "GET" && p === "/v1/me") res = json(D.me);
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
+    else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
+    else if ((m === "PUT" || m === "PATCH") && p === "/v1/hevy/mapping") {
+      // The fake answers with the mapping it already holds: the captures only need a 200 the schema accepts.
+      res = json(state.hevyMapping ?? D.hevyMapping);
+    }
     else if (m === "PATCH" && p === "/v1/me") res = json({ ...D.me, ...JSON.parse(req.postData() ?? "{}") });
     // Spec 18.2 AC27: `catalog` swaps the whole list (the 600-row capture); `hideExercise` serves it as deleted.
     else if (m === "GET" && p === "/v1/exercises") res = json({ exercises: state.catalog ?? D.exercises.filter((e) => e.id !== state.hideExercise), syncToken: "1.100" });
@@ -971,6 +983,36 @@ try {
       await present.hp.getByText("Hevy didn't accept that key.", { exact: false }).waitFor();
       await shoot(present.hp, device, "hevy-key-failed", "Hevy screen after a Replace that Hevy refused: the old key stays (Spec 20.0 AC5, AC6)");
       await present.hctx.close();
+
+      // Spec 20.0 Phase B (AC32): the pairings card, a load preview, the Pairings screen and the markers sheet.
+      const owner = await hevyContext(D.hevyGoodKey);
+      await owner.hp.getByText("7 exercises paired").waitFor();
+      await owner.hp.getByRole("heading", { level: 2, name: "Exercise pairings" }).scrollIntoViewIfNeeded();
+      await shoot(owner.hp, device, "hevy-mapping-card", "The Exercise pairings card: count, section markers, Load, Download, Review (Spec 20.0 AC17)");
+      await owner.hp.getByRole("button", { name: "Load a file" }).click();
+      await owner.hp.getByLabel("Choose a file").setInputFiles({ name: "hevy-mapping.csv", mimeType: "text/csv", buffer: Buffer.from(D.hevyMappingCsv) });
+      await owner.hp.getByRole("heading", { level: 3, name: /^Will be paired/ }).waitFor();
+      await shoot(owner.hp, device, "hevy-load-preview", "Loading a file: paired, a calories line to confirm, a left-out line, and what will be removed (Spec 20.0 AC21)");
+      await owner.hctx.close();
+      const pairings = await hevyContext(D.hevyGoodKey);
+      await pairings.hp.goto(BASE + "/app/profile/hevy/pairings");
+      await pairings.hp.getByRole("heading", { level: 1, name: "Pairings" }).waitFor();
+      await pairings.hp.getByRole("heading", { level: 2, name: "Bench Press" }).waitFor();
+      await settle(pairings.hp);
+      await shoot(pairings.hp, device, "hevy-pairings", "Pairings: by exercise, Sent as this, skips, markers, a deleted exercise (Spec 20.0 AC24)");
+      await pairings.hctx.close();
+      const markers = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await markers.route(isSinApi, makeHandler({ active: false, hevyMapping: D.hevyMappingNoMarkers }));
+      await markers.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
+      await markers.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
+      const mp = await markers.newPage();
+      mp.setDefaultTimeout(8000);
+      mp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${mp.url()}: ${msg.text().slice(0, 300)}`); });
+      await mp.goto(BASE + "/app/profile/hevy");
+      await mp.getByRole("button", { name: "Choose them" }).click();
+      await mp.getByRole("group", { name: "Warmup" }).waitFor();
+      await shoot(mp, device, "hevy-markers-sheet", "Choosing the Warmup and workout section markers (Spec 20.0 AC30)");
+      await markers.close();
     });
     await tryStep("sign-out guard dialog", async () => {
       // The guard only shows a dialog when sets are unsaved: log one set on the active workout with

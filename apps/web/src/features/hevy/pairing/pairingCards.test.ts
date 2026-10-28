@@ -15,7 +15,7 @@ const DIP = makeExercise({ id: exerciseId(3), name: "Dip", modality: "bodyweight
 const PLANK = makeExercise({ id: exerciseId(4), name: "Plank", modality: "duration" });
 const VISIBLE = [BENCH, ROW, DIP, PLANK];
 
-describe("20.0 AC26 — pairing cards model", () => {
+describe("20.0 AC26, AC27 — pairing cards model and validity", () => {
   it("an exact match is pre-selected; a trailing parenthetical is a similar match; nothing is New with the 19.1 prefill", () => {
     const cards = initialPairingCards(
       [need(tpl("A", "bench press")), need(tpl("B", "Bench Press (Barbell)")), need(tpl("C", "Zercher Squat"))],

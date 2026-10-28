@@ -14,7 +14,7 @@ import type { PairingDecision } from "./pairingCards";
  * at a time, at least `CREATE_GAP_MS` apart (under the exercise write group's 15 a minute, D7), then every pair goes
  * in `PATCH` batches of `PAIR_BATCH_MAX`. Nothing is written until the parent calls this (AC29); a create that fails
  * stops before any pair is written. A retry refreshes the catalog first and reuses what an earlier attempt made, so a
- * lost response never makes the same exercise twice (Review Focus 3, the routine import's rule).
+ * lost response never makes the same exercise twice (AC29, the routine import's rule).
  */
 
 export const CREATE_GAP_MS = 4_000;

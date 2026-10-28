@@ -41,7 +41,7 @@ function fakes(opts: { onCreate?: (input: CreateExercise, n: number) => void; vi
   return { deps, createdAt, patches };
 }
 
-describe("20.0 AC28 — savePairings", () => {
+describe("20.0 AC28, AC29 — savePairings writes only when called, and leaves nothing half-done", () => {
   it("creates one at a time, in order, at least 4 s apart, reporting progress", async () => {
     const { deps, createdAt } = fakes();
     const progress: string[] = [];

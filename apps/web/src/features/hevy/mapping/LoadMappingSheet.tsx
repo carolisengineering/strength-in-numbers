@@ -1,6 +1,6 @@
 import { normalizeExportAs, parseMappingCsv, type HevyMapping, type HevyTemplate } from "@sin/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
@@ -220,9 +220,16 @@ function leftOutText(l: LeftOut): string {
 /** AC21: what the file will do, in the spec's order. */
 function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; current: HevyMapping; onApplyRule: (templateId: string) => void }) {
   const removed = willBeRemoved(current, resolved.pairs);
+  // AC32: once the file is resolved, focus moves to the preview's first heading (once, not on each rule tap).
+  const firstHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    firstHeading.current?.focus();
+  }, []);
   return (
     <section className={styles.preview} aria-label="Preview">
-      <p className={styles.strong}>{willBePaired(resolved.pairs.length)}</p>
+      <h3 className={styles.heading} tabIndex={-1} ref={firstHeading}>
+        {willBePaired(resolved.pairs.length)}
+      </h3>
       {resolved.pairs.length > 0 ? (
         <details>
           <summary>{SHOW_LIST}</summary>
@@ -245,7 +252,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
 
       {resolved.leftOut.length > 0 ? (
         <>
-          <p className={styles.strong}>{leftOutHeading(resolved.leftOut.length)}</p>
+          <h3 className={styles.heading}>{leftOutHeading(resolved.leftOut.length)}</h3>
           <ul aria-label="Left out">
             {resolved.leftOut.map((l) => (
               <li key={`${l.line}-${l.reason}`}>{leftOutText(l)}</li>
@@ -254,7 +261,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
         </>
       ) : null}
 
-      <p className={styles.strong}>{SECTIONS_HEADING}</p>
+      <h3 className={styles.heading}>{SECTIONS_HEADING}</h3>
       <ul>
         {resolved.sectionRules.map((r) => (
           <li key={r.name}>{`${r.name}: ${r.treatment}`}</li>
@@ -264,7 +271,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
 
       {removed.length > 0 ? (
         <>
-          <p className={styles.strong}>{willBeRemovedLine(removed.length)}</p>
+          <h3 className={styles.heading}>{willBeRemovedLine(removed.length)}</h3>
           <details>
             <summary>{SHOW_LIST}</summary>
             <ul>

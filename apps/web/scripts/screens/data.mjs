@@ -727,6 +727,9 @@ export function payloadChecks() {
     ...exercises.map((e) => [`progress ${e.name}`, "ProgressSeriesSchema", progressFor(e.id)]),
     ["hevy status", "HevyStatusSchema", hevyStatus],
     ["hevy user info", "HevyUserInfoSchema", hevyUserInfo],
+    ["hevy mapping", "HevyMappingSchema", hevyMapping],
+    ["hevy mapping, no markers", "HevyMappingSchema", hevyMappingNoMarkers],
+    ["hevy templates page", "HevyTemplatePageSchema", { page: 1, page_count: 1, exercise_templates: hevyTemplates }],
   ];
 }
 
@@ -738,3 +741,57 @@ export const hevyBadKey = "0b0b0b0b-1111-4222-8333-44445555cafe";
 export const hevyUserInfo = {
   data: { id: "9c465af3-de7d-42bc-9c7c-f0170396358b", username: "carol_lifts", name: "Carol", url: "https://hevy.com/user/carol_lifts", is_pro: true },
 };
+
+// Spec 20.0 Phase B: the owner's mapping (about a dozen pairs: a calories pair, an assisted pair, a skip, both
+// placeholders, one whose exercise was deleted, and one Accessory rule) and the Hevy templates behind it.
+const hevyTemplate = (id, title, type, muscle = "chest", equipment = "barbell") => ({
+  id, title, type, is_custom: false, primary_muscle_group: muscle, secondary_muscle_groups: [], equipment,
+});
+export const hevyTemplates = [
+  hevyTemplate("H-BENCH", "Bench Press (Barbell)", "weight_reps"),
+  hevyTemplate("H-BENCH-CG", "Bench Press - Close Grip (Barbell)", "weight_reps"),
+  hevyTemplate("H-SQUAT", "Squat (Barbell)", "weight_reps", "quadriceps"),
+  hevyTemplate("H-PULL", "Assisted Pull Up", "bodyweight_assisted_reps", "lats", "machine"),
+  hevyTemplate("H-ECHO", "Echo Bike (calories)", "reps_only", "cardio", "machine"),
+  hevyTemplate("H-CURL", "Bicep Curl (Barbell)", "weight_reps", "biceps"),
+  hevyTemplate("H-CARRY", "Farmers Walk", "short_distance_weight", "full_body", "dumbbell"),
+  hevyTemplate("H-STRETCH", "Stretching", "duration", "other", "none"),
+  hevyTemplate("H-FOAM", "Foam Rolling", "duration", "other", "none"),
+  hevyTemplate("H-WARM", "Warmup", "reps_only", "other", "none"),
+  hevyTemplate("H-WORK", "workout", "reps_only", "other", "none"),
+  hevyTemplate("H-ROW", "Seated Row (Cable)", "weight_reps", "upper_back", "machine"),
+];
+const pairOf = (templateId, role, exerciseId = null, extra = {}) => {
+  const t = hevyTemplates.find((x) => x.id === templateId);
+  return {
+    hevyTemplateId: t.id, hevyTitle: t.title, hevyType: t.type, role, exerciseId,
+    exerciseActive: exerciseId === null ? null : true, measureRule: null, exportAs: false, ...extra,
+  };
+};
+export const hevyMapping = {
+  pairs: [
+    pairOf("H-BENCH", "exercise", ids.bench, { exportAs: true }),
+    pairOf("H-BENCH-CG", "exercise", ids.bench),
+    pairOf("H-SQUAT", "exercise", ids.squat, { exportAs: true }),
+    pairOf("H-PULL", "exercise", ids.pullUp, { measureRule: "assist_weight_ignored", exportAs: true }),
+    pairOf("H-ECHO", "exercise", ids.echoBike, { measureRule: "calories_as_reps", exportAs: true }),
+    pairOf("H-CURL", "exercise", ids.curl, { exerciseActive: false, exportAs: true }),
+    pairOf("H-CARRY", "exercise", ids.farmerCarry, { exportAs: true }),
+    pairOf("H-STRETCH", "skip"),
+    pairOf("H-FOAM", "skip"),
+    pairOf("H-WARM", "warmup_placeholder"),
+    pairOf("H-WORK", "workout_placeholder"),
+  ],
+  sectionRules: [{ name: "Accessory", treatment: "notes_on_first" }],
+};
+/** The same mapping with no section markers, so the card offers "Choose them". */
+export const hevyMappingNoMarkers = { ...hevyMapping, pairs: hevyMapping.pairs.filter((p) => !p.role.endsWith("_placeholder")) };
+/** The file the load-preview capture reads: one line Hevy doesn't know, one calories line with no rule. */
+export const hevyMappingCsv = [
+  "kind,hevy_id,hevy_title,sin_id,sin_name,rule,export_as",
+  `exercise,H-BENCH,,${ids.bench},,,yes`,
+  `exercise,H-ECHO,,${ids.echoBike},,,`,
+  `exercise,,Landmine Press,,Push Press,,`,
+  "skip,H-STRETCH,,,,,",
+  "placeholder,H-WARM,,,,warmup,",
+].join("\r\n");
