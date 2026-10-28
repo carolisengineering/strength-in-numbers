@@ -127,6 +127,17 @@ describe("20.0 AC11 — retries", () => {
     expect(defer).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["a POST answered 429", (c: ReturnType<typeof createHevyClient>) => c.createWorkout(POST), 1],
+    ["a GET whose retries all get 429", (c: ReturnType<typeof createHevyClient>) => c.workoutCount(), 4],
+  ] as const)("%s still holds the pacer back by its Retry-After", async (_n, call, replies) => {
+    const h = harness(Array.from({ length: replies }, () => jsonReply({}, { status: 429, headers: { "retry-after": "7" } })));
+    const defer = vi.spyOn(h.pacer, "deferUntil");
+    await expect(call(h.client)).rejects.toMatchObject({ kind: "rate_limited" });
+    expect(defer).toHaveBeenCalledTimes(replies);
+    expect(defer.mock.calls.at(-1)![0]).toBeGreaterThanOrEqual(Date.parse("2026-10-28T12:30:00.000Z") + 7000);
+  });
+
   it("a fetch rejection is retried, then rejects network", async () => {
     const h = harness([new TypeError("Failed to fetch"), new TypeError("Failed to fetch"), new TypeError("Failed to fetch"), new TypeError("Failed to fetch")]);
     await expect(h.client.userInfo()).rejects.toMatchObject({ kind: "network", status: null });

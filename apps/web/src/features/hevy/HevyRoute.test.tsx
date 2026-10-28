@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,6 +48,26 @@ describe("20.0 AC1 — direct visit", () => {
     renderAt(HEVY_PATH);
     expect(await screen.findByRole("heading", { level: 1, name: "Hevy" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to Profile" })).toHaveAttribute("href", "/app/profile");
+  });
+
+  it("a failed background refetch after a success keeps the screen (a network blip is not 'not found')", async () => {
+    server.use(http.get(STATUS_URL, () => HttpResponse.json({ enabled: true, pairCount: 0, linkCount: 0, recordsStale: false })));
+    const queryClient = makeQueryClient();
+    const router = createMemoryRouter(routes, { initialEntries: [HEVY_PATH] });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Hevy" })).toBeInTheDocument();
+
+    server.use(http.get(STATUS_URL, () => HttpResponse.error()));
+    await queryClient.refetchQueries({ queryKey: ["hevy", "status"] });
+    expect(queryClient.getQueryState(["hevy", "status"])?.status).toBe("error");
+    // Let React render the errored state before asserting.
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByRole("heading", { level: 1, name: "Hevy" })).toBeInTheDocument();
+    expect(screen.queryByTestId("not-found")).toBeNull();
   });
 
   it("while the status is pending it shows a spinner, never the screen", async () => {

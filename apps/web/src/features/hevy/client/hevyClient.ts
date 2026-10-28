@@ -115,8 +115,9 @@ export function createHevyClient(deps: HevyClientDeps): HevyClient {
         });
       }
 
-      if (!retry || !RETRYABLE.has(failure.kind) || attempt >= HEVY_GET_RETRY_WAITS_MS.length) throw failure;
+      // AC10: a Retry-After holds back every next request, whether or not this one is retried.
       if (failure.retryAfterMs !== null) deps.pacer.deferUntil(deps.now() + failure.retryAfterMs);
+      if (!retry || !RETRYABLE.has(failure.kind) || attempt >= HEVY_GET_RETRY_WAITS_MS.length) throw failure;
       try {
         await deps.sleep(Math.max(HEVY_GET_RETRY_WAITS_MS[attempt]!, failure.retryAfterMs ?? 0), opts.signal);
       } catch {

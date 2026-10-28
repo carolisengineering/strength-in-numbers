@@ -19,9 +19,13 @@ export function useHevyStatus(): UseQueryResult<HevyStatus> {
   });
 }
 
-/** `on` only on a successful status; any error (the 404, a network failure) is `off`. */
+/**
+ * `on` once a status has succeeded, even if a later background refetch fails (TanStack keeps the data beside the
+ * error), so a network blip never turns the owner's Hevy screen into "not found". With no data, any error (the 404,
+ * a network failure) is `off`.
+ */
 export function useHevyEnabled(): "pending" | "on" | "off" {
   const status = useHevyStatus();
-  if (status.isPending) return "pending";
-  return status.isSuccess ? "on" : "off";
+  if (status.data !== undefined) return "on";
+  return status.isPending ? "pending" : "off";
 }
