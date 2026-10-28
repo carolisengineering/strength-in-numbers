@@ -1,0 +1,724 @@
+{
+  "workouts": [
+    {
+      "hevyWorkoutId": "hist-00",
+      "title": "Session 1",
+      "description": null,
+      "startTime": "2026-08-01T10:00:00Z",
+      "endTime": "2026-08-01T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 60.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 8,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 15,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-01",
+      "title": "Session 2",
+      "description": null,
+      "startTime": "2026-08-02T10:00:00Z",
+      "endTime": "2026-08-02T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 62.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 9,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 26,
+              "reps": null,
+              "distanceMeters": 45,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-02",
+      "title": "Session 3",
+      "description": null,
+      "startTime": "2026-08-03T10:00:00Z",
+      "endTime": "2026-08-03T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 65.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 17,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-03",
+      "title": "Session 4",
+      "description": null,
+      "startTime": "2026-08-04T10:00:00Z",
+      "endTime": "2026-08-04T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 67.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 8,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 30,
+              "reps": null,
+              "distanceMeters": 55,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-04",
+      "title": "Session 5",
+      "description": null,
+      "startTime": "2026-08-05T10:00:00Z",
+      "endTime": "2026-08-05T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 70.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 9,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 19,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-05",
+      "title": "Session 6",
+      "description": null,
+      "startTime": "2026-08-06T10:00:00Z",
+      "endTime": "2026-08-06T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 72.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 26,
+              "reps": null,
+              "distanceMeters": 65,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-06",
+      "title": "Session 7",
+      "description": null,
+      "startTime": "2026-08-07T10:00:00Z",
+      "endTime": "2026-08-07T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 75.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 8,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 21,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-07",
+      "title": "Session 8",
+      "description": null,
+      "startTime": "2026-08-08T10:00:00Z",
+      "endTime": "2026-08-08T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 77.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 9,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 30,
+              "reps": null,
+              "distanceMeters": 75,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-08",
+      "title": "Session 9",
+      "description": null,
+      "startTime": "2026-08-09T10:00:00Z",
+      "endTime": "2026-08-09T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 80.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 23,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-09",
+      "title": "Session 10",
+      "description": null,
+      "startTime": "2026-08-10T10:00:00Z",
+      "endTime": "2026-08-10T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 82.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 8,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 26,
+              "reps": null,
+              "distanceMeters": 85,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-10",
+      "title": "Session 11",
+      "description": null,
+      "startTime": "2026-08-11T10:00:00Z",
+      "endTime": "2026-08-11T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 85.0,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 9,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-ROW",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": null,
+              "reps": 25,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hevyWorkoutId": "hist-11",
+      "title": "Session 12",
+      "description": null,
+      "startTime": "2026-08-12T10:00:00Z",
+      "endTime": "2026-08-12T11:00:00Z",
+      "tzOffsetMinutes": 0,
+      "exercises": [
+        {
+          "exerciseTemplateId": "T-BENCH",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "warmup",
+              "weightKg": 40,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 87.5,
+              "reps": 5,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            },
+            {
+              "type": "normal",
+              "weightKg": 50,
+              "reps": 10,
+              "distanceMeters": null,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        },
+        {
+          "exerciseTemplateId": "T-CARRY",
+          "notes": null,
+          "supersetId": null,
+          "sets": [
+            {
+              "type": "normal",
+              "weightKg": 30,
+              "reps": null,
+              "distanceMeters": 95,
+              "durationSeconds": null,
+              "rpe": null,
+              "customMetric": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

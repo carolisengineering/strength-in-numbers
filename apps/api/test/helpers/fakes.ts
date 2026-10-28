@@ -114,6 +114,8 @@ import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 import type { FinishedEdit } from "../../src/repositories/write-mode.js";
 import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
 import type { HevyLinkBeginRecord, HevyRepository, HevyStatusRecord } from "../../src/repositories/hevy.js";
+import type { HevyImportBatchRecord, HevyImportRepository, WriteOutcome } from "../../src/repositories/hevy-import.js";
+import type { HevyImportBatch, HevyImportResult } from "@sin/core";
 import type { HevyLinkComplete, HevyLinkState, HevyMapping, HevyMappingPatch, HevyMappingPut } from "@sin/core";
 import type {
   PersonalRecordFilter,
@@ -1412,5 +1414,39 @@ export class FakeHevyRepository implements HevyRepository {
 
   async releaseLink(): Promise<void> {
     this.releaseCalls++;
+  }
+}
+
+/**
+ * Spec 19.1: an in-memory HevyImportRepository for the route-unit tests (gate, validation, limits, logs). Every
+ * workout answers `create`; the import's SQL is pinned by the integration tests against the real repository.
+ */
+export class FakeHevyImportRepository implements HevyImportRepository {
+  readonly batches: { userId: string; batch: HevyImportBatch }[] = [];
+  readonly finishes: string[] = [];
+
+  async importBatch(userId: string, batch: HevyImportBatch): Promise<HevyImportBatchRecord> {
+    this.batches.push({ userId, batch });
+    const results: HevyImportResult[] = batch.workouts.map((w) => ({
+      hevyWorkoutId: w.hevyWorkoutId,
+      outcome: "create",
+      workoutId: null,
+      matchedWorkoutId: null,
+      unpaired: [],
+      drops: [],
+      notices: [],
+      exerciseCount: w.exercises.length,
+      setCount: w.exercises.reduce((n, e) => n + e.sets.length, 0),
+    }));
+    return { results, setsCreated: results.reduce((n, r) => n + r.setCount, 0), setsDropped: 0 };
+  }
+
+  async writeImportedWorkout(): Promise<WriteOutcome> {
+    throw new Error("FakeHevyImportRepository.writeImportedWorkout is not used by the routes");
+  }
+
+  async finishImport(userId: string): Promise<{ recomputed: boolean; rootCount: number }> {
+    this.finishes.push(userId);
+    return { recomputed: this.finishes.length === 1, rootCount: this.finishes.length === 1 ? 3 : 0 };
   }
 }

@@ -16,6 +16,7 @@ import { createPersonalRecordRepository } from "../../src/repositories/personal-
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import {
@@ -59,6 +60,7 @@ describe.skipIf(!shouldRunIntegration())(
         routineRepository: createRoutineRepository(db.prisma),
         accountExportRepository: createAccountExportRepository(db.prisma),
         hevyRepository: createHevyRepository(db.prisma),
+        hevyImportRepository: createHevyImportRepository(db.prisma),
       });
 
     it("first GET /v1/me inserts exactly one row; isNewUser true then false (Criterion 7)", async () => {
@@ -151,6 +153,7 @@ describe.skipIf(!shouldRunIntegration())(
         routineRepository: createRoutineRepository(db.prisma),
         accountExportRepository: createAccountExportRepository(db.prisma),
         hevyRepository: createHevyRepository(db.prisma),
+        hevyImportRepository: createHevyImportRepository(db.prisma),
       });
       const up = await app.inject({ method: "GET", url: "/readyz" });
       expect(up.statusCode).toBe(200);

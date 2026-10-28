@@ -23,6 +23,7 @@
     "bench:history": "tsx scripts/bench-history.ts",
     "bench:progress": "tsx scripts/bench-progress.ts",
     "bench:exercise-usage": "tsx scripts/bench-exercise-usage.ts",
+    "bench:hevy-import": "tsx scripts/bench-hevy-import.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"
   },
   "dependencies": {
