@@ -3,7 +3,8 @@ import { pino } from "pino";
 import { uuidv7 } from "uuidv7";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { rebuildRecords } from "../../src/records/rebuild.js";
+import { rebuildRecords, rebuildUserRecords } from "../../src/records/rebuild.js";
+import { lockUserRecords } from "../../src/repositories/personal-record.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, recordsOf, TRUNCATE_ALL, type RecordRow } from "./records-helpers.js";
 
@@ -131,5 +132,28 @@ describe.skipIf(!shouldRunIntegration())("AC22 — records:rebuild reproduces li
     await rebuildRecords(db.prisma, silent, { userId: user });
     expect(released).toBe(true);
     await holder;
+  });
+
+  describe("19.1 AC26 — rebuildUserRecords equals rebuildRecords for one user", () => {
+    it("writes the same rows inside the caller's transaction and lock", async () => {
+      const user = await insertUser(db);
+      const other = await insertUser(db);
+      await liveHistory(user);
+      await liveHistory(other);
+      await rebuildRecords(db.prisma, silent, { userId: user });
+      const expected = shape(await recordsOf(db, user));
+      const otherBefore = shape(await recordsOf(db, other));
+      await db.prisma.$executeRawUnsafe(`DELETE FROM "personal_record"`);
+
+      const summary = await db.prisma.$transaction(async (tx) => {
+        await lockUserRecords(tx, user);
+        return rebuildUserRecords(tx, user);
+      });
+
+      expect(shape(await recordsOf(db, user))).toEqual(expected);
+      expect(summary).toEqual({ rootCount: 2, recordCount: expected.length });
+      expect(otherBefore.length).toBeGreaterThan(0);
+      expect(await recordsOf(db, other)).toEqual([]);
+    });
   });
 });
