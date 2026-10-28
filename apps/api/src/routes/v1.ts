@@ -17,6 +17,7 @@ import { registerSetRoutes } from "./sets.js";
 import { registerWorkoutRoutes } from "./workouts.js";
 import { registerWorkoutSectionRoutes } from "./workout-sections.js";
 import type { HevyRepository } from "../repositories/hevy.js";
+import type { HevyImportRepository } from "../repositories/hevy-import.js";
 import { registerHevyRoutes } from "./hevy.js";
 
 export interface V1RouteDeps {
@@ -28,6 +29,8 @@ export interface V1RouteDeps {
   accountExportRepository: AccountExportRepository;
   /** Spec 19.0. */
   hevyRepository: HevyRepository;
+  /** Spec 19.1. */
+  hevyImportRepository: HevyImportRepository;
   hevyEnabledUserIds: ReadonlySet<string>;
 }
 
@@ -49,5 +52,9 @@ export function registerV1Routes(
   registerSetRoutes(app, { workoutRepository: deps.workoutRepository });
   registerPersonalRecordRoutes(app, { personalRecordRepository: deps.personalRecordRepository });
   registerProgressRoutes(app, { personalRecordRepository: deps.personalRecordRepository });
-  registerHevyRoutes(app, { hevyRepository: deps.hevyRepository, hevyEnabledUserIds: deps.hevyEnabledUserIds });
+  registerHevyRoutes(app, {
+    hevyRepository: deps.hevyRepository,
+    hevyImportRepository: deps.hevyImportRepository,
+    hevyEnabledUserIds: deps.hevyEnabledUserIds,
+  });
 }

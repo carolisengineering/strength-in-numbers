@@ -11,6 +11,7 @@ import { createPersonalRecordRepository } from "../../src/repositories/personal-
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
@@ -53,6 +54,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HT
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
       hevyRepository: createHevyRepository(db.prisma),
+      hevyImportRepository: createHevyImportRepository(db.prisma),
       rateLimits: GENEROUS_LIMITS,
     });
   }

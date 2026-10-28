@@ -4,6 +4,7 @@ import { buildApp } from "../../src/app.js";
 import { buildTestApp, testConfig } from "../helpers/build-test-app.js";
 import {
   FakeAccountExportRepository,
+  FakeHevyImportRepository,
   FakeHevyRepository,
   FakePersonalRecordRepository,
   FakeRoutineRepository,
@@ -28,6 +29,7 @@ describe("buildApp logger wiring", () => {
       routineRepository: new FakeRoutineRepository(),
       accountExportRepository: new FakeAccountExportRepository(new FakeUserRepository()),
       hevyRepository: new FakeHevyRepository(),
+      hevyImportRepository: new FakeHevyImportRepository(),
     });
     const res = await app.inject({ method: "GET", url: "/healthz" });
     expect(res.statusCode).toBe(200);

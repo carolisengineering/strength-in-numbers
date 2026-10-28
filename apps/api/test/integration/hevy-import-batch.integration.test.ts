@@ -20,7 +20,7 @@ const set = (over: Partial<Set> = {}): Set => ({
   ...over,
 });
 const bench = (sets: Set[] = [set({ weightKg: 60, reps: 5 })]) => ({ exerciseTemplateId: "T-BENCH", notes: null, supersetId: null, sets });
-const withoutIds = (results: HevyImportResult[]) => results.map(({ workoutId: _w, ...r }) => r);
+const withoutIds = (results: HevyImportResult[]) => results.map((r) => ({ ...r, workoutId: null }));
 
 /** Spec 19.1 §6.1 — the batch: links, translation, duplicates, dry run, write. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import batch (real Postgres)", () => {

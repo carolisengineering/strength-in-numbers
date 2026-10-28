@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { HevyRepository } from "../../src/repositories/hevy.js";
+import type { HevyImportRepository } from "../../src/repositories/hevy-import.js";
 import type { RateLimitConfig } from "../../src/plugins/rate-limit.js";
 import { buildTestApp, testConfig } from "./build-test-app.js";
 import { FakeUserRepository, authContext, fakeVerifier, makeUser } from "./fakes.js";
@@ -12,6 +13,7 @@ export const AS_B = { authorization: "Bearer b" };
 
 export async function buildHevyApp(opts: {
   hevyRepository?: HevyRepository;
+  hevyImportRepository?: HevyImportRepository;
   rateLimits?: RateLimitConfig;
   logger?: FastifyBaseLogger;
   deletedA?: boolean;
@@ -25,6 +27,7 @@ export async function buildHevyApp(opts: {
     userRepository: users,
     tokenVerifier: fakeVerifier((token) => authContext({ authSub: token === "a" ? "auth0|a" : "auth0|b" })),
     ...(opts.hevyRepository ? { hevyRepository: opts.hevyRepository } : {}),
+    ...(opts.hevyImportRepository ? { hevyImportRepository: opts.hevyImportRepository } : {}),
     ...(opts.rateLimits ? { rateLimits: opts.rateLimits } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
   });

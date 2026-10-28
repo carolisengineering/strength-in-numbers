@@ -16,6 +16,7 @@ import {
 import { rebuildRecords } from "../../src/records/rebuild.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
@@ -329,6 +330,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise typ
         routineRepository: createRoutineRepository(db.prisma),
         accountExportRepository: createAccountExportRepository(db.prisma),
         hevyRepository: createHevyRepository(db.prisma),
+        hevyImportRepository: createHevyImportRepository(db.prisma),
         rateLimits: GENEROUS_LIMITS,
       });
     it("the fork route answers 201 with a Location for a bodiless fork", async () => {

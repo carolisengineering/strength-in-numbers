@@ -9,6 +9,7 @@ import { createPersonalRecordRepository } from "../../src/repositories/personal-
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { testConfig } from "../helpers/build-test-app.js";
@@ -68,6 +69,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
       hevyRepository: createHevyRepository(db.prisma),
+      hevyImportRepository: createHevyImportRepository(db.prisma),
     });
   }
 

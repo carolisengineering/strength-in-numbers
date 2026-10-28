@@ -72,6 +72,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import finish (real
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
       hevyRepository: createHevyRepository(db.prisma),
+      hevyImportRepository: createHevyImportRepository(db.prisma),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

@@ -55,6 +55,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
       hevyRepository: createHevyRepository(db.prisma),
+      hevyImportRepository: createHevyImportRepository(db.prisma),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);
@@ -129,7 +130,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
         `SELECT id::text, position, name, added_in_workout FROM workout_section WHERE workout_id = $1::uuid ORDER BY position`,
         id,
       );
-      expect(sections.map(({ id: _id, ...s }) => s)).toEqual([{ position: 0, name: "Warm-up", added_in_workout: false }]);
+      expect(sections).toEqual([{ id: expect.any(String), position: 0, name: "Warm-up", added_in_workout: false }]);
 
       const exercises = await db.prisma.$queryRawUnsafe<Record<string, unknown>[]>(
         `SELECT id::text, position, exercise_id::text, exercise_name_snapshot, modality_snapshot, notes, superset_group,
@@ -137,9 +138,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
          FROM workout_exercise WHERE workout_id = $1::uuid ORDER BY position`,
         id,
       );
-      expect(exercises.map(({ id: _id, ...e }) => e)).toEqual([
-        { position: 0, exercise_id: bench, exercise_name_snapshot: "Bench Press", modality_snapshot: "weight_reps", notes: "elbows in", superset_group: 1, section_id: sections[0]!.id },
-        { position: 1, exercise_id: row, exercise_name_snapshot: "Row Erg", modality_snapshot: "calories", notes: null, superset_group: 1, section_id: sections[0]!.id },
+      expect(exercises.map((e) => ({ ...e, id: null }))).toEqual([
+        { id: null, position: 0, exercise_id: bench, exercise_name_snapshot: "Bench Press", modality_snapshot: "weight_reps", notes: "elbows in", superset_group: 1, section_id: sections[0]!.id },
+        { id: null, position: 1, exercise_id: row, exercise_name_snapshot: "Row Erg", modality_snapshot: "calories", notes: null, superset_group: 1, section_id: sections[0]!.id },
       ]);
 
       const sets = await db.prisma.$queryRawUnsafe<Record<string, unknown>[]>(

@@ -42,6 +42,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 13.0 telemetry against real Postg
     const { createRoutineRepository } = await import("../../src/repositories/routine.prisma.js");
     const { createAccountExportRepository } = await import("../../src/repositories/account-export.prisma.js");
     const { createHevyRepository } = await import("../../src/repositories/hevy.prisma.js");
+    const { createHevyImportRepository } = await import("../../src/repositories/hevy-import.prisma.js");
 
     app = await buildApp({
       config: testConfig(),
@@ -55,6 +56,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 13.0 telemetry against real Postg
       routineRepository: createRoutineRepository(db.prisma),
       accountExportRepository: createAccountExportRepository(db.prisma),
       hevyRepository: createHevyRepository(db.prisma),
+      hevyImportRepository: createHevyImportRepository(db.prisma),
       rateLimits: GENEROUS_LIMITS,
     });
     await app.listen({ port: 0, host: "127.0.0.1" });

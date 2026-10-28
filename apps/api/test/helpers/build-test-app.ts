@@ -8,11 +8,13 @@ import type { PersonalRecordRepository } from "../../src/repositories/personal-r
 import type { RoutineRepository } from "../../src/repositories/routine.js";
 import type { AccountExportRepository } from "../../src/repositories/account-export.js";
 import type { HevyRepository } from "../../src/repositories/hevy.js";
+import type { HevyImportRepository } from "../../src/repositories/hevy-import.js";
 import { RATE_LIMITS, type RateLimitConfig, type WriteGroup } from "../../src/plugins/rate-limit.js";
 import {
   FakeExerciseRepository,
   FakePersonalRecordRepository,
   FakeAccountExportRepository,
+  FakeHevyImportRepository,
   FakeHevyRepository,
   FakeRoutineRepository,
   FakeUserRepository,
@@ -52,6 +54,8 @@ export interface TestAppOptions<
   accountExportRepository?: AccountExportRepository;
   /** Spec 19.0 — defaults to an in-memory fake over the fake workout repository. */
   hevyRepository?: HevyRepository;
+  /** Spec 19.1 — defaults to an in-memory fake. */
+  hevyImportRepository?: HevyImportRepository;
   logger?: FastifyBaseLogger | boolean;
   checkReadiness?: () => Promise<void>;
   readinessTtlMs?: number;
@@ -109,6 +113,7 @@ export async function buildTestApp<
     routineRepository: routineRepo,
     accountExportRepository: opts.accountExportRepository ?? new FakeAccountExportRepository(repo),
     hevyRepository: opts.hevyRepository ?? new FakeHevyRepository(),
+    hevyImportRepository: opts.hevyImportRepository ?? new FakeHevyImportRepository(),
     rateLimits: opts.rateLimits,
   };
   const app = await buildApp(deps);

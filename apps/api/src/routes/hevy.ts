@@ -21,11 +21,15 @@ import {
 } from "../errors/app-error.js";
 import { hevyFingerprint } from "../hevy/fingerprint.js";
 import type { HevyRepository } from "../repositories/hevy.js";
+import type { HevyImportRepository } from "../repositories/hevy-import.js";
+import { registerHevyImportRoutes } from "./hevy-import.js";
 import { ifNoneMatchHits, strongEtag } from "./http-cache.js";
 import { toHevyPairDto, toHevySectionRuleDto } from "./mappers.js";
 
 export interface HevyRouteDeps {
   hevyRepository: HevyRepository;
+  /** Spec 19.1. */
+  hevyImportRepository: HevyImportRepository;
   hevyEnabledUserIds: ReadonlySet<string>;
 }
 
@@ -167,5 +171,8 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
         return reply;
       },
     );
+
+    // Spec 19.1: the bulk import, behind the same gate.
+    registerHevyImportRoutes(scope, { hevyImportRepository: deps.hevyImportRepository });
   });
 }
