@@ -32,6 +32,8 @@ export function useHevyKey() {
         if (!info.data.is_pro) return { ok: false, message: KEY_NOT_PRO };
         const { remembered } = hevyKeyStore.set(userId, trimmed, opts);
         queryClient.removeQueries({ queryKey: HEVY_KEYS.user });
+        // Phase B: another key may see other templates.
+        queryClient.removeQueries({ queryKey: HEVY_KEYS.templates });
         queryClient.setQueryData(HEVY_KEYS.user, info);
         return { ok: true, username: info.data.username ?? info.data.name ?? null, remembered };
       } catch (err) {
@@ -49,6 +51,7 @@ export function useHevyKey() {
     if (userId === null) return;
     hevyKeyStore.remove(userId);
     queryClient.removeQueries({ queryKey: HEVY_KEYS.user });
+    queryClient.removeQueries({ queryKey: HEVY_KEYS.templates });
   }, [userId, queryClient]);
 
   return { hasKey: key !== null, lastFour: key === null ? null : key.slice(-4), save, remove };

@@ -2,4 +2,8 @@
 export const HEVY_KEYS = {
   status: ["hevy", "status"] as const,
   user: ["hevy", "user"] as const,
+  /** Phase B: the stored mapping (`GET /v1/hevy/mapping`). */
+  mapping: ["hevy", "mapping"] as const,
+  /** Phase B: every Hevy exercise template, read with the key; in memory only. */
+  templates: ["hevy", "templates"] as const,
 };
