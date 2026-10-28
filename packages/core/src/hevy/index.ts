@@ -17,3 +17,4 @@ export * from "./importWorkout.js";
 export * from "./duplicate.js";
 export * from "./importRoutine.js";
 export * from "./importTemplate.js";
+export { cutCodePoints } from "./importText.js";

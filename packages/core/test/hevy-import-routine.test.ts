@@ -12,8 +12,12 @@ import {
 } from "../src/index.js";
 import { importContext, jsonFixture, sinId } from "./fixtures/hevy/import/context.js";
 
-const { now: _now, ...ctx } = importContext();
-const lbCtx = (({ now: _n, ...rest }) => rest)(importContext("lb"));
+const routineContext = (unit: "kg" | "lb") => {
+  const { pairs, exercises } = importContext(unit);
+  return { pairs, exercises, unit };
+};
+const ctx = routineContext("kg");
+const lbCtx = routineContext("lb");
 const routine = (name: string): HevyRoutine => HevyRoutineSchema.parse(jsonFixture(name));
 const FIXTURES = ["routine-basic", "routine-sections", "routine-modalities"] as const;
 
