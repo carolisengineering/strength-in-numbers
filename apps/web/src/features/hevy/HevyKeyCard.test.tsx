@@ -21,7 +21,7 @@ import {
   VALID_KEY,
   clearHevyKey,
   renderHevyScreen,
-  useInstantPacer,
+  setInstantPacing,
   userInfoOk,
 } from "../../test/hevyHarness";
 import { readFileSync } from "node:fs";
@@ -35,7 +35,7 @@ let sinRequests: string[] = [];
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   window.localStorage.clear();
   hevyRequests = [];

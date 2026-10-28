@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HevyCreateTemplateBody, HevyPostWorkout } from "@sin/core";
-import { hevyFixtures, jsonReply } from "./fixtures";
+import { hevyFixtures, jsonReply } from "../../../test/hevyFixtures";
 import { createHevyClient, HEVY_ORIGIN, type HevyClientDeps } from "./hevyClient";
 import { createPacer, type Pacer } from "./pacer";
 

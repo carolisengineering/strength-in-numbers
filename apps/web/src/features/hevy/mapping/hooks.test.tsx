@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { API_BASE_URL, ME, makeQueryClient, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
-import { USER_ID, VALID_KEY, clearHevyKey, useInstantPacer, userInfoOk } from "../../../test/hevyHarness";
+import { USER_ID, VALID_KEY, clearHevyKey, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { ME_QUERY_KEY } from "../../me/useMe";
 import { HEVY_KEYS } from "../keys";
@@ -54,7 +54,7 @@ let requests: { method: string; url: string; body: unknown }[] = [];
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   window.localStorage.clear();
   requests = [];

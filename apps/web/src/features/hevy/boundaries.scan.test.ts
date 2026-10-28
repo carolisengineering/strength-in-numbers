@@ -9,7 +9,7 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const stripComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const production = filesUnder(SRC, /\.(ts|tsx)$/)
   .map((path) => relative(SRC, path))
-  .filter((path) => !/\.test\.tsx?$/.test(path) && !path.startsWith("test/") && path !== "features/hevy/client/fixtures.ts");
+  .filter((path) => !/\.test\.tsx?$/.test(path) && !path.startsWith("test/"));
 const read = (path: string) => stripComments(readFileSync(join(SRC, path), "utf8"));
 const importsFrom = (source: string) => [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
 

@@ -14,7 +14,7 @@ const saved = vi.hoisted(() => ({ blobs: [] as { blob: Blob; filename: string }[
 vi.mock("../../account/saveBlob", () => ({ saveBlob: (blob: Blob, filename: string) => void saved.blobs.push({ blob, filename }) }));
 
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
-import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, useInstantPacer, userInfoOk } from "../../../test/hevyHarness";
+import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { hevyKeyStore } from "../keyStore";
 import { CHOOSE_MARKERS, DOWNLOAD_FAILED, MAPPING_OFFLINE, NO_MARKERS, markersLine, pairedCount } from "../messages";
@@ -35,7 +35,7 @@ const pair = (id: string, role: string, exerciseId: string | null = null) => ({
 beforeEach(() => {
   stubAccountEnv();
   auth.state.getAccessTokenSilently = vi.fn().mockResolvedValue("test-token");
-  useInstantPacer();
+  setInstantPacing();
   clearHevyKey();
   server.use(userInfoOk());
 });
