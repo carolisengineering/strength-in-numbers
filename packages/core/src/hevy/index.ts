@@ -12,3 +12,4 @@ export * from "./referenceTables.js";
 export * from "./exportAs.js";
 export * from "./mappingCsv.js";
 export * from "../dto/hevy.js";
+export * from "../dto/hevy-import.js";
