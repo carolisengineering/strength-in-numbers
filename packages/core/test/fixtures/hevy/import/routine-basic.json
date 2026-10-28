@@ -1,0 +1,42 @@
+{
+  "id": "r-basic",
+  "title": "  Upper A ",
+  "folder_id": null,
+  "exercises": [
+    {
+      "index": 0,
+      "title": "Bench Press (Barbell)",
+      "exercise_template_id": "BENCH",
+      "notes": "pause reps",
+      "superset_id": null,
+      "rest_seconds": 120,
+      "sets": [
+        { "index": 0, "type": "warmup", "weight_kg": 40, "reps": 10 },
+        { "index": 1, "type": "normal", "weight_kg": 60, "reps": null, "rep_range": { "start": 8, "end": 12 } },
+        { "index": 2, "type": "failure", "weight_kg": 61.235, "reps": 5 }
+      ]
+    },
+    {
+      "index": 1,
+      "title": "Pull Up",
+      "exercise_template_id": "PULLUP",
+      "notes": null,
+      "superset_id": null,
+      "rest_seconds": 90,
+      "sets": [
+        { "index": 0, "type": "normal", "weight_kg": null, "reps": 8 },
+        { "index": 1, "type": "normal", "weight_kg": null, "reps": 8 },
+        { "index": 2, "type": "dropset", "weight_kg": null, "reps": 0 }
+      ]
+    },
+    {
+      "index": 2,
+      "title": "Cable Fly",
+      "exercise_template_id": "SKIP",
+      "notes": null,
+      "superset_id": null,
+      "rest_seconds": 60,
+      "sets": [{ "index": 0, "type": "normal", "weight_kg": 10, "reps": 12 }]
+    }
+  ]
+}

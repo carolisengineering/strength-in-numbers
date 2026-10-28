@@ -1,0 +1,17 @@
+{
+  "id": "r-sections",
+  "title": "Hiraya day",
+  "folder_id": 7,
+  "exercises": [
+    { "index": 0, "title": "Bench", "exercise_template_id": "BENCH", "notes": null, "superset_id": null, "rest_seconds": null, "sets": [{ "type": "normal", "weight_kg": 60, "reps": 5 }] },
+    { "index": 1, "title": "Warm-up", "exercise_template_id": "WARMUP", "notes": "Bike", "superset_id": null, "rest_seconds": null, "sets": [{ "type": "normal", "reps": 1 }] },
+    { "index": 2, "title": "Pull Up", "exercise_template_id": "PULLUP", "notes": null, "superset_id": null, "rest_seconds": null, "sets": [{ "type": "warmup", "reps": 5 }] },
+    { "index": 3, "title": "Workout", "exercise_template_id": "WORKOUT", "notes": "Hiraya\nRx", "superset_id": null, "rest_seconds": null, "sets": [] },
+    { "index": 4, "title": "Squat", "exercise_template_id": "SQUAT", "notes": null, "superset_id": 1, "rest_seconds": null, "sets": [{ "type": "normal", "weight_kg": 100, "reps": 5 }] },
+    { "index": 5, "title": "Row", "exercise_template_id": "ROW", "notes": null, "superset_id": 1, "rest_seconds": null, "sets": [{ "type": "normal", "weight_kg": 70, "reps": 8 }] },
+    { "index": 6, "title": "Workout", "exercise_template_id": "WORKOUT", "notes": "Empty", "superset_id": null, "rest_seconds": null, "sets": [] },
+    { "index": 7, "title": "Fly", "exercise_template_id": "SKIP", "notes": null, "superset_id": null, "rest_seconds": null, "sets": [] },
+    { "index": 8, "title": "Workout", "exercise_template_id": "WORKOUT", "notes": "Finisher", "superset_id": null, "rest_seconds": null, "sets": [] },
+    { "index": 9, "title": "Bench", "exercise_template_id": "BENCH", "notes": null, "superset_id": 1, "rest_seconds": null, "sets": [{ "type": "normal", "weight_kg": 50, "reps": 10 }] }
+  ]
+}

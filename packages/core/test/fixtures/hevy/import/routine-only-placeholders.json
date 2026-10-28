@@ -1,0 +1,10 @@
+{
+  "id": "r-placeholders",
+  "title": "Markers",
+  "folder_id": null,
+  "exercises": [
+    { "index": 0, "title": "Warm-up", "exercise_template_id": "WARMUP", "notes": "Bike", "superset_id": null, "rest_seconds": null, "sets": [{ "type": "normal", "reps": 1 }] },
+    { "index": 1, "title": "Workout", "exercise_template_id": "WORKOUT", "notes": "Hiraya", "superset_id": null, "rest_seconds": null, "sets": [] },
+    { "index": 2, "title": "Fly", "exercise_template_id": "SKIP", "notes": null, "superset_id": null, "rest_seconds": null, "sets": [{ "type": "normal", "weight_kg": 10, "reps": 12 }] }
+  ]
+}
