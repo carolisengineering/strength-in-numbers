@@ -24,24 +24,22 @@ import { PAIRINGS_PATH } from "../paths";
 import { useHevyKey } from "../useHevyKey";
 import { MAPPING_FILENAME, mappingCsvBlob } from "./downloadMapping";
 import { LoadMappingSheet } from "./LoadMappingSheet";
+import { PlaceholderSheet } from "./PlaceholderSheet";
 import { useHevyMapping } from "./useHevyMapping";
 import styles from "./MappingCard.module.css";
 
-export interface MappingCardProps {
-  /** Task 9: opens the section-marker sheet. */
-  onChooseMarkers?: () => void;
-}
 
 /**
  * Spec 20.0 AC17, §5.1: the "Exercise pairings" card on the Hevy screen. Counts the exercise pairings, names the
  * section markers, and leads to loading a file, downloading it and reviewing the pairings. Loading needs the key
  * (it reads Hevy's exercise list); the rest needs only the server.
  */
-export function MappingCard({ onChooseMarkers }: MappingCardProps) {
+export function MappingCard() {
   const mapping = useHevyMapping();
   const { hasKey } = useHevyKey();
   const { state: catalog } = useCatalog();
   const [loading, setLoading] = useState(false);
+  const [choosingMarkers, setChoosingMarkers] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -83,7 +81,7 @@ export function MappingCard({ onChooseMarkers }: MappingCardProps) {
           ) : (
             <div className={styles.markers}>
               <p className={styles.muted}>{NO_MARKERS}</p>
-              <Button variant="secondary" onClick={onChooseMarkers}>
+              <Button variant="secondary" onClick={() => setChoosingMarkers(true)}>
                 {CHOOSE_MARKERS}
               </Button>
             </div>
@@ -105,6 +103,8 @@ export function MappingCard({ onChooseMarkers }: MappingCardProps) {
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-mapping-status">
         {announcement.text}
       </p>
+      {/* Mounted only while open: it reads Hevy's template list, which no other part of the card needs. */}
+      {choosingMarkers ? <PlaceholderSheet open onClose={() => setChoosingMarkers(false)} /> : null}
       {mapping.data ? (
         <LoadMappingSheet
           open={loading}

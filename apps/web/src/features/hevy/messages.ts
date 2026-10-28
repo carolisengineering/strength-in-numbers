@@ -91,6 +91,14 @@ export const placeholderMissing = (which: "warmup" | "workout") =>
   `The ${which === "warmup" ? "Warmup" : "workout"} marker in the file wasn't found in Hevy.`;
 export const typeMismatch = (hevyTitle: string, sinName: string) => `${hevyTitle} can't be paired with ${sinName}: the types don't match`;
 
+/** Phase B: the section-marker sheet (AC30). The two labels are verbatim; the rest is plan copy. */
+export const MARKERS_SHEET_TITLE = "Section markers";
+export const MARKER_WARMUP = "Warmup";
+export const MARKER_WORKOUT = "workout";
+export const MARKER_NONE = "None";
+export const SAVE_MARKERS = "Save markers";
+export const SEARCH_HEVY_EXERCISES = "Search Hevy exercises";
+
 /** Phase B: the Pairings screen (AC24, AC25, §5.3). */
 export const PAIRINGS_TITLE = "Pairings";
 export const BACK_TO_HEVY = "Back to Hevy";
