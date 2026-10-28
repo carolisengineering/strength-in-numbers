@@ -23,6 +23,7 @@ import {
   IGNORE_ASSIST,
   LEFT_OUT_COPY,
   LOAD_SHEET_TITLE,
+  NOTICES_LABEL,
   MAPPING_OFFLINE,
   MAPPING_RATE_LIMITED,
   MAPPING_REJECTED,
@@ -31,6 +32,8 @@ import {
   SECTIONS_HEADING,
   SHOW_LIST,
   WHATS_IN_FILE,
+  exportAsTwiceNotice,
+  idTitleNotice,
   leaveOutNote,
   leftOutHeading,
   lineLabel,
@@ -42,9 +45,10 @@ import {
   typeMismatch,
   willBePaired,
   willBeRemovedLine,
+  willChangeLine,
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
-import { applyRule, resolveLines, willBeRemoved, type LeftOut, type Resolved } from "./resolveLines";
+import { applyRule, resolveLines, willBeRemoved, willChange, type LeftOut, type ResolveNotice, type Resolved } from "./resolveLines";
 import { classifyMappingError, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
@@ -217,9 +221,15 @@ function leftOutText(l: LeftOut): string {
   return [lineLabel(l.line), l.hevyWritten, l.sinWritten, reason].filter((part) => part !== "").join(" · ");
 }
 
+function noticeText(n: Exclude<ResolveNotice, { kind: "placeholder_not_found" }>): string {
+  return n.kind === "id_title_disagree" ? idTitleNotice(n.line) : exportAsTwiceNotice(n.line);
+}
+
 /** AC21: what the file will do, in the spec's order. */
 function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; current: HevyMapping; onApplyRule: (templateId: string) => void }) {
   const removed = willBeRemoved(current, resolved.pairs);
+  const changed = willChange(current, resolved.pairs);
+  const lineNotices = resolved.notices.flatMap((n) => (n.kind === "placeholder_not_found" ? [] : [n]));
   // AC32: once the file is resolved, focus moves to the preview's first heading (once, not on each rule tap).
   const firstHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -243,7 +253,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
 
       {resolved.needsRule.map((n) => (
         <div key={n.templateId} className={styles.fix}>
-          <p>{needsRuleLine(n.pair.hevyTitle, lineLabel(n.line))}</p>
+          <p>{needsRuleLine(n.pair.hevyTitle, n.sinName)}</p>
           <Button variant="secondary" onClick={() => onApplyRule(n.templateId)}>
             {n.rule === "calories_as_reps" ? COUNT_CALORIES : IGNORE_ASSIST}
           </Button>
@@ -261,6 +271,14 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
         </>
       ) : null}
 
+      {lineNotices.length > 0 ? (
+        <ul aria-label={NOTICES_LABEL}>
+          {lineNotices.map((n) => (
+            <li key={`${n.kind}-${n.line}`}>{noticeText(n)}</li>
+          ))}
+        </ul>
+      ) : null}
+
       <h3 className={styles.heading}>{SECTIONS_HEADING}</h3>
       <ul>
         {resolved.sectionRules.map((r) => (
@@ -268,6 +286,17 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
         ))}
         {resolved.notices.flatMap((n) => (n.kind === "placeholder_not_found" ? [<li key={n.which}>{placeholderMissing(n.which)}</li>] : []))}
       </ul>
+
+      {changed.length > 0 ? (
+        <>
+          <h3 className={styles.heading}>{willChangeLine(changed.length)}</h3>
+          <ul aria-label="Will change">
+            {changed.map((p) => (
+              <li key={p.hevyTemplateId}>{p.hevyTitle}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {removed.length > 0 ? (
         <>

@@ -117,7 +117,7 @@ describe("20.0 AC22 / AC25 — writes", () => {
     await act(async () => {
       await result.current.put.mutateAsync({ pairs: [], sectionRules: [] }).catch(() => undefined);
     });
-    expect(result.current.put.isError).toBe(true);
+    await waitFor(() => expect(result.current.put.isError).toBe(true));
     expect(calls).toBe(1);
   });
 });

@@ -41,6 +41,8 @@ export interface NeedsRule {
   line: number;
   templateId: string;
   rule: MeasureRule;
+  /** The SIN exercise the line pairs with, for the preview's sentence. */
+  sinName: string;
   /** The pair as it will be stored once the rule is accepted. */
   pair: PairInput;
 }
@@ -101,8 +103,9 @@ export function resolveLines(
       out.sectionRules.push({ name: l.sinName ?? "", treatment: l.rule as HevySectionRule["treatment"] });
       return;
     }
-    const hevyWritten = l.hevyId ?? l.hevyTitle ?? "";
-    const sinWritten = l.sinId ?? l.sinName ?? "";
+    // The names as written; an id only when the line has no name (a downloaded file carries both).
+    const hevyWritten = l.hevyTitle ?? l.hevyId ?? "";
+    const sinWritten = l.sinName ?? l.sinId ?? "";
     const leave = (reason: LeftOutReason, extra: Partial<LeftOut> = {}) =>
       void out.leftOut.push({ line, hevyWritten, sinWritten, reason, ...extra });
 
@@ -175,7 +178,7 @@ export function resolveLines(
     if (fix === null) return leave("type_mismatch", labels);
     usedTemplates.add(template.id);
     if (exportAs) markedExport.add(exercise.id);
-    out.needsRule.push({ line, templateId: template.id, rule: fix, pair: { ...pair, measureRule: fix } });
+    out.needsRule.push({ line, templateId: template.id, rule: fix, sinName: exercise.name, pair: { ...pair, measureRule: fix } });
   });
 
   out.pairs = normalizeExportAs(out.pairs);
@@ -197,4 +200,16 @@ export function applyRule(resolved: Resolved, templateId: string): Resolved {
 export function willBeRemoved(current: HevyMapping, next: readonly PairInput[]): HevyPair[] {
   const kept = new Set(next.map((p) => p.hevyTemplateId));
   return current.pairs.filter((p) => !kept.has(p.hevyTemplateId));
+}
+
+/**
+ * Final review (D2 "never silent"): the current pairings the file keeps but changes — another exercise, rule, role
+ * or Sent as — so an edit made on Pairings since the download is named before the replace undoes it.
+ */
+export function willChange(current: HevyMapping, next: readonly PairInput[]): HevyPair[] {
+  const byTemplate = new Map(next.map((p) => [p.hevyTemplateId, p]));
+  return current.pairs.filter((p) => {
+    const n = byTemplate.get(p.hevyTemplateId);
+    return n !== undefined && (n.role !== p.role || n.exerciseId !== p.exerciseId || n.measureRule !== p.measureRule || n.exportAs !== p.exportAs);
+  });
 }

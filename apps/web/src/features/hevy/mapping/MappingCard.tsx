@@ -53,7 +53,8 @@ export function MappingCard() {
     setDownloading(true);
     const fresh = await mapping.refetch();
     setDownloading(false);
-    if (fresh.data === undefined) {
+    // A failed re-read keeps the old `data` in TanStack v5, so the status decides, never `data`.
+    if (fresh.isError || fresh.data === undefined) {
       const offline = fresh.error instanceof ApiError && fresh.error.isNetworkError;
       if (!offline) reportError(fresh.error ?? new Error("mapping download failed"), { source: "hevy", op: "file" });
       return announce(offline ? MAPPING_OFFLINE : DOWNLOAD_FAILED);

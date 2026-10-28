@@ -3,6 +3,7 @@ import {
   exerciseFromHevyTemplate,
   hevyPairingProblem,
   matchExerciseName,
+  normalizeExerciseName,
   type CreateExercise,
   type Exercise,
   type HevyTemplate,
@@ -51,6 +52,8 @@ export type PairingProblem =
   | { kind: "rule_needed"; rule: MeasureRule }
   | { kind: "name"; message: string }
   | { kind: "same-new" }
+  /** A New name an existing visible exercise already has (10.4's rule): choose that one instead. */
+  | { kind: "exists"; exerciseName: string }
   | { kind: "invalid" }
   | { kind: "gone" }
   /** The template's Hevy type has no SIN modality; only Skip is possible. */
@@ -129,6 +132,9 @@ export function problemFor(card: PairingCard, visible: readonly Exercise[]): Pai
   } else {
     const message = newNameProblem(card.newValue.name);
     if (message !== null) return { kind: "name", message };
+    const key = normalizeExerciseName(card.newValue.name);
+    const existing = key === "" ? undefined : visible.find((e) => normalizeExerciseName(e.name) === key);
+    if (existing !== undefined) return { kind: "exists", exerciseName: existing.name };
     if (!CreateExerciseSchema.safeParse(toCreateExerciseInput(card.newValue)).success || modality === null) return { kind: "invalid" };
   }
   if (hevyPairingProblem(card.hevyType, modality, card.rule) === null) return null;

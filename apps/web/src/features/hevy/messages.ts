@@ -85,6 +85,10 @@ export const leftOutHeading = (n: number) => `Left out: ${n}`;
 export const lineLabel = (n: number) => `Line ${n}`;
 export const SECTIONS_HEADING = "Section rules and placeholders";
 export const willBeRemovedLine = (n: number) => `${n} pairings in the app that are not in this file`;
+export const willChangeLine = (n: number) => `${n} pairings in the app that this file changes`;
+export const NOTICES_LABEL = "Notices";
+export const idTitleNotice = (line: number) => `Line ${line}: the Hevy id and title name different exercises; the id was used`;
+export const exportAsTwiceNotice = (line: number) => `Line ${line}: another line already sends this exercise to Hevy, so this one won't`;
 export const SHOW_LIST = "Show the list";
 export const needsRuleLine = (hevyTitle: string, sinName: string) => `${hevyTitle} with ${sinName} needs one more choice:`;
 export const placeholderMissing = (which: "warmup" | "workout") =>
@@ -133,6 +137,7 @@ export const ASSIST_RULE = "Ignore the assist weight";
 export const RULE_NEEDED = "Tick the box above to pair these, or choose another exercise.";
 export const typeProblem = (hevyLabel: string, modalityLabel: string) => `A ${hevyLabel} exercise can't be paired with a ${modalityLabel} one.`;
 export const SAME_NEW_NAME = "Another card makes an exercise with this name.";
+export const newNameExists = (name: string) => `You already have “${name}”. Choose it instead of making a new one.`;
 export const NEW_INVALID = "Check this exercise's type and details";
 export const PAIRING_GONE = "That exercise is no longer in your list. Choose another.";
 export const UNSUPPORTED_TYPE = "Strength in Numbers can't store this Hevy exercise's type. Skip it.";

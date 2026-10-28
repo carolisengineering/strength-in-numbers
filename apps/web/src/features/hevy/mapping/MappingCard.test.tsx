@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,12 +10,14 @@ const auth = vi.hoisted(() => ({
   },
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
+const saved = vi.hoisted(() => ({ blobs: [] as { blob: Blob; filename: string }[] }));
+vi.mock("../../account/saveBlob", () => ({ saveBlob: (blob: Blob, filename: string) => void saved.blobs.push({ blob, filename }) }));
 
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, useInstantPacer, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
 import { hevyKeyStore } from "../keyStore";
-import { CHOOSE_MARKERS, NO_MARKERS, markersLine, pairedCount } from "../messages";
+import { CHOOSE_MARKERS, DOWNLOAD_FAILED, MAPPING_OFFLINE, NO_MARKERS, markersLine, pairedCount } from "../messages";
 import { PAIRINGS_PATH } from "../paths";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -75,5 +78,21 @@ describe("20.0 AC17 — the card", () => {
     clearHevyKey();
     hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
     expect(await screen.findByRole("button", { name: "Load a file" })).toBeEnabled();
+  });
+});
+
+describe("20.0 AC23 — a download whose re-read fails saves nothing (final review)", () => {
+  it.each([
+    ["offline", () => HttpResponse.error(), MAPPING_OFFLINE],
+    ["a 500", () => HttpResponse.json({ type: "x/internal", title: "t", status: 500, detail: "d", instance: "i" }, { status: 500, headers: { "content-type": "application/problem+json" } }), DOWNLOAD_FAILED],
+  ])("%s: no file, and the status line says why", async (_label, reply, sentence) => {
+    saved.blobs = [];
+    server.use(http.get(MAPPING_URL, () => HttpResponse.json({ pairs: [pair("A", "exercise", "0192a1b2-0000-7000-8000-000000000001")], sectionRules: [] }), { once: true }));
+    renderHevyScreen();
+    await screen.findByText(pairedCount(1));
+    server.use(http.get(MAPPING_URL, reply));
+    await userEvent.click(screen.getByRole("button", { name: "Download file" }));
+    await waitFor(() => expect(screen.getByTestId("hevy-mapping-status")).toHaveTextContent(sentence));
+    expect(saved.blobs).toEqual([]);
   });
 });

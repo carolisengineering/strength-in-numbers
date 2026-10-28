@@ -14,6 +14,7 @@ import {
   PAIRING_GONE,
   RULE_NEEDED,
   SAME_NEW_NAME,
+  newNameExists,
   SIMILAR_MATCH,
   SKIP_EXERCISE,
   UNSUPPORTED_TYPE,
@@ -43,6 +44,8 @@ function problemText(problem: PairingProblem): string | null {
       return RULE_NEEDED;
     case "same-new":
       return SAME_NEW_NAME;
+    case "exists":
+      return newNameExists(problem.exerciseName);
     case "invalid":
       return NEW_INVALID;
     case "gone":

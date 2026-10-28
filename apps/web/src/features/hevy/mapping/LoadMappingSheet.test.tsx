@@ -25,12 +25,16 @@ import {
   MAPPING_OFFLINE,
   MAPPING_RATE_LIMITED,
   MAPPING_REJECTED,
+  exportAsTwiceNotice,
+  idTitleNotice,
   leaveOutNote,
+  needsRuleLine,
   loadButton,
   loaded,
   pairedCount,
   readingTemplates,
   willBeRemovedLine,
+  willChangeLine,
 } from "../messages";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -180,5 +184,41 @@ describe("20.0 AC22 — confirm", () => {
     expect(await within(dialog).findByText(sentence)).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "Preview" })).toBeInTheDocument();
     expect(within(dialog).queryByText("Bench Press (Barbell)", { exact: false })).not.toBeNull();
+  });
+});
+
+describe("20.0 AC19, AC21, AC22 — final review fixes", () => {
+  it("the rule sentence names the SIN exercise, not the line", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-ROW,,${ROW.id},,,`));
+    expect(await within(dialog).findByText(needsRuleLine("Echo Bike (calories)", "Row Erg"))).toBeInTheDocument();
+  });
+
+  it("lists the id/title and export_as notices with their lines", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-BENCH,Wrong Title,${BENCH.id},,,yes`, `exercise,T-SQUAT,,${BENCH.id},,,yes`));
+    const notices = await within(dialog).findByRole("list", { name: "Notices" });
+    expect(within(notices).getByText(idTitleNotice(2))).toBeInTheDocument();
+    expect(within(notices).getByText(exportAsTwiceNotice(3))).toBeInTheDocument();
+  });
+
+  it("names a pairing the file changes (Sent as moved since the download), never silently", async () => {
+    server.use(
+      http.get(MAPPING_URL, () =>
+        HttpResponse.json({
+          pairs: [
+            { hevyTemplateId: "T-BENCH", hevyTitle: "Bench Press (Barbell)", hevyType: "weight_reps", role: "exercise", exerciseId: BENCH.id, exerciseActive: true, measureRule: null, exportAs: false },
+            { hevyTemplateId: "T-SQUAT", hevyTitle: "Squat", hevyType: "weight_reps", role: "exercise", exerciseId: BENCH.id, exerciseActive: true, measureRule: null, exportAs: true },
+          ],
+          sectionRules: [],
+        }),
+      ),
+    );
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-BENCH,,${BENCH.id},,,yes`, `exercise,T-SQUAT,,${BENCH.id},,,no`));
+    const preview = await within(dialog).findByRole("region", { name: "Preview" });
+    expect(within(preview).getByText(willChangeLine(2))).toBeInTheDocument();
+    const changed = within(preview).getByRole("list", { name: "Will change" });
+    expect(within(changed).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Bench Press (Barbell)", "Squat"]);
   });
 });

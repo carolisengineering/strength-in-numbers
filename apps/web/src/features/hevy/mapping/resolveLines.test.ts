@@ -12,7 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
-import { applyRule, fixableRule, resolveLines, willBeRemoved } from "./resolveLines";
+import { applyRule, fixableRule, resolveLines, willBeRemoved, willChange } from "./resolveLines";
 
 const tpl = (id: string, title: string, type: HevyType | null = "weight_reps"): HevyTemplate =>
   ({ id, title, type, is_custom: false, primary_muscle_group: null, secondary_muscle_groups: [], equipment: null }) as HevyTemplate;
@@ -167,5 +167,35 @@ describe("20.0 AC21 — will be removed", () => {
     };
     const next = resolve(`exercise,T-BENCH,,${BENCH.id},,,`).pairs;
     expect(willBeRemoved(current, next).map((p) => p.hevyTemplateId)).toEqual(["T-X"]);
+  });
+});
+
+describe("20.0 AC21, AC22 — final review fixes", () => {
+  it("a left-out line from a downloaded file (id and name both written) shows the names, not the ids", () => {
+    const r = resolve(`exercise,T-NONE,Gone From Hevy,${BENCH.id},Bench Press,,`, `exercise,T-SQUAT,Squat,${exerciseId(98)},Nothing Like It,,`);
+    expect(r.leftOut).toEqual([
+      { line: 2, hevyWritten: "Gone From Hevy", sinWritten: "Bench Press", reason: "hevy_not_found" },
+      { line: 3, hevyWritten: "Squat", sinWritten: "Nothing Like It", reason: "sin_not_found" },
+    ]);
+  });
+
+  it("a line that needs a rule carries the SIN exercise's name", () => {
+    const r = resolve(`exercise,T-ROW,,${ROW.id},,,`);
+    expect(r.needsRule[0]).toMatchObject({ templateId: "T-ROW", sinName: "Row Erg" });
+  });
+
+  it("willChange names the pairings the file keeps but changes (exercise, rule, Sent as, role)", () => {
+    const stored = (over: object) => ({ hevyTitle: "x", hevyType: "weight_reps" as const, role: "exercise" as const, exerciseId: BENCH.id, exerciseActive: true, measureRule: null, exportAs: true, ...over }) as unknown as HevyMapping["pairs"][number];
+    const current: HevyMapping = {
+      pairs: [
+        stored({ hevyTemplateId: "T-BENCH", hevyTitle: "Bench Press (Barbell)", exportAs: false }),
+        stored({ hevyTemplateId: "T-SQUAT", hevyTitle: "Squat", exportAs: false }),
+        stored({ hevyTemplateId: "T-SKIP", hevyTitle: "Stretching", hevyType: "duration", exerciseId: PLANK.id }),
+      ],
+      sectionRules: [],
+    };
+    const next = resolve(`exercise,T-BENCH,,${BENCH.id},,,yes`, `exercise,T-SQUAT,,${BENCH.id},,,no`, "skip,T-SKIP,,,,,").pairs;
+    // T-BENCH: Sent as moves to it; T-SQUAT: unchanged; T-SKIP: was an exercise pairing, now a skip.
+    expect(willChange(current, next).map((p) => p.hevyTemplateId)).toEqual(["T-BENCH", "T-SKIP"]);
   });
 });

@@ -80,3 +80,12 @@ describe("20.0 AC26, AC27 — pairing cards model and validity", () => {
     expect(decisions[1]).toMatchObject({ rule: "calories_as_reps", create: { name: "Echo Bike (calories)", modality: "calories" } });
   });
 });
+
+describe("20.0 AC27 — a New name that already exists (final review)", () => {
+  it("is blocked with the existing exercise, so savePairings never makes a second one", () => {
+    const [card] = initialPairingCards([need(tpl("Z", "Zercher Squat"))], VISIBLE);
+    const renamed = setNewValue(chooseNew(card!), { ...card!.newValue, name: "bench  PRESS" });
+    expect(problemFor(renamed, VISIBLE)).toEqual({ kind: "exists", exerciseName: "Bench Press" });
+    expect(validity([renamed], VISIBLE).valid).toBe(false);
+  });
+});
