@@ -39,7 +39,8 @@ async function openProfileWithQueuedSet() {
   await screen.findByRole("heading", { name: "Workout" });
   await app.user.click(logButton("Bench"));
   await app.router.navigate("/app/profile");
-  await screen.findByRole("button", { name: "Sign out" });
+  // A navigation plus Profile's reads: the default 1 s ran out once on CI's coverage run (main, 2026-10-28).
+  await screen.findByRole("button", { name: "Sign out" }, { timeout: 4000 });
   return app;
 }
 

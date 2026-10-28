@@ -84,14 +84,18 @@ export function openDialog(page: Page, name: string | RegExp): Locator {
 }
 
 /**
- * AC2 — the one console error that is not a defect. `GET /v1/workouts/active`
- * answers 404 when there is no workout in progress (Spec 05.0) and the client
- * reads that as "show Start" (`workoutClient.getActive`), but Chromium still
- * logs every 4xx response as "Failed to load resource". Only that exact pair —
- * a 404 on that URL — is ignored.
+ * AC2 — the console errors that are not defects. Chromium logs every 4xx response as "Failed to load resource",
+ * including two 404s the app reads as answers:
+ * - `GET /v1/workouts/active` when there is no workout in progress (Spec 05.0): "show Start"
+ *   (`workoutClient.getActive`);
+ * - `GET /v1/hevy/status` for anyone not on `HEVY_ENABLED_USER_IDS` (Spec 20.0 AC1): "no Hevy", read on every
+ *   Profile visit.
+ * Only those exact pairs — a 404 on those URLs — are ignored.
  */
-function isExpectedNoActiveWorkout(text: string, url: string): boolean {
-  return /Failed to load resource: .*status of 404\b/.test(text) && /\/v1\/workouts\/active$/.test(url);
+const EXPECTED_404_PATHS = [/\/v1\/workouts\/active$/, /\/v1\/hevy\/status$/];
+
+function isExpected404(text: string, url: string): boolean {
+  return /Failed to load resource: .*status of 404\b/.test(text) && EXPECTED_404_PATHS.some((path) => path.test(url));
 }
 
 export interface Guards {
@@ -116,7 +120,7 @@ export async function installGuards(page: Page): Promise<Guards> {
     });
   });
   page.on("console", (message) => {
-    if (message.type() !== "error" || isExpectedNoActiveWorkout(message.text(), message.location().url)) return;
+    if (message.type() !== "error" || isExpected404(message.text(), message.location().url)) return;
     consoleErrors.push(`${page.url()} — ${message.text()}`);
   });
   page.on("pageerror", (error) => consoleErrors.push(`${page.url()} — uncaught ${error.message}`));
