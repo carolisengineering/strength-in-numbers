@@ -23,7 +23,7 @@
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkCacheControl, checkCommitMeta, expectedCspFrom, normalizeCsp } from "./lib/web-smoke-checks.mjs";
+import { checkCacheControl, checkCommitMeta, checkHevyOrigin, expectedCspFrom, normalizeCsp } from "./lib/web-smoke-checks.mjs";
 
 const BASE = requireEnv("WEB_SMOKE_BASE_URL").replace(/\/$/, "");
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -66,6 +66,8 @@ async function main() {
       normalizeCsp(expectedCsp()),
     `GET / Content-Security-Policy header matches ${HOST === "firebase" ? "apps/web/firebase.json (Spec 15 AC23)" : "render.yaml (AC15)"}`,
   );
+  const hevyOrigin = checkHevyOrigin(root.headers.get("content-security-policy"));
+  assert(hevyOrigin === null, hevyOrigin ?? "GET / CSP connect-src allows https://api.hevyapp.com (Spec 20.0 AC13)");
   assert(
     root.headers.get("x-content-type-options") === "nosniff",
     "GET / X-Content-Type-Options: nosniff (AC15)",

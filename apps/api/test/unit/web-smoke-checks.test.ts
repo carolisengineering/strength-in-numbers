@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — a plain .mjs module of the web package, imported by path (spec §10)
-import { checkCacheControl, checkCommitMeta, expectedCspFrom } from "../../../web/scripts/lib/web-smoke-checks.mjs";
+import { checkCacheControl, checkCommitMeta, checkHevyOrigin, expectedCspFrom } from "../../../web/scripts/lib/web-smoke-checks.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -29,4 +29,12 @@ describe("15 AC23 — web smoke checks", () => {
     expect(expectedCspFrom("firebase", join(HERE, "../fixtures/hosting"))).toBe("default-src 'self'; connect-src 'self' https://api.example"));
   it("expectedCspFrom reads render.yaml's staging CSP from the repo", () =>
     expect(expectedCspFrom("render", join(HERE, "../../../.."))).toMatch(/^default-src 'self'/));
+});
+
+describe("20.0 AC13 — the web smoke checks the Hevy origin", () => {
+  it("passes a CSP whose connect-src names Hevy and fails one that does not", () => {
+    expect(checkHevyOrigin("default-src 'self'; connect-src 'self' https://api.example https://api.hevyapp.com; img-src 'self'")).toBeNull();
+    expect(checkHevyOrigin("default-src 'self'; connect-src 'self' https://api.example; img-src https://api.hevyapp.com")).toMatch(/api\.hevyapp\.com/);
+    expect(checkHevyOrigin("")).not.toBeNull();
+  });
 });

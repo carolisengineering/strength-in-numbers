@@ -8,6 +8,8 @@
 const GLOB = { "/*": "**", "/assets/*": "/assets/**" };
 const REVALIDATE = "public, max-age=0, must-revalidate";
 const RELAXATIONS = ["unsafe-inline", "unsafe-eval", "blob:"];
+/** Spec 20.0 AC13: the browser's Hevy client talks to this origin. */
+export const HEVY_ORIGIN = "https://api.hevyapp.com";
 
 /** The si-web-staging `headers:` entries as `{ path, name, value }`. */
 function renderHeaders(renderYaml) {
@@ -67,10 +69,15 @@ export function checkFirebaseParity({ renderYaml, firebaseJson, prodApiOrigin, s
     const have = directives(got[0].value);
     for (const [name, value] of want) if (have.get(name) !== value) problems.push(`CSP directive ${name} is "${have.get(name) ?? "(missing)"}", expected "${value}"`);
     for (const name of have.keys()) if (!want.has(name)) problems.push(`CSP directive ${name} is not in render.yaml`);
-    const auth0 = (directives(expected.value).get("connect-src") ?? "").split(" ").find((t) => t.startsWith("https://") && t !== stagingApiOrigin);
-    const connect = (have.get("connect-src") ?? "").split(" ").slice(1).sort().join(" ");
-    const wantConnect = ["'self'", prodApiOrigin, auth0].sort().join(" ");
+    const auth0 = (directives(expected.value).get("connect-src") ?? "")
+      .split(" ")
+      .find((t) => t.startsWith("https://") && t !== stagingApiOrigin && t !== HEVY_ORIGIN);
+    const tokens = (have.get("connect-src") ?? "").split(" ").slice(1);
+    const connect = [...tokens].sort().join(" ");
+    // Spec 20.0 AC13: exactly self, the API, Auth0 and Hevy's API — nothing wider.
+    const wantConnect = ["'self'", prodApiOrigin, auth0, HEVY_ORIGIN].sort().join(" ");
     if (connect !== wantConnect) problems.push(`connect-src names ${connect || "(nothing)"}, expected exactly ${wantConnect}`);
+    if (tokens.some((t) => t === "*" || t === "https:")) problems.push("connect-src must not allow * or a bare https:");
   }
 
   const allValues = sent.map((h) => String(h.value)).join(" ");
