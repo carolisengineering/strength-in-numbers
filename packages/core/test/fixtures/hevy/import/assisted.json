@@ -1,0 +1,20 @@
+{
+  "hevyWorkoutId": "assisted-1",
+  "title": "Dips",
+  "description": null,
+  "startTime": "2026-10-04T18:00:00Z",
+  "endTime": "2026-10-04T18:40:00Z",
+  "tzOffsetMinutes": 60,
+  "exercises": [
+    {
+      "exerciseTemplateId": "ASSIST",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 20, "reps": 8, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": 0, "reps": 10, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "failure", "weightKg": null, "reps": 6, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    }
+  ]
+}

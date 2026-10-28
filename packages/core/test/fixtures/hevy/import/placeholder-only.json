@@ -1,0 +1,27 @@
+{
+  "hevyWorkoutId": "placeholder-only-1",
+  "title": "Markers only",
+  "description": null,
+  "startTime": "2026-10-06T10:00:00Z",
+  "endTime": "2026-10-06T10:30:00Z",
+  "tzOffsetMinutes": 0,
+  "exercises": [
+    {
+      "exerciseTemplateId": "WARMUP",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "WORKOUT",
+      "notes": "Hiraya",
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    }
+  ]
+}

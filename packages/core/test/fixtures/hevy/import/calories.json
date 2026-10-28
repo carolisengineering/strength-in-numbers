@@ -1,0 +1,19 @@
+{
+  "hevyWorkoutId": "calories-1",
+  "title": "Conditioning",
+  "description": null,
+  "startTime": "2026-10-02T07:00:00Z",
+  "endTime": "2026-10-02T07:30:00Z",
+  "tzOffsetMinutes": -420,
+  "exercises": [
+    {
+      "exerciseTemplateId": "ECHO",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": null, "reps": 20, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": null, "reps": 15, "distanceMeters": null, "durationSeconds": null, "rpe": 8, "customMetric": null }
+      ]
+    }
+  ]
+}

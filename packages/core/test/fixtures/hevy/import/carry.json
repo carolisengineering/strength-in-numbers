@@ -1,0 +1,19 @@
+{
+  "hevyWorkoutId": "carry-1",
+  "title": "Carries",
+  "description": null,
+  "startTime": "2026-10-03T09:00:00Z",
+  "endTime": "2026-10-03T09:20:00Z",
+  "tzOffsetMinutes": 0,
+  "exercises": [
+    {
+      "exerciseTemplateId": "CARRY",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 24, "reps": null, "distanceMeters": 40, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": 32, "reps": null, "distanceMeters": 20.5, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    }
+  ]
+}

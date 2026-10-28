@@ -1,0 +1,66 @@
+{
+  "hevyWorkoutId": "every-drop-1",
+  "title": "Every drop",
+  "description": null,
+  "startTime": "2026-10-05T10:00:00Z",
+  "endTime": "2026-10-05T11:15:00Z",
+  "tzOffsetMinutes": 0,
+  "exercises": [
+    {
+      "exerciseTemplateId": "WARMUP",
+      "notes": "Bike, bands",
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": null, "reps": 1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "BENCH",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 60, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": 3 },
+        { "type": "normal", "weightKg": 60, "reps": null, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": 60, "reps": -1, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "dropset", "weightKg": 50, "reps": 8, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "PULLUP",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 10, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": null, "reps": 8, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "SKIP",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 20, "reps": 10, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": 20, "reps": 10, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": 20, "reps": 10, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "SQUAT",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 100, "reps": null, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null },
+        { "type": "normal", "weightKg": null, "reps": 5, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    },
+    {
+      "exerciseTemplateId": "ASSIST",
+      "notes": null,
+      "supersetId": null,
+      "sets": [
+        { "type": "normal", "weightKg": 20, "reps": 8, "distanceMeters": null, "durationSeconds": null, "rpe": null, "customMetric": null }
+      ]
+    }
+  ]
+}
