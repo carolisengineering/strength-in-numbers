@@ -1,3 +1,4 @@
+import { PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -299,6 +300,81 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
       await db.prisma.$executeRawUnsafe(`UPDATE "user" SET unit_preference = 'lb' WHERE id = $1::uuid`, U);
       await repo().writeImportedWorkout(U, "H-UNIT", await translate(one()));
       expect(await stored()).toEqual({ weight: "135.000", weight_unit: "lb", weight_kg: "61.235" });
+    });
+  });
+
+  describe("Minor 156 — a retire waits for an import's share lock", () => {
+    let other: PrismaClient;
+    beforeAll(() => {
+      if (!shouldRunIntegration()) return;
+      other = new PrismaClient({ datasourceUrl: db.url });
+    });
+    afterAll(async () => {
+      await other?.$disconnect();
+    });
+
+    it("a retire that starts mid-write blocks until the import commits; the workout stores and the exercise ends retired", async () => {
+      const w = await translate(rich());
+      let retire: Promise<unknown> | null = null;
+      let retiredMidWrite = false;
+      const seamed = repo({
+        onWriteStep: async (step) => {
+          if (step !== "workout") return;
+          // The usable check has run; a retire now must wait for this transaction.
+          let done = false;
+          retire = other.$executeRawUnsafe(`UPDATE exercise SET is_active = false WHERE id = $1::uuid`, row).then(() => {
+            done = true;
+          });
+          await new Promise((r) => setTimeout(r, 400));
+          retiredMidWrite = done;
+        },
+      });
+      const out = await seamed.writeImportedWorkout(U, "H-RICH", w);
+      await retire;
+      expect(retiredMidWrite).toBe(false);
+      expect(out.kind).toBe("created");
+      const [ex] = await db.prisma.$queryRawUnsafe<{ is_active: boolean }[]>(`SELECT is_active FROM exercise WHERE id = $1::uuid`, row);
+      expect(ex!.is_active).toBe(false);
+      expect(await rowCounts(db)).toMatchObject({ workout: 1, workout_exercise: 2 });
+    });
+
+    it("a retire committed before the write is rejected with no workout row", async () => {
+      const w = await translate(rich());
+      await other.$executeRawUnsafe(`UPDATE exercise SET is_active = false WHERE id = $1::uuid`, row);
+      await expect(repo().writeImportedWorkout(U, "H-RICH", w)).resolves.toEqual({ kind: "rejected" });
+      expect(await rowCounts(db)).toMatchObject({ workout: 0 });
+    });
+  });
+
+  describe("Minor 163 — one real flag write per batch", () => {
+    const account = async () =>
+      (
+        await db.prisma.$queryRawUnsafe<{ records_stale: boolean; xmin: string; updated_at: Date }[]>(
+          `SELECT records_stale, xmin::text AS xmin, updated_at FROM hevy_account WHERE user_id = $1::uuid`,
+          U,
+        )
+      )[0];
+
+    it("a batch of 3 creates writes the row once (the first create); finish still clears it", async () => {
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO hevy_account (user_id, records_stale, updated_at) VALUES ($1::uuid, false, '2020-01-01T00:00:00Z')`,
+        U,
+      );
+      const workouts = ["H-A", "H-B", "H-C"].map((id, i) =>
+        importWorkoutFixture({ hevyWorkoutId: id, title: `Day ${i}`, startTime: `2026-09-1${i}T10:00:00Z`, endTime: `2026-09-1${i}T11:00:00Z` }),
+      );
+      const batch = await repo().importBatch(U, { dryRun: false, workouts }, NOW);
+      expect(batch.results.map((r) => r.outcome)).toEqual(["create", "create", "create"]);
+
+      // Each workout row carries its own transaction's id: the flag row must still carry the first one's.
+      const xmins = await db.prisma.$queryRawUnsafe<{ xmin: string }[]>(`SELECT xmin::text AS xmin FROM workout ORDER BY started_at`);
+      const after = await account();
+      expect(after!.records_stale).toBe(true);
+      expect(after!.xmin).toBe(xmins[0]!.xmin);
+      expect(after!.updated_at.getTime()).toBeGreaterThan(Date.parse("2020-01-02T00:00:00Z"));
+
+      await expect(repo().finishImport(U)).resolves.toMatchObject({ recomputed: true });
+      expect((await account())!.records_stale).toBe(false);
     });
   });
 });

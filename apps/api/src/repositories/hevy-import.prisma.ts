@@ -164,12 +164,14 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     try {
       await prisma.$transaction(
         async (tx) => {
-          // An exercise retired since the context load raises no FK error; check it in the transaction (AC18).
+          // An exercise retired since the context load raises no FK error; check it in the transaction (AC18). FOR
+          // SHARE holds the rows to the commit, so a retire either landed first (`rejected`) or waits (minor 156).
           const ids = [...new Set(w.exercises.map((e) => e.exerciseId))];
-          const usable = await tx.$queryRaw<{ n: number }[]>`
-            SELECT count(*)::int AS n FROM "exercise"
-            WHERE id = ANY(${ids}::uuid[]) AND is_active AND (owner_user_id IS NULL OR owner_user_id = ${userId}::uuid)`;
-          if (usable[0]!.n !== ids.length) throw new RejectedSignal();
+          const usable = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id::text FROM "exercise"
+            WHERE id = ANY(${ids}::uuid[]) AND is_active AND (owner_user_id IS NULL OR owner_user_id = ${userId}::uuid)
+            FOR SHARE`;
+          if (usable.length !== ids.length) throw new RejectedSignal();
 
           await tx.$executeRaw`
             INSERT INTO "workout"
@@ -231,10 +233,11 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
           if (linked.length === 0) throw new AlreadyLinkedSignal();
           await step("link");
 
-          // AC25: the flag rides in the same transaction as the workout.
+          // AC25: the flag rides in the same transaction as the workout. Only a write that changes it updates the
+          // row, so a batch of creates writes it once (minor 163).
           await tx.$executeRaw`
             INSERT INTO "hevy_account" (user_id, records_stale) VALUES (${userId}::uuid, true)
-            ON CONFLICT (user_id) DO UPDATE SET records_stale = true, updated_at = now()`;
+            ON CONFLICT (user_id) DO UPDATE SET records_stale = true, updated_at = now() WHERE NOT hevy_account.records_stale`;
         },
         { timeout: 30_000 },
       );
@@ -362,7 +365,13 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
         setCount: t.workout.exercises.reduce((n, e) => n + e.sets.length, 0),
       };
       let workoutId: string | null = null;
-      if (!batch.dryRun) {
+      if (batch.dryRun) {
+        // The real run's pure re-check, so a translator bug reads `rejected` in both (minor 155).
+        if (importableProblem(t.workout) !== null) {
+          answer({ outcome: "rejected" });
+          continue;
+        }
+      } else {
         const out = await writeImportedWorkout(userId, w.hevyWorkoutId, t.workout);
         if (out.kind === "already_linked") {
           answer({ outcome: "already_imported" });
