@@ -67,6 +67,8 @@
   --font-size-set: 1.125rem;
   --font-weight-figure: 600;
   --font-stretch-figure: 90%;
+  /* a form field's label and a fieldset's legend (minor 14) */
+  --font-weight-label: 600;
 
   /* shape */
   --radius-sm: 6px;

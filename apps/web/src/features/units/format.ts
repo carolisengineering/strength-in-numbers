@@ -9,7 +9,7 @@ import { kgToLb, type RecordType, type RecordUnit, type UnitPreference } from "@
  * stored as 102.058 kg comes back as 224.9998…, which rounds to 225. `Intl` drops trailing zeros.
  */
 // The conversion itself is `@sin/core`'s `kgToLb` — one copy of the pound's definition (DESIGN §4.8, R4).
-const KG =new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
+const KG = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 const LB = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 const COUNT = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 /** Up to 3 decimals: the stored millimeter, never float noise from a subtraction ("+0.002 m"). */

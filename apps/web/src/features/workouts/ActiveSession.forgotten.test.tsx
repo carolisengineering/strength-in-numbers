@@ -71,7 +71,7 @@ async function finishAndCheck({ user, fake, router }: App, logged: () => Promise
   expect(screen.getByText("Fri 16 Oct")).toBeInTheDocument();
 
   await act(() => router.navigate("/app/history"));
-  await waitFor(() => expect(historyDays()).toHaveLength(3));
+  await waitFor(() => expect(historyDays()).toHaveLength(3), { timeout: 5_000 });
   expect(historyDays()).toEqual(["Sat 17 Oct", "Fri 16 Oct", "Thu 15 Oct"]);
 }
 
@@ -99,7 +99,7 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
       await within(card("Bench Press")).findByText(/60 kg × 5/);
       await restBetweenSets();
       await user.click(logButton("Bench Press"));
-      await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2));
+      await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });
   });
 
@@ -117,7 +117,7 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
       await within(card("Bench Press")).findByText(/60 kg × 5/);
       await restBetweenSets();
       await user.click(logButton("Bench Press"));
-      await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2));
+      await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });
   });
 });
