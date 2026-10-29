@@ -142,7 +142,8 @@ export interface WorkoutFakeOptions {
   /** Spec 10.5: the fake's clock for `oneOffUntil`. Default `Date.now`. */
   now?: () => number;
   /**
-   * Minor 46: `GET /routines` drops the expired one-offs the live workout doesn't hold, as the server does (09.3 AC19).
+   * Minor 46: `GET /routines` drops the expired one-offs the live workout doesn't hold, as the server's list does
+   * (09.3 AC19); the fake's `POST /routines` does not sweep, though the server's does (AC21).
    * Off by default: a test of a past expiry on the list (10.5 AC4–AC6) models a device clock ahead of the server's,
    * where the server has not swept yet.
    */
