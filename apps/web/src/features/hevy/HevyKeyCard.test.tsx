@@ -315,6 +315,47 @@ describe("Minor 199 — the quiet-minute line appears at the boundary and goes a
   });
 });
 
+/**
+ * Every text a live region was given, in order, a flash between two renders included: the observer's callback is
+ * batched, so it reads each record's added text, not the region's text by the time it runs.
+ */
+function recordTexts(node: HTMLElement): { texts: string[]; stop: () => void } {
+  const texts: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      if (r.type === "characterData") texts.push((r.target as CharacterData).data);
+      for (const added of r.addedNodes) texts.push(added.textContent ?? "");
+    }
+  });
+  observer.observe(node, { childList: true, characterData: true, subtree: true });
+  return { texts, stop: () => observer.disconnect() };
+}
+
+describe("Minor 199 — the quiet-minute line never flashes on the next save (code review)", () => {
+  afterEach(() => vi.useRealTimers());
+  it("a save that ended in the quiet minute leaves nothing for a later save outside it", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true, now: new Date("2026-10-29T14:00:30.000Z") });
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    expect(await screen.findByText(HEVY_COPY.bad_key)).toBeInTheDocument();
+    vi.setSystemTime(new Date("2026-10-29T14:05:00.000Z"));
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    const region = screen.getByTestId("hevy-quiet-minute");
+    const seen = recordTexts(region);
+    await saveAndRemember();
+    seen.stop();
+    expect(seen.texts.filter((t) => t === QUIET_MINUTE)).toEqual([]);
+    expect(region).toBeEmptyDOMElement();
+  });
+
+  it("the empty region takes no room in the form (no flex gap)", () => {
+    const css = readFileSync(join(__dirname, "HevyKeyCard.module.css"), "utf8");
+    expect(css).toMatch(/\.quiet:empty\s*\{[^}]*position:\s*absolute/);
+  });
+});
+
 describe("Minor 203 — a refused stored key is named under its ending", () => {
   it("when the status line already names the refusal, it shows once (final review: no duplicate)", async () => {
     server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));

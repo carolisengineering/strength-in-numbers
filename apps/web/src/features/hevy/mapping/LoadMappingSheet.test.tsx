@@ -414,6 +414,24 @@ describe("Minor 197 — the sheet's progress comes from the shared read", () => 
   });
 });
 
+describe("Minor 197 — the reading line never goes back to page 1 of 1 (code review)", () => {
+  it("from the first page to the check, the pages only go up", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    server.use(templatesHandler(many));
+    const dialog = await openSheet();
+    const line = within(dialog).getByTestId("hevy-load-progress");
+    const texts: string[] = [];
+    const observer = new MutationObserver(() => texts.push(line.textContent ?? ""));
+    observer.observe(line, { childList: true, characterData: true, subtree: true });
+    await choose(dialog, GOOD);
+    await within(dialog).findByRole("region", { name: "Preview" });
+    observer.disconnect();
+    const reading = texts.filter((t) => t.startsWith("Reading"));
+    expect(reading.at(-1)).toBe(readingTemplates(3, 3));
+    expect(reading.indexOf(readingTemplates(1, 1))).toBeLessThanOrEqual(0);
+  });
+});
+
 describe("Minor 201 — a file read that fails after the sheet is closed shows nothing", () => {
   it("close, then the read rejects; reopening shows no stale alert", async () => {
     const dialog = await openSheet();

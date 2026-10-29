@@ -54,6 +54,8 @@ import { hevyTemplatesQuery } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
+const FIRST_PAGE = { page: 1, pageCount: 1 };
+
 type Step =
   | { kind: "choose"; errors: string[] }
   | { kind: "reading" }
@@ -83,8 +85,12 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   const queryClient = useQueryClient();
   const { put } = useMappingMutations();
   const [step, setStep] = useState<Step>({ kind: "choose", errors: [] });
-  // Minor 197: the shared read's own progress, so joining a read already running shows its real page.
-  const progress = useTemplatesProgress() ?? { page: 1, pageCount: 1 };
+  // Minor 197: the shared read's own progress, so joining a read already running shows its real page. The last page
+  // seen is kept, so the line never drops back to "page 1 of 1" when the read ends before the step moves on.
+  const live = useTemplatesProgress();
+  const [lastPage, setLastPage] = useState(FIRST_PAGE);
+  if (live !== null && (live.page !== lastPage.page || live.pageCount !== lastPage.pageCount)) setLastPage(live);
+  const progress = live ?? lastPage;
   const noteId = useId();
   // Each file read has a number; Cancel, close and unmount move it on, so a late answer is ignored.
   const readId = useRef(0);
@@ -127,6 +133,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     if (catalogNow.current.syncToken === null) return setStep({ kind: "choose", errors: [CATALOG_NOT_READY] });
 
     setStep({ kind: "reading" });
+    setLastPage(FIRST_PAGE);
     let templates: HevyTemplate[];
     reading.current = true;
     try {

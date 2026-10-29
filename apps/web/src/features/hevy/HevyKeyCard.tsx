@@ -60,7 +60,11 @@ export function HevyKeyCard() {
       timer = setTimeout(check, msUntilQuietChange(now));
     };
     check();
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // The next save starts from "not quiet", so its first render never shows a stale line (code review).
+      setQuiet(false);
+    };
   }, [busy]);
 
   const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1, at: Date.now() }));
@@ -151,7 +155,7 @@ export function HevyKeyCard() {
           </Field>
           <p className={styles.stays}>{KEY_STAYS}</p>
           {/* Minor 199: mounted from the start, so the line is announced when the quiet minute begins mid-save. */}
-          <p className={styles.stays} aria-live="polite" data-testid="hevy-quiet-minute">
+          <p className={`${styles.stays} ${styles.quiet}`} aria-live="polite" data-testid="hevy-quiet-minute">
             {busy !== null && quiet ? QUIET_MINUTE : ""}
           </p>
           <div className={styles.actions}>
