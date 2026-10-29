@@ -1,8 +1,5 @@
 import type { HevyImportBatch, HevyImportResult, ImportedWorkout } from "@sin/core";
 
-/** Spec 19.1 §8: the batch route's request-body limit. */
-export const HEVY_IMPORT_BODY_LIMIT = 512 * 1024;
-
 /**
  * Spec 19.1 Phase B: the Hevy bulk import, for one user. Every statement is scoped to `userId`; a batch writes one
  * workout per transaction and never recomputes records (D3) — the `hevy_account.records_stale` flag and `finish` do.
@@ -42,7 +39,11 @@ export interface HevyImportBatchRecord {
 export interface HevyImportRepository {
   /** §6.1: every workout of the batch in order; a dry run stops before any write and answers what the real run would. */
   importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord>;
-  /** §6.2: one translated workout in one transaction, with its `imported` link and the stale-records flag. */
+  /**
+   * §6.2: one translated workout in one transaction, with its `imported` link and the stale-records flag. The routes
+   * call only `importBatch` (which uses this); it is public as the integration tests' seam (minor 153): narrowing it
+   * would mean driving every write case through a whole batch.
+   */
   writeImportedWorkout(userId: string, hevyWorkoutId: string, w: ImportedWorkout): Promise<WriteOutcome>;
   /** §6.5: rebuilds the caller's records once if a batch left them stale; the only Hevy write that takes the PR lock. */
   finishImport(userId: string): Promise<{ recomputed: boolean; rootCount: number }>;

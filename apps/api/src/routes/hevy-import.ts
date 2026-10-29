@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { HevyImportBatchSchema, HevyImportFinishResponseSchema, HevyImportResponseSchema, type HevyImportOutcome } from "@sin/core";
-import { NotFoundError } from "../errors/app-error.js";
-import { HEVY_IMPORT_BODY_LIMIT, type HevyImportRepository } from "../repositories/hevy-import.js";
+import type { HevyImportRepository } from "../repositories/hevy-import.js";
+
+/** Spec 19.1 §8: the batch route's request-body limit (beside 19.0's `HEVY_MAPPING_BODY_LIMIT`, minor 160). */
+export const HEVY_IMPORT_BODY_LIMIT = 512 * 1024;
 
 export interface HevyImportRouteDeps {
   hevyImportRepository: HevyImportRepository;
@@ -22,7 +24,7 @@ export function registerHevyImportRoutes(scope: FastifyInstance, deps: HevyImpor
     {
       bodyLimit: HEVY_IMPORT_BODY_LIMIT,
       schema: { body: HevyImportBatchSchema, response: { 200: HevyImportResponseSchema } },
-      config: { writeGroup: "hevy", problems: [NotFoundError] },
+      config: { writeGroup: "hevy" },
     },
     async (request) => {
       const started = Date.now();
@@ -50,7 +52,7 @@ export function registerHevyImportRoutes(scope: FastifyInstance, deps: HevyImpor
     "/hevy/import/finish",
     {
       schema: { response: { 200: HevyImportFinishResponseSchema } },
-      config: { writeGroup: "hevy", problems: [NotFoundError] },
+      config: { writeGroup: "hevy" },
     },
     async (request) => {
       const started = Date.now();

@@ -11,15 +11,19 @@ export interface RawPrismaError extends Error {
   meta?: { code?: string; message?: string };
 }
 
-/** True for a raw-query unique-violation surfaced through `$queryRaw`
- * (`P2010` + driver SQLSTATE `23505` in `meta` — distinct from the typed
- * client's `P2002` + `meta.target`; Spec 05.0 D40 pins this shape). */
+/** The driver SQLSTATE of an error a raw query surfaced through `$queryRaw` /
+ * `$executeRaw` (`P2010` + `meta.code`; Spec 05.0 D40 pins this shape), else
+ * `null` — the one place that shape is read (minor 159). */
+export function rawSqlState(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+  const e = err as RawPrismaError;
+  return e.code === "P2010" ? (e.meta?.code ?? null) : null;
+}
+
+/** True for a raw-query unique-violation (SQLSTATE `23505`) — distinct from
+ * the typed client's `P2002` + `meta.target`. */
 export function isRawUniqueViolation(err: unknown): err is RawPrismaError {
-  return (
-    err instanceof Error &&
-    (err as RawPrismaError).code === "P2010" &&
-    (err as RawPrismaError).meta?.code === "23505"
-  );
+  return rawSqlState(err) === "23505";
 }
 
 /**

@@ -27,7 +27,7 @@ import type {
   HevyLinkHit,
   WriteOutcome,
 } from "./hevy-import.js";
-import { isRawUniqueViolation, violatedConstraintColumns, type RawPrismaError } from "./pg-errors.js";
+import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns, type RawPrismaError } from "./pg-errors.js";
 import { assertSetMeasuresValid } from "./set-writes.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
@@ -113,37 +113,41 @@ class RejectedSignal extends Error {}
 const REJECTED_SQLSTATES: ReadonlySet<string> = new Set(["23503", "23514", "22003"]);
 
 function isRejectedDbError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const e = err as RawPrismaError;
-  return e.code === "P2010" && REJECTED_SQLSTATES.has(e.meta?.code ?? "");
+  return REJECTED_SQLSTATES.has(rawSqlState(err) ?? "");
 }
 
 /**
  * §6.4: the finished-workout rules, re-checked on the translated body before any statement (the translator enforces
- * them by dropping; this is the last line). Throws `ValidationError`.
+ * them by dropping; this is the last line). The first broken rule, else `null`; it never throws, so no caller can
+ * let a 422 escape (minor 164). Exported for its unit test.
  */
-function assertImportable(w: ImportedWorkout): void {
-  const invalid = (message: string) => new ValidationError([{ path: "workout", message }], "hevy import: invariant");
-  if (Date.parse(w.endedAt) < Date.parse(w.startedAt)) throw invalid("ends before it starts");
-  if (w.sections.length > ROUTINE_SECTIONS_MAX) throw invalid("too many sections");
-  if (w.exercises.length === 0) throw invalid("no exercises");
+export function importableProblem(w: ImportedWorkout): string | null {
+  if (Date.parse(w.endedAt) < Date.parse(w.startedAt)) return "ends before it starts";
+  if (w.sections.length > ROUTINE_SECTIONS_MAX) return "too many sections";
+  if (w.exercises.length === 0) return "no exercises";
   for (const e of w.exercises) {
-    if (e.sets.length === 0) throw invalid("an exercise with no sets");
-    if (e.sectionIndex !== null && (e.sectionIndex < 0 || e.sectionIndex >= w.sections.length)) throw invalid("unknown section");
+    if (e.sets.length === 0) return "an exercise with no sets";
+    if (e.sectionIndex !== null && (e.sectionIndex < 0 || e.sectionIndex >= w.sections.length)) return "unknown section";
     for (const s of e.sets) {
-      assertSetMeasuresValid(e.modalitySnapshot, {
-        setType: s.setType,
-        reps: s.reps,
-        weight: s.weight,
-        weightUnit: s.weightUnit,
-        distance: s.distance,
-        distanceUnit: s.distanceUnit,
-        durationS: s.durationS,
-        calories: s.calories,
-        isComplete: true,
-      });
+      try {
+        assertSetMeasuresValid(e.modalitySnapshot, {
+          setType: s.setType,
+          reps: s.reps,
+          weight: s.weight,
+          weightUnit: s.weightUnit,
+          distance: s.distance,
+          distanceUnit: s.distanceUnit,
+          durationS: s.durationS,
+          calories: s.calories,
+          isComplete: true,
+        });
+      } catch (err) {
+        if (err instanceof ValidationError) return "a set breaks its measure rules";
+        throw err;
+      }
     }
   }
+  return null;
 }
 
 export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImportSeams = {}): HevyImportRepository {
@@ -152,12 +156,7 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
   };
 
   async function writeImportedWorkout(userId: string, hevyWorkoutId: string, w: ImportedWorkout): Promise<WriteOutcome> {
-    try {
-      assertImportable(w);
-    } catch (err) {
-      if (err instanceof ValidationError) return { kind: "rejected" };
-      throw err;
-    }
+    if (importableProblem(w) !== null) return { kind: "rejected" };
 
     const workoutId = uuidv7();
     const sectionIds = w.sections.map(() => uuidv7());
