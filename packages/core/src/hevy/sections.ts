@@ -31,14 +31,41 @@ export function sectionTreatment(name: string, rules: readonly SectionRule[]): S
 
 export type SectionNotice = "section_name_cut" | "section_note_cut";
 
+const ZWJ = 0x200d;
+const isRegionalIndicator = (cp: number) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
+/** A code point that continues the cluster before it: a combining mark, a variation selector, a skin-tone modifier. */
+const EXTENDS = /^[\p{M}‍︀-️\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}]$/u;
+
+/** Whether a cut between `before` (code points kept) and `next` (the first one dropped) splits a cluster. */
+function splitsCluster(before: readonly string[], next: string | undefined): boolean {
+  if (before.length === 0) return false;
+  const last = before[before.length - 1]!.codePointAt(0)!;
+  if (last === ZWJ) return true;
+  if (next === undefined) return false;
+  if (EXTENDS.test(next)) return true;
+  if (!isRegionalIndicator(last) || !isRegionalIndicator(next.codePointAt(0)!)) return false;
+  let run = 0;
+  for (let i = before.length - 1; i >= 0 && isRegionalIndicator(before[i]!.codePointAt(0)!); i--) run++;
+  return run % 2 === 1;
+}
+
 /**
- * The first `max` UTF-16 units (SIN's limits count units), less a trailing high surrogate, so a cut never ends in
- * half a surrogate pair (deferred minor 136). A multi-code-point grapheme (a ZWJ sequence, a flag) can still be split.
+ * The longest prefix of at most `max` UTF-16 units (SIN's limits count units) that ends on a cluster boundary: never
+ * inside a surrogate pair (deferred minor 136), after a ZWJ, before a combining mark, variation selector or skin-tone
+ * modifier, or between a flag's two regional indicators (minor 146). No `Intl.Segmenter` (core stays pure), so it
+ * may end a little shorter than a true grapheme cut; it is never longer.
  */
 function cutUnits(text: string, max: number): string {
-  const cut = text.slice(0, max);
-  const last = cut.charCodeAt(cut.length - 1);
-  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+  const points = [...text];
+  const kept: string[] = [];
+  let units = 0;
+  for (const p of points) {
+    if (units + p.length > max) break;
+    kept.push(p);
+    units += p.length;
+  }
+  while (splitsCluster(kept, points[kept.length])) kept.pop();
+  return kept.join("");
 }
 
 function noteOf(lines: readonly string[], notices: SectionNotice[]): string | null {

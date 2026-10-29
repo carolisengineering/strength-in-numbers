@@ -233,7 +233,7 @@ describe("19.1 AC9 — units", () => {
   });
 });
 
-describe("19.1 AC23 — pure part: every set received is kept, dropped or ignored", () => {
+describe("19.1 Phase A — set drop counts (pure; AC23's sum is the API's): every set received is kept, dropped or ignored", () => {
   it("over every-drop.json the counts add up, and each kind is present", () => {
     const f = fixture("every-drop");
     const t = created(translateHevyWorkout(f, ctx));

@@ -126,3 +126,13 @@ describe("19.1 AC7 — supersets", () => {
     expect(assignSupersets(["a:1", "b:1", "a:1", "b:1"]).groups).toEqual([1, 2, 1, 2]);
   });
 });
+
+describe("Minor 150 — a lone CR splits like LF", () => {
+  it.each([
+    ["a lone CR", "A\rB"],
+    ["CRLF", "A\r\nB"],
+  ])("placeholder notes with %s give the name A and the note B", (_label, notes) => {
+    const r = created(translateHevyWorkout(hworkout([marker(notes), lift()]), ctx));
+    expect(r.workout.sections).toEqual([{ name: "A", notes: "B" }]);
+  });
+});
