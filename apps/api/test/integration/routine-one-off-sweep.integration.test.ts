@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
-import { RoutineLimitError } from "../../src/errors/app-error.js";
+import { RoutineLimitError, RoutineNameTakenError } from "../../src/errors/app-error.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
@@ -176,6 +176,18 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const listed = await routines().list(u);
       expect([listed.swept, listed.routines]).toEqual([1, []]);
       expect(await exists(stale.id)).toBe(false);
+    });
+  });
+
+  describe("Minor 42 — a create that fails rolls its sweep back", () => {
+    it("a name clash after the sweep leaves the expired one-off in place", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const stale = await oneOff(u, ex, "stale");
+      await routines().create(u, routineFixture([ex], { name: "taken" }));
+      await ageOneOff(db, stale.id, 20);
+      await expect(routines().create(u, routineFixture([ex], { name: "taken" }))).rejects.toBeInstanceOf(RoutineNameTakenError);
+      expect(await exists(stale.id)).toBe(true);
     });
   });
 

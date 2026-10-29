@@ -30,8 +30,8 @@ export async function lockWorkoutStructure(
 }
 
 /**
- * The cheap ownership preflight a structure write runs on the root client before its transaction (Spec 05.0 §6.6
- * phase 1): the caller's workout's `ended_at`, or `notFound()`. The authoritative check is `lockWorkoutStructure`'s
+ * The cheap ownership preflight an add runs on the root client before its transaction (Spec 05.0 §6.6 phase 1 for an
+ * exercise, Spec 09.4 §6.1 for a section): the caller's workout's `ended_at`, or `notFound()`. The authoritative check is `lockWorkoutStructure`'s
  * `FOR SHARE` re-read. One copy for the section and exercise adds (minor 57).
  */
 export async function workoutPreflight(

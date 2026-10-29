@@ -225,7 +225,8 @@ describe("Minor 42 — the sweep count is returned", () => {
     expect(lines.filter((l) => l.msg === "routine_one_offs_expired").map((l) => l.routine_count)).toEqual([1]);
   });
 
-  it("Review Focus 2 — a create that fails after its sweep logs nothing (the real sweep rolls back with it)", async () => {
+  // The fake's sweep doesn't roll back; the real one does, pinned in routine-one-off-sweep.integration.test.ts.
+  it("Review Focus 2 — a create that throws logs nothing", async () => {
     const { app, lines, routineRepo } = await setup();
     await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "A", items: [{ exerciseId: EX.id }], oneOff: true } });
     await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
