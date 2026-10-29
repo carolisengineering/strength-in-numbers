@@ -20,6 +20,7 @@ import { makeRoutine, makeRoutineItem, makeWorkoutDetail } from "../../test/work
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { card, changeTimeButton, finishButton, logButton, restBetweenSets } from "../../test/sessionHelpers";
+import { DOUBLE_TAP_MS } from "./logAction";
 
 pinTimeZone("Europe/London");
 beforeEach(() => {
@@ -46,6 +47,16 @@ function boot() {
 type App = ReturnType<typeof boot>;
 
 /** Change Time: two days back, 18:00, took 1 h. */
+/**
+ * Minor 202: the Log bar drops a tap within `DOUBLE_TAP_MS` of the last one by `Date.now()`, and this file fakes Date
+ * with `shouldAdvanceTime`, which lags real time under a parallel run (a probe saw 580 ms of fake time over 654 ms
+ * real). So the rest moves the fake clock past the window itself instead of trusting it to keep up.
+ */
+async function restPastDoubleTap() {
+  await restBetweenSets();
+  vi.setSystemTime(Date.now() + DOUBLE_TAP_MS);
+}
+
 async function backdate(user: App["user"]) {
   await user.click(changeTimeButton());
   const sheet = within(screen.getByRole("dialog", { name: "Change Time" }));
@@ -97,11 +108,12 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
       await user.type(within(card("Bench Press")).getByLabelText("Reps"), "5");
       await user.click(logButton("Bench Press"));
       await within(card("Bench Press")).findByText(/60 kg × 5/);
-      await restBetweenSets();
+      await restPastDoubleTap();
       await user.click(logButton("Bench Press"));
       await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });
-  });
+    // Minor 202: a whole start-to-History flow runs past the default 5 s under a parallel or coverage run.
+  }, 15_000);
 
   it("from a routine: the planned sets prefill, and the same assertions hold", async () => {
     const app = boot();
@@ -115,9 +127,9 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
     await finishAndCheck(app, async () => {
       await user.click(logButton("Bench Press"));
       await within(card("Bench Press")).findByText(/60 kg × 5/);
-      await restBetweenSets();
+      await restPastDoubleTap();
       await user.click(logButton("Bench Press"));
       await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });
-  });
+  }, 15_000);
 });
