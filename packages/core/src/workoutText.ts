@@ -89,7 +89,8 @@ export function isStatusBarLine(line: string): boolean {
   const tokens = collapseLine(line).split(" ");
   if (tokens.length < 2 || tokens.length > 3) return false;
   const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
-  return network >= 0 && tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= STATUS_TAIL_MAX));
+  // Minor 107: a real status bar always reads with its signal bars first, so "LTE Row" is someone's line.
+  return network > 0 && tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= STATUS_TAIL_MAX));
 }
 
 /** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
@@ -194,18 +195,20 @@ export function cleanWorkoutText(raw: string): CleanResult {
   const chunks: CleanLine[][] = [[]];
   const all = raw.split(LINE_BREAK).map(collapseLine).filter((l) => l !== "");
   const nav = all.map((l) => NAV.has(l.toLowerCase()));
+  // A tab bar is several of its words close together (icons between); one "Home" in the text is an at-home label.
+  const tabBar = nav.map((isNav, i) => isNav && [-2, -1, 1, 2].some((d) => nav[i + d] === true));
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
   let textSinceNav = 0;
   for (const [i, line] of all.entries()) {
     input++;
-    const nearChrome = textSinceClock <= STATUS_BAR_TEXT_LINES || nav[i - 1] === true || nav[i + 1] === true;
+    // Minor 84: only a neighbor that is part of a tab bar counts, never an author's lone "Home".
+    const nearChrome = textSinceClock <= STATUS_BAR_TEXT_LINES || tabBar[i - 1] === true || tabBar[i + 1] === true;
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
-    // A tab bar is several of its words close together (icons between); one "Home" in the text is an at-home label.
-    if (nav[i] && [-2, -1, 1, 2].some((d) => nav[i + d] === true)) textSinceNav = 0;
+    if (tabBar[i]) textSinceNav = 0;
     if (CLOCK_LINE.test(line)) {
       furniture++;
       // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a
@@ -308,7 +311,7 @@ export interface ReadName {
   readonly written: string;
   /** Names of the sections using it (loose omitted). */
   readonly sections: readonly string[];
-  /** True iff any item with this key was read from a calorie form: the hint for guessModality. */
+  /** True iff every item with this key was read from a calorie form (minor 90, owner ruling O1): the hint for guessModality. */
   readonly calories: boolean;
 }
 export type LinePlacement = "heading" | "set-line" | "scheme" | "lead-in" | "separator" | "movement" | "note";
@@ -449,7 +452,7 @@ const TRAILING_PLUS = /\s?\+$/;
 const maxNote = (max: RegExpExecArray) => [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
 /** AC11, AC50; AC62: a split value (`250/200m`) is one measure. */
 const LEADING_MEASURE =
-  /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cal|calories?))(?:\s|$)/i;
+  /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cals?|calories?))(?:\s|$)/i;
 /** AC62: only a distance starts a counted line with no lead-in; a time never does ("20 Minute Cap"). */
 const LEADING_DISTANCE = /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft))(?:\s|$)/i;
 /** AC60: a load after " @ " ("5 Back Squats @ 60-65% of IRM") is the exercise's note, not its name. */
@@ -470,8 +473,9 @@ function splitMovement(raw: string): { text: string; load: string | null } {
 /**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
  * alone and the measure its note; the number is never a target (FI-11). "Calf" never matches: a space must follow.
+ * Minor 91 (owner ruling O2): a men's / women's pair ("20/15 Cal Row") is one calorie form too.
  */
-const LEADING_CAL = /^(\d{1,4}\s?(?:cals?|calories?))\s+(\S.*)$/i;
+const LEADING_CAL = /^(\d{1,4}(?:\/\d{1,4})?\s?(?:cals?|calories?))\s+(\S.*)$/i;
 /** The leading calorie form, when what follows is one movement (never an "A + B" pair, AC37). */
 function leadingCalorieOf(text: string): { measure: string; movement: string } | null {
   const m = LEADING_CAL.exec(text);
@@ -571,11 +575,13 @@ function pushMovement(
     if (measure) noteLines.push(measure[1]!);
   }
   noteLines.push(...extraNotes);
+  // Minor 88: a calorie line under a scheme takes the scheme's row count, never its reps (AC36: no reps or target).
   const rows =
     run.kind === "scheme"
-      ? run.reps.map((r) => ({ repsLow: r, repsHigh: r }))
+      ? run.reps.map((r) => (calories ? { repsLow: null, repsHigh: null } : { repsLow: r, repsHigh: r }))
       : Array.from({ length: run.n }, () => form?.reps ?? { repsLow: null, repsHigh: null });
-  pushItem(s, { name, rows, quickReps: null, repsText: run.kind === "scheme" ? run.text : (form?.text ?? null), noteLines, run: run.id, calories });
+  const repsText = run.kind === "scheme" ? (calories ? null : run.text) : (form?.text ?? null);
+  pushItem(s, { name, rows, quickReps: null, repsText, noteLines, run: run.id, calories });
 }
 
 /** Steps 3–8: place the line as a construct ("note" keeps it in the note with the run open), or null to leave it to the note. */
@@ -702,8 +708,26 @@ const isStructureName = (name: string) =>
 
 type CountedItem = Omit<MutableItem, "nameKey" | "section" | "run">;
 
-/** One counted movement with no lead-in: calories, then reps, then a leading distance (AC62), or null. */
-function countedItemOf(text: string): CountedItem | null {
+/** Minor 108: "1 Mile Run for time" names the run; "for time" is how it is scored. */
+const FOR_TIME = /\s+(for time)$/i;
+
+/**
+ * One counted movement with no lead-in (AC62), or null: a `Max Cal` form (minor 109, owner ruling O3: only the calorie
+ * form, so "Max effort today" stays a note), then calories, then reps, then a leading distance. A trailing "for time"
+ * goes to the note (minor 108).
+ */
+function countedItemOf(line: string): CountedItem | null {
+  const max = MAX_LINE.exec(line);
+  if (max && MAX_CAL.test(max[1]!) && isMovementText(max[2]!)) {
+    return { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], calories: true };
+  }
+  const forTime = FOR_TIME.exec(line);
+  const text = forTime ? line.slice(0, forTime.index) : line;
+  const item = countedFormOf(text);
+  return item && forTime ? { ...item, noteLines: [...item.noteLines, forTime[1]!] } : item;
+}
+
+function countedFormOf(text: string): CountedItem | null {
   if (!isMovementText(text)) return null;
   const cal = leadingCalorieOf(text);
   if (cal) return { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], calories: true };
@@ -831,8 +855,9 @@ export function readWorkoutText(raw: string): ReadResult {
   const names: { key: string; written: string; sections: string[]; calories: boolean }[] = [];
   for (const item of s.items) {
     let entry = names.find((n) => n.key === item.nameKey);
-    if (!entry) names.push((entry = { key: item.nameKey, written: item.name, sections: [], calories: false }));
-    if (item.calories) entry.calories = true;
+    if (!entry) names.push((entry = { key: item.nameKey, written: item.name, sections: [], calories: item.calories }));
+    // Minor 90 (owner ruling O1): the hint holds only while every item with the key came from a calorie form.
+    else if (!item.calories) entry.calories = false;
     const sectionName = item.section === null ? null : s.sections[item.section]!.name;
     if (sectionName !== null && !entry.sections.includes(sectionName)) entry.sections.push(sectionName);
   }

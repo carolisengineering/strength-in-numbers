@@ -406,3 +406,19 @@ describe("10.4 AC63 — notes don't end a N Sets, 1 Set Every run", () => {
     expect(r.items.map((i) => [i.name, rowsOf(i)?.length, i.run])).toEqual([["Back Squats", 4, 1], ["TOES elevated DB Romanian deadlifts", 4, 1], ["Landmine twists", 4, 1]]);
   });
 });
+
+describe("Minor 108 — a trailing for time goes to the note", () => {
+  it.each([
+    ["1 Mile Run for time", "1 Mile Run", ["1 Mile", "for time"]],
+    ["1 Mile Run For Time", "1 Mile Run", ["1 Mile", "For Time"]],
+    ["21 Thrusters for time", "Thrusters", ["for time"]],
+  ])("%s → %s", (line, name, noteLines) => {
+    const r = read(["Engine", line]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([[name, noteLines]]);
+  });
+  it("a structure line stays a note", () => {
+    const r = read(["Engine", "5 Rounds for time"]);
+    expect(r.items).toEqual([]);
+    expect(r.sections[0]!.notes).toBe("5 Rounds for time");
+  });
+});

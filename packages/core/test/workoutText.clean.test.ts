@@ -70,7 +70,8 @@ describe("10.4 AC43 — icon and count lines are furniture", () => {
     expect(r.furniture).toBe(1);
   });
   it.each([
-    ["before a tab-bar line", "Intro\nNext\n{}\nHome"],
+    // Minor 84: a tab bar is two of its labels close together, so the bar's second label is part of the case.
+    ["before a tab-bar line", "Intro\nNext\n{}\nHome\nSchedule"],
     ["after a tab-bar line", "Intro\nNext\nWorkouts\n{}\nSocial"],
     ["within two lines of the clock", "11:09\nIntro\n{}\nNext"],
   ])("a short line of letters in another script is an icon %s (item 71)", (_, text) => {
@@ -186,6 +187,28 @@ describe("10.4 AC56 — the cellular status bar is furniture", () => {
     expect(cleanWorkoutText(`Workout: "X"\n${l}\nAMRAP 15`).lines).toEqual(['Workout: "X"', "AMRAP 15"]);
   });
   it.each(["LTE coverage is spotty today", "5G Burpees", "LTE", "Row LTE"])("%s stays", (l) => expect(isStatusBarLine(l)).toBe(false));
+});
+
+describe("Minor 107 — a network name needs bars before it", () => {
+  it.each(["LTE Row", "5G Row", "3G Run", "LTE O"])("%s is not the status bar and is kept", (l) => {
+    expect(isStatusBarLine(l)).toBe(false);
+    expect(cleanWorkoutText(`Intro\n${l}\nNext`).lines).toContain(l);
+  });
+  it("•ll LTE is still dropped as the status bar", () => {
+    expect(isStatusBarLine("•ll LTE")).toBe(true);
+    expect(cleanWorkoutText("Intro\n•ll LTE\nNext").lines).toEqual(["Intro", "Next"]);
+  });
+});
+
+describe("Minor 84 — an author's Home is not a tab bar", () => {
+  it.each(["口", "Жим"])("%s next to a lone Home line is kept", (line) => {
+    expect(cleanWorkoutText(`Intro\nAt home:\nNext\n${line}\nHome\nMore`).lines).toContain(line);
+    expect(cleanWorkoutText(`Intro\nNext\nHome\n${line}\nMore`).lines).toContain(line);
+  });
+  it("口 next to Home / Schedule is still dropped", () => {
+    expect(cleanWorkoutText("Intro\nNext\n口\nHome\nSchedule").lines).not.toContain("口");
+    expect(cleanWorkoutText("Intro\nNext\nHome\n口\nSchedule").lines).not.toContain("口");
+  });
 });
 
 describe("10.4 AC57 — the trophy and the score are furniture", () => {
