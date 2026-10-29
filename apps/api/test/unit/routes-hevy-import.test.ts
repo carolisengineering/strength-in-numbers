@@ -1,6 +1,7 @@
 import { pino } from "pino";
 import { describe, expect, it } from "vitest";
-import type { HevyImportWorkout } from "@sin/core";
+import type { HevyImportBatch, HevyImportWorkout } from "@sin/core";
+import type { HevyImportBatchRecord, HevyImportTally } from "../../src/repositories/hevy-import.js";
 import { CORS_METHODS } from "../../src/plugins/cors-methods.js";
 import { limitsWith } from "../helpers/build-test-app.js";
 import { FakeHevyImportRepository } from "../helpers/fakes.js";
@@ -135,6 +136,40 @@ describe("19.1 AC32 — logs", () => {
       sets_created: 2,
       sets_dropped: 0,
       ms: expect.any(Number),
+    });
+  });
+
+  it("a successful batch logs partial: false", async () => {
+    const { app, lines } = await setup();
+    await app.inject({ method: "POST", url: BATCH_URL, headers: AS_A, payload: batch() });
+    expect(lines.find((l) => l.msg === "hevy_import_batch")).toMatchObject({ partial: false, workouts: 1 });
+  });
+
+  it("Minor 158 — a 500 mid-batch still logs what was written", async () => {
+    class FailingThird extends FakeHevyImportRepository {
+      override async importBatch(userId: string, b: HevyImportBatch, now: Date, tally?: HevyImportTally): Promise<HevyImportBatchRecord> {
+        for (let i = 0; i < 2; i++) {
+          tally!.results += 1;
+          tally!.setsCreated += 2;
+          tally!.setsDropped += 1;
+          tally!.outcomes.create = (tally!.outcomes.create ?? 0) + 1;
+        }
+        throw new Error("injected: workout 3 failed");
+      }
+    }
+    const { app, lines } = await setup({ hevyImportRepository: new FailingThird() });
+    const res = await app.inject({ method: "POST", url: BATCH_URL, headers: AS_A, payload: batch([workout(), workout(), workout()]) });
+    expect(res.statusCode).toBe(500);
+    const logged = lines.filter((l) => l.msg === "hevy_import_batch");
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      user_id: USER_A,
+      dry_run: false,
+      workouts: 2,
+      outcomes: { create: 2 },
+      sets_created: 4,
+      sets_dropped: 2,
+      partial: true,
     });
   });
 

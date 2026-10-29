@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECTION_DEFAULT_RULES, sectionFromPlaceholder, sectionKey, sectionTreatment } from "../src/index.js";
+import { SECTION_DEFAULT_RULES, SECTION_NAME_MAX, sectionFromPlaceholder, sectionKey, sectionTreatment } from "../src/index.js";
 
 describe("19.0 AC10 — section treatment", () => {
   it("the defaults: Warm-up gets a marker, Accessory goes on the first exercise", () => {
@@ -74,5 +74,57 @@ describe("19.0 AC10 — sections from Hevy placeholders", () => {
     expect(noted.note).toBe("y".repeat(1999));
     expect(noted.note).not.toMatch(lone);
     expect(noted.notices).toEqual(["section_note_cut"]);
+  });
+});
+
+describe("Minor 146 — a cut never ends inside a cluster", () => {
+  const isRegional = (cp: number) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
+  const trailingRegional = (s: string) => {
+    let n = 0;
+    for (const ch of [...s].reverse()) {
+      if (!isRegional(ch.codePointAt(0)!)) break;
+      n++;
+    }
+    return n;
+  };
+  const a = (n: number) => "a".repeat(n);
+
+  it.each([
+    // 👩‍💻 is U+1F469 U+200D U+1F4BB (5 units): the limit falls just after the ZWJ.
+    ["inside a ZWJ sequence", `${a(SECTION_NAME_MAX - 3)}👩‍💻`, a(SECTION_NAME_MAX - 3)],
+    // 🇺🇸 is two regional indicators (4 units): the limit falls between them.
+    ["between a flag's two halves", `${a(SECTION_NAME_MAX - 2)}🇺🇸`, a(SECTION_NAME_MAX - 2)],
+    // The limit falls after the e, before its combining acute.
+    ["after a letter, before its combining mark", `${a(SECTION_NAME_MAX - 1)}é`, a(SECTION_NAME_MAX - 1)],
+    // The limit falls between a letter's two combining marks.
+    ["between two combining marks", `${a(SECTION_NAME_MAX - 2)}ẹ́`, a(SECTION_NAME_MAX - 2)],
+  ])("a name cut %s keeps the cluster whole", (_label, line, expected) => {
+    const r = sectionFromPlaceholder("workout_placeholder", line);
+    expect(r.notices).toEqual(["section_name_cut"]);
+    expect(r.name).toBe(expected);
+    expect(r.name.endsWith("‍")).toBe(false);
+    expect(/\p{M}$/u.test(r.name)).toBe(false);
+    expect(trailingRegional(r.name) % 2).toBe(0);
+  });
+
+  it("whole flags before the cut are kept", () => {
+    const r = sectionFromPlaceholder("workout_placeholder", `${a(SECTION_NAME_MAX - 8)}🇺🇸🇫🇷🇩🇪`);
+    expect(r.name).toBe(`${a(SECTION_NAME_MAX - 8)}🇺🇸🇫🇷`);
+  });
+
+  it("a note that is one cluster longer than the limit is no note, never an empty string", () => {
+    const r = sectionFromPlaceholder("warmup_placeholder", `H${"́".repeat(2100)}`);
+    expect(r.note).toBeNull();
+    expect(r.notices).toEqual(["section_note_cut"]);
+  });
+
+  it("a name that is one cluster longer than the limit falls back to Workout", () => {
+    const r = sectionFromPlaceholder("workout_placeholder", `H${"́".repeat(60)}`);
+    expect(r.name).toBe("Workout");
+  });
+
+  it("a note cut inside a ZWJ sequence keeps it whole too", () => {
+    const r = sectionFromPlaceholder("warmup_placeholder", `${"y".repeat(1997)}👩‍💻`);
+    expect(r.note).toBe("y".repeat(1997));
   });
 });

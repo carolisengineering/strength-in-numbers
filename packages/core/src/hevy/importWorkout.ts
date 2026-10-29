@@ -190,6 +190,7 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
     hevyGroups.push(e.supersetId);
   }
   walk.finish();
+  walk.keep(walk.sections.keys());
 
   if (exercises.length === 0) return { outcome: "no_usable_sets", drops: drops.list(), notices: notices.list() };
 

@@ -55,7 +55,9 @@ export function placeholderSection(
   role: "warmup_placeholder" | "workout_placeholder",
   rawNotes: string | null,
 ): { name: string; notes: string | null; nameCut: boolean; notesCut: boolean } {
-  const section = sectionFromPlaceholder(role, cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value);
+  // A lone CR splits a line like LF (minor 150): `sectionFromPlaceholder` splits on LF, and the name loses its CR.
+  const notes = cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value?.replace(/\r\n?/g, "\n") ?? null;
+  const section = sectionFromPlaceholder(role, notes);
   return {
     name: cleanLine(section.name, SECTION_NAME_MAX).value ?? "Workout",
     notes: section.note,
@@ -70,10 +72,12 @@ type SectionNoticeCode = "section_empty" | "sections_over_limit" | "section_name
 /**
  * Walks placeholders into sections (AC3): a placeholder opens a section that is created only when a stored exercise
  * lands in it (else `section_empty`); past `ROUTINE_SECTIONS_MAX` a placeholder is ignored (`sections_over_limit`)
- * and the exercises after it stay in the last section.
+ * and the exercises after it stay in the last section. The trimmed notices are added by `keep`, for the sections
+ * that are stored (minor 148: the routine item cap can still remove a section).
  */
 export class SectionWalk {
   readonly sections: { name: string; notes: string | null }[] = [];
+  private readonly cuts: { nameCut: boolean; notesCut: boolean }[] = [];
   private open: ReturnType<typeof placeholderSection> | null = null;
   private current: number | null = null;
 
@@ -92,8 +96,7 @@ export class SectionWalk {
   /** The section index for a stored exercise, creating the open section if there is one. */
   place(): number | null {
     if (this.open !== null) {
-      if (this.open.nameCut) this.notices.add("section_name_trimmed");
-      if (this.open.notesCut) this.notices.add("section_notes_trimmed");
+      this.cuts.push({ nameCut: this.open.nameCut, notesCut: this.open.notesCut });
       this.sections.push({ name: this.open.name, notes: this.open.notes });
       this.current = this.sections.length - 1;
       this.open = null;
@@ -104,5 +107,14 @@ export class SectionWalk {
   finish(): void {
     if (this.open !== null) this.notices.add("section_empty");
     this.open = null;
+  }
+
+  /** The trimmed notices of the sections that are stored, by index into `sections`. */
+  keep(indexes: Iterable<number>): void {
+    for (const index of indexes) {
+      const cut = this.cuts[index]!;
+      if (cut.nameCut) this.notices.add("section_name_trimmed");
+      if (cut.notesCut) this.notices.add("section_notes_trimmed");
+    }
   }
 }

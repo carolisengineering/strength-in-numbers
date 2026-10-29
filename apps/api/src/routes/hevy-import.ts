@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
-import { HevyImportBatchSchema, HevyImportFinishResponseSchema, HevyImportResponseSchema, type HevyImportOutcome } from "@sin/core";
-import { NotFoundError } from "../errors/app-error.js";
-import { HEVY_IMPORT_BODY_LIMIT, type HevyImportRepository } from "../repositories/hevy-import.js";
+import { HevyImportBatchSchema, HevyImportFinishResponseSchema, HevyImportResponseSchema } from "@sin/core";
+import { emptyHevyImportTally, type HevyImportRepository } from "../repositories/hevy-import.js";
+
+/** Spec 19.1 §8: the batch route's request-body limit (beside 19.0's `HEVY_MAPPING_BODY_LIMIT`, minor 160). */
+export const HEVY_IMPORT_BODY_LIMIT = 512 * 1024;
 
 export interface HevyImportRouteDeps {
   hevyImportRepository: HevyImportRepository;
@@ -22,27 +24,34 @@ export function registerHevyImportRoutes(scope: FastifyInstance, deps: HevyImpor
     {
       bodyLimit: HEVY_IMPORT_BODY_LIMIT,
       schema: { body: HevyImportBatchSchema, response: { 200: HevyImportResponseSchema } },
-      config: { writeGroup: "hevy", problems: [NotFoundError] },
+      config: { writeGroup: "hevy" },
     },
     async (request) => {
       const started = Date.now();
       const userId = request.user!.id;
-      const batch = await repo.importBatch(userId, request.body, new Date());
-      const outcomes: Partial<Record<HevyImportOutcome, number>> = {};
-      for (const r of batch.results) outcomes[r.outcome] = (outcomes[r.outcome] ?? 0) + 1;
-      request.log.info(
-        {
-          user_id: userId,
-          dry_run: request.body.dryRun,
-          workouts: batch.results.length,
-          outcomes,
-          sets_created: batch.setsCreated,
-          sets_dropped: batch.setsDropped,
-          ms: Date.now() - started,
-        },
-        "hevy_import_batch",
-      );
-      return { dryRun: request.body.dryRun, results: batch.results };
+      // Filled as each workout is answered, and logged from `finally`, so a 500 partway still traces what the
+      // workouts before it did (minor 158).
+      const tally = emptyHevyImportTally();
+      let partial = true;
+      try {
+        const batch = await repo.importBatch(userId, request.body, new Date(), tally);
+        partial = false;
+        return { dryRun: request.body.dryRun, results: batch.results };
+      } finally {
+        request.log.info(
+          {
+            user_id: userId,
+            dry_run: request.body.dryRun,
+            workouts: tally.results,
+            outcomes: tally.outcomes,
+            sets_created: tally.setsCreated,
+            sets_dropped: tally.setsDropped,
+            partial,
+            ms: Date.now() - started,
+          },
+          "hevy_import_batch",
+        );
+      }
     },
   );
 
@@ -50,7 +59,7 @@ export function registerHevyImportRoutes(scope: FastifyInstance, deps: HevyImpor
     "/hevy/import/finish",
     {
       schema: { response: { 200: HevyImportFinishResponseSchema } },
-      config: { writeGroup: "hevy", problems: [NotFoundError] },
+      config: { writeGroup: "hevy" },
     },
     async (request) => {
       const started = Date.now();

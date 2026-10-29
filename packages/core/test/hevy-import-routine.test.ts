@@ -253,3 +253,36 @@ describe("19.1 AC11 — every output is writable", () => {
     expectWritable(t.input);
   });
 });
+
+describe("Minor 147 — a prototype-named set type falls back to working", () => {
+  it.each(["toString", "__proto__", "constructor"])("type %j is a working row and the body is writable", (type) => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("BENCH", { sets: [{ type, reps: 5 }] })]), ctx));
+    expect(t.input.items[0]!.sets).toEqual([{ setType: "working", repsLow: 5, repsHigh: 5 }]);
+    expectWritable(t.input);
+  });
+});
+
+describe("Minor 146 — a one-cluster section note longer than the limit", () => {
+  it("leaves the section with no notes, and the body stays writable", () => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("WORKOUT", { notes: `Block\nH${"́".repeat(2100)}` }), item("SQUAT")]), ctx));
+    expect(t.input.sections).toEqual([{ key: "s1", name: "Block" }]);
+    expectWritable(t.input);
+  });
+});
+
+describe("Minor 148 — trimmed notices count kept sections only", () => {
+  const longNotes = `${"N".repeat(50)}\n${"z".repeat(2100)}`;
+
+  it("a section the item cap removes adds no trimmed notice", () => {
+    const items = [...Array.from({ length: 30 }, () => item("BENCH")), item("WORKOUT", { notes: longNotes }), item("SQUAT")];
+    const t = ok(translateHevyRoutine(hevyRoutine(items), ctx));
+    expect(t.input.sections).toBeUndefined();
+    expect([count(t.notices, "section_name_trimmed"), count(t.notices, "section_notes_trimmed")]).toEqual([0, 0]);
+  });
+
+  it("the same section, kept, adds both", () => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("WORKOUT", { notes: longNotes }), item("SQUAT")]), ctx));
+    expect(t.input.sections).toHaveLength(1);
+    expect([count(t.notices, "section_name_trimmed"), count(t.notices, "section_notes_trimmed")]).toEqual([1, 1]);
+  });
+});

@@ -46,7 +46,8 @@ function repsOf(s: HevyRoutineSet): { repsLow: number; repsHigh: number } | null
  */
 function rowOf(s: HevyRoutineSet, modality: Modality, unit: UnitPreference, notices: CodeCounter<HevyRoutineNoticeCode>): PlannedSetInput {
   const forbidden = forbiddenMeasuresFor(modality);
-  const row: PlannedSetInput = { setType: HEVY_TO_SIN_SET_TYPE[s.type as HevySetType] ?? "working" };
+  // An own-key check, so a type named after a prototype key ("toString", "__proto__") falls back too (minor 147).
+  const row: PlannedSetInput = { setType: Object.hasOwn(HEVY_TO_SIN_SET_TYPE, s.type) ? HEVY_TO_SIN_SET_TYPE[s.type as HevySetType] : "working" };
   const reps = repsOf(s);
   if (reps !== null && !forbidden.includes("reps")) Object.assign(row, reps);
   if (s.weight_kg != null && s.weight_kg > 0 && !forbidden.includes("weight")) {
@@ -115,6 +116,7 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
 
   // Sections the cap emptied are removed; the rest keep their order and get dense request keys.
   const used = [...new Set(kept.flatMap((c) => (c.sectionIndex === null ? [] : [c.sectionIndex])))];
+  walk.keep(used);
   const keyOf = new Map(used.map((index, j) => [index, `s${j + 1}`]));
   const sections: RoutineSectionInput[] = used.map((index) => {
     const s = walk.sections[index]!;

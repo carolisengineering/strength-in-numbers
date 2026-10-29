@@ -114,7 +114,7 @@ import type { AuthContext, TokenVerifier } from "../../src/auth/verify.js";
 import type { FinishedEdit } from "../../src/repositories/write-mode.js";
 import type { AccountExportRepository, AccountSnapshot } from "../../src/repositories/account-export.js";
 import type { HevyLinkBeginRecord, HevyRepository, HevyStatusRecord } from "../../src/repositories/hevy.js";
-import type { HevyImportBatchRecord, HevyImportRepository, WriteOutcome } from "../../src/repositories/hevy-import.js";
+import type { HevyImportBatchRecord, HevyImportRepository, HevyImportTally, WriteOutcome } from "../../src/repositories/hevy-import.js";
 import type { HevyImportBatch, HevyImportResult } from "@sin/core";
 import type { HevyLinkComplete, HevyLinkState, HevyMapping, HevyMappingPatch, HevyMappingPut } from "@sin/core";
 import type {
@@ -1425,7 +1425,7 @@ export class FakeHevyImportRepository implements HevyImportRepository {
   readonly batches: { userId: string; batch: HevyImportBatch }[] = [];
   readonly finishes: string[] = [];
 
-  async importBatch(userId: string, batch: HevyImportBatch): Promise<HevyImportBatchRecord> {
+  async importBatch(userId: string, batch: HevyImportBatch, _now?: Date, tally?: HevyImportTally): Promise<HevyImportBatchRecord> {
     this.batches.push({ userId, batch });
     const results: HevyImportResult[] = batch.workouts.map((w) => ({
       hevyWorkoutId: w.hevyWorkoutId,
@@ -1438,7 +1438,13 @@ export class FakeHevyImportRepository implements HevyImportRepository {
       exerciseCount: w.exercises.length,
       setCount: w.exercises.reduce((n, e) => n + e.sets.length, 0),
     }));
-    return { results, setsCreated: results.reduce((n, r) => n + r.setCount, 0), setsDropped: 0 };
+    const setsCreated = results.reduce((n, r) => n + r.setCount, 0);
+    if (tally !== undefined) {
+      tally.results += results.length;
+      tally.setsCreated += setsCreated;
+      if (results.length > 0) tally.outcomes.create = (tally.outcomes.create ?? 0) + results.length;
+    }
+    return { results, setsCreated, setsDropped: 0 };
   }
 
   async writeImportedWorkout(): Promise<WriteOutcome> {

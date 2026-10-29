@@ -118,6 +118,35 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
     });
   });
 
+  describe("Minor 145 — a delete right after a complete doesn't turn its answer into a 404", () => {
+    it("the complete still answers its linked state", async () => {
+      const { workoutId } = await finished();
+      const fp = ((await begin(workoutId)).json() as { fingerprint: string }).fingerprint;
+      // The repository's client, with a delete landing the moment its transaction commits: a read of the answer
+      // after the transaction would find no workout.
+      let deleted = 0;
+      const hooked = new Proxy(db.prisma, {
+        get(target, prop, receiver) {
+          if (prop === "$transaction") {
+            return async (...args: Parameters<typeof target.$transaction>) => {
+              const out = await (target.$transaction as (...a: unknown[]) => Promise<unknown>)(...args);
+              const res = await app.inject({ method: "DELETE", url: `/v1/workouts/${workoutId}`, headers: A });
+              if (res.statusCode === 204) deleted++;
+              return out;
+            };
+          }
+          const value = Reflect.get(target, prop, receiver) as unknown;
+          return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+        },
+      });
+      const answer = await createHevyRepository(hooked).completeLink(A_ID, workoutId, { hevyWorkoutId: "H145", fingerprint: fp });
+      expect(deleted).toBe(1);
+      expect(answer).toMatchObject({ state: "sent", hevyWorkoutId: "H145", origin: "sent" });
+      const tomb = await db.prisma.$queryRawUnsafe<{ workout_id: string | null }[]>(`SELECT workout_id FROM hevy_link WHERE hevy_workout_id = 'H145'`);
+      expect(tomb).toEqual([{ workout_id: null }]);
+    });
+  });
+
   describe("deferred minor 140 — a delete that lands while a complete or release waits", () => {
     it("the complete answers 404, not hevy-no-claim", async () => {
       const { workoutId } = await finished();

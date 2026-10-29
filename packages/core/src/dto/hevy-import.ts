@@ -31,7 +31,11 @@ export const HEVY_IMPORT_OUTCOME_VALUES = Object.freeze([
 ] as const);
 export type HevyImportOutcome = (typeof HEVY_IMPORT_OUTCOME_VALUES)[number];
 
-/** AC1: why sets or exercises were left out. */
+/**
+ * AC1: why sets or exercises were left out. Every code counts sets except `exercise_no_sets`, which counts exercises
+ * whose sets were all dropped (those sets are already counted under their own codes), so it is left out of any set
+ * total (minor 149).
+ */
 export const HEVY_IMPORT_DROP_CODES = Object.freeze([
   "exercise_skipped",
   "exercise_no_sets",
