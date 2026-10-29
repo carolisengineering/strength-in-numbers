@@ -46,7 +46,6 @@ function boot() {
 
 type App = ReturnType<typeof boot>;
 
-/** Change Time: two days back, 18:00, took 1 h. */
 /**
  * Minor 202: the Log bar drops a tap within `DOUBLE_TAP_MS` of the last one by `Date.now()`, and this file fakes Date
  * with `shouldAdvanceTime`, which lags real time under a parallel run (a probe saw 580 ms of fake time over 654 ms
@@ -57,6 +56,7 @@ async function restPastDoubleTap() {
   vi.setSystemTime(Date.now() + DOUBLE_TAP_MS);
 }
 
+/** Change Time: two days back, 18:00, took 1 h. */
 async function backdate(user: App["user"]) {
   await user.click(changeTimeButton());
   const sheet = within(screen.getByRole("dialog", { name: "Change Time" }));

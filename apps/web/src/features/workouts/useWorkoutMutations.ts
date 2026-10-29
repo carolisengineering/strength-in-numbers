@@ -57,7 +57,6 @@ const guardActiveReads = (queryClient: QueryClient): Promise<ReadGuard> => guard
 const rereadActiveIfStale = (queryClient: QueryClient, guard: ReadGuard | undefined): void =>
   rereadIfStale(queryClient, WORKOUT_KEYS.active, guard);
 
-
 // ---- workout lifecycle ---------------------------------------------------------------------------
 
 export function useStartWorkout(): UseMutationResult<Workout, Error, { body: CreateWorkout }> {

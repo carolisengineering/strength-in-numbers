@@ -64,7 +64,6 @@ export function writeDetail(queryClient: QueryClient, workoutId: string, change:
   queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId), (d) => (d ? change(d) : d));
 }
 
-
 export function useEditCreateSet(): UseMutationResult<
   SetEntry,
   Error,

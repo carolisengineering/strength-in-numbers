@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,7 @@ import {
 } from "../../test/hevyHarness";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HevyError } from "./client/hevyErrors";
 import { HEVY_KEYS } from "./keys";
 import { hevyKeyStorageKey, hevyKeyStore } from "./keyStore";
 
@@ -315,16 +316,26 @@ describe("Minor 199 — the quiet-minute line appears at the boundary and goes a
 });
 
 describe("Minor 203 — a refused stored key is named under its ending", () => {
-  it("a non-live line under the ending names the failure, whatever the status line says", async () => {
+  it("when the status line already names the refusal, it shows once (final review: no duplicate)", async () => {
     server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
     hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
     renderHevyScreen();
-    const ending = await screen.findByText(keyEnding(VALID_KEY.slice(-4)));
+    await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+    expect(screen.getAllByText(HEVY_COPY.bad_key)).toHaveLength(1);
+  });
+
+  it("Review Focus 4 — a newer outcome on the status line leaves the refusal named, not live, under the ending", async () => {
+    server.use(userInfoOk());
+    const { queryClient } = renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    await waitFor(() => expect(status()).toHaveTextContent(KEY_SAVED));
+    // Hevy's refusal, recorded before the save's announcement: the status line keeps the newer outcome.
+    const query = queryClient.getQueryCache().find({ queryKey: HEVY_KEYS.user(USER_ID) })!;
+    act(() => query.setState({ status: "error", error: new HevyError("bad_key"), errorUpdatedAt: 1 }));
+    const ending = screen.getByText(keyEnding(VALID_KEY.slice(-4)));
     const under = await within(ending.parentElement!).findByText(HEVY_COPY.bad_key);
     expect(under.closest('[role="status"], [aria-live]')).toBeNull();
-    // Replace and Cancel make no announcement and leave the line in place.
-    await userEvent.click(screen.getByRole("button", { name: "Replace" }));
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(within(ending.parentElement!).getByText(HEVY_COPY.bad_key)).toBeInTheDocument();
+    expect(status()).toHaveTextContent(KEY_SAVED);
   });
 });

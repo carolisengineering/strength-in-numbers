@@ -95,6 +95,10 @@ export function HevyKeyCard() {
   const showField = !key.hasKey || replacing;
   const username = user.data?.data.username ?? user.data?.data.name ?? null;
   const userFailure = user.error instanceof HevyError ? (user.error.kind === "not_found" ? HEVY_COPY.bad_key : HEVY_COPY[user.error.kind]) : null;
+  // Minor 171: whichever came last, an outcome this visit or Hevy refusing the stored key after it.
+  const statusText = userFailure !== null && (announcement.text === "" || user.errorUpdatedAt > announcement.at) ? userFailure : announcement.text;
+  // Minor 203: a refusal the status line is not showing (a newer outcome took it) stays named under the ending.
+  const refusalUnderEnding = userFailure === HEVY_COPY.bad_key && statusText !== userFailure;
 
   return (
     <section className={styles.card} aria-labelledby="hevy-key-title">
@@ -105,9 +109,9 @@ export function HevyKeyCard() {
       {key.hasKey && key.lastFour !== null ? (
         <div className={styles.current}>
           <p className={styles.ending}>{keyEnding(key.lastFour)}</p>
-          {/* Minor 203: a key Hevy refuses stays named here, even after a newer outcome takes the status line. Not live
-              (the status line announces), and only the refusal: a network or server failure is the status line's. */}
-          {userFailure === HEVY_COPY.bad_key ? <p className={styles.failure}>{userFailure}</p> : null}
+          {/* Minor 203: a key Hevy refuses stays named here once a newer outcome takes the status line (never both at
+              once). Not live (the status line announces), and only the refusal: a network failure is the status line's. */}
+          {refusalUnderEnding ? <p className={styles.failure}>{userFailure}</p> : null}
           {username !== null ? <p className={styles.who}>{signedInAs(username)}</p> : null}
           {username === null && user.isPending && user.fetchStatus === "fetching" ? <p className={styles.who}>{LOADING_USERNAME}</p> : null}
           {!replacing ? (
@@ -177,8 +181,7 @@ export function HevyKeyCard() {
 
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-key-status">
         {/* Minor 171: a stored key that Hevy now refuses is announced here too, after the last outcome. */}
-        {/* Whichever came last: an outcome this visit, or Hevy refusing the stored key after it. */}
-        {userFailure !== null && (announcement.text === "" || user.errorUpdatedAt > announcement.at) ? userFailure : announcement.text}
+        {statusText}
       </p>
 
       <ConfirmDialog
