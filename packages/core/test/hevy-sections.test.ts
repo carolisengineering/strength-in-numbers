@@ -112,6 +112,17 @@ describe("Minor 146 — a cut never ends inside a cluster", () => {
     expect(r.name).toBe(`${a(SECTION_NAME_MAX - 8)}🇺🇸🇫🇷`);
   });
 
+  it("a note that is one cluster longer than the limit is no note, never an empty string", () => {
+    const r = sectionFromPlaceholder("warmup_placeholder", `H${"́".repeat(2100)}`);
+    expect(r.note).toBeNull();
+    expect(r.notices).toEqual(["section_note_cut"]);
+  });
+
+  it("a name that is one cluster longer than the limit falls back to Workout", () => {
+    const r = sectionFromPlaceholder("workout_placeholder", `H${"́".repeat(60)}`);
+    expect(r.name).toBe("Workout");
+  });
+
   it("a note cut inside a ZWJ sequence keeps it whole too", () => {
     const r = sectionFromPlaceholder("warmup_placeholder", `${"y".repeat(1997)}👩‍💻`);
     expect(r.note).toBe("y".repeat(1997));

@@ -87,7 +87,8 @@ function noteOf(lines: readonly string[], notices: SectionNotice[]): string | nu
   if (note === "") return null;
   if (note.length <= SECTION_NOTES_MAX) return note;
   notices.push("section_note_cut");
-  return cutUnits(note, SECTION_NOTES_MAX).trimEnd();
+  // A cut keeps whole clusters, so one cluster longer than the limit leaves nothing: no note, never "".
+  return cutUnits(note, SECTION_NOTES_MAX).trimEnd() || null;
 }
 
 /**
@@ -107,7 +108,7 @@ export function sectionFromPlaceholder(
   if (first === -1) return { name: "Workout", note: null, notices };
   let name = lines[first]!.trim();
   if (name.length > SECTION_NAME_MAX) {
-    name = cutUnits(name, SECTION_NAME_MAX).trim();
+    name = cutUnits(name, SECTION_NAME_MAX).trim() || "Workout";
     notices.push("section_name_cut");
   }
   return { name, note: noteOf(lines.slice(first + 1), notices), notices };

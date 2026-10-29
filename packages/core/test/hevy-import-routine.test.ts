@@ -262,6 +262,14 @@ describe("Minor 147 — a prototype-named set type falls back to working", () =>
   });
 });
 
+describe("Minor 146 — a one-cluster section note longer than the limit", () => {
+  it("leaves the section with no notes, and the body stays writable", () => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("WORKOUT", { notes: `Block\nH${"́".repeat(2100)}` }), item("SQUAT")]), ctx));
+    expect(t.input.sections).toEqual([{ key: "s1", name: "Block" }]);
+    expectWritable(t.input);
+  });
+});
+
 describe("Minor 148 — trimmed notices count kept sections only", () => {
   const longNotes = `${"N".repeat(50)}\n${"z".repeat(2100)}`;
 
