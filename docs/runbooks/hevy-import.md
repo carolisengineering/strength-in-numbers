@@ -7,9 +7,11 @@ The import moves a lifter's Hevy history into SIN. It is owner-only: only accoun
 The web side (Spec 20.1) runs these steps. You only need them to understand or repair one.
 
 1. **Mapping.** Every Hevy exercise template the history uses is paired (`PUT` / `PATCH /v1/hevy/mapping`, Spec 19.0). An unpaired workout answers `unpaired` and writes nothing. Pair it and send the batch again.
-2. **Dry run.** Send every workout with `dryRun: true`, in batches of at most 25. Nothing is written, and the results are exactly what the real run will return.
+2. **Dry run.** Send every workout with `dryRun: true`, in batches of at most 25. Nothing is written, and within one batch the results are exactly what the real run will return. Across batches they can differ in one rare case: two Hevy workouts in different batches that both match one SIN workout each answer `duplicate`, and the real run creates the second.
 3. **Real run.** Send the same batches with `dryRun: false`. Each workout is its own transaction. Re-sending any batch is always safe: a workout that is already imported answers `already_imported`.
-4. **Finish.** Call `POST /v1/hevy/import/finish` once after the last batch. It rebuilds the lifter's personal records in one transaction and clears `records_stale`.
+4. **Finish.** Call `POST /v1/hevy/import/finish` once after the last batch, with no body and no `Content-Type`. It rebuilds the lifter's personal records in one transaction and clears `records_stale`.
+
+Don't run a finish while batches are still in flight. A finish over 30 s can time a concurrent batch out to a `500`, which is safe to retry.
 
 ## Records stuck stale
 
@@ -42,17 +44,21 @@ DELETE FROM hevy_link WHERE user_id = '<id>' AND origin = 'imported';
 DELETE FROM hevy_link WHERE user_id = '<id>' AND origin = 'matched';
 ```
 
-Then rebuild that user's records:
+Then rebuild that user's records, and clear the flag the import left set:
 
 ```bash
 DATABASE_URL='<url>' pnpm --filter @sin/api run records:rebuild --user <id>
+```
+
+```sql
+UPDATE hevy_account SET records_stale = false WHERE user_id = '<id>';
 ```
 
 The undo is not a release step. Code rollback is `git revert`: the routes add no table or column.
 
 ## Staging smoke (after Phase B deploys)
 
-These steps run as the owner, whose account is on `HEVY_ENABLED_USER_IDS`, against `https://si-api-ft2f.onrender.com`:
+These steps run as the owner, whose account is on `HEVY_ENABLED_USER_IDS`, against `https://si-api-ft2f.onrender.com`. Use a fresh `hevyWorkoutId` for each smoke run (for example `smoke-<date>-<n>`): step 5's delete leaves a tombstone link, so a reused id answers `deleted_in_sin` in step 1.
 
 1. Make a dry run of one fixture workout whose exercises are paired (`dryRun: true`). It returns `create` with `workoutId: null`.
 2. Send the same workout as a real run (`dryRun: false`). It returns `create` with a `workoutId`.
@@ -63,12 +69,13 @@ These steps run as the owner, whose account is on `HEVY_ENABLED_USER_IDS`, again
 
 ## Latency
 
-`bench:hevy-import` is a local dev tool and needs Docker. It seeds 1,500 workouts, then imports 1,500 more in 60 batches and runs the finish. The first run (2026-10-28) gave:
+`bench:hevy-import` is a local dev tool and needs Docker. It seeds 1,500 workouts, then imports 1,500 more in 60 batches and runs the finish. A quarter of the imported workouts share a day and title with a seeded one, so they match as duplicates and the matched-link path is measured too. The run on 2026-10-29 gave:
 
 | Measure | Result | Target |
 |---|---|---|
-| Batch p50 | 331 ms | — |
-| Batch p95 | 389 ms | under 2 s |
-| Finish | 589 ms | under 10 s |
+| Batch p50 | 325 ms | — |
+| Batch p95 | 368 ms | under 2 s |
+| Matched as duplicates | 375 of 1,500 | more than 0 |
+| Finish | 494 ms | under 10 s |
 
 If the finish ever passes 10 s, use the by-hand `records:rebuild --user` above.
