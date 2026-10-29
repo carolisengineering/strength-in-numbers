@@ -69,14 +69,16 @@ function cell(value: string | null): string {
 
 /**
  * Minor 189: a spreadsheet runs a cell that starts with `=`, `+`, `-` or `@` (or a tab or CR) as a formula, so a text
- * cell that starts with one, or with the escape itself, is written with one `'` in front; the parse drops one leading
- * `'` from a text cell, so every cell reads back as it was (AC14) and a hand-written `'Bench` reads as `Bench`.
+ * cell that starts with one, or with the escape itself, is written with one `'` in front. Minor 196 (owner ruling
+ * O1): the parse drops a leading `'` only before a character the writer guards (`=`, `+`, `-`, `@`, `'`; a tab or CR
+ * never follows, since cells are trimmed before formatting), so every downloaded cell reads back as it was (AC14) and
+ * a real title such as `'90s Press`, or a hand-written `'Bench`, reads as written.
  */
 function guarded(value: string | null): string | null {
   return value !== null && /^[=+\-@\t\r']/.test(value) ? `'${value}` : value;
 }
 
-const unguarded = (value: string): string => (value.startsWith("'") ? value.slice(1) : value);
+const unguarded = (value: string): string => (/^'[=+\-@']/.test(value) ? value.slice(1) : value);
 
 const trimmed = (v: string | null) => (v === null ? null : v.trim());
 /** Cells trimmed as the parse trims them, before sorting, so a second pass reads and orders the same (minor 134). */

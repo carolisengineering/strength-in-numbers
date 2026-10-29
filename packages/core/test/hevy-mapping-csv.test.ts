@@ -217,7 +217,8 @@ describe("20.0 AC19 — each parsed line keeps its file line number", () => {
 });
 
 describe("Minor 189 — formula cells are guarded and round-trip", () => {
-  const TITLES = ["=SUM(A1)", "+1", "-Row", "@x", "'quoted", 'Bench, "Pro"', "Plain"];
+  // Minor 196 adds a title that really starts with an apostrophe, and one whose guard guards a guard (Review Focus 3).
+  const TITLES = ["=SUM(A1)", "+1", "-Row", "@x", "'quoted", 'Bench, "Pro"', "Plain", "'90s Press", "'=x"];
 
   it("each risky text cell starts with one apostrophe, and parse(format(m)) gives the titles back", () => {
     const m = TITLES.map((title, i) => line({ kind: "skip", hevyId: `S${i}`, hevyTitle: title }));
@@ -230,6 +231,8 @@ describe("Minor 189 — formula cells are guarded and round-trip", () => {
     expect(byId.get("S3")).toBe("skip,S3,'@x,,,,");
     expect(byId.get("S4")).toBe("skip,S4,''quoted,,,,");
     expect(byId.get("S6")).toBe("skip,S6,Plain,,,,");
+    expect(byId.get("S7")).toBe("skip,S7,''90s Press,,,,");
+    expect(byId.get("S8")).toBe("skip,S8,''=x,,,,");
     const parsed = parseMappingCsv(text);
     expect(parsed.errors).toEqual([]);
     expect(new Map(parsed.lines.map((l) => [l.hevyId, l.hevyTitle]))).toEqual(new Map(m.map((l) => [l.hevyId, l.hevyTitle])));
@@ -241,8 +244,20 @@ describe("Minor 189 — formula cells are guarded and round-trip", () => {
     expect(text.split("\r\n")[1]).toBe(`exercise,E1,Bench,${ID_A},'=evil,,yes`);
   });
 
-  it("a hand-written leading apostrophe is the escape (Review Focus 2)", () => {
-    const parsed = parseMappingCsv(`${MAPPING_CSV_HEADER}\r\nskip,,'Bench,,,,\r\n`);
-    expect(parsed.lines[0]?.hevyTitle).toBe("Bench");
+  const titleOf = (cell: string) => parseMappingCsv(`${MAPPING_CSV_HEADER}\r\nskip,,${cell},,,,\r\n`).lines[0]?.hevyTitle;
+
+  it("Minor 196 — a leading apostrophe before a plain letter is data (owner ruling O1)", () => {
+    expect(titleOf("'Bench")).toBe("'Bench");
+    expect(titleOf("'90s Press")).toBe("'90s Press");
+    // Minor 198, moot under O1: the cell reads as written.
+    expect(titleOf("' Bench")).toBe("' Bench");
+  });
+
+  it("Minor 196 — the escape before a guarded character is still dropped", () => {
+    expect(titleOf("'=SUM(A1)")).toBe("=SUM(A1)");
+    expect(titleOf("''quoted")).toBe("'quoted");
+    expect(titleOf("'@x")).toBe("@x");
+    expect(titleOf("'+1")).toBe("+1");
+    expect(titleOf("'-Row")).toBe("-Row");
   });
 });
