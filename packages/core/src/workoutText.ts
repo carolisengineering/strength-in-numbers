@@ -44,15 +44,16 @@ const TROPHY_MARK = /[^A-Za-z0-9 ]/;
 const SCORE_WORDS_MAX = 6;
 
 /**
- * The first line after `i` that is not status-bar chrome (a clock, the cellular bar, an icon), or "". Only reached for a
- * line right after `RESULTS (n)` that starts with a digit; such a line is never chrome, so the scans never overlap.
+ * The index of the first line after `i` that is not status-bar chrome (a clock, the cellular bar, an icon), or -1. Only
+ * reached for a line right after `RESULTS (n)` that starts with a digit; such a line is never chrome, so the scans
+ * never overlap. `all` is collapsed.
  */
-function nextTextLine(all: readonly string[], i: number): string {
+function nextTextLine(all: readonly string[], i: number): number {
   for (let j = i + 1; j < all.length; j++) {
     const l = all[j]!;
-    if (!CLOCK_LINE.test(l) && !isStatusBarLine(l) && !isIconLine(l)) return l;
+    if (!CLOCK_LINE.test(l) && !statusBarLine(l) && !iconLine(l)) return j;
   }
-  return "";
+  return -1;
 }
 
 /** Control characters become spaces, whitespace runs collapse to one space, ends trimmed. */
@@ -63,9 +64,14 @@ export function collapseLine(line: string): string {
 /** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
 const ICON_MAX_LENGTH = 8;
 
+// Items 77 and 112: each predicate has a private form over a line that is already collapsed (`cleanWorkoutText`
+// collapses each line once); the exported form collapses, then delegates.
+
 /** AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script, or the signal bars. */
 export function isIconLine(line: string): boolean {
-  const l = collapseLine(line);
+  return iconLine(collapseLine(line));
+}
+function iconLine(l: string): boolean {
   // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
   return l !== "" && l.length <= ICON_MAX_LENGTH && ((!ALNUM.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
 }
@@ -86,7 +92,10 @@ const STATUS_TAIL_MAX = 3;
 
 /** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. */
 export function isStatusBarLine(line: string): boolean {
-  const tokens = collapseLine(line).split(" ");
+  return statusBarLine(collapseLine(line));
+}
+function statusBarLine(l: string): boolean {
+  const tokens = l.split(" ");
   if (tokens.length < 2 || tokens.length > 3) return false;
   const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
   // Minor 107: a real status bar always reads with its signal bars first, so "LTE Row" is someone's line.
@@ -95,13 +104,19 @@ export function isStatusBarLine(line: string): boolean {
 
 /** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
 export function isBadgeLine(line: string): boolean {
-  const parts = collapseLine(line).split("/").map((p) => p.trim().toLowerCase());
-  return parts.every((p) => HEADER_BADGES.has(p));
+  return badgeLine(collapseLine(line));
+}
+function badgeLine(l: string): boolean {
+  return l.split("/").every((p) => HEADER_BADGES.has(p.trim().toLowerCase()));
 }
 
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l) || isStatusBarLine(l) || isBadgeLine(l);
+  return furnitureLine(l, badgeLine(l));
+}
+/** `badge` is `badgeLine(l)`, which the cleaning loop computes once per line. */
+function furnitureLine(l: string, badge: boolean): boolean {
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || iconLine(l) || statusBarLine(l) || badge;
 }
 
 const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
@@ -197,6 +212,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
   const nav = all.map((l) => NAV.has(l.toLowerCase()));
   // A tab bar is several of its words close together (icons between); one "Home" in the text is an at-home label.
   const tabBar = nav.map((isNav, i) => isNav && [-2, -1, 1, 2].some((d) => nav[i + d] === true));
+  const badge = all.map(badgeLine);
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
@@ -217,7 +233,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       chunks.push([]);
       continue;
     }
-    if (isBadgeLine(line)) {
+    if (badge[i]) {
       // A badge that opens a screenshot belongs to the header that ended the one before.
       const before = chunk.length > 0 ? chunk : [...chunks].reverse().find((c) => c.length > 0);
       const above = before?.[before.length - 1];
@@ -229,8 +245,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
     // A line with a badge under it is a header ("12 Days of Christmas" on a card with no score yet), never a score;
     // status-bar lines and clocks can sit between the two.
     const score =
-      RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX && !isBadgeLine(nextTextLine(all, i));
-    if (isFurnitureLine(line) || (nearChrome && isScriptIconLine(line)) || trophy || score) {
+      RESULTS_LINE.test(after) && DIGIT_START.test(line) && wordCount(line) <= SCORE_WORDS_MAX && badge[nextTextLine(all, i)] !== true;
+    if (furnitureLine(line, badge[i]!) || (nearChrome && isScriptIconLine(line)) || trophy || score) {
       furniture++;
       continue;
     }
@@ -388,14 +404,17 @@ function isStrictHeading(line: string): boolean {
   return WORKOUT_TITLE.test(line) || HEADING_SET.has(bare.toLowerCase());
 }
 
-/** The section a heading line starts, or null. `listOpen` turns off generic titles (AC5). */
-function headingOf(line: string, last: boolean, listOpen: boolean): { name: string; workout: boolean } | null {
+/**
+ * The section a heading line starts, or null. `listOpen` turns off generic titles (AC5). `forced` (AC45: a line above
+ * a header badge) always heads a section, named by the line less a trailing colon.
+ */
+function headingOf(line: string, last: boolean, listOpen: boolean, opts: { forced?: true } = {}): { name: string; workout: boolean } | null {
   const titled = WORKOUT_TITLE.exec(line);
   if (titled) return { name: titled[1]!, workout: true };
   const bare = line.endsWith(":") ? line.slice(0, -1).trimEnd() : line;
   if (HEADING_SET.has(bare.toLowerCase())) return { name: bare, workout: false };
   if (!last && !listOpen && isGenericTitle(line)) return { name: line, workout: false };
-  return null;
+  return opts.forced ? { name: bare, workout: false } : null;
 }
 
 interface ReadState {
@@ -417,7 +436,15 @@ const MOVEMENT_PUNCTUATION = /[:.!?;]/;
 const RANGE_FORM = /^(\d{1,3})\s*[-–]\s*(\d{1,3})\s+(.+)$/;
 const SPLIT_FORM = /^(\d{1,3})\/(\d{1,3})\s+(.+)$/;
 const REPS_FORM = /^(\d{1,3})\s+(.+)$/;
-const UNIT_WORD = /^(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cals?|calories?)$/i;
+// Item 111: one number shape and one list per kind of unit build UNIT_WORD, LEADING_MEASURE and LEADING_DISTANCE.
+/** A measure's number, AC62: a decimal and a split value (`250/200m`) are one measure. */
+const MEASURE_NUMBER = String.raw`\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?`;
+/** AC11's distance units (`ft` since Spec 05.3). */
+const DISTANCE_UNITS = "m|meters?|km|mi|miles?|ft";
+const TIME_UNITS = "min|minutes?|sec|seconds?|s";
+const CALORIE_UNITS = "cals?|calories?";
+const ANY_UNIT = `${DISTANCE_UNITS}|${TIME_UNITS}|${CALORIE_UNITS}`;
+const UNIT_WORD = new RegExp(`^(?:${ANY_UNIT})$`, "i");
 /** AC48: "3 Sets, 1 Set Every 4:00" — a set count with more after a comma. */
 const LEAD_IN_SETS_EVERY = /^(\d{1,2})\s+sets?\s*,\s*\S.*$/i;
 /** AC61: "3-4 Sets" — a set-count range. */
@@ -451,10 +478,9 @@ const TRAILING_PLUS = /\s?\+$/;
 /** "Max Cal", "with remaining time" → "Max Cal, with remaining time". */
 const maxNote = (max: RegExpExecArray) => [max[1]!, max[3]].filter((x): x is string => x !== undefined).join(", ");
 /** AC11, AC50; AC62: a split value (`250/200m`) is one measure. */
-const LEADING_MEASURE =
-  /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft|min|minutes?|sec|seconds?|s|cals?|calories?))(?:\s|$)/i;
+const LEADING_MEASURE = new RegExp(String.raw`^(${MEASURE_NUMBER}\s?(?:${ANY_UNIT}))(?:\s|$)`, "i");
 /** AC62: only a distance starts a counted line with no lead-in; a time never does ("20 Minute Cap"). */
-const LEADING_DISTANCE = /^(\d{1,6}(?:[.,]\d{1,3})?(?:\/\d{1,6}(?:[.,]\d{1,3})?)?\s?(?:m|meters?|km|mi|miles?|ft))(?:\s|$)/i;
+const LEADING_DISTANCE = new RegExp(String.raw`^(${MEASURE_NUMBER}\s?(?:${DISTANCE_UNITS}))(?:\s|$)`, "i");
 /** AC60: a load after " @ " ("5 Back Squats @ 60-65% of IRM") is the exercise's note, not its name. */
 const LOAD_MARK = " @ ";
 function splitLoad(text: string): { text: string; load: string | null } {
@@ -676,20 +702,9 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (BULLET.test(line)) {
     s.run = null;
     const { text, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
-    const loadNote = load === null ? [] : [load];
-    const max = MAX_LINE.exec(text);
-    if (max && isMovementText(max[2]!)) {
-      pushItem(s, { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max), ...loadNote], run: null, calories: MAX_CAL.test(max[1]!) });
-      return "movement";
-    }
-    const cal = leadingCalorieOf(text);
-    if (cal) {
-      pushItem(s, { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure, ...loadNote], run: null, calories: true });
-      return "movement";
-    }
-    const form = repFormOf(text);
-    if (!form) return null;
-    pushItem(s, { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: [...(form.note ? [form.note] : []), ...loadNote], run: null, calories: false });
+    const item = rowlessItemOf(text, { max: "any", counted: false });
+    if (!item) return null;
+    pushItem(s, { ...item, noteLines: load === null ? item.noteLines : [...item.noteLines, load], run: null });
     return "movement";
   }
 
@@ -712,31 +727,36 @@ type CountedItem = Omit<MutableItem, "nameKey" | "section" | "run">;
 const FOR_TIME = /\s+(for time)$/i;
 
 /**
- * One counted movement with no lead-in (AC62), or null: a `Max Cal` form (minor 109, owner ruling O3: only the calorie
- * form, so "Max effort today" stays a note), then calories, then reps, then a leading distance. A trailing "for time"
- * goes to the note (minor 108).
+ * Minor 110: the one reader of a rowless item, for a bare bullet (step 8) and an AC62 counted line. In order: a Max
+ * form, then a leading calorie form, then a rep form, then (counted only) a leading distance.
+ * - `max`: which Max forms count. A bullet takes any (AC50); a counted line only `Max Cal` (minor 109, owner ruling O3),
+ *   so "Max effort today" stays a note.
+ * - `counted`: AC62's extra rules. The whole line must pass AC8's movement test, a structure name ("5 Rounds") is not
+ *   a movement, a leading distance counts, and a trailing "for time" goes to the note (minor 108).
  */
-function countedItemOf(line: string): CountedItem | null {
+function rowlessItemOf(line: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
   const max = MAX_LINE.exec(line);
-  if (max && MAX_CAL.test(max[1]!) && isMovementText(max[2]!)) {
-    return { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], calories: true };
+  if (max && isMovementText(max[2]!) && (opts.max === "any" || MAX_CAL.test(max[1]!))) {
+    return { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], calories: MAX_CAL.test(max[1]!) };
   }
-  const forTime = FOR_TIME.exec(line);
+  const forTime = opts.counted ? FOR_TIME.exec(line) : null;
   const text = forTime ? line.slice(0, forTime.index) : line;
-  const item = countedFormOf(text);
+  if (opts.counted && !isMovementText(text)) return null;
+  const item = countedFormOf(text, opts.counted);
   return item && forTime ? { ...item, noteLines: [...item.noteLines, forTime[1]!] } : item;
 }
 
-function countedFormOf(text: string): CountedItem | null {
-  if (!isMovementText(text)) return null;
+/** A leading calorie form, then a rep form, then (counted only) a leading distance. */
+function countedFormOf(text: string, counted: boolean): CountedItem | null {
   const cal = leadingCalorieOf(text);
   if (cal) return { name: cal.movement, rows: null, quickReps: null, repsText: null, noteLines: [cal.measure], calories: true };
   const form = repFormOf(text);
   if (form) {
-    return isStructureName(form.name)
+    return counted && isStructureName(form.name)
       ? null
       : { name: form.name, rows: null, quickReps: form.reps, repsText: form.text, noteLines: form.note ? [form.note] : [], calories: false };
   }
+  if (!counted) return null;
   const distance = LEADING_DISTANCE.exec(text);
   if (!distance) return null;
   const rest = text.slice(distance[0].length).trim();
@@ -752,7 +772,7 @@ function countedLineOf(line: string, s: ReadState): boolean {
   const { text, load } = splitMovement(line.replace(TRAILING_PLUS, ""));
   if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
   const parts = text.split(PLUS);
-  const items = parts.map(countedItemOf);
+  const items = parts.map((part) => rowlessItemOf(part, { max: "calories", counted: true }));
   if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
   const run = s.run.id;
@@ -796,7 +816,7 @@ export function readWorkoutText(raw: string): ReadResult {
   clean.lines.forEach((line, i) => {
     const heading = badgeMode
       ? clean.tagged[i]
-        ? (headingOf(line, false, false) ?? { name: line.endsWith(":") ? line.slice(0, -1).trimEnd() : line, workout: false })
+        ? headingOf(line, false, false, { forced: true })
         : isStrictHeading(line)
           ? headingOf(line, false, false)
           : null
@@ -829,14 +849,12 @@ export function readWorkoutText(raw: string): ReadResult {
       return;
     }
     if (current) current.fresh = false;
-    if (current && !current.warmup && (current.notesOnly || isVariantLabel(line))) {
-      current.notesOnly = true;
-      s.run = null;
-      current.notes.push(line);
-      placed.push({ text: line, as: "note" });
-      return;
-    }
-    if (current?.warmup) {
+    // AC6: a Warmup is note-only; AC52: so is the rest of a section after a variant label.
+    if (current && (current.warmup || current.notesOnly || isVariantLabel(line))) {
+      if (!current.warmup) {
+        current.notesOnly = true;
+        s.run = null;
+      }
       current.notes.push(line);
       placed.push({ text: line, as: "note" });
       return;
