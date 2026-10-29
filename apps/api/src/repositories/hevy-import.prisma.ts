@@ -19,13 +19,15 @@ import { fingerprintSourceOf, hevyFingerprint } from "../hevy/fingerprint.js";
 import { rebuildUserRecords } from "../records/rebuild.js";
 import { lockUserRecords } from "./personal-record.prisma.js";
 import { readHevyMapping } from "./hevy.prisma.js";
-import type {
-  HevyImportBatchRecord,
-  HevyImportRepository,
-  HevyImportSeams,
-  HevyImportWriteStep,
-  HevyLinkHit,
-  WriteOutcome,
+import {
+  emptyHevyImportTally,
+  type HevyImportBatchRecord,
+  type HevyImportRepository,
+  type HevyImportSeams,
+  type HevyImportTally,
+  type HevyImportWriteStep,
+  type HevyLinkHit,
+  type WriteOutcome,
 } from "./hevy-import.js";
 import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns, type RawPrismaError } from "./pg-errors.js";
 import { assertSetMeasuresValid } from "./set-writes.js";
@@ -276,7 +278,12 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     }
   }
 
-  async function importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord> {
+  async function importBatch(
+    userId: string,
+    batch: HevyImportBatch,
+    now: Date,
+    tally: HevyImportTally = emptyHevyImportTally(),
+  ): Promise<HevyImportBatchRecord> {
     // §6.1: loaded once per request, so the whole batch is translated against one consistent mapping.
     const ctx = await loadContext(prisma, userId, now);
     const links = await findLinks(prisma, userId, batch.workouts.map((w) => w.hevyWorkoutId));
@@ -284,8 +291,6 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     const decided = new Map<string, HevyLinkHit["origin"]>();
     const claimed = new Set<string>();
     const results: HevyImportResult[] = [];
-    let setsCreated = 0;
-    let setsDropped = 0;
 
     for (const w of batch.workouts) {
       const base: HevyImportResult = {
@@ -299,7 +304,12 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
         exerciseCount: 0,
         setCount: 0,
       };
-      const answer = (r: Partial<HevyImportResult>) => void results.push({ ...base, ...r });
+      const answer = (r: Partial<HevyImportResult>) => {
+        const result = { ...base, ...r };
+        results.push(result);
+        tally.results += 1;
+        tally.outcomes[result.outcome] = (tally.outcomes[result.outcome] ?? 0) + 1;
+      };
 
       // 1. AC20: a link decides, before any translation.
       const link = links.get(w.hevyWorkoutId);
@@ -384,11 +394,11 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
         workoutId = out.workoutId;
       }
       decided.set(w.hevyWorkoutId, "imported");
-      setsCreated += created.setCount;
-      setsDropped += t.drops.reduce((n, d) => n + (d.code === "exercise_no_sets" ? 0 : d.count), 0);
+      tally.setsCreated += created.setCount;
+      tally.setsDropped += t.drops.reduce((n, d) => n + (d.code === "exercise_no_sets" ? 0 : d.count), 0);
       answer({ outcome: "create", workoutId: workoutId === null ? null : parseWorkoutId(workoutId), ...created });
     }
-    return { results, setsCreated, setsDropped };
+    return { results, setsCreated: tally.setsCreated, setsDropped: tally.setsDropped };
   }
 
   /**

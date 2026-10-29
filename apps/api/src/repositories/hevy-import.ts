@@ -1,4 +1,4 @@
-import type { HevyImportBatch, HevyImportResult, ImportedWorkout } from "@sin/core";
+import type { HevyImportBatch, HevyImportOutcome, HevyImportResult, ImportedWorkout } from "@sin/core";
 
 /**
  * Spec 19.1 Phase B: the Hevy bulk import, for one user. Every statement is scoped to `userId`; a batch writes one
@@ -36,9 +36,27 @@ export interface HevyImportBatchRecord {
   setsDropped: number;
 }
 
+/**
+ * The batch log's running totals, filled as each workout is answered, so a batch that throws partway still logs what
+ * it did (minor 158). Counts only.
+ */
+export interface HevyImportTally {
+  results: number;
+  setsCreated: number;
+  setsDropped: number;
+  outcomes: Partial<Record<HevyImportOutcome, number>>;
+}
+
+export function emptyHevyImportTally(): HevyImportTally {
+  return { results: 0, setsCreated: 0, setsDropped: 0, outcomes: {} };
+}
+
 export interface HevyImportRepository {
-  /** §6.1: every workout of the batch in order; a dry run stops before any write and answers what the real run would. */
-  importBatch(userId: string, batch: HevyImportBatch, now: Date): Promise<HevyImportBatchRecord>;
+  /**
+   * §6.1: every workout of the batch in order; a dry run stops before any write and answers what the real run would.
+   * `tally`, when given, is filled as each workout is answered.
+   */
+  importBatch(userId: string, batch: HevyImportBatch, now: Date, tally?: HevyImportTally): Promise<HevyImportBatchRecord>;
   /**
    * §6.2: one translated workout in one transaction, with its `imported` link and the stale-records flag. The routes
    * call only `importBatch` (which uses this); it is public as the integration tests' seam (minor 153): narrowing it
