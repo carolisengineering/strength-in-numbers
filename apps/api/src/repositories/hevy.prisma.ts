@@ -317,7 +317,9 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
 
     async completeLink(userId, workoutId, body) {
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
-      await prisma.$transaction(async (tx) => {
+      // The answer is read inside the transaction, under the workout's share lock, so a delete right after the commit
+      // can't turn it into a 404 (minor 145).
+      return prisma.$transaction(async (tx) => {
         // FOR SHARE, before the link row (deleteWorkout's order): a delete that lands first is a 404, not
         // hevy-no-claim (deferred minor 140).
         const owned = await tx.$queryRaw<{ id: string }[]>`
@@ -326,7 +328,9 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         const row = await linkRow(tx, userId, workoutId, true);
         if (!row) throw new HevyNoClaimError();
         // A replay of the same completion: nothing to write (Review Focus 5).
-        if (row.claimed_at === null && row.hevy_workout_id === body.hevyWorkoutId && row.synced_fingerprint === body.fingerprint) return;
+        if (row.claimed_at === null && row.hevy_workout_id === body.hevyWorkoutId && row.synced_fingerprint === body.fingerprint) {
+          return readLinkState(tx, userId, workoutId);
+        }
         // AC28: another Hevy id on a linked workout is a conflict whether or not a claim is held (a stale tab
         // completing after a newer send), so it is checked before the claim.
         if (row.hevy_workout_id !== null && row.hevy_workout_id !== body.hevyWorkoutId) throw new HevyLinkConflictError();
@@ -346,8 +350,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
           if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, hevy_workout_id") throw new HevyIdInUseError();
           throw err;
         }
+        return readLinkState(tx, userId, workoutId);
       });
-      return readLinkState(prisma, userId, workoutId);
     },
 
     // AC30: idempotent; deletes a claim-only row, clears the claim on a linked row, never unlinks.
