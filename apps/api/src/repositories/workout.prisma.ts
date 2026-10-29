@@ -45,7 +45,7 @@ import {
   retimeOutcome,
 } from "./workout-writes.js";
 import { calendarFor, clampSetTimes, shiftSetTimes } from "./workout-retime.prisma.js";
-import { exerciseRanks, workoutSectionMethods } from "./workout-section.prisma.js";
+import { exerciseRanks, lockWorkoutStructure, workoutPreflight, workoutSectionMethods } from "./workout-section.prisma.js";
 import {
   assertWorkingSetsComplete,
   assertWouldNotEmpty,
@@ -64,6 +64,10 @@ import {
 } from "./personal-record.prisma.js";
 import { assertStillLive, noRecompute, recomputeTimed, withWriteMode, type FinishedEdit } from "./write-mode.js";
 import { listFinishedWorkouts as listFinishedWorkoutsQuery } from "./workout-history.prisma.js";
+
+/** The structure writes' not-found errors (§5's 404-not-403 rule). */
+const workoutMissing = () => new NotFoundError("workout not found or not owned by the acting user");
+const workoutExerciseMissing = () => new NotFoundError("workout exercise not found or not owned by the acting user");
 
 /**
  * Prisma-backed WorkoutRepository (Spec 05.0 §6, "Wiring points"). Raw SQL
@@ -757,14 +761,7 @@ export function createWorkoutRepository(
       }
       // Phase 1 (§6.6): cheap early exit on the root client. The
       // authoritative check is the in-transaction FOR SHARE re-check below.
-      const wRows = await prisma.$queryRaw<{ id: string; user_id: string; ended_at: Date | null }[]>`
-        SELECT id, user_id, ended_at FROM "workout"
-        WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid
-      `;
-      const workout = wRows[0];
-      if (!workout) {
-        throw new NotFoundError("workout not found or not owned by the acting user");
-      }
+      const workout = await workoutPreflight(prisma, actingUserId, workoutId, workoutMissing);
 
       // Phase 2 (§6.6): resolve the exercise on the root client, before the
       // position transaction opens. findVisibleById throws NotFoundError
@@ -781,19 +778,8 @@ export function createWorkoutRepository(
 
       // Phases 3-4 (§6.7/§6.8): the position transaction — in finished mode behind the PR lock (07.4).
       return withWriteMode(prisma, actingUserId, workout.ended_at ?? null, async (tx, mode) => {
-        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
-        // The lock is its own statement, ahead of every read it protects
-        // (§6.8, following insertWithCap/D23).
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutId}))`;
-        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
-          SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
-        `;
-        const locked = lockRows[0];
-        if (!locked) {
-          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
-          throw new NotFoundError("workout not found or not owned by the acting user");
-        }
-        assertStillLive(mode, locked.ended_at);
+        // The structure lock (§6.8; a vanished workout is §6.7's not-found).
+        await lockWorkoutStructure(tx, mode, workoutId, workoutMissing);
 
         const countRows = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
@@ -878,19 +864,7 @@ export function createWorkoutRepository(
       const workoutId = current.workout_id;
       let requestedPosition = patch.position;
       return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
-        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
-        // The lock is its own statement, ahead of every read it protects
-        // (§6.8, following insertWithCap/D23).
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutId}))`;
-        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
-          SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
-        `;
-        const locked = lockRows[0];
-        if (!locked) {
-          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
-          throw new NotFoundError("workout exercise not found or not owned by the acting user");
-        }
-        assertStillLive(mode, locked.ended_at);
+        await lockWorkoutStructure(tx, mode, workoutId, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<
           { id: string; position: number; notes: string | null; superset_group: number | null; section_id: string | null }[]
@@ -906,6 +880,8 @@ export function createWorkoutRepository(
         // Ids compare in Postgres's lower-case text form (the schema also accepts upper-case hex).
         const nextSection = patch.sectionId === undefined ? target.section_id : (patch.sectionId?.toLowerCase() ?? null);
         const sectioned = nextSection !== target.section_id;
+        // The workout's exercise count: a section move already read every other exercise's rank (minor 55).
+        let n: number | null = null;
         if (sectioned) {
           let rank = -1;
           if (nextSection !== null) {
@@ -919,13 +895,16 @@ export function createWorkoutRepository(
             if (!section) throw new NotFoundError("workout section not found in this workout");
             rank = section.position;
           }
-          requestedPosition = insertIndexForSection(await exerciseRanks(tx, workoutId, id), rank);
+          const ranks = await exerciseRanks(tx, workoutId, id);
+          n = ranks.length + 1;
+          requestedPosition = insertIndexForSection(ranks, rank);
         }
-
-        const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
-        `;
-        const n = countRows[0]!.n;
+        if (n === null) {
+          const countRows = await tx.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
+          `;
+          n = countRows[0]!.n;
+        }
 
         let nextPosition = target.position;
         if (requestedPosition !== undefined && requestedPosition !== target.position) {
@@ -1007,19 +986,7 @@ export function createWorkoutRepository(
       }
 
       return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
-        await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
-        // The lock is its own statement, ahead of every read it protects
-        // (§6.8, following insertWithCap/D23).
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.workout_id}))`;
-        const lockRows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
-          SELECT ended_at FROM "workout" WHERE id = ${current.workout_id}::uuid FOR SHARE
-        `;
-        const locked = lockRows[0];
-        if (!locked) {
-          // Vanished between phase 1 and the lock (§6.7's vanished-row rule).
-          throw new NotFoundError("workout exercise not found or not owned by the acting user");
-        }
-        assertStillLive(mode, locked.ended_at);
+        await lockWorkoutStructure(tx, mode, current.workout_id, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<{ position: number }[]>`
           SELECT position FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE

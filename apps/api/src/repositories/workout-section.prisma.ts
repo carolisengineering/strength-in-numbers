@@ -29,6 +29,25 @@ export async function lockWorkoutStructure(
   assertStillLive(mode, locked.ended_at);
 }
 
+/**
+ * The cheap ownership preflight a structure write runs on the root client before its transaction (Spec 05.0 §6.6
+ * phase 1): the caller's workout's `ended_at`, or `notFound()`. The authoritative check is `lockWorkoutStructure`'s
+ * `FOR SHARE` re-read. One copy for the section and exercise adds (minor 57).
+ */
+export async function workoutPreflight(
+  db: RawClient,
+  userId: string,
+  workoutId: string,
+  notFound: () => Error,
+): Promise<{ ended_at: Date | null }> {
+  const rows = await db.$queryRaw<{ ended_at: Date | null }[]>`
+    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid
+  `;
+  const workout = rows[0];
+  if (!workout) throw notFound();
+  return workout;
+}
+
 /** Spec 09.4 §6.2 — each exercise's rank (its section's position, -1 = loose), in position order, excluding `excludeId`. */
 export async function exerciseRanks(tx: RawClient, workoutId: string, excludeId: string | null): Promise<number[]> {
   const rows = await tx.$queryRaw<{ rank: number }[]>`
@@ -65,11 +84,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
   return {
     async addWorkoutSection(actingUserId, workoutId, fields) {
       if (!isWorkoutId(workoutId)) throw workoutNotFound();
-      const rows = await prisma.$queryRaw<{ ended_at: Date | null }[]>`
-        SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid
-      `;
-      const workout = rows[0];
-      if (!workout) throw workoutNotFound();
+      const workout = await workoutPreflight(prisma, actingUserId, workoutId, workoutNotFound);
       return withWriteMode(prisma, actingUserId, workout.ended_at, async (tx, mode) => {
         await lockWorkoutStructure(tx, mode, workoutId, workoutNotFound);
         const countRows = await tx.$queryRaw<{ n: number }[]>`

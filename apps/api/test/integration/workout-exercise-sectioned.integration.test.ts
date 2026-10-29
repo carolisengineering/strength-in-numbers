@@ -9,6 +9,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { lockUserRecords, recomputeRecordsForRoots } from "../../src/repositories/personal-record.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { captureStatements } from "./one-off-helpers.js";
 import { insertExercise, insertUser, recordsOf, type RecordRow } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent, exerciseIdsOf, workoutWithSections } from "./section-helpers.js";
@@ -70,6 +71,36 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.4 — moving an exercise betwe
       expect(result.position).toBe(order.indexOf(moved));
       expect((await rows(workoutId)).find((r) => r.id === exerciseIds[moved])!.section_id).toBe(sectionId);
       await expectDense(workoutId);
+    });
+  });
+
+  describe("Minor 55 — a section move positions without a count", () => {
+    const COUNT = /count\(\*\)::int AS n FROM "workout_exercise"/;
+    it("the section-move path issues no count(*) and lands where it did", async () => {
+      const { u, workoutId, sectionIds, exerciseIds } = await fixture(["W", "S"], [0, 0, 1]);
+      const seen = captureStatements(db);
+      seen.length = 0;
+      const result = await workouts().updateWorkoutExercise(u, exerciseIds[0]!, { sectionId: sectionIds[1]! });
+      expect(seen.filter((s) => COUNT.test(s))).toEqual([]);
+      expect(result.position).toBe(2);
+      expect(await exerciseIdsOf(db, workoutId)).toEqual([exerciseIds[1], exerciseIds[2], exerciseIds[0]]);
+    });
+
+    it("Review Focus 3 — the only exercise moved into the last section keeps position 0", async () => {
+      const { u, sectionIds, exerciseIds } = await fixture(["W", "S"], [null]);
+      const seen = captureStatements(db);
+      seen.length = 0;
+      const result = await workouts().updateWorkoutExercise(u, exerciseIds[0]!, { sectionId: sectionIds[1]! });
+      expect([result.position, result.sectionId]).toEqual([0, sectionIds[1]]);
+      expect(seen.filter((s) => COUNT.test(s))).toEqual([]);
+    });
+
+    it("a plain reorder still counts (it has no ranks to reuse)", async () => {
+      const { u, exerciseIds } = await fixture(["W"], [0, 0]);
+      const seen = captureStatements(db);
+      seen.length = 0;
+      await workouts().updateWorkoutExercise(u, exerciseIds[0]!, { position: 1 });
+      expect(seen.filter((s) => COUNT.test(s))).toHaveLength(1);
     });
   });
 
