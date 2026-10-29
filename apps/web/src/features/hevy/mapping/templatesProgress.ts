@@ -20,7 +20,7 @@ export function reportTemplatesPage(p: { page: number; pageCount: number }): voi
   publish({ page: p.page, pageCount: p.pageCount });
 }
 
-/** The read is over (done, failed or cancelled): the next one starts from nothing. */
+/** The read is over (done, failed or canceled): the next one starts from nothing. */
 export function endTemplatesRead(): void {
   publish(null);
 }

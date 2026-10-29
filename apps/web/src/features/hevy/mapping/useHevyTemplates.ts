@@ -10,9 +10,7 @@ import { endTemplatesRead, reportTemplatesPage } from "./templatesProgress";
 /**
  * Spec 20.0 AC19: every Hevy exercise template, read page by page with the key. In memory only (no storage), kept
  * 10 minutes, removed on every key save or remove; a page that fails after its retries fails the whole read.
- */
-
-/**
+ *
  * Minor 191: the one template read, for the hook and for `queryClient.fetchQuery` (the load sheet), so both share
  * the cache and an in-flight read. Minor 197: progress goes to `templatesProgress`, which every reader watches (a
  * query's `meta` belongs to whoever started the fetch, so a reader that joined it never heard its pages).
