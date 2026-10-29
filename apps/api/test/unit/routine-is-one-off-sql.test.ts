@@ -9,8 +9,9 @@ describe("Minor 41 — the one-off SQL fragment takes only the workout aliases i
     expect(routineIsOneOffSql(ref).sql).toBe(sql);
   });
 
-  it("any other alias does not compile", () => {
+  it("any other alias does not compile (a type-only check; the repo typecheck covers tests)", () => {
     // @ts-expect-error — only "w" and '"workout"' are accepted.
-    expect(() => routineIsOneOffSql("wk")).not.toThrow();
+    const alias: Parameters<typeof routineIsOneOffSql>[0] = "wk";
+    expect(alias).toBe("wk");
   });
 });

@@ -72,7 +72,7 @@ export const SetEntrySchema = z.object({
   distanceM: z.number().nonnegative().nullable(),
   durationS: z.number().int().nonnegative().nullable(),
   // Owner ruling O1 (minor 86): the response bound matches the `smallint` column and AC4, as the request's does.
-  calories: z.number().int().min(0).max(SET_CALORIES_MAX).nullable(),
+  calories: Calories.nullable(),
   rpe: z.number().nullable(),
   isComplete: z.boolean(),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
