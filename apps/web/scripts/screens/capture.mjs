@@ -39,10 +39,29 @@ const json = (body, status = 200) => ({ status, contentType: "application/json",
 /** A lineage root, including a copy made during the run (it lives only in the context's catalog). */
 const rootIn = (state, id) => (state.catalog ?? []).find((e) => e.id === id)?.forkedFromExerciseId ?? D.rootOf(id);
 
+/** Spec 20.1: the import's reads; `holdWorkoutsPage` keeps that workouts page from answering (the reading shot). */
+let holdWorkoutsPage = null;
+const HEVY_LISTS = {
+  "/v1/routine_folders": () => [D.hevyFolders, "routine_folders"],
+  "/v1/routines": () => [D.hevyRoutines, "routines"],
+  "/v1/workouts": () => [D.hevyWorkouts, "workouts"],
+};
+
 /** Spec 20.0: the fake Hevy API — `user/info` accepts only `D.hevyGoodKey`; anything else is unmatched. */
 async function hevyHandler(route) {
   const req = route.request();
   const url = new URL(req.url());
+  if (req.method() === "GET" && url.pathname === "/v1/workouts/count") {
+    await route.fulfill(json({ workout_count: D.hevyWorkouts.length }));
+    return;
+  }
+  if (req.method() === "GET" && HEVY_LISTS[url.pathname]) {
+    const page = Number(url.searchParams.get("page") ?? "1");
+    if (url.pathname === "/v1/workouts" && page === holdWorkoutsPage) return; // never fulfilled
+    const [list, field] = HEVY_LISTS[url.pathname]();
+    await route.fulfill(json(D.hevyPage(list, field, page)));
+    return;
+  }
   if (req.method() === "GET" && url.pathname === "/v1/exercise_templates") {
     // Two pages, so the reading line shows a real "page n of 2".
     const page = Number(url.searchParams.get("page") ?? "1");
@@ -75,6 +94,8 @@ function makeHandler(state) {
     if (m === "GET" && p === "/v1/me") res = json(D.me);
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
+    // Spec 20.1 Phase A: only the dry run is sent.
+    else if (m === "POST" && p === "/v1/hevy/import/workouts") res = json(D.hevyDryRun(JSON.parse(req.postData() ?? "{}")));
     else if ((m === "PUT" || m === "PATCH") && p === "/v1/hevy/mapping") {
       // The fake answers with the mapping it already holds: the captures only need a 200 the schema accepts.
       res = json(state.hevyMapping ?? D.hevyMapping);
@@ -1017,6 +1038,50 @@ try {
       await mp.getByRole("group", { name: "Warmup" }).waitFor();
       await shoot(mp, device, "hevy-markers-sheet", "Choosing the Warmup and workout section markers (Spec 20.0 AC30)");
       await markers.close();
+    });
+    // Spec 20.1 AC29 (Phase A): the import's preflight, reading, routines, names and summary.
+    await tryStep("hevy import", async () => {
+      const importContext = async () => {
+        const ictx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        await ictx.route(isSinApi, makeHandler({ active: false }));
+        await ictx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
+        await ictx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
+        const ip = await ictx.newPage();
+        ip.setDefaultTimeout(8000);
+        ip.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${ip.url()}: ${msg.text().slice(0, 300)}`); });
+        await ip.goto(BASE + "/app/profile/hevy/import");
+        await ip.getByRole("heading", { level: 2, name: "Before you start" }).waitFor();
+        await settle(ip);
+        return { ictx, ip };
+      };
+      const reading = await importContext();
+      await shoot(reading.ip, device, "hevy-import-preflight", "Import from Hevy: what it will do, the device zone and the unit, before anything is read (Spec 20.1 AC2)");
+      holdWorkoutsPage = 2;
+      await reading.ip.getByRole("button", { name: "Start" }).click();
+      await reading.ip.getByText("Reading Hevy… workouts, page 1 of 3").waitFor();
+      await shoot(reading.ip, device, "hevy-import-reading", "Reading Hevy: the stage line, page 1 of 3, and Cancel (Spec 20.1 AC3)");
+      holdWorkoutsPage = null;
+      await reading.ictx.close();
+
+      const flow = await importContext();
+      await flow.ip.getByRole("button", { name: "Start" }).click();
+      await flow.ip.getByRole("heading", { level: 2, name: "Routines to copy" }).waitFor();
+      await flow.ip.getByRole("checkbox", { name: "Pull A" }).check();
+      await settle(flow.ip);
+      await shoot(flow.ip, device, "hevy-import-routines", "Routines to copy, by Hevy folder: the cap room, one already in SIN, one ticked (Spec 20.1 AC7)");
+      await flow.ip.getByRole("button", { name: "Continue" }).click();
+      await flow.ip.getByRole("heading", { level: 2, name: "Pair exercises" }).waitFor();
+      await settle(flow.ip);
+      await shoot(flow.ip, device, "hevy-import-names", "Pair exercises: the templates the mapping lacks, by usage, with the cap line (Spec 20.1 AC9)");
+      for (const name of ["Seated Row (Cable)", "Bicep Curl (Barbell)"]) {
+        await flow.ip.getByRole("group", { name }).getByRole("radio", { name: "Skip this exercise (its sets are not imported)" }).check();
+      }
+      await flow.ip.getByRole("button", { name: "Continue" }).click();
+      await flow.ip.getByRole("heading", { level: 2, name: "Summary" }).waitFor();
+      for (const group of await flow.ip.locator("details").all()) await group.evaluate((d) => { d.open = true; });
+      await settle(flow.ip);
+      await shoot(flow.ip, device, "hevy-import-summary", "The summary: what the import would do, every list group open, Import waiting for Phase B (Spec 20.1 AC12-AC14)");
+      await flow.ictx.close();
     });
     await tryStep("sign-out guard dialog", async () => {
       // The guard only shows a dialog when sets are unsaved: log one set on the active workout with

@@ -730,6 +730,12 @@ export function payloadChecks() {
     ["hevy mapping", "HevyMappingSchema", hevyMapping],
     ["hevy mapping, no markers", "HevyMappingSchema", hevyMappingNoMarkers],
     ["hevy templates page", "HevyTemplatePageSchema", { page: 1, page_count: 1, exercise_templates: hevyTemplates }],
+    // Spec 20.1: the import's reads and the dry run's answer.
+    ["hevy workout count", "HevyWorkoutCountSchema", { workout_count: hevyWorkouts.length }],
+    ["hevy folders page", "HevyFolderPageSchema", hevyPage(hevyFolders, "routine_folders", 1)],
+    ["hevy routines page", "HevyRoutinePageSchema", hevyPage(hevyRoutines, "routines", 1)],
+    ["hevy workouts page", "HevyWorkoutPageSchema", hevyPage(hevyWorkouts, "workouts", 1)],
+    ["hevy import dry run", "HevyImportResponseSchema", hevyDryRun({ dryRun: true, workouts: hevyWorkouts.map((w) => ({ hevyWorkoutId: w.id, exercises: w.exercises.map((e) => ({ sets: e.sets })) })) })],
   ];
 }
 
@@ -795,3 +801,57 @@ export const hevyMappingCsv = [
   "skip,H-STRETCH,,,,,",
   "placeholder,H-WARM,,,,warmup,",
 ].join("\r\n");
+
+
+// Spec 20.1 Phase A: what the import reads from Hevy. Two folders and a loose routine (one named like a SIN routine),
+// 24 workouts newest first (Seated Row is in no pair, so the names step has a card), and the dry run's answer.
+export const hevyFolders = [
+  { id: 11, index: 1, title: "Accessories" },
+  { id: 10, index: 0, title: "Push Pull" },
+];
+const hevyRoutineOf = (id, title, folderId, templateIds) => ({
+  id, title, folder_id: folderId,
+  exercises: templateIds.map((t, index) => ({ index, title: hevyTemplates.find((x) => x.id === t).title, exercise_template_id: t, notes: null, superset_id: null, rest_seconds: 90, sets: [{ index: 0, type: "normal", weight_kg: 60, reps: 8 }] })),
+});
+export const hevyRoutines = [
+  hevyRoutineOf("HR-PUSH", "Push A", 10, ["H-BENCH", "H-BENCH-CG"]),
+  hevyRoutineOf("HR-PULL", "Pull A", 10, ["H-PULL", "H-ROW"]),
+  hevyRoutineOf("HR-ARMS", "Arms", 11, ["H-CURL"]),
+  hevyRoutineOf("HR-COND", "Conditioning", null, ["H-ECHO", "H-CARRY"]),
+];
+const HEVY_DAY = 24 * 60 * 60 * 1000;
+const HEVY_NEWEST = Date.parse("2026-10-27T17:00:00Z");
+const hevySet = (index, weight, reps) => ({ index, type: "normal", weight_kg: weight, reps, distance_meters: null, duration_seconds: null, rpe: null, custom_metric: null });
+export const hevyWorkouts = Array.from({ length: 24 }, (_, i) => {
+  const start = HEVY_NEWEST - i * 2 * HEVY_DAY;
+  const lineup = i % 3 === 0 ? ["H-WARM", "H-BENCH", "H-ROW"] : i % 3 === 1 ? ["H-SQUAT", "H-CURL"] : ["H-ECHO", "H-CARRY"];
+  return {
+    id: `HW-${String(i).padStart(3, "0")}`,
+    title: i === 5 ? "   " : i === 7 ? "<b>Late</b> session" : `Session ${24 - i}`,
+    description: null,
+    start_time: new Date(start).toISOString(),
+    end_time: new Date(start + 70 * 60 * 1000).toISOString(),
+    exercises: lineup.map((t, index) => ({ index, title: hevyTemplates.find((x) => x.id === t).title, exercise_template_id: t, notes: null, superset_id: null, sets: [hevySet(0, 60 + i, 8), hevySet(1, 60 + i, 8)] })),
+  };
+});
+const HEVY_PAGE = 10;
+export const hevyPage = (list, field, page) => ({
+  page,
+  page_count: Math.max(1, Math.ceil(list.length / HEVY_PAGE)),
+  [field]: list.slice((page - 1) * HEVY_PAGE, page * HEVY_PAGE),
+});
+
+/** The dry run's answer for a batch body: a duplicate, an already-imported, a rejected and a dropped-sets workout. */
+export function hevyDryRun(body) {
+  const results = body.workouts.map((w) => {
+    const n = Number(w.hevyWorkoutId.slice(3));
+    const sets = w.exercises.reduce((k, e) => k + e.sets.length, 0);
+    const base = { hevyWorkoutId: w.hevyWorkoutId, workoutId: null, matchedWorkoutId: null, unpaired: [], drops: [], notices: [], exerciseCount: w.exercises.length, setCount: sets };
+    if (n === 2) return { ...base, outcome: "duplicate", matchedWorkoutId: "00000000-0000-4000-8000-0000000000d1" };
+    if (n === 4) return { ...base, outcome: "already_imported" };
+    if (n === 5 || n === 7) return { ...base, outcome: "rejected" };
+    if (n === 10) return { ...base, outcome: "create", drops: [{ code: "set_out_of_range", count: 1 }] };
+    return { ...base, outcome: "create" };
+  });
+  return { dryRun: body.dryRun, results };
+}
