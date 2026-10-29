@@ -95,3 +95,34 @@
   font-weight: 600;
   color: var(--color-text);
 }
+
+.picks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A checkbox row: the whole label is the tap target, at least the control minimum. */
+.pick {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-3);
+  align-items: center;
+  min-height: var(--tap-target-min);
+}
+
+.pick input {
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+.pick label {
+  font-weight: 600;
+}
+
+.pick .muted {
+  grid-column: 2;
+}

@@ -7,10 +7,14 @@ import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
 import { useHevyMapping } from "../mapping/useHevyMapping";
 import { hevyTemplatesQuery } from "../mapping/useHevyTemplates";
-import { initialPairingCards } from "../pairing";
+import { initialPairingCards, newPairingSaveRecord, savePairings } from "../pairing";
+import { useSavePairingsDeps } from "../pairing/useSavePairingsDeps";
+// Spec 20.1 D11 / owner ruling 2026-10-29: the one file in features/hevy that may use the routines list.
+import { useRoutines } from "../../routines/queries";
 import { useHevyClient } from "../useHevyClient";
 import { importSession, initialImportState, needsFor, nextStepAfterRoutines, type ImportState, type ReadFailure } from "./importSession";
 import { readHevy, ReadStageError, type ReadStage } from "./readHevy";
+import { routineNameKey, tickAllInFolder, toggle, type PickContext, type RoutineGroup } from "./routinePicks";
 
 /**
  * Spec 20.1 §6.1: wires the import's I/O to the reducer. One `AbortController` per I/O, aborted on unmount and on
@@ -24,6 +28,10 @@ export function useImportSession() {
   const mapping = useHevyMapping();
   const catalog = useCatalog();
   const synced = catalog.state.syncToken !== null;
+  const routinesList = useRoutines();
+  const saveDeps = useSavePairingsDeps();
+  /** One save record per screen mount (never stored), so a second Continue reuses what an earlier one created. */
+  const saveRecord = useRef(newPairingSaveRecord());
 
   const generation = useRef(state.generation);
   const controller = useRef<AbortController | null>(null);
@@ -127,12 +135,64 @@ export function useImportSession() {
     }
   }, [state, flowContext, catalog.visible]);
 
+  // AC7: the cap room and the names SIN already holds, from the routines list.
+  const existingNames = useMemo(() => new Set((routinesList.data ?? []).map((r) => routineNameKey(r.name))), [routinesList.data]);
+  const routinesById = useMemo(() => new Map((state.read?.routines ?? []).map((r) => [r.id, r])), [state.read]);
+  const pickContext: PickContext = useMemo(
+    () => ({ picks: state.picks, existingNames, routineCount: routinesList.data?.length ?? 0, routinesById }),
+    [state.picks, existingNames, routinesList.data, routinesById],
+  );
+  const toggleRoutine = useCallback((id: string) => dispatch({ type: "picks", picks: toggle(pickContext.picks, id, pickContext) }), [pickContext]);
+  const tickAll = useCallback((group: RoutineGroup) => dispatch({ type: "picks", picks: tickAllInFolder(pickContext.picks, group, pickContext) }), [pickContext]);
+  /** Leaves routines (or markers, once the sheet closes): the preparing step decides what comes next. */
+  const continueFlow = useCallback(() => dispatch({ type: "goto", step: "preparing" }), []);
+  const skipMarkers = useCallback(() => dispatch({ type: "markersSkip" }), []);
+
+  /** AC10: creates the new exercises one at a time and saves the pairs; leaving the screen stops further creates. */
+  const saveNames = useCallback(async () => {
+    const decisions = stateRef.current.decisions;
+    if (decisions === null || stateRef.current.step !== "names") return;
+    stopIo();
+    const io = new AbortController();
+    controller.current = io;
+    const creates = decisions.filter((d) => d.action === "create").length;
+    dispatch({ type: "namesSaving" });
+    const result = await savePairings(
+      { decisions, record: saveRecord.current, signal: io.signal, onProgress: (p) => dispatch({ type: "namesProgress", ...p }) },
+      saveDeps,
+    );
+    if (io.signal.aborted) return;
+    controller.current = null;
+    const created = saveRecord.current.created;
+    if (!result.ok) {
+      // AC10: what was created stays and is reused. Its card now picks that exercise, because as a New card the name
+      // would read as already taken and hold Continue.
+      const cards = stateRef.current.cards.map((card) => {
+        const made = card.selected === "new" ? created.get(card.templateId) : undefined;
+        return made ? { ...card, selected: "picked" as const, pickedId: made.id } : card;
+      });
+      dispatch({ type: "namesCards", cards });
+      dispatch({ type: "namesFailed", message: result.message });
+      return;
+    }
+    // AC24: the catalog is refreshed once after exercises were created.
+    if (creates > 0 || created.size > 0) await catalog.refresh(true);
+    dispatch({ type: "namesSaved", created: created.size });
+  }, [saveDeps, stopIo, catalog]);
+
   return {
     state,
     dispatch,
     start,
     cancel,
     retryRead,
+    routinesList,
+    pickContext,
+    toggleRoutine,
+    tickAll,
+    continueFlow,
+    skipMarkers,
+    saveNames,
     mapping,
     catalog,
     /** The mapping failed to load while the flow waited for it. */

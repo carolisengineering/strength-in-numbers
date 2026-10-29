@@ -44,7 +44,7 @@ export interface ImportState {
   decisions: PairingDecision[] | null;
   namesError: string | null;
   namesProgress: { created: number; total: number } | null;
-  /** Exercises created by the names step so far, for the summary. */
+  /** Exercises the names step created (every attempt on this screen), for the summary. */
   exercisesCreated: number;
   checkProgress: { done: number; total: number } | null;
   results: HevyImportResult[] | null;
@@ -134,7 +134,7 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
     case "namesProgress":
       return { ...state, namesProgress: { created: action.created, total: action.total } };
     case "namesSaved":
-      return { ...state, step: "checking", namesProgress: null, exercisesCreated: state.exercisesCreated + action.created };
+      return { ...state, step: "checking", namesProgress: null, exercisesCreated: action.created };
     case "namesFailed":
       return { ...state, step: "names", namesError: action.message, namesProgress: null };
     case "checkStart":

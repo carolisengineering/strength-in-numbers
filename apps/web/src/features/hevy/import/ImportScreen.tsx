@@ -7,9 +7,12 @@ import { Spinner } from "../../../ui/Spinner";
 import { HEVY_PATH } from "../paths";
 import { ImportSteps } from "./ImportSteps";
 import { BACK_TO_HEVY, IMPORT_TITLE, PREPARING, PREPARING_FAILED, reconcileLine, TRY_AGAIN } from "./messages";
+import { MarkersStep } from "./MarkersStep";
+import { NamesStep } from "./NamesStep";
 import { PreflightStep } from "./PreflightStep";
 import { reconcile } from "./readHevy";
 import { ReadingStep } from "./ReadingStep";
+import { RoutinePicksStep } from "./RoutinePicksStep";
 import { useImportSession } from "./useImportSession";
 import styles from "./ImportScreen.module.css";
 
@@ -21,13 +24,15 @@ export function ImportScreen() {
   const session = useImportSession();
   const { state } = session;
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const shownStep = useRef(state.step);
+  // Saving the names is the names step busy, not a new step: focus stays on Continue.
+  const view = state.step === "saving_names" ? "names" : state.step;
+  const shownView = useRef(view);
 
   useEffect(() => {
-    if (shownStep.current === state.step) return;
-    shownStep.current = state.step;
+    if (shownView.current === view) return;
+    shownView.current = view;
     headingRef.current?.focus();
-  }, [state.step]);
+  }, [view]);
 
   const reconciled = state.read === null ? null : reconcile(state.read);
 
@@ -58,6 +63,28 @@ export function ImportScreen() {
               <Spinner label={PREPARING} />
             )}
           </section>
+        ) : null}
+        {state.step === "routines" ? (
+          <RoutinePicksStep
+            state={state}
+            pickContext={session.pickContext}
+            routinesStatus={session.routinesList.status}
+            onRetryRoutines={() => void session.routinesList.refetch()}
+            onToggle={session.toggleRoutine}
+            onTickAll={session.tickAll}
+            onContinue={session.continueFlow}
+            headingRef={headingRef}
+          />
+        ) : null}
+        {state.step === "markers" ? <MarkersStep onDone={session.continueFlow} onSkip={session.skipMarkers} headingRef={headingRef} /> : null}
+        {state.step === "names" || state.step === "saving_names" ? (
+          <NamesStep
+            state={state}
+            dispatch={session.dispatch}
+            onSave={() => void session.saveNames()}
+            onBack={state.read !== null && state.read.routines.length > 0 ? () => session.dispatch({ type: "back", to: "routines" }) : null}
+            headingRef={headingRef}
+          />
         ) : null}
       </div>
     </Screen>

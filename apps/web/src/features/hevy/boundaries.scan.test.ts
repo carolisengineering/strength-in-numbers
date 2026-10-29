@@ -13,12 +13,28 @@ const production = filesUnder(SRC, /\.(ts|tsx)$/)
 const read = (path: string) => stripComments(readFileSync(join(SRC, path), "utf8"));
 const importsFrom = (source: string) => [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!);
 
+/**
+ * Amended by Spec 20.1 (owner ruling 2026-10-29): the import's session hook alone may use the routines list and the
+ * routine create (20.1 D11). Nothing else in `features/hevy/` imports `features/routines/`.
+ */
+const ROUTINES_EXEMPT_FILE = "features/hevy/import/useImportSession.ts";
+const ROUTINES_EXEMPT_MODULES = /(^|\/)routines\/(queries|useRoutineMutations)$/;
+
 describe("20.0 AC31 — import boundaries", () => {
-  it("no features/hevy file imports from features/routines", () => {
+  it("no features/hevy file imports from features/routines, but the import's session hook (two modules)", () => {
     const hits = production
       .filter((path) => path.startsWith("features/hevy/"))
-      .filter((path) => importsFrom(read(path)).some((spec) => /(^|\/)routines\//.test(spec)));
+      .flatMap((path) =>
+        importsFrom(read(path))
+          .filter((spec) => /(^|\/)routines\//.test(spec))
+          .filter((spec) => !(path === ROUTINES_EXEMPT_FILE && ROUTINES_EXEMPT_MODULES.test(spec)))
+          .map((spec) => `${path} → ${spec}`),
+      );
     expect(hits).toEqual([]);
+  });
+
+  it("20.1 — the exempt hook does use the routines list (so the exemption is not stale)", () => {
+    expect(importsFrom(read(ROUTINES_EXEMPT_FILE)).some((spec) => ROUTINES_EXEMPT_MODULES.test(spec))).toBe(true);
   });
 
   it("only features/hevy/client names api.hevyapp.com", () => {

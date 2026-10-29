@@ -90,7 +90,7 @@ describe("20.1 AC3 / AC5 — reducer", () => {
     const saving = importSession(names, { type: "namesSaving" });
     expect(saving.step).toBe("saving_names");
     expect(importSession(saving, { type: "namesFailed", message: "No." })).toMatchObject({ step: "names", namesError: "No." });
-    expect(importSession(saving, { type: "namesSaved", created: 3 })).toMatchObject({ step: "checking", exercisesCreated: 3 });
+    expect(importSession({ ...saving, exercisesCreated: 1 }, { type: "namesSaved", created: 3 })).toMatchObject({ step: "checking", exercisesCreated: 3 });
   });
 
   it("an invalid card makes decisions null", () => {
