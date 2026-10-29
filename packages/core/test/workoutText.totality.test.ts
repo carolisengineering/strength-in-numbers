@@ -91,3 +91,42 @@ describe("10.4 AC1 — total, linear, pure", () => {
     expect(findViolations(SRC)).toEqual([]);
   });
 });
+
+/** The order the import plan relies on, now that it no longer sorts (minor 22). */
+function assertReaderOrder(raw: string) {
+  const items = readWorkoutText(raw).items;
+  // Loose items first, then section by section: the section index never goes down.
+  const order = items.map((it) => it.section ?? -1);
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+  // A run's members are consecutive, so runs come out in first appearance and so do their chunks of 8.
+  const seen = new Set<number>();
+  items.forEach((it, i) => {
+    if (it.run === null) return;
+    if (seen.has(it.run)) expect(items[i - 1]?.run, `run ${it.run} is split`).toBe(it.run);
+    seen.add(it.run);
+  });
+}
+
+describe("Minor 22 — the reader emits items section-ordered and runs whole", () => {
+  const FIXTURE_26 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-26.txt");
+  it.each([FIXTURE, FIXTURE_24, FIXTURE_26])("%s and 100 seeded shuffles", (path) => {
+    const raw = readFileSync(path, "utf8");
+    assertReaderOrder(raw);
+    for (let seed = 1; seed <= 100; seed++) {
+      const lines = raw.split("\n");
+      const rnd = prng(seed);
+      for (let i = lines.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [lines[i], lines[j]] = [lines[j]!, lines[i]!];
+      }
+      assertReaderOrder(lines.join("\n"));
+    }
+  });
+  it("random strings", () => {
+    const rnd = prng(11);
+    for (let n = 0; n < 200; n++) {
+      const words = ["Strength", "3 Sets:", "21-15-9", "- 10 Curl", "10 Row", "Max Cal Bike", "Engine", "then", "Set 1: 5 reps", "into:", "x."];
+      assertReaderOrder(Array.from({ length: 30 }, () => words[Math.floor(rnd() * words.length)]!).join("\n"));
+    }
+  });
+});

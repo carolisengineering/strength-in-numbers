@@ -25,8 +25,8 @@ export interface NameCardProps {
   card: CardState;
   problem: CardProblem | undefined;
   visible: readonly Exercise[];
-  /** The store's raw rows: a chosen exercise is named even if it has left `visible`. */
-  rows: readonly Exercise[];
+  /** An exercise's name from the store's raw rows, so a chosen exercise is named even if it has left `visible`. */
+  exerciseName: (id: string | null) => string | null;
   muscleGroups: readonly MuscleGroup[] | undefined;
   equipment: readonly Equipment[] | undefined;
   onChange: (change: (card: CardState) => CardState) => void;
@@ -40,11 +40,10 @@ export interface NameCardProps {
  * as radios (the tag is text inside the label, never color alone). New shows the create-exercise fields;
  * nothing is created here. DOM ids come from the card's index, never from the pasted text.
  */
-export function NameCard({ card, problem, rows, muscleGroups, equipment, onChange, onChooseAnother, registerSelected }: NameCardProps) {
+export function NameCard({ card, problem, exerciseName, muscleGroups, equipment, onChange, onChooseAnother, registerSelected }: NameCardProps) {
   const radioName = `import-card-${card.index}-choice`;
-  const nameOf = (id: string | null) => (id === null ? null : (rows.find((row) => row.id === id)?.name ?? null));
-  const matchName = nameOf(card.match?.exerciseId ?? null);
-  const pickedName = card.selected === "picked" ? nameOf(card.pickedId) : null;
+  const matchName = exerciseName(card.match?.exerciseId ?? null);
+  const pickedName = card.selected === "picked" ? exerciseName(card.pickedId) : null;
   const newName = card.newValue.name.trim() === "" ? card.written : card.newValue.name.trim();
   const checked = useRef<HTMLInputElement | null>(null);
   const focusChecked = useRef(false);

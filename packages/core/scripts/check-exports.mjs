@@ -235,6 +235,7 @@ const EXPECTED = [
   "HEAD_NOUN_BONUS",
   "normalizeExerciseName",
   "matchExerciseName",
+  "prepareCatalog",
   "guessModality",
   "IMPORT_NOTICE_ORDER",
   "cutNote",

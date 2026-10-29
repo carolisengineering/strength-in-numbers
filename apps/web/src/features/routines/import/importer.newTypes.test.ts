@@ -40,17 +40,18 @@ describe("18.1 AC34 — importer hint", () => {
     expect(h.exerciseIdOf.get(cards[0]!.key)).toBe(bike.id);
     expect(h.pending.size).toBe(0);
   });
-  it("the handoff's fallback guess for an unmatched, unsaved name uses the hint too", () => {
-    // "Row" alone guesses weight_reps (reps kept); with the hint it is calories (reps refused into a note).
+  // "the handoff's fallback guess for an unmatched, unsaved name uses the hint too" lives in handoff.hint.test.ts: since
+  // minor 90 a hinted name has only calorie lines, which carry no reps, so the guess is visible only through a spy.
+  it("Minor 90 (owner ruling O1) — a name read with and without a calorie form gets no hint, so 10 Row keeps its reps", () => {
     const { read, cards } = cardsFor(["Engine", "3 Sets:", "10 Row", "Max Cal Row", "x."].join("\n"), []);
+    expect(cards[0]!.newValue.modality).toBe("weight_reps");
     const h = buildHandoff({ read, cards: cards.map((c) => ({ ...c, selected: "match" as const, match: null })), rows: [], placeholderFor: ph });
-    // No exercise chosen: the plan's modality comes from the guess, and calories refuses reps into a note.
-    expect(h.plan.items[0]!.notes).toContain("reps as written");
+    expect(h.plan.items[0]!.notes ?? "").not.toContain("reps as written");
   });
-  it("Review Focus 4 — Max Cal in one section and plain Echo Bike in another make one Calories card", () => {
+  it("Minor 90 (owner ruling O1) — Max Cal in one section and plain Echo Bike in another make one card with no Calories guess", () => {
     const { cards } = cardsFor(["Engine", "3 Rounds:", "Max Cal Echo Bike", "Finisher", "2 Sets:", "Echo Bike", "x."].join("\n"), []);
     expect(cards.filter((c) => c.written === "Echo Bike")).toHaveLength(1);
-    expect(cards.find((c) => c.written === "Echo Bike")!.newValue.modality).toBe("calories");
+    expect(cards.find((c) => c.written === "Echo Bike")!.newValue.modality).toBe("distance_duration");
   });
 });
 

@@ -15,7 +15,7 @@ describe("deferred minor 25 — a New card the schema refuses for a reason other
         card={card}
         problem={{ kind: "invalid" }}
         visible={importCatalog}
-        rows={importCatalog}
+        exerciseName={(id) => importCatalog.find((row) => row.id === id)?.name ?? null}
         muscleGroups={[]}
         equipment={[]}
         onChange={vi.fn()}

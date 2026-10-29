@@ -4,9 +4,11 @@ import {
   hevyPairingProblem,
   matchExerciseName,
   normalizeExerciseName,
+  prepareCatalog,
   type CreateExercise,
   type Exercise,
   type HevyTemplate,
+  type PreparedCatalog,
   type HevyType,
   type MeasureRule,
 } from "@sin/core";
@@ -67,7 +69,7 @@ export type PairingDecision =
   | { template: HevyTemplate; action: "skip" };
 
 /** Gap 5: an exact or similar match; failing both, the title without a trailing parenthetical counts as similar. */
-function matchFor(title: string, visible: readonly Exercise[]): PairingCard["match"] {
+function matchFor(title: string, visible: PreparedCatalog<Exercise>): PairingCard["match"] {
   const found = matchExerciseName(title, visible);
   if (found.kind !== "none") return { kind: found.kind, exerciseId: found.row.id };
   const bare = title.replace(/\s*\([^()]*\)\s*$/, "");
@@ -77,9 +79,11 @@ function matchFor(title: string, visible: readonly Exercise[]): PairingCard["mat
 }
 
 export function initialPairingCards(needs: readonly PairingNeed[], visible: readonly Exercise[]): PairingCard[] {
+  // Minor 18: the catalog's keys are computed once for every template.
+  const catalog = prepareCatalog(visible);
   return needs.map(({ template, context }, index) => {
     const prefill = exerciseFromHevyTemplate(template);
-    const match = template.type === null ? null : matchFor(template.title, visible);
+    const match = template.type === null ? null : matchFor(template.title, catalog);
     const newValue: ExerciseFieldValues = prefill
       ? {
           name: prefill.input.name,

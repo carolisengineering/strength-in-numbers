@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { cleanWorkoutText, collapseLine, isBadgeLine, isFurnitureLine, isIconLine, isStatusBarLine, ocrKey } from "../src/workoutText.js";
+import { cleanWorkoutText, collapseLine, isBadgeLine, isFurnitureLine, isIconLine, isStatusBarLine, ocrKey, readWorkoutText } from "../src/workoutText.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
 const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
@@ -70,7 +70,8 @@ describe("10.4 AC43 — icon and count lines are furniture", () => {
     expect(r.furniture).toBe(1);
   });
   it.each([
-    ["before a tab-bar line", "Intro\nNext\n{}\nHome"],
+    // Minor 84: a tab bar is two of its labels close together, so the bar's second label is part of the case.
+    ["before a tab-bar line", "Intro\nNext\n{}\nHome\nSchedule"],
     ["after a tab-bar line", "Intro\nNext\nWorkouts\n{}\nSocial"],
     ["within two lines of the clock", "11:09\nIntro\n{}\nNext"],
   ])("a short line of letters in another script is an icon %s (item 71)", (_, text) => {
@@ -186,6 +187,41 @@ describe("10.4 AC56 — the cellular status bar is furniture", () => {
     expect(cleanWorkoutText(`Workout: "X"\n${l}\nAMRAP 15`).lines).toEqual(['Workout: "X"', "AMRAP 15"]);
   });
   it.each(["LTE coverage is spotty today", "5G Burpees", "LTE", "Row LTE"])("%s stays", (l) => expect(isStatusBarLine(l)).toBe(false));
+});
+
+describe("Minor 107 — a network name needs bars before it", () => {
+  it.each(["LTE Row", "5G Row", "3G Run"])("%s is not the status bar and is kept", (l) => {
+    expect(isStatusBarLine(l)).toBe(false);
+    expect(cleanWorkoutText(`Intro\n${l}\nNext`).lines).toContain(l);
+  });
+  it("•ll LTE is still dropped as the status bar", () => {
+    expect(isStatusBarLine("•ll LTE")).toBe(true);
+    expect(cleanWorkoutText("Intro\n•ll LTE\nNext").lines).toEqual(["Intro", "Next"]);
+  });
+  it.each(["LTE O", "5G UW", "LTE C", "5G+ O"])("code review — %s (the bars read on their own line) is still the status bar", (l) => {
+    expect(isStatusBarLine(l)).toBe(true);
+    expect(cleanWorkoutText(`Intro\n•ll\n${l}\nNext`).lines).toEqual(["Intro", "Next"]);
+  });
+  it("code review — under an open run, a bars-less status bar is not read as an exercise", () => {
+    const r = readWorkoutText(["Engine", "3 Sets:", "10 Row", "11:09", "•ll", "LTE O", "10 Burpees"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Row", "Burpees"]);
+  });
+});
+
+describe("Minor 84 — an author's Home is not a tab bar", () => {
+  it.each(["口", "Жим"])("%s next to a lone Home line is kept", (line) => {
+    expect(cleanWorkoutText(`Intro\nAt home:\nNext\n${line}\nHome\nMore`).lines).toContain(line);
+    expect(cleanWorkoutText(`Intro\nNext\nHome\n${line}\nMore`).lines).toContain(line);
+  });
+  it("口 next to Home / Schedule is still dropped", () => {
+    expect(cleanWorkoutText("Intro\nNext\n口\nHome\nSchedule").lines).not.toContain("口");
+    expect(cleanWorkoutText("Intro\nNext\nHome\n口\nSchedule").lines).not.toContain("口");
+  });
+  it("code review — two icon lines between a tab bar's labels are both dropped", () => {
+    const lines = cleanWorkoutText("Intro\nNext\nHome\n口\n凸\nWorkouts").lines;
+    expect(lines).not.toContain("口");
+    expect(lines).not.toContain("凸");
+  });
 });
 
 describe("10.4 AC57 — the trophy and the score are furniture", () => {

@@ -37,10 +37,10 @@ describe("05.3 AC34 — Max Cal sets the calories hint", () => {
     expect(r.names[0]!.calories).toBe(false);
   });
   it("a bullet Max Cal line sets it too", () => expect(read(["- Max Cal Row"]).items[0]).toMatchObject({ name: "Row", calories: true }));
-  it("a name read once with and once without the form is a calories name", () => {
+  it("Minor 90 — a name read once with and once without the form is not a calories name (owner ruling O1)", () => {
     const r = read(["3 Sets:", "10 Row", "Max Cal Row"]);
     expect(r.items.map((i) => i.calories)).toEqual([false, true]);
-    expect(r.names).toEqual([expect.objectContaining({ written: "Row", calories: true })]);
+    expect(r.names).toEqual([expect.objectContaining({ written: "Row", calories: false })]);
   });
 });
 
@@ -177,4 +177,89 @@ describe("05.3 AC38 — both fixtures: only Echo Bike from Max Cal is a calories
     expect(r.names.every((n) => n.calories === false)).toBe(true);
     expect(r.items.every((i) => i.calories === false)).toBe(true);
   });
+});
+
+describe("Minor 91 — 20/15 Cal Row is a calorie line (owner ruling O2)", () => {
+  it.each([
+    ["20/15 Cal Row", "Row", "20/15 Cal"],
+    ["20/15 Cals Ski Erg", "Ski Erg", "20/15 Cals"],
+    ["20/15cal Bike", "Bike", "20/15cal"],
+  ])("under a run: %s → %s, note %s, the hint", (line, name, note) => {
+    const r = read(["3 Sets:", line]);
+    expect(r.items.map(view)).toEqual([{ name, noteLines: [note], rows: NULL_ROWS, quickReps: null, repsText: null, calories: true }]);
+    expect(r.names).toEqual([expect.objectContaining({ written: name, calories: true })]);
+  });
+  it("as a bare bullet and as a counted line", () => {
+    expect(read(["- 20/15 Cal Row"]).items.map(view)).toEqual([{ name: "Row", noteLines: ["20/15 Cal"], rows: null, quickReps: null, repsText: null, calories: true }]);
+    expect(read(["Engine", "20/15 Cal Row"]).items.map(view)).toEqual([{ name: "Row", noteLines: ["20/15 Cal"], rows: null, quickReps: null, repsText: null, calories: true }]);
+  });
+  it("Review Focus 2 — 20/15 Push-ups is a rep target, as today", () =>
+    expect(read(["3 Sets:", "20/15 Push-ups"]).items.map(view)).toEqual([
+      { name: "Push-ups", noteLines: ["20/15"], rows: [[35, 35], [35, 35], [35, 35]], quickReps: null, repsText: "20/15", calories: false },
+    ]));
+  it("Review Focus 2 — 20/15 m Row keeps its distance note, as today", () =>
+    expect(read(["3 Sets:", "20/15 m Row"]).items.map(view)).toEqual([
+      { name: "20/15 m Row", noteLines: ["20/15 m"], rows: NULL_ROWS, quickReps: null, repsText: null, calories: false },
+    ]));
+  it.each(["20/15 Calf Raises", "Calf Raises", "20 Calf Raises", "Cal Ripken Drill"])("Review Focus 1 — %s never gets the hint", (line) => {
+    const r = read(["3 Sets:", line]);
+    expect(r.items.every((i) => !i.calories)).toBe(true);
+    expect(r.names.every((n) => !n.calories)).toBe(true);
+  });
+});
+
+describe("Minor 90 — the hint needs every item with the name to be a calorie form (owner ruling O1)", () => {
+  it("20 Row and 20 Cal Row: no hint, and 20 Row keeps its reps as rows", () => {
+    const r = read(["3 Sets:", "20 Row", "20 Cal Row"]);
+    expect(r.names).toEqual([expect.objectContaining({ written: "Row", calories: false })]);
+    expect(r.items.map(view)[0]).toEqual({ name: "Row", noteLines: [], rows: [[20, 20], [20, 20], [20, 20]], quickReps: null, repsText: "20", calories: false });
+    const plan = buildImportPlan(r, (key) => guessModality(key, { calories: r.names.find((n) => n.key === key)!.calories }));
+    expect(plan.items[0]!.notes).toBeNull();
+  });
+  it("two calorie lines of one name keep the hint", () =>
+    expect(read(["3 Sets:", "20 Cal Row", "Max Cal Row"]).names).toEqual([expect.objectContaining({ written: "Row", calories: true })]));
+  it("Review Focus 4 — a calorie line in one section and a plain one in another share the key: no hint", () => {
+    const r = read(["Engine", "3 Sets:", "20 Cal Row", "Strength", "3 Sets:", "Row"]);
+    expect(r.names).toEqual([expect.objectContaining({ written: "Row", calories: false, sections: ["Engine", "Strength"] })]);
+    expect(r.items.map((i) => i.calories)).toEqual([true, false]);
+  });
+});
+
+describe("Minor 109 — a standalone Max Cal line is an exercise (owner ruling O3)", () => {
+  it("10 Burpees / Max Cal Bike in a section reads two exercises, Bike with the hint", () => {
+    const r = read(["Engine", "AMRAP 12", "10 Burpees", "Max Cal Bike"]);
+    expect(r.items.map(view)).toEqual([
+      { name: "Burpees", noteLines: [], rows: null, quickReps: { repsLow: 10, repsHigh: 10 }, repsText: "10", calories: false },
+      { name: "Bike", noteLines: ["Max Cal"], rows: null, quickReps: null, repsText: null, calories: true },
+    ]);
+    expect(r.items[0]!.run).toBe(r.items[1]!.run);
+  });
+  it.each(["Max effort today", "Max out", "Max Reps Pull-ups", "Max Burpees"])("Review Focus 3 — %s outside a run stays a note", (line) => {
+    const r = read(["Engine", "AMRAP 12", line]);
+    expect(r.items).toEqual([]);
+    expect(r.sections[0]!.notes).toBe(`AMRAP 12\n${line}`);
+  });
+});
+
+describe("Minor 88 — a calorie line under a scheme gets the row count, not the reps", () => {
+  it("under 21-15-9, 20 Cal Row is three rows with null reps and the hint", () => {
+    const r = read(["Engine", "21-15-9", "Thrusters", "20 Cal Row"]);
+    expect(r.items.map(view)).toEqual([
+      { name: "Thrusters", noteLines: [], rows: [[21, 21], [15, 15], [9, 9]], quickReps: null, repsText: "21-15-9", calories: false },
+      { name: "Row", noteLines: ["20 Cal"], rows: NULL_ROWS, quickReps: null, repsText: null, calories: true },
+    ]);
+  });
+  it("no stray 'reps as written' note reaches the import plan", () => {
+    const plan = buildImportPlan(read(["Engine", "21-15-9", "20 Cal Row"]), () => "calories");
+    expect(plan.items[0]!.notes ?? "").not.toMatch(/reps as written/);
+  });
+  it("a Max Cal line under a scheme is the same", () =>
+    expect(read(["Engine", "21-15-9", "Max Cal Bike"]).items.map(view)).toEqual([
+      { name: "Bike", noteLines: ["Max Cal"], rows: NULL_ROWS, quickReps: null, repsText: null, calories: true },
+    ]));
+});
+
+describe("Minor 89 — 15 Cals keeps its note like 15 Cal", () => {
+  it.each(["15 Cal", "15 Cals"])("%s under a run has itself as its note", (line) =>
+    expect(read(["3 Sets:", line]).items.map(view)).toEqual([{ name: line, noteLines: [line], rows: NULL_ROWS, quickReps: null, repsText: null, calories: false }]));
 });

@@ -406,3 +406,44 @@ describe("10.4 AC63 — notes don't end a N Sets, 1 Set Every run", () => {
     expect(r.items.map((i) => [i.name, rowsOf(i)?.length, i.run])).toEqual([["Back Squats", 4, 1], ["TOES elevated DB Romanian deadlifts", 4, 1], ["Landmine twists", 4, 1]]);
   });
 });
+
+/** Minor 110's pin: each line as a bare bullet (step 8) and as an AC62 counted line, read before the shared reader. */
+describe("Minor 110 — the bullet and counted-line rowless readers read as before", () => {
+  type View = [string, string[], [number | null, number | null] | null, string | null, boolean];
+  const view = (i: ReadItem): View => [i.name, [...i.noteLines], i.quickReps === null ? null : [i.quickReps.repsLow, i.quickReps.repsHigh], i.repsText, i.calories];
+  it.each<[string, View[], View[]]>([
+    ["10 Push-ups", [["Push-ups", [], [10, 10], "10", false]], [["Push-ups", [], [10, 10], "10", false]]],
+    ["8-12 Curls", [["Curls", [], [8, 12], "8-12", false]], [["Curls", [], [8, 12], "8-12", false]]],
+    ["5/5 KB Windmill", [["KB Windmill", ["5/5"], [10, 10], "5/5", false]], [["KB Windmill", ["5/5"], [10, 10], "5/5", false]]],
+    ["20 Cal Row", [["Row", ["20 Cal"], null, null, true]], [["Row", ["20 Cal"], null, null, true]]],
+    ["20/15 Cal Row", [["Row", ["20/15 Cal"], null, null, true]], [["Row", ["20/15 Cal"], null, null, true]]],
+    ["Max Cal Bike", [["Bike", ["Max Cal"], null, null, true]], [["Bike", ["Max Cal"], null, null, true]]],
+    ["Max Reps Pull-ups", [["Pull-ups", ["Max Reps"], null, null, false]], []],
+    ["200 Meter Run", [], [["200 Meter Run", ["200 Meter"], null, null, false]]],
+    ["250/200m Row", [], [["250/200m Row", ["250/200m"], null, null, false]]],
+    ["10 Back Squats @ 60%", [["Back Squats", ["@ 60%"], [10, 10], "10", false]], [["Back Squats", ["@ 60%"], [10, 10], "10", false]]],
+  ])("%s", (line, asBullet, asCounted) => {
+    expect(read([`- ${line}`]).items.map(view)).toEqual(asBullet);
+    expect(read(["Engine", line]).items.map(view)).toEqual(asCounted);
+  });
+});
+
+describe("Minor 108 — a trailing for time goes to the note", () => {
+  it.each([
+    ["1 Mile Run for time", "1 Mile Run", ["1 Mile", "for time"]],
+    ["1 Mile Run For Time", "1 Mile Run", ["1 Mile", "For Time"]],
+    ["21 Thrusters for time", "Thrusters", ["for time"]],
+  ])("%s → %s", (line, name, noteLines) => {
+    const r = read(["Engine", line]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([[name, noteLines]]);
+  });
+  it("a standalone Max Cal line with for time names the movement alone (final review)", () => {
+    const r = read(["Engine", "Max Cal Row for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines, i.calories])).toEqual([["Row", ["Max Cal", "for time"], true]]);
+  });
+  it("a structure line stays a note", () => {
+    const r = read(["Engine", "5 Rounds for time"]);
+    expect(r.items).toEqual([]);
+    expect(r.sections[0]!.notes).toBe("5 Rounds for time");
+  });
+});

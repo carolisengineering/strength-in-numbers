@@ -149,12 +149,9 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     found.set("sections-left-out", { code: "sections-left-out", count: names.length, names });
   }
   const inKeptSection = (it: ReadItem) => it.section === null || it.section < ROUTINE_SECTIONS_MAX;
-  // Canonical order (loose first, then section by section), stable within a section.
-  const surviving = read.items
-    .map((it, i) => ({ it, i }))
-    .filter(({ it }) => inKeptSection(it))
-    .sort((a, b) => (a.it.section ?? -1) - (b.it.section ?? -1) || a.i - b.i)
-    .map(({ it }) => it);
+  // The reader emits items loose first, then section by section, so no sort is needed (minor 22; pinned in the
+  // totality test).
+  const surviving = read.items.filter(inKeptSection);
 
   // (2) The first 30 items.
   if (surviving.length > ROUTINE_ITEMS_MAX) count("items-left-out", surviving.length - ROUTINE_ITEMS_MAX);
@@ -179,6 +176,7 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     if (it.run === null) return;
     runs.set(it.run, [...(runs.get(it.run) ?? []), i]);
   });
+  // A run's members are consecutive and runs arrive in first appearance, so the chunks are already in item order.
   const chunks: number[][] = [];
   for (const members of runs.values()) {
     if (members.length > SUPERSET_GROUP_MEMBERS_MAX) count("superset-split");
@@ -187,7 +185,6 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
       if (chunk.length >= 2) chunks.push(chunk);
     }
   }
-  chunks.sort((a, b) => a[0]! - b[0]!);
   chunks.forEach((chunk, g) => chunk.forEach((i) => (groupOf[i] = g + 1)));
 
   // (6) Names and notes of the routine and its sections.

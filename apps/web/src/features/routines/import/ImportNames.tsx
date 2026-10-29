@@ -1,3 +1,4 @@
+import type { Exercise } from "@sin/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
@@ -35,7 +36,9 @@ const REASON_ID = "import-continue-reason";
 export function ImportNames() {
   const session = useImportSession();
   const read = session.read?.result ?? null;
-  if (read === null || cardNames(read).length === 0) return <Navigate to={IMPORT_PATH} replace />;
+  // Minor 59: `cardNames` builds the import plan, and every card edit re-renders this gate, so it runs once per read.
+  const hasNames = useMemo(() => read !== null && cardNames(read).length > 0, [read]);
+  if (!hasNames) return <Navigate to={IMPORT_PATH} replace />;
   return <NamesBody />;
 }
 
@@ -70,6 +73,11 @@ function NamesBody() {
 
   const cards = session.cards;
   const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map<string, CardProblem>()), [cards, visible]);
+  // Minor 59: the count builds the import plan, so it is computed once per read, not on every keystroke.
+  const sectionCount = useMemo(() => keptSectionCount(read), [read]);
+  // Minor 29: one lookup of the store's raw rows for every card (a chosen exercise is named even if it left `visible`).
+  const exerciseById = useMemo(() => new Map<string, Exercise>(state.rows.map((row) => [row.id, row])), [state.rows]);
+  const exerciseName = (id: string | null) => (id === null ? null : (exerciseById.get(id)?.name ?? null));
   const blocked = cards?.filter((card) => problems.has(card.key)) ?? [];
 
   const goToFirst = () => {
@@ -114,7 +122,7 @@ function NamesBody() {
       ) : null}
       {!waiting && cards !== null ? (
         <>
-          <p className={styles.summary}>{summaryLine(keptSectionCount(read), cards.length, read.chunks)}</p>
+          <p className={styles.summary}>{summaryLine(sectionCount, cards.length, read.chunks)}</p>
           <div className={styles.cards}>
             {cards.map((card) => (
               <NameCard
@@ -122,7 +130,7 @@ function NamesBody() {
                 card={card}
                 problem={problems.get(card.key)}
                 visible={visible}
-                rows={state.rows}
+                exerciseName={exerciseName}
                 muscleGroups={muscles.data}
                 equipment={equipment.data}
                 onChange={(change) => session.updateCard(card.key, change)}
