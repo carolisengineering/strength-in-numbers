@@ -1,6 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
 import type { CreateSet, SetEntry, UpdateSet, UpdatedWorkout, WorkoutDetail, WorkoutExercise } from "@sin/core";
-import { ApiError } from "../../../api";
+import { ignoreNotFound } from "../errors";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";
@@ -64,14 +64,6 @@ export function writeDetail(queryClient: QueryClient, workoutId: string, change:
   queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId), (d) => (d ? change(d) : d));
 }
 
-/** A repeated delete answers 404: it already happened. */
-export async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    if (!(error instanceof ApiError && error.status === 404)) throw error;
-  }
-}
 
 export function useEditCreateSet(): UseMutationResult<
   SetEntry,

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { track } from "../../../observability/track";
 import { WORKOUT_KEYS, useWorkoutClient } from "../queries";
 import { rereadUntilLanded } from "../readGuard";
-import { ignoreNotFound } from "../useWorkoutMutations";
+import { ignoreNotFound } from "../errors";
 import type { SectionMutations } from "./sectionMutations";
 
 /**

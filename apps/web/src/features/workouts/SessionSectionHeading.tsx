@@ -41,18 +41,20 @@ export interface SessionSectionProps {
   children: ReactNode;
   onEdit?: () => void;
   editRef?: (node: HTMLButtonElement | null) => void;
-  /** Spec 10.6 AC2: shown in place of cards when `children` is an empty array. */
+  /** Spec 10.6 AC2: shown in place of cards when `empty`. */
   emptyText?: string;
+  /** The segment holds no exercises (minor 64: the caller knows from its rows; children are never inspected). */
+  empty?: boolean;
 }
 
 /** A labeled region: heading → note → cards, which is also the DOM (and so the reading) order (D10). */
-export function SessionSection({ heading, notes, children, onEdit, editRef, emptyText }: SessionSectionProps) {
+export function SessionSection({ heading, notes, children, onEdit, editRef, emptyText, empty = false }: SessionSectionProps) {
   const id = useId();
-  const empty = emptyText !== undefined && Array.isArray(children) && children.length === 0;
+  const showEmpty = empty && emptyText !== undefined;
   return (
     <section className={styles.section} aria-labelledby={id}>
       <SessionSectionHeading id={id} heading={heading} notes={notes} onEdit={onEdit} editRef={editRef} />
-      {empty ? <p className={styles.empty}>{emptyText}</p> : children}
+      {showEmpty ? <p className={styles.empty}>{emptyText}</p> : children}
     </section>
   );
 }

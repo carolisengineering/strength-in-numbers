@@ -18,7 +18,7 @@ import { useCatalog } from "../../catalog/useCatalog";
 import { useMe } from "../../me/useMe";
 import { LinkToggle } from "../../routines/LinkToggle";
 import { SupersetBracket } from "../../routines/SupersetBracket";
-import { classifyWorkoutError } from "../errors";
+import { classifyWorkoutError, isWorkoutGone } from "../errors";
 import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "../ExerciseCard";
 import { formatMinutes, workoutMinutes } from "../finishStats";
 import { SECTION_HOME, type SummarySection } from "../FinishedWorkoutScreen";
@@ -95,7 +95,8 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
 
   const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
 
-  if (vanished || (failure?.kind === "not-found" && detail.data !== undefined)) {
+  const gone = detail.isError && isWorkoutGone(detail.error);
+  if (vanished || (gone && detail.data !== undefined)) {
     return (
       <Screen title="Edit workout">
         <p className={styles.vanished}>{EDIT_COPY.vanished}</p>
@@ -105,7 +106,7 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
   }
 
   if (detail.data === undefined) {
-    if (failure?.kind === "not-found") return <NotFound />;
+    if (gone) return <NotFound />;
     return (
       <Screen title="Edit workout" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void detail.refetch()}>
@@ -283,7 +284,7 @@ function EditBody({
       // Only a 404 re-read means gone (the parent then shows the vanished view); an offline or 5xx re-read keeps the
       // cached workout, so a section 404 still reads as "That section no longer exists".
       const state = queryClient.getQueryState<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId));
-      const gone = state?.status === "error" && classifyWorkoutError(state.error, { op: "load-workout" }).kind === "not-found";
+      const gone = state?.status === "error" && isWorkoutGone(state.error);
       return gone ? null : state?.data;
     },
     onGone: onVanished,
@@ -496,6 +497,7 @@ function EditBody({
                 heading={segment.heading}
                 notes={segment.notes}
                 emptyText={SECTION_COPY.empty}
+                empty={segment.rows.length === 0}
                 {...(segment.editable && segment.sectionId !== null
                   ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                   : {})}

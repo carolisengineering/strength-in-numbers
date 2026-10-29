@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { WorkoutDetail, WorkoutSection } from "@sin/core";
+import { ignoreNotFound } from "../errors";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
 import { rereadUntilLanded, type ReadGuard } from "../readGuard";
 import type { SectionMutations } from "../sections/sectionMutations";
@@ -7,7 +8,6 @@ import {
   EDIT_MUTATION_KEY,
   editSucceeded,
   guardDetailReads,
-  ignoreNotFound,
   rereadDetailIfStale,
   writeDetail,
 } from "./useEditMutations";

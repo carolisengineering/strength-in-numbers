@@ -83,3 +83,21 @@ describe("06.4 AC11 — no stale review-note references", () => {
     expect(hits).toEqual([]);
   });
 });
+
+// Every non-test module under src/, for the one-definition checks.
+const allSources = import.meta.glob(["../../**/*.ts", "../../**/*.tsx", "!../../**/*.test.ts", "!../../**/*.test.tsx"], {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+describe("Minor 4/68 — ignoreNotFound is defined once", () => {
+  it("one definition, in features/workouts/errors.ts", () => {
+    expect(Object.keys(allSources).length).toBeGreaterThan(200);
+    const defining = Object.entries(allSources)
+      .filter(([, source]) => /function ignoreNotFound\b|const ignoreNotFound\b/.test(stripComments(source)))
+      .map(([path]) => path);
+    // Vite keys a file in this test's own folder as `./name`.
+    expect(defining).toEqual(["./errors.ts"]);
+  });
+});
