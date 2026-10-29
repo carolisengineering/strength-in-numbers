@@ -45,7 +45,7 @@ export const START = "Start";
 export const PREFLIGHT_TITLE = "Before you start";
 export const READING_TITLE = "Reading Hevy";
 export const PREPARING = "Getting your pairings…";
-export const PREPARING_FAILED = "Couldn't load your pairings. Check your connection and try again.";
+export const PREPARING_FAILED = "Couldn't load your exercises and pairings. Check your connection and try again.";
 
 /** AC2 / AC22: the stale-records banner. */
 // Plan copy.

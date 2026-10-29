@@ -180,6 +180,31 @@ describe("20.1 AC13 — unpaired remains", () => {
   });
 });
 
+describe("20.1 AC13 — code review 3: a slow Back to names", () => {
+  it("never pulls the lifter off a step they moved to while the mapping was re-read", async () => {
+    const routines: HevyRoutine[] = [{ id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: GENERATED_TEMPLATE_IDS[1], sets: [] }] }];
+    setup({ workouts: generateHevyWorkouts(6), routines, imports: { pairedTemplateIds: new Set(GENERATED_TEMPLATE_IDS.slice(1)) } });
+    const { user } = await start();
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await summaryHeading();
+    let release: () => void = () => {};
+    server.use(
+      http.get(MAPPING_URL, async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return HttpResponse.json({ pairs: GENERATED_TEMPLATE_IDS.map(pairOf), sectionRules: [] });
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Back to names" }));
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Routines to copy" })).toBeInTheDocument();
+    release();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByRole("heading", { level: 2, name: "Routines to copy" })).toBeInTheDocument();
+  });
+});
+
 describe("20.1 AC14 — confirm", () => {
   it("says what would be imported; Back to routines keeps the ticks", async () => {
     const routines: HevyRoutine[] = [{ id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: GENERATED_TEMPLATE_IDS[0], sets: [] }] }];

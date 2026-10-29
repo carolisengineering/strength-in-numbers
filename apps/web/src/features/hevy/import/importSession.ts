@@ -199,9 +199,13 @@ export function isSummaryStale(state: ImportState, mappingData: unknown): boolea
   return state.results !== null && state.summaryMapping !== mappingData;
 }
 
-/** AC14: the earlier step Back returns to from the summary or a failed check. */
+/**
+ * AC14: the earlier step Back returns to from the summary or a failed check. The routines keep their ticks; the names
+ * are never shown again as they were (a saved New card's name now belongs to its exercise), so they are worked out
+ * again from the mapping in `preparing`.
+ */
 export function backFromSummary(state: ImportState): Step {
-  if (state.needs.length > 0) return "names";
   if (state.read !== null && state.read.routines.length > 0) return "routines";
+  if (state.needs.length > 0) return "preparing";
   return "preflight";
 }

@@ -245,7 +245,12 @@ export function useImportSession() {
    */
   const backToNames = useCallback(async () => {
     stopIo();
+    const io = new AbortController();
+    controller.current = io;
     await mapping.refetch();
+    // A Back, Cancel or unmount while the mapping was read wins: the late answer moves nothing.
+    if (io.signal.aborted || stateRef.current.step !== "summary") return;
+    controller.current = null;
     dispatch({ type: "goto", step: "preparing" });
   }, [mapping, stopIo]);
 
@@ -272,7 +277,11 @@ export function useImportSession() {
     saveNames,
     mapping,
     catalog,
-    /** The mapping failed to load while the flow waited for it. */
-    preparingFailed: state.step === "preparing" && mapping.isError,
+    /** The mapping, or the first catalog sync, failed while the flow waited for it. */
+    preparingFailed: state.step === "preparing" && (mapping.isError || (!synced && catalog.state.status === "error")),
+    retryPreparing: () => {
+      if (mapping.isError) void mapping.refetch();
+      if (!synced) void catalog.refresh(true);
+    },
   };
 }

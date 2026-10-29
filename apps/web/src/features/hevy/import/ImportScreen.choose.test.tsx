@@ -26,6 +26,9 @@ import { makeRoutine, routineId } from "../../../test/workoutFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { hevyKeyStore } from "../keyStore";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
+import { catalogKey } from "../../catalog/constants";
+import { localStorageAdapter } from "../../../storage/storage";
+import { PREPARING_FAILED } from "./messages";
 import { HEVY_IMPORT_PATH } from "./paths";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -277,6 +280,30 @@ describe("20.1 AC10 — saving the names", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(creates).toBe(1);
     expect(mapping.patches).toHaveLength(0);
+  });
+
+  it("code review 1: Back from the summary after a save is never stuck on cards whose names now exist", async () => {
+    const { imports } = setup({ workouts, templates });
+    const { user } = await start();
+    await screen.findByRole("heading", { level: 2, name: "Pair exercises" });
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { level: 2, name: "Summary" }, { timeout: 5000 });
+    const before = imports.log.length;
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    // Everything is paired now, so the flow checks again and comes back to the summary.
+    await waitFor(() => expect(imports.log.length).toBe(before + 1));
+    expect(await screen.findByRole("heading", { level: 2, name: "Summary" })).toBeInTheDocument();
+  });
+
+  it("code review 2: a first catalog sync that fails says so and Try again moves on", async () => {
+    setup({ workouts, templates });
+    localStorageAdapter().remove(catalogKey(USER_ID));
+    server.use(http.get(`${API_BASE_URL}/v1/exercises`, () => HttpResponse.json({}, { status: 503 })));
+    const { user } = await start();
+    expect(await screen.findByText(PREPARING_FAILED)).toBeInTheDocument();
+    server.use(http.get(`${API_BASE_URL}/v1/exercises`, () => HttpResponse.json({ exercises: [BENCH], syncToken: "1.200" })));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Pair exercises" })).toBeInTheDocument();
   });
 
   it("a second Continue after a failure reuses the exercise the first one created", async () => {

@@ -59,7 +59,7 @@ export function ImportScreen() {
                   {PREPARING_FAILED}
                 </p>
                 <div className={styles.actions}>
-                  <Button onClick={() => void session.mapping.refetch()}>{TRY_AGAIN}</Button>
+                  <Button onClick={session.retryPreparing}>{TRY_AGAIN}</Button>
                 </div>
               </>
             ) : (
