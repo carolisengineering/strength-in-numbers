@@ -236,7 +236,10 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
           await step("link");
 
           // AC25: the flag rides in the same transaction as the workout. Only a write that changes it updates the
-          // row, so a batch of creates writes it once (minor 163).
+          // row, so a batch of creates writes it once (minor 163). The upsert still locks the row to the commit when
+          // its WHERE is false, and `finish` relies on that: its FOR UPDATE waits for an in-flight create, so a
+          // create never lands after the rebuild while the finish clears the flag. Keep it a DO UPDATE (never DO
+          // NOTHING, never a read first).
           await tx.$executeRaw`
             INSERT INTO "hevy_account" (user_id, records_stale) VALUES (${userId}::uuid, true)
             ON CONFLICT (user_id) DO UPDATE SET records_stale = true, updated_at = now() WHERE NOT hevy_account.records_stale`;

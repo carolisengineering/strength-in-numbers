@@ -42,7 +42,7 @@ describe.skipIf(!shouldRunIntegration())("Minor 155 — the dry run re-checks th
     await seedPairs(db, U, [{ hevyTemplateId: "T-BENCH", exerciseId: bench }]);
   });
 
-  it("a body the translator got wrong is rejected in the dry run, as in the real run", async () => {
+  it("Minor 155 — a body the translator got wrong is rejected in the dry run, as in the real run", async () => {
     broken.on = true;
     const repo = createHevyImportRepository(db.prisma);
     const workouts = [importWorkoutFixture({ hevyWorkoutId: "H-BAD" })];
@@ -57,7 +57,7 @@ describe.skipIf(!shouldRunIntegration())("Minor 155 — the dry run re-checks th
     expect(await rowCounts(db)).toEqual(before);
   });
 
-  it("an unbroken body still answers create in both", async () => {
+  it("Minor 155 — an unbroken body still answers create in both", async () => {
     const repo = createHevyImportRepository(db.prisma);
     const workouts = [importWorkoutFixture({ hevyWorkoutId: "H-OK" })];
     const dry = await repo.importBatch(U, { dryRun: true, workouts }, NOW);
