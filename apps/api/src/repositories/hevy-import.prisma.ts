@@ -100,7 +100,7 @@ export async function findCandidates(
   return rows.map((r) => ({ id: r.id, title: r.title, startedAt: r.started_at, localDate: r.local_date, rootIds: r.roots }));
 }
 
-/** Rows per multi-row `set_entry` insert: 13 parameters a row stays well under Postgres's 65 535 (200 × 200 sets). */
+/** Rows per multi-row `set_entry` insert: 12 parameters a row stays well under Postgres's 65 535 (200 × 200 sets). */
 const SET_ROWS_PER_STATEMENT = 1_000;
 
 /** Thrown inside the write transaction when the link insert finds the Hevy id taken; rolls the workout back. */
