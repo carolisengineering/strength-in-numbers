@@ -735,15 +735,17 @@ const FOR_TIME = /\s+(for time)$/i;
  *   a movement, a leading distance counts, and a trailing "for time" goes to the note (minor 108).
  */
 function rowlessItemOf(line: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
-  const max = MAX_LINE.exec(line);
-  if (max && isMovementText(max[2]!) && (opts.max === "any" || MAX_CAL.test(max[1]!))) {
-    return { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], calories: MAX_CAL.test(max[1]!) };
-  }
+  // The "for time" comes off first, so a counted Max Cal line names its movement alone too.
   const forTime = opts.counted ? FOR_TIME.exec(line) : null;
   const text = forTime ? line.slice(0, forTime.index) : line;
-  if (opts.counted && !isMovementText(text)) return null;
-  const item = countedFormOf(text, opts.counted);
+  const item = maxItemOf(text, opts.max) ?? (opts.counted && !isMovementText(text) ? null : countedFormOf(text, opts.counted));
   return item && forTime ? { ...item, noteLines: [...item.noteLines, forTime[1]!] } : item;
+}
+
+function maxItemOf(text: string, which: "any" | "calories"): CountedItem | null {
+  const max = MAX_LINE.exec(text);
+  if (!max || !isMovementText(max[2]!) || (which === "calories" && !MAX_CAL.test(max[1]!))) return null;
+  return { name: max[2]!, rows: null, quickReps: null, repsText: null, noteLines: [maxNote(max)], calories: MAX_CAL.test(max[1]!) };
 }
 
 /** A leading calorie form, then a rep form, then (counted only) a leading distance. */

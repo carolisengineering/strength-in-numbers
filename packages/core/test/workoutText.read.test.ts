@@ -437,6 +437,10 @@ describe("Minor 108 — a trailing for time goes to the note", () => {
     const r = read(["Engine", line]);
     expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([[name, noteLines]]);
   });
+  it("a standalone Max Cal line with for time names the movement alone (final review)", () => {
+    const r = read(["Engine", "Max Cal Row for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines, i.calories])).toEqual([["Row", ["Max Cal", "for time"], true]]);
+  });
   it("a structure line stays a note", () => {
     const r = read(["Engine", "5 Rounds for time"]);
     expect(r.items).toEqual([]);
