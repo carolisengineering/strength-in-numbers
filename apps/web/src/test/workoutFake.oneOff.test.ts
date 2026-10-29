@@ -120,3 +120,31 @@ describe("10.5 fake — one-off semantics", () => {
     });
   });
 });
+
+describe("Minor 46 — the web fake sweeps like the server (Spec 09.3 AC19)", () => {
+  const expired = (n: number, name: string) =>
+    makeRoutine({ id: routineId(n), name, oneOffUntil: "2026-10-01T09:00:00.000Z", items: [makeRoutineItem({ exerciseId: bench.id })] });
+  const names = async () => ((await call("GET", "/routines")).json!["routines"] as { name: string }[]).map((r) => r.name);
+
+  it("an expired one-off no live workout holds is not listed, and stays gone", async () => {
+    boot({ now: () => T, sweepExpired: true, routines: [expired(1, "Old class"), makeRoutine({ id: routineId(2), name: "Plan", items: [makeRoutineItem({ exerciseId: bench.id })] })] });
+    expect(await names()).toEqual(["Plan"]);
+    expect((await call("GET", `/routines/${routineId(1)}`)).status).toBe(404);
+  });
+
+  it("without sweepExpired it is still listed (10.5's device clock ahead of the server's)", async () => {
+    boot({ now: () => T, routines: [expired(1, "Old class")] });
+    expect(await names()).toEqual(["Old class"]);
+  });
+
+  it("an expired one-off the live workout was started from is still listed", async () => {
+    const active = makeWorkoutDetail({ routineName: "Old class", exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
+    boot({ now: () => T, sweepExpired: true, routines: [expired(1, "Old class")], active, activeRoutineId: routineId(1) });
+    expect(await names()).toEqual(["Old class"]);
+  });
+
+  it("an unexpired one-off is listed", async () => {
+    boot({ now: () => T, sweepExpired: true, routines: [makeRoutine({ id: routineId(1), name: "Class", oneOffUntil: "2026-10-30T09:00:00.000Z", items: [makeRoutineItem({ exerciseId: bench.id })] })] });
+    expect(await names()).toEqual(["Class"]);
+  });
+});

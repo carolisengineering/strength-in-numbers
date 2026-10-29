@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
-import { RoutineLimitError } from "../../src/errors/app-error.js";
+import { RoutineLimitError, RoutineNameTakenError } from "../../src/errors/app-error.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
@@ -57,7 +57,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
         { exerciseId: ex, sectionKey: "s", sets: [{ setType: "working", repsLow: 5, repsHigh: 5 }] },
         { exerciseId: ex, sectionKey: "s", targetSets: 3 },
       ],
-    });
+    }).then((r) => r.routine);
   }
   /** A live workout pointed at `routineId` by raw SQL. */
   async function liveFrom(u: string, ex: string, routineId: string) {
@@ -75,7 +75,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const expired = await oneOff(a, exA, "expired");
       const held = await oneOff(a, exA, "held");
       const fresh = await oneOff(a, exA, "fresh");
-      const old = await routines().create(a, routineFixture([exA], { name: "old ordinary" }));
+      const old = (await routines().create(a, routineFixture([exA], { name: "old ordinary" }))).routine;
       const repaired = await oneOff(a, exA, "finished only");
       const others = await oneOff(b, exB, "B's");
       for (const r of [expired, held, repaired, others]) await ageOneOff(db, r.id, 20);
@@ -84,7 +84,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const done = await logWorkout(db, a, { startedAt: new Date(Date.now() - 2 * 86_400_000), exercises: [{ exerciseId: exA, sets: [] }] });
       await x(`UPDATE "workout" SET routine_id = $2::uuid WHERE id = $1::uuid`, done.workoutId, repaired.id);
 
-      const listed = await routines().list(a);
+      const listed = (await routines().list(a)).routines;
       expect(listed.map((r) => r.name).sort()).toEqual(["fresh", "held", "old ordinary"]);
       expect(await exists(expired.id)).toBe(false);
       expect(await exists(repaired.id)).toBe(false);
@@ -106,7 +106,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       await routines().create(u, routineFixture([ex], { name: "another" }));
       expect(await exists(held.id)).toBe(true);
       await workouts().deleteWorkout(u, w);
-      expect((await routines().list(u)).map((r) => r.name)).toEqual(["another"]);
+      expect(((await routines().list(u)).routines).map((r) => r.name)).toEqual(["another"]);
       expect(await exists(held.id)).toBe(false);
     });
   });
@@ -132,7 +132,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       await liveFrom(u, ex, held.id);
       const seen = captureStatements(db);
       seen.length = 0;
-      expect((await routines().list(u)).map((r) => r.id)).toEqual([held.id]);
+      expect(((await routines().list(u)).routines).map((r) => r.id)).toEqual([held.id]);
       expect(seen).toHaveLength(2);
       expect(seen.join("\n")).not.toMatch(/BEGIN|DELETE|SKIP LOCKED/i);
     });
@@ -161,7 +161,75 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       await routines().delete(u, other.id);
       expect(await exists(stale.id)).toBe(true);
       // The next list read leaves the held one and would sweep any other expired row.
-      expect((await routines().list(u)).map((r) => r.name)).toEqual(["stale edited"]);
+      expect(((await routines().list(u)).routines).map((r) => r.name)).toEqual(["stale edited"]);
+    });
+  });
+
+  describe("Minor 37 — an unheld edited one-off is swept by the next list", () => {
+    it("expire a one-off, PUT it, list: it is gone", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const stale = await oneOff(u, ex, "stale");
+      await ageOneOff(db, stale.id, 20);
+      await routines().replace(u, stale.id, routineFixture([ex], { name: "stale edited" }));
+      expect(await exists(stale.id)).toBe(true);
+      const listed = await routines().list(u);
+      expect([listed.swept, listed.routines]).toEqual([1, []]);
+      expect(await exists(stale.id)).toBe(false);
+    });
+  });
+
+  describe("Minor 42 — a create that fails rolls its sweep back", () => {
+    it("a name clash after the sweep leaves the expired one-off in place", async () => {
+      const u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const stale = await oneOff(u, ex, "stale");
+      await routines().create(u, routineFixture([ex], { name: "taken" }));
+      await ageOneOff(db, stale.id, 20);
+      await expect(routines().create(u, routineFixture([ex], { name: "taken" }))).rejects.toBeInstanceOf(RoutineNameTakenError);
+      expect(await exists(stale.id)).toBe(true);
+    });
+  });
+
+  describe("Minor 38 — Keep, finish and the export never sweep (09.3 AC21)", () => {
+    /** `before` runs ahead of the expiry: any create in it would sweep the expired one-off (AC21: create sweeps). */
+    async function setupApp(token: string, before?: (u: string, ex: string) => Promise<unknown>) {
+      app = await makeAccountApp(db);
+      await app.inject({ method: "GET", url: "/v1/me", headers: bearer(token) });
+      const u = (await q<{ id: string }>(`SELECT id FROM "user" WHERE auth_sub = $1`, `auth0|${token}`))[0]!.id;
+      const ex = await insertExercise(db, { ownerUserId: u });
+      const stale = await oneOff(u, ex, "stale");
+      const extra = await before?.(u, ex);
+      await ageOneOff(db, stale.id, 20);
+      return { u, ex, stale, extra };
+    }
+
+    it("Keep on another routine leaves an expired, unheld one-off", async () => {
+      const { stale, extra } = await setupApp("no-sweep-keep", (u, ex) => oneOff(u, ex, "other"));
+      const other = extra as { id: string };
+      const res = await app!.inject({ method: "POST", url: `/v1/routines/${other.id}/keep`, headers: bearer("no-sweep-keep") });
+      expect(res.statusCode).toBe(204);
+      expect(await exists(stale.id)).toBe(true);
+    });
+
+    it("a workout finish leaves it", async () => {
+      const { u, ex, stale } = await setupApp("no-sweep-finish");
+      const { workoutId } = await logWorkout(db, u, {
+        startedAt: new Date(Date.now() - 3_600_000),
+        finish: "none",
+        exercises: [{ exerciseId: ex, sets: [{ reps: 5, weight: 60 }] }],
+      });
+      const res = await app!.inject({ method: "PATCH", url: `/v1/workouts/${workoutId}`, headers: bearer("no-sweep-finish"), payload: { endedAt: new Date().toISOString() } });
+      expect(res.statusCode).toBe(200);
+      expect(await exists(stale.id)).toBe(true);
+    });
+
+    it("the account export leaves it (and lists it)", async () => {
+      const { stale } = await setupApp("no-sweep-export");
+      const res = await app!.inject({ method: "GET", url: "/v1/account/export", headers: bearer("no-sweep-export") });
+      expect(res.statusCode).toBe(200);
+      expect(await exists(stale.id)).toBe(true);
+      expect(res.body).toContain(stale.id);
     });
   });
 
@@ -188,7 +256,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const ex = await insertExercise(db, { ownerUserId: u });
       const legDay = await oneOff(u, ex, "Leg day");
       await ageOneOff(db, legDay.id, 20);
-      const created = await routines().create(u, routineFixture([ex], { name: "leg day" }));
+      const created = (await routines().create(u, routineFixture([ex], { name: "leg day" }))).routine;
       expect(created.name).toBe("leg day");
       expect(await exists(legDay.id)).toBe(false);
     });
@@ -237,7 +305,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const seen = captureStatements(db);
       seen.length = 0;
       const t0 = Date.now();
-      const list = await routines().list(u);
+      const list = (await routines().list(u)).routines;
       const ms = Date.now() - t0;
       expect(list).toHaveLength(50);
       expect(list.slice(0, 20).every((r) => r.oneOffUntil !== null)).toBe(true);

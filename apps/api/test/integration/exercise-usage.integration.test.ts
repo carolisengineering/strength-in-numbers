@@ -139,6 +139,29 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase B — exercise usage (
     });
   });
 
+  describe("Minor 113 — a retired fork's sets still count under its built-in", () => {
+    it("log on a fork, delete the fork: the built-in's entry keeps the fork's date", async () => {
+      const user = await me();
+      const builtIn = await insertExercise(db);
+      const fork = await insertExercise(db, { ownerUserId: user, forkedFrom: builtIn });
+      await log(user, "2026-10-01T15:00:00Z", builtIn, [{ reps: 5, weight: 100 }]);
+      await log(user, "2026-10-09T15:00:00Z", fork, [{ reps: 5, weight: 100 }]);
+      expect((await app.inject({ method: "DELETE", url: `/v1/exercises/${fork}`, headers: A })).statusCode).toBe(204);
+      expect(await entries()).toEqual([{ rootId: builtIn, lastLoggedOn: "2026-10-09" }]);
+    });
+  });
+
+  describe("Minor 114 — the latest of several workouts wins", () => {
+    it("three workouts on different days, inserted out of date order", async () => {
+      const user = await me();
+      const ex = await insertExercise(db);
+      await log(user, "2026-10-12T15:00:00Z", ex, [{ reps: 5, weight: 100 }]);
+      await log(user, "2026-10-20T15:00:00Z", ex, [{ reps: 5, weight: 100 }]);
+      await log(user, "2026-10-04T15:00:00Z", ex, [{ reps: 5, weight: 100 }]);
+      expect(await entries()).toEqual([{ rootId: ex, lastLoggedOn: "2026-10-20" }]);
+    });
+  });
+
   describe("03.4 AC30 — scoped and complete", () => {
     it("another user's sets never appear; a deleted custom exercise keeps its entry", async () => {
       const user = await me();

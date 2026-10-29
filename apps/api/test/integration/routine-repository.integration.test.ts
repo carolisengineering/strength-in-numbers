@@ -41,7 +41,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
   it("AC5 — create stores items at dense positions in array order with server-generated ids and returns them by position", async () => {
     const u = await insertUser(db);
     const [a, b, c] = await Promise.all([insertExercise(db), insertExercise(db), insertExercise(db)]);
-    const created = await repo().create(u, routineFixture([c, a, b]));
+    const created = (await repo().create(u, routineFixture([c, a, b]))).routine;
     expect(created.items.map((i) => [i.position, i.exerciseId])).toEqual([
       [0, c],
       [1, a],
@@ -56,7 +56,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
   it("AC10 — targetRpe 8.5 is stored as tenths 85 and the record carries the tenths", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await repo().create(u, routineFixture([ex]));
+    const r = (await repo().create(u, routineFixture([ex]))).routine;
     const [row] = await db.prisma.$queryRawUnsafe<{ target_rpe: number }[]>(
       `SELECT target_rpe FROM "routine_item" WHERE routine_id = $1::uuid`,
       r.id,
@@ -69,14 +69,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const u = await insertUser(db);
     const ex = await insertExercise(db);
     const items = [7, null, 3, 7, 3].map((g) => ({ exerciseId: ex, supersetGroup: g }));
-    const r = await repo().create(u, routineFixture([], { items }));
+    const r = (await repo().create(u, routineFixture([], { items }))).routine;
     expect(r.items.map((i) => i.supersetGroup)).toEqual([1, null, 2, 1, 2]);
   });
 
   it("AC7 — the same exercise twice is allowed and each item keeps its own targets (Review Focus 1)", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await repo().create(
+    const r = (await repo().create(
       u,
       routineFixture([], {
         items: [
@@ -84,7 +84,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
           { exerciseId: ex, targetSets: 3, targetRepsLow: 10, targetRepsHigh: 10 },
         ],
       }),
-    );
+    )).routine;
     expect(r.items.map((i) => [i.position, i.targetSets, i.targetRepsLow])).toEqual([
       [0, 4, 6],
       [1, 3, 10],
@@ -106,7 +106,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const u = await insertUser(db);
     const ex = await insertExercise(db);
     const results = await Promise.allSettled(
-      Array.from({ length: 16 }, () => repo().create(u, routineFixture([ex], { name: "Race" }))),
+      Array.from({ length: 16 }, () => repo().create(u, routineFixture([ex], { name: "Race" })).then((r) => r.routine)),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -120,13 +120,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const ex = await insertExercise(db);
     for (let i = 0; i < 45; i += 1) await repo().create(u, routineFixture([ex], { name: `R${i}` }));
     const burst = await Promise.allSettled(
-      Array.from({ length: 20 }, (_, i) => repo().create(u, routineFixture([ex], { name: `B${i}` }))),
+      Array.from({ length: 20 }, (_, i) => repo().create(u, routineFixture([ex], { name: `B${i}` })).then((r) => r.routine)),
     );
     expect(burst.filter((r) => r.status === "fulfilled")).toHaveLength(5);
     expect(burst.filter((r) => r.status === "rejected" && r.reason instanceof RoutineLimitError)).toHaveLength(15);
     expect(await countRoutines(u)).toBe(50);
     await expect(repo().create(u, routineFixture([ex], { name: "Over" }))).rejects.toBeInstanceOf(RoutineLimitError);
-    const list = await repo().list(u);
+    const list = (await repo().list(u)).routines;
     await repo().delete(u, list[0]!.id);
     await expect(repo().create(u, routineFixture([ex], { name: "Over" }))).resolves.toBeDefined();
   });
@@ -139,7 +139,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const retired = await insertExercise(db);
     await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, retired);
 
-    const absent = repo().create(u, routineFixture([ok, uuidv7()]));
+    const absent = repo().create(u, routineFixture([ok, uuidv7()])).then((r) => r.routine);
     await expect(absent).rejects.toBeInstanceOf(ValidationError);
     await expect(absent).rejects.toMatchObject({
       fieldErrors: [{ path: "items.1.exerciseId", message: expect.any(String) }],
@@ -148,7 +148,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
       fieldErrors: [{ path: "items.0.exerciseId" }],
     });
 
-    const ret = repo().create(u, routineFixture([ok, ok, retired]));
+    const ret = repo().create(u, routineFixture([ok, ok, retired])).then((r) => r.routine);
     await expect(ret).rejects.toBeInstanceOf(ExerciseRetiredError);
     await expect(ret).rejects.toMatchObject({ fieldErrors: [{ path: "items.2.exerciseId" }] });
 
@@ -163,16 +163,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const ex = await insertExercise(db);
     for (const name of ["cherry", "Banana", "apple"]) await repo().create(u, routineFixture([ex, ex], { name }));
     await repo().create(v, routineFixture([ex], { name: "Aardvark" }));
-    const mine = await repo().list(u);
+    const mine = (await repo().list(u)).routines;
     expect(mine.map((r) => r.name)).toEqual(["apple", "Banana", "cherry"]);
     expect(mine.every((r) => r.items.map((i) => i.position).join() === "0,1")).toBe(true);
-    expect(await repo().list(await insertUser(db))).toEqual([]);
+    expect((await repo().list(await insertUser(db))).routines).toEqual([]);
   });
 
   it("§6.4 — list and getById are each ONE statement, so a concurrent replace can never tear a read (code review)", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const a = await repo().create(u, routineFixture([ex, ex], { name: "A" }));
+    const a = (await repo().create(u, routineFixture([ex, ex], { name: "A" }))).routine;
     await repo().create(u, routineFixture([ex], { name: "B" }));
     const statements: string[] = [];
     // The test client logs query events (helpers.ts); count the SELECTs each read issues.
@@ -183,7 +183,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const one = await repo().getById(u, a.id);
     expect(one.items).toHaveLength(2);
     const afterGet = statements.length;
-    const all = await repo().list(u);
+    const all = (await repo().list(u)).routines;
     expect(all.map((r) => r.items.length)).toEqual([2, 1]);
     expect(statements.slice(0, afterGet), statements.join("\n")).toHaveLength(1);
     // Amended by Spec 09.3 AC21 / AC30: the list first runs the sweep's one probe (nothing is expired here),
@@ -197,7 +197,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository create /
     const u = await insertUser(db);
     const v = await insertUser(db);
     const ex = await insertExercise(db);
-    const theirs = await repo().create(v, routineFixture([ex]));
+    const theirs = (await repo().create(v, routineFixture([ex]))).routine;
     for (const id of [uuidv7(), "nope", theirs.id]) {
       await expect(repo().getById(u, id)).rejects.toBeInstanceOf(NotFoundError);
     }

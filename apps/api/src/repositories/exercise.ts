@@ -134,8 +134,8 @@ export interface ExerciseRepository {
    * so a same-user race against a concurrent `DELETE` can never silently apply
    * an edit to a row that just became retired. Throws `NotFoundError` (not
    * visible), `ExerciseRetiredError` (target soft-deleted or retired, whoever owns it),
-   * `ExerciseImmutableUseForkError` (target is an active global row), or `ValidationError`
-   * (merged result fails the cross-field check), or — Spec 03.4 — `ExerciseTypeLockedError` (an incompatible type
+   * `ExerciseImmutableUseForkError` (target is an active global row), `ValidationError`
+   * (merged result fails the cross-field check), or `ExerciseTypeLockedError` (Spec 03.4: an incompatible type
    * change on a lineage with the caller's logged sets).
    */
   updateExercise(

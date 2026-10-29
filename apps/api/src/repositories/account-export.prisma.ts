@@ -7,7 +7,7 @@ import { ROUTINE_WITH_ITEMS, toRoutine, type RoutineDbRow } from "./routine.pris
 import { SET_ENTRY_COLUMNS, toSetRecord, type RawClient, type SetEntryDbRow } from "./set-entry.prisma.js";
 import { toUserRecord } from "./user.prisma.js";
 import {
-  ROUTINE_IS_ONE_OFF,
+  routineIsOneOffSql,
   WE_PLANNED_SETS,
   toWorkoutExerciseRecord,
   toWorkoutRecord,
@@ -99,7 +99,7 @@ export function createAccountExportRepository(
             SELECT id, user_id, title, notes, started_at, ended_at, local_date,
                    tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s,
                    routine_notes_snapshot, ${workoutSectionsJson('"workout".id')} AS sections,
-                   ${ROUTINE_IS_ONE_OFF('"workout"')} AS routine_is_one_off
+                   ${routineIsOneOffSql('"workout"')} AS routine_is_one_off
             FROM "workout" WHERE user_id = ${userId}::uuid
             ORDER BY started_at, id`;
           const exerciseOfWorkoutRows = await tx.$queryRaw<WorkoutExerciseDbRow[]>`

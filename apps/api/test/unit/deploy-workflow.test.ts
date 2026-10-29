@@ -141,3 +141,13 @@ describe("15 AC3 / AC20 — final review fixes", () => {
     expect(deploy.steps.at(-1)!.run).toMatch(/actions\/runs\/\$\{?GITHUB_RUN_ID\}?\/approvals/);
   });
 });
+
+describe("Minor 80 — deploy-prod generates no Prisma client", () => {
+  it("no step runs prisma generate or carries a placeholder DATABASE_URL; migrate status still comes right after install", () => {
+    const steps = prod().jobs.deploy!.steps;
+    expect(steps.some((s) => /prisma generate/.test(s.run ?? ""))).toBe(false);
+    expect(steps.some((s) => /placeholder/.test(String(s.env?.["DATABASE_URL"] ?? "")))).toBe(false);
+    const install = indexOf(steps, (s) => /pnpm install --frozen-lockfile/.test(s.run ?? ""));
+    expect(steps[install + 1]!.name).toBe("No unapplied migrations");
+  });
+});

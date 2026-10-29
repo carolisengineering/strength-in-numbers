@@ -185,3 +185,74 @@ describe("09.3 AC29 — one-off log lines carry ids, counts and booleans only", 
     expect(JSON.stringify(lines)).not.toMatch(/distinctive-|test-token/);
   });
 });
+
+describe("Minor 42 — the sweep count is returned", () => {
+  const U = uuidv7();
+  const fields = (name: string, oneOff = false) => ({ name, notes: null, items: [{ exerciseId: EX.id }], ...(oneOff ? { oneOff: true as const } : {}) });
+  const expireAll = (repo: FakeRoutineRepository) => {
+    for (const r of repo.routines.values()) if (r.oneOffUntil !== null) r.oneOffUntil = new Date(Date.now() - 60_000);
+  };
+
+  it("list returns { routines, swept }", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const repo = new FakeRoutineRepository(exerciseRepo);
+    await repo.create(U, fields("A", true));
+    await repo.create(U, fields("B", true));
+    await repo.create(U, fields("C"));
+    expireAll(repo);
+    const first = await repo.list(U);
+    expect([first.swept, first.routines.map((r) => r.name)]).toEqual([2, ["C"]]);
+    expect((await repo.list(U)).swept).toBe(0);
+  });
+
+  it("create returns { routine, swept }", async () => {
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const repo = new FakeRoutineRepository(exerciseRepo);
+    await repo.create(U, fields("A", true));
+    expireAll(repo);
+    const out = await repo.create(U, fields("B"));
+    expect([out.swept, out.routine.name]).toEqual([1, "B"]);
+  });
+
+  it("the create route logs the count it returned, after the call", async () => {
+    const { app, lines, routineRepo } = await setup();
+    await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "A", items: [{ exerciseId: EX.id }], oneOff: true } });
+    expireAll(routineRepo);
+    const res = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
+    expect(res.statusCode).toBe(201);
+    expect(lines.filter((l) => l.msg === "routine_one_offs_expired").map((l) => l.routine_count)).toEqual([1]);
+  });
+
+  // The fake's sweep doesn't roll back; the real one does, pinned in routine-one-off-sweep.integration.test.ts.
+  it("Review Focus 2 — a create that throws logs nothing", async () => {
+    const { app, lines, routineRepo } = await setup();
+    await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "A", items: [{ exerciseId: EX.id }], oneOff: true } });
+    await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
+    expireAll(routineRepo);
+    const res = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload: { name: "B", items: [{ exerciseId: EX.id }] } });
+    expect(res.statusCode).toBe(409);
+    expect(lines.filter((l) => l.msg === "routine_one_offs_expired")).toEqual([]);
+  });
+});
+
+describe("Minor 39 — two workout fakes on one routine fake", () => {
+  it("Review Focus 1 — both fakes' live workouts hold their routines; neither overwrites the other", async () => {
+    const U = uuidv7();
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const routines = new FakeRoutineRepository(exerciseRepo);
+    const first = new FakeWorkoutRepository(exerciseRepo, routines);
+    const second = new FakeWorkoutRepository(exerciseRepo, routines);
+    const a = (await routines.create(U, { name: "A", notes: null, items: [{ exerciseId: EX.id }], oneOff: true })).routine;
+    const b = (await routines.create(U, { name: "B", notes: null, items: [{ exerciseId: EX.id }], oneOff: true })).routine;
+    const start = (repo: FakeWorkoutRepository, routineId: string) =>
+      repo.createWorkout(U, { clientGeneratedId: uuidv7(), startedAt: new Date(), tzOffsetMinutes: 0, title: null, notes: null, routineId }, "UTC");
+    await start(first, a.id);
+    await start(second, b.id);
+    for (const r of routines.routines.values()) r.oneOffUntil = new Date(Date.now() - 60_000);
+    const listed = await routines.list(U);
+    expect([listed.swept, listed.routines.map((r) => r.name).sort()]).toEqual([0, ["A", "B"]]);
+  });
+});

@@ -96,7 +96,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
   async function setup(name = "Class", oneOff = true) {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u, name: "Squat", modality: "weight_reps" });
-    const routine = await routines().create(u, doc(ex, name, oneOff));
+    const routine = (await routines().create(u, doc(ex, name, oneOff))).routine;
     return { u, ex, routine };
   }
   /** Holds `FOR UPDATE` on a routine row in another transaction until released. */
@@ -177,14 +177,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
       expect(row.updated_at.getTime()).toBeGreaterThan(before.updated_at.getTime());
       expect(await q(`SELECT count(*)::int AS n FROM "routine_item" WHERE routine_id = $1::uuid`, routine.id)).toEqual(children);
       expect(await childCount(routine.id)).toBeGreaterThan(0);
-      expect((await routines().list(u)).map((r) => [r.id, r.oneOffUntil])).toEqual([[routine.id, null]]);
+      expect(((await routines().list(u)).routines).map((r) => [r.id, r.oneOffUntil])).toEqual([[routine.id, null]]);
     });
   });
 
   describe("09.3 AC14 — everything else is unaffected", () => {
     it("manual, ordinary, hand-deleted and kept-elsewhere finishes change no routine, keepRoutine or not", async () => {
       const { u, ex } = await setup("unused", false);
-      const ordinary = await routines().create(u, doc(ex, "Ordinary", false));
+      const ordinary = (await routines().create(u, doc(ex, "Ordinary", false))).routine;
       const routineTable = async () => JSON.stringify(await q(`SELECT to_jsonb(r) FROM "routine" r ORDER BY id`));
 
       for (const keepRoutine of [true, undefined]) {
@@ -196,12 +196,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
         expect(await routineTable()).toBe(before);
       }
 
-      const gone = await routines().create(u, doc(ex, "Gone", true));
+      const gone = (await routines().create(u, doc(ex, "Gone", true))).routine;
       const w1 = await startAndLog(u, gone.id);
       await routines().delete(u, gone.id);
       expect((await workouts().updateWorkout(u, w1.workoutId, { endedAt: now() })).oneOff).toBe("none");
 
-      const keptElsewhere = await routines().create(u, doc(ex, "Kept elsewhere", true));
+      const keptElsewhere = (await routines().create(u, doc(ex, "Kept elsewhere", true))).routine;
       const w2 = await startAndLog(u, keptElsewhere.id);
       await routines().keep(u, keptElsewhere.id);
       const snap = await routineSnapshot(keptElsewhere.id);
@@ -313,7 +313,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
 
     it("a finished-workout set edit leaves an unrelated one-off untouched", async () => {
       const { u, ex, routine } = await setup();
-      const ordinary = await routines().create(u, doc(ex, "Ordinary", false));
+      const ordinary = (await routines().create(u, doc(ex, "Ordinary", false))).routine;
       const { workoutId } = await startAndLog(u, ordinary.id);
       await workouts().updateWorkout(u, workoutId, { endedAt: now() });
       const snap = await routineSnapshot(routine.id);
@@ -387,7 +387,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
         sectionKey: `s${Math.min(7, Math.floor(i / 4))}`,
         sets: Array.from({ length: 20 }, () => ({ setType: "working" as const, repsLow: 5, repsHigh: 5, weight: 100, weightUnit: "kg" as const })),
       }));
-      const routine = await routines().create(u, { name: "Max", oneOff: true, sections, items });
+      const routine = (await routines().create(u, { name: "Max", oneOff: true, sections, items })).routine;
       const { workoutId } = await workouts()
         .createWorkout(u, { clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 3_600_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id }, "UTC")
         .then((r) => ({ workoutId: r.workout.id }));

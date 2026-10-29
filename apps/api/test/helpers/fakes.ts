@@ -71,7 +71,6 @@ import type {
   RoutineSectionRecord,
   RoutineCreateFields,
   RoutineWriteFields,
-  SweepObserver,
 } from "../../src/repositories/routine.js";
 import {
   assertAddPositionInRange,
@@ -484,14 +483,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     /** Spec 09: the routine source for `createWorkout({ routineId })`. */
     private readonly routineRepository?: FakeRoutineRepository,
   ) {
-    if (routineRepository) {
-      routineRepository.liveRoutineIds = () =>
+    routineRepository?.addLiveRoutineProvider(
+      () =>
         new Set(
           [...this.sectionsByWorkout.entries()]
             .filter(([workoutId, snap]) => snap.routineId && this.workouts.get(workoutId)?.endedAt === null)
             .map(([, snap]) => snap.routineId!),
-        );
-    }
+        ),
+    );
   }
 
   private ownedWorkoutOrThrow(actingUserId: string, id: string): WorkoutRecord {
@@ -1170,13 +1169,18 @@ export class FakePersonalRecordRepository implements PersonalRecordRepository {
  */
 export class FakeRoutineRepository implements RoutineRepository {
   routines = new Map<string, RoutineRecord>();
-  /** Spec 09.3 — routines a live workout was started from; a `FakeWorkoutRepository` built on this fake sets it. */
-  liveRoutineIds: () => Set<string> = () => new Set();
+  /** Spec 09.3 — each `FakeWorkoutRepository` built on this fake adds one: the routines its live workouts were started from. */
+  private readonly liveRoutineProviders: (() => Set<string>)[] = [];
+
+  /** Minor 39: every workout fake built on this one adds its provider; none replaces another's. */
+  addLiveRoutineProvider(fn: () => Set<string>): void {
+    this.liveRoutineProviders.push(fn);
+  }
 
   /** Spec 09.3 §6.1 — drop the caller's expired one-offs that no live workout holds; returns how many. */
   private sweep(actingUserId: string): number {
     const now = Date.now();
-    const held = this.liveRoutineIds();
+    const held = new Set(this.liveRoutineProviders.flatMap((fn) => [...fn()]));
     let removed = 0;
     for (const r of [...this.routines.values()]) {
       if (r.userId === actingUserId && r.oneOffUntil !== null && r.oneOffUntil.getTime() <= now && !held.has(r.id)) {
@@ -1257,10 +1261,9 @@ export class FakeRoutineRepository implements RoutineRepository {
   }
 
   /** Spec 09.3 AC3 — the same keys as `ROUTINE_ONE_OFF_ORDER`: one-offs first, newest created first, then by name. */
-  async list(actingUserId: string, onSwept?: SweepObserver): Promise<RoutineRecord[]> {
-    const removed = this.sweep(actingUserId);
-    if (removed > 0) onSwept?.(removed);
-    return [...this.routines.values()]
+  async list(actingUserId: string): Promise<{ routines: RoutineRecord[]; swept: number }> {
+    const swept = this.sweep(actingUserId);
+    const routines = [...this.routines.values()]
       .filter((r) => r.userId === actingUserId)
       .sort(
         (a, b) =>
@@ -1269,13 +1272,14 @@ export class FakeRoutineRepository implements RoutineRepository {
           a.name.toLowerCase().localeCompare(b.name.toLowerCase()) ||
           a.id.localeCompare(b.id),
       );
+    return { routines, swept };
   }
 
   async getById(actingUserId: string, id: string): Promise<RoutineRecord> {
     return this.owned(actingUserId, id);
   }
 
-  async create(actingUserId: string, fields: RoutineCreateFields, onSwept?: SweepObserver): Promise<RoutineRecord> {
+  async create(actingUserId: string, fields: RoutineCreateFields): Promise<{ routine: RoutineRecord; swept: number }> {
     const removed = this.sweep(actingUserId);
     const now0 = Date.now();
     const counted = [...this.routines.values()].filter(
@@ -1300,8 +1304,7 @@ export class FakeRoutineRepository implements RoutineRepository {
       oneOffUntil: fields.oneOff ? new Date(now.getTime() + ROUTINE_ONE_OFF_DAYS * 86_400_000) : null,
     };
     this.routines.set(id, r);
-    if (removed > 0) onSwept?.(removed);
-    return r;
+    return { routine: r, swept: removed };
   }
 
   async keep(actingUserId: string, id: string): Promise<{ changed: boolean }> {

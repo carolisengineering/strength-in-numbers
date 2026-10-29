@@ -45,8 +45,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
     it("oneOff: true stores created_at + 336 hours on the database clock; without it the column is NULL", async () => {
       const u = await insertUser(db);
       const ex = await insertExercise(db, { ownerUserId: u });
-      const one = await routines().create(u, routineFixture([ex], { name: "One", oneOff: true }));
-      const plain = await routines().create(u, routineFixture([ex], { name: "Plain" }));
+      const one = (await routines().create(u, routineFixture([ex], { name: "One", oneOff: true }))).routine;
+      const plain = (await routines().create(u, routineFixture([ex], { name: "Plain" }))).routine;
       const [row] = await q<{ gap: string; until: Date }>(
         `SELECT (one_off_until - created_at)::text AS gap, one_off_until AS until FROM "routine" WHERE id = $1::uuid`, one.id);
       expect(row!.gap).toBe("14 days");
@@ -60,8 +60,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
     it("replacing a one-off or an ordinary routine keeps one_off_until byte-identical", async () => {
       const u = await insertUser(db);
       const [a, b] = [await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u })];
-      const one = await routines().create(u, routineFixture([a], { name: "One", oneOff: true }));
-      const plain = await routines().create(u, routineFixture([a], { name: "Plain" }));
+      const one = (await routines().create(u, routineFixture([a], { name: "One", oneOff: true }))).routine;
+      const plain = (await routines().create(u, routineFixture([a], { name: "Plain" }))).routine;
       const raw = async (id: string) =>
         (await q<{ v: string | null }>(`SELECT one_off_until::text AS v FROM "routine" WHERE id = $1::uuid`, id))[0]!.v;
       const [oneBefore, plainBefore] = [await raw(one.id), await raw(plain.id)];
@@ -83,14 +83,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
         x(
           `UPDATE "routine" SET created_at = created_at - make_interval(mins => $2::int), one_off_until = one_off_until - make_interval(mins => $2::int) WHERE id = $1::uuid`,
           id, minutes);
-      const c = await routines().create(u, routineFixture([ex], { name: "c-one", oneOff: true }));
-      const a = await routines().create(u, routineFixture([ex], { name: "A-one", oneOff: true }));
-      const b = await routines().create(u, routineFixture([ex], { name: "b-one", oneOff: true }));
+      const c = (await routines().create(u, routineFixture([ex], { name: "c-one", oneOff: true }))).routine;
+      const a = (await routines().create(u, routineFixture([ex], { name: "A-one", oneOff: true }))).routine;
+      const b = (await routines().create(u, routineFixture([ex], { name: "b-one", oneOff: true }))).routine;
       await shift(c.id, 3);
       await shift(a.id, 2);
       await shift(b.id, 1);
       for (const name of ["delta", "Alpha", "charlie", "Bravo"]) await routines().create(u, routineFixture([ex], { name }));
-      const listed = await routines().list(u);
+      const listed = (await routines().list(u)).routines;
       expect(listed.map((r) => r.name)).toEqual(["b-one", "A-one", "c-one", "Alpha", "Bravo", "charlie", "delta"]);
       for (const r of listed) expect((await routines().getById(u, r.id)).name).toBe(r.name);
     });
@@ -98,12 +98,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
     it("one-offs created at the same instant fall back to lower(name)", async () => {
       const u = await insertUser(db);
       const ex = await insertExercise(db, { ownerUserId: u });
-      const z = await routines().create(u, routineFixture([ex], { name: "zed", oneOff: true }));
-      const y = await routines().create(u, routineFixture([ex], { name: "Yak", oneOff: true }));
+      const z = (await routines().create(u, routineFixture([ex], { name: "zed", oneOff: true }))).routine;
+      const y = (await routines().create(u, routineFixture([ex], { name: "Yak", oneOff: true }))).routine;
       await x(
         `UPDATE "routine" SET created_at = '2026-10-20T10:00:00Z', one_off_until = '2026-11-03T10:00:00Z' WHERE id = ANY($1::uuid[])`,
         [z.id, y.id]);
-      expect((await routines().list(u)).map((r) => r.name)).toEqual(["Yak", "zed"]);
+      expect(((await routines().list(u)).routines).map((r) => r.name)).toEqual(["Yak", "zed"]);
     });
   });
 
@@ -127,7 +127,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
     routines().create(u, {
       ...routineFixture([ex], { name, oneOff: true, sections: [{ key: "s", name: "Main", notes: "n" }] }),
       items: [{ exerciseId: ex, sectionKey: "s", sets: [{ setType: "working", repsLow: 5, repsHigh: 5 }] }],
-    });
+    }).then((r) => r.routine);
 
   describe("09.3 AC8 — Keep", () => {
     it("clears the mark and bumps updated_at; children, id and name untouched; never swept afterwards", async () => {
@@ -144,7 +144,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
       expect(await childSnapshot(r.id)).toBe(children);
       expect((await routines().getById(u, r.id)).oneOffUntil).toBeNull();
       await x(`UPDATE "routine" SET created_at = created_at - interval '30 days' WHERE id = $1::uuid`, r.id);
-      expect((await routines().list(u)).map((x) => x.id)).toEqual([r.id]);
+      expect(((await routines().list(u)).routines).map((x) => x.id)).toEqual([r.id]);
     });
   });
 
@@ -158,7 +158,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
       expect(await routines().keep(u, r.id)).toEqual({ changed: false });
       expect((await header(r.id))!.updated_at.getTime()).toBe(once!.updated_at.getTime());
 
-      const plain = await routines().create(u, routineFixture([ex], { name: "Plain" }));
+      const plain = (await routines().create(u, routineFixture([ex], { name: "Plain" }))).routine;
       const plainBefore = await header(plain.id);
       expect(await routines().keep(u, plain.id)).toEqual({ changed: false });
       expect((await header(plain.id))!.updated_at.getTime()).toBe(plainBefore!.updated_at.getTime());
@@ -166,7 +166,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
       const stale = await richOneOff(u, ex, "Stale");
       await ageOneOff(db, stale.id, 20);
       expect(await routines().keep(u, stale.id)).toEqual({ changed: true });
-      expect((await routines().list(u)).map((x) => x.name)).toContain("Stale");
+      expect(((await routines().list(u)).routines).map((x) => x.name)).toContain("Stale");
     });
 
     it("a foreign, missing, malformed or swept id is NotFoundError, and the owner's mark is untouched", async () => {
@@ -224,12 +224,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
       expect(await flag(w)).toBe(false);
       await clear(w);
 
-      const ordinary = await routines().create(u, routineFixture([ex], { name: "Ordinary" }));
+      const ordinary = (await routines().create(u, routineFixture([ex], { name: "Ordinary" }))).routine;
       w = await liveFrom(u, ex, ordinary.id);
       expect(await flag(w)).toBe(false);
       await clear(w);
 
-      const oneOff = await routines().create(u, routineFixture([ex], { name: "One-off" }));
+      const oneOff = (await routines().create(u, routineFixture([ex], { name: "One-off" }))).routine;
       await markOneOff(oneOff.id);
       w = await liveFrom(u, ex, oneOff.id);
       expect(await flag(w)).toBe(true);

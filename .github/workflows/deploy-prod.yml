@@ -91,9 +91,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @sin/api exec prisma generate
-        env:
-          DATABASE_URL: postgresql://placeholder # the schema parser needs a value; nothing connects
+      # No `prisma generate` (minor 80): `migrate status` runs the Prisma CLI, and nothing here imports the client.
       # AC15 / §6.5: first after approval, before any change. The database URL is scoped to this step only.
       - name: No unapplied migrations
         run: pnpm --filter @sin/api exec tsx scripts/check-migrate-status.ts

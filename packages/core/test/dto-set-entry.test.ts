@@ -216,3 +216,12 @@ describe("05.3 AC39 — feet on the wire", () => {
     expect(JSON.stringify(r.error?.issues)).not.toContain("yd\"");
   });
 });
+
+describe("Minor 86 — a read's calories stay within the column (owner ruling O1)", () => {
+  it("Review Focus 5 — 32,767 passes the response schema and 32,768 fails; 0 and null pass", () => {
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: SET_CALORIES_MAX }).success).toBe(true);
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: SET_CALORIES_MAX + 1 }).success).toBe(false);
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: 0 }).success).toBe(true);
+    expect(SetEntrySchema.safeParse({ ...validSet, calories: null }).success).toBe(true);
+  });
+});

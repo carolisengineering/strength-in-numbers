@@ -378,6 +378,8 @@ export function createExerciseRepository(
         if (await lineageHasSets(actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
         const retried = (await write())[0];
         if (retried) return { exercise: toRecord(retried), modalityChanged };
+        // Minor 103: a DELETE can land between the recheck and the retry; it is still a retire, not a broken invariant.
+        if (!toRecord(await loadVisibleRow(actingUserId, id)).isActive) throw new ExerciseRetiredError();
       }
       // #24: ownership cannot change under a caller, so a row that is still owned and
       // active here means an invariant broke — surface it as one, not as "use fork".
@@ -428,9 +430,9 @@ export function createExerciseRepository(
       // logged in that instant is the accepted residual of D7.
       const from = origin.modality as Modality;
       const to = overlay.modality as Modality | undefined;
-      if (to !== undefined && to !== from && !modalitiesCompatible(from, to) && (await lineageHasSets(actingUserId, lineageRootId(origin)))) {
-        throw new ExerciseTypeLockedError(from, to);
-      }
+      const incompatible = to !== undefined && to !== from && !modalitiesCompatible(from, to);
+      const conflicts = incompatible && (await lineageHasSets(actingUserId, lineageRootId(origin)));
+      if (conflicts) throw new ExerciseTypeLockedError(from, to);
 
       const row = await insertWithCap(actingUserId, merged, origin.id);
       if (!row) throw new CustomExerciseLimitError();

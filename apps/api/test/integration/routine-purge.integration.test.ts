@@ -28,7 +28,7 @@ describe.skipIf(!shouldRunIntegration())("AC29 — account purge cascades routin
   it("DELETE FROM user with a custom exercise used in the user's own routine and a routine-started workout succeeds in one statement", async () => {
     const u = await insertUser(db);
     const custom = await insertExercise(db, { ownerUserId: u });
-    const r = await createRoutineRepository(db.prisma).create(u, routineFixture([custom]));
+    const r = (await createRoutineRepository(db.prisma).create(u, routineFixture([custom]))).routine;
     const { workoutId } = await logWorkout(db, u, { startedAt: new Date(), exercises: [] });
     await db.prisma.$executeRawUnsafe(
       `UPDATE "workout" SET routine_id = $1::uuid, routine_name_snapshot = 'Push A' WHERE id = $2::uuid`,
@@ -45,9 +45,9 @@ describe.skipIf(!shouldRunIntegration())("AC29 — account purge cascades routin
   it("AC21 (09.1) — DELETE FROM user cascades routine_item_set and workout_planned_set", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const routine = await createRoutineRepository(db.prisma).create(u, {
+    const routine = (await createRoutineRepository(db.prisma).create(u, {
       name: "R", notes: null, items: [{ exerciseId: ex, sets: [{ weight: 50, weightUnit: "kg" }] }],
-    });
+    })).routine;
     const started = await createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)).createWorkout(
       u,
       { clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id },
@@ -63,7 +63,7 @@ describe.skipIf(!shouldRunIntegration())("AC29 — account purge cascades routin
   it("AC23 (09.2) — DELETE FROM user cascades routine_section and workout_section in one statement", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const routine = await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { sections: [{ key: "k", name: "Main", notes: "n" }], sectionKeys: ["k"] }));
+    const routine = (await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { sections: [{ key: "k", name: "Main", notes: "n" }], sectionKeys: ["k"] }))).routine;
     const started = await createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)).createWorkout(
       u,
       { clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id },

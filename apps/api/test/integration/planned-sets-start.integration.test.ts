@@ -39,7 +39,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — start copy and workout r
   async function fixture(u: string) {
     const a = await insertExercise(db, { ownerUserId: u });
     const b = await insertExercise(db, { ownerUserId: u });
-    const routine = await routines().create(u, {
+    const routine = (await routines().create(u, {
       name: "Day 1", notes: null,
       items: [
         { exerciseId: a, sets: RAMP },
@@ -47,7 +47,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — start copy and workout r
         { exerciseId: a, sets: LIGHT },
         { exerciseId: b, targetSets: 2, targetRepsLow: 8, targetRepsHigh: 8 },
       ],
-    });
+    })).routine;
     return { a, b, routine };
   }
 

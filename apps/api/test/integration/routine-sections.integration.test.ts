@@ -49,37 +49,37 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
 
   it("AC4 — create stores positions by index, maps items to sections, and a re-read is identical", async () => {
     const { u, a, b, c } = await fixture();
-    const created = await repo().create(u, parse({
+    const created = (await repo().create(u, parse({
       name: "Push day", notes: "note",
       sections: [{ key: "warm", name: "Warm-up", notes: "5 min rower" }, { key: "main", name: "Main" }],
       items: [{ exerciseId: a }, { exerciseId: b, sectionKey: "main", supersetGroup: 1 }, { exerciseId: c, sectionKey: "main", supersetGroup: 1 }],
-    }));
+    }))).routine;
     expect(created.sections.map((s) => [s.position, s.name, s.notes])).toEqual([[0, "Warm-up", "5 min rower"], [1, "Main", null]]);
     const main = created.sections[1]!.id;
     expect(created.items.map((i) => i.sectionId)).toEqual([null, main, main]);
     expect(await repo().getById(u, created.id)).toEqual(created);
-    expect((await repo().list(u))[0]).toEqual(created);
+    expect(((await repo().list(u)).routines)[0]).toEqual(created);
   });
 
   it("AC4 — a body with no sections reads sections: [] and sectionId: null", async () => {
     const { u, a } = await fixture();
-    const r = await repo().create(u, parse({ name: "Plain", items: [{ exerciseId: a }] }));
+    const r = (await repo().create(u, parse({ name: "Plain", items: [{ exerciseId: a }] }))).routine;
     expect(r.sections).toEqual([]);
     expect(r.items[0]!.sectionId).toBeNull();
   });
 
   it("Review Focus 2 — a section keyed `__proto__` and an item pointing at it round-trip", async () => {
     const { u, a } = await fixture();
-    const r = await repo().create(u, parse({ name: "Proto", sections: [{ key: "__proto__", name: "P" }], items: [{ exerciseId: a, sectionKey: "__proto__" }] }));
+    const r = (await repo().create(u, parse({ name: "Proto", sections: [{ key: "__proto__", name: "P" }], items: [{ exerciseId: a, sectionKey: "__proto__" }] }))).routine;
     expect(r.items[0]!.sectionId).toBe(r.sections[0]!.id);
   });
 
   it("AC9 — a PUT replaces the sections with fresh ids; none of the old survive; sections: [] removes all", async () => {
     const { u, a, b, c } = await fixture();
-    const created = await repo().create(u, parse({
+    const created = (await repo().create(u, parse({
       name: "R", sections: [{ key: "x", name: "X" }, { key: "y", name: "Y" }],
       items: [{ exerciseId: a, sectionKey: "x" }, { exerciseId: b, sectionKey: "x" }, { exerciseId: c, sectionKey: "y" }, { exerciseId: a, sectionKey: "y" }],
-    }));
+    }))).routine;
     const oldIds = await sectionIds(created.id);
     const replaced = await repo().replace(u, created.id, parse({ name: "R", sections: [{ key: "only", name: "Only" }], items: [{ exerciseId: a, sectionKey: "only" }, { exerciseId: b, sectionKey: "only" }] }));
     expect(replaced.sections).toHaveLength(1);
@@ -93,7 +93,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
 
   it("AC9 — a failing PUT leaves routine, sections and items byte-identical (a retired exercise; a failure AFTER the deletes)", async () => {
     const { u, a, b } = await fixture();
-    const created = await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X" }], items: [{ exerciseId: a, sectionKey: "x" }, { exerciseId: b, sectionKey: "x" }] }));
+    const created = (await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X" }], items: [{ exerciseId: a, sectionKey: "x" }, { exerciseId: b, sectionKey: "x" }] }))).routine;
     const before = await rawHash(created.id);
     await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, b);
     await expect(repo().replace(u, created.id, parse({ name: "R2", sections: [{ key: "z", name: "Z" }], items: [{ exerciseId: b, sectionKey: "z" }] }))).rejects.toBeInstanceOf(ExerciseRetiredError);
@@ -108,7 +108,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
 
   it("AC9 — deleting the routine deletes its sections", async () => {
     const { u, a } = await fixture();
-    const r = await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X" }], items: [{ exerciseId: a }] }));
+    const r = (await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X" }], items: [{ exerciseId: a }] }))).routine;
     await repo().delete(u, r.id);
     expect(await sectionIds(r.id)).toEqual([]);
   });
@@ -122,7 +122,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
       "same-named sections": { name: "S4", sections: [{ key: "p", name: "Accessory" }, { key: "q", name: "Accessory" }], items: [{ exerciseId: a, sectionKey: "p" }, { exerciseId: b, sectionKey: "q" }] },
     };
     for (const [label, body] of Object.entries(shapes)) {
-      const created = await repo().create(u, parse(body));
+      const created = (await repo().create(u, parse(body))).routine;
       const sent = (body as { sections?: { name: string; notes?: string }[] }).sections ?? [];
       expect(created.sections.map((s) => [s.name, s.notes]), label).toEqual(sent.map((s) => [s.name, s.notes ?? null]));
       expect(await repo().getById(u, created.id), label).toEqual(created);
@@ -131,7 +131,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
 
   it("Review Focus 3 — a legacy PUT (no sections, no sectionKey) over a sectioned routine clears the sections and keeps the items", async () => {
     const { u, a, b } = await fixture();
-    const created = await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X", notes: "n" }], items: [{ exerciseId: a, sectionKey: "x" }, { exerciseId: b, sectionKey: "x", notes: "keep" }] }));
+    const created = (await repo().create(u, parse({ name: "R", sections: [{ key: "x", name: "X", notes: "n" }], items: [{ exerciseId: a, sectionKey: "x" }, { exerciseId: b, sectionKey: "x", notes: "keep" }] }))).routine;
     const flat = await repo().replace(u, created.id, parse({ name: "R", items: [{ exerciseId: a }, { exerciseId: b, notes: "keep" }] }));
     expect(flat.sections).toEqual([]);
     expect(flat.items.map((i) => [i.exerciseId, i.sectionId, i.notes])).toEqual([[a, null, null], [b, null, "keep"]]);
@@ -142,7 +142,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
     // Zod 4 and Postgres char_length both count code points, so 40 emoji (80 UTF-16 units) is the legal maximum.
     const name = "\u{1F600}".repeat(40);
     const notes = "line one\r\nline\ttwo \u{1F4AA}\n";
-    const r = await repo().create(u, parse({ name: "Astral", sections: [{ key: "k", name, notes }], items: [{ exerciseId: a, sectionKey: "k" }] }));
+    const r = (await repo().create(u, parse({ name: "Astral", sections: [{ key: "k", name, notes }], items: [{ exerciseId: a, sectionKey: "k" }] }))).routine;
     expect(r.sections[0]).toMatchObject({ name, notes });
     expect(RoutineWriteSchema.safeParse({ name: "x", sections: [{ key: "k", name: "\u{1F600}".repeat(41) }], items: [{ exerciseId: a }] }).success).toBe(false);
   });
@@ -153,7 +153,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine sections (real P
       label: string; body: unknown; expect: { items: Record<string, unknown>[] };
     }[];
     for (const rec of recorded) {
-      const r: RoutineRecord = await repo().create(u, parse(JSON.parse(JSON.stringify(rec.body).replaceAll("$EX", a))));
+      const r: RoutineRecord = (await repo().create(u, parse(JSON.parse(JSON.stringify(rec.body).replaceAll("$EX", a))))).routine;
       expect(r.sections, rec.label).toEqual([]);
       r.items.forEach((it, i) => {
         const want = rec.expect.items[i]!;

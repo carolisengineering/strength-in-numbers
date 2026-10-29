@@ -141,6 +141,13 @@ export interface WorkoutFakeOptions {
   activeRoutineId?: string;
   /** Spec 10.5: the fake's clock for `oneOffUntil`. Default `Date.now`. */
   now?: () => number;
+  /**
+   * Minor 46: `GET /routines` drops the expired one-offs the live workout doesn't hold, as the server's list does
+   * (09.3 AC19); the fake's `POST /routines` does not sweep, though the server's does (AC21).
+   * Off by default: a test of a past expiry on the list (10.5 AC4–AC6) models a device clock ahead of the server's,
+   * where the server has not swept yet.
+   */
+  sweepExpired?: boolean;
 }
 
 export function problemResponse(
@@ -384,6 +391,17 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       updatedAt: now(),
     });
   }
+
+  /**
+   * Spec 09.3 AC19 (minor 46): with `sweepExpired`, the list, like the server's, first drops the expired one-offs the
+   * live workout doesn't hold. Only the list sweeps here; on the server `POST /routines` does too (AC21).
+   */
+  const sweepExpiredOneOffs = () => {
+    const held = state.active !== null && state.active.endedAt === null ? state.links.get(state.active.id) : undefined;
+    for (const [id, r] of state.routines) {
+      if (r.oneOffUntil !== null && Date.parse(r.oneOffUntil) <= clock() && id !== held) state.routines.delete(id);
+    }
+  };
 
   /** Spec 09.3 AC3: one-offs first, newest created first; then lowercase name, then id. */
   const sortedRoutines = () =>
@@ -657,7 +675,10 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
           }),
         ]
       : []),
-    handle("get", "/routines", () => HttpResponse.json({ routines: sortedRoutines() })),
+    handle("get", "/routines", () => {
+      if (options.sweepExpired === true) sweepExpiredOneOffs();
+      return HttpResponse.json({ routines: sortedRoutines() });
+    }),
     handle("post", "/routines", ({ body }) => {
       if (state.routines.size >= ROUTINES_PER_USER_MAX) return problemResponse(409, "routine-limit");
       const result = routineWrite(body, null, RoutineCreateSchema);
