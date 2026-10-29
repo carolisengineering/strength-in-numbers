@@ -99,6 +99,44 @@ describe("03.4 AC15 — atomic, with a recheck", () => {
   });
 });
 
+/** A type change whose UPDATEs and visibility reads answer in turn (the last answer repeats); the lineage has no sets. */
+function repoScripted(opts: { updates: unknown[][]; reads: unknown[][] }) {
+  let u = 0;
+  let r = 0;
+  const statements: string[] = [];
+  const queryRaw = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = Prisma.sql(strings, ...values).sql.replace(/\$\d+/g, "?");
+    statements.push(sql);
+    if (/^\s*UPDATE "exercise"/.test(sql)) return opts.updates[Math.min(u++, opts.updates.length - 1)];
+    if (/set_entry/.test(sql)) return [{ has_sets: false }];
+    if (/FROM "exercise"\s+WHERE id = \?::uuid/.test(sql)) return opts.reads[Math.min(r++, opts.reads.length - 1)];
+    throw new Error(`unexpected statement: ${sql}`);
+  });
+  const prisma = { $queryRaw: queryRaw } as unknown as PrismaClient;
+  return { repo: createExerciseRepository(prisma), statements };
+}
+
+describe("Minor 102 — the retry can succeed", () => {
+  it("a set that vanished in the gap: the second UPDATE writes, and the result is that exercise with modalityChanged", async () => {
+    const { repo, statements } = repoScripted({ updates: [[], [ownedRow(true)]], reads: [[ownedRow(true)]] });
+    const out = await repo.updateExercise(USER, ID, { modality: "duration" });
+    expect(out.exercise.id).toBe(ID);
+    expect(out.modalityChanged).toBe(true);
+    expect(updates(statements)).toHaveLength(2);
+  });
+});
+
+describe("Minor 103 — a delete during the retry is exercise-retired", () => {
+  it("Review Focus 4 — the retry misses and the row is now retired: 409, never 500", async () => {
+    const { repo } = repoScripted({ updates: [[]], reads: [[ownedRow(true)], [ownedRow(true)], [ownedRow(false)]] });
+    await expect(repo.updateExercise(USER, ID, { modality: "duration" })).rejects.toBeInstanceOf(ExerciseRetiredError);
+  });
+  it("the retry misses and the row is still active: still InternalError", async () => {
+    const { repo } = repoScripted({ updates: [[]], reads: [[ownedRow(true)]] });
+    await expect(repo.updateExercise(USER, ID, { modality: "duration" })).rejects.toBeInstanceOf(InternalError);
+  });
+});
+
 describe("03.4 AC4 — the problem type", () => {
   it("409 exercise-type-locked with a fixed detail that names no modality", () => {
     const e = new ExerciseTypeLockedError("duration", "calories");
