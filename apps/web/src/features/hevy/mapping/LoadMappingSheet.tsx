@@ -41,6 +41,7 @@ import {
   placeholderMissing,
   readingTemplates,
   sectionRulesRemovedLine,
+  SECTION_RULES_DROPPED_LABEL,
   typeMismatch,
   willBePaired,
   willBeRemovedLine,
@@ -48,13 +49,14 @@ import {
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
 import { applyRule, resolveLines, sectionRulesRemoved, willBeRemoved, willChange, type LeftOut, type ResolveNotice, type Resolved } from "./resolveLines";
+import { useTemplatesProgress } from "./templatesProgress";
 import { hevyTemplatesQuery } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
 type Step =
   | { kind: "choose"; errors: string[] }
-  | { kind: "reading"; page: number; pageCount: number }
+  | { kind: "reading" }
   | { kind: "checking" }
   | { kind: "preview"; resolved: Resolved; error: string | null };
 
@@ -81,6 +83,8 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   const queryClient = useQueryClient();
   const { put } = useMappingMutations();
   const [step, setStep] = useState<Step>({ kind: "choose", errors: [] });
+  // Minor 197: the shared read's own progress, so joining a read already running shows its real page.
+  const progress = useTemplatesProgress() ?? { page: 1, pageCount: 1 };
   const noteId = useId();
   // Each file read has a number; Cancel, close and unmount move it on, so a late answer is ignored.
   const readId = useRef(0);
@@ -108,6 +112,8 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     try {
       text = await file.text();
     } catch {
+      // Minor 201: a read that fails after Cancel or close says nothing, as every other await here.
+      if (id !== readId.current) return;
       return setStep({ kind: "choose", errors: [FILE_READ_FAILED] });
     }
     if (id !== readId.current) return;
@@ -120,16 +126,12 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     // Never against a list that has not synced: every line would be 'not found' and the replace would wipe the mapping.
     if (catalogNow.current.syncToken === null) return setStep({ kind: "choose", errors: [CATALOG_NOT_READY] });
 
-    setStep({ kind: "reading", page: 1, pageCount: 1 });
+    setStep({ kind: "reading" });
     let templates: HevyTemplate[];
     reading.current = true;
     try {
-      // Minor 191: the hook's read, so a cached or in-flight list is reused.
-      templates = await queryClient.fetchQuery({
-        ...hevyTemplatesQuery(client),
-        // The last page read, so "page 2 of 3" shows while page 3 is on its way.
-        meta: { onPage: ({ page, pageCount }: { page: number; pageCount: number }) => void (id === readId.current && setStep({ kind: "reading", page, pageCount })) },
-      });
+      // Minor 191: the hook's read, so a cached or in-flight list is reused. Its progress is `useTemplatesProgress`.
+      templates = await queryClient.fetchQuery(hevyTemplatesQuery(client));
     } catch (error) {
       if (id !== readId.current) return;
       reading.current = false;
@@ -165,7 +167,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     <Sheet open={open} title={LOAD_SHEET_TITLE} onClose={close} dismissible={!put.isPending}>
       {/* Minor 185: both regions are there from first paint, empty, so their text is announced when it arrives. */}
       <p className={styles.progress} role="status" data-testid="hevy-load-progress">
-        {step.kind === "reading" ? readingTemplates(step.page, step.pageCount) : step.kind === "checking" ? CHECKING_FILE : ""}
+        {step.kind === "reading" ? readingTemplates(progress.page, progress.pageCount) : step.kind === "checking" ? CHECKING_FILE : ""}
       </p>
       <div role="alert" data-testid="hevy-load-errors">
         {errorsOf(step).length > 0 ? (
@@ -324,7 +326,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
       {rulesDropped.length > 0 ? (
         <>
           <h3 className={styles.heading}>{sectionRulesRemovedLine(rulesDropped.length)}</h3>
-          <ul aria-label="Section rules dropped">
+          <ul aria-label={SECTION_RULES_DROPPED_LABEL}>
             {rulesDropped.map((r) => (
               <li key={sectionKey(r.name)}>{`${r.name}: ${TREATMENT_LABELS[r.treatment]}`}</li>
             ))}

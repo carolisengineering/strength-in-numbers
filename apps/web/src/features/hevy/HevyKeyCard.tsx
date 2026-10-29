@@ -28,7 +28,7 @@ import {
 } from "./messages";
 import { useHevyKey } from "./useHevyKey";
 import { useHevyUser } from "./useHevyUser";
-import { inQuietMinute } from "./client/pacer";
+import { inQuietMinute, msUntilQuietChange } from "./client/pacer";
 import styles from "./HevyKeyCard.module.css";
 
 const KEY_INPUT_ID = "hevy-key";
@@ -48,6 +48,20 @@ export function HevyKeyCard() {
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0, at: 0 });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
+
+  // Minor 199: while a save waits, re-check the quiet minute when it next starts or ends, not once per render.
+  const [quiet, setQuiet] = useState(false);
+  useEffect(() => {
+    if (busy === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const now = Date.now();
+      setQuiet(inQuietMinute(now));
+      timer = setTimeout(check, msUntilQuietChange(now));
+    };
+    check();
+    return () => clearTimeout(timer);
+  }, [busy]);
 
   const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1, at: Date.now() }));
   // After the line has rendered its new text (and the form has unmounted), so focus lands on the words.
@@ -91,6 +105,9 @@ export function HevyKeyCard() {
       {key.hasKey && key.lastFour !== null ? (
         <div className={styles.current}>
           <p className={styles.ending}>{keyEnding(key.lastFour)}</p>
+          {/* Minor 203: a key Hevy refuses stays named here, even after a newer outcome takes the status line. Not live
+              (the status line announces), and only the refusal: a network or server failure is the status line's. */}
+          {userFailure === HEVY_COPY.bad_key ? <p className={styles.failure}>{userFailure}</p> : null}
           {username !== null ? <p className={styles.who}>{signedInAs(username)}</p> : null}
           {username === null && user.isPending && user.fetchStatus === "fetching" ? <p className={styles.who}>{LOADING_USERNAME}</p> : null}
           {!replacing ? (
@@ -129,7 +146,10 @@ export function HevyKeyCard() {
             )}
           </Field>
           <p className={styles.stays}>{KEY_STAYS}</p>
-          {busy !== null && inQuietMinute(Date.now()) ? <p className={styles.stays}>{QUIET_MINUTE}</p> : null}
+          {/* Minor 199: mounted from the start, so the line is announced when the quiet minute begins mid-save. */}
+          <p className={styles.stays} aria-live="polite" data-testid="hevy-quiet-minute">
+            {busy !== null && quiet ? QUIET_MINUTE : ""}
+          </p>
           <div className={styles.actions}>
             <Button type="submit" busy={busy === "remember"} disabled={busy !== null}>
               {SAVE_AND_REMEMBER}

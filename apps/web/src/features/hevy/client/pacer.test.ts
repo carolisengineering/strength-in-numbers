@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPacer, HEVY_MIN_GAP_MS, inQuietMinute } from "./pacer";
+import { createPacer, HEVY_MIN_GAP_MS, inQuietMinute, msUntilQuietChange } from "./pacer";
 
 /** A fake clock: `sleep` resumes on a later microtask, then moves `now` to the instant it was asked to wake. */
 function clock(startIso: string) {
@@ -121,5 +121,22 @@ describe("Minor 167 — the quiet minute", () => {
     ["2026-10-28T12:59:59.999Z", false],
   ])("%s → %s", (iso, quiet) => {
     expect(inQuietMinute(Date.parse(iso))).toBe(quiet);
+  });
+});
+
+describe("Minor 199 — msUntilQuietChange", () => {
+  it.each([
+    ["2026-10-29T14:00:30.000Z", 30_000],
+    ["2026-10-29T14:00:00.000Z", 60_000],
+    ["2026-10-29T14:59:59.000Z", 1_000],
+    ["2026-10-29T14:30:00.000Z", 1_800_000],
+    ["2026-10-29T14:01:00.000Z", 3_540_000],
+  ])("at %s: %i ms until the quiet minute starts or ends", (iso, ms) => {
+    expect(msUntilQuietChange(Date.parse(iso))).toBe(ms);
+  });
+  it("the flip it names is a real change of inQuietMinute", () => {
+    const t = Date.parse("2026-10-29T14:59:59.500Z");
+    const at = t + msUntilQuietChange(t);
+    expect([inQuietMinute(at - 1), inQuietMinute(at)]).toEqual([false, true]);
   });
 });

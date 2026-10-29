@@ -294,3 +294,37 @@ describe("Minor 171 — a refusal after a save in the same visit is announced (f
     await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
   });
 });
+
+describe("Minor 199 — the quiet-minute line appears at the boundary and goes after it", () => {
+  afterEach(() => vi.useRealTimers());
+  it("a save started at :59:59 shows the line at :00:00, in a polite live region, and drops it at :01:00", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true, now: new Date("2026-10-29T14:59:59.000Z") });
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    const region = document.querySelector<HTMLElement>('[aria-live="polite"][data-testid="hevy-quiet-minute"]');
+    expect(region).not.toBeNull();
+    expect(region).toBeEmptyDOMElement();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await waitFor(() => expect(region).toHaveTextContent(QUIET_MINUTE));
+    await vi.advanceTimersByTimeAsync(60_000);
+    await waitFor(() => expect(region).toBeEmptyDOMElement());
+    expect(document.contains(region)).toBe(true);
+  });
+});
+
+describe("Minor 203 — a refused stored key is named under its ending", () => {
+  it("a non-live line under the ending names the failure, whatever the status line says", async () => {
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    renderHevyScreen();
+    const ending = await screen.findByText(keyEnding(VALID_KEY.slice(-4)));
+    const under = await within(ending.parentElement!).findByText(HEVY_COPY.bad_key);
+    expect(under.closest('[role="status"], [aria-live]')).toBeNull();
+    // Replace and Cancel make no announcement and leave the line in place.
+    await userEvent.click(screen.getByRole("button", { name: "Replace" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(within(ending.parentElement!).getByText(HEVY_COPY.bad_key)).toBeInTheDocument();
+  });
+});
