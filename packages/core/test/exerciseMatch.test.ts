@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { guessModality, matchExerciseName, normalizeExerciseName } from "../src/exerciseMatch.js";
+import { describe, expect, it, vi } from "vitest";
+import { guessModality, matchExerciseName, normalizeExerciseName, prepareCatalog } from "../src/exerciseMatch.js";
+import { prng } from "./helpers/history-generator.js";
 
 const BUILT_INS = ["Barbell back squat", "Barbell bench press", "Conventional deadlift", "Overhead press", "Barbell row", "Dumbbell lunge",
   "Pull-up", "Weighted dip", "Plank", "Treadmill run"].map((name, i) => ({ id: `g${i + 1}`, name, ownerUserId: null }));
@@ -44,4 +45,39 @@ describe("10.4 AC16 — guessModality", () => {
     ["Pull-ups", "bodyweight_reps"], ["Chin Up", "bodyweight_reps"], ["Sit-ups", "bodyweight_reps"], ["Burpees", "bodyweight_reps"], ["Push ups", "bodyweight_reps"],
     ["Hang Power Clean", "weight_reps"], ["Hang Muscle Cleans", "weight_reps"],
   ])("%s → %s", (name, m) => expect(guessModality(name)).toBe(m));
+});
+
+describe("Minor 18 — a prepared catalog", () => {
+  const WORDS = ["Barbell", "DB", "Dumbbell", "KB", "Kettlebell", "Bench", "Press", "Squat", "Front", "Back", "Split", "Lunge", "Row",
+    "Curl", "Hammer", "Incline", "Pull-up", "Push-ups", "Deadlift", "Romanian", "Walking", "Café", "Cable", "Raises", "Run", "400m"];
+  const nameFrom = (rnd: () => number) => Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => WORDS[Math.floor(rnd() * WORDS.length)]!).join(" ");
+  const rnd = prng(18);
+  const rows = Array.from({ length: 300 }, (_, i) => ({ id: `r${i}`, name: nameFrom(rnd), ownerUserId: i % 3 === 0 ? "u1" : null }));
+  // Half copies of row names with a case or plural twist, half fresh combinations.
+  const names = Array.from({ length: 50 }, (_, i) => (i % 2 === 0 ? `${rows[i * 5]!.name.toUpperCase()}s` : nameFrom(rnd)));
+
+  it("matches like the rows, name by name", () => {
+    const catalog = prepareCatalog(rows);
+    for (const n of names) expect(matchExerciseName(n, catalog), n).toEqual(matchExerciseName(n, rows));
+    expect(names.some((n) => matchExerciseName(n, rows).kind === "exact")).toBe(true);
+    expect(names.some((n) => matchExerciseName(n, rows).kind === "similar")).toBe(true);
+  });
+
+  it("prepared once, each row and each name is normalized once", () => {
+    const normalize = vi.spyOn(String.prototype, "normalize");
+    try {
+      const catalog = prepareCatalog(rows);
+      for (const n of names) matchExerciseName(n, catalog);
+      expect(normalize.mock.calls.length).toBeLessThanOrEqual(rows.length + names.length);
+    } finally {
+      normalize.mockRestore();
+    }
+  });
+
+  it("Review Focus 5 — a catalog prepared from new rows finds the new exercise", () => {
+    const before = prepareCatalog(rows);
+    const added = { id: "new", name: "Zercher Carry", ownerUserId: "u1" };
+    expect(matchExerciseName("Zercher Carry", before)).toEqual({ kind: "none" });
+    expect(matchExerciseName("Zercher Carry", prepareCatalog([...rows, added]))).toEqual({ kind: "exact", row: added });
+  });
 });

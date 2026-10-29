@@ -4,6 +4,7 @@ import {
   guessModality,
   matchExerciseName,
   normalizeExerciseName,
+  prepareCatalog,
   type Exercise,
   type ReadName,
   type ReadResult,
@@ -49,8 +50,10 @@ export function keptSectionCount(read: ReadResult): number {
 
 /** AC24: exact or similar → that exercise, pre-picked; nothing similar → New. */
 export function initialCards(names: readonly ReadName[], visible: readonly Exercise[]): CardState[] {
+  // Minor 18: the catalog's keys are computed once for every card, not once per card.
+  const catalog = prepareCatalog(visible);
   return names.map((name, index) => {
-    const found = matchExerciseName(name.written, visible);
+    const found = matchExerciseName(name.written, catalog);
     const match = found.kind === "none" ? null : { kind: found.kind, exerciseId: found.row.id };
     return {
       key: name.key,

@@ -65,10 +65,35 @@ function exactOrder<R extends MatchableRow>(a: R, b: R): number {
   return custom || byCodeUnit(a.name.toLowerCase(), b.name.toLowerCase()) || byCodeUnit(a.name, b.name);
 }
 
-function tokens(name: string): string[] {
-  return words(name)
-    .map((w) => EXPANSIONS[w] ?? w)
-    .filter((w) => !ALL_DIGITS.test(w) && !UNIT_WORDS.has(w));
+/** A name's match keys and tokens, from one `words` pass. `expanded` is null when it equals `key`. */
+interface NameKeys {
+  readonly key: string;
+  readonly expanded: string | null;
+  readonly tokens: readonly string[];
+}
+
+function keysOf(name: string): NameKeys {
+  const w = words(name);
+  const ex = w.map((x) => EXPANSIONS[x] ?? x);
+  const key = w.join("");
+  const expanded = ex.join("");
+  return { key, expanded: expanded === key ? null : expanded, tokens: ex.filter((x) => !ALL_DIGITS.test(x) && !UNIT_WORDS.has(x)) };
+}
+
+/**
+ * Minor 18: the catalog's keys and tokens, computed once, so matching many names normalizes each row once. Build it from
+ * the rows the caller shows now; an index of older rows does not know a newer exercise.
+ */
+export interface PreparedCatalog<R extends MatchableRow> {
+  readonly entries: readonly (NameKeys & { readonly row: R })[];
+}
+
+export function prepareCatalog<R extends MatchableRow>(rows: readonly R[]): PreparedCatalog<R> {
+  return { entries: rows.map((row) => ({ row, ...keysOf(row.name) })) };
+}
+
+function isPrepared<R extends MatchableRow>(rows: readonly R[] | PreparedCatalog<R>): rows is PreparedCatalog<R> {
+  return !Array.isArray(rows);
 }
 
 function score(a: readonly string[], b: readonly string[]): number {
@@ -81,17 +106,19 @@ function score(a: readonly string[], b: readonly string[]): number {
   return jaccard + (a[a.length - 1] === b[b.length - 1] ? HEAD_NOUN_BONUS : 0);
 }
 
-export function matchExerciseName<R extends MatchableRow>(written: string, rows: readonly R[]): ExerciseMatch<R> {
-  const key = normalizeExerciseName(written);
-  const expanded = words(written).map((w) => EXPANSIONS[w] ?? w).join("");
-  const exact = (k: string, keyOf: (r: R) => string) => (k === "" ? [] : rows.filter((r) => keyOf(r) === k).sort(exactOrder));
-  const hit = exact(key, (r) => normalizeExerciseName(r.name))[0] ?? exact(expanded, (r) => words(r.name).map((w) => EXPANSIONS[w] ?? w).join(""))[0];
+/** A `readonly R[]` is prepared on the fly; pass a `prepareCatalog` result to match many names against one catalog. */
+export function matchExerciseName<R extends MatchableRow>(written: string, rows: readonly R[] | PreparedCatalog<R>): ExerciseMatch<R> {
+  const { entries } = isPrepared(rows) ? rows : prepareCatalog(rows);
+  const mine = keysOf(written);
+  const expanded = mine.expanded ?? mine.key;
+  const exact = (k: string, keyOf: (e: (typeof entries)[number]) => string) =>
+    k === "" ? [] : entries.filter((e) => keyOf(e) === k).map((e) => e.row).sort(exactOrder);
+  const hit = exact(mine.key, (e) => e.key)[0] ?? exact(expanded, (e) => e.expanded ?? e.key)[0];
   if (hit) return { kind: "exact", row: hit };
 
-  const mine = tokens(written);
   let best: { row: R; score: number } | null = null;
-  for (const row of rows) {
-    const s = score(mine, tokens(row.name));
+  for (const { row, tokens } of entries) {
+    const s = score(mine.tokens, tokens);
     if (s < SIMILAR_THRESHOLD) continue;
     if (
       best === null ||
