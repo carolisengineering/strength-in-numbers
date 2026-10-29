@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HevyMapping, HevyRoutine, HevyTemplate, HevyWorkout } from "@sin/core";
 
-import { importSession, initialImportState, nextStepAfterRead, nextStepAfterRoutines, type ImportState } from "./importSession";
+import { importSession, initialImportState, isSummaryStale, nextStepAfterRead, nextStepAfterRoutines, type ImportState } from "./importSession";
 import type { HevyRead } from "./readHevy";
 
 const template = (id: string, title = id): HevyTemplate => ({ id, title, type: "weight_reps", is_custom: false });
@@ -105,5 +105,20 @@ describe("20.1 AC3 / AC5 — reducer", () => {
     expect(checking).toMatchObject({ step: "checking", summaryMapping: mapping, unreadable: ["u1"] });
     expect(importSession(checking, { type: "checked", generation: 3, results: [] })).toBe(checking);
     expect(importSession(checking, { type: "checked", generation: 4, results: [] }).step).toBe("summary");
+  });
+});
+
+describe("20.1 AC28 — the stale rule", () => {
+  it("is stale only when a summary exists and the mapping is another object", () => {
+    const mapping = paired();
+    const summary: ImportState = { ...initialImportState, results: [], summaryMapping: mapping };
+    expect(isSummaryStale(summary, mapping)).toBe(false);
+    expect(isSummaryStale(summary, paired())).toBe(true);
+    expect(isSummaryStale({ ...summary, results: null }, paired())).toBe(false);
+  });
+
+  it("recheck runs the check again from nothing", () => {
+    const summary: ImportState = { ...initialImportState, step: "summary", results: [], summaryError: null };
+    expect(importSession(summary, { type: "recheck" })).toMatchObject({ step: "checking", results: null });
   });
 });

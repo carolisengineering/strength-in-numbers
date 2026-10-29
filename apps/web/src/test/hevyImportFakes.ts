@@ -206,6 +206,13 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
   const log: FakeImportRequest[] = [];
   const state = { recordsStale: options.recordsStale ?? false, created: 0 };
   let failure: { kind: ImportFailure; times: number } | null = null;
+  let held: number | null = null;
+  let batches = 0;
+
+  /** The `n`-th batch request (1-based) never answers: a check caught mid-way. */
+  function holdBatch(n: number): void {
+    held = n;
+  }
 
   function failNext(kind: ImportFailure, times = 1): void {
     failure = { kind, times };
@@ -263,6 +270,8 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
 
   const batch = http.post(`${API}/v1/hevy/import/workouts`, async ({ request }) => {
     const entry = await record(request);
+    batches += 1;
+    if (batches === held) await new Promise<never>(() => {});
     const early = failed();
     if (early) return early;
     const body = entry.body as HevyImportBatch;
@@ -293,7 +302,7 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
     HttpResponse.json({ enabled: true, pairCount: options.pairedTemplateIds?.size ?? 0, linkCount: links.size, recordsStale: state.recordsStale }),
   );
 
-  return { handlers: [batch, finish, status], log, links, state, failNext };
+  return { handlers: [batch, finish, status], log, links, state, failNext, holdBatch };
 }
 
 /** A real `ApiClient` against the test API origin, for client-level tests (MSW answers it). */

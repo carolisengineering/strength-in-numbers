@@ -7,7 +7,7 @@ import {
   type HevyWorkout,
 } from "@sin/core";
 
-import { DROP_LABELS, OUTCOME_LABELS, UNREADABLE_LABEL, UNTITLED } from "./messages";
+import { DROP_LABELS, importLabel, NOTHING_NEW, OUTCOME_LABELS, UNREADABLE_LABEL, UNTITLED } from "./messages";
 
 /** Spec 20.1 AC12, AC13, §6.6: the summary, folded from the dry-run results. Pure. */
 
@@ -137,4 +137,15 @@ export function summaryLists(
     const list = rows.get(group)!;
     return list.length > 0 ? [{ group, rows: list.sort(byDate) }] : [];
   });
+}
+
+/** AC16 (used by Phase B): the Hevy ids the run sends — a `create`, and a `duplicate` so its link is written. */
+export function sendable(results: readonly HevyImportResult[]): string[] {
+  return results.filter((r) => r.outcome === "create" || r.outcome === "duplicate").map((r) => r.hevyWorkoutId);
+}
+
+/** AC14: the primary button's words, or "Nothing new to import" when there is no workout and no routine. */
+export function confirmLabel(agg: Aggregate, routineCount: number, sendCount: number): string {
+  if (sendCount === 0 && routineCount === 0) return NOTHING_NEW;
+  return importLabel(agg.create, routineCount);
 }

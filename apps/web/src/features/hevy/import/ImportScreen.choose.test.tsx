@@ -250,6 +250,8 @@ describe("20.1 AC10 — saving the names", () => {
     const upsert = (mapping.patches[0] as { upsert: { hevyTemplateId: string; role: string }[] }).upsert;
     expect(upsert.map((p) => p.hevyTemplateId).sort()).toEqual(["B", "R"]);
     await waitFor(() => expect(screen.queryByRole("heading", { level: 2, name: "Pair exercises" })).toBeNull());
+    // The summary counts what the names step created (AC12).
+    expect(await screen.findByText("1 exercise was created while pairing.", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it("shows the creating line while a create is in flight, and leaving stops further creates", async () => {

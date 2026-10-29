@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
+import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { useCatalog } from "../../catalog/useCatalog";
 import { HevyError } from "../client/hevyErrors";
@@ -13,6 +14,10 @@ import { useSavePairingsDeps } from "../pairing/useSavePairingsDeps";
 import { useRoutines } from "../../routines/queries";
 import { useHevyClient } from "../useHevyClient";
 import { importSession, initialImportState, needsFor, nextStepAfterRoutines, type ImportState, type ReadFailure } from "./importSession";
+import { runDryRun } from "./dryRun";
+import { ImportReplyError, useHevyImportClient } from "./hevyImportClient";
+import { sortNewestFirst, toImportWorkout } from "./importRequest";
+import { deviceZone } from "./PreflightStep";
 import { readHevy, ReadStageError, type ReadStage } from "./readHevy";
 import { routineNameKey, tickAllInFolder, toggle, type PickContext, type RoutineGroup } from "./routinePicks";
 
@@ -32,6 +37,8 @@ export function useImportSession() {
   const saveDeps = useSavePairingsDeps();
   /** One save record per screen mount (never stored), so a second Continue reuses what an earlier one created. */
   const saveRecord = useRef(newPairingSaveRecord());
+  const importClient = useHevyImportClient();
+  const checking = useRef(false);
 
   const generation = useRef(state.generation);
   const controller = useRef<AbortController | null>(null);
@@ -180,9 +187,79 @@ export function useImportSession() {
     dispatch({ type: "namesSaved", created: created.size });
   }, [saveDeps, stopIo, catalog]);
 
+  /**
+   * AC11: the summary's dry run, against the mapping as saved now. Unreadable workouts (AC6, O2) are never sent; the
+   * rest go newest first. The mapping reference is kept for the stale rule (AC28).
+   */
+  const runCheck = useCallback(() => {
+    const current = stateRef.current;
+    if (current.read === null || mapping.data === undefined) return;
+    stopIo();
+    const io = new AbortController();
+    controller.current = io;
+    checking.current = true;
+    const gen = nextGeneration();
+    const zone = deviceZone();
+    const unreadable: string[] = [];
+    const workouts = sortNewestFirst([...current.read.workouts.values()]).flatMap((w) => {
+      const built = toImportWorkout(w, { zone });
+      if (built.ok) return [built.workout];
+      unreadable.push(w.id);
+      return [];
+    });
+    dispatch({ type: "checkStart", generation: gen, mapping: mapping.data, unreadable });
+    runDryRun(importClient, workouts, { signal: io.signal, onProgress: (done, total) => dispatch({ type: "checkProgress", generation: gen, done, total }) }).then(
+      (results) => {
+        checking.current = false;
+        if (!io.signal.aborted) dispatch({ type: "checked", generation: gen, results });
+      },
+      (err: unknown) => {
+        checking.current = false;
+        if (io.signal.aborted) return;
+        const network = err instanceof ApiError && err.isNetworkError;
+        const failure = err instanceof ImportReplyError ? "reply" : network ? "network" : "failed";
+        if (err instanceof ImportReplyError || !(err instanceof ApiError) || err.status >= 500) reportError(err, { source: "hevy-import", op: "summary" });
+        dispatch({ type: "checkFailed", generation: gen, failure });
+      },
+    );
+  }, [mapping.data, importClient, stopIo]);
+
+  useEffect(() => {
+    if (state.step !== "checking" || state.results !== null || state.summaryError !== null || checking.current) return;
+    runCheck();
+  }, [state.step, state.results, state.summaryError, runCheck]);
+
+  /** Back to an earlier step: anything in flight stops first, so a late reply can't land on the step left. */
+  const back = useCallback(
+    (to: ImportState["step"]) => {
+      stopIo();
+      checking.current = false;
+      dispatch({ type: "back", to });
+    },
+    [stopIo],
+  );
+
+  /**
+   * AC13 **Back to names**: an `unpaired` result means the mapping changed since it was read (a pair removed, an
+   * exercise retired), so read it again before the flow derives the needs.
+   */
+  const backToNames = useCallback(async () => {
+    stopIo();
+    await mapping.refetch();
+    dispatch({ type: "goto", step: "preparing" });
+  }, [mapping, stopIo]);
+
+  const recheck = useCallback(() => {
+    checking.current = false;
+    dispatch({ type: "recheck" });
+  }, []);
+
   return {
     state,
     dispatch,
+    recheck,
+    back,
+    backToNames,
     start,
     cancel,
     retryRead,

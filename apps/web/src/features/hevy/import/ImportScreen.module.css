@@ -126,3 +126,25 @@
 .pick .muted {
   grid-column: 2;
 }
+
+.group {
+  padding-block-start: var(--space-2);
+}
+
+.groupSummary {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  padding-inline-start: var(--space-6);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}

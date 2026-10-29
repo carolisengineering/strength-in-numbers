@@ -116,6 +116,7 @@ export const checkingLine = (done: number, total: number) => `Checking your work
 export const REPLY_NOT_UNDERSTOOD = "The server's reply wasn't understood.";
 // Plan copy.
 export const CHECK_FAILED = "Couldn't check your workouts. Try again.";
+export const CHECK_OFFLINE = "Couldn't reach the server. Check your connection and try again.";
 
 /** AC12 / §5.5: the summary. */
 export const SUMMARY_TITLE = "Summary";

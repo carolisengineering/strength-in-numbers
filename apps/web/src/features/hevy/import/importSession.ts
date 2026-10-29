@@ -95,6 +95,7 @@ export type ImportAction =
   | { type: "checkProgress"; generation: number; done: number; total: number }
   | { type: "checked"; generation: number; results: HevyImportResult[] }
   | { type: "checkFailed"; generation: number; failure: CheckFailure }
+  | { type: "recheck" }
   | { type: "back"; to: Step };
 
 export function importSession(state: ImportState, action: ImportAction): ImportState {
@@ -154,6 +155,8 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return { ...state, step: "summary", results: action.results, checkProgress: null };
     case "checkFailed":
       return { ...state, summaryError: action.failure, checkProgress: null };
+    case "recheck":
+      return { ...state, step: "checking", results: null, summaryError: null, checkProgress: null };
     case "back":
       return { ...state, step: action.to, namesError: null, summaryError: null };
   }
@@ -186,4 +189,16 @@ export function nextStepAfterRoutines(state: ImportState, ctx: FlowContext): "ma
   const missing = markersMissing(used, state.read.templates, ctx.mapping);
   if (!state.markersSkipped && (missing.warmup !== null || missing.workout !== null)) return "markers";
   return needsFor(state, ctx).length > 0 ? "names" : "checking";
+}
+
+/** AC28 (Phase A form): the summary was computed against a different mapping than the one held now. */
+export function isSummaryStale(state: ImportState, mappingData: unknown): boolean {
+  return state.results !== null && state.summaryMapping !== mappingData;
+}
+
+/** AC14: the earlier step Back returns to from the summary or a failed check. */
+export function backFromSummary(state: ImportState): Step {
+  if (state.needs.length > 0) return "names";
+  if (state.read !== null && state.read.routines.length > 0) return "routines";
+  return "preflight";
 }

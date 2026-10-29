@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HEVY_IMPORT_OUTCOME_VALUES, type HevyImportOutcome, type HevyImportResult, type HevyWorkout } from "@sin/core";
 
-import { aggregateResults, summaryLists } from "./importSummary";
+import { aggregateResults, confirmLabel, sendable, summaryLists } from "./importSummary";
 import { DROP_LABELS, OUTCOME_LABELS, UNREADABLE_LABEL } from "./messages";
 
 const result = (id: string, outcome: HevyImportOutcome, over: Partial<HevyImportResult> = {}): HevyImportResult => ({
@@ -111,5 +111,21 @@ describe("20.1 AC12 — summaryLists", () => {
 
   it("leaves out empty groups", () => {
     expect(summaryLists([result("x", "create")], new Map([["x", hevyWorkout("x", "A", "2026-01-01T00:00:00Z")]]), [], "UTC")).toEqual([]);
+  });
+});
+
+describe("20.1 AC14 — confirm label and what the run sends", () => {
+  const results = [result("a", "create"), result("b", "duplicate"), result("c", "already_imported"), result("d", "unpaired")];
+
+  it("sendable is create and duplicate, in order", () => {
+    expect(sendable(results)).toEqual(["a", "b"]);
+  });
+
+  it("names the workouts to create and the routines; nothing at all is Nothing new to import", () => {
+    const agg = aggregateResults(results, []);
+    expect(confirmLabel(agg, 0, 2)).toBe("Import 1 workout");
+    expect(confirmLabel({ ...agg, create: 960 }, 12, 961)).toBe("Import 960 workouts and 12 routines");
+    expect(confirmLabel(aggregateResults([], []), 0, 0)).toBe("Nothing new to import");
+    expect(confirmLabel(aggregateResults([], []), 2, 0)).toBe("Import 0 workouts and 2 routines");
   });
 });

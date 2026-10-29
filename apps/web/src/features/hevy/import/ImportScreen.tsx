@@ -5,11 +5,14 @@ import { Button } from "../../../ui/Button";
 import { Screen } from "../../../ui/Screen";
 import { Spinner } from "../../../ui/Spinner";
 import { HEVY_PATH } from "../paths";
+import { CheckingStep } from "./CheckingStep";
+import { backFromSummary, isSummaryStale } from "./importSession";
 import { ImportSteps } from "./ImportSteps";
+import { ImportSummaryView } from "./ImportSummaryView";
 import { BACK_TO_HEVY, IMPORT_TITLE, PREPARING, PREPARING_FAILED, reconcileLine, TRY_AGAIN } from "./messages";
 import { MarkersStep } from "./MarkersStep";
 import { NamesStep } from "./NamesStep";
-import { PreflightStep } from "./PreflightStep";
+import { deviceZone, PreflightStep } from "./PreflightStep";
 import { reconcile } from "./readHevy";
 import { ReadingStep } from "./ReadingStep";
 import { RoutinePicksStep } from "./RoutinePicksStep";
@@ -82,7 +85,21 @@ export function ImportScreen() {
             state={state}
             dispatch={session.dispatch}
             onSave={() => void session.saveNames()}
-            onBack={state.read !== null && state.read.routines.length > 0 ? () => session.dispatch({ type: "back", to: "routines" }) : null}
+            onBack={state.read !== null && state.read.routines.length > 0 ? () => session.back("routines") : null}
+            headingRef={headingRef}
+          />
+        ) : null}
+        {state.step === "checking" ? (
+          <CheckingStep state={state} onBack={() => session.back(backFromSummary(state))} onRetry={session.recheck} headingRef={headingRef} />
+        ) : null}
+        {state.step === "summary" ? (
+          <ImportSummaryView
+            state={state}
+            zone={deviceZone()}
+            stale={isSummaryStale(state, session.mapping.data)}
+            onBack={() => session.back(backFromSummary(state))}
+            onBackToNames={() => void session.backToNames()}
+            onCheckAgain={session.recheck}
             headingRef={headingRef}
           />
         ) : null}
