@@ -7,7 +7,7 @@ import type { PickState } from "./routinePicks";
 
 /**
  * Spec 20.1 §6.1: the import as a pure reducer. Actions are the user's choices and the I/O results; an I/O result
- * carries the `generation` it was started under, and one from an older generation is ignored (Review Focus 4), so
+ * carries the `generation` it was started under, and one from an older generation is ignored (AC3), so
  * a canceled read's late reply never lands. Phase B adds the run's steps.
  */
 

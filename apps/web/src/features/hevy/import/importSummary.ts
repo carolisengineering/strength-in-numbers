@@ -95,7 +95,7 @@ export interface ListRow {
 
 const GROUP_ORDER: readonly ListGroup[] = ["duplicate", "cannot_import", "sets_dropped", "unpaired"];
 
-/** A blank or whitespace-only title reads "Untitled" (Review Focus 5); any other title is shown as written, as text. */
+/** A blank or whitespace-only title reads "Untitled" (AC12); any other title is shown as written, as text. */
 export const displayTitle = (title: string | null | undefined): string => (title == null || title.trim() === "" ? UNTITLED : title);
 
 const dropReason = (r: HevyImportResult) => r.drops.map((d) => `${DROP_LABELS[d.code]} (${d.count})`).join("; ");
