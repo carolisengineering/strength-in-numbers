@@ -144,8 +144,11 @@ export function sendable(results: readonly HevyImportResult[]): string[] {
   return results.filter((r) => r.outcome === "create" || r.outcome === "duplicate").map((r) => r.hevyWorkoutId);
 }
 
-/** AC14: the primary button's words, or "Nothing new to import" when there is no workout and no routine. */
+/**
+ * AC14: the primary button's words, or "Nothing new to import" when there is no workout and no routine. Workouts
+ * waiting for a pairing (AC13) are never "nothing new": they are still to import once paired.
+ */
 export function confirmLabel(agg: Aggregate, routineCount: number, sendCount: number): string {
-  if (sendCount === 0 && routineCount === 0) return NOTHING_NEW;
+  if (sendCount === 0 && routineCount === 0 && agg.unpaired === 0) return NOTHING_NEW;
   return importLabel(agg.create, routineCount);
 }

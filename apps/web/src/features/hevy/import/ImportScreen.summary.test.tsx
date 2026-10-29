@@ -194,6 +194,31 @@ describe("20.1 AC14 — confirm", () => {
     expect(await screen.findByRole("checkbox", { name: "Push A" })).toBeChecked();
   });
 
+  it("final review C1: Back from the summary, then Continue, checks again and returns to the summary", async () => {
+    const routines: HevyRoutine[] = [{ id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: GENERATED_TEMPLATE_IDS[0], sets: [] }] }];
+    const { imports } = setup({ workouts: generateHevyWorkouts(6), routines });
+    const { user } = await start();
+    await user.click(await screen.findByRole("button", { name: "Continue" }));
+    await summaryHeading();
+    const before = bodies(imports.log).length;
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Push A" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await summaryHeading();
+    expect(bodies(imports.log).length).toBe(before + 1);
+    expect(screen.getByRole("button", { name: "Import 6 workouts and 1 routine" })).toBeInTheDocument();
+  });
+
+  it("final review I1: with every workout waiting for a pairing it never says Nothing new", async () => {
+    setup({ workouts: generateHevyWorkouts(4), imports: { pairedTemplateIds: new Set() } });
+    await start();
+    await summaryHeading();
+    expect(screen.getByRole("button", { name: "Back to names" })).toBeInTheDocument();
+    expect(screen.queryByText("Nothing new to import")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Done" })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Import / })).toBeDisabled();
+  });
+
   it("with nothing new it says so and Done goes back to Hevy", async () => {
     const workouts = generateHevyWorkouts(4);
     setup({ workouts, imports: { links: workouts.map((w) => ({ hevyWorkoutId: w.id, origin: "imported" as const })) } });

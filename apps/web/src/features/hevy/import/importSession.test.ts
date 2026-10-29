@@ -117,6 +117,14 @@ describe("20.1 AC28 — the stale rule", () => {
     expect(isSummaryStale({ ...summary, results: null }, paired())).toBe(false);
   });
 
+  it("final review C1: every way into checking drops the old summary, so a new dry run starts", () => {
+    const old: ImportState = { ...initialImportState, step: "routines", results: [], summaryError: "failed", checkProgress: { done: 1, total: 2 } };
+    for (const next of [importSession(old, { type: "goto", step: "checking" }), importSession({ ...old, step: "saving_names" }, { type: "namesSaved", created: 0 })]) {
+      expect(next).toMatchObject({ step: "checking", results: null, summaryError: null, checkProgress: null });
+    }
+    expect(importSession(old, { type: "goto", step: "names" }).results).toEqual([]);
+  });
+
   it("recheck runs the check again from nothing", () => {
     const summary: ImportState = { ...initialImportState, step: "summary", results: [], summaryError: null };
     expect(importSession(summary, { type: "recheck" })).toMatchObject({ step: "checking", results: null });

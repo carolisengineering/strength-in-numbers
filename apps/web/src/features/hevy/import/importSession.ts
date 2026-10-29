@@ -98,6 +98,10 @@ export type ImportAction =
   | { type: "recheck" }
   | { type: "back"; to: Step };
 
+/** Entering checking always starts a fresh dry run: an earlier summary's results would stop it from running. */
+const entering = (state: ImportState, step: Step): ImportState =>
+  step === "checking" ? { ...state, step, results: null, summaryError: null, checkProgress: null } : { ...state, step };
+
 export function importSession(state: ImportState, action: ImportAction): ImportState {
   if ("generation" in action && action.type !== "start" && action.type !== "retryRead" && action.type !== "checkStart" && action.generation !== state.generation) {
     return state;
@@ -117,8 +121,7 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return { ...initialImportState, generation: state.generation + 1 };
     case "goto":
       return {
-        ...state,
-        step: action.step,
+        ...entering(state, action.step),
         ...(action.needs ? { needs: action.needs } : {}),
         ...(action.cards ? { cards: action.cards, decisions: null, namesError: null } : {}),
       };
@@ -135,7 +138,7 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
     case "namesProgress":
       return { ...state, namesProgress: { created: action.created, total: action.total } };
     case "namesSaved":
-      return { ...state, step: "checking", namesProgress: null, exercisesCreated: action.created };
+      return { ...entering(state, "checking"), namesProgress: null, exercisesCreated: action.created };
     case "namesFailed":
       return { ...state, step: "names", namesError: action.message, namesProgress: null };
     case "checkStart":
@@ -156,7 +159,7 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
     case "checkFailed":
       return { ...state, summaryError: action.failure, checkProgress: null };
     case "recheck":
-      return { ...state, step: "checking", results: null, summaryError: null, checkProgress: null };
+      return entering(state, "checking");
     case "back":
       return { ...state, step: action.to, namesError: null, summaryError: null };
   }
