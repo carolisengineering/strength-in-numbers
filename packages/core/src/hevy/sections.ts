@@ -33,8 +33,19 @@ export type SectionNotice = "section_name_cut" | "section_note_cut";
 
 const ZWJ = 0x200d;
 const isRegionalIndicator = (cp: number) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
-/** A code point that continues the cluster before it: a combining mark, a variation selector, a skin-tone modifier. */
-const EXTENDS = /^[\p{M}‍︀-️\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}]$/u;
+const MARK = /^\p{M}$/u;
+/** A code point that continues the cluster before it: a combining mark, ZWJ, a variation selector, a skin-tone
+ * modifier or an emoji tag character. */
+function extendsCluster(point: string): boolean {
+  const cp = point.codePointAt(0)!;
+  return (
+    MARK.test(point) ||
+    cp === ZWJ ||
+    (cp >= 0xfe00 && cp <= 0xfe0f) ||
+    (cp >= 0x1f3fb && cp <= 0x1f3ff) ||
+    (cp >= 0xe0020 && cp <= 0xe007f)
+  );
+}
 
 /** Whether a cut between `before` (code points kept) and `next` (the first one dropped) splits a cluster. */
 function splitsCluster(before: readonly string[], next: string | undefined): boolean {
@@ -42,7 +53,7 @@ function splitsCluster(before: readonly string[], next: string | undefined): boo
   const last = before[before.length - 1]!.codePointAt(0)!;
   if (last === ZWJ) return true;
   if (next === undefined) return false;
-  if (EXTENDS.test(next)) return true;
+  if (extendsCluster(next)) return true;
   if (!isRegionalIndicator(last) || !isRegionalIndicator(next.codePointAt(0)!)) return false;
   let run = 0;
   for (let i = before.length - 1; i >= 0 && isRegionalIndicator(before[i]!.codePointAt(0)!); i--) run++;

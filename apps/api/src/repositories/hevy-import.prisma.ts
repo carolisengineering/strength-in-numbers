@@ -29,7 +29,7 @@ import {
   type HevyLinkHit,
   type WriteOutcome,
 } from "./hevy-import.js";
-import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns, type RawPrismaError } from "./pg-errors.js";
+import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns } from "./pg-errors.js";
 import { assertSetMeasuresValid } from "./set-writes.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
