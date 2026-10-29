@@ -30,7 +30,7 @@ describe.skipIf(!shouldRunIntegration())("AC27 — 50 routines × 30 items × 20
     (db.prisma as unknown as { $on: (e: "query", cb: (x: { query: string }) => void) => void }).$on("query", (e) => seen.push(e.query));
     seen.length = 0;
     const t0 = Date.now();
-    const list = await createRoutineRepository(db.prisma).list(u);
+    const list = (await createRoutineRepository(db.prisma).list(u)).routines;
     const ms = Date.now() - t0;
     expect(list).toHaveLength(50);
     expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);

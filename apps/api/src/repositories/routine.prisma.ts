@@ -265,13 +265,12 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
   }
 
   return {
-    async list(actingUserId, onSwept) {
-      const removed = await sweepExpiredOneOffs(prisma, actingUserId);
-      if (removed > 0) onSwept?.(removed);
+    async list(actingUserId) {
+      const swept = await sweepExpiredOneOffs(prisma, actingUserId);
       const rows = await prisma.$queryRaw<RoutineDbRow[]>(
         ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, ROUTINE_ONE_OFF_ORDER),
       );
-      return rows.map(toRoutine);
+      return { routines: rows.map(toRoutine), swept };
     },
 
     async getById(actingUserId, id) {
@@ -279,7 +278,7 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
       return loadOne(prisma, actingUserId, id);
     },
 
-    async create(actingUserId, fields, onSwept) {
+    async create(actingUserId, fields) {
       const id = uuidv7();
       let removed = 0;
       const created = await prisma.$transaction(async (tx) => {
@@ -316,9 +315,8 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         await insertItems(tx, id, fields.items, sectionIds);
         return loadOne(tx, actingUserId, id);
       });
-      // Reported only once the sweep has committed with the create.
-      if (removed > 0) onSwept?.(removed);
-      return created;
+      // Returned only once the sweep has committed with the create.
+      return { routine: created, swept: removed };
     },
 
     async replace(actingUserId, id, fields) {

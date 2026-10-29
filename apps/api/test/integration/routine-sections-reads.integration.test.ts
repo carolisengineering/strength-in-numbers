@@ -41,7 +41,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
         s: r.sections.map((s) => [s.position, s.name, s.notes]),
         i: r.items.map((it) => [it.position, it.exerciseId, r.sections.find((s) => s.id === it.sectionId)?.name ?? null]),
       });
-    const created = await repo().create(u, docA);
+    const created = (await repo().create(u, docA)).routine;
     const sigA = signature(created);
     const sigB = signature(await repo().replace(u, created.id, docB));
     await repo().replace(u, created.id, docA);
@@ -70,7 +70,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
     (db.prisma as unknown as { $on: (e: "query", cb: (x: { query: string }) => void) => void }).$on("query", (e) => seen.push(e.query));
     seen.length = 0;
     const t0 = Date.now();
-    const list = await repo().list(u);
+    const list = (await repo().list(u)).routines;
     const ms = Date.now() - t0;
     expect(list).toHaveLength(50);
     expect(list.every((r) => r.sections.length === 8)).toBe(true);

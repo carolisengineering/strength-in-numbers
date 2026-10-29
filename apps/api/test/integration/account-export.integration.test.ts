@@ -41,14 +41,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     const { id } = await me(token);
     const global = await insertExercise(db);
     const custom = await insertExercise(db, { ownerUserId: id, name: "Custom" });
-    const routine = await createRoutineRepository(db.prisma).create(
+    const routine = (await createRoutineRepository(db.prisma).create(
       id,
       routineFixture([custom, global], {
         notes: "Routine note\r\nsecond line",
         sections: [{ key: "main", name: "Main", notes: "Heavy singles" }],
         sectionKeys: ["main", "main"],
       }),
-    );
+    )).routine;
     const w1 = await logWorkout(db, id, { startedAt: daysAgo(3), exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 225, weightUnit: "lb" }] }] });
     await db.prisma.$executeRawUnsafe(`UPDATE "set_entry" SET rpe = 8.5 WHERE id = $1::uuid`, w1.setIds[0]![0]);
     const started = await app!.inject({

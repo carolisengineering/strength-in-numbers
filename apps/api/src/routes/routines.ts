@@ -53,9 +53,9 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
     },
     async (request, reply) => {
       const actingUserId = request.user!.id;
-      let swept = 0;
-      const routines = (await deps.routineRepository.list(actingUserId, (n) => (swept = n))).map(toRoutineDto);
-      if (swept > 0) logOneOffsExpired(request.log, actingUserId, swept);
+      const listed = await deps.routineRepository.list(actingUserId);
+      const routines = listed.routines.map(toRoutineDto);
+      if (listed.swept > 0) logOneOffsExpired(request.log, actingUserId, listed.swept);
       // Hashed over the post-sweep document, so a sweep that removed rows never answers 304 (09.3 AC22).
       const etag = strongEtag("routines", JSON.stringify(routines));
       reply.header("etag", etag);
@@ -99,8 +99,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
     async (request, reply) => {
       const actingUserId = request.user!.id;
       try {
-        let swept = 0;
-        const created = await deps.routineRepository.create(actingUserId, request.body, (n) => (swept = n));
+        const { routine: created, swept } = await deps.routineRepository.create(actingUserId, request.body);
         if (swept > 0) logOneOffsExpired(request.log, actingUserId, swept);
         request.log.info(
           {

@@ -35,11 +35,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.4 — where an added exercise 
   }
   /** A routine with copied sections W and S (one item each), started; the loose tail `·Y` added after. */
   async function routineWorkout(u: string, ex: string) {
-    const routine = await routines().create(u, RoutineWriteSchema.parse({
+    const routine = (await routines().create(u, RoutineWriteSchema.parse({
       name: "Push day",
       sections: [{ key: "w", name: "W" }, { key: "s", name: "S" }],
       items: [{ exerciseId: ex, sectionKey: "w" }, { exerciseId: ex, sectionKey: "s" }],
-    }));
+    }))).routine;
     const started = await workouts().createWorkout(u, {
       clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id,
     }, "UTC");

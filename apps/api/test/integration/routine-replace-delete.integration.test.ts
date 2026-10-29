@@ -35,7 +35,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository replace 
   it("AC13 — replace swaps the whole item list: id/created_at stable, updated_at advances, every item id new, positions dense", async () => {
     const u = await insertUser(db);
     const ids = await Promise.all(Array.from({ length: 5 }, () => insertExercise(db)));
-    const before = await repo().create(u, routineFixture(ids));
+    const before = (await repo().create(u, routineFixture(ids))).routine;
     const extra = await insertExercise(db);
     const after = await repo().replace(
       u,
@@ -64,7 +64,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository replace 
     const ex = await insertExercise(db);
     const retired = await insertExercise(db);
     await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, retired);
-    const a = await repo().create(u, routineFixture([ex], { name: "A" }));
+    const a = (await repo().create(u, routineFixture([ex], { name: "A" }))).routine;
     await repo().create(u, routineFixture([ex], { name: "B" }));
 
     await expect(repo().replace(u, a.id, routineFixture([ex, retired]))).rejects.toBeInstanceOf(ExerciseRetiredError);
@@ -85,7 +85,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository replace 
   it("AC14 — two concurrent replaces with distinct item lists: the stored list equals exactly one of them, never a mix, no error", async () => {
     const u = await insertUser(db);
     const [a, b, c, d] = await Promise.all([insertExercise(db), insertExercise(db), insertExercise(db), insertExercise(db)]);
-    const r = await repo().create(u, routineFixture([a]));
+    const r = (await repo().create(u, routineFixture([a]))).routine;
     const left = routineFixture([b, c]);
     const right = routineFixture([d, c, b]);
     await Promise.all([repo().replace(u, r.id, left), repo().replace(u, r.id, right)]);
@@ -98,7 +98,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — RoutineRepository replace 
     const u = await insertUser(db);
     const v = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await repo().create(u, routineFixture([ex, ex]));
+    const r = (await repo().create(u, routineFixture([ex, ex]))).routine;
     await expect(repo().delete(v, r.id)).rejects.toBeInstanceOf(NotFoundError);
     await repo().delete(u, r.id);
     await expect(repo().delete(u, r.id)).rejects.toBeInstanceOf(NotFoundError);

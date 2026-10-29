@@ -81,7 +81,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
   it("AC7 — REPEATABLE READ, read-only, and writes committed mid-export are invisible", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const routine = await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { name: "Before" }));
+    const routine = (await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { name: "Before" }))).routine;
     const kept = await logWorkout(db, u, { startedAt: daysAgo(3), exercises: [{ exerciseId: ex, sets: [{ reps: 5, weight: 5 }] }] });
     const doomed = await logWorkout(db, u, { startedAt: daysAgo(2), exercises: [{ exerciseId: ex, sets: [{ reps: 6, weight: 6 }] }] });
     const [weRow] = await db.prisma.$queryRawUnsafe<{ we_id: string }[]>(

@@ -43,7 +43,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
   async function fixture() {
     const u = await insertUser(db);
     const [a, b] = [await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u })];
-    const routine = await routines().create(u, parse({
+    const routine = (await routines().create(u, parse({
       name: "Push day", notes: "Keep it under 75 minutes.\r\nSecond line",
       sections: [
         { key: "warm", name: "Warm-up", notes: "5 min rowing" },
@@ -51,7 +51,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
         { key: "acc", name: "Accessory", notes: "tab\there" },
       ],
       items: [{ exerciseId: a }, { exerciseId: b, sectionKey: "main" }, { exerciseId: a, sectionKey: "main" }, { exerciseId: b, sectionKey: "acc" }],
-    }));
+    }))).routine;
     return { u, a, b, routine };
   }
 
@@ -70,12 +70,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
   it("AC13 — a routine with no sections copies none; a routine of only empty sections and a note (Review Focus 5) still copies both", async () => {
     const u = await insertUser(db);
     const a = await insertExercise(db, { ownerUserId: u });
-    const plain = await routines().create(u, parse({ name: "Plain", items: [{ exerciseId: a }] }));
+    const plain = (await routines().create(u, parse({ name: "Plain", items: [{ exerciseId: a }] }))).routine;
     const r1 = await start(u, plain.id);
     expect(r1.sectionCount).toBe(0);
     expect((await workouts().getWorkoutById(u, r1.workout.id)).sections).toEqual([]);
     await workouts().updateWorkout(u, r1.workout.id, { endedAt: new Date(Date.now() + 1000).toISOString() });
-    const onlyHeadings = await routines().create(u, parse({ name: "Headings", notes: "Mobility day", sections: [{ key: "k", name: "Hips", notes: "90/90 for 2 min" }], items: [{ exerciseId: a }] }));
+    const onlyHeadings = (await routines().create(u, parse({ name: "Headings", notes: "Mobility day", sections: [{ key: "k", name: "Hips", notes: "90/90 for 2 min" }], items: [{ exerciseId: a }] }))).routine;
     const r2 = await start(u, onlyHeadings.id);
     const d = await workouts().getWorkoutById(u, r2.workout.id);
     expect(d.sections.map((s) => s.name)).toEqual(["Hips"]);
@@ -91,7 +91,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
     expect(d.notes).toBe("my own note");
     await workouts().updateWorkout(u, res.workout.id, { endedAt: new Date(Date.now() + 1000).toISOString() });
     const a = await insertExercise(db, { ownerUserId: u });
-    const noNote = await routines().create(u, parse({ name: "No note", items: [{ exerciseId: a }] }));
+    const noNote = (await routines().create(u, parse({ name: "No note", items: [{ exerciseId: a }] }))).routine;
     const r2 = await start(u, noNote.id);
     const raw = await db.prisma.$queryRawUnsafe<{ routine_notes_snapshot: string | null }[]>(`SELECT routine_notes_snapshot FROM "workout" WHERE id = $1::uuid`, r2.workout.id);
     expect(raw[0]!.routine_notes_snapshot).toBeNull();
@@ -150,8 +150,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
     const u = await insertUser(db);
     const v = await insertUser(db);
     const bench = await insertExercise(db, { name: "Bench" });
-    const withSections = await routines().create(u, parse({ name: "S", sections: [{ key: "k", name: "K", notes: "n" }], items: [{ exerciseId: bench, sectionKey: "k" }, { exerciseId: bench, sectionKey: "k" }] }));
-    const without = await routines().create(v, parse({ name: "S", items: [{ exerciseId: bench }, { exerciseId: bench }] }));
+    const withSections = (await routines().create(u, parse({ name: "S", sections: [{ key: "k", name: "K", notes: "n" }], items: [{ exerciseId: bench, sectionKey: "k" }, { exerciseId: bench, sectionKey: "k" }] }))).routine;
+    const without = (await routines().create(v, parse({ name: "S", items: [{ exerciseId: bench }, { exerciseId: bench }] }))).routine;
     const run = async (user: string, routineId: string) => {
       const { workout } = await start(user, routineId);
       const d = await workouts().getWorkoutById(user, workout.id);
@@ -175,7 +175,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — start copies sections (r
     const [a, b, c] = [await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u })];
     const docA = parse({ name: "R", notes: "A", sections: [{ key: "s", name: "Alpha" }], items: [{ exerciseId: a, sectionKey: "s" }, { exerciseId: b, sectionKey: "s" }] });
     const docB = parse({ name: "R", notes: "B", sections: [{ key: "t", name: "Beta" }, { key: "u", name: "Gamma" }], items: [{ exerciseId: c }, { exerciseId: a, sectionKey: "t" }, { exerciseId: b, sectionKey: "u" }] });
-    const created = await routines().create(u, docA);
+    const created = (await routines().create(u, docA)).routine;
     const sig = (names: (string | null)[], notes: string | null, sections: string[]) => JSON.stringify([names, notes, sections]);
     const sigA = sig([ "Alpha", "Alpha"], "A", ["Alpha"]);
     const sigB = sig([null, "Beta", "Gamma"], "B", ["Beta", "Gamma"]);

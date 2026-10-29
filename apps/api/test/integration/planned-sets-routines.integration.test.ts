@@ -38,7 +38,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
     const sets = [...RAMP, { repsLow: 5, repsHigh: 5, weight: 62.5, weightUnit: "lb" as const }];
-    const created = await repo().create(u, rowBody(ex, sets) as never);
+    const created = (await repo().create(u, rowBody(ex, sets) as never)).routine;
     const item = created.items[0]!;
     expect(item.sets).toEqual([...RAMP, { setType: "working", repsLow: 5, repsHigh: 5, weight: 62.5, weightUnit: "lb" }]);
     expect([item.targetSets, item.targetRepsLow, item.targetRepsHigh]).toEqual([4, 5, 10]);
@@ -48,7 +48,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
   it("AC3 — sets: [] is a valid no-plan item: no rows, derived all null", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const item = (await repo().create(u, rowBody(ex, []) as never)).items[0]!;
+    const item = ((await repo().create(u, rowBody(ex, []) as never)).routine).items[0]!;
     expect(item.sets).toEqual([]);
     expect([item.targetSets, item.targetRepsLow, item.targetRepsHigh]).toEqual([null, null, null]);
   });
@@ -61,7 +61,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
   ])("AC6 — legacy %j → %i rows, targets %j", async (legacy, n, targets) => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const item = (await repo().create(u, routineFixture([ex], { items: [{ exerciseId: ex, targetRpe: null, restSeconds: null, supersetGroup: null, notes: null, ...legacy }] }))).items[0]!;
+    const item = ((await repo().create(u, routineFixture([ex], { items: [{ exerciseId: ex, targetRpe: null, restSeconds: null, supersetGroup: null, notes: null, ...legacy }] }))).routine).items[0]!;
     expect(item.sets).toHaveLength(n);
     expect(item.sets.every((s) => s.setType === "working" && s.weight === null)).toBe(true);
     expect([item.targetSets, item.targetRepsLow, item.targetRepsHigh]).toEqual(targets);
@@ -70,7 +70,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
   it("Review Focus 2 — a legacy PUT over a ramp flattens the rows but keeps RPE, rest and notes", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const created = await repo().create(u, rowBody(ex, RAMP, { notes: "keep me" }) as never);
+    const created = (await repo().create(u, rowBody(ex, RAMP, { notes: "keep me" }) as never)).routine;
     const replaced = await repo().replace(u, created.id, {
       name: "Ramp", notes: null,
       items: [{ exerciseId: ex, targetSets: 3, targetRepsLow: 6, targetRepsHigh: 10, targetRpe: 8.5, restSeconds: 150, supersetGroup: null, notes: "keep me" }],
@@ -89,9 +89,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
       .rejects.toMatchObject({ fieldErrors: expect.arrayContaining([expect.objectContaining({ path: "items.0.sets.0.weight" })]) });
     await expect(repo().create(u, rowBody(timed, [{ repsLow: 5, repsHigh: 5 }]) as never))
       .rejects.toMatchObject({ fieldErrors: expect.arrayContaining([expect.objectContaining({ path: "items.0.sets.0.repsLow" })]) });
-    const okTimed = await repo().create(u, rowBody(timed, [{ setType: "warmup" }, {}]) as never);
+    const okTimed = (await repo().create(u, rowBody(timed, [{ setType: "warmup" }, {}]) as never)).routine;
     expect(okTimed.items[0]!.sets).toHaveLength(2);
-    const legacy = await repo().create(u, { name: "Legacy timed", notes: null, items: [{ exerciseId: timed, targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5 }] });
+    const legacy = (await repo().create(u, { name: "Legacy timed", notes: null, items: [{ exerciseId: timed, targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5 }] })).routine;
     expect(legacy.items[0]!.sets.every((s) => s.repsLow === 5)).toBe(true);
   });
 
@@ -105,7 +105,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
   it("AC9 — PUT replaces items and rows; a failing PUT leaves both byte-identical", async () => {
     const u = await insertUser(db);
     const [a, b, c] = [await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u }), await insertExercise(db, { ownerUserId: u })];
-    const created = await repo().create(u, { name: "Big", notes: null, items: [a, b, c].map((e) => ({ exerciseId: e, sets: RAMP })) } as never);
+    const created = (await repo().create(u, { name: "Big", notes: null, items: [a, b, c].map((e) => ({ exerciseId: e, sets: RAMP })) } as never)).routine;
     await repo().replace(u, created.id, { name: "Big", notes: null, items: [a, b].map((e) => ({ exerciseId: e, sets: RAMP.slice(0, 2) })) } as never);
     const n = (await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "routine_item_set"`))[0]!.n;
     expect(n).toBe(4);
@@ -120,7 +120,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
   it("AC2 — a concurrent PUT never yields a torn read", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const created = await repo().create(u, rowBody(ex, RAMP) as never);
+    const created = (await repo().create(u, rowBody(ex, RAMP) as never)).routine;
     const docA = [RAMP[0]!];
     const docB = [RAMP[1]!, RAMP[2]!];
     const legal = [JSON.stringify(RAMP), JSON.stringify(docA), JSON.stringify(docB)];
@@ -144,7 +144,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.1 — routine rows (real Postg
       { exerciseId: ex, targetSets: null, targetRepsLow: 8, targetRepsHigh: 10, targetRpe: null, restSeconds: null, supersetGroup: null, notes: "reps only" },
       { exerciseId: ex, targetSets: null, targetRepsLow: null, targetRepsHigh: null, targetRpe: null, restSeconds: null, supersetGroup: null, notes: null },
     ];
-    const created = await repo().create(u, { name: "Recorded", notes: null, items: recorded });
+    const created = (await repo().create(u, { name: "Recorded", notes: null, items: recorded })).routine;
     const read = await repo().getById(u, created.id);
     read.items.forEach((it, i) => {
       expect([it.targetSets, it.targetRepsLow, it.targetRepsHigh]).toEqual([recorded[i]!.targetSets, recorded[i]!.targetRepsLow, recorded[i]!.targetRepsHigh]);

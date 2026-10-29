@@ -52,10 +52,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
   async function fullAccount(userId: string, sharedGlobal: string) {
     const custom = await insertExercise(db, { ownerUserId: userId });
     await insertExercise(db, { ownerUserId: userId, forkedFrom: sharedGlobal });
-    const routine = await createRoutineRepository(db.prisma).create(
+    const routine = (await createRoutineRepository(db.prisma).create(
       userId,
       routineFixture([custom, sharedGlobal], { notes: "note", sections: [{ key: "k", name: "Main", notes: "n" }], sectionKeys: ["k", "k"] }),
-    );
+    )).routine;
     const { workoutId } = await logWorkout(db, userId, { startedAt: daysAgo(2), finish: "none", exercises: [{ exerciseId: custom, sets: [{ reps: 5, weight: 100 }] }, { exerciseId: sharedGlobal, sets: [{ reps: 3, weight: 60 }] }] });
     await workouts().updateWorkout(userId, workoutId, { endedAt: new Date(daysAgo(2).getTime() + 3_600_000).toISOString() }); // creates personal_record rows
     // Spec 19.0 AC35: a row in each hevy_ table, so the purge's discovery has something to empty there too.

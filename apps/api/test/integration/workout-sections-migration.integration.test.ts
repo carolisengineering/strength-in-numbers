@@ -42,11 +42,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.4 — migration 0014 (real Pos
   it("09.4 AC17 — the start copy leaves a routine workout's sections addedInWorkout: false", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const routine = await createRoutineRepository(db.prisma).create(u, RoutineWriteSchema.parse({
+    const routine = (await createRoutineRepository(db.prisma).create(u, RoutineWriteSchema.parse({
       name: "Push day",
       sections: [{ key: "w", name: "Warm-up" }, { key: "m", name: "Main" }],
       items: [{ exerciseId: ex, sectionKey: "w" }, { exerciseId: ex, sectionKey: "m" }],
-    }));
+    }))).routine;
     const workouts = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
     const started = await workouts.createWorkout(u, {
       clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000), tzOffsetMinutes: 0, title: null, notes: null, routineId: routine.id,

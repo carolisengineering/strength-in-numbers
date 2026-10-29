@@ -79,13 +79,10 @@ export interface RoutineCreateFields extends RoutineWriteFields {
   oneOff?: true | undefined;
 }
 
-/** Spec 09.3 §6.1 — told how many expired one-offs the sweep removed; called once, only when ≥ 1. */
-export type SweepObserver = (removedCount: number) => void;
-
 export interface RoutineRepository {
   /** The caller's routines: one-offs first, newest created first, then by `lower(name)`, `id` (AC2; Spec 09.3 AC3); items by position.
-   * Sweeps the caller's expired one-offs first (Spec 09.3 §6.1). */
-  list(actingUserId: string, onSwept?: SweepObserver): Promise<RoutineRecord[]>;
+   * Sweeps the caller's expired one-offs first (Spec 09.3 §6.1); `swept` is how many it removed (minor 42). */
+  list(actingUserId: string): Promise<{ routines: RoutineRecord[]; swept: number }>;
 
   /** Throws `NotFoundError` on a miss, a foreign row, or a malformed id (AC3). */
   getById(actingUserId: string, id: string): Promise<RoutineRecord>;
@@ -95,9 +92,10 @@ export interface RoutineRepository {
    * insert (`RoutineNameTakenError` on the unique index), one batched exercise
    * check (`ValidationError` 422 for absent / invisible, `ExerciseRetiredError`
    * with `errors[]` for retired), then the items with normalised groups.
-   * Spec 09.3: sweeps expired one-offs after the lock, and the cap counts no expired one-off.
+   * Spec 09.3: sweeps expired one-offs after the lock, and the cap counts no expired one-off. `swept` is how many the
+   * committed sweep removed; a create that throws returns nothing, and its sweep rolled back with it (minor 42).
    */
-  create(actingUserId: string, fields: RoutineCreateFields, onSwept?: SweepObserver): Promise<RoutineRecord>;
+  create(actingUserId: string, fields: RoutineCreateFields): Promise<{ routine: RoutineRecord; swept: number }>;
 
   /** §6.3 whole replace under a `FOR UPDATE` row lock; item ids are not stable
    * (D2). Throws `NotFoundError`, `RoutineNameTakenError`, `ValidationError`,

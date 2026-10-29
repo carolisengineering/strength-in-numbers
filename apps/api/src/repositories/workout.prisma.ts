@@ -154,9 +154,10 @@ export function workoutSectionsJson(parentRef: string): Prisma.Sql {
   ), '[]'::json)`);
 }
 
-/** Spec 09.3 §6.4 — true iff the workout's routine exists and is a one-off now. `workoutRef` is a SQL
- * column reference (`'w'`, `'"workout"'`), never user input. Used by the detail and the export. */
-export function ROUTINE_IS_ONE_OFF(workoutRef: string): Prisma.Sql {
+/** Spec 09.3 §6.4 — true iff the workout's routine exists and is a one-off now. `workoutRef` is the workout's alias
+ * in the caller's SQL: a literal union, so a typo fails to compile rather than at run time (minor 41). Used by the
+ * detail (`w`) and the export (`"workout"`). */
+export function routineIsOneOffSql(workoutRef: "w" | '"workout"'): Prisma.Sql {
   return Prisma.raw(
     `EXISTS (SELECT 1 FROM "routine" r WHERE r.id = ${workoutRef}.routine_id AND r.one_off_until IS NOT NULL)`,
   );
@@ -292,7 +293,7 @@ async function loadSectionSnapshot(db: DetailClient, workoutId: string) {
     { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
   >`
     SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
-           ${ROUTINE_IS_ONE_OFF("w")} AS routine_is_one_off
+           ${routineIsOneOffSql("w")} AS routine_is_one_off
     FROM "workout" w WHERE w.id = ${workoutId}::uuid
   `;
   const row = rows[0];

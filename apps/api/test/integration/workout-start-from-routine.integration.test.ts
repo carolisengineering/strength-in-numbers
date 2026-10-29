@@ -47,7 +47,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const bench = await insertExercise(db, { name: "Bench", modality: "weight_reps" });
     const row = await insertExercise(db, { name: "Row" });
     const custom = await insertExercise(db, { name: "My Dips", ownerUserId: u, modality: "bodyweight_reps" });
-    const r = await routines().create(
+    const r = (await routines().create(
       u,
       routineFixture([], {
         name: "Push A",
@@ -58,7 +58,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
           { exerciseId: custom, restSeconds: 0 },
         ],
       }),
-    );
+    )).routine;
     const { workout, created } = await start(u, r.id);
     expect(created).toBe(true);
     expect(workout.routineName).toBe("Push A");
@@ -83,8 +83,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const u = await insertUser(db);
     const v = await insertUser(db);
     const ex = await insertExercise(db);
-    const theirs = await routines().create(v, routineFixture([ex]));
-    const mine = await routines().create(u, routineFixture([ex, ex]));
+    const theirs = (await routines().create(v, routineFixture([ex]))).routine;
+    const mine = (await routines().create(u, routineFixture([ex, ex]))).routine;
     await expect(start(u, uuidv7())).rejects.toBeInstanceOf(NotFoundError);
     expect(await count("workout")).toBe(0);
     await expect(start(u, theirs.id)).rejects.toBeInstanceOf(NotFoundError);
@@ -103,8 +103,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
   it("AC18 — a replay with the same key returns the stored workout whatever routineId it carries, copies nothing twice, never re-reads the routine", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await routines().create(u, routineFixture([ex, ex]));
-    const other = await routines().create(u, routineFixture([ex], { name: "Other" }));
+    const r = (await routines().create(u, routineFixture([ex, ex]))).routine;
+    const other = (await routines().create(u, routineFixture([ex], { name: "Other" }))).routine;
     const key = uuidv7();
     const first = await start(u, r.id, key);
     expect(first.created).toBe(true);
@@ -124,13 +124,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
   it("AC19 — with an active workout a routine start is WorkoutInProgressExistsError and copies nothing; two concurrent starts give one created, one 409", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await routines().create(u, routineFixture([ex]));
+    const r = (await routines().create(u, routineFixture([ex]))).routine;
     await start(u);
     await expect(start(u, r.id)).rejects.toBeInstanceOf(WorkoutInProgressExistsError);
     expect(await count("workout_exercise")).toBe(0);
 
     const v = await insertUser(db);
-    const rv = await routines().create(v, routineFixture([ex]));
+    const rv = (await routines().create(v, routineFixture([ex]))).routine;
     const results = await Promise.allSettled([start(v, rv.id), start(v)]);
     expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((x) => x.status === "rejected" && x.reason instanceof WorkoutInProgressExistsError)).toHaveLength(1);
@@ -140,7 +140,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
   it("AC19 / §6.8 — a routine DELETE racing a start: the start wins (snapshot kept, routine_id nulled) or is 404; never a torn copy", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await routines().create(u, routineFixture([ex, ex, ex]));
+    const r = (await routines().create(u, routineFixture([ex, ex, ex]))).routine;
     const [s, d] = await Promise.allSettled([start(u, r.id), routines().delete(u, r.id)]);
     expect(d.status).toBe("fulfilled");
     if (s.status === "fulfilled") {
@@ -159,7 +159,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const u = await insertUser(db);
     const ex = await insertExercise(db);
     const ex2 = await insertExercise(db);
-    const r = await routines().create(u, routineFixture([ex, ex]));
+    const r = (await routines().create(u, routineFixture([ex, ex]))).routine;
     const { workout } = await start(u, r.id);
     const before = await workouts().getWorkoutById(u, workout.id);
     await routines().replace(u, r.id, routineFixture([ex2], { name: "Renamed" }));
@@ -175,7 +175,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const u = await insertUser(db);
     const v = await insertUser(db);
     const bench = await insertExercise(db, { name: "Bench" });
-    const r = await routines().create(u, routineFixture([bench, bench]));
+    const r = (await routines().create(u, routineFixture([bench, bench]))).routine;
     const { workout } = await start(u, r.id);
     const detail = await workouts().getWorkoutById(u, workout.id);
     for (const [i, we] of detail.exercises.entries()) {
@@ -203,7 +203,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     const u = await insertUser(db);
     const ex = await insertExercise(db);
     const long = "x".repeat(500);
-    const r = await routines().create(
+    const r = (await routines().create(
       u,
       routineFixture([], {
         items: [
@@ -213,7 +213,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
           { exerciseId: ex, notes: long },
         ],
       }),
-    );
+    )).routine;
     const { workout } = await start(u, r.id);
     const notesOf = async () =>
       (await workouts().getWorkoutById(u, workout.id)).exercises.map((e) => [e.position, e.notes]);
@@ -236,7 +236,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
   it("AC33 — a replay after the routine was edited and then deleted returns the original copy without reading the routine; a failed start leaves no rows", async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db);
-    const r = await routines().create(u, routineFixture([], { items: [{ exerciseId: ex, notes: "Original" }] }));
+    const r = (await routines().create(u, routineFixture([], { items: [{ exerciseId: ex, notes: "Original" }] }))).routine;
     const key = uuidv7();
     const first = await start(u, r.id, key);
     await routines().replace(u, r.id, routineFixture([], { items: [{ exerciseId: ex, notes: "Edited" }] }));
@@ -250,10 +250,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 09 — POST /v1/workouts with rou
     await workouts().updateWorkout(u, first.workout.id, { endedAt: endedSoon() });
 
     const retired = await insertExercise(db);
-    const bad = await routines().create(
+    const bad = (await routines().create(
       u,
       routineFixture([], { name: "Bad", items: [{ exerciseId: ex, notes: "Note" }, { exerciseId: retired, notes: "Note" }] }),
-    );
+    )).routine;
     await db.prisma.$executeRawUnsafe(`UPDATE "exercise" SET is_active = false WHERE id = $1::uuid`, retired);
     const [workoutsBefore, exercisesBefore] = [await count("workout"), await count("workout_exercise")];
     await expect(start(u, bad.id)).rejects.toBeInstanceOf(ExerciseRetiredError);

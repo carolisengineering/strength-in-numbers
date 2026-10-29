@@ -74,9 +74,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
   async function fresh(oneOff = true) {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
-    const routine = await routines().create(u, {
+    const routine = (await routines().create(u, {
       ...routineFixture([ex, ex], { name: "Class", ...(oneOff ? { oneOff: true as const } : {}), sections: [{ key: "s", name: "Main" }], sectionKeys: ["s", "s"] }),
-    });
+    })).routine;
     return { u, ex, routine };
   }
   const start = (u: string, routineId: string) =>
