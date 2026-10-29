@@ -49,6 +49,8 @@ describe("20.0 AC32 — Hevy screen landmarks and live regions", () => {
       ["H1", "Hevy"],
       ["H2", "Hevy key"],
       ["H2", "Exercise pairings"],
+      // Spec 20.1 AC1 (amends 20.0 §5.1): the import card.
+      ["H2", "Import from Hevy"],
     ]);
     expect(screen.getByRole("region", { name: "Hevy" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Hevy key" })).toBeInTheDocument();

@@ -41,6 +41,11 @@ export const PROFILE_LINK = "Profile";
 export const preflightUnit = (unit: "kg" | "lb") => `Weights are stored in ${unit} (your Profile setting).`;
 export const PREFLIGHT_SAFE = "It is safe to run again: anything already imported is skipped.";
 export const START = "Start";
+// Plan copy.
+export const PREFLIGHT_TITLE = "Before you start";
+export const READING_TITLE = "Reading Hevy";
+export const PREPARING = "Getting your pairings…";
+export const PREPARING_FAILED = "Couldn't load your pairings. Check your connection and try again.";
 
 /** AC2 / AC22: the stale-records banner. */
 // Plan copy.
