@@ -89,6 +89,8 @@ const NETWORK = new Set(NETWORK_NAMES.map((n) => n.toLowerCase()));
 const SIGNAL_TOKEN = /^[•·.0oOlIia|]{1,4}$/;
 /** After it: a network suffix or the battery (`UW`, `O`, `C`). */
 const STATUS_TAIL_MAX = 3;
+/** With no bars before the network name: only a battery or suffix mark (`O`, `C`, `UW`), never a word like `Row`. */
+const STATUS_TAIL_MAX_NO_BARS = 2;
 
 /** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. */
 export function isStatusBarLine(line: string): boolean {
@@ -98,8 +100,11 @@ function statusBarLine(l: string): boolean {
   const tokens = l.split(" ");
   if (tokens.length < 2 || tokens.length > 3) return false;
   const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
-  // Minor 107: a real status bar always reads with its signal bars first, so "LTE Row" is someone's line.
-  return network > 0 && tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= STATUS_TAIL_MAX));
+  if (network < 0) return false;
+  // Minor 107: with no bars before it (they can read on their own line), the network name heads the status bar only
+  // when what follows is a battery or suffix mark (`LTE O`, `5G UW`), so "LTE Row" and "3G Run" are someone's lines.
+  const tailMax = network === 0 ? STATUS_TAIL_MAX_NO_BARS : STATUS_TAIL_MAX;
+  return tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= tailMax));
 }
 
 /** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
@@ -211,7 +216,17 @@ export function cleanWorkoutText(raw: string): CleanResult {
   const all = raw.split(LINE_BREAK).map(collapseLine).filter((l) => l !== "");
   const nav = all.map((l) => NAV.has(l.toLowerCase()));
   // A tab bar is several of its words close together (icons between); one "Home" in the text is an at-home label.
-  const tabBar = nav.map((isNav, i) => isNav && [-2, -1, 1, 2].some((d) => nav[i + d] === true));
+  /** A tab-bar label with another label at most `reach` lines before or after it. */
+  const navNear = (i: number, reach: number) => {
+    if (!nav[i]) return false;
+    for (let d = 1; d <= reach; d++) if (nav[i - d] === true || nav[i + d] === true) return true;
+    return false;
+  };
+  // The status-bar window resets on two labels within two lines, as before.
+  const navRun = nav.map((_, i) => navNear(i, 2));
+  // Minor 84: an icon is chrome only beside a label of a tab bar. Reach 3 lets an icon read as two lines sit
+  // between two labels (`Home`, `口`, `凸`, `Workouts`).
+  const tabBar = nav.map((_, i) => navNear(i, 3));
   const badge = all.map(badgeLine);
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
@@ -224,7 +239,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
     const after = previous;
     previous = line;
     const chunk = chunks[chunks.length - 1]!;
-    if (tabBar[i]) textSinceNav = 0;
+    if (navRun[i]) textSinceNav = 0;
     if (CLOCK_LINE.test(line)) {
       furniture++;
       // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a

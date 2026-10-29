@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { cleanWorkoutText, collapseLine, isBadgeLine, isFurnitureLine, isIconLine, isStatusBarLine, ocrKey } from "../src/workoutText.js";
+import { cleanWorkoutText, collapseLine, isBadgeLine, isFurnitureLine, isIconLine, isStatusBarLine, ocrKey, readWorkoutText } from "../src/workoutText.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
 const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
@@ -190,13 +190,21 @@ describe("10.4 AC56 — the cellular status bar is furniture", () => {
 });
 
 describe("Minor 107 — a network name needs bars before it", () => {
-  it.each(["LTE Row", "5G Row", "3G Run", "LTE O"])("%s is not the status bar and is kept", (l) => {
+  it.each(["LTE Row", "5G Row", "3G Run"])("%s is not the status bar and is kept", (l) => {
     expect(isStatusBarLine(l)).toBe(false);
     expect(cleanWorkoutText(`Intro\n${l}\nNext`).lines).toContain(l);
   });
   it("•ll LTE is still dropped as the status bar", () => {
     expect(isStatusBarLine("•ll LTE")).toBe(true);
     expect(cleanWorkoutText("Intro\n•ll LTE\nNext").lines).toEqual(["Intro", "Next"]);
+  });
+  it.each(["LTE O", "5G UW", "LTE C", "5G+ O"])("code review — %s (the bars read on their own line) is still the status bar", (l) => {
+    expect(isStatusBarLine(l)).toBe(true);
+    expect(cleanWorkoutText(`Intro\n•ll\n${l}\nNext`).lines).toEqual(["Intro", "Next"]);
+  });
+  it("code review — under an open run, a bars-less status bar is not read as an exercise", () => {
+    const r = readWorkoutText(["Engine", "3 Sets:", "10 Row", "11:09", "•ll", "LTE O", "10 Burpees"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Row", "Burpees"]);
   });
 });
 
@@ -208,6 +216,11 @@ describe("Minor 84 — an author's Home is not a tab bar", () => {
   it("口 next to Home / Schedule is still dropped", () => {
     expect(cleanWorkoutText("Intro\nNext\n口\nHome\nSchedule").lines).not.toContain("口");
     expect(cleanWorkoutText("Intro\nNext\nHome\n口\nSchedule").lines).not.toContain("口");
+  });
+  it("code review — two icon lines between a tab bar's labels are both dropped", () => {
+    const lines = cleanWorkoutText("Intro\nNext\nHome\n口\n凸\nWorkouts").lines;
+    expect(lines).not.toContain("口");
+    expect(lines).not.toContain("凸");
   });
 });
 

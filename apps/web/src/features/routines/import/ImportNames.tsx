@@ -36,7 +36,9 @@ const REASON_ID = "import-continue-reason";
 export function ImportNames() {
   const session = useImportSession();
   const read = session.read?.result ?? null;
-  if (read === null || cardNames(read).length === 0) return <Navigate to={IMPORT_PATH} replace />;
+  // Minor 59: `cardNames` builds the import plan, and every card edit re-renders this gate, so it runs once per read.
+  const hasNames = useMemo(() => read !== null && cardNames(read).length > 0, [read]);
+  if (!hasNames) return <Navigate to={IMPORT_PATH} replace />;
   return <NamesBody />;
 }
 
