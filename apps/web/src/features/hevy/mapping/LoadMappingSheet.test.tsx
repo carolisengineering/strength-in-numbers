@@ -39,6 +39,7 @@ import {
   loaded,
   pairedCount,
   readingTemplates,
+  SECTION_RULES_DROPPED_LABEL,
   willBeRemovedLine,
   willChangeLine,
 } from "../messages";
@@ -354,5 +355,107 @@ describe("Minor 184 — a read cancelled from elsewhere goes back to Choose (cod
     await within(dialog).findByText(readingTemplates(1, 3));
     queryClient.removeQueries({ queryKey: ["hevy", "templates"] });
     expect(await within(dialog).findByLabelText("Choose a file")).toBeInTheDocument();
+  });
+});
+
+describe("Minor 197 — the sheet's progress comes from the shared read", () => {
+  const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+  /** Pages answer in order; page 2 and page 3 wait for their release. */
+  function heldPages() {
+    const asked: number[] = [];
+    const gates = new Map<number, () => void>();
+    const opened = new Map([2, 3].map((p) => [p, new Promise<void>((resolve) => gates.set(p, resolve))]));
+    server.use(
+      http.get(HEVY_TEMPLATES, async ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        asked.push(page);
+        await opened.get(page);
+        return HttpResponse.json({ page, page_count: 3, exercise_templates: many.slice((page - 1) * 100, page * 100) });
+      }),
+    );
+    return { asked, release: (page: number) => gates.get(page)!() };
+  }
+
+  it("a sheet that joins a running read shows its page, and follows it (Review Focus 1)", async () => {
+    const pages = heldPages();
+    const { queryClient } = renderHevyScreen(undefined, { catalog: CATALOG });
+    // Another reader (the markers or Pairings screen) starts the read first.
+    void queryClient.fetchQuery(hevyTemplatesQuery(hevyClientFor(() => VALID_KEY))).catch(() => {});
+    await waitFor(() => expect(pages.asked).toContain(2));
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    expect(await within(dialog).findByText(readingTemplates(1, 3))).toBeInTheDocument();
+    pages.release(2);
+    expect(await within(dialog).findByText(readingTemplates(2, 3))).toBeInTheDocument();
+    pages.release(3);
+    await within(dialog).findByRole("region", { name: "Preview" });
+  });
+
+  it("Review Focus 2 — a read that fails leaves no progress for the next one", async () => {
+    server.use(
+      http.get(HEVY_TEMPLATES, ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        return page === 1
+          ? HttpResponse.json({ page, page_count: 3, exercise_templates: many.slice(0, 100) })
+          : HttpResponse.json({ error: "boom" }, { status: 500 });
+      }),
+    );
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    expect(await within(dialog).findByLabelText("Choose a file")).toBeInTheDocument();
+    const pages = heldPages();
+    await choose(dialog, GOOD);
+    expect(await within(dialog).findByText(readingTemplates(1, 3))).toBeInTheDocument();
+    expect(within(dialog).queryByText(readingTemplates(2, 3))).toBeNull();
+    pages.release(2);
+    pages.release(3);
+    await within(dialog).findByRole("region", { name: "Preview" });
+  });
+});
+
+describe("Minor 197 — the reading line never goes back to page 1 of 1 (code review)", () => {
+  it("from the first page to the check, the pages only go up", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    server.use(templatesHandler(many));
+    const dialog = await openSheet();
+    const line = within(dialog).getByTestId("hevy-load-progress");
+    const texts: string[] = [];
+    const observer = new MutationObserver(() => texts.push(line.textContent ?? ""));
+    observer.observe(line, { childList: true, characterData: true, subtree: true });
+    await choose(dialog, GOOD);
+    await within(dialog).findByRole("region", { name: "Preview" });
+    observer.disconnect();
+    const reading = texts.filter((t) => t.startsWith("Reading"));
+    expect(reading.at(-1)).toBe(readingTemplates(3, 3));
+    expect(reading.indexOf(readingTemplates(1, 1))).toBeLessThanOrEqual(0);
+  });
+});
+
+describe("Minor 201 — a file read that fails after the sheet is closed shows nothing", () => {
+  it("close, then the read rejects; reopening shows no stale alert", async () => {
+    const dialog = await openSheet();
+    let fail!: () => void;
+    const slow = new File(["x"], "m.csv", { type: "text/csv" });
+    Object.defineProperty(slow, "text", { value: () => new Promise<string>((_, reject) => (fail = () => reject(new Error("NotReadableError")))) });
+    await userEvent.upload(within(dialog).getByLabelText("Choose a file"), slow);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fail();
+    await new Promise((r) => setTimeout(r, 20));
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const again = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    expect(within(again).queryByText(FILE_READ_FAILED)).toBeNull();
+  });
+});
+
+describe("Minor 200 — one dropped section rule reads singular, and the list's label is copy", () => {
+  it("1 section rule …, in a list named SECTION_RULES_DROPPED_LABEL", async () => {
+    server.use(http.get(MAPPING_URL, () => HttpResponse.json({ pairs: [], sectionRules: [{ name: "Finisher", treatment: "notes_on_first" }] })));
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-BENCH,,${BENCH.id},,,`));
+    const preview = await within(dialog).findByRole("region", { name: "Preview" });
+    expect(within(preview).getByText("1 section rule in the app that this file drops or changes")).toBeInTheDocument();
+    expect(sectionRulesRemovedLine(2)).toBe("2 section rules in the app that this file drops or changes");
+    expect(within(preview).getByRole("list", { name: SECTION_RULES_DROPPED_LABEL })).toBeInTheDocument();
   });
 });

@@ -39,16 +39,36 @@ describe("10.6 AC1 / AC2 — SessionSection", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("with emptyText and no children: the muted line; with children: none", () => {
+  it("with emptyText and empty: the muted line; with cards: none", () => {
     const { rerender } = render(
-      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet.">
+      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet." empty>
         {[]}
       </SessionSection>,
     );
     expect(screen.getByText("No exercises yet.")).toBeInTheDocument();
     rerender(
-      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet.">
+      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet." empty={false}>
         {[<div key="a">card</div>]}
+      </SessionSection>,
+    );
+    expect(screen.queryByText("No exercises yet.")).toBeNull();
+  });
+});
+
+describe("Minor 64 — empty is explicit", () => {
+  const Nothing = () => null;
+  it("empty with a child that renders nothing: the muted line shows", () => {
+    render(
+      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet." empty>
+        <Nothing />
+      </SessionSection>,
+    );
+    expect(screen.getByText("No exercises yet.")).toBeInTheDocument();
+  });
+  it("empty={false} with an empty children array: no muted line", () => {
+    render(
+      <SessionSection heading="Cooldown" notes={null} emptyText="No exercises yet." empty={false}>
+        {[]}
       </SessionSection>,
     );
     expect(screen.queryByText("No exercises yet.")).toBeNull();

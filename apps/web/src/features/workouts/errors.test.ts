@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../api";
-import { classifyWorkoutError, type WorkoutErrorKind } from "./errors";
+import { classifyWorkoutError, ignoreNotFound, isWorkoutGone, type WorkoutErrorKind } from "./errors";
 
 const problem = (status: number, slug: string, extra: Partial<ConstructorParameters<typeof ApiError>[0]> = {}) =>
   new ApiError({
@@ -74,4 +74,28 @@ describe("10.6 AC13 — classifyWorkoutError knows the section cap", () => {
   it("409 workout-section-limit → workout-section-limit", () => {
     expect(classifyWorkoutError(problem(409, "workout-section-limit")).kind).toBe("workout-section-limit");
   });
+});
+
+describe("Minor 68 — one ignoreNotFound", () => {
+  it("a 404 is done: it resolves", async () => {
+    await expect(ignoreNotFound(() => Promise.reject(problem(404, "not-found")))).resolves.toBeUndefined();
+  });
+  it("anything else is rethrown: a 409 and a TypeError", async () => {
+    const conflict = problem(409, "workout-finished");
+    await expect(ignoreNotFound(() => Promise.reject(conflict))).rejects.toBe(conflict);
+    const offline = new TypeError("Failed to fetch");
+    await expect(ignoreNotFound(() => Promise.reject(offline))).rejects.toBe(offline);
+  });
+  it("a success resolves", async () => {
+    await expect(ignoreNotFound(() => Promise.resolve())).resolves.toBeUndefined();
+  });
+});
+
+describe("Minor 67 — isWorkoutGone", () => {
+  it("a 404 means gone", () => expect(isWorkoutGone(problem(404, "not-found"))).toBe(true));
+  it.each([
+    ["a 500", problem(500, "about:blank")],
+    ["a network TypeError", new TypeError("Failed to fetch")],
+    ["undefined", undefined],
+  ])("%s does not", (_label, error) => expect(isWorkoutGone(error)).toBe(false));
 });

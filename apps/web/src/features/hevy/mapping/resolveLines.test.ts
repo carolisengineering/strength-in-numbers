@@ -199,3 +199,16 @@ describe("20.0 AC21, AC22 — final review fixes", () => {
     expect(willChange(current, next).map((p) => p.hevyTemplateId)).toEqual(["T-BENCH", "T-SKIP"]);
   });
 });
+
+describe("Minor 135 — an id a spreadsheet stripped falls back to the title", () => {
+  const templates = [tpl("00012345", "Row"), tpl("1234E567", "Curl")];
+  const resolveWith = (row: string) => resolveLines(file(row), { templates, catalog: CATALOG });
+  it.each([
+    ["leading zeros dropped", `exercise,12345,Row,${BENCH.id},,,`, "00012345"],
+    ["an E id read as a number", `exercise,1.23E+10,Curl,${BENCH.id},,,`, "1234E567"],
+  ])("%s: paired by the exact title", (_label, row, id) => {
+    const r = resolveWith(row);
+    expect(r.pairs.map((p) => p.hevyTemplateId)).toEqual([id]);
+    expect(r.leftOut).toEqual([]);
+  });
+});

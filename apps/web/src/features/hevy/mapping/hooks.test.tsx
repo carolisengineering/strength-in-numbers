@@ -21,7 +21,14 @@ import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { useHevyKey } from "../useHevyKey";
 import { useHevyMapping } from "./useHevyMapping";
+import { reportTemplatesPage, useTemplatesProgress } from "./templatesProgress";
 import { useHevyTemplates } from "./useHevyTemplates";
+
+// A pass-through spy, so the read's progress reports can be counted.
+vi.mock("./templatesProgress", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./templatesProgress")>();
+  return { ...actual, reportTemplatesPage: vi.fn(actual.reportTemplatesPage) };
+});
 import { useMappingMutations, type PairInput } from "./useMappingMutations";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -132,14 +139,15 @@ describe("20.0 AC19 — templates in memory only", () => {
       }),
     );
     const setItem = vi.spyOn(Storage.prototype, "setItem");
-    const pages: string[] = [];
+    vi.mocked(reportTemplatesPage).mockClear();
     const queryClient = makeQueryClient();
-    const { result } = renderHook(() => useHevyTemplates({ onPage: ({ page, pageCount }) => void pages.push(`${page}/${pageCount}`) }), {
-      wrapper: wrapperFor(queryClient),
-    });
+    const { result } = renderHook(() => useHevyTemplates(), { wrapper: wrapperFor(queryClient) });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data!.map((t) => t.id)).toEqual(["p1a", "p1b", "p2a", "p2b", "p3a", "p3b"]);
-    expect(pages).toEqual(["1/3", "2/3", "3/3"]);
+    // Minor 197: the read reports to the shared progress store (a start at 1/1, then each page), and clears it after.
+    const pages = vi.mocked(reportTemplatesPage).mock.calls.map(([p]) => `${p.page}/${p.pageCount}`);
+    expect(pages).toEqual(["1/1", "1/3", "2/3", "3/3"]);
+    expect(renderHook(() => useTemplatesProgress()).result.current).toBeNull();
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.queryKey))).not.toContain(VALID_KEY);
     expect(setItem).not.toHaveBeenCalled();
   });

@@ -34,6 +34,18 @@
   font-size: var(--font-size-sm);
 }
 
+/* Minor 199: the quiet-minute live region is always mounted; empty, it leaves the form's flex flow, so it adds no
+   gap (it stays in the accessibility tree, unlike display: none). */
+.quiet:empty {
+  position: absolute;
+}
+
+/* Minor 203: a stored key Hevy refuses, named under its ending whatever the status line says. */
+.failure {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

@@ -805,6 +805,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               heading={segment.heading}
               notes={segment.notes}
               emptyText={SECTION_COPY.empty}
+              empty={segment.rows.length === 0}
               {...(segment.editable && segment.sectionId !== null
                 ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                 : {})}

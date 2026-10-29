@@ -28,7 +28,7 @@ import {
 } from "./messages";
 import { useHevyKey } from "./useHevyKey";
 import { useHevyUser } from "./useHevyUser";
-import { inQuietMinute } from "./client/pacer";
+import { inQuietMinute, msUntilQuietChange } from "./client/pacer";
 import styles from "./HevyKeyCard.module.css";
 
 const KEY_INPUT_ID = "hevy-key";
@@ -48,6 +48,24 @@ export function HevyKeyCard() {
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0, at: 0 });
   const [confirmRemove, setConfirmRemove] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
+
+  // Minor 199: while a save waits, re-check the quiet minute when it next starts or ends, not once per render.
+  const [quiet, setQuiet] = useState(false);
+  useEffect(() => {
+    if (busy === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const now = Date.now();
+      setQuiet(inQuietMinute(now));
+      timer = setTimeout(check, msUntilQuietChange(now));
+    };
+    check();
+    return () => {
+      clearTimeout(timer);
+      // The next save starts from "not quiet", so its first render never shows a stale line (code review).
+      setQuiet(false);
+    };
+  }, [busy]);
 
   const announce = (text: string) => setAnnouncement((a) => ({ text, seq: a.seq + 1, at: Date.now() }));
   // After the line has rendered its new text (and the form has unmounted), so focus lands on the words.
@@ -81,6 +99,10 @@ export function HevyKeyCard() {
   const showField = !key.hasKey || replacing;
   const username = user.data?.data.username ?? user.data?.data.name ?? null;
   const userFailure = user.error instanceof HevyError ? (user.error.kind === "not_found" ? HEVY_COPY.bad_key : HEVY_COPY[user.error.kind]) : null;
+  // Minor 171: whichever came last, an outcome this visit or Hevy refusing the stored key after it.
+  const statusText = userFailure !== null && (announcement.text === "" || user.errorUpdatedAt > announcement.at) ? userFailure : announcement.text;
+  // Minor 203: a refusal the status line is not showing (a newer outcome took it) stays named under the ending.
+  const refusalUnderEnding = userFailure === HEVY_COPY.bad_key && statusText !== userFailure;
 
   return (
     <section className={styles.card} aria-labelledby="hevy-key-title">
@@ -91,6 +113,9 @@ export function HevyKeyCard() {
       {key.hasKey && key.lastFour !== null ? (
         <div className={styles.current}>
           <p className={styles.ending}>{keyEnding(key.lastFour)}</p>
+          {/* Minor 203: a key Hevy refuses stays named here once a newer outcome takes the status line (never both at
+              once). Not live (the status line announces), and only the refusal: a network failure is the status line's. */}
+          {refusalUnderEnding ? <p className={styles.failure}>{userFailure}</p> : null}
           {username !== null ? <p className={styles.who}>{signedInAs(username)}</p> : null}
           {username === null && user.isPending && user.fetchStatus === "fetching" ? <p className={styles.who}>{LOADING_USERNAME}</p> : null}
           {!replacing ? (
@@ -129,7 +154,10 @@ export function HevyKeyCard() {
             )}
           </Field>
           <p className={styles.stays}>{KEY_STAYS}</p>
-          {busy !== null && inQuietMinute(Date.now()) ? <p className={styles.stays}>{QUIET_MINUTE}</p> : null}
+          {/* Minor 199: mounted from the start, so the line is announced when the quiet minute begins mid-save. */}
+          <p className={`${styles.stays} ${styles.quiet}`} aria-live="polite" data-testid="hevy-quiet-minute">
+            {busy !== null && quiet ? QUIET_MINUTE : ""}
+          </p>
           <div className={styles.actions}>
             <Button type="submit" busy={busy === "remember"} disabled={busy !== null}>
               {SAVE_AND_REMEMBER}
@@ -157,8 +185,7 @@ export function HevyKeyCard() {
 
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-key-status">
         {/* Minor 171: a stored key that Hevy now refuses is announced here too, after the last outcome. */}
-        {/* Whichever came last: an outcome this visit, or Hevy refusing the stored key after it. */}
-        {userFailure !== null && (announcement.text === "" || user.errorUpdatedAt > announcement.at) ? userFailure : announcement.text}
+        {statusText}
       </p>
 
       <ConfirmDialog

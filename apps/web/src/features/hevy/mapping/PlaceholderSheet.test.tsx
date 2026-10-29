@@ -183,3 +183,16 @@ describe("Minor 181 — the markers sheet's 429 says how long", () => {
     expect(await within(dialog).findByText(mappingRateLimited(7_000))).toBeInTheDocument();
   });
 });
+
+describe("Minor 194 — the markers search folds accents (minor 192's shared fold, NFD)", () => {
+  it("a plain-letter search finds an accented title", async () => {
+    server.use(templatesHandler([...TEMPLATES, tpl("D", "Développé Couché", "weight_reps")]));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    const dialog = await openMarkers();
+    await within(dialog).findByRole("group", { name: "Warmup" });
+    await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search Hevy exercises" }), "developpe");
+    const warm = within(dialog).getByRole("group", { name: "Warmup" });
+    expect(within(warm).getByRole("radio", { name: "Développé Couché" })).toBeInTheDocument();
+    expect(within(warm).queryByRole("radio", { name: "Bench Press" })).toBeNull();
+  });
+});

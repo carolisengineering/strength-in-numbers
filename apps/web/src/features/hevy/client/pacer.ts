@@ -31,6 +31,15 @@ export function inQuietMinute(nowMs: number): boolean {
   return outOfQuietMinute(nowMs) !== nowMs;
 }
 
+/**
+ * Minor 199: milliseconds until `inQuietMinute` next flips: to `:01:00` UTC inside the quiet minute, else to the next
+ * `:00:00`. A screen that explains the wait re-checks then, instead of once per render.
+ */
+export function msUntilQuietChange(nowMs: number): number {
+  const intoHour = ((nowMs % HOUR_MS) + HOUR_MS) % HOUR_MS;
+  return intoHour < QUIET_MS ? QUIET_MS - intoHour : HOUR_MS - intoHour;
+}
+
 /** The slot moved out of the first minute of its UTC hour. */
 function outOfQuietMinute(slotMs: number): number {
   const intoHour = ((slotMs % HOUR_MS) + HOUR_MS) % HOUR_MS;

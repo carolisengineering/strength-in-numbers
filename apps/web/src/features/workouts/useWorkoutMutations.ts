@@ -16,7 +16,7 @@ import type {
   WorkoutDetail,
   WorkoutExercise,
 } from "@sin/core";
-import { ApiError } from "../../api";
+import { ignoreNotFound } from "./errors";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
@@ -56,17 +56,6 @@ export function useIsSetWritePending(): boolean {
 const guardActiveReads = (queryClient: QueryClient): Promise<ReadGuard> => guardReads(queryClient, WORKOUT_KEYS.active);
 const rereadActiveIfStale = (queryClient: QueryClient, guard: ReadGuard | undefined): void =>
   rereadIfStale(queryClient, WORKOUT_KEYS.active, guard);
-
-const isNotFound = (error: unknown): boolean => error instanceof ApiError && error.status === 404;
-
-/** A repeat of an already-applied delete answers 404; the screen treats that as success. */
-export async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-  }
-}
 
 // ---- workout lifecycle ---------------------------------------------------------------------------
 

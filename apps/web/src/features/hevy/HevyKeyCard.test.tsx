@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,7 @@ import {
 } from "../../test/hevyHarness";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HevyError } from "./client/hevyErrors";
 import { HEVY_KEYS } from "./keys";
 import { hevyKeyStorageKey, hevyKeyStore } from "./keyStore";
 
@@ -292,5 +293,90 @@ describe("Minor 171 — a refusal after a save in the same visit is announced (f
     server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
     await queryClient.refetchQueries({ queryKey: HEVY_KEYS.userAll });
     await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+  });
+});
+
+describe("Minor 199 — the quiet-minute line appears at the boundary and goes after it", () => {
+  afterEach(() => vi.useRealTimers());
+  it("a save started at :59:59 shows the line at :00:00, in a polite live region, and drops it at :01:00", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true, now: new Date("2026-10-29T14:59:59.000Z") });
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    const region = document.querySelector<HTMLElement>('[aria-live="polite"][data-testid="hevy-quiet-minute"]');
+    expect(region).not.toBeNull();
+    expect(region).toBeEmptyDOMElement();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await waitFor(() => expect(region).toHaveTextContent(QUIET_MINUTE));
+    await vi.advanceTimersByTimeAsync(60_000);
+    await waitFor(() => expect(region).toBeEmptyDOMElement());
+    expect(document.contains(region)).toBe(true);
+  });
+});
+
+/**
+ * Every text a live region was given, in order, a flash between two renders included: the observer's callback is
+ * batched, so it reads each record's added text, not the region's text by the time it runs.
+ */
+function recordTexts(node: HTMLElement): { texts: string[]; stop: () => void } {
+  const texts: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      if (r.type === "characterData") texts.push((r.target as CharacterData).data);
+      for (const added of r.addedNodes) texts.push(added.textContent ?? "");
+    }
+  });
+  observer.observe(node, { childList: true, characterData: true, subtree: true });
+  return { texts, stop: () => observer.disconnect() };
+}
+
+describe("Minor 199 — the quiet-minute line never flashes on the next save (code review)", () => {
+  afterEach(() => vi.useRealTimers());
+  it("a save that ended in the quiet minute leaves nothing for a later save outside it", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true, now: new Date("2026-10-29T14:00:30.000Z") });
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    expect(await screen.findByText(HEVY_COPY.bad_key)).toBeInTheDocument();
+    vi.setSystemTime(new Date("2026-10-29T14:05:00.000Z"));
+    server.use(http.get(HEVY_USER_INFO_URL, () => new Promise<never>(() => {})));
+    const region = screen.getByTestId("hevy-quiet-minute");
+    const seen = recordTexts(region);
+    await saveAndRemember();
+    seen.stop();
+    expect(seen.texts.filter((t) => t === QUIET_MINUTE)).toEqual([]);
+    expect(region).toBeEmptyDOMElement();
+  });
+
+  it("the empty region takes no room in the form (no flex gap)", () => {
+    const css = readFileSync(join(__dirname, "HevyKeyCard.module.css"), "utf8");
+    expect(css).toMatch(/\.quiet:empty\s*\{[^}]*position:\s*absolute/);
+  });
+});
+
+describe("Minor 203 — a refused stored key is named under its ending", () => {
+  it("when the status line already names the refusal, it shows once (final review: no duplicate)", async () => {
+    server.use(http.get(HEVY_USER_INFO_URL, () => HttpResponse.json({ error: "Invalid api key" }, { status: 401 })));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    renderHevyScreen();
+    await waitFor(() => expect(status()).toHaveTextContent(HEVY_COPY.bad_key));
+    expect(screen.getAllByText(HEVY_COPY.bad_key)).toHaveLength(1);
+  });
+
+  it("Review Focus 4 — a newer outcome on the status line leaves the refusal named, not live, under the ending", async () => {
+    server.use(userInfoOk());
+    const { queryClient } = renderHevyScreen();
+    await paste(VALID_KEY);
+    await saveAndRemember();
+    await waitFor(() => expect(status()).toHaveTextContent(KEY_SAVED));
+    // Hevy's refusal, recorded before the save's announcement: the status line keeps the newer outcome.
+    const query = queryClient.getQueryCache().find({ queryKey: HEVY_KEYS.user(USER_ID) })!;
+    act(() => query.setState({ status: "error", error: new HevyError("bad_key"), errorUpdatedAt: 1 }));
+    const ending = screen.getByText(keyEnding(VALID_KEY.slice(-4)));
+    const under = await within(ending.parentElement!).findByText(HEVY_COPY.bad_key);
+    expect(under.closest('[role="status"], [aria-live]')).toBeNull();
+    expect(status()).toHaveTextContent(KEY_SAVED);
   });
 });

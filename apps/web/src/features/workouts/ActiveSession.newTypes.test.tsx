@@ -120,6 +120,18 @@ describe("18.1 AC16 — logging the new types", () => {
     expect(row).toHaveTextContent("Not saved yet");
   });
 
+  it("Minor 95 — a hold typed as seconds only logs durationS 30", async () => {
+    const { fake, user } = await setup();
+    await makeCurrent(user, "Hold");
+    await typeInto(user, "Hold", "Weight", "20");
+    await user.clear(field("Hold", "Minutes"));
+    await typeInto(user, "Hold", "Seconds", "30");
+    expect(logButton("Hold")).toHaveTextContent(/20 · 0:30/);
+    await user.click(logButton("Hold"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    expect(setPosts(fake)[0]!.body).toMatchObject({ durationS: 30, weight: 20 });
+  });
+
   it("observability never enumerates modalities", () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "observability");
     for (const name of readdirSync(dir)) {

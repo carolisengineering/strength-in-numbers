@@ -144,7 +144,10 @@ export const usedIn = (workouts: number, routines: number) =>
 // Plan copy.
 export const ASSIST_RULE = "Ignore the assist weight";
 export const FILE_READ_FAILED = "Couldn't read that file. Choose it again.";
-export const sectionRulesRemovedLine = (n: number) => `${n} section rules in the app that this file drops or changes`;
+/** Minor 200: one rule reads singular. */
+export const sectionRulesRemovedLine = (n: number) =>
+  n === 1 ? "1 section rule in the app that this file drops or changes" : `${n} section rules in the app that this file drops or changes`;
+export const SECTION_RULES_DROPPED_LABEL = "Section rules dropped";
 export const markerLine = (which: "warmup" | "workout", title: string) => `${which === "warmup" ? "Warmup marker" : "Workout marker"}: ${title}`;
 export const PAIRINGS_LOADING = "Loading your exercises…";
 export const sentAsDone = (title: string) => `${title} is now sent to Hevy.`;

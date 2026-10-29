@@ -595,8 +595,12 @@ try {
       await page.getByRole("button", { name: "Change Time" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "37-change-time-live", "Change Time sheet on a live workout: Day, Started at, Took, the hint (Spec 18.0 AC30)");
+      // An hour ahead, but never past today's 23:59: a time alone is read as today, so 00:30 after 23:30 would be
+      // in the past and show no error (minor 13). At 23:59 itself the shot still shows none (accepted, dev tool).
       const ahead = await page.evaluate(() => {
-        const d = new Date(Date.now() + 60 * 60_000);
+        const now = new Date();
+        const d = new Date(now.getTime() + 60 * 60_000);
+        if (d.getDate() !== now.getDate()) return "23:59";
         return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       });
       await page.getByLabel("Started at").fill(ahead);
