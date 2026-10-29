@@ -1,5 +1,19 @@
-import type { HevyFolder, HevyRoutine, HevySet, HevyWorkout } from "@sin/core";
+import type {
+  CodeCount,
+  HevyFolder,
+  HevyImportBatch,
+  HevyImportDropCode,
+  HevyImportOutcome,
+  HevyImportResult,
+  HevyImportWorkout,
+  HevyRoutine,
+  HevySet,
+  HevyWorkout,
+} from "@sin/core";
 import { http, HttpResponse } from "msw";
+
+import { createApiClient } from "../api/client";
+import { API_BASE_URL } from "./accountHarness";
 
 /**
  * Test-only (Spec 20.1): a fake Hevy for the import's reads, as MSW handlers on Hevy's origin (the real client goes
@@ -150,3 +164,156 @@ export function generateHevyWorkouts(n: number, seed = 1): HevyWorkout[] {
     };
   });
 }
+
+/**
+ * Test-only (Spec 20.1 Phase A): the 19.1 import contract in memory, as MSW handlers on the API's origin —
+ * `POST /v1/hevy/import/workouts`, `POST /v1/hevy/import/finish` and `GET /v1/hevy/status`.
+ * - **Links:** `hevyWorkoutId → origin`; `deleted` is a tombstone (`deleted_in_sin`).
+ * - **Pairing:** with `pairedTemplateIds`, a workout using any other template is `unpaired`.
+ * - **Duplicates:** `duplicateOf` maps a Hevy id to the SIN workout it matches; a SIN workout is claimed at most once
+ *   per request, never across requests (19.1 AC21 / D6; 20.1 §6.6).
+ * - A dry run never changes anything; a real run links what it creates or matches and marks records stale.
+ * - **Finish** answers `400` if the request carries a `Content-Type` or a body (19.1 §5.2).
+ */
+export type ImportLinkOrigin = "imported" | "matched" | "sent" | "deleted";
+export interface FakeImportOptions {
+  links?: { hevyWorkoutId: string; origin: ImportLinkOrigin }[];
+  pairedTemplateIds?: ReadonlySet<string>;
+  duplicateOf?: ReadonlyMap<string, string>;
+  outcomeFor?: (hevyWorkoutId: string) => HevyImportOutcome | undefined;
+  dropsFor?: (hevyWorkoutId: string) => CodeCount<HevyImportDropCode>[];
+  recordsStale?: boolean;
+}
+export interface FakeImportRequest {
+  path: string;
+  method: string;
+  contentType: string | null;
+  body: unknown;
+}
+type ImportFailure = number | "network" | "short" | "garbage";
+
+const API = API_BASE_URL;
+const LINKED: Record<ImportLinkOrigin, HevyImportOutcome> = {
+  imported: "already_imported",
+  matched: "already_matched",
+  sent: "sent_from_sin",
+  deleted: "deleted_in_sin",
+};
+const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+export function fakeImportApi(options: FakeImportOptions = {}) {
+  const links = new Map((options.links ?? []).map((l) => [l.hevyWorkoutId, l.origin]));
+  const log: FakeImportRequest[] = [];
+  const state = { recordsStale: options.recordsStale ?? false, created: 0 };
+  let failure: { kind: ImportFailure; times: number } | null = null;
+
+  function failNext(kind: ImportFailure, times = 1): void {
+    failure = { kind, times };
+  }
+
+  async function record(request: Request): Promise<FakeImportRequest> {
+    const text = await request.text();
+    let body: unknown = text === "" ? undefined : text;
+    try {
+      body = text === "" ? undefined : (JSON.parse(text) as unknown);
+    } catch {
+      /* keep the text */
+    }
+    const entry = { path: new URL(request.url).pathname, method: request.method, contentType: request.headers.get("content-type"), body };
+    log.push(entry);
+    return entry;
+  }
+
+  function resultFor(w: HevyImportWorkout, dryRun: boolean, claimed: Set<string>): HevyImportResult {
+    const sets = w.exercises.reduce((n, e) => n + e.sets.length, 0);
+    const base = { hevyWorkoutId: w.hevyWorkoutId, workoutId: null, matchedWorkoutId: null, unpaired: [] as string[], drops: options.dropsFor?.(w.hevyWorkoutId) ?? [], notices: [], exerciseCount: w.exercises.length, setCount: sets };
+    const linked = links.get(w.hevyWorkoutId);
+    if (linked) return { ...base, outcome: LINKED[linked] };
+    const forced = options.outcomeFor?.(w.hevyWorkoutId);
+    if (forced) return { ...base, outcome: forced };
+    if (options.pairedTemplateIds) {
+      const unpaired = [...new Set(w.exercises.map((e) => e.exerciseTemplateId).filter((id) => !options.pairedTemplateIds!.has(id)))];
+      if (unpaired.length > 0) return { ...base, outcome: "unpaired", unpaired };
+    }
+    const match = options.duplicateOf?.get(w.hevyWorkoutId);
+    if (match !== undefined && !claimed.has(match)) {
+      claimed.add(match);
+      if (!dryRun) links.set(w.hevyWorkoutId, "matched");
+      return { ...base, outcome: "duplicate", matchedWorkoutId: match as HevyImportResult["matchedWorkoutId"] };
+    }
+    if (dryRun) return { ...base, outcome: "create" };
+    state.created += 1;
+    state.recordsStale = true;
+    links.set(w.hevyWorkoutId, "imported");
+    return { ...base, outcome: "create", workoutId: uuid(state.created) as HevyImportResult["workoutId"] };
+  }
+
+  function failed(): Response | null {
+    if (failure === null || failure.times <= 0 || failure.kind === "short" || failure.kind === "garbage") return null;
+    failure.times -= 1;
+    const { kind } = failure;
+    if (kind === "network") return HttpResponse.error();
+    if (typeof kind === "number") {
+      const headers: Record<string, string> = { "content-type": "application/problem+json" };
+      if (kind === 429) headers["retry-after"] = "2";
+      return new HttpResponse(JSON.stringify({ type: "https://api.strengthinnumbers.app/problems/fake", title: "Fake", status: kind }), { status: kind, headers });
+    }
+    return null;
+  }
+
+  const batch = http.post(`${API}/v1/hevy/import/workouts`, async ({ request }) => {
+    const entry = await record(request);
+    const early = failed();
+    if (early) return early;
+    const body = entry.body as HevyImportBatch;
+    const claimed = new Set<string>();
+    let results = body.workouts.map((w) => resultFor(w, body.dryRun, claimed));
+    const kind = failure?.times !== undefined && failure.times > 0 ? failure.kind : null;
+    if (kind === "short" || kind === "garbage") {
+      failure!.times -= 1;
+      if (kind === "garbage") return HttpResponse.json({ dryRun: body.dryRun, results: [{ nonsense: true }] });
+      results = results.slice(1);
+    }
+    return HttpResponse.json({ dryRun: body.dryRun, results });
+  });
+
+  const finish = http.post(`${API}/v1/hevy/import/finish`, async ({ request }) => {
+    const entry = await record(request);
+    const early = failed();
+    if (early) return early;
+    if (entry.contentType !== null || entry.body !== undefined) {
+      return new HttpResponse(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400 }), { status: 400, headers: { "content-type": "application/problem+json" } });
+    }
+    const recomputed = state.recordsStale;
+    state.recordsStale = false;
+    return HttpResponse.json({ recomputed, rootCount: recomputed ? 3 : 0 });
+  });
+
+  const status = http.get(`${API}/v1/hevy/status`, () =>
+    HttpResponse.json({ enabled: true, pairCount: options.pairedTemplateIds?.size ?? 0, linkCount: links.size, recordsStale: state.recordsStale }),
+  );
+
+  return { handlers: [batch, finish, status], log, links, state, failNext };
+}
+
+/** A real `ApiClient` against the test API origin, for client-level tests (MSW answers it). */
+export const testApiClient = () =>
+  createApiClient({ baseUrl: API_BASE_URL, appEnv: "local", getToken: async () => "token", onAuthLost: () => {} });
+
+/** One request workout with a single weight-and-reps set. */
+export const makeImportWorkout = (id: string, startTime = "2026-07-01T09:00:00Z"): HevyImportWorkout => ({
+  hevyWorkoutId: id,
+  title: id,
+  description: null,
+  startTime,
+  endTime: startTime,
+  tzOffsetMinutes: 0,
+  exercises: [
+    {
+      exerciseTemplateId: "T1",
+      notes: null,
+      supersetId: null,
+      sets: [{ type: "normal", weightKg: 50, reps: 5, distanceMeters: null, durationSeconds: null, rpe: null, customMetric: null }],
+    },
+  ],
+});
