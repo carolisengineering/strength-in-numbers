@@ -15,6 +15,12 @@ const NAV_OF: Readonly<Record<Step, NavStep>> = {
   saving_names: "names",
   checking: "summary",
   summary: "summary",
+  running: "import",
+  paused: "import",
+  stopped: "import",
+  finishing: "import",
+  routines_run: "import",
+  done: "done",
 };
 
 const ORDER: readonly NavStep[] = ["read", "routines", "names", "summary", "import", "done"];

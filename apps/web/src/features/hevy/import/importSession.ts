@@ -4,6 +4,7 @@ import type { PairingCard, PairingDecision, PairingNeed } from "../pairing";
 import { markersMissing, pairingNeeds, templatesUsed } from "./importNeeds";
 import type { HevyRead, ReadProgress, ReadStage } from "./readHevy";
 import type { PickState } from "./routinePicks";
+import type { PauseReason, StopReason } from "./runImport";
 
 /**
  * Spec 20.1 §6.1: the import as a pure reducer. Actions are the user's choices and the I/O results; an I/O result
@@ -21,7 +22,27 @@ export type Step =
   | "names"
   | "saving_names"
   | "checking"
-  | "summary";
+  | "summary"
+  /** Phase B: the run (AC16–AC20). */
+  | "running"
+  | "paused"
+  | "stopped"
+  /** Phase B: the finish step (AC22), then the routines (AC23), then the done screen (AC25). */
+  | "finishing"
+  | "routines_run"
+  | "done";
+
+/** Phase B: the run's progress. `results` are the run's own (the truth, §6.6); `batchesDone` is where a Resume starts. */
+export interface RunState {
+  sent: number;
+  total: number;
+  /** The first start time of the batch in flight, for the month on the progress line. */
+  batchDate: string | null;
+  batchesDone: number;
+  results: HevyImportResult[];
+  pause: PauseReason | null;
+  stopReason: StopReason | null;
+}
 
 export type ReadFailure =
   | { kind: "stage"; stage: ReadStage; cause: "network" | "other"; partial: Partial<HevyRead> }
@@ -52,6 +73,7 @@ export interface ImportState {
   /** The mapping the summary was computed against (AC28: a different one makes it stale). */
   summaryMapping: unknown | null;
   summaryError: CheckFailure | null;
+  run: RunState | null;
 }
 
 export const initialImportState: ImportState = {
@@ -73,6 +95,7 @@ export const initialImportState: ImportState = {
   unreadable: [],
   summaryMapping: null,
   summaryError: null,
+  run: null,
 };
 
 export type ImportAction =
@@ -96,14 +119,23 @@ export type ImportAction =
   | { type: "checked"; generation: number; results: HevyImportResult[] }
   | { type: "checkFailed"; generation: number; failure: CheckFailure }
   | { type: "recheck" }
-  | { type: "back"; to: Step };
+  | { type: "back"; to: Step }
+  | { type: "runStart"; generation: number; total: number; batchDate: string | null }
+  | { type: "batchDone"; generation: number; results: HevyImportResult[]; nextDate: string | null }
+  | { type: "runPaused"; generation: number; reason: PauseReason }
+  | { type: "runStopped"; generation: number; reason: StopReason }
+  | { type: "runEnded"; generation: number; finish: boolean }
+  | { type: "resume"; generation: number };
+
+/** Actions that open a new generation, so they are never ignored as stale. */
+const OPENS_GENERATION = new Set<ImportAction["type"]>(["start", "retryRead", "checkStart", "runStart", "resume"]);
 
 /** Entering checking always starts a fresh dry run: an earlier summary's results would stop it from running. */
 const entering = (state: ImportState, step: Step): ImportState =>
   step === "checking" ? { ...state, step, results: null, summaryError: null, checkProgress: null } : { ...state, step };
 
 export function importSession(state: ImportState, action: ImportAction): ImportState {
-  if ("generation" in action && action.type !== "start" && action.type !== "retryRead" && action.type !== "checkStart" && action.generation !== state.generation) {
+  if ("generation" in action && !OPENS_GENERATION.has(action.type) && action.generation !== state.generation) {
     return state;
   }
   switch (action.type) {
@@ -162,6 +194,29 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return entering(state, "checking");
     case "back":
       return { ...state, step: action.to, namesError: null, summaryError: null };
+    case "runStart":
+      return {
+        ...state,
+        step: "running",
+        generation: action.generation,
+        run: { sent: 0, total: action.total, batchDate: action.batchDate, batchesDone: 0, results: [], pause: null, stopReason: null },
+      };
+    case "batchDone": {
+      if (state.run === null) return state;
+      const run = state.run;
+      return {
+        ...state,
+        run: { ...run, sent: run.sent + action.results.length, batchesDone: run.batchesDone + 1, batchDate: action.nextDate, results: [...run.results, ...action.results] },
+      };
+    }
+    case "runPaused":
+      return state.run === null ? state : { ...state, step: "paused", run: { ...state.run, pause: action.reason } };
+    case "runStopped":
+      return state.run === null ? state : { ...state, step: "stopped", run: { ...state.run, stopReason: action.reason } };
+    case "runEnded":
+      return { ...state, step: action.finish ? "finishing" : "done" };
+    case "resume":
+      return state.run === null ? state : { ...state, step: "running", generation: action.generation, run: { ...state.run, pause: null, stopReason: null } };
   }
 }
 
