@@ -47,10 +47,31 @@ const HEVY_LISTS = {
   "/v1/workouts": () => [D.hevyWorkouts, "workouts"],
 };
 
+/** Spec 20.2: how Hevy answers a workout create — "ok", "hold" (never answers: the sending shot) or "fail" (a 503). */
+let hevyWrite = "ok";
+
 /** Spec 20.0: the fake Hevy API — `user/info` accepts only `D.hevyGoodKey`; anything else is unmatched. */
 async function hevyHandler(route) {
   const req = route.request();
   const url = new URL(req.url());
+  // Spec 20.2: a send's create and update, and Create in Hevy.
+  if (req.method() === "POST" && url.pathname === "/v1/workouts") {
+    if (hevyWrite === "hold") return; // never fulfilled
+    if (hevyWrite === "fail") {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "unavailable" }) });
+      return;
+    }
+    await route.fulfill(json({ workout: [D.hevyCreatedWorkout] }));
+    return;
+  }
+  if (req.method() === "PUT" && /^\/v1\/workouts\/[^/]+$/.test(url.pathname)) {
+    await route.fulfill(json(D.hevyCreatedWorkout));
+    return;
+  }
+  if (req.method() === "POST" && url.pathname === "/v1/exercise_templates") {
+    await route.fulfill(json({ id: "H-NEW-1" }));
+    return;
+  }
   if (req.method() === "GET" && url.pathname === "/v1/workouts/count") {
     await route.fulfill(json({ workout_count: D.hevyWorkouts.length }));
     return;
@@ -94,6 +115,15 @@ function makeHandler(state) {
     if (m === "GET" && p === "/v1/me") res = json(D.me);
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
+    // Spec 20.2: a workout's Hevy link as `state.hevyLink` says (none when unset), and begin / complete / release.
+    else if ((seg = /^\/v1\/workouts\/([^/]+)\/hevy-link$/.exec(p))) {
+      if (m === "GET") res = json(state.hevyLink ?? D.hevyLinkOf("none"));
+      else if (m === "POST") res = json(D.hevyBegin);
+      else if (m === "PUT") {
+        state.hevyLink = D.hevyLinkOf("sent");
+        res = json(state.hevyLink);
+      } else if (m === "DELETE") res = { status: 204, contentType: "application/json", body: "" };
+    }
     // Spec 20.1: the dry run, and (Phase B) the real run as `state.importMode` says: "hold" keeps it unanswered,
     // "fail" answers 500 (the run retries, then pauses), "refuse" answers a 422 with a path (the run stops).
     else if (m === "POST" && p === "/v1/hevy/import/workouts") {
@@ -1139,6 +1169,74 @@ try {
       await settle(paused.ip);
       await shoot(paused.ip, device, "hevy-import-paused", "Paused: couldn't reach the server, with Resume and Stop (Spec 20.1 AC19)");
       await paused.ictx.close();
+    });
+    // Spec 20.2 AC21: the Hevy line on a finished workout (Lower A), each state; the pairing sheet; the delete note.
+    await tryStep("hevy send", async () => {
+      const workout = D.allWorkouts.find((w) => w.id === D.ids.latestFinished);
+      const sendContext = async (o = {}) => {
+        const sctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const sstate = { active: false, hevyLink: o.link, hevyMapping: o.mapping ?? D.hevyMappingFor(workout) };
+        await sctx.route(isSinApi, makeHandler(sstate));
+        await sctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
+        if (o.key !== false) {
+          await sctx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
+        }
+        const sp = await sctx.newPage();
+        sp.setDefaultTimeout(8000);
+        sp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${sp.url()}: ${msg.text().slice(0, 300)}`); });
+        await sp.goto(BASE + `/app/history/${workout.id}`);
+        const region = sp.getByRole("region", { name: "Hevy" });
+        await region.waitFor();
+        await region.scrollIntoViewIfNeeded();
+        await settle(sp);
+        return { sctx, sp, region };
+      };
+      const still = async (name, note, o) => {
+        const s = await sendContext(o);
+        await shoot(s.sp, device, name, note);
+        await s.sctx.close();
+      };
+      await still("hevy-send-none", "A finished workout not in Hevy: Not in Hevy yet, Send to Hevy (Spec 20.2 AC2)", {});
+      await still("hevy-send-sent", "Sent to Hevy with the day it was synced, no button (Spec 20.2 AC2)", { link: D.hevyLinkOf("sent") });
+      await still("hevy-send-changed", "Changed since sent to Hevy, with Update in Hevy (Spec 20.2 AC2, AC11)", { link: D.hevyLinkOf("changed") });
+      await still("hevy-send-imported", "A workout imported from Hevy: From Hevy (Spec 20.2 AC2)", { link: D.hevyLinkOf("sent", "imported") });
+      await still("hevy-send-no-key", "No Hevy key on this device: the line links to the key (Spec 20.2 AC3)", { key: false });
+
+      hevyWrite = "hold";
+      const sending = await sendContext({});
+      await sending.region.getByRole("button", { name: "Send to Hevy" }).click();
+      await sending.region.getByText("Sending to Hevy…").waitFor();
+      await shoot(sending.sp, device, "hevy-send-sending", "Sending to Hevy…, the button disabled (Spec 20.2 AC5)");
+      await sending.sctx.close();
+
+      hevyWrite = "fail";
+      const unsure = await sendContext({});
+      await unsure.region.getByRole("button", { name: "Send to Hevy" }).click();
+      await unsure.region.getByText("Not sure whether Hevy received it. Check before sending again.").waitFor();
+      await settle(unsure.sp);
+      await shoot(unsure.sp, device, "hevy-send-unsure", "Hevy didn't answer: not sure it arrived, with Check Hevy (Spec 20.2 AC9)");
+      await unsure.sctx.close();
+      hevyWrite = "ok";
+
+      // The harness's own mapping leaves Plank (a duration exercise) unpaired, so Send opens the sheet.
+      const sheet = await sendContext({ mapping: D.hevyMapping });
+      await sheet.region.getByRole("button", { name: "Send to Hevy" }).click();
+      const dialog = sheet.sp.getByRole("dialog", { name: "Match exercises for Hevy" });
+      await dialog.waitFor();
+      await dialog.getByRole("group").first().getByRole("button", { name: "Create in Hevy" }).click();
+      await dialog.getByText("Hevy can't edit or delete an exercise after it's created. Check the details.").waitFor();
+      await settle(sheet.sp);
+      await shoot(sheet.sp, device, "hevy-send-sheet-create", "Match exercises for Hevy, a card's Create in Hevy step (Spec 20.2 AC13, AC14)");
+      await sheet.sctx.close();
+
+      const del = await sendContext({ link: D.hevyLinkOf("sent") });
+      await del.sp.getByRole("button", { name: "Workout menu" }).click();
+      await del.sp.getByRole("button", { name: "Delete workout" }).click();
+      const confirm = del.sp.getByRole("dialog", { name: "Delete this workout?" });
+      await confirm.getByText("This workout is also in Hevy.", { exact: false }).waitFor();
+      await settle(del.sp);
+      await shoot(del.sp, device, "hevy-send-delete-note", "Delete this workout? with the note that the Hevy copy stays (Spec 20.2 AC18)");
+      await del.sctx.close();
     });
     await tryStep("sign-out guard dialog", async () => {
       // The guard only shows a dialog when sets are unsaved: log one set on the active workout with
