@@ -229,6 +229,22 @@ describe("20.1 AC20 — stop", () => {
     expect(h.rec.ended).toBe(0);
   });
 
+  it("final review I1: a Stop during the last batch still ends in stopped, never ended", async () => {
+    const h = harness();
+    const deps = {
+      ...h.deps,
+      importBatch: async (body: HevyImportBatch, signal?: AbortSignal) => {
+        const reply = await h.deps.importBatch(body, signal);
+        h.stop();
+        return reply;
+      },
+    };
+    await runImport(deps, chunk(workouts(3)), 0, h.events);
+    expect(h.rec.done.map((d) => d.index)).toEqual([0]);
+    expect(h.rec.stopped).toEqual([{ index: 1, reason: { kind: "user" } }]);
+    expect(h.rec.ended).toBe(0);
+  });
+
   it("a Stop during a 429 wait ends the run at once without re-sending (Review Focus 1)", async () => {
     const h = harness();
     h.fake.failNext(429);

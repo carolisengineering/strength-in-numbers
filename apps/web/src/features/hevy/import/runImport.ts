@@ -106,6 +106,8 @@ export async function runImport(deps: RunDeps, batches: readonly HevyImportWorko
       break;
     }
   }
+  // AC20: a Stop during the last batch still stops (the finish and the routines wait for Finish up).
+  if (stoppedByUser()) return on.stopped(batches.length, { kind: "user" });
   on.ended();
 }
 

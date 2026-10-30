@@ -137,7 +137,8 @@ export function RunStep({
           ) : null}
           {reason?.kind === "user" || reason?.kind === "invalid" ? (
             <div className={styles.actions}>
-              {reason.kind === "user" ? (
+              {/* Nothing left to send after a Stop during the last batch: Finish up is the way on. */}
+              {reason.kind === "user" && run.sent < run.total ? (
                 <Button variant="secondary" onClick={onResume}>
                   {RESUME}
                 </Button>

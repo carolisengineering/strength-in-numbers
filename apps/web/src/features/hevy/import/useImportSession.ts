@@ -308,8 +308,9 @@ export function useImportSession() {
   const batchesRef = useRef<HevyImportWorkout[][]>([]);
   /** The run's results as the runner reports them (the reducer's copy lags a render behind the last batch). */
   const runResults = useRef<HevyImportResult[]>([]);
-  const latest = useRef({ status: status.data, mapping: mapping.data, rows: catalog.state.rows, unit: me.data?.unitPreference, create: createRoutine.mutateAsync });
-  latest.current = { status: status.data, mapping: mapping.data, rows: catalog.state.rows, unit: me.data?.unitPreference, create: createRoutine.mutateAsync };
+  const current = { status: status.data, refetchStatus: status.refetch, mapping: mapping.data, rows: catalog.state.rows, unit: me.data?.unitPreference, create: createRoutine.mutateAsync };
+  const latest = useRef(current);
+  latest.current = current;
 
   const stale = isSummaryStale(state, mapping.data);
   const startContext = { statusOk: status.isSuccess, hasKey: hevyKey.hasKey, mappingOk: mapping.isSuccess, stale };
@@ -320,11 +321,21 @@ export function useImportSession() {
   /** AC22, AC23: the finish when needed (it waits on the lane for any batch in flight), then the ticked routines. */
   const wrapUp = useCallback(
     async (signal: AbortSignal) => {
-      if (needsFinish(runResults.current, latest.current.status)) {
+      // AC22: with no create of its own, the run asks the server (not the cached status) whether the records are
+      // stale — a batch whose reply was lost after it committed comes back `already_imported` on the re-send. A
+      // failed read finishes anyway: a finish with nothing stale is harmless.
+      let stale = latest.current.status?.recordsStale === true;
+      if (!runResults.current.some((r) => r.outcome === "create")) {
+        const fresh = await latest.current.refetchStatus();
+        if (signal.aborted) return;
+        stale = fresh.isSuccess ? fresh.data.recordsStale : true;
+      }
+      if (needsFinish(runResults.current, { recordsStale: stale })) {
         dispatch({ type: "finishStart" });
         const outcome = await finishImport(importClient);
-        if (signal.aborted) return;
+        // AC24: a finish that lands after the screen is gone still refreshes what it changed.
         if (outcome === "ok") applyImportedCaches(queryClient);
+        if (signal.aborted) return;
         dispatch({ type: "finishDone", ok: outcome === "ok" });
       }
       const picked = pickedRoutines(stateRef.current);
@@ -457,8 +468,8 @@ export function useImportSession() {
     dispatch({ type: "finishStart" });
     const outcome = await finishImport(importClient);
     busy.current = false;
-    if (signal.aborted) return;
     if (outcome === "ok") applyImportedCaches(queryClient);
+    if (signal.aborted) return;
     dispatch({ type: "finishDone", ok: outcome === "ok" });
   }, [importClient, queryClient]);
 

@@ -180,6 +180,51 @@ describe("20.1 AC22 — finish after the run", () => {
   });
 });
 
+describe("20.1 AC20 / AC22 — final review fixes", () => {
+  const pushA = { id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: "79D0BB3A", sets: [] }] };
+
+  it("I1: Stop during the only batch ends in Stopped — no finish, no routine — with Finish up and no Resume", async () => {
+    const { imports, fake } = setupImportRun(auth, { workouts: generateHevyWorkouts(10), routines: [pushA] });
+    const release = imports.gateRealBatch(1);
+    const { user } = await toSummary({ tick: ["Push A"] });
+    await user.click(importButton());
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    release();
+    expect(await screen.findByRole("heading", { level: 2, name: "Stopped" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finish up" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(finishRequests(imports)).toEqual([]);
+    expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/routines")).toEqual([]);
+  });
+
+  it("I2: a run whose creates all come back already_imported still finishes when the server says stale", async () => {
+    const workouts = generateHevyWorkouts(3);
+    const { imports } = setupImportRun(auth, { workouts });
+    const { user } = await toSummary();
+    // A lost reply: the server wrote them (and marked records stale) after this tab read the status.
+    for (const w of workouts) imports.links.set(w.id, "imported");
+    imports.state.recordsStale = true;
+    await user.click(importButton());
+    await doneHeading();
+    expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+    expect(finishRequests(imports)).toHaveLength(1);
+  });
+
+  it("I3: a finish that succeeds after the screen is left still refreshes the caches", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(3) });
+    const release = imports.gateFinish();
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await screen.findByText("Updating your records…");
+    await user.click(screen.getByRole("link", { name: /Back to Hevy/ }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Stop the import?" })).getByRole("button", { name: "Stop and leave" }));
+    await screen.findByRole("heading", { level: 1, name: "Hevy" });
+    const before = caches.imported.mock.calls.length;
+    release();
+    await waitFor(() => expect(caches.imported.mock.calls.length).toBe(before + 1));
+  });
+});
+
 describe("20.1 AC22 — no overlap (Review Focus 6)", () => {
   it("Stop during a slow batch, then Finish up: the finish starts after the batch's reply", async () => {
     const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(60), imports: { delayMs: 30 } });
