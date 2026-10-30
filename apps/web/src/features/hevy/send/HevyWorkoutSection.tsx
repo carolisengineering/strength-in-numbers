@@ -1,5 +1,4 @@
-import type { HevyLinkState, UnmappedExercise, WorkoutDetail } from "@sin/core";
-import { useQueryClient } from "@tanstack/react-query";
+import type { UnmappedExercise, WorkoutDetail } from "@sin/core";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -9,8 +8,8 @@ import { useHevyKey } from "../useHevyKey";
 import { useHevyEnabled } from "../useHevyStatus";
 import { MatchForHevySheet } from "./MatchForHevySheet";
 import { HEVY_SEND_COPY, hevyFailureSentence, noticeSentence, withDay, type SendNotice } from "./messages";
-import { HEVY_SEND_KEYS } from "../keys";
-import { problemSentence, type SendIntent, type SendOutcome } from "./runSend";
+
+import { problemSentence, type SendIntent } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
 import { useHevyLink } from "./useHevyLink";
@@ -55,6 +54,9 @@ function statusSentence(view: Exclude<SectionView, { kind: "hidden" }>): string 
       return outcomeSentence(view.outcome);
   }
 }
+
+/** A follow-up of the run that left exercises out builds the same workout, so it leaves them out too. */
+const isFollowUp = (intent: SendIntent) => intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update";
 
 /** The buttons a view offers (with a key), each with the intent it runs. */
 function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: string; intent: SendIntent | null }[] {
@@ -104,9 +106,6 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [after, setAfter] = useState<{ foundExisting: boolean; notices: SendNotice[] } | null>(null);
-  /** This visit's last outcome and the link state it landed on (final review I2). */
-  const [landed, setLanded] = useState<{ outcome: SendOutcome; base: HevyLinkState["state"] } | null>(null);
-  const queryClient = useQueryClient();
   /** AC13: the exercises to match before the send can go on, and the intent to run once they are. */
   const [pairing, setPairing] = useState<{ unmapped: UnmappedExercise[]; intent: SendIntent } | null>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -119,6 +118,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
 
   // An outcome stands only for this visit, and only while the link still reads as it did when the run ended: once the
   // server has moved on (another device finished, a claim went stale), its state wins.
+  const landed = send.landed;
   const last = landed !== null && link.data !== undefined && landed.base === link.data.state ? landed.outcome : null;
   const view = sectionView({
     status: enabled === "on" ? "ok" : "hidden",
@@ -129,7 +129,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   });
   if (view.kind === "hidden") return null;
 
-  const run = (intent: SendIntent, leaveOut?: Set<string>) => {
+  const run = (intent: SendIntent, leaveOut?: ReadonlySet<string>) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
@@ -137,9 +137,6 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
     void send
       .run(intent, leaveOut ? { leaveOut } : {})
       .then((outcome) => {
-        // The mutation's `onSettled` has refreshed the link by now: record the state this outcome landed on.
-        const base = queryClient.getQueryData<HevyLinkState>(HEVY_SEND_KEYS.link(workout.id))?.state ?? null;
-        setLanded(base === null ? null : { outcome, base });
         if (outcome.kind === "done") setAfter({ foundExisting: outcome.foundExisting, notices: outcome.notices });
         if (outcome.kind === "needs-pairing") setPairing({ unmapped: outcome.unmapped, intent });
       })
@@ -185,7 +182,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
           {actions.length > 0 ? (
             <div className={styles.actions} ref={actionsRef}>
               {actions.map((a) => (
-                <Button key={a.label} variant="secondary" disabled={a.intent === null || busy || send.pending} onClick={() => a.intent && run(a.intent)}>
+                <Button key={a.label} variant="secondary" disabled={a.intent === null || busy || send.pending} onClick={() => a.intent && run(a.intent, isFollowUp(a.intent) ? landed?.leaveOut : undefined)}>
                   {a.label}
                 </Button>
               ))}
@@ -196,6 +193,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
       {pairing !== null ? (
         <MatchForHevySheet
           unmapped={pairing.unmapped}
+          exerciseCount={new Set(workout.exercises.map((e) => e.exerciseId)).size}
           onCancel={() => {
             setPairing(null);
             setReturnFocus(true);

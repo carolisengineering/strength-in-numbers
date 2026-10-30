@@ -1,6 +1,6 @@
-import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { lineageRootId } from "@sin/core";
+import { lineageRootId, type HevyLinkState } from "@sin/core";
 
 import type { ApiClient } from "../../../api/client";
 import { useApi } from "../../../auth/useApi";
@@ -40,6 +40,18 @@ export interface SendContext {
 /** One promise per workout while a send runs (AC5). */
 const inFlight = new Map<string, Promise<SendOutcome>>();
 
+/**
+ * The last run's outcome per workout, the link state it landed on (read after `onSettled`'s refresh) and the exercises
+ * it left out. It outlives the screen (a revisit mid-send still sees "not sure"), and the section shows it only while
+ * the link still reads that state.
+ */
+export interface Landed {
+  outcome: SendOutcome;
+  base: HevyLinkState["state"];
+  leaveOut?: ReadonlySet<string>;
+}
+const landedBy = new Map<string, Landed>();
+
 /** Joins the run already going for this workout, or starts one. */
 export function joinOrStart(workoutId: string, start: () => Promise<SendOutcome>): Promise<SendOutcome> {
   const running = inFlight.get(workoutId);
@@ -58,6 +70,7 @@ export function setSendSleepForTests(fn: (ms: number) => Promise<void>): void {
 /** Test-only: a test that leaves a run hanging must not join the next test's. */
 export function resetSendState(workoutId: string): void {
   inFlight.delete(workoutId);
+  landedBy.delete(workoutId);
 }
 
 /** The mutation's options, shared with Phase B's runner: the deps, the run, and the refresh when it settles. */
@@ -86,12 +99,15 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
         ...(createOnly ? { createOnly } : {}),
       });
     },
-    onSettled: async () => {
+    onSettled: async (outcome: SendOutcome | undefined, _error: unknown, variables: SendVariables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: HEVY_SEND_KEYS.link(workoutId) }),
         // The status carries `linkCount`.
         queryClient.invalidateQueries({ queryKey: HEVY_KEYS.statusAll }),
       ]);
+      const base = queryClient.getQueryData<HevyLinkState>(HEVY_SEND_KEYS.link(workoutId))?.state;
+      if (outcome === undefined || base === undefined) landedBy.delete(workoutId);
+      else landedBy.set(workoutId, { outcome, base, ...(variables.leaveOut ? { leaveOut: variables.leaveOut } : {}) });
     },
   };
 }
@@ -99,7 +115,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
 export function useSendToHevy(workoutId: string): {
   run(intent: SendIntent, opts?: { leaveOut?: ReadonlySet<string>; createOnly?: boolean }): Promise<SendOutcome>;
   pending: boolean;
-  last: SendOutcome | null;
+  landed: Landed | null;
 } {
   const queryClient = useQueryClient();
   const api = useApi();
@@ -108,11 +124,11 @@ export function useSendToHevy(workoutId: string): {
   const catalog = useCatalogStore();
   const { mutateAsync } = useMutation(sendMutationOptions(queryClient, { api, hevy, workouts, catalog }, workoutId));
   const mutationKey = HEVY_SEND_KEYS.send(workoutId);
+  // `onSettled` records the outcome before the mutation stops counting as pending, so this re-render reads it.
   const pending = useIsMutating({ mutationKey }) > 0;
-  const outcomes = useMutationState({ filters: { mutationKey, status: "success" }, select: (m) => m.state.data as SendOutcome });
   const run = useCallback(
     (intent: SendIntent, opts: { leaveOut?: ReadonlySet<string>; createOnly?: boolean } = {}) => joinOrStart(workoutId, () => mutateAsync({ intent, ...opts })),
     [workoutId, mutateAsync],
   );
-  return { run, pending, last: outcomes.at(-1) ?? null };
+  return { run, pending, landed: landedBy.get(workoutId) ?? null };
 }

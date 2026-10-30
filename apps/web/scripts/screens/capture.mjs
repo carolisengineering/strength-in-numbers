@@ -1172,6 +1172,7 @@ try {
     });
     // Spec 20.2 AC21: the Hevy line on a finished workout (Lower A), each state; the pairing sheet; the delete note.
     await tryStep("hevy send", async () => {
+      hevyWrite = "ok";
       const workout = D.allWorkouts.find((w) => w.id === D.ids.latestFinished);
       const sendContext = async (o = {}) => {
         const sctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
@@ -1212,7 +1213,7 @@ try {
       hevyWrite = "fail";
       const unsure = await sendContext({});
       await unsure.region.getByRole("button", { name: "Send to Hevy" }).click();
-      await unsure.region.getByText("Not sure whether Hevy received it. Check before sending again.").waitFor();
+      await unsure.region.getByText("Not sure whether Hevy received it. Check before sending again.").waitFor({ timeout: 15000 });
       await settle(unsure.sp);
       await shoot(unsure.sp, device, "hevy-send-unsure", "Hevy didn't answer: not sure it arrived, with Check Hevy (Spec 20.2 AC9)");
       await unsure.sctx.close();

@@ -133,7 +133,7 @@ describe("20.2 AC17 — settle refetches the link", () => {
     await waitFor(() => expect(result.current.link.data?.state).toBe("none"));
     await act(async () => void (await result.current.send.run({ kind: "send" })));
     await waitFor(() => expect(result.current.link.data?.state).toBe("sent"));
-    expect(result.current.send.last).toMatchObject({ kind: "done" });
+    expect(result.current.send.landed).toMatchObject({ outcome: { kind: "done" }, base: "sent" });
   });
 });
 

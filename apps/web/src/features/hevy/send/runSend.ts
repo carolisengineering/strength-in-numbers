@@ -122,13 +122,17 @@ export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendO
     if ("unmapped" in result) return { kind: "needs-pairing", unmapped: result.unmapped };
     built = result;
   } catch (err) {
-    return { kind: "failed", reason: isNetwork(err) ? "network" : "unknown" };
+    // A workout deleted meanwhile is gone; a SIN 5xx on the reads is reported with the step that needed them.
+    if (err instanceof ApiError && err.status === 404) return { kind: "gone" };
+    if (isNetwork(err)) return { kind: "failed", reason: "network" };
+    if (reportable(err)) deps.report("begin", err);
+    return { kind: "failed", reason: err instanceof ApiError && err.status >= 500 ? "server" : "unknown" };
   }
 
   // After an ambiguous failure the claim is still held: carry on from it without a second begin.
   if (intent.kind === "check") return check(deps, built, intent.fingerprint);
-  if (intent.kind === "send-anyway") return write(deps, built, { mode: "create", hevyWorkoutId: null, fingerprint: intent.fingerprint }, false);
-  if (intent.kind === "retry-update") return write(deps, built, { mode: "update", hevyWorkoutId: intent.hevyWorkoutId, fingerprint: intent.fingerprint }, false);
+  if (intent.kind === "send-anyway") return write(deps, built, { mode: "create", hevyWorkoutId: null, fingerprint: intent.fingerprint });
+  if (intent.kind === "retry-update") return write(deps, built, { mode: "update", hevyWorkoutId: intent.hevyWorkoutId, fingerprint: intent.fingerprint });
 
   // 2. Begin: the claim (AC4 c).
   let begin: HevyLinkBegin;
@@ -153,7 +157,7 @@ export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendO
   // whatever was tapped (an Update can meet a stale claim-only row); a relink means the old copy is gone.
   if (begin.mode === "create" && begin.staleClaim && intent.kind !== "relink") return check(deps, built, begin.fingerprint, true);
 
-  return write(deps, built, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint }, false);
+  return write(deps, built, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint });
 }
 
 async function build(deps: SendDeps): Promise<Built | { unmapped: UnmappedExercise[] }> {
@@ -183,7 +187,7 @@ async function check(deps: SendDeps, built: Built, fingerprint: string, sendIfAb
   }
   if (found.kind === "found") return complete(deps, found.hevyWorkoutId, fingerprint, true, built.notices);
   if (found.kind === "inconclusive") return { kind: "inconclusive", fingerprint };
-  if (sendIfAbsent) return write(deps, built, { mode: "create", hevyWorkoutId: null, fingerprint }, false);
+  if (sendIfAbsent) return write(deps, built, { mode: "create", hevyWorkoutId: null, fingerprint });
   await release(deps);
   return { kind: "not-sent" };
 }
@@ -193,7 +197,6 @@ async function write(
   deps: SendDeps,
   built: Built,
   claim: { mode: "create" | "update"; hevyWorkoutId: string | null; fingerprint: string },
-  foundExisting: boolean,
 ): Promise<SendOutcome> {
   const update = claim.mode === "update" && claim.hevyWorkoutId !== null;
   let hevyWorkoutId: string;
@@ -218,7 +221,7 @@ async function write(
     if (reportable(err)) deps.report(update ? "hevy-put" : "hevy-post", err);
     return { kind: "unsure", op, fingerprint: claim.fingerprint, hevyWorkoutId: update ? claim.hevyWorkoutId : null };
   }
-  return complete(deps, hevyWorkoutId, claim.fingerprint, foundExisting, built.notices);
+  return complete(deps, hevyWorkoutId, claim.fingerprint, false, built.notices);
 }
 
 /** AC4 f / AC10: record the Hevy id. Retried on the network, a `5xx` or a `429` (owner answer Q3). */
@@ -233,8 +236,9 @@ async function complete(deps: SendDeps, hevyWorkoutId: string, fingerprint: stri
       if (err instanceof ApiError && err.status === 404) return { kind: "gone" };
       const retryable = err instanceof ApiError && (err.isNetworkError || err.status >= 500 || err.status === 429);
       if (!retryable) {
+        // Hevy has the copy; only the record failed. Say so (and offer Try again), never "couldn't send".
         if (reportable(err)) deps.report("complete", err);
-        return { kind: "failed", reason: "unknown" };
+        return { kind: "unrecorded", hevyWorkoutId, fingerprint };
       }
       if (attempt >= COMPLETE_RETRY_WAITS_MS.length) {
         if (reportable(err)) deps.report("complete", err);

@@ -301,6 +301,25 @@ describe("20.2 final review fixes", () => {
   });
 });
 
+describe("20.2 code review — outcomes across a revisit", () => {
+  it("leaving mid-send and coming back still shows the outcome that needs action (Check Hevy)", async () => {
+    let release: () => void = () => {};
+    const s = setupSendScreen(auth, { holdCreate: new Promise<void>((resolve) => (release = resolve)) });
+    s.hevy.fail("create", "network");
+    // One app (one QueryClient), as in use: leave for the History list and come back while the send runs.
+    const { user, router } = renderApp(HISTORY);
+    await user.click(await sendButton());
+    await within(await section()).findByText("Sending to Hevy…");
+    await act(() => router.navigate("/app/history"));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Hevy" })).toBeNull());
+    await act(() => router.navigate(HISTORY));
+    await section();
+    release();
+    expect(await within(await section()).findByText("Not sure whether Hevy received it. Check before sending again.")).toBeInTheDocument();
+    expect(within(await section()).getByRole("button", { name: "Check Hevy" })).toBeEnabled();
+  });
+});
+
 describe("20.2 AC20 — the key stays put (send flow)", () => {
   it("no SIN request carries the key, through a send and an update; reported errors never hold it", async () => {
     const seen: string[] = [];

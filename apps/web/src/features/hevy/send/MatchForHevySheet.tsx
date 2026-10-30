@@ -1,4 +1,5 @@
-import { lineageRootId, sinEquipmentToHevy, sinMuscleToHevy, type HevyType, type UnmappedExercise } from "@sin/core";
+import { lineageRootId, sinEquipmentToHevy, sinMuscleToHevy, type HevyTemplate, type HevyType, type UnmappedExercise } from "@sin/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportError } from "../../../observability/reportError";
@@ -10,7 +11,7 @@ import { HevyError } from "../client/hevyErrors";
 import { HEVY_TYPE_LABELS } from "../labels";
 import { useHevyMapping } from "../mapping/useHevyMapping";
 import { mappingErrorMessage, useMappingMutations } from "../mapping/useMappingMutations";
-import { useHevyTemplates } from "../mapping/useHevyTemplates";
+import { hevyTemplatesQuery, useHevyTemplates } from "../mapping/useHevyTemplates";
 import { useHevyClient } from "../useHevyClient";
 import { acceptableTemplates, allowedHevyTypes, canContinue, createDraftFor, initialExportCards, leftOut, upsertsFor, type CreateDraft, type ExportCard } from "./exportPairing";
 import { hevyExerciseCreateBody } from "./hevyExerciseCreateBody";
@@ -27,6 +28,13 @@ const CHANGE = "Change";
 
 type Mode = "choose" | "pick" | "create";
 
+// Plan copy.
+const ALREADY_IN_HEVY = "Hevy already has an exercise with this title. Pick it instead.";
+const AT_LEAST_ONE = "At least one exercise has to go to Hevy.";
+const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+/** Whether Hevy already holds a custom exercise with this title (code review 1/2). */
+const hasCustomTitled = (templates: readonly HevyTemplate[] | undefined, title: string) => (templates ?? []).some((t) => t.is_custom && sameTitle(t.title, title));
+
 /**
  * Spec 20.2 AC13 / AC14, §5.2: "Match exercises for Hevy" — one card per unmapped exercise: pick a Hevy exercise,
  * create one in Hevy (after a confirmation, once, never retried), or leave it out of this send. Continue saves the
@@ -35,10 +43,13 @@ type Mode = "choose" | "pick" | "create";
  */
 export function MatchForHevySheet({
   unmapped,
+  exerciseCount,
   onCancel,
   onDone,
 }: {
   unmapped: readonly UnmappedExercise[];
+  /** The workout's distinct exercises: leaving every one out would send an empty workout (code review 8). */
+  exerciseCount: number;
   onCancel: () => void;
   onDone: (leaveOut: Set<string>) => void;
 }) {
@@ -47,6 +58,7 @@ export function MatchForHevySheet({
   const { patch } = useMappingMutations();
   const catalog = useCatalog();
   const client = useHevyClient();
+  const queryClient = useQueryClient();
   const rows = catalog.state.rows;
   const rootOf = useMemo(() => {
     const roots = new Map<string, string>(rows.map((r) => [r.id, lineageRootId(r)]));
@@ -99,6 +111,10 @@ export function MatchForHevySheet({
     creating.current.add(id);
     setErrors((e) => ({ ...e, [id]: "" }));
     try {
+      // Hevy can't delete a custom exercise: read its list fresh, and never make a second one with this title (a lost
+      // reply may have made the first; code review 1/2).
+      const fresh = await queryClient.fetchQuery({ ...hevyTemplatesQuery(client), staleTime: 0 });
+      if (hasCustomTitled(fresh, draft.title)) return;
       const reply = await client.createTemplate(hevyExerciseCreateBody(draft));
       created.current.set(id, { draft, id: reply.id });
       const choice = { kind: "create" as const, draft, created: { id: reply.id } };
@@ -120,8 +136,10 @@ export function MatchForHevySheet({
     }
   };
 
+  const allLeftOut = leftOut(cards).size >= exerciseCount;
+
   const proceed = async () => {
-    if (!canContinue(cards) || saving) return;
+    if (!canContinue(cards) || allLeftOut || saving) return;
     setSaving(true);
     setSaveError(null);
     const upsert = upsertsFor(cards);
@@ -186,6 +204,16 @@ export function MatchForHevySheet({
                     onChange={(e) => setSearches((s) => ({ ...s, [id]: e.target.value }))}
                   />
                   {templates.isPending ? <p className={styles.text}>{LOADING}</p> : null}
+                  {templates.isError && templates.data === undefined ? (
+                    <div className={styles.row}>
+                      <p className={styles.error} role="alert">
+                        {hevyFailureSentence(templates.error instanceof HevyError ? templates.error.kind : "unexpected_reply")}
+                      </p>
+                      <Button variant="secondary" onClick={() => void templates.refetch()}>
+                        {C.tryAgain}
+                      </Button>
+                    </div>
+                  ) : null}
                   <ul className={styles.options}>
                     {options.map((t) => (
                       <li key={t.id}>
@@ -224,7 +252,12 @@ export function MatchForHevySheet({
                     <Button variant="secondary" onClick={() => setMode(id, "choose")}>
                       {C.cancel}
                     </Button>
-                    <Button variant="secondary" disabled={draft.title.trim() === ""} onClick={() => void confirmCreate(exercise)}>
+                    {hasCustomTitled(templates.data, draft.title) ? <p className={styles.error}>{ALREADY_IN_HEVY}</p> : null}
+                    <Button
+                      variant="secondary"
+                      disabled={draft.title.trim() === "" || hasCustomTitled(templates.data, draft.title)}
+                      onClick={() => void confirmCreate(exercise)}
+                    >
                       {C.create}
                     </Button>
                   </div>
@@ -238,11 +271,12 @@ export function MatchForHevySheet({
             {saveError}
           </p>
         ) : null}
+        {allLeftOut ? <p className={styles.text}>{AT_LEAST_ONE}</p> : null}
         <div className={styles.actions}>
           <Button variant="secondary" onClick={onCancel} disabled={saving}>
             {C.cancel}
           </Button>
-          <Button variant="secondary" disabled={!canContinue(cards) || saving} busy={saving} onClick={() => void proceed()}>
+          <Button variant="secondary" disabled={!canContinue(cards) || allLeftOut || saving} busy={saving} onClick={() => void proceed()}>
             {C.continue}
           </Button>
         </div>

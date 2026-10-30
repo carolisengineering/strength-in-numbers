@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildHevyWorkout, type HevyMapping, type HevyPostWorkout, type WorkoutDetail } from "@sin/core";
 
 import { VALID_KEY } from "../../../test/hevyHarness";
+import { ApiError } from "../../../api";
 import { HevyError } from "../client/hevyErrors";
 import { fakeHevyLink, fakeHevyWrites, hevyFingerprintOf, networkError, sendFixture, WORKOUT_ID } from "../../../test/hevySendFakes";
 import { problemSentence, runSend, type SendDeps, type SendIntent, type SendOutcome } from "./runSend";
@@ -339,6 +340,23 @@ describe("20.2 Review Focus 3 — a workout with no title", () => {
     await h.hevy.client.createWorkout({ workout: { title: "Leg Day", description: null, start_time: "2026-10-24T17:05:00+00:00", end_time: "2026-10-24T18:10:00Z", is_private: true, exercises: [] } } as never);
     h.hevy.calls.length = 0;
     expect(await h.run({ kind: "send" })).toMatchObject({ kind: "done", foundExisting: true });
+  });
+});
+
+describe("20.2 code review — reads and complete", () => {
+  it("a 404 reading the workout is gone; a 500 there is reported", async () => {
+    const h = harness();
+    const notFound = await h.run({ kind: "send" }, { getDetail: async () => Promise.reject(new ApiError({ status: 404, type: "x/not-found", title: "nf", requestId: "r" })) });
+    expect(notFound).toEqual({ kind: "gone" });
+    const boom = new ApiError({ status: 500, type: "x/internal", title: "boom", requestId: "r" });
+    expect(await h.run({ kind: "send" }, { getMapping: async () => Promise.reject(boom) })).toEqual({ kind: "failed", reason: "server" });
+    expect(h.reports).toEqual([["begin", boom]]);
+  });
+
+  it("a complete refused with another 4xx after Hevy wrote reads as unrecorded (the copy is in Hevy)", async () => {
+    const h = harness();
+    h.link.fail("complete", 422);
+    expect(await h.run({ kind: "send" })).toEqual({ kind: "unrecorded", hevyWorkoutId: "h1", fingerprint: hevyFingerprintOf(h.detail) });
   });
 });
 
