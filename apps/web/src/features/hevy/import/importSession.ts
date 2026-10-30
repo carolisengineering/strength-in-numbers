@@ -4,6 +4,7 @@ import type { PairingCard, PairingDecision, PairingNeed } from "../pairing";
 import { markersMissing, pairingNeeds, templatesUsed } from "./importNeeds";
 import type { HevyRead, ReadProgress, ReadStage } from "./readHevy";
 import type { PickState } from "./routinePicks";
+import type { RoutineOutcome } from "./createRoutines";
 import type { PauseReason, StopReason } from "./runImport";
 
 /**
@@ -74,6 +75,9 @@ export interface ImportState {
   summaryMapping: unknown | null;
   summaryError: CheckFailure | null;
   run: RunState | null;
+  /** Phase B: the ticked routines' outcomes (AC23), and the step's progress while it runs. */
+  routineResults: RoutineOutcome[];
+  routineProgress: { done: number; total: number } | null;
 }
 
 export const initialImportState: ImportState = {
@@ -96,6 +100,8 @@ export const initialImportState: ImportState = {
   summaryMapping: null,
   summaryError: null,
   run: null,
+  routineResults: [],
+  routineProgress: null,
 };
 
 export type ImportAction =
@@ -125,7 +131,10 @@ export type ImportAction =
   | { type: "runPaused"; generation: number; reason: PauseReason }
   | { type: "runStopped"; generation: number; reason: StopReason }
   | { type: "runEnded"; generation: number; finish: boolean }
-  | { type: "resume"; generation: number };
+  | { type: "resume"; generation: number }
+  | { type: "routinesStart"; total: number }
+  | { type: "routinesProgress"; done: number; total: number }
+  | { type: "routinesDone"; outcomes: RoutineOutcome[] };
 
 /** Actions that open a new generation, so they are never ignored as stale. */
 const OPENS_GENERATION = new Set<ImportAction["type"]>(["start", "retryRead", "checkStart", "runStart", "resume"]);
@@ -217,6 +226,12 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return { ...state, step: action.finish ? "finishing" : "done" };
     case "resume":
       return state.run === null ? state : { ...state, step: "running", generation: action.generation, run: { ...state.run, pause: null, stopReason: null } };
+    case "routinesStart":
+      return { ...state, step: "routines_run", routineProgress: { done: 0, total: action.total } };
+    case "routinesProgress":
+      return { ...state, routineProgress: { done: action.done, total: action.total } };
+    case "routinesDone":
+      return { ...state, step: "done", routineResults: action.outcomes, routineProgress: null };
   }
 }
 
