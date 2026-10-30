@@ -14,8 +14,11 @@ import {
   type WorkoutDetail,
 } from "@sin/core";
 
+import { http, HttpResponse } from "msw";
+
 import { ApiError } from "../api";
 import { classifyHevyResponse, HevyError } from "../features/hevy/client/hevyErrors";
+import { API_BASE_URL } from "./accountHarness";
 import { makeSet, makeWorkoutDetail } from "./workoutFixtures";
 
 /**
@@ -293,4 +296,74 @@ export function fakeHevyWrites(opts: { workouts?: HevyWorkout[] } = {}) {
   };
 
   return { client, calls, store, fail, writes: () => calls.filter((c) => c.op === "create" || c.op === "update") };
+}
+
+// ---- MSW: the same fakes on the wire ----
+
+const HEVY = "https://api.hevyapp.com";
+
+/** An `ApiError` thrown by the fake link server, as the API would answer it. */
+function asProblemResponse(err: unknown): Response {
+  if (err instanceof ApiError && err.isNetworkError) return HttpResponse.error();
+  if (err instanceof ApiError) {
+    return new HttpResponse(JSON.stringify({ type: `https://api.strengthinnumbers.app/problems/${err.type}`, title: err.title, status: err.status }), {
+      status: err.status,
+      headers: { "content-type": "application/problem+json" },
+    });
+  }
+  throw err;
+}
+
+/** `GET` / `POST` / `PUT` / `DELETE …/v1/workouts/:id/hevy-link` on the SIN origin, served by `link`. Register per test. */
+export function hevyLinkHandlers(link: ReturnType<typeof fakeHevyLink>, opts: { hold?: (method: string) => Promise<void> | undefined } = {}) {
+  return [
+    http.all(`${API_BASE_URL}/v1/workouts/:id/hevy-link`, async ({ request }) => {
+      const text = request.method === "GET" || request.method === "DELETE" ? "" : await request.text();
+      await opts.hold?.(request.method);
+      try {
+        const value = link.handle(request.method, new URL(request.url).pathname, text === "" ? undefined : JSON.parse(text));
+        return value === undefined ? new HttpResponse(null, { status: 204 }) : HttpResponse.json(value);
+      } catch (err) {
+        return asProblemResponse(err);
+      }
+    }),
+  ];
+}
+
+/** A `HevyError` from the fake client, as Hevy would answer it (the real client classifies it again). */
+function asHevyResponse(err: unknown): Response {
+  if (err instanceof HevyError && err.kind === "network") return HttpResponse.error();
+  if (err instanceof HevyError) {
+    const body = err.kind === "limit" ? { error: "exceeds-custom-exercise-limit" } : { error: "<b>bad</b>" };
+    return HttpResponse.json(body, { status: err.status ?? 500 });
+  }
+  throw err;
+}
+
+/** Hevy's workouts (`POST`, `PUT`, paged `GET`) and `POST /v1/exercise_templates`, served by `hevy`. Register per test. */
+export function hevyApiHandlers(hevy: ReturnType<typeof fakeHevyWrites>, opts: { hold?: (op: "create" | "update") => Promise<void> | undefined } = {}) {
+  const answer = async (fn: () => Promise<unknown>) => {
+    try {
+      return HttpResponse.json((await fn()) as Record<string, unknown>);
+    } catch (err) {
+      return asHevyResponse(err);
+    }
+  };
+  return [
+    http.post(`${HEVY}/v1/workouts`, async ({ request }) => {
+      const body = (await request.json()) as HevyPostWorkout;
+      await opts.hold?.("create");
+      return answer(async () => ({ workout: [await hevy.client.createWorkout(body)] }));
+    }),
+    http.put(`${HEVY}/v1/workouts/:id`, async ({ request, params }) => {
+      const body = (await request.json()) as HevyPostWorkout;
+      await opts.hold?.("update");
+      return answer(() => hevy.client.updateWorkout(String(params["id"]), body));
+    }),
+    http.get(`${HEVY}/v1/workouts`, ({ request }) => answer(() => hevy.client.listWorkouts(Number(new URL(request.url).searchParams.get("page") ?? "1")))),
+    http.post(`${HEVY}/v1/exercise_templates`, async ({ request }) => {
+      const body = (await request.json()) as HevyCreateTemplateBody;
+      return answer(() => hevy.client.createTemplate(body));
+    }),
+  ];
 }
