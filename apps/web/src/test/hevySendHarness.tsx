@@ -27,16 +27,35 @@ export function setupSendScreen(
   const hevy = fakeHevyWrites();
   setInstantPacing();
   setSendSleepForTests(async () => {});
+  // The mapping as the server holds it: a PATCH upserts (by Hevy template id) and the next read sees it.
+  let mapping: HevyMapping = opts.mapping ?? fixture.mapping;
+  const patches: unknown[] = [];
+  const patchFailures: number[] = [];
   server.use(
     ...(opts.owner === false
       ? []
       : [http.get(`${API_BASE_URL}/v1/hevy/status`, () => HttpResponse.json({ enabled: true, pairCount: 2, linkCount: link.rows.size, recordsStale: false }))]),
-    http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.json(opts.mapping ?? fixture.mapping)),
+    http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.json(mapping)),
+    http.patch(`${API_BASE_URL}/v1/hevy/mapping`, async ({ request }) => {
+      const body = (await request.json()) as { upsert?: HevyMapping["pairs"] };
+      patches.push(body);
+      const status = patchFailures.shift();
+      if (status !== undefined) {
+        return new HttpResponse(JSON.stringify({ type: "https://api.strengthinnumbers.app/problems/rate-limited", title: "Too many", status }), {
+          status,
+          headers: { "content-type": "application/problem+json", "retry-after": "30" },
+        });
+      }
+      const upserts = (body.upsert ?? []).map((p) => ({ ...p, exerciseActive: true }));
+      const ids = new Set(upserts.map((p) => p.hevyTemplateId));
+      mapping = { ...mapping, pairs: [...mapping.pairs.filter((p) => !ids.has(p.hevyTemplateId)), ...upserts] };
+      return HttpResponse.json(mapping);
+    }),
     ...hevyLinkHandlers(link),
     ...hevyApiHandlers(hevy, { hold: (op) => (op === "create" ? opts.holdCreate : undefined) }),
   );
   if (opts.key !== false) hevyKeyStore.set(USER_ID, VALID_KEY, { remember: true });
-  return { fake, link, hevy, detail };
+  return { fake, link, hevy, detail, patches, failPatch: (status: number) => void patchFailures.push(status) };
 }
 
 export function cleanupSendScreen(): void {
