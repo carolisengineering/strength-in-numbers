@@ -148,8 +148,8 @@ export function ImportSummaryView({
           </>
         ) : (
           <>
-            {/* AC13 / AC28: never while a workout waits for a pairing, the summary is stale, or a pre-write check fails. */}
-            <Button disabled={!canImport || agg.unpaired > 0 || stale} aria-describedby={blocked !== null ? noteId : undefined} onClick={onImport}>
+            {/* AC13 / AC28: never while a workout waits for a pairing, or while a pre-write check fails (stale included). */}
+            <Button disabled={!canImport || agg.unpaired > 0} aria-describedby={blocked !== null ? noteId : undefined} onClick={onImport}>
               {label}
             </Button>
             {blocked !== null ? (

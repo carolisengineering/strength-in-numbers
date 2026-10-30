@@ -98,6 +98,15 @@ describe("20.1 AC25 — done screen", () => {
     expect(within(done).getByText("1 routine created · 1 already there")).toBeInTheDocument();
   });
 
+  it("code review 4: a routine with nothing to import is skipped, not counted as not created", async () => {
+    const empty: HevyRoutine = { id: "r3", title: "Empty", folder_id: null, exercises: [] };
+    setupImportRun(auth, { workouts: generateHevyWorkouts(2), routines: [routineOf("r1", "Push A"), empty] });
+    const { user } = await toSummary({ tick: ["Push A", "Empty"] });
+    await user.click(importButton());
+    const done = await doneSection();
+    expect(within(done).getByText("1 routine created · 1 with nothing to import")).toBeInTheDocument();
+  });
+
   it("a routine limit lists the routines not created", async () => {
     const existing = Array.from({ length: ROUTINES_PER_USER_MAX - 1 }, (_, i) => makeRoutine({ id: routineId(100 + i), name: `Old ${i}` }));
     const routines = [routineOf("r1", "Push A"), routineOf("r2", "Pull A")];

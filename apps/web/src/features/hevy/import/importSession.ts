@@ -133,12 +133,13 @@ export type ImportAction =
   | { type: "batchDone"; generation: number; results: HevyImportResult[]; nextDate: string | null }
   | { type: "runPaused"; generation: number; reason: PauseReason }
   | { type: "runStopped"; generation: number; reason: StopReason }
-  | { type: "runEnded"; generation: number; finish: boolean }
   | { type: "resume"; generation: number }
   | { type: "routinesStart"; total: number }
   | { type: "routinesProgress"; done: number; total: number }
   | { type: "routinesDone"; outcomes: RoutineOutcome[] }
   | { type: "finishStart" }
+  /** AC22: the run created nothing and the server says nothing is stale. */
+  | { type: "finishSkipped" }
   | { type: "finishDone"; ok: boolean }
   | { type: "toDone" };
 
@@ -228,8 +229,8 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return state.run === null ? state : { ...state, step: "paused", run: { ...state.run, pause: action.reason } };
     case "runStopped":
       return state.run === null ? state : { ...state, step: "stopped", run: { ...state.run, stopReason: action.reason } };
-    case "runEnded":
-      return action.finish ? { ...state, step: "finishing", finish: "running" } : { ...state, step: "done" };
+    case "finishSkipped":
+      return { ...state, finish: "idle" };
     case "finishStart":
       // A Try again on the done screen keeps it; otherwise the finish is its own step.
       return { ...state, step: state.step === "done" ? "done" : "finishing", finish: "running" };

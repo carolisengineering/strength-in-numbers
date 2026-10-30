@@ -260,6 +260,16 @@ describe("20.1 AC28 — pre-write safety", () => {
     expect(screen.getByText("Couldn't load your pairings. Check your connection and try again.")).toBeInTheDocument();
   });
 
+  it("a status refetch that can't reach the server disables Import and says so, not 'not available'", async () => {
+    setupImportRun(auth, sixty());
+    const { queryClient } = await toSummary();
+    server.use(http.get(`${API_BASE_URL}/v1/hevy/status`, () => HttpResponse.error()));
+    await act(() => queryClient.refetchQueries({ queryKey: HEVY_KEYS.statusAll }));
+    await waitFor(() => expect(importButton()).toBeDisabled());
+    expect(screen.getByText("Couldn't reach the server. Check your connection and try again.")).toBeInTheDocument();
+    expect(screen.queryByText("The Hevy import isn't available on this account")).toBeNull();
+  });
+
   it("a status refetch answering 404 disables Import; the screen stays drawn", async () => {
     setupImportRun(auth, sixty());
     const { queryClient } = await toSummary();

@@ -32,7 +32,8 @@ import {
   type ReadFailure,
 } from "./importSession";
 import { importWait } from "./importWait";
-import { ADD_KEY_FIRST, IMPORT_UNAVAILABLE, MAPPING_UNAVAILABLE } from "./messages";
+import { reportable } from "./reportable";
+import { ADD_KEY_FIRST, CHECK_OFFLINE, IMPORT_UNAVAILABLE, MAPPING_UNAVAILABLE } from "./messages";
 import { runBatches, runImport } from "./runImport";
 import { runDryRun } from "./dryRun";
 import { ImportReplyError, useHevyImportClient } from "./hevyImportClient";
@@ -45,9 +46,6 @@ import { routineNameKey, tickAllInFolder, toggle, type PickContext, type Routine
 export function canStartRun(ctx: { statusOk: boolean; hasKey: boolean; mappingOk: boolean; stale: boolean }): boolean {
   return ctx.statusOk && ctx.hasKey && ctx.mappingOk && !ctx.stale;
 }
-
-/** §9: only failures worth a look are reported — not a network error, not a `4xx`. */
-const reportable = (err: unknown) => err instanceof ImportReplyError || !(err instanceof ApiError) || (!err.isNetworkError && err.status >= 500);
 
 /**
  * Spec 20.1 §6.1: wires the import's I/O to the reducer. One `AbortController` per I/O, aborted on unmount and on
@@ -246,7 +244,7 @@ export function useImportSession() {
         if (io.signal.aborted) return;
         const network = err instanceof ApiError && err.isNetworkError;
         const failure = err instanceof ImportReplyError ? "reply" : network ? "network" : "failed";
-        if (err instanceof ImportReplyError || !(err instanceof ApiError) || err.status >= 500) reportError(err, { source: "hevy-import", op: "summary" });
+        if (reportable(err)) reportError(err, { source: "hevy-import", op: "summary" });
         dispatch({ type: "checkFailed", generation: gen, failure });
       },
     );
@@ -316,7 +314,8 @@ export function useImportSession() {
   const startContext = { statusOk: status.isSuccess, hasKey: hevyKey.hasKey, mappingOk: mapping.isSuccess, stale };
   const startRef = useRef(startContext);
   startRef.current = startContext;
-  const importBlocked = !hevyKey.hasKey ? ADD_KEY_FIRST : !status.isSuccess ? IMPORT_UNAVAILABLE : !mapping.isSuccess ? MAPPING_UNAVAILABLE : null;
+  const statusBlocked = status.error instanceof ApiError && status.error.isNetworkError ? CHECK_OFFLINE : IMPORT_UNAVAILABLE;
+  const importBlocked = !hevyKey.hasKey ? ADD_KEY_FIRST : !status.isSuccess ? statusBlocked : !mapping.isSuccess ? MAPPING_UNAVAILABLE : null;
 
   /** AC22, AC23: the finish when needed (it waits on the lane for any batch in flight), then the ticked routines. */
   const wrapUp = useCallback(
@@ -324,6 +323,8 @@ export function useImportSession() {
       // AC22: with no create of its own, the run asks the server (not the cached status) whether the records are
       // stale — a batch whose reply was lost after it committed comes back `already_imported` on the re-send. A
       // failed read finishes anyway: a finish with nothing stale is harmless.
+      // The step leaves "running" first, so a Stop is no longer offered once nothing is left to stop.
+      dispatch({ type: "finishStart" });
       let stale = latest.current.status?.recordsStale === true;
       if (!runResults.current.some((r) => r.outcome === "create")) {
         const fresh = await latest.current.refetchStatus();
@@ -331,12 +332,13 @@ export function useImportSession() {
         stale = fresh.isSuccess ? fresh.data.recordsStale : true;
       }
       if (needsFinish(runResults.current, { recordsStale: stale })) {
-        dispatch({ type: "finishStart" });
         const outcome = await finishImport(importClient);
         // AC24: a finish that lands after the screen is gone still refreshes what it changed.
         if (outcome === "ok") applyImportedCaches(queryClient);
         if (signal.aborted) return;
         dispatch({ type: "finishDone", ok: outcome === "ok" });
+      } else {
+        dispatch({ type: "finishSkipped" });
       }
       const picked = pickedRoutines(stateRef.current);
       if (picked.length === 0) return dispatch({ type: "toDone" });

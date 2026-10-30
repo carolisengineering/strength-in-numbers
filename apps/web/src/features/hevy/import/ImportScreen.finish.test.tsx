@@ -210,6 +210,27 @@ describe("20.1 AC20 / AC22 — final review fixes", () => {
     expect(finishRequests(imports)).toHaveLength(1);
   });
 
+  it("code review 1: while the run asks the server whether records are stale, Stop is no longer offered", async () => {
+    const workouts = generateHevyWorkouts(3);
+    const { imports } = setupImportRun(auth, { workouts });
+    const { user } = await toSummary();
+    for (const w of workouts) imports.links.set(w.id, "imported");
+    let answer: () => void = () => {};
+    const held = new Promise<void>((resolve) => (answer = resolve));
+    server.use(
+      http.get(`${API_BASE_URL}/v1/hevy/status`, async () => {
+        await held;
+        return HttpResponse.json({ enabled: true, pairCount: 0, linkCount: 3, recordsStale: false });
+      }),
+    );
+    await user.click(importButton());
+    expect(await screen.findByText("Updating your records…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    answer();
+    await doneHeading();
+    expect(finishRequests(imports)).toEqual([]);
+  });
+
   it("I3: a finish that succeeds after the screen is left still refreshes the caches", async () => {
     const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(3) });
     const release = imports.gateFinish();

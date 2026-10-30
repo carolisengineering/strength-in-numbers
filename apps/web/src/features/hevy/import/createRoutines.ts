@@ -3,6 +3,7 @@ import { RoutineWriteSchema, type CodeCount, type HevyRoutine, type HevyRoutineN
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { ROUTINE_GAP_MS } from "./constants";
+import { reportable } from "./reportable";
 
 /**
  * Spec 20.1 AC23, §6.9: the routines Carol ticked, created after the finish, one at a time and no more than 20 a
@@ -33,9 +34,16 @@ const slug = (err: unknown) => (err instanceof ApiError ? err.type : null);
 function failureKind(err: unknown): RoutineOutcomeKind {
   if (err instanceof ApiError && err.status === 409 && err.type === "routine-name-taken") return "exists";
   if (err instanceof ApiError && err.status === 422) return "invalid";
-  const quiet = err instanceof ApiError && (err.isNetworkError || (err.status >= 400 && err.status < 500));
-  if (!quiet) reportError(err, { source: "hevy-import", op: "routine" });
+  if (reportable(err)) reportError(err, { source: "hevy-import", op: "routine" });
   return "failed";
+}
+
+/** A routine after the limit: its own reason when it couldn't be created anyway, else `limit_not_created`. */
+function unsentOutcome(routine: HevyRoutine, translated: HevyRoutineTranslation): RoutineOutcome {
+  const base = { hevyRoutineId: routine.id, name: routine.title };
+  if (!translated.ok) return { ...base, kind: translated.reason, notices: [] };
+  const kind = RoutineWriteSchema.safeParse(translated.input).success ? "limit_not_created" : "invalid";
+  return { ...base, kind, notices: translated.notices };
 }
 
 export async function createRoutines(routines: readonly HevyRoutine[], deps: CreateRoutinesDeps): Promise<RoutineOutcome[]> {
@@ -67,7 +75,10 @@ export async function createRoutines(routines: readonly HevyRoutine[], deps: Cre
           outcomes.push({ ...base, kind: "created", notices });
         } catch (err) {
           if (err instanceof ApiError && err.status === 409 && slug(err) === "routine-limit") {
-            outcomes.push(...routines.slice(index).map((r, i) => ({ hevyRoutineId: r.id, name: r.title, kind: "limit_not_created" as const, notices: i === 0 ? notices : [] })));
+            // D12: the cap can't clear mid-run, so nothing more is sent. A later routine that couldn't be created
+            // anyway (nothing to import, unpaired, invalid) keeps its own reason; only the sendable ones are "limit".
+            outcomes.push({ ...base, kind: "limit_not_created", notices });
+            for (const rest of routines.slice(index + 1)) outcomes.push(unsentOutcome(rest, deps.translate(rest)));
             deps.onProgress(routines.length, routines.length);
             return outcomes;
           }

@@ -1,9 +1,9 @@
 import type { HevyImportResult, HevyStatus } from "@sin/core";
 
-import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import type { HevyImportClient } from "./hevyImportClient";
 import { importLane } from "./importLane";
+import { reportable } from "./reportable";
 
 /**
  * Spec 20.1 AC22, §6.8: the finish step, the only call that recomputes records. It queues on the lane, so it never
@@ -14,8 +14,7 @@ export async function finishImport(client: Pick<HevyImportClient, "finish">, sig
     await importLane.run(() => client.finish(signal));
     return "ok";
   } catch (err) {
-    const quiet = err instanceof ApiError && (err.isNetworkError || (err.status >= 400 && err.status < 500));
-    if (!quiet) reportError(err, { source: "hevy-import", op: "finish" });
+    if (reportable(err)) reportError(err, { source: "hevy-import", op: "finish" });
     return "failed";
   }
 }

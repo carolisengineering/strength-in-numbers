@@ -84,6 +84,15 @@ describe("20.1 AC23 — routines", () => {
     expect(h.sent).toHaveLength(2);
   });
 
+  it("code review 3: after the limit, a later routine that can't be created anyway keeps its own reason", async () => {
+    const h = harness((_, n) => (n === 2 ? problem(409, "routine-limit") : null), {
+      translate: (r) => (r.id === "d" ? { ok: false, reason: "no_items", unpaired: [] } : translate(r)),
+    });
+    const outcomes = await createRoutines([named("a", "A"), named("b", "B"), named("c", "C"), named("d", "D")], h.deps);
+    expect(kinds(outcomes)).toEqual(["created", "limit_not_created", "limit_not_created", "no_items"]);
+    expect(h.sent).toHaveLength(2);
+  });
+
   it("an unpaired translation is listed and never sent (defended)", async () => {
     const h = harness(() => null, { translate: () => ({ ok: false, reason: "unpaired", unpaired: ["T9"] }) });
     expect(kinds(await createRoutines([named("a", "A")], h.deps))).toEqual(["unpaired"]);

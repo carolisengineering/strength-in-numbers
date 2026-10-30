@@ -46,8 +46,10 @@ describe("20.1 AC16 — reducer", () => {
     expect(stopped).toMatchObject({ step: "stopped", run: { sent: 1, stopReason: { kind: "user" } } });
   });
 
-  it("runEnded goes to finishing when a finish is needed", () => {
-    expect(importSession(running, { type: "runEnded", generation: 4, finish: true }).step).toBe("finishing");
+  it("finishStart leaves running for finishing; finishSkipped leaves nothing running", () => {
+    const finishing = importSession(running, { type: "finishStart" });
+    expect(finishing).toMatchObject({ step: "finishing", finish: "running" });
+    expect(importSession(finishing, { type: "finishSkipped" })).toMatchObject({ step: "finishing", finish: "idle" });
   });
 
   it("a batchDone from an older generation is ignored", () => {

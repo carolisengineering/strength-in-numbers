@@ -55,7 +55,8 @@ export function DoneStep({
   const count = (kind: (typeof routines)[number]["kind"]) => routines.filter((r) => r.kind === kind).length;
   const notCreated = routines.filter((r) => r.kind === "limit_not_created");
   const noted = routines.filter((r) => r.kind in ROUTINE_PROBLEM_LABELS || r.notices.length > 0);
-  const routineLine = routinesDoneLine(count("created"), count("exists"), routines.length - count("created") - count("exists"));
+  const skipped = count("no_items");
+  const routineLine = routinesDoneLine(count("created"), count("exists"), skipped, routines.length - count("created") - count("exists") - skipped);
   const finish = state.finish;
 
   const download = () => {

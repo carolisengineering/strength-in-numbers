@@ -202,10 +202,12 @@ export const alreadyInSinLine = (n: number) => `${fmt(n)} already in SIN`;
 export const notSentLine = (n: number) => `${fmt(n)} not imported (stopped)`;
 export const setsDroppedLine = (n: number) => `${plural(n, "set", "sets")} dropped`;
 // Plan copy.
-export const routinesDoneLine = (created: number, exists: number, notCreated: number) =>
+export const routinesDoneLine = (created: number, exists: number, nothingToImport: number, notCreated: number) =>
   [
     created > 0 ? `${plural(created, "routine", "routines")} created` : null,
     exists > 0 ? `${fmt(exists)} already there` : null,
+    // AC23: a routine of only placeholders and skips is skipped, not a failure.
+    nothingToImport > 0 ? `${fmt(nothingToImport)} with nothing to import` : null,
     notCreated > 0 ? `${fmt(notCreated)} not created` : null,
   ]
     .filter((part) => part !== null)
