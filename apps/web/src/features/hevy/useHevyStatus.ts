@@ -2,6 +2,7 @@ import { HevyStatusSchema, type HevyStatus } from "@sin/core";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { ApiError } from "../../api";
+import type { ApiClient } from "../../api/client";
 import { useApi } from "../../auth/useApi";
 import { useSession } from "../../auth/useSession";
 import { HEVY_KEYS } from "./keys";
@@ -10,18 +11,22 @@ import { HEVY_KEYS } from "./keys";
  * Spec 20.0 AC1: `GET /v1/hevy/status` (Spec 19.0). Only an account on `HEVY_ENABLED_USER_IDS` gets a `200`; anyone
  * else gets the unknown-route `404`, so the status is also the gate for every Hevy screen. No retry: a 404 is the
  * expected answer for everyone but the owner. `networkMode: "always"`, so an offline visit fails at once (and says
- * so) instead of pausing in pending.
+ * so) instead of pausing in pending. The options are shared with Spec 20.2's auto-push, which reads it by `fetchQuery`.
  */
-export function useHevyStatus(): UseQueryResult<HevyStatus> {
-  const api = useApi();
-  const userId = useSession().user?.id ?? null;
-  return useQuery({
+export function hevyStatusQuery(api: Pick<ApiClient, "get">, userId: string | null) {
+  return {
     queryKey: HEVY_KEYS.status(userId),
     queryFn: () => api.get("/v1/hevy/status", HevyStatusSchema),
     retry: false,
     staleTime: 5 * 60_000,
-    networkMode: "always",
-  });
+    networkMode: "always" as const,
+  };
+}
+
+export function useHevyStatus(): UseQueryResult<HevyStatus> {
+  const api = useApi();
+  const userId = useSession().user?.id ?? null;
+  return useQuery(hevyStatusQuery(api, userId));
 }
 
 /**

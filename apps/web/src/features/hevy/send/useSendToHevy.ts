@@ -1,4 +1,4 @@
-import { useIsMutating, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { lineageRootId, type HevyLinkState } from "@sin/core";
 
@@ -112,23 +112,38 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
   };
 }
 
-export function useSendToHevy(workoutId: string): {
-  run(intent: SendIntent, opts?: { leaveOut?: ReadonlySet<string>; createOnly?: boolean }): Promise<SendOutcome>;
-  pending: boolean;
-  landed: Landed | null;
-} {
+export type SendRunOptions = { leaveOut?: ReadonlySet<string>; createOnly?: boolean };
+
+/**
+ * Spec 20.2 Phase B: the send for any workout, made per call — the same options, deps, key and `onSettled` as the
+ * button's mutation, so a run started here (auto-push) and one started by the section join one in-flight entry.
+ */
+export function useSendRunner(): (workoutId: string, intent: SendIntent, opts?: SendRunOptions) => Promise<SendOutcome> {
   const queryClient = useQueryClient();
   const api = useApi();
   const hevy = useHevyClient();
   const workouts = useWorkoutClient();
   const catalog = useCatalogStore();
-  const { mutateAsync } = useMutation(sendMutationOptions(queryClient, { api, hevy, workouts, catalog }, workoutId));
-  const mutationKey = HEVY_SEND_KEYS.send(workoutId);
-  // `onSettled` records the outcome before the mutation stops counting as pending, so this re-render reads it.
-  const pending = useIsMutating({ mutationKey }) > 0;
-  const run = useCallback(
-    (intent: SendIntent, opts: { leaveOut?: ReadonlySet<string>; createOnly?: boolean } = {}) => joinOrStart(workoutId, () => mutateAsync({ intent, ...opts })),
-    [workoutId, mutateAsync],
+  return useCallback(
+    (workoutId: string, intent: SendIntent, opts: SendRunOptions = {}) =>
+      joinOrStart(workoutId, () =>
+        queryClient
+          .getMutationCache()
+          .build(queryClient, sendMutationOptions(queryClient, { api, hevy, workouts, catalog }, workoutId))
+          .execute({ intent, ...opts }),
+      ),
+    [queryClient, api, hevy, workouts, catalog],
   );
+}
+
+export function useSendToHevy(workoutId: string): {
+  run(intent: SendIntent, opts?: SendRunOptions): Promise<SendOutcome>;
+  pending: boolean;
+  landed: Landed | null;
+} {
+  const runner = useSendRunner();
+  // `onSettled` records the outcome before the mutation stops counting as pending, so this re-render reads it.
+  const pending = useIsMutating({ mutationKey: HEVY_SEND_KEYS.send(workoutId) }) > 0;
+  const run = useCallback((intent: SendIntent, opts: SendRunOptions = {}) => runner(workoutId, intent, opts), [workoutId, runner]);
   return { run, pending, landed: landedBy.get(workoutId) ?? null };
 }

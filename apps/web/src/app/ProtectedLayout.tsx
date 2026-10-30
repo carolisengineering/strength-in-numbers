@@ -2,6 +2,7 @@ import { ApiError } from "../api/problem";
 import { AccountDeletedConfirmation } from "../features/account/AccountDeletedConfirmation";
 import { useAccountDeletion } from "../features/account/useDeleteAccount";
 import { CatalogProvider } from "../features/catalog/CatalogProvider";
+import { HevyAutoPush } from "../features/hevy/send/useHevyAutoPush";
 import { useMe } from "../features/me/useMe";
 import { HistoryRecordsClientProvider } from "../features/history/HistoryRecordsClientProvider";
 import { ProgressClientProvider } from "../features/progress/ProgressClientProvider";
@@ -27,7 +28,7 @@ import { AppShell } from "./AppShell";
  *
  * Spec 04.1 §5: the gate is unchanged; only the `200` branch now renders the
  * styled shell instead of a bare `<Outlet/>`. Spec 06.1 mounts the catalog and
- * workout-client providers around it; Spec 08.0 adds the history/records read clients; Spec 08.1 adds the progress client; Spec 10.0 the routine client.
+ * workout-client providers around it; Spec 08.0 adds the history/records read clients; Spec 08.1 adds the progress client; Spec 10.0 the routine client; Spec 20.2 mounts Hevy's auto-push beside the shell.
  */
 export function ProtectedLayout() {
   const deletion = useAccountDeletion();
@@ -66,6 +67,8 @@ export function ProtectedLayout() {
         <HistoryRecordsClientProvider>
           <ProgressClientProvider>
             <RoutineClientProvider>
+              {/* Spec 20.2 AC25: inside the catalog and workout client, so a finish anywhere can reach Hevy. */}
+              <HevyAutoPush />
               <AppShell />
             </RoutineClientProvider>
           </ProgressClientProvider>
