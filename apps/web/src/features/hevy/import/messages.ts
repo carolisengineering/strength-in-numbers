@@ -194,6 +194,33 @@ export const creatingRoutinesLine = (done: number, total: number) => `Creating r
 export const DONE_TITLE = "Done";
 export const VIEW_HISTORY = "View History";
 export const DOWNLOAD_REPORT = "Download report";
+export const doneWorkoutsLine = (imported: number, linked: number, skipped: number) =>
+  `${plural(imported, "workout", "workouts")} imported · ${fmt(linked)} linked to workouts you'd logged · ${fmt(skipped)} skipped`;
+// Plan copy.
+export const alreadyInSinLine = (n: number) => `${fmt(n)} already in SIN`;
+/** O2 / D18 (Carol, 2026-10-29). */
+export const notSentLine = (n: number) => `${fmt(n)} not imported (stopped)`;
+export const setsDroppedLine = (n: number) => `${plural(n, "set", "sets")} dropped`;
+// Plan copy.
+export const routinesDoneLine = (created: number, exists: number, notCreated: number) =>
+  [
+    created > 0 ? `${plural(created, "routine", "routines")} created` : null,
+    exists > 0 ? `${fmt(exists)} already there` : null,
+    notCreated > 0 ? `${fmt(notCreated)} not created` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" · ");
+export const routineLimitLine = (k: number) => `Your routine limit was reached; ${plural(k, "routine wasn't", "routines weren't")} created`;
+export const ROUTINES_NOT_CREATED = "Routines not created";
+// Plan copy.
+export const ROUTINE_NOTES = "Routine notes";
+/** AC23: a routine that wasn't created, other than at the limit. Plan copy. */
+export const ROUTINE_PROBLEM_LABELS = Object.freeze({
+  unpaired: "Uses an exercise that isn't paired",
+  no_items: "Nothing to import",
+  invalid: "The server didn't accept it",
+  failed: "Couldn't be created; run the import again to retry",
+} as const);
 
 /** AC28: the summary went stale. */
 // Plan copy.

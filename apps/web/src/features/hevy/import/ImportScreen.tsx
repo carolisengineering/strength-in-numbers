@@ -126,7 +126,7 @@ export function ImportScreen() {
           />
         ) : null}
         {state.step === "finishing" || state.step === "routines_run" ? <WrapUpStep state={state} headingRef={headingRef} /> : null}
-        {state.step === "done" ? <DoneStep state={state} onRetryFinish={() => void session.retryFinish()} headingRef={headingRef} /> : null}
+        {state.step === "done" ? <DoneStep state={state} zone={deviceZone()} onRetryFinish={() => void session.retryFinish()} headingRef={headingRef} /> : null}
       </div>
       <ConfirmDialog open={leave.open} title={LEAVE_TITLE} confirmLabel={LEAVE_CONFIRM} onConfirm={leave.confirm} onCancel={leave.cancel}>
         <p>{LEAVE_BODY}</p>
