@@ -1,5 +1,7 @@
 import { hashKey, type QueryClient } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
+import { EXERCISE_KEYS } from "../exercises/keys";
+import { HEVY_KEYS } from "../hevy/keys";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { ROUTINE_KEYS } from "../routines/queries";
@@ -45,6 +47,18 @@ export function applyEditedCaches(queryClient: QueryClient): void {
   void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
   void queryClient.invalidateQueries({ queryKey: PROGRESS_KEYS.all });
   void queryClient.invalidateQueries({ queryKey: RECORDS_KEYS.all });
+}
+
+/**
+ * The cache effects of a Hevy import (Spec 20.1 AC24, §6.10), after the run and again after a successful finish:
+ * History restarts at page 1, and every family the import can change is stale. Never the Hevy templates or user,
+ * because refetching those sends the key to Hevy.
+ */
+export function applyImportedCaches(queryClient: QueryClient): void {
+  void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+  for (const queryKey of [PROGRESS_KEYS.all, RECORDS_KEYS.all, EXERCISE_KEYS.usage, ROUTINE_KEYS.all, HEVY_KEYS.statusAll, HEVY_KEYS.mapping]) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
 }
 
 function invalidateOthers(queryClient: QueryClient, own: readonly unknown[]): void {

@@ -1,18 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ApiError } from "../../../api";
-import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
-import { HEVY_KEYS } from "../keys";
+import { applyImportedCaches } from "../../records/cache";
 import { useHevyStatus } from "../useHevyStatus";
+import { finishImport } from "./finishImport";
 import { useHevyImportClient } from "./hevyImportClient";
-import { FINISH_FAILED, FINISH_LAST_STEP, FINISHING, RECORDS_UPDATED, STALE_RECORDS } from "./messages";
+import { FINISH_FAILED, FINISH_LAST_STEP, FINISHING, RECORDS_UPDATED, STALE_RECORDS, TRY_AGAIN } from "./messages";
 import styles from "./ImportScreen.module.css";
 
 /**
  * Spec 20.1 AC2 / AC22: while the status says the records are stale, offer the finish step. One component, shown on
- * the import's preflight and (Phase B) on the Hevy screen. A finish answering `recomputed: false` is still done.
+ * the import's preflight and on the Hevy screen. It goes through `finishImport`, so it waits for any batch still in
+ * flight on this page; success refreshes what the import changed. A finish answering `recomputed: false` is done.
  */
 export function StaleRecordsBanner() {
   const status = useHevyStatus();
@@ -23,15 +23,9 @@ export function StaleRecordsBanner() {
   const finish = async () => {
     if (phase === "busy") return;
     setPhase("busy");
-    try {
-      await client.finish();
-      setPhase("done");
-      await queryClient.invalidateQueries({ queryKey: HEVY_KEYS.statusAll });
-    } catch (err) {
-      const quiet = err instanceof ApiError && (err.isNetworkError || (err.status >= 400 && err.status < 500));
-      if (!quiet) reportError(err, { source: "hevy-import", op: "finish" });
-      setPhase("failed");
-    }
+    if ((await finishImport(client)) === "failed") return setPhase("failed");
+    setPhase("done");
+    applyImportedCaches(queryClient);
   };
 
   const stale = status.data?.recordsStale === true;
@@ -48,7 +42,7 @@ export function StaleRecordsBanner() {
       <p className={styles.text}>{phase === "failed" ? FINISH_FAILED : STALE_RECORDS}</p>
       <div className={styles.actions}>
         <Button variant="secondary" busy={phase === "busy"} onClick={() => void finish()}>
-          {phase === "busy" ? FINISHING : FINISH_LAST_STEP}
+          {phase === "busy" ? FINISHING : phase === "failed" ? TRY_AGAIN : FINISH_LAST_STEP}
         </Button>
       </div>
     </section>

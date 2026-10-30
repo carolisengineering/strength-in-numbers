@@ -213,7 +213,7 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
   let held: number | null = null;
   let batches = 0;
   const sequence: SequencedFailure[] = [];
-  /** Phase B (Review Focus 6): requests in flight now, and the most ever in flight at once, over both import routes. */
+  /** Phase B (§6.8, no overlap): requests in flight now, and the most ever in flight at once, over both import routes. */
   const concurrency = { inFlight: 0, maxInFlight: 0 };
 
   /** The `n`-th batch request (1-based) never answers: a check caught mid-way. */
