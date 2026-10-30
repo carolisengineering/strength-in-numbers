@@ -7,7 +7,7 @@ import { createRoutineRepository } from "../../src/repositories/routine.prisma.j
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { bearer, makeAccountApp } from "./account-helpers.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
-import { ageOneOff, captureStatements } from "./one-off-helpers.js";
+import { ageOneOff, settleCapture, startCapture } from "./one-off-helpers.js";
 import { assertDerivedColumnsConsistent } from "./planned-set-helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { routineFixture, TRUNCATE_ROUTINES } from "./routine-helpers.js";
@@ -117,9 +117,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const ex = await insertExercise(db, { ownerUserId: u });
       await oneOff(u, ex, "fresh");
       await routines().create(u, routineFixture([ex], { name: "ordinary" }));
-      const seen = captureStatements(db);
-      seen.length = 0;
+      const seen = await startCapture(db);
       await routines().list(u);
+      await settleCapture(db, seen);
       expect(seen).toHaveLength(2);
       expect(seen.join("\n")).not.toMatch(/BEGIN|DELETE/i);
     });
@@ -130,9 +130,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       const held = await oneOff(u, ex, "held");
       await ageOneOff(db, held.id, 20);
       await liveFrom(u, ex, held.id);
-      const seen = captureStatements(db);
-      seen.length = 0;
+      const seen = await startCapture(db);
       expect(((await routines().list(u)).routines).map((r) => r.id)).toEqual([held.id]);
+      await settleCapture(db, seen);
       expect(seen).toHaveLength(2);
       expect(seen.join("\n")).not.toMatch(/BEGIN|DELETE|SKIP LOCKED/i);
     });
@@ -302,11 +302,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       await x(
         `UPDATE "routine" SET one_off_until = created_at + interval '336 hours'
          WHERE id IN (SELECT id FROM "routine" WHERE user_id = $1::uuid ORDER BY id LIMIT 20)`, u);
-      const seen = captureStatements(db);
-      seen.length = 0;
+      const seen = await startCapture(db);
       const t0 = Date.now();
       const list = (await routines().list(u)).routines;
       const ms = Date.now() - t0;
+      await settleCapture(db, seen);
       expect(list).toHaveLength(50);
       expect(list.slice(0, 20).every((r) => r.oneOffUntil !== null)).toBe(true);
       expect(seen).toHaveLength(2);

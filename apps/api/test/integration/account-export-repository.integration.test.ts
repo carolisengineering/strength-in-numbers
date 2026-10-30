@@ -3,6 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
 import { TRUNCATE_ACCOUNTS } from "./account-helpers.js";
@@ -112,11 +113,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
 
   it("AC8 — a fixed statement count: 5 workouts and 60 workouts issue the same number, ≤ 8", async () => {
     const count = async (user: string) => {
-      const seen: string[] = [];
-      const listener = (e: { query: string }) => seen.push(e.query);
-      (db.prisma as unknown as { $on: (ev: "query", cb: typeof listener) => void }).$on("query", listener);
-      seen.length = 0;
+      const seen = await startCapture(db);
       await createAccountExportRepository(db.prisma).snapshot(user);
+      await settleCapture(db, seen);
       return seen.filter((q) => !/^\s*(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION ISOLATION)/i.test(q)).length;
     };
     const small = await insertUser(db);
