@@ -61,6 +61,11 @@ export function MatchForHevySheet({
   const [saving, setSaving] = useState(false);
   /** AC14: one create per card, never twice (a ref, so two clicks in one tick make one request). */
   const creating = useRef(new Set<string>());
+  /**
+   * Final review I4: what Hevy already created for each exercise on this sheet. Hevy can't delete a custom exercise, so
+   * Change then Create in Hevy reuses it instead of making a second one.
+   */
+  const created = useRef(new Map<string, { draft: CreateDraft; id: string }>());
 
   // AC21: focus moves to the sheet's heading on open.
   const marker = useRef<HTMLDivElement>(null);
@@ -76,6 +81,11 @@ export function MatchForHevySheet({
   const setMode = (id: string, mode: Mode) => setModes((m) => ({ ...m, [id]: mode }));
 
   const startCreate = (exercise: UnmappedExercise) => {
+    const made = created.current.get(exercise.exerciseId);
+    if (made) {
+      setChoice(exercise.exerciseId, { kind: "create", draft: made.draft, created: { id: made.id } });
+      return;
+    }
     const row = rows.find((r) => r.id === exercise.exerciseId);
     setDrafts((d) => ({ ...d, [exercise.exerciseId]: d[exercise.exerciseId] ?? createDraftFor(exercise, row) }));
     setErrors((e) => ({ ...e, [exercise.exerciseId]: "" }));
@@ -89,8 +99,12 @@ export function MatchForHevySheet({
     creating.current.add(id);
     setErrors((e) => ({ ...e, [id]: "" }));
     try {
-      const created = await client.createTemplate(hevyExerciseCreateBody(draft));
-      setChoice(id, { kind: "create", draft, created: { id: created.id } });
+      const reply = await client.createTemplate(hevyExerciseCreateBody(draft));
+      created.current.set(id, { draft, id: reply.id });
+      const choice = { kind: "create" as const, draft, created: { id: reply.id } };
+      setChoice(id, choice);
+      // Saved at once, so a Cancel can't leave Hevy holding an exercise nothing pairs (Continue saves it again).
+      patch.mutateAsync({ upsert: upsertsFor([{ exercise, choice }]) }).catch(() => {});
     } catch (err) {
       if (err instanceof HevyError && err.kind === "limit") {
         setErrors((e) => ({ ...e, [id]: C.templateLimit }));

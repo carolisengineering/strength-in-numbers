@@ -274,6 +274,33 @@ describe("20.2 AC16 — offline", () => {
   });
 });
 
+describe("20.2 final review fixes", () => {
+  it("I1: fully offline, the section stays and says the network sentence", async () => {
+    const s = setupSendScreen(auth);
+    const { user } = renderApp(HISTORY);
+    const button = await sendButton();
+    s.link.fail("read", "network", "network", "network", "network");
+    s.link.fail("begin", "network");
+    await user.click(button);
+    expect(await within(await section()).findByText("Couldn't reach Hevy. Check your connection and try again.")).toBeInTheDocument();
+  });
+
+  it("I2: a real claim elsewhere → in progress with Send enabled; once that send completes, a revisit reads Sent", async () => {
+    const s = setupSendScreen(auth);
+    const { user } = renderApp(HISTORY);
+    const button = await sendButton();
+    s.link.claim(WORKOUT_ID, 10_000);
+    await user.click(button);
+    expect(await within(await section()).findByText("Another send is in progress. Try again in a minute.")).toBeInTheDocument();
+    expect(await sendButton()).toBeEnabled();
+    s.link.link(WORKOUT_ID, "h9");
+    cleanup();
+    renderApp(HISTORY);
+    expect(await within(await section()).findByText(/^Sent to Hevy · /)).toBeInTheDocument();
+    expect(screen.queryByText("Another send is in progress. Try again in a minute.")).toBeNull();
+  });
+});
+
 describe("20.2 AC20 — the key stays put (send flow)", () => {
   it("no SIN request carries the key, through a send and an update; reported errors never hold it", async () => {
     const seen: string[] = [];

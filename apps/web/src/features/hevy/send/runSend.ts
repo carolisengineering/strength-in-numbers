@@ -149,8 +149,9 @@ export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendO
     return { kind: "skipped", reason: "already_sent" };
   }
 
-  // 3. An interrupted earlier send may have reached Hevy: look before writing (AC7). Only a create can duplicate.
-  if (begin.mode === "create" && begin.staleClaim && intent.kind === "send") return check(deps, built, begin.fingerprint, true);
+  // 3. An interrupted earlier send may have reached Hevy: look before writing (AC7). Only a create can duplicate —
+  // whatever was tapped (an Update can meet a stale claim-only row); a relink means the old copy is gone.
+  if (begin.mode === "create" && begin.staleClaim && intent.kind !== "relink") return check(deps, built, begin.fingerprint, true);
 
   return write(deps, built, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint }, false);
 }

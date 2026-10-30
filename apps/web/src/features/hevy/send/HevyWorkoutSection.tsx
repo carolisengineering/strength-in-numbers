@@ -1,4 +1,5 @@
-import type { UnmappedExercise, WorkoutDetail } from "@sin/core";
+import type { HevyLinkState, UnmappedExercise, WorkoutDetail } from "@sin/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -8,7 +9,8 @@ import { useHevyKey } from "../useHevyKey";
 import { useHevyEnabled } from "../useHevyStatus";
 import { MatchForHevySheet } from "./MatchForHevySheet";
 import { HEVY_SEND_COPY, hevyFailureSentence, noticeSentence, withDay, type SendNotice } from "./messages";
-import { problemSentence, type SendIntent } from "./runSend";
+import { HEVY_SEND_KEYS } from "../keys";
+import { problemSentence, type SendIntent, type SendOutcome } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
 import { useHevyLink } from "./useHevyLink";
@@ -76,6 +78,9 @@ function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: st
       return [];
     case "copy-gone":
       return [{ label: C.sendAsNew, intent: { kind: "relink" } }];
+    case "in-progress":
+      // AC6: the button returns even while another device's claim reads "sending" (a second tap is safe: 409 again).
+      return base(view.base === "sending" ? "none" : view.base);
     default:
       return base(view.base);
   }
@@ -99,6 +104,9 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [after, setAfter] = useState<{ foundExisting: boolean; notices: SendNotice[] } | null>(null);
+  /** This visit's last outcome and the link state it landed on (final review I2). */
+  const [landed, setLanded] = useState<{ outcome: SendOutcome; base: HevyLinkState["state"] } | null>(null);
+  const queryClient = useQueryClient();
   /** AC13: the exercises to match before the send can go on, and the intent to run once they are. */
   const [pairing, setPairing] = useState<{ unmapped: UnmappedExercise[]; intent: SendIntent } | null>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -109,11 +117,15 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
     actionsRef.current?.querySelector("button")?.focus();
   }, [returnFocus]);
 
+  // An outcome stands only for this visit, and only while the link still reads as it did when the run ended: once the
+  // server has moved on (another device finished, a claim went stale), its state wins.
+  const last = landed !== null && link.data !== undefined && landed.base === link.data.state ? landed.outcome : null;
   const view = sectionView({
     status: enabled === "on" ? "ok" : "hidden",
-    link: link.isError ? "error" : (link.data ?? "pending"),
+    // A failed refresh keeps the last good link (offline after a failed send still shows the network sentence).
+    link: link.data ?? (link.isError ? "error" : "pending"),
     pending: send.pending || busy,
-    last: send.last,
+    last,
   });
   if (view.kind === "hidden") return null;
 
@@ -125,6 +137,9 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
     void send
       .run(intent, leaveOut ? { leaveOut } : {})
       .then((outcome) => {
+        // The mutation's `onSettled` has refreshed the link by now: record the state this outcome landed on.
+        const base = queryClient.getQueryData<HevyLinkState>(HEVY_SEND_KEYS.link(workout.id))?.state ?? null;
+        setLanded(base === null ? null : { outcome, base });
         if (outcome.kind === "done") setAfter({ foundExisting: outcome.foundExisting, notices: outcome.notices });
         if (outcome.kind === "needs-pairing") setPairing({ unmapped: outcome.unmapped, intent });
       })

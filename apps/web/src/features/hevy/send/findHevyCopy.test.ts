@@ -41,6 +41,13 @@ describe("20.2 AC7 — findHevyCopy", () => {
     expect((await findHevyCopy(p.client, target)).kind).toBe(matches ? "found" : "notFound");
   });
 
+  it("final review I3: a start with milliseconds matches Hevy's whole second, and a whole second is not 'older'", async () => {
+    const p = pages([[w("h1", "2026-10-24T17:05:00Z")]], 1);
+    expect(await findHevyCopy(p.client, { startTime: "2026-10-24T17:05:00.123Z", title: "Push A" })).toEqual({ kind: "found", hevyWorkoutId: "h1" });
+    const q = pages([[w("x", "2026-10-24T17:05:00Z", "Other")], newer(10), newer(10, 10), newer(10, 20), newer(10, 30)], 9);
+    expect(await findHevyCopy(q.client, { startTime: "2026-10-24T17:05:00.123Z", title: "Push A" })).toEqual({ kind: "inconclusive" });
+  });
+
   it("the same start with a different title is not a match", async () => {
     const p = pages([[w("h1", "2026-10-24T17:05:00Z", "Pull A")]], 1);
     expect(await findHevyCopy(p.client, target)).toEqual({ kind: "notFound" });

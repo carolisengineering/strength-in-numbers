@@ -342,6 +342,18 @@ describe("20.2 Review Focus 3 — a workout with no title", () => {
   });
 });
 
+describe("20.2 final review — an update that becomes a stale create scans first", () => {
+  it("Update on a stale claim-only row finds the earlier copy instead of posting again", async () => {
+    const h = harness();
+    h.link.claim(WORKOUT_ID, 5 * 60_000);
+    const built = buildHevyWorkout(h.detail, h.mapping, { rootOf });
+    await h.hevy.client.createWorkout(built.ok ? built.body : (null as never));
+    h.hevy.calls.length = 0;
+    expect(await h.run({ kind: "update" })).toMatchObject({ kind: "done", foundExisting: true });
+    expect(h.hevy.writes()).toEqual([]);
+  });
+});
+
 describe("20.2 D6 / owner answer Q5 — create only", () => {
   it("when begin answers update, a create-only send releases and writes nothing", async () => {
     const h = harness();

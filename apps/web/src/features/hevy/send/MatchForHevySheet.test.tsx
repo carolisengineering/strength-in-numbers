@@ -133,9 +133,25 @@ describe("20.2 AC14 — Create in Hevy", () => {
     expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
     await user.click(within(sheet).getByRole("button", { name: "Continue" }));
     await within(await screen.findByRole("region", { name: "Hevy" })).findByText(/^Sent to Hevy · /);
-    expect(s.patches).toEqual([
-      { upsert: [{ hevyTemplateId: "t1", hevyTitle: "Echo Bike (calories)", hevyType: "reps_only", role: "exercise", exerciseId: EXERCISE_B, measureRule: "calories_as_reps", exportAs: true }] },
-    ]);
+    // Saved as soon as Hevy made it (final review I4), and again with Continue: the same pair both times.
+    const pair = { upsert: [{ hevyTemplateId: "t1", hevyTitle: "Echo Bike (calories)", hevyType: "reps_only", role: "exercise", exerciseId: EXERCISE_B, measureRule: "calories_as_reps", exportAs: true }] };
+    expect(s.patches).toEqual([pair, pair]);
+  });
+
+  it("final review I4: a created exercise is saved at once; Change then Create reuses it; Cancel can't orphan it", async () => {
+    const s = setup({ calories: true });
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await within(card).findByText("Created in Hevy.");
+    await waitFor(() => expect(s.patches).toHaveLength(1));
+    await user.click(within(card).getByRole("button", { name: "Change" }));
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    expect(await within(card).findByText("Created in Hevy.")).toBeInTheDocument();
+    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
+    await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect((s.patches[0] as { upsert: { hevyTemplateId: string }[] }).upsert[0]!.hevyTemplateId).toBe("t1");
   });
 
   it("the custom exercise limit says so and returns the card to its choices", async () => {
