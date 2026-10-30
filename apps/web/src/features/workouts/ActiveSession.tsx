@@ -31,6 +31,7 @@ import { formatStartedAt } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
 import { EndEarlyDialog } from "./EndEarlyDialog";
 import { LogBarButton, type BarAction } from "./LogBarButton";
+import { emitWorkoutFinished } from "./finishEvents";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
@@ -528,6 +529,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         unloggedPlannedSets: unlogged.total,
         hadPlannedDuration: workout.plannedDurationSeconds !== null,
       });
+      // Spec 20.2 AC24: this recovery seeds the caches itself, so it emits too (never on the gone path above).
+      emitWorkoutFinished({ workoutId: workout.id });
       afterFinished();
     } catch {
       setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
