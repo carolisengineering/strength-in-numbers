@@ -1019,7 +1019,7 @@ try {
     await shoot(page, device, "17-profile", "Profile: settings form, export, sign out, delete account");
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
-      const hevyContext = async (seedKey) => {
+      const hevyContext = async (seedKey, o = {}) => {
         const hctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await hctx.route(isSinApi, makeHandler({ active: false }));
         await hctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
@@ -1029,6 +1029,8 @@ try {
             v: JSON.stringify({ v: 1, key: seedKey }),
           });
         }
+        // Spec 20.2 AC23: the auto-push device preference.
+        if (o.autoPush) await hctx.addInitScript(() => window.localStorage.setItem("sin:pref:hevy-auto-push", "on"));
         const hp = await hctx.newPage();
         hp.setDefaultTimeout(8000);
         hp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${hp.url()}: ${msg.text().slice(0, 300)}`); });
@@ -1049,6 +1051,18 @@ try {
       await present.hp.getByText("Hevy didn't accept that key.", { exact: false }).waitFor();
       await shoot(present.hp, device, "hevy-key-failed", "Hevy screen after a Replace that Hevy refused: the old key stays (Spec 20.0 AC5, AC6)");
       await present.hctx.close();
+
+      // Spec 20.2 AC23 / AC30: the auto-push switch, off and on (with no key there is none: see hevy-key-absent).
+      for (const [name, autoPush, note] of [
+        ["hevy-auto-push-off", false, "The auto-push switch, off by default, with its help sentence (Spec 20.2 AC23)"],
+        ["hevy-auto-push-on", true, "The auto-push switch on (Spec 20.2 AC23)"],
+      ]) {
+        const ap = await hevyContext(D.hevyGoodKey, { autoPush });
+        const box = ap.hp.getByRole("checkbox", { name: "Send each workout to Hevy when I finish it" });
+        await box.scrollIntoViewIfNeeded();
+        await shoot(ap.hp, device, name, note);
+        await ap.hctx.close();
+      }
 
       // Spec 20.0 Phase B (AC32): the pairings card, a load preview, the Pairings screen and the markers sheet.
       const owner = await hevyContext(D.hevyGoodKey);
@@ -1182,6 +1196,7 @@ try {
         if (o.key !== false) {
           await sctx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
         }
+        if (o.autoPush) await sctx.addInitScript(() => window.localStorage.setItem("sin:pref:hevy-auto-push", "on"));
         const sp = await sctx.newPage();
         sp.setDefaultTimeout(8000);
         sp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${sp.url()}: ${msg.text().slice(0, 300)}`); });
@@ -1202,6 +1217,14 @@ try {
       await still("hevy-send-changed", "Changed since sent to Hevy, with Update in Hevy (Spec 20.2 AC2, AC11)", { link: D.hevyLinkOf("changed") });
       await still("hevy-send-imported", "A workout imported from Hevy: From Hevy (Spec 20.2 AC2)", { link: D.hevyLinkOf("sent", "imported") });
       await still("hevy-send-no-key", "No Hevy key on this device: the line links to the key (Spec 20.2 AC3)", { key: false });
+      {
+        // Spec 20.2 AC25: auto-push on and one exercise not paired.
+        const m = D.hevyMappingFor(workout);
+        const s = await sendContext({ autoPush: true, mapping: { ...m, pairs: m.pairs.slice(1) } });
+        await s.region.getByText(/needs? matching before this can go to Hevy/).waitFor();
+        await shoot(s.sp, device, "hevy-send-needs-matching", "Auto-push on, an exercise not matched: the needs-matching line above Send (Spec 20.2 AC25)");
+        await s.sctx.close();
+      }
 
       hevyWrite = "hold";
       const sending = await sendContext({});

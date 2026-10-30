@@ -17,6 +17,7 @@ import type {
   WorkoutExercise,
 } from "@sin/core";
 import { ignoreNotFound } from "./errors";
+import { emitWorkoutFinished } from "./finishEvents";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
@@ -107,6 +108,8 @@ export function useFinishWorkout(): UseMutationResult<
         hadPlannedDuration: cached?.plannedDurationSeconds != null,
         ...(viaReplay ? { viaReplay: true } : {}),
       });
+      // Spec 20.2 AC24: last, once the caches are seeded (Hevy's auto-push listens).
+      emitWorkoutFinished({ workoutId: id });
     },
   });
 }

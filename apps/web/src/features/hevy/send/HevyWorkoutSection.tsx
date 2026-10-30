@@ -1,14 +1,18 @@
-import type { UnmappedExercise, WorkoutDetail } from "@sin/core";
-import { useEffect, useId, useRef, useState } from "react";
+import { buildHevyWorkout, type UnmappedExercise, type WorkoutDetail } from "@sin/core";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
+import { isHevyAutoPushOn } from "../../../ui/hevyAutoPush";
+import { useCatalogStore } from "../../catalog/CatalogProvider";
+import { useHevyMapping } from "../mapping/useHevyMapping";
 import { HEVY_PATH } from "../paths";
 import { useHevyKey } from "../useHevyKey";
 import { useHevyEnabled } from "../useHevyStatus";
 import { MatchForHevySheet } from "./MatchForHevySheet";
-import { HEVY_SEND_COPY, hevyFailureSentence, noticeSentence, withDay, type SendNotice } from "./messages";
+import { HEVY_SEND_COPY, hevyFailureSentence, needsMatching, noticeSentence, withDay, type SendNotice } from "./messages";
 
+import { rootOfRows } from "./rootOf";
 import { problemSentence, type SendIntent } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
@@ -89,6 +93,23 @@ function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: st
 }
 
 /**
+ * Spec 20.2 AC25: with auto-push on, an unsent workout says how many exercises keep it from going to Hevy by itself.
+ * Mounted only then, so the mapping is read only then; nothing shows while it loads or if it fails.
+ */
+function NeedsMatchingLine({ workout }: { workout: WorkoutDetail }) {
+  const catalog = useCatalogStore();
+  // Subscribed, so a sync (a fork reaching the store) recounts; the store itself is not refreshed from here.
+  const rows = useSyncExternalStore(catalog.subscribe, () => catalog.getState().rows);
+  const mapping = useHevyMapping();
+  const unmatched = useMemo(() => {
+    if (mapping.data === undefined) return 0;
+    const built = buildHevyWorkout(workout, mapping.data, { rootOf: rootOfRows(rows) });
+    return built.ok ? 0 : built.unmapped.length;
+  }, [workout, mapping.data, rows]);
+  return unmatched === 0 ? null : <p className={styles.text}>{needsMatching(unmatched)}</p>;
+}
+
+/**
  * Spec 20.2 §5.1, AC1–AC17: the finished-workout screen's Hevy line — the link's state, and Send to Hevy / Update in
  * Hevy and the follow-ups a failure offers. Only for the owner (status `200`); without a key the state shows with a
  * link to the key. The status is a polite live region, empty at first paint and the same node across changes.
@@ -99,6 +120,8 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   const { hasKey } = useHevyKey();
   const link = useHevyLink(workout.id);
   const send = useSendToHevy(workout.id);
+  // AC25: read once per mount, like the switch that sets it.
+  const [autoPushOn] = useState(() => isHevyAutoPushOn());
   const headingId = useId();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -179,6 +202,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
       ) : (
         <>
           {badKey ? keyLink : null}
+          {autoPushOn && view.kind === "none" ? <NeedsMatchingLine workout={workout} /> : null}
           {actions.length > 0 ? (
             <div className={styles.actions} ref={actionsRef}>
               {actions.map((a) => (

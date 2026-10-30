@@ -40,6 +40,8 @@ const SIGNAL_ALLOWED = [
   "features/me/ThemeSetting.module.css",
   // #108: the checked "Keep screen on during workouts" box is a selection, like Theme beside it.
   "features/me/KeepAwakeSetting.module.css",
+  // Spec 20.2 AC23: the checked auto-push box is a selection, like Keep screen on.
+  "features/hevy/AutoPushSetting.module.css",
 ];
 // Spec 17.2 AC35: the record cards join the records block and the History badge.
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/records/RecordCardList.module.css", "features/history/HistoryScreen.module.css"];

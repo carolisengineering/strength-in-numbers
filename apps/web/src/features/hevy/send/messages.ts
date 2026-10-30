@@ -60,7 +60,15 @@ export const HEVY_SEND_COPY = Object.freeze({
   pick: "Pick a Hevy exercise",
   create: "Create in Hevy",
   leaveOut: "Leave out of this workout",
+  // AC23: the Hevy screen's switch (Phase B).
+  autoPushLabel: "Send each workout to Hevy when I finish it",
+  autoPushHelp: "Works while the app is open. If something can't be sent, the workout's screen has a Send to Hevy button.",
 } as const);
+
+/** AC25: shown above Send while auto-push is on and an unsent workout has unmatched exercises. */
+export function needsMatching(n: number): string {
+  return n === 1 ? "1 exercise needs matching before this can go to Hevy." : `${fmt(n)} exercises need matching before this can go to Hevy.`;
+}
 
 /** AC2: "Sent to Hevy · Sat 24 Oct" (and "From Hevy · …", "Matched with a Hevy workout · …"). */
 export const withDay = (label: string, day: string | null) => (day === null ? label : `${label} · ${day}`);
