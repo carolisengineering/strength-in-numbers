@@ -141,7 +141,9 @@ export type ImportAction =
   /** AC22: the run created nothing and the server says nothing is stale. */
   | { type: "finishSkipped" }
   | { type: "finishDone"; ok: boolean }
-  | { type: "toDone" };
+  | { type: "toDone" }
+  /** Minor 250: the run or its wrap-up threw (no I/O path is expected to). */
+  | { type: "runFailed" };
 
 /** Actions that open a new generation, so they are never ignored as stale. */
 const OPENS_GENERATION = new Set<ImportAction["type"]>(["start", "retryRead", "checkStart", "runStart", "resume"]);
@@ -246,6 +248,16 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return { ...state, routineProgress: { done: action.done, total: action.total } };
     case "routinesDone":
       return { ...state, step: "done", routineResults: action.outcomes, routineProgress: null };
+    case "runFailed":
+      // Never left on a busy step: a run still sending stops (Finish up is the way on); a wrap-up goes to the done
+      // screen, with a finish that never answered marked failed so its Try again shows.
+      if ((state.step === "running" || state.step === "paused") && state.run !== null) {
+        return { ...state, step: "stopped", run: { ...state.run, stopReason: { kind: "error" } } };
+      }
+      if (state.step === "finishing" || state.step === "routines_run" || state.step === "done") {
+        return { ...state, step: "done", finish: state.finish === "running" ? "failed" : state.finish, routineProgress: null };
+      }
+      return state;
   }
 }
 

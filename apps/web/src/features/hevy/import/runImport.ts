@@ -13,8 +13,11 @@ import { sendable } from "./importSummary";
  */
 
 export type PauseReason = "unreachable";
-/** `invalid` carries the batch's first error path only (never a title); `""` when there is none. */
-export type StopReason = { kind: "user" } | { kind: "gate" } | { kind: "auth" } | { kind: "invalid"; path: string };
+/**
+ * `invalid` carries the batch's first error path only (never a title); `""` when there is none. `error` is a throw on
+ * the device itself (minor 250), never a server answer.
+ */
+export type StopReason = { kind: "user" } | { kind: "gate" } | { kind: "auth" } | { kind: "invalid"; path: string } | { kind: "error" };
 
 export interface RunDeps {
   importBatch(body: HevyImportBatch, signal?: AbortSignal): Promise<HevyImportResponse>;
@@ -34,15 +37,24 @@ export interface RunEvents {
   ended(): void;
 }
 
-/** One signal that aborts when either does (`AbortSignal.any` needs Safari 17.4). */
-function eitherSignal(a: AbortSignal, b: AbortSignal): AbortSignal {
-  if (a.aborted) return a;
-  if (b.aborted) return b;
+/**
+ * One signal that aborts when either does (`AbortSignal.any` needs Safari 17.4). `release` takes its listeners off
+ * the two (minor 254: the per-mount signal outlives every run).
+ */
+function eitherSignal(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; release(): void } {
+  if (a.aborted) return { signal: a, release: () => {} };
+  if (b.aborted) return { signal: b, release: () => {} };
   const both = new AbortController();
   const abort = () => both.abort();
   a.addEventListener("abort", abort, { once: true });
   b.addEventListener("abort", abort, { once: true });
-  return both.signal;
+  return {
+    signal: both.signal,
+    release: () => {
+      a.removeEventListener("abort", abort);
+      b.removeEventListener("abort", abort);
+    },
+  };
 }
 
 /** A network failure or a `5xx`: worth sending again. */
@@ -58,7 +70,15 @@ function stopReasonFor(err: unknown): StopReason {
 }
 
 export async function runImport(deps: RunDeps, batches: readonly HevyImportWorkout[][], from: number, on: RunEvents): Promise<void> {
-  const waitSignal = eitherSignal(deps.signal, deps.stopSignal);
+  const either = eitherSignal(deps.signal, deps.stopSignal);
+  try {
+    await runBatchesFrom(deps, either.signal, batches, from, on);
+  } finally {
+    either.release();
+  }
+}
+
+async function runBatchesFrom(deps: RunDeps, waitSignal: AbortSignal, batches: readonly HevyImportWorkout[][], from: number, on: RunEvents): Promise<void> {
   const stoppedByUser = () => deps.stopSignal.aborted || deps.shouldStop();
 
   /** Waits `ms`; false when the wait was cut short (the caller then ends the run). */

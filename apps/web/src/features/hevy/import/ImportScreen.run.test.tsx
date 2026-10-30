@@ -102,6 +102,16 @@ describe("20.1 AC19 — paused UI", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 })).toBeInTheDocument();
   });
 
+  it("minor 252 — the status line says Paused at n of m, not Importing…", async () => {
+    const { imports } = setupImportRun(auth, sixty());
+    const { user } = await toSummary();
+    imports.failSequence([500, 500, 500, 500]);
+    await user.click(importButton());
+    await screen.findByText("Paused: couldn't reach the server. Everything imported so far is saved.");
+    expect(screen.getByText("Paused at 0 of 59").closest("[role=status]")).not.toBeNull();
+    expect(screen.queryByText(/^Importing…/)).toBeNull();
+  });
+
   it("after Stop, an online event changes nothing", async () => {
     const { imports } = setupImportRun(auth, sixty());
     const { user } = await toSummary();
@@ -249,6 +259,19 @@ describe("20.1 AC28 — pre-write safety", () => {
     expect(await screen.findByText("Add your Hevy key first")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Import \d/ })).toBeNull();
     expect(realBatches(imports)).toEqual([]);
+  });
+
+  it("minor 251 — a key removed in another tab during the run doesn't stop it; it runs to Done", async () => {
+    const { imports } = setupImportRun(auth, sixty());
+    const release = imports.gateRealBatch(2);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await screen.findByText("Importing… 25 of 59 · 1 skipped");
+    act(() => hevyKeyStore.remove(USER_ID));
+    expect(screen.queryByText("Add your Hevy key first")).toBeNull();
+    release();
+    expect(await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 })).toBeInTheDocument();
+    expect(realBatches(imports)).toHaveLength(3);
   });
 
   it("a mapping that fails to load disables Import with a static sentence", async () => {

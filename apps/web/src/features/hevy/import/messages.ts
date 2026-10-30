@@ -168,6 +168,7 @@ export const STOP = "Stop";
 export const STOPPING = "Stopping after this batch…";
 export const RESUME = "Resume";
 export const FINISH_UP = "Finish up";
+export const pausedLine = (sent: number, total: number) => `Paused at ${fmt(sent)} of ${fmt(total)}`;
 export const PAUSED = "Paused: couldn't reach the server. Everything imported so far is saved.";
 // Plan copy.
 export const BACK_ONLINE = "You're back online.";
@@ -177,6 +178,7 @@ export const stoppedLine = (sent: number, total: number) => `${fmt(sent)} of ${p
 export const STOP_INVALID = "The server didn't accept a workout in this batch.";
 export const stopInvalidPath = (path: string) => `Field: ${path}`;
 export const STOP_GATE = IMPORT_UNAVAILABLE;
+export const STOP_ERROR = "Something went wrong on this screen.";
 export const STOP_AUTH = "Your session ended. Sign in again, then run the import again.";
 
 /** AC20: the leave guard. */

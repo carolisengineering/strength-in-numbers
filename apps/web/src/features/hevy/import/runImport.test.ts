@@ -300,3 +300,20 @@ describe("20.1 Review Focus 3 — a slow, out-of-order clock", () => {
     expect(h.rec.done.map((d) => d.index)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 });
+
+describe("minor 254 — the run leaves no listeners behind", () => {
+  it("every abort listener the run adds to the per-mount and Stop signals is removed when it returns", async () => {
+    const h = harness();
+    const listeners = (signal: AbortSignal) => {
+      const add = vi.spyOn(signal, "addEventListener");
+      const remove = vi.spyOn(signal, "removeEventListener");
+      return () => ({ added: add.mock.calls.length, removed: remove.mock.calls.length });
+    };
+    const mount = listeners(h.deps.signal);
+    const stop = listeners(h.deps.stopSignal);
+    await runImport(h.deps, chunk(workouts(30)), 0, h.events);
+    expect(h.rec.ended).toBe(1);
+    expect(mount()).toEqual({ added: 1, removed: 1 });
+    expect(stop()).toEqual({ added: 1, removed: 1 });
+  });
+});

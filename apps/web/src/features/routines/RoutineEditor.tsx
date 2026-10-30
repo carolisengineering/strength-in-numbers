@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
 import { ROUTINE_ITEMS_MAX, ROUTINE_SECTIONS_MAX } from "@sin/core";
@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Field } from "../../ui/Field";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
+import { useLeaveGuard } from "../../ui/useLeaveGuard";
 import { useSession } from "../../auth/useSession";
 import { ExercisePicker } from "../catalog/ExercisePicker";
 import { EditorRow } from "./EditorRow";
@@ -150,7 +151,6 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
   /** Field issues from a 422, valid only for the exact draft that was sent (they vanish on the next edit). */
   const [serverIssues, setServerIssues] = useState<{ draft: typeof draft; issues: DraftIssue[] } | null>(null);
   const inFlight = useRef(false);
-  const leaving = useRef(false);
   /** False once the editor unmounts: a save that lands after the lifter left must not move them. */
   const mounted = useRef(true);
   /** Cache cleanup for a routine the server says is gone — run on unmount, so this editor's own lookup
@@ -173,20 +173,10 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
     }
   }, [validation.groupBug]);
 
-  // AC34 / D17: in-app navigation (Cancel, nav links, Back) through the data router's blocker; reload and
-  // tab close through the browser's own prompt. A save sets `leaving` before it navigates.
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) => draft.dirty && !leaving.current && currentLocation.pathname !== nextLocation.pathname,
-  );
-
-  useEffect(() => {
-    if (!draft.dirty) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [draft.dirty]);
+  // AC34 / D17: in-app navigation (Cancel, nav links, Back) asks first; reload and tab close get the browser's own
+  // prompt. A save disarms it before it navigates, and so does Discard (the router reaches the next screen before
+  // this editor unmounts, and a Back in that gap must not be blocked by a draft the lifter already discarded).
+  const leave = useLeaveGuard(draft.dirty);
 
   const showErrors = draft.dirty || attempted;
   const issues: DraftIssue[] = [
@@ -247,7 +237,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
         body = prepared.body;
       }
       const saved = routine ? await replace.mutateAsync({ id: routine.id, body }) : await create.mutateAsync(initial?.oneOff ? { body, oneOff: true } : { body });
-      leaving.current = true; // disarm the leave guard before navigating (AC34)
+      leave.disarm(); // before navigating (AC34)
       // The latch stays closed: until the editor unmounts, a late second tap must not send a second write.
       setSaved(true);
       if (!mounted.current) return;
@@ -585,18 +575,13 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
         />
       ) : null}
       <ConfirmDialog
-        open={blocker.state === "blocked"}
+        open={leave.open}
         title="Discard changes?"
         confirmLabel="Discard"
         cancelLabel="Keep editing"
         variant="danger"
-        onConfirm={() => {
-          // Disarm like a save does: the router reaches the next screen before this editor unmounts, and a
-          // Back in that gap must not be blocked by a draft the lifter already discarded (AC34).
-          leaving.current = true;
-          blocker.proceed?.();
-        }}
-        onCancel={() => blocker.reset?.()}
+        onConfirm={leave.confirm}
+        onCancel={leave.cancel}
       />
     </Screen>
   );
