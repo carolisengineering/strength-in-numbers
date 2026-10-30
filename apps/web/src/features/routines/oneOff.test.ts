@@ -5,7 +5,7 @@ import { KEEP_AS_ROUTINE, KEEP_FAILED, KEPT_STATUS, OFFLINE_KEEP, ONE_OFF_TAG } 
 import { isOneOff, oneOffDay, oneOffMeta, oneOffNote } from "./oneOff";
 import { routineSummary } from "./targetFormat";
 
-const FUTURE = "2026-10-30T12:00:00.000Z";
+const FUTURE = "2099-10-30T12:00:00.000Z";
 const NOW = Date.parse("2026-10-16T09:00:00Z");
 
 /** A one-off with `n` items; the first `groups.length` carry those superset groups, the rest are loose. */
