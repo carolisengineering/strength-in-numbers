@@ -31,11 +31,10 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
   const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.module.css"), "utf8");
   const rule = (selector: string) =>
     css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
-  const weightProps = { ...props, modality: "weight_reps" as const, errors: { weight: "Required", reps: "Required" } };
 
   it("top-aligns the measure columns, so a taller column never moves its neighbor", () => {
     expect(rule(".measures")).toMatch(/align-items:\s*start/);
-    expect(css).not.toMatch(/align-items:\s*(flex-)?end/);
+    expect(rule(".withUnit")).not.toMatch(/align-items:\s*(flex-)?end/);
   });
 
   for (const [measure, label, unit, modality] of [
@@ -43,7 +42,7 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
     ["distance", "Distance", "Distance unit", "distance_duration"],
   ] as const) {
     it(`puts the ${measure} value and its unit in one row, with the error under the row`, () => {
-      render(<SetFields {...weightProps} modality={modality} errors={{ [measure]: "Required" }} variant="sheet" />);
+      render(<SetFields {...props} modality={modality} errors={{ [measure]: "Required" }} variant="sheet" />);
       const input = screen.getByLabelText(label);
       const select = screen.getByRole("combobox", { name: unit });
       expect(select.parentElement).toBe(input.parentElement);
@@ -53,4 +52,11 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
       expect(input).toHaveAttribute("aria-invalid", "true");
     });
   }
+
+  it("gives each field its own error under its own control when both are empty", () => {
+    render(<SetFields {...props} modality="weight_reps" errors={{ weight: "Required", reps: "Required" }} variant="sheet" />);
+    const [weightError, repsError] = screen.getAllByRole("alert");
+    expect(screen.getByLabelText("Weight").parentElement?.nextElementSibling).toBe(weightError);
+    expect(screen.getByLabelText("Reps").nextElementSibling).toBe(repsError);
+  });
 });

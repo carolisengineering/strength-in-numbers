@@ -32,7 +32,8 @@
   flex: 1;
 }
 
-/* Outranks Field's full-width controls (`.field :where(select)`), whichever stylesheet loads last. */
+/* The unit select is inside its value's <Field>, which draws it like any control; this only keeps it narrow,
+   outranking Field's full width (`.field :where(select)`) whichever stylesheet loads last. */
 .withUnit > .unit {
   flex: none;
   width: auto;
@@ -53,14 +54,6 @@
 .unit {
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
-}
-
-.unit {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
 }
 
 /* Spec 17.1 D6: duration and distance keep their fields, sized like the stepper figures. */
