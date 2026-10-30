@@ -76,11 +76,16 @@ export function RunStep({
       <h2 className={styles.stepTitle} id="hevy-import-step" ref={headingRef} tabIndex={-1}>
         {stopped ? STOPPED_TITLE : RUN_TITLE}
       </h2>
-      <p className={styles.status} role="status">
+      <p className={`${styles.status} ${styles.runLine}`} role="status">
         {mounted && !stopped ? (
           <>
             <span>{runningLine(run.sent, run.total, skipped)}</span>
-            {state.step === "running" && run.batchDate !== null ? <span className={styles.muted}>{batchMonth(run.batchDate, zone)}</span> : null}
+            {state.step === "running" && run.batchDate !== null ? (
+              <>
+                {" "}
+                <span className={styles.muted}>{batchMonth(run.batchDate, zone)}</span>
+              </>
+            ) : null}
           </>
         ) : null}
       </p>

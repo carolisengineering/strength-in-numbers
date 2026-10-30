@@ -33,8 +33,10 @@ describe("20.0 AC31 — import boundaries", () => {
     expect(hits).toEqual([]);
   });
 
-  it("20.1 — the exempt hook does use the routines list (so the exemption is not stale)", () => {
-    expect(importsFrom(read(ROUTINES_EXEMPT_FILE)).some((spec) => ROUTINES_EXEMPT_MODULES.test(spec))).toBe(true);
+  it("20.1 — the exempt hook does use the routines list and the create (so the exemption is not stale)", () => {
+    const specs = importsFrom(read(ROUTINES_EXEMPT_FILE));
+    expect(specs.some((spec) => /(^|\/)routines\/queries$/.test(spec))).toBe(true);
+    expect(specs.some((spec) => /(^|\/)routines\/useRoutineMutations$/.test(spec))).toBe(true);
   });
 
   it("only features/hevy/client names api.hevyapp.com", () => {

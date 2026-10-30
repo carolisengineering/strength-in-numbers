@@ -78,9 +78,9 @@ describe("20.1 AC16 — progress", () => {
     observer.disconnect();
     // The last batch's line and the step change to the finish land in one render.
     expect(seen.filter((t) => t !== "")).toEqual([
-      "Importing… 0 of 59 · 1 skippedOct 2026",
-      "Importing… 25 of 59 · 1 skippedOct 2026",
-      "Importing… 50 of 59 · 1 skippedSep 2026",
+      "Importing… 0 of 59 · 1 skipped Oct 2026",
+      "Importing… 25 of 59 · 1 skipped Oct 2026",
+      "Importing… 50 of 59 · 1 skipped Sep 2026",
     ]);
   });
 });

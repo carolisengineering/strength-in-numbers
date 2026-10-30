@@ -23,6 +23,7 @@ import { fakeHevyApi, fakeImportApi, generateHevyWorkouts, GENERATED_TEMPLATE_ID
 import { server } from "../../../test/msw/server";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { makeRoutine } from "../../../test/workoutFixtures";
+import { importButton, setupImportRun, toSummary } from "../../../test/hevyImportRun";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
@@ -129,5 +130,73 @@ describe("20.1 AC29 — structure per step", () => {
     const button = await screen.findByRole("button", { name: /^Import / });
     await waitFor(() => expect(button).toBeDisabled());
     expect(button).toHaveAccessibleDescription(MAPPING_UNAVAILABLE);
+  });
+});
+
+describe("20.1 AC29 — structure in the run", () => {
+  const sixty = () => generateHevyWorkouts(60);
+  const focusedHeading = (name: string) => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name }));
+
+  it("running: focus on the step heading, the progress line is the step's polite status", async () => {
+    const { imports } = setupImportRun(auth, { workouts: sixty() });
+    const release = imports.gateRealBatch(1);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await screen.findByRole("heading", { level: 2, name: "Importing" });
+    checkStructure("Importing");
+    focusedHeading("Importing");
+    expect(within(screen.getByRole("region", { name: "Importing" })).getByRole("status")).toHaveTextContent(/^Importing… 0 of 60/);
+    release();
+    await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 });
+  });
+
+  it("paused: the reason is an alert in text, the back-online status is empty until it says something", async () => {
+    const { imports } = setupImportRun(auth, { workouts: sixty() });
+    const { user } = await toSummary();
+    imports.failSequence([500, 500, 500, 500]);
+    await user.click(importButton());
+    await screen.findByRole("button", { name: "Resume" });
+    checkStructure("Importing");
+    const region = screen.getByRole("region", { name: "Importing" });
+    expect(within(region).getByRole("alert")).toHaveTextContent("Paused: couldn't reach the server.");
+    expect(within(region).getAllByRole("status")[1]).toBeEmptyDOMElement();
+  });
+
+  it("stopped: its own heading takes focus", async () => {
+    const { imports } = setupImportRun(auth, { workouts: sixty() });
+    const release = imports.gateRealBatch(1);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    release();
+    await screen.findByRole("heading", { level: 2, name: "Stopped" });
+    checkStructure("Stopped");
+    focusedHeading("Stopped");
+  });
+
+  it("done with a routine that failed: the problem is listed in text", async () => {
+    const pushA: HevyRoutine = { id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: GENERATED_TEMPLATE_IDS[0], sets: [] }] };
+    setupImportRun(auth, { workouts: generateHevyWorkouts(3), routines: [pushA] });
+    server.use(http.post(`${API_BASE_URL}/v1/routines`, () => HttpResponse.json({ type: "about:blank", title: "Boom", status: 500 }, { status: 500 })));
+    const { user } = await toSummary({ tick: ["Push A"] });
+    await user.click(importButton());
+    await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 });
+    checkStructure("Done");
+    focusedHeading("Done");
+    expect(screen.getByRole("list", { name: "Routine notes" })).toHaveTextContent("Push A: Couldn't be created; run the import again to retry");
+  });
+
+  it("the leave dialog is named, and focus starts on Cancel", async () => {
+    const { imports } = setupImportRun(auth, { workouts: sixty() });
+    const release = imports.gateRealBatch(1);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await screen.findByRole("heading", { level: 2, name: "Importing" });
+    await user.click(screen.getByRole("link", { name: /Back to Hevy/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Stop the import?" });
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    release();
+    await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 });
   });
 });
