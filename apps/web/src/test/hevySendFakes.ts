@@ -70,7 +70,7 @@ const problem = (status: number, slug: string) =>
   new ApiError({ status, type: `https://api.strengthinnumbers.app/problems/${slug}`, title: slug, requestId: "fake" });
 export const networkError = () => new ApiError({ status: 0, type: "about:blank", title: "Network error", requestId: "", isNetworkError: true });
 
-interface LinkRow {
+export interface LinkRow {
   hevyWorkoutId: string | null;
   origin: HevyLinkOrigin;
   claimedAt: number | null;

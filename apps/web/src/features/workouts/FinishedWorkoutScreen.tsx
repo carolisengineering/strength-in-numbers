@@ -11,6 +11,7 @@ import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
 import { useMe } from "../me/useMe";
+import { HevyWorkoutSection } from "../hevy/send";
 import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { classifyWorkoutError } from "./errors";
@@ -129,6 +130,8 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
           Edit workout
         </Button>
       </div>
+      {/* Spec 20.2 AC1 / D13: under the stats and Edit workout; the owner's only (renders nothing for anyone else). */}
+      <HevyWorkoutSection workout={workout} />
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {

@@ -73,7 +73,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
       const roots = new Map<string, string>(ctx.catalog.getState().rows.map((row) => [row.id, lineageRootId(row)]));
       return runSend(intent, {
         workoutId,
-        // AC16 / Review Focus 4: both reads fail at once offline (`networkMode: "always"`), never paused and sent later.
+        // AC16: both reads fail at once offline (`networkMode: "always"`), never paused and sent later.
         getDetail: () =>
           queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => ctx.workouts.getById(workoutId), staleTime: 0, retry: false, networkMode: "always" }),
         getMapping: () => queryClient.fetchQuery({ ...hevyMappingQuery(ctx.api), networkMode: "always" }),

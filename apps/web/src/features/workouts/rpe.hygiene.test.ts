@@ -18,8 +18,14 @@ export function userVisibleText(source: string): string[] {
   return [...stripComments(source).matchAll(/\bRPE\b[^\n]{0,40}/g)].map((m) => m[0]);
 }
 
-/** Nothing is allowed: the last RPE message (validateDraft's) went with the code-review pass (17.1 AC7). */
-const ALLOWED: Array<{ file: string; text: string }> = [];
+/**
+ * 17.1 AC7: RPE is hidden from the lifter. The one exception is Spec 20.2 AC15, whose send notices name RPE verbatim
+ * (a value Hevy could not take was left out or rounded).
+ */
+const ALLOWED: Array<{ file: string; text: string }> = [
+  { file: "features/hevy/send/messages.ts", text: "RPE below 6 was left out of " },
+  { file: "features/hevy/send/messages.ts", text: "RPE was rounded to Hevy" },
+];
 
 describe("17.1 AC7 — no user-visible RPE text in the web sources", () => {
   it("the scanner sees strings, templates and JSX text (interpolated too) but not identifiers or comments (self-check)", () => {
