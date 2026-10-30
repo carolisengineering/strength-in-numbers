@@ -10,6 +10,17 @@
   color: var(--color-text);
 }
 
+/* While an on-screen keyboard is up, the sheet is the visible rectangle above it,
+   as the app frame is (ui/visualViewport.ts), so its fields and buttons are not
+   under the keyboard (#206). */
+:global(:root[data-keyboard="open"]) .sheet {
+  top: var(--app-top);
+  bottom: auto;
+  margin-block: 0;
+  height: var(--app-height);
+  max-height: var(--app-height);
+}
+
 .sheet[open] {
   display: flex;
   flex-direction: column;

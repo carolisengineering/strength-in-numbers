@@ -92,8 +92,9 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
   const shellCss = readFileSync(join(HERE, "AppShell.module.css"), "utf8");
   const tokensCss = readFileSync(join(HERE, "..", "ui", "tokens.css"), "utf8");
 
+  // Every regex metacharacter in the selector is escaped, so `:global(...)` and `[...]` selectors match too.
   const rule = (css: string, selector: string) =>
-    css.match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1] ??
+    css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1] ??
     "";
 
   it("sizes every nav target to var(--tap-target-min) in both axes", () => {
@@ -119,8 +120,7 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
   // #206: while a keyboard is up the frame is the visible rectangle (ui/visualViewport.ts), and the nav steps
   // aside so the action bar sits right above the keyboard.
   it("#206 — sizes the frame to the visible area and hides the nav while a keyboard is up", () => {
-    const open = (selector: string) =>
-      rule(shellCss, `:global(:root[data-keyboard="open"]) ${selector}`.replace(/[()[\]"=:]/g, "\\$&"));
+    const open = (selector: string) => rule(shellCss, `:global(:root[data-keyboard="open"]) ${selector}`);
     const shell = open(".shell");
     expect(shell).toMatch(/top:\s*var\(--app-top\)/);
     expect(shell).toMatch(/height:\s*var\(--app-height\)/);

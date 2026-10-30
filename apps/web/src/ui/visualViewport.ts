@@ -39,33 +39,38 @@ export function keyboardFrame(viewport: ViewportBox, layoutHeight: number): Keyb
 
 /**
  * Keep `<html>` in step with the keyboard until the returned function is called, which also clears what was set.
- * When the keyboard comes up the focused field is scrolled back into view (`block: "nearest"`), since the frame it
- * sat in has just shrunk; the shell's scroller stops it above the action bar (`scroll-padding-bottom`).
+ * Each time the frame shrinks (the keyboard can slide up over several resizes) the focused field is scrolled back
+ * into view (`block: "nearest"`); the shell's scroller stops it above the action bar (`scroll-padding-bottom`).
  */
 export function trackKeyboardFrame(win: Window = window): () => void {
   const viewport = win.visualViewport;
   if (!viewport) return () => {};
   const root = win.document.documentElement;
-  let open = false;
+  // The frame last written, or null while the keyboard is down. Only a changed value is written: a custom property
+  // on <html> restyles the whole page, and iOS sends a scroll event on every frame of a pan.
+  let shown: KeyboardFrame | null = null;
 
   const clear = () => {
     root.removeAttribute("data-keyboard");
     root.style.removeProperty("--app-top");
     root.style.removeProperty("--app-height");
-    open = false;
+    shown = null;
   };
 
   const update = () => {
     const frame = keyboardFrame(viewport, root.clientHeight);
     if (!frame) {
-      if (open) clear();
+      if (shown) clear();
       return;
     }
-    root.style.setProperty("--app-top", `${frame.top}px`);
+    const before = shown;
+    shown = frame;
+    if (frame.top !== before?.top) root.style.setProperty("--app-top", `${frame.top}px`);
+    if (frame.height === before?.height) return;
     root.style.setProperty("--app-height", `${frame.height}px`);
-    if (open) return;
-    open = true;
-    root.setAttribute("data-keyboard", "open");
+    if (!before) root.setAttribute("data-keyboard", "open");
+    // The keyboard may slide up over several resizes: reveal again each time the frame shrinks, never on a pan.
+    if (before && frame.height > before.height) return;
     const focused = win.document.activeElement;
     if (focused instanceof HTMLElement && focused !== win.document.body) {
       focused.scrollIntoView?.({ block: "nearest" });

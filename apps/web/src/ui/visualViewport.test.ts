@@ -27,6 +27,8 @@ function fakeWindow(viewport: FakeViewport | null) {
 const root = document.documentElement;
 
 afterEach(() => {
+  // Back to jsdom's own clientHeight, so no later test sees the fake 844.
+  delete (document.documentElement as { clientHeight?: number }).clientHeight;
   root.removeAttribute("data-keyboard");
   root.style.removeProperty("--app-top");
   root.style.removeProperty("--app-height");
@@ -99,6 +101,24 @@ describe("#204 #206 #207 — trackKeyboardFrame", () => {
     // Only on opening, not on every pan while it is up.
     viewport.move({ offsetTop: 40 }, "scroll");
     expect(reveal).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("brings it into view again each time the frame shrinks while the keyboard slides up", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
+    const reveal = vi.fn();
+    input.scrollIntoView = reveal;
+
+    const viewport = new FakeViewport();
+    const stop = trackKeyboardFrame(fakeWindow(viewport));
+    viewport.move({ height: 700 }); // mid-animation
+    viewport.move({ height: 508 }); // settled
+    expect(reveal).toHaveBeenCalledTimes(2);
+
+    viewport.move({ height: 560 }); // growing (the suggestion strip went away) needs no reveal
+    expect(reveal).toHaveBeenCalledTimes(2);
     stop();
   });
 
