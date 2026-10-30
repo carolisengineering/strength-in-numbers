@@ -433,6 +433,13 @@ describe("minor 257 — a claim lost after Hevy took the write", () => {
     expect(h.hevy.writes()).toEqual([]);
   });
 
+  it("a reclaim that meets another device's claim offers the reclaim again", async () => {
+    const { h, id } = await lost();
+    h.link.claim(WORKOUT_ID, 10_000);
+    const intent: SendIntent = { kind: "reclaim", hevyWorkoutId: id };
+    expect(await h.run(intent)).toEqual({ kind: "in-progress", retry: intent });
+  });
+
   it("a reclaim that meets an unmatched exercise offers the reclaim again after the sheet", async () => {
     const { h, id } = await lost();
     const intent: SendIntent = { kind: "reclaim", hevyWorkoutId: id };

@@ -58,8 +58,9 @@ describe("20.1 AC16 — reducer", () => {
     expect(importSession(paused, { type: "runFailed" })).toMatchObject({ step: "stopped", run: { stopReason: { kind: "error" } } });
     const finishing = importSession(running, { type: "finishStart" });
     expect(importSession(finishing, { type: "runFailed" })).toMatchObject({ step: "done", finish: "failed" });
+    expect(importSession(finishing, { type: "runFailed" }).wrapUpFailed).toBe(false);
     const routines = importSession(importSession(finishing, { type: "finishDone", ok: true }), { type: "routinesStart", total: 2 });
-    expect(importSession(routines, { type: "runFailed" })).toMatchObject({ step: "done", finish: "ok", routineProgress: null });
+    expect(importSession(routines, { type: "runFailed" })).toMatchObject({ step: "done", finish: "ok", routineProgress: null, wrapUpFailed: true });
     expect(importSession(summary, { type: "runFailed" })).toBe(summary);
   });
 

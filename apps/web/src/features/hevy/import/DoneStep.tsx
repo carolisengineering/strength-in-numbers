@@ -14,6 +14,7 @@ import {
   DOWNLOAD_REPORT,
   exercisesCreatedLine,
   FINISH_FAILED,
+  WRAP_UP_FAILED,
   FINISHING,
   notSentLine,
   RECORDS_UPDATED,
@@ -101,6 +102,11 @@ export function DoneStep({
       <p className={styles.status} role="status">
         {!mounted ? "" : finish === "ok" ? RECORDS_UPDATED : finish === "running" ? FINISHING : ""}
       </p>
+      {state.wrapUpFailed ? (
+        <p className={styles.failure} role="alert">
+          {WRAP_UP_FAILED}
+        </p>
+      ) : null}
       {finish === "failed" ? (
         <div className={styles.card} role="alert">
           <p className={styles.failure}>{FINISH_FAILED}</p>

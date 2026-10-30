@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 // Minor 250: no I/O path throws today, so the throw is planted in the run or the finish.
-const plant = vi.hoisted(() => ({ run: false, finish: false, reported: [] as unknown[][] }));
+const plant = vi.hoisted(() => ({ run: false, finish: false, routines: false, reported: [] as unknown[][] }));
 vi.mock("../../../observability/reportError", () => ({ reportError: (...args: unknown[]) => void plant.reported.push(args) }));
 vi.mock("./runImport", async (original) => {
   const real = await original<typeof import("./runImport")>();
@@ -43,8 +43,18 @@ vi.mock("./finishImport", async (original) => {
   };
 });
 
+vi.mock("./createRoutines", async (original) => {
+  const real = await original<typeof import("./createRoutines")>();
+  return {
+    ...real,
+    createRoutines: (...args: Parameters<typeof real.createRoutines>) => (plant.routines ? Promise.reject(new Error("planted")) : real.createRoutines(...args)),
+  };
+});
+
+import type { HevyRoutine } from "@sin/core";
+
 import { setInstantPacing, USER_ID } from "../../../test/hevyHarness";
-import { generateHevyWorkouts } from "../../../test/hevyImportFakes";
+import { GENERATED_TEMPLATE_IDS, generateHevyWorkouts } from "../../../test/hevyImportFakes";
 import { finishRequests, importButton, setupImportRun, toSummary } from "../../../test/hevyImportRun";
 import { pinTimeZone } from "../../../test/timeZone";
 import { cleanupApp } from "../../../test/workoutHarness";
@@ -56,6 +66,7 @@ beforeEach(() => {
   setInstantPacing();
   plant.run = false;
   plant.finish = false;
+  plant.routines = false;
   plant.reported = [];
 });
 afterEach(() => {
@@ -89,6 +100,17 @@ describe("minor 250 — a throw never leaves the import stuck", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Records updated.")).toBeInTheDocument();
     expect(finishRequests(imports)).toHaveLength(1);
+  });
+
+  it("a throw while creating routines lands on Done and says the routines may be missing", async () => {
+    const pushA: HevyRoutine = { id: "r1", title: "Push A", folder_id: null, exercises: [{ index: 0, title: "x", exercise_template_id: GENERATED_TEMPLATE_IDS[0], sets: [] }] };
+    setupImportRun(auth, { workouts: generateHevyWorkouts(3), routines: [pushA] });
+    const { user } = await toSummary({ tick: ["Push A"] });
+    plant.routines = true;
+    await user.click(importButton());
+    expect(await screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText("Something went wrong while creating routines. Check Routines; running the import again copies any that are missing.")).toBeInTheDocument();
+    expect(await screen.findByText("Records updated.")).toBeInTheDocument();
   });
 
   it("a throw in Try again's finish keeps Try again offered", async () => {

@@ -1,6 +1,6 @@
 import { useIsMutating, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import type { HevyLinkState, HevyMapping, WorkoutDetail } from "@sin/core";
+import type { HevyLinkState, HevyMapping } from "@sin/core";
 
 import type { ApiClient } from "../../../api/client";
 import { useApi } from "../../../auth/useApi";
@@ -24,9 +24,11 @@ import { runSend, type SendIntent, type SendOutcome } from "./runSend";
  * `complete`, and `onSettled` (a mutation option, so it runs after an unmount) refreshes the link.
  */
 
-/** Minor 263: the detail and mapping a caller has just read fresh, for this run only (auto-push's check). */
+/**
+ * Minor 263: the mapping a caller has just read fresh, for this run only (auto-push's check). Never the workout: the run
+ * reads it right before its begin, so an edit made just after the finish is in the copy Hevy gets (AC4).
+ */
 export interface SendReads {
-  detail: WorkoutDetail;
   mapping: HevyMapping;
 }
 
@@ -96,9 +98,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
         workoutId,
         // AC16: both reads fail at once offline (`networkMode: "always"`), never paused and sent later.
         getDetail: () =>
-          reads
-            ? Promise.resolve(reads.detail)
-            : queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => ctx.workouts.getById(workoutId), staleTime: 0, retry: false, networkMode: "always" }),
+          queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => ctx.workouts.getById(workoutId), staleTime: 0, retry: false, networkMode: "always" }),
         getMapping: () => (reads ? Promise.resolve(reads.mapping) : queryClient.fetchQuery({ ...hevyMappingQuery(ctx.api), networkMode: "always" })),
         rootOf,
         hevy: ctx.hevy,

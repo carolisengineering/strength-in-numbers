@@ -54,6 +54,8 @@ export const FINISH_LAST_STEP = "Finish the last step";
 export const FINISHING = "Updating your records…";
 export const RECORDS_UPDATED = "Records updated.";
 export const FINISH_FAILED = "Your workouts are in, but updating your records didn't finish.";
+// Plan copy (minor 250): the wrap-up threw after the finish.
+export const WRAP_UP_FAILED = "Something went wrong while creating routines. Check Routines; running the import again copies any that are missing.";
 
 /** AC3 / §5.2: reading. */
 const STAGE_NAMES: Readonly<Record<ReadStage, string>> = Object.freeze({

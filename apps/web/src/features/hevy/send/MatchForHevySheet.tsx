@@ -75,8 +75,11 @@ export function MatchForHevySheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  /** Minor 259: the cards whose create failed without a clear answer; they offer Check Hevy instead of Create. */
-  const [unsure, setUnsure] = useState<Record<string, boolean>>({});
+  /**
+   * Minor 259: the cards whose create failed without a clear answer, with the draft that was sent; they offer Check
+   * Hevy instead of Create, and the check looks for what was sent, whatever the fields say now.
+   */
+  const [unsure, setUnsure] = useState<Record<string, CreateDraft | undefined>>({});
   /** AC14: one create per card, never twice (a ref, so two clicks in one tick make one request). */
   const creating = useRef(new Set<string>());
   /**
@@ -132,7 +135,7 @@ export function MatchForHevySheet({
         const kind = err instanceof HevyError ? err.kind : "unexpected_reply";
         if (kind === "server" || kind === "unexpected_reply") reportError(err, { source: "hevy-send", op: "create-template" });
         // Minor 259: Hevy may have made it; a second tap could make a second, so the card asks Hevy instead.
-        if (mayHaveCreated(err)) setUnsure((u) => ({ ...u, [id]: true }));
+        if (mayHaveCreated(err)) setUnsure((u) => ({ ...u, [id]: draft }));
         setErrors((e) => ({ ...e, [id]: mayHaveCreated(err) ? NOT_SURE_CREATED : hevyFailureSentence(kind) }));
       }
     } finally {
@@ -145,7 +148,7 @@ export function MatchForHevySheet({
     created.current.set(exercise.exerciseId, { draft, id: hevyId });
     const choice = { kind: "create" as const, draft, created: { id: hevyId } };
     setChoice(exercise.exerciseId, choice);
-    setUnsure((u) => ({ ...u, [exercise.exerciseId]: false }));
+    setUnsure((u) => ({ ...u, [exercise.exerciseId]: undefined }));
     // Saved at once, so a Cancel can't leave Hevy holding an exercise nothing pairs (Continue saves it again).
     patch.mutateAsync({ upsert: upsertsFor([{ exercise, choice }]) }).catch(() => {});
   };
@@ -153,7 +156,7 @@ export function MatchForHevySheet({
   /** Minor 259: after an unclear create, read Hevy's list fresh: found, the card takes it; not there, Create is back. */
   const checkCreate = async (exercise: UnmappedExercise) => {
     const id = exercise.exerciseId;
-    const draft = drafts[id];
+    const draft = unsure[id];
     if (!draft || client === null || creating.current.has(id)) return;
     creating.current.add(id);
     setErrors((e) => ({ ...e, [id]: "" }));
@@ -161,7 +164,7 @@ export function MatchForHevySheet({
       const fresh = await queryClient.fetchQuery({ ...hevyTemplatesQuery(client), staleTime: 0 });
       const found = customTitled(fresh, draft.title);
       if (found) took(exercise, draft, found.id);
-      else setUnsure((u) => ({ ...u, [id]: false }));
+      else setUnsure((u) => ({ ...u, [id]: undefined }));
     } catch (err) {
       const kind = err instanceof HevyError ? err.kind : "unexpected_reply";
       setErrors((e) => ({ ...e, [id]: hevyFailureSentence(kind) }));
@@ -286,7 +289,7 @@ export function MatchForHevySheet({
                     <Button variant="secondary" onClick={() => setMode(id, "choose")}>
                       {C.cancel}
                     </Button>
-                    {unsure[id] ? (
+                    {unsure[id] !== undefined ? (
                       <Button variant="secondary" onClick={() => void checkCreate(exercise)}>
                         {C.checkHevy}
                       </Button>

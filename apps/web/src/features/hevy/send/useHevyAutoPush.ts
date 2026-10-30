@@ -50,8 +50,9 @@ async function ensureOwner(c: Current): Promise<void> {
 }
 
 /**
- * AC25's checks, in order; the fresh detail and mapping only if the workout should be sent now, which the run then
- * builds from instead of reading them again (minor 263). A rejected read is a silent no.
+ * AC25's checks, in order; the fresh mapping only if the workout should be sent now, which the run then uses instead
+ * of reading it again (minor 263; the run still reads the workout itself, right before its begin). A rejected read is
+ * a silent no.
  */
 async function shouldSend(workoutId: string, read: () => Current): Promise<SendReads | null> {
   // 1. First, so with it off nothing is read at all.
@@ -72,7 +73,7 @@ async function shouldSend(workoutId: string, read: () => Current): Promise<SendR
     if (!buildHevyWorkout(detail, mapping, { rootOf: rootOfRows(c.catalog.getState().rows) }).ok) return null;
     // 8. Create only: never a workout already linked (or being sent).
     const link = await c.queryClient.fetchQuery({ ...hevyLinkQuery(c.api, workoutId), ...once });
-    return link.state === "none" ? { detail, mapping } : null;
+    return link.state === "none" ? { mapping } : null;
   } catch {
     // The section shows server truth; a 404 here is a workout deleted right after the finish.
     return null;

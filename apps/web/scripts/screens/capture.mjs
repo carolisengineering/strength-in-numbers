@@ -1210,6 +1210,8 @@ try {
       await toSummary(userStop.ip);
       await userStop.ip.getByRole("button", { name: /^Import \d/ }).click();
       await userStop.ip.getByText(/^Importing… 0 of/).waitFor();
+      // The batch is held at the route before Stop, so there is a batch in flight to land.
+      while (!userStop.istate.releaseImport) await userStop.ip.waitForTimeout(50);
       await userStop.ip.getByRole("button", { name: "Stop" }).click();
       await userStop.ip.getByText("Stopping after this batch…").waitFor();
       userStop.istate.releaseImport();

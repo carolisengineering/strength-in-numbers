@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { BackLink } from "../../../ui/BackLink";
 import { Button } from "../../../ui/Button";
@@ -30,12 +30,12 @@ const RUN_STEPS: ReadonlySet<ImportState["step"]> = new Set(["running", "paused"
  * Spec 20.1 §5, D1: one screen with steps. Each step change moves focus to the new step's heading (AC29); the
  * session (everything read from Hevy) lives in `useImportSession` and goes when this unmounts (AC15).
  */
-
 export function ImportScreen({ onRunStarted }: { onRunStarted?: () => void } = {}) {
   const session = useImportSession();
   const { state } = session;
   const runStarted = RUN_STEPS.has(state.step);
-  useEffect(() => {
+  // A layout effect, so the route pins the flow in the same commit as the run step: no event can land in between.
+  useLayoutEffect(() => {
     if (runStarted) onRunStarted?.();
   }, [runStarted, onRunStarted]);
   const headingRef = useRef<HTMLHeadingElement>(null);

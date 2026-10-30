@@ -13,7 +13,7 @@ import { MatchForHevySheet } from "./MatchForHevySheet";
 import { HEVY_SEND_COPY, hevyFailureSentence, needsMatching, noticeSentence, withDay, type SendNotice } from "./messages";
 
 import { rootOfRows } from "./rootOf";
-import { problemSentence, type SendIntent } from "./runSend";
+import { carriesOn, problemSentence, type SendIntent } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
 import { useHevyLink } from "./useHevyLink";
@@ -61,9 +61,6 @@ function statusSentence(view: Exclude<SectionView, { kind: "hidden" }>): string 
   }
 }
 
-/** A follow-up of the run that left exercises out builds the same workout, so it leaves them out too. */
-const isFollowUp = (intent: SendIntent) => intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update" || intent.kind === "reclaim";
-
 /** The button that offers a follow-up again (minor 258). */
 const RETRY_LABELS: Partial<Record<SendIntent["kind"], string>> = { check: C.checkHevy, "send-anyway": C.sendAnyway, "retry-update": C.tryAgain };
 
@@ -99,6 +96,8 @@ function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: st
       // Minor 258: the sheet was closed; the follow-up (which reopens it) is still the way on.
       return [{ label: RETRY_LABELS[o.retry.kind] ?? C.tryAgain, intent: o.retry }];
     case "in-progress":
+      // Minor 257: a reclaim stays a reclaim (a Send would post a second copy).
+      if (o.retry !== undefined) return [{ label: C.tryAgain, intent: o.retry }];
       // AC6: the button returns even while another device's claim reads "sending" (a second tap is safe: 409 again).
       return base(view.base === "sending" ? "none" : view.base);
     default:
@@ -220,7 +219,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
           {actions.length > 0 ? (
             <div className={styles.actions} ref={actionsRef}>
               {actions.map((a) => (
-                <Button key={a.label} variant="secondary" disabled={a.intent === null || busy || send.pending} onClick={() => a.intent && run(a.intent, isFollowUp(a.intent) ? landed?.leaveOut : undefined)}>
+                <Button key={a.label} variant="secondary" disabled={a.intent === null || busy || send.pending} onClick={() => a.intent && run(a.intent, carriesOn(a.intent) ? landed?.leaveOut : undefined)}>
                   {a.label}
                 </Button>
               ))}

@@ -206,6 +206,22 @@ describe("20.2 AC14 — Create in Hevy", () => {
     expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
   });
 
+  it("minor 259: the check looks for the title that was sent, even after the field is edited", async () => {
+    const s = setup({ calories: true });
+    s.hevy.fail("template", "network");
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await within(card).findByRole("button", { name: "Check Hevy" });
+    await user.clear(within(card).getByRole("textbox", { name: "Title" }));
+    await user.type(within(card).getByRole("textbox", { name: "Title" }), "Something Else");
+    server.use(templatesHandler([...TEMPLATES, { id: "t9", title: "Echo Bike (calories)", type: "reps_only", is_custom: true }]));
+    await user.click(within(card).getByRole("button", { name: "Check Hevy" }));
+    expect(await within(card).findByText("Created in Hevy.")).toBeInTheDocument();
+    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
+  });
+
   it("minor 259: a check that doesn't find it gives Create back", async () => {
     const s = setup({ calories: true });
     s.hevy.fail("template", "5xx");

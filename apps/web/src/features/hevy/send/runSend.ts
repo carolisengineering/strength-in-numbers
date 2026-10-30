@@ -54,7 +54,8 @@ export type SendOutcome =
    * next Send skip AC7's look in Hevy), so the same follow-up stays offered if the sheet is closed.
    */
   | { kind: "needs-pairing"; unmapped: UnmappedExercise[]; retry?: SendIntent }
-  | { kind: "in-progress" }
+  /** `retry`: a reclaim met another claim; it stays offered (minor 257). */
+  | { kind: "in-progress"; retry?: SendIntent }
   | { kind: "unsure"; op: "post" | "put"; fingerprint: string; hevyWorkoutId: string | null }
   | { kind: "inconclusive"; fingerprint: string }
   | { kind: "unrecorded"; hevyWorkoutId: string; fingerprint: string }
@@ -124,11 +125,20 @@ interface Built {
 const holdsClaim = (intent: SendIntent): intent is Extract<SendIntent, { kind: "check" | "send-anyway" | "retry-update" }> =>
   intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update";
 
+/**
+ * The follow-ups of an earlier run (minors 257, 258): they build the same workout (so they leave out what it left out)
+ * and, where they can't go on, stay offered instead of falling back to Send, which could post a second copy.
+ */
+export const carriesOn = (intent: SendIntent): boolean => holdsClaim(intent) || intent.kind === "reclaim";
+
 export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendOutcome> {
   const outcome = await sendOnce(intent, deps);
-  // Minor 257: a reclaim that fails anywhere stays offered. Falling back to Send would begin a create with no claim to
-  // find stale, and post a second copy.
-  if (intent.kind === "reclaim" && outcome.kind === "failed" && outcome.retry === undefined) return { ...outcome, retry: intent };
+  if (!carriesOn(intent)) return outcome;
+  // Unmatched exercises are met before anything is written or claimed: after the sheet, the same follow-up goes on.
+  if (outcome.kind === "needs-pairing") return { ...outcome, retry: intent };
+  // A reclaim holds no claim of its own, so wherever it stops it stays offered (minor 257). A follow-up that holds one
+  // is offered again only where the claim is untouched, which `sendOnce` marks itself.
+  if (intent.kind === "reclaim" && (outcome.kind === "failed" || outcome.kind === "in-progress") && outcome.retry === undefined) return { ...outcome, retry: intent };
   return outcome;
 }
 
@@ -139,8 +149,7 @@ async function sendOnce(intent: SendIntent, deps: SendDeps): Promise<SendOutcome
   let built: Built;
   try {
     const result = await build(deps);
-    // A reclaim is offered again too (minor 257): after the sheet, it still updates the copy Hevy holds.
-    if ("unmapped" in result) return { kind: "needs-pairing", unmapped: result.unmapped, ...(holdsClaim(intent) || intent.kind === "reclaim" ? { retry: intent } : {}) };
+    if ("unmapped" in result) return { kind: "needs-pairing", unmapped: result.unmapped };
     built = result;
   } catch (err) {
     // A workout deleted meanwhile is gone; a SIN 5xx on the reads is reported with the step that needed them.

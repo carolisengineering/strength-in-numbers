@@ -128,8 +128,8 @@ describe("20.2 AC25 — preconditions", () => {
     await settle();
     expect(linkMethods(s)).toEqual(["GET", "POST", "PUT"]);
     expect(s.hevy.writes().map((c) => c.op)).toEqual(["create"]);
-    // Minor 263: the checks' fresh read is the one the send builds from.
-    expect(s.getById).toHaveBeenCalledTimes(1);
+    // The checks' read, then the send sequence's own fresh read right before its begin (minor 263 shares only the mapping).
+    expect(s.getById).toHaveBeenCalledTimes(2);
   });
 
   it("off: no request at all", async () => {

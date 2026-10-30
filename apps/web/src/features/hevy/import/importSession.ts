@@ -80,6 +80,8 @@ export interface ImportState {
   routineProgress: { done: number; total: number } | null;
   /** Phase B: the finish step (AC22). `idle` when none was needed. */
   finish: "idle" | "running" | "ok" | "failed";
+  /** Minor 250: the wrap-up threw after the finish had answered, so the ticked routines may not all exist. */
+  wrapUpFailed: boolean;
 }
 
 export const initialImportState: ImportState = {
@@ -105,6 +107,7 @@ export const initialImportState: ImportState = {
   routineResults: [],
   routineProgress: null,
   finish: "idle",
+  wrapUpFailed: false,
 };
 
 export type ImportAction =
@@ -255,7 +258,9 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
         return { ...state, step: "stopped", run: { ...state.run, stopReason: { kind: "error" } } };
       }
       if (state.step === "finishing" || state.step === "routines_run" || state.step === "done") {
-        return { ...state, step: "done", finish: state.finish === "running" ? "failed" : state.finish, routineProgress: null };
+        // A finish that never answered says so with its own Try again; past it, the routines are what may be missing.
+        const finishThrew = state.finish === "running";
+        return { ...state, step: "done", finish: finishThrew ? "failed" : state.finish, wrapUpFailed: state.wrapUpFailed || (!finishThrew && state.step !== "done"), routineProgress: null };
       }
       return state;
   }
