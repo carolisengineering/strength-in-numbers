@@ -38,7 +38,7 @@ describe("10.5 AC2 — ordinary rows are unchanged", () => {
   });
 });
 
-const FUTURE = "2026-10-30T12:00:00.000Z";
+const FUTURE = "2099-10-30T12:00:00.000Z";
 const cls = makeRoutine({
   id: routineId(5),
   name: "Class Fri 16 Oct",

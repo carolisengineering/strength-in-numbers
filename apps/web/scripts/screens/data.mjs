@@ -841,6 +841,15 @@ export const hevyPage = (list, field, page) => ({
   [field]: list.slice((page - 1) * HEVY_PAGE, page * HEVY_PAGE),
 });
 
+/** Spec 20.1 Phase B: the real run's answer: the dry run's outcomes, each `create` with the workout it wrote. */
+export function hevyRealRun(body) {
+  const { results } = hevyDryRun(body);
+  return {
+    dryRun: false,
+    results: results.map((r, i) => (r.outcome === "create" ? { ...r, workoutId: `00000000-0000-4000-8000-${String(900 + i).padStart(12, "0")}` } : r)),
+  };
+}
+
 /** The dry run's answer for a batch body: a duplicate, an already-imported, a rejected and a dropped-sets workout. */
 export function hevyDryRun(body) {
   const results = body.workouts.map((w) => {

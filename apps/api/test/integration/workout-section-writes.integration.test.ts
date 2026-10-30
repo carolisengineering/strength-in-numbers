@@ -7,7 +7,7 @@ import { createWorkoutRepository } from "../../src/repositories/workout.prisma.j
 import { rebuildRecords } from "../../src/records/rebuild.js";
 import { NotFoundError, WorkoutSectionLimitError } from "../../src/errors/app-error.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
-import { captureStatements } from "./one-off-helpers.js";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { insertExercise, insertUser, recordsOf } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent, insertWorkoutSection, workoutWithSections } from "./section-helpers.js";
@@ -39,9 +39,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.4 — workout section writes (
   ]);
   /** Statement log of `run`: was the per-user PR lock taken before the structure prologue? Any personal_record statement? */
   async function statementsOf(run: () => Promise<unknown>) {
-    const seen = captureStatements(db);
-    seen.length = 0;
+    const seen = await startCapture(db);
     await run();
+    await settleCapture(db, seen);
     const firstLock = seen.findIndex((s) => s.includes("pg_advisory_xact_lock(hashtext("));
     const prologue = seen.findIndex((s) => s.includes("SET CONSTRAINTS workout_exercise_position_key DEFERRED"));
     return { prLockFirst: firstLock >= 0 && firstLock < prologue, touchesRecords: seen.some((s) => s.includes(`"personal_record"`)) };

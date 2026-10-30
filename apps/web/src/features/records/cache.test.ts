@@ -3,7 +3,9 @@ import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
-import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches } from "./cache";
+import { EXERCISE_KEYS } from "../exercises/keys";
+import { HEVY_KEYS } from "../hevy/keys";
+import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches, applyImportedCaches } from "./cache";
 import { RECORDS_KEYS } from "./queries";
 
 const W = "40000000-0000-4000-8000-000000000001";
@@ -121,5 +123,28 @@ describe("10.5 AC15 — a finish refreshes the routines", () => {
     applyDeletedCaches(qc, W);
     expect(invalidated(qc, ["routines", "list"])).toBe(false);
     expect(invalidated(qc, ["routines", "detail", "r1"])).toBe(false);
+  });
+});
+
+describe("20.1 AC24 — applyImportedCaches", () => {
+  it("resets the history list and invalidates progress, records, usage, routines, the Hevy status and mapping, and nothing else", () => {
+    const qc = seeded();
+    qc.setQueryData(EXERCISE_KEYS.usage, []);
+    qc.setQueryData(["routines", "list"], []);
+    qc.setQueryData(HEVY_KEYS.status("user-1"), { enabled: true });
+    qc.setQueryData(HEVY_KEYS.mapping, { pairs: [], sectionRules: [] });
+    qc.setQueryData(HEVY_KEYS.templates, []);
+    qc.setQueryData(HEVY_KEYS.user("user-1"), { username: "carol" });
+    qc.setQueryData(["me"], { id: "user-1" });
+
+    applyImportedCaches(qc);
+
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+    for (const key of [PROGRESS_KEYS.series("e", "3m"), RECORDS_KEYS.forExercise(EX), EXERCISE_KEYS.usage, ["routines", "list"], HEVY_KEYS.status("user-1"), HEVY_KEYS.mapping]) {
+      expect(invalidated(qc, key)).toBe(true);
+    }
+    for (const key of [HEVY_KEYS.templates, HEVY_KEYS.user("user-1"), ["me"]]) {
+      expect(invalidated(qc, key)).toBe(false);
+    }
   });
 });

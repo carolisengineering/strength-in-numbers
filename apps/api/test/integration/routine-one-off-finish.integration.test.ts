@@ -9,7 +9,7 @@ import { createRoutineRepository } from "../../src/repositories/routine.prisma.j
 import type { RoutineCreateFields } from "../../src/repositories/routine.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
-import { captureStatements } from "./one-off-helpers.js";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { assertDerivedColumnsConsistent } from "./planned-set-helpers.js";
 import { insertExercise, insertUser, recordsOf, type RecordRow } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
@@ -272,13 +272,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
       await x(`UPDATE "workout" SET routine_id = $2::uuid WHERE id = $1::uuid`, workoutId, routine.id);
       const snap = await routineSnapshot(routine.id);
       const release = await holdRoutineLock(routine.id);
-      const seen = captureStatements(db);
-      seen.length = 0;
+      const seen = await startCapture(db);
       try {
         await expect(within(workouts().updateWorkout(u, workoutId, { endedAt: now(), keepRoutine: true }))).rejects.toBeInstanceOf(WorkoutFinishedError);
       } finally {
         await release();
       }
+      await settleCapture(db, seen);
       expect(seen.join("\n")).not.toMatch(/DELETE FROM "routine"|UPDATE "routine"/);
       expect(await routineSnapshot(routine.id)).toBe(snap);
       expect(ex).toBeTruthy();
@@ -347,10 +347,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the finish removes or ke
     it("PR lock → routine lock → workout FOR UPDATE → … → routine delete, the delete after the recompute", async () => {
       const { u, routine } = await setup();
       const { workoutId } = await startAndLog(u, routine.id);
-      const seen = captureStatements(db);
-      seen.length = 0;
+      const seen = await startCapture(db);
       await workouts().updateWorkout(u, workoutId, { endedAt: now() });
-      const at = (test: (s: string) => boolean) => seen.findIndex(test);
+      await settleCapture(db, seen);
+      const at =(test: (s: string) => boolean) => seen.findIndex(test);
       const prLock = at((s) => s.includes("pg_advisory_xact_lock(hashtext("));
       const routineLock = at((s) => s.includes(`FROM "routine" r`) && /FOR UPDATE/.test(s));
       const workoutLock = at((s) => s.includes(`FROM "workout"`) && /FOR UPDATE/.test(s) && !s.includes(`FROM "routine" r`));

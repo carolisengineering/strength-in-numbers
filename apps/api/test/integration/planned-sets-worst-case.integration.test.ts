@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { insertExercise, insertUser } from "./records-helpers.js";
 
 /** Measured locally at implementation (68 ms), ×5, floored at 1 s (spec AC27). */
@@ -26,12 +27,11 @@ describe.skipIf(!shouldRunIntegration())("AC27 — 50 routines × 30 items × 20
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "routine_item_set" (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit)
        SELECT gen_random_uuid(), ri.id, s, 'working', 5, 5, 100, 'kg' FROM "routine_item" ri, generate_series(0, 19) s`);
-    const seen: string[] = [];
-    (db.prisma as unknown as { $on: (e: "query", cb: (x: { query: string }) => void) => void }).$on("query", (e) => seen.push(e.query));
-    seen.length = 0;
+    const seen = await startCapture(db);
     const t0 = Date.now();
     const list = (await createRoutineRepository(db.prisma).list(u)).routines;
     const ms = Date.now() - t0;
+    await settleCapture(db, seen);
     expect(list).toHaveLength(50);
     expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);
     expect(seen).toHaveLength(2); // amended by 09.3 AC30: the sweep probe, then the one list statement

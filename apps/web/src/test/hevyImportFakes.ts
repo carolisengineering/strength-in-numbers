@@ -183,6 +183,8 @@ export interface FakeImportOptions {
   outcomeFor?: (hevyWorkoutId: string) => HevyImportOutcome | undefined;
   dropsFor?: (hevyWorkoutId: string) => CodeCount<HevyImportDropCode>[];
   recordsStale?: boolean;
+  /** Phase B: every import request (batch or finish) answers after this many ms (real timers), so overlap can show. */
+  delayMs?: number;
 }
 export interface FakeImportRequest {
   path: string;
@@ -191,6 +193,8 @@ export interface FakeImportRequest {
   body: unknown;
 }
 type ImportFailure = number | "network" | "short" | "garbage";
+/** Phase B: one queued answer — a status, a network error, or a `422` naming its first error path. */
+export type SequencedFailure = number | "network" | { status: 422; path: string };
 
 const API = API_BASE_URL;
 const LINKED: Record<ImportLinkOrigin, HevyImportOutcome> = {
@@ -208,15 +212,92 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
   let failure: { kind: ImportFailure; times: number } | null = null;
   let held: number | null = null;
   let batches = 0;
+  const sequence: SequencedFailure[] = [];
+  /** Phase B (§6.8, no overlap): requests in flight now, and the most ever in flight at once, over both import routes. */
+  const concurrency = { inFlight: 0, maxInFlight: 0 };
+  let realBatches = 0;
+  const gates = new Map<number, Promise<void>>();
 
   /** The `n`-th batch request (1-based) never answers: a check caught mid-way. */
   function holdBatch(n: number): void {
     held = n;
   }
 
+  /**
+   * Phase B: the `k`-th real (`dryRun: false`) batch request (1-based) waits until the returned `release()` is
+   * called, then answers as usual (a run caught mid-batch).
+   */
+  function gateRealBatch(k: number): () => void {
+    let release: () => void = () => {};
+    gates.set(k, new Promise<void>((resolve) => (release = resolve)));
+    return () => release();
+  }
+
   function failNext(kind: ImportFailure, times = 1): void {
     failure = { kind, times };
   }
+
+  /** Phase B: the next requests fail in this order, one entry each (before any `failNext`). */
+  function failSequence(kinds: readonly SequencedFailure[]): void {
+    sequence.push(...kinds);
+  }
+
+  /**
+   * Phase B: a new "run" on the same server. The request log and the batch counter start again; the links, the
+   * created count and `recordsStale` persist (AC21: the server's links are the memory).
+   */
+  function reset(): void {
+    log.length = 0;
+    batches = 0;
+    realBatches = 0;
+    gates.clear();
+    concurrency.maxInFlight = concurrency.inFlight;
+  }
+
+  const finishSequence: SequencedFailure[] = [];
+  let finishGate: Promise<void> | null = null;
+
+  /** Phase B: the next finish requests fail in this order (batches are not touched). */
+  function failFinish(kinds: readonly SequencedFailure[]): void {
+    finishSequence.push(...kinds);
+  }
+
+  /** Phase B: the next finish request waits until the returned `release()` is called. */
+  function gateFinish(): () => void {
+    let release: () => void = () => {};
+    finishGate = new Promise<void>((resolve) => (release = resolve));
+    return () => release();
+  }
+
+  /** Waits `delayMs`, and answers the next queued failure if any (a finish's own queue first). */
+  async function enter(route: "batch" | "finish"): Promise<Response | null> {
+    if (route === "finish" && finishGate !== null) {
+      const gate = finishGate;
+      finishGate = null;
+      await gate;
+    }
+    if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+    const next = (route === "finish" ? finishSequence.shift() : undefined) ?? sequence.shift();
+    if (next === undefined) return null;
+    if (next === "network") return HttpResponse.error();
+    const status = typeof next === "number" ? next : next.status;
+    const problem: Record<string, unknown> = { type: "https://api.strengthinnumbers.app/problems/fake", title: "Fake", status };
+    if (typeof next === "object") problem["errors"] = [{ path: next.path, message: "Invalid input" }];
+    return new HttpResponse(JSON.stringify(problem), { status, headers: { "content-type": "application/problem+json" } });
+  }
+
+  /** Wraps a handler so the request counts toward `concurrency` until it answers. */
+  const counted =
+    (handler: (request: Request) => Promise<Response>) =>
+    async ({ request }: { request: Request }) => {
+      concurrency.inFlight += 1;
+      concurrency.maxInFlight = Math.max(concurrency.maxInFlight, concurrency.inFlight);
+      try {
+        return await handler(request);
+      } finally {
+        concurrency.inFlight -= 1;
+      }
+    };
 
   async function record(request: Request): Promise<FakeImportRequest> {
     const text = await request.text();
@@ -268,10 +349,16 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
     return null;
   }
 
-  const batch = http.post(`${API}/v1/hevy/import/workouts`, async ({ request }) => {
+  const batch = http.post(`${API}/v1/hevy/import/workouts`, counted(async (request) => {
     const entry = await record(request);
     batches += 1;
+    if ((entry.body as HevyImportBatch | undefined)?.dryRun === false) {
+      realBatches += 1;
+      await gates.get(realBatches);
+    }
+    const queued = await enter("batch");
     if (batches === held) await new Promise<never>(() => {});
+    if (queued) return queued;
     const early = failed();
     if (early) return early;
     const body = entry.body as HevyImportBatch;
@@ -284,10 +371,12 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
       results = results.slice(1);
     }
     return HttpResponse.json({ dryRun: body.dryRun, results });
-  });
+  }));
 
-  const finish = http.post(`${API}/v1/hevy/import/finish`, async ({ request }) => {
+  const finish = http.post(`${API}/v1/hevy/import/finish`, counted(async (request) => {
     const entry = await record(request);
+    const queued = await enter("finish");
+    if (queued) return queued;
     const early = failed();
     if (early) return early;
     if (entry.contentType !== null || entry.body !== undefined) {
@@ -296,13 +385,13 @@ export function fakeImportApi(options: FakeImportOptions = {}) {
     const recomputed = state.recordsStale;
     state.recordsStale = false;
     return HttpResponse.json({ recomputed, rootCount: recomputed ? 3 : 0 });
-  });
+  }));
 
   const status = http.get(`${API}/v1/hevy/status`, () =>
     HttpResponse.json({ enabled: true, pairCount: options.pairedTemplateIds?.size ?? 0, linkCount: links.size, recordsStale: state.recordsStale }),
   );
 
-  return { handlers: [batch, finish, status], log, links, state, failNext, holdBatch };
+  return { handlers: [batch, finish, status], log, links, state, concurrency, failNext, failSequence, failFinish, gateFinish, holdBatch, gateRealBatch, reset };
 }
 
 /** A real `ApiClient` against the test API origin, for client-level tests (MSW answers it). */

@@ -94,8 +94,19 @@ function makeHandler(state) {
     if (m === "GET" && p === "/v1/me") res = json(D.me);
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
-    // Spec 20.1 Phase A: only the dry run is sent.
-    else if (m === "POST" && p === "/v1/hevy/import/workouts") res = json(D.hevyDryRun(JSON.parse(req.postData() ?? "{}")));
+    // Spec 20.1: the dry run, and (Phase B) the real run as `state.importMode` says: "hold" keeps it unanswered,
+    // "fail" answers 500 (the run retries, then pauses), "refuse" answers a 422 with a path (the run stops).
+    else if (m === "POST" && p === "/v1/hevy/import/workouts") {
+      const body = JSON.parse(req.postData() ?? "{}");
+      if (body.dryRun !== false) res = json(D.hevyDryRun(body));
+      else if (state.importMode === "hold") return; // never fulfilled
+      else if (state.importMode === "fail") res = problem(500, "internal", "Internal error");
+      else if (state.importMode === "refuse") res = { ...problem(422, "validation-error", "Invalid"), body: JSON.stringify({ type: "https://api.strengthinnumbers.app/problems/validation-error", title: "Invalid", status: 422, errors: [{ path: "workouts.3.startTime", message: "Invalid input" }] }) };
+      else res = json(D.hevyRealRun(body));
+    }
+    else if (m === "POST" && p === "/v1/hevy/import/finish") res = json({ recomputed: true, rootCount: 4 });
+    // Spec 20.1 AC23: the import's routine creates hit the cap (the done screen's routines failure).
+    else if (m === "POST" && p === "/v1/routines") res = problem(409, "routine-limit", "Routine limit reached");
     else if ((m === "PUT" || m === "PATCH") && p === "/v1/hevy/mapping") {
       // The fake answers with the mapping it already holds: the captures only need a 200 the schema accepts.
       res = json(state.hevyMapping ?? D.hevyMapping);
@@ -1041,9 +1052,10 @@ try {
     });
     // Spec 20.1 AC29 (Phase A): the import's preflight, reading, routines, names and summary.
     await tryStep("hevy import", async () => {
-      const importContext = async () => {
+      const importContext = async (importMode = "ok") => {
         const ictx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-        await ictx.route(isSinApi, makeHandler({ active: false }));
+        const istate = { active: false, importMode };
+        await ictx.route(isSinApi, makeHandler(istate));
         await ictx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
         await ictx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
         const ip = await ictx.newPage();
@@ -1052,7 +1064,20 @@ try {
         await ip.goto(BASE + "/app/profile/hevy/import");
         await ip.getByRole("heading", { level: 2, name: "Before you start" }).waitFor();
         await settle(ip);
-        return { ictx, ip };
+        return { ictx, ip, istate };
+      };
+      /** Start → tick Pull A → skip the two unpaired names → the summary. */
+      const toSummary = async (ip) => {
+        await ip.getByRole("button", { name: "Start" }).click();
+        await ip.getByRole("heading", { level: 2, name: "Routines to copy" }).waitFor();
+        await ip.getByRole("checkbox", { name: "Pull A" }).check();
+        await ip.getByRole("button", { name: "Continue" }).click();
+        await ip.getByRole("heading", { level: 2, name: "Pair exercises" }).waitFor();
+        for (const name of ["Seated Row (Cable)", "Bicep Curl (Barbell)"]) {
+          await ip.getByRole("group", { name }).getByRole("radio", { name: "Skip this exercise (its sets are not imported)" }).check();
+        }
+        await ip.getByRole("button", { name: "Continue" }).click();
+        await ip.getByRole("heading", { level: 2, name: "Summary" }).waitFor();
       };
       const reading = await importContext();
       await shoot(reading.ip, device, "hevy-import-preflight", "Import from Hevy: what it will do, the device zone and the unit, before anything is read (Spec 20.1 AC2)");
@@ -1080,8 +1105,40 @@ try {
       await flow.ip.getByRole("heading", { level: 2, name: "Summary" }).waitFor();
       for (const group of await flow.ip.locator("details").all()) await group.evaluate((d) => { d.open = true; });
       await settle(flow.ip);
-      await shoot(flow.ip, device, "hevy-import-summary", "The summary: what the import would do, every list group open, Import waiting for Phase B (Spec 20.1 AC12-AC14)");
+      await shoot(flow.ip, device, "hevy-import-summary", "The summary: what the import would do, every list group open (Spec 20.1 AC12-AC14)");
+      // Spec 20.1 AC29 (Phase B): the run caught mid-batch, then (once it lands) the finish, the routine at the cap, done.
+      flow.istate.importMode = "hold";
+      await flow.ip.getByRole("button", { name: /^Import \d/ }).click();
+      await flow.ip.getByText(/^Importing… 0 of/).waitFor();
+      await flow.ip.waitForTimeout(400);
+      await shoot(flow.ip, device, "hevy-import-running", "Importing: the progress line, the batch's month, Keep this tab open and Stop (Spec 20.1 AC16)");
       await flow.ictx.close();
+
+      const done = await importContext("ok");
+      await toSummary(done.ip);
+      await done.ip.getByRole("button", { name: /^Import \d/ }).click();
+      await done.ip.getByRole("heading", { level: 2, name: "Done" }).waitFor({ timeout: 15000 });
+      await done.ip.getByText("Records updated.").waitFor();
+      await settle(done.ip);
+      await shoot(done.ip, device, "hevy-import-done", "Done: the counts, records updated, and a routine the cap kept out (Spec 20.1 AC23, AC25)");
+      await done.ictx.close();
+
+      const stopped = await importContext("refuse");
+      await toSummary(stopped.ip);
+      await stopped.ip.getByRole("button", { name: /^Import \d/ }).click();
+      await stopped.ip.getByRole("heading", { level: 2, name: "Stopped" }).waitFor();
+      await settle(stopped.ip);
+      await shoot(stopped.ip, device, "hevy-import-stopped", "Stopped: the server refused a batch; the static reason, its field, and Finish up (Spec 20.1 AC19, AC20)");
+      await stopped.ictx.close();
+
+      // The run retries a 500 after 2 s, 4 s and 8 s before it pauses.
+      const paused = await importContext("fail");
+      await toSummary(paused.ip);
+      await paused.ip.getByRole("button", { name: /^Import \d/ }).click();
+      await paused.ip.getByRole("button", { name: "Resume" }).waitFor({ timeout: 25000 });
+      await settle(paused.ip);
+      await shoot(paused.ip, device, "hevy-import-paused", "Paused: couldn't reach the server, with Resume and Stop (Spec 20.1 AC19)");
+      await paused.ictx.close();
     });
     await tryStep("sign-out guard dialog", async () => {
       // The guard only shows a dialog when sets are unsaved: log one set on the active workout with

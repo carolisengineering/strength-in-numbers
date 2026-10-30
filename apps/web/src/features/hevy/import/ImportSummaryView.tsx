@@ -13,7 +13,6 @@ import {
   DONE,
   DROP_LABELS,
   exercisesCreatedLine,
-  IMPORT_NOT_YET,
   LIST_GROUP_LABELS,
   NOTHING_NEW,
   NOTHING_WRITTEN,
@@ -30,10 +29,7 @@ import styles from "./ImportScreen.module.css";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-/**
- * Spec 20.1 AC12–AC14, AC28, §5.5: what an import would do, from the dry run. Nothing is written here. In Phase A the
- * Import button is drawn disabled with `IMPORT_NOT_YET`; Phase B wires it.
- */
+/** Spec 20.1 AC12–AC14, AC16, AC28, §5.5: what an import would do, from the dry run. Nothing is written until Import. */
 export function ImportSummaryView({
   state,
   zone,
@@ -41,6 +37,9 @@ export function ImportSummaryView({
   onBack,
   onBackToNames,
   onCheckAgain,
+  onImport,
+  canImport,
+  blocked,
   headingRef,
 }: {
   state: ImportState;
@@ -49,6 +48,11 @@ export function ImportSummaryView({
   onBack: () => void;
   onBackToNames: () => void;
   onCheckAgain: () => void;
+  onImport: () => void;
+  /** AC28: the pre-write checks pass. */
+  canImport: boolean;
+  /** AC28: why Import can't start (the key, the status, the mapping), or null. */
+  blocked: string | null;
   headingRef: Ref<HTMLHeadingElement>;
 }) {
   const results = useMemo(() => state.results ?? [], [state.results]);
@@ -144,12 +148,15 @@ export function ImportSummaryView({
           </>
         ) : (
           <>
-            <Button disabled aria-describedby={noteId}>
+            {/* AC13 / AC28: never while a workout waits for a pairing, or while a pre-write check fails (stale included). */}
+            <Button disabled={!canImport || agg.unpaired > 0} aria-describedby={blocked !== null ? noteId : undefined} onClick={onImport}>
               {label}
             </Button>
-            <p className={styles.muted} id={noteId}>
-              {IMPORT_NOT_YET}
-            </p>
+            {blocked !== null ? (
+              <p className={styles.failure} id={noteId}>
+                {blocked}
+              </p>
+            ) : null}
           </>
         )}
       </div>

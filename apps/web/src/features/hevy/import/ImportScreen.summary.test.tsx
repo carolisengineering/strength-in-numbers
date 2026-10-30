@@ -26,7 +26,7 @@ import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness"
 import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { HEVY_PATH } from "../paths";
-import { IMPORT_NOT_YET, SUMMARY_STALE } from "./messages";
+import { SUMMARY_STALE } from "./messages";
 import { HEVY_IMPORT_PATH } from "./paths";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
@@ -213,7 +213,7 @@ describe("20.1 AC14 — confirm", () => {
     await user.click(await screen.findByRole("checkbox", { name: "Push A" }));
     await user.click(screen.getByRole("button", { name: "Continue" }));
     await summaryHeading();
-    expect(screen.getByRole("button", { name: "Import 12 workouts and 1 routine" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import 12 workouts and 1 routine" })).toBeEnabled();
     expect(screen.getByText("1 routine will be created.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("checkbox", { name: "Push A" })).toBeChecked();
@@ -261,17 +261,6 @@ describe("20.1 AC14 — confirm", () => {
   });
 });
 
-describe("20.1 AC13 — Import waits for Phase B", () => {
-  it("draws Import disabled with the not-yet note", async () => {
-    setup({ workouts: generateHevyWorkouts(5) });
-    await start();
-    await summaryHeading();
-    const button = screen.getByRole("button", { name: "Import 5 workouts" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(IMPORT_NOT_YET);
-  });
-});
-
 describe("20.1 AC28 — stale summary", () => {
   it("a mapping change after the summary asks to check again", async () => {
     const { imports } = setup({ workouts: generateHevyWorkouts(5) });
@@ -282,6 +271,7 @@ describe("20.1 AC28 — stale summary", () => {
       queryClient.setQueryData(HEVY_KEYS.mapping, { pairs: [...GENERATED_TEMPLATE_IDS.map(pairOf), { ...pairOf("EXTRA"), role: "skip", exerciseId: null, exerciseActive: null }], sectionRules: [] });
     });
     expect(await screen.findByText(SUMMARY_STALE)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 5 workouts" })).toBeDisabled();
     const before = bodies(imports.log).length;
     await user.click(screen.getByRole("button", { name: "Check again" }));
     await waitFor(() => expect(bodies(imports.log).length).toBe(before + 1));

@@ -152,8 +152,77 @@ export const importLabel = (workouts: number, routines: number) =>
   `Import ${plural(workouts, "workout", "workouts")}${routines > 0 ? ` and ${plural(routines, "routine", "routines")}` : ""}`;
 export const NOTHING_NEW = "Nothing new to import";
 export const DONE = "Done";
-/** Phase A only: Phase B deletes this constant and wires the button. */
-export const IMPORT_NOT_YET = "Importing comes in the next update. Nothing has been written.";
+
+/** AC28: why Import can't start. */
+// Plan copy.
+export const MAPPING_UNAVAILABLE = "Couldn't load your pairings. Check your connection and try again.";
+export const IMPORT_UNAVAILABLE = "The Hevy import isn't available on this account";
+
+/** AC16–AC20 / §5.6: the run. */
+// Plan copy.
+export const RUN_TITLE = "Importing";
+export const runningLine = (sent: number, total: number, skipped: number) =>
+  `Importing… ${fmt(sent)} of ${fmt(total)}${skipped > 0 ? ` · ${fmt(skipped)} skipped` : ""}`;
+export const KEEP_TAB_OPEN = "Keep this tab open.";
+export const STOP = "Stop";
+export const STOPPING = "Stopping after this batch…";
+export const RESUME = "Resume";
+export const FINISH_UP = "Finish up";
+export const PAUSED = "Paused: couldn't reach the server. Everything imported so far is saved.";
+// Plan copy.
+export const BACK_ONLINE = "You're back online.";
+export const STOPPED_TITLE = "Stopped";
+// Plan copy.
+export const stoppedLine = (sent: number, total: number) => `${fmt(sent)} of ${plural(total, "workout", "workouts")} sent. What's imported so far stays.`;
+export const STOP_INVALID = "The server didn't accept a workout in this batch.";
+export const stopInvalidPath = (path: string) => `Field: ${path}`;
+export const STOP_GATE = IMPORT_UNAVAILABLE;
+export const STOP_AUTH = "Your session ended. Sign in again, then run the import again.";
+
+/** AC20: the leave guard. */
+export const LEAVE_TITLE = "Stop the import?";
+export const LEAVE_BODY = "What's imported so far stays, and you can run it again.";
+// Plan copy.
+export const LEAVE_CONFIRM = "Stop and leave";
+
+/** AC23: the routines step. */
+// Plan copy.
+export const ROUTINES_RUN_TITLE = "Creating routines";
+export const creatingRoutinesLine = (done: number, total: number) => `Creating routines… ${fmt(done)} of ${fmt(total)}`;
+
+/** AC25 / §5.7: the done screen. */
+export const DONE_TITLE = "Done";
+export const VIEW_HISTORY = "View History";
+export const DOWNLOAD_REPORT = "Download report";
+export const doneWorkoutsLine = (imported: number, linked: number, skipped: number) =>
+  `${plural(imported, "workout", "workouts")} imported · ${fmt(linked)} linked to workouts you'd logged · ${fmt(skipped)} skipped`;
+// Plan copy.
+export const alreadyInSinLine = (n: number) => `${fmt(n)} already in SIN`;
+/** O2 / D18 (Carol, 2026-10-29). */
+export const notSentLine = (n: number) => `${fmt(n)} not imported (stopped)`;
+export const setsDroppedLine = (n: number) => `${plural(n, "set", "sets")} dropped`;
+// Plan copy.
+export const routinesDoneLine = (created: number, exists: number, nothingToImport: number, notCreated: number) =>
+  [
+    created > 0 ? `${plural(created, "routine", "routines")} created` : null,
+    exists > 0 ? `${fmt(exists)} already there` : null,
+    // AC23: a routine of only placeholders and skips is skipped, not a failure.
+    nothingToImport > 0 ? `${fmt(nothingToImport)} with nothing to import` : null,
+    notCreated > 0 ? `${fmt(notCreated)} not created` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" · ");
+export const routineLimitLine = (k: number) => `Your routine limit was reached; ${plural(k, "routine wasn't", "routines weren't")} created`;
+export const ROUTINES_NOT_CREATED = "Routines not created";
+// Plan copy.
+export const ROUTINE_NOTES = "Routine notes";
+/** AC23: a routine that wasn't created, other than at the limit. Plan copy. */
+export const ROUTINE_PROBLEM_LABELS = Object.freeze({
+  unpaired: "Uses an exercise that isn't paired",
+  no_items: "Nothing to import",
+  invalid: "The server didn't accept it",
+  failed: "Couldn't be created; run the import again to retry",
+} as const);
 
 /** AC28: the summary went stale. */
 // Plan copy.

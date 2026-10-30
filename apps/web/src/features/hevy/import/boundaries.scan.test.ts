@@ -41,6 +41,20 @@ describe("20.1 AC30 — import boundaries", () => {
     expect(hits).toEqual([]);
   });
 
+  it("only useImportSession.ts imports the routine create (D11), and nothing else calls routineClient.create", () => {
+    const own = production.filter((path) => path.startsWith(IMPORT_DIR));
+    expect(own.filter((path) => importsFrom(read(path)).some((spec) => /(^|\/)routines\/useRoutineMutations$/.test(spec)))).toEqual([`${IMPORT_DIR}useImportSession.ts`]);
+    expect(own.filter((path) => /\b(routineClient|RoutineClient|useRoutineClient)\b/.test(read(path)))).toEqual([]);
+  });
+
+  it("no import module names oneOff (D11: imported routines are ordinary)", () => {
+    expect(production.filter((path) => path.startsWith(IMPORT_DIR) && /\boneOff\b/.test(read(path)))).toEqual([]);
+  });
+
+  it("no import module holds a Screen Wake Lock (D7)", () => {
+    expect(production.filter((path) => path.startsWith(IMPORT_DIR) && /useKeepScreenAwake|wakeLock/.test(read(path)))).toEqual([]);
+  });
+
   it("only features/hevy and app/router.tsx import it", () => {
     const hits = production.filter((path) => !path.startsWith(IMPORT_DIR) && importsHevyImport(path));
     expect(hits.every((path) => path.startsWith("features/hevy/") || path === "app/router.tsx")).toBe(true);

@@ -3,6 +3,7 @@ import { RoutineWriteSchema } from "@sin/core";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import type { RoutineRecord } from "../../src/repositories/routine.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { insertExercise, insertUser } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent } from "./section-helpers.js";
@@ -66,12 +67,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "routine_item_set" (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit)
        SELECT gen_random_uuid(), ri.id, s, 'working', 5, 5, 100, 'kg' FROM "routine_item" ri, generate_series(0, 19) s`);
-    const seen: string[] = [];
-    (db.prisma as unknown as { $on: (e: "query", cb: (x: { query: string }) => void) => void }).$on("query", (e) => seen.push(e.query));
-    seen.length = 0;
+    const seen = await startCapture(db);
     const t0 = Date.now();
     const list = (await repo().list(u)).routines;
     const ms = Date.now() - t0;
+    await settleCapture(db, seen);
     expect(list).toHaveLength(50);
     expect(list.every((r) => r.sections.length === 8)).toBe(true);
     expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);
