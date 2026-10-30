@@ -107,6 +107,27 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
     expect(nav).toMatch(/padding-bottom:[^;]*env\(safe-area-inset-bottom\)/);
   });
 
+  // #204 / #207: an in-flow `height: 100dvh` frame moved with the window, and iOS can leave the window scrolled
+  // after its keyboard closes, which hid the header under the status bar and lifted the nav off the bottom.
+  it("#204 #207 — pins the frame to the screen, so a scrolled window cannot move it", () => {
+    const shell = rule(shellCss, ".shell");
+    expect(shell).toMatch(/position:\s*fixed/);
+    expect(shell).toMatch(/inset:\s*0/);
+    expect(shell).not.toMatch(/height:\s*100d?vh/);
+  });
+
+  // #206: while a keyboard is up the frame is the visible rectangle (ui/visualViewport.ts), and the nav steps
+  // aside so the action bar sits right above the keyboard.
+  it("#206 — sizes the frame to the visible area and hides the nav while a keyboard is up", () => {
+    const open = (selector: string) =>
+      rule(shellCss, `:global(:root[data-keyboard="open"]) ${selector}`.replace(/[()[\]"=:]/g, "\\$&"));
+    const shell = open(".shell");
+    expect(shell).toMatch(/top:\s*var\(--app-top\)/);
+    expect(shell).toMatch(/height:\s*var\(--app-height\)/);
+    expect(shell).toMatch(/bottom:\s*auto/);
+    expect(open(".nav")).toMatch(/display:\s*none/);
+  });
+
   it("tokens.css resolves --tap-target-min to 44px", () => {
     expect(tokensCss).toMatch(/--tap-target-min:\s*44px/);
   });
