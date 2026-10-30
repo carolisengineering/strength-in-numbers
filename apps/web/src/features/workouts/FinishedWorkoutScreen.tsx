@@ -11,7 +11,7 @@ import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { NotFound } from "../../screens/NotFound";
 import { useMe } from "../me/useMe";
-import { HevyWorkoutSection } from "../hevy/send";
+import { HevyDeleteNote, HevyWorkoutSection } from "../hevy/send";
 import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { classifyWorkoutError } from "./errors";
@@ -274,6 +274,7 @@ function DeleteWorkoutControl({
         <p>
           This permanently deletes the workout and its {plural(setCount, "logged set", "logged sets")}.
         </p>
+        <HevyDeleteNote workoutId={workoutId} open={open} />
       </ConfirmDialog>
     </>
   );
