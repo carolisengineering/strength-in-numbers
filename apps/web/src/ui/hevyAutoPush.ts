@@ -25,7 +25,7 @@ export function isHevyAutoPushOn(storage?: StorageAdapter): boolean {
   }
 }
 
-/** This tab's readers of the device's choice (minor 264). */
+/** This tab's readers of the device's choice (minor 264). Only a write to the device's own storage tells them. */
 const listeners = new Set<() => void>();
 
 /** Store a choice; off removes the key. A failed write holds for this page view only. */

@@ -125,13 +125,22 @@ const holdsClaim = (intent: SendIntent): intent is Extract<SendIntent, { kind: "
   intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update";
 
 export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendOutcome> {
+  const outcome = await sendOnce(intent, deps);
+  // Minor 257: a reclaim that fails anywhere stays offered. Falling back to Send would begin a create with no claim to
+  // find stale, and post a second copy.
+  if (intent.kind === "reclaim" && outcome.kind === "failed" && outcome.retry === undefined) return { ...outcome, retry: intent };
+  return outcome;
+}
+
+async function sendOnce(intent: SendIntent, deps: SendDeps): Promise<SendOutcome> {
   if (intent.kind === "retry-complete") return complete(deps, intent.hevyWorkoutId, intent.fingerprint, false, []);
 
   // 1. Build, from the detail and the mapping as they are now (AC4 a–b, AC16).
   let built: Built;
   try {
     const result = await build(deps);
-    if ("unmapped" in result) return { kind: "needs-pairing", unmapped: result.unmapped, ...(holdsClaim(intent) ? { retry: intent } : {}) };
+    // A reclaim is offered again too (minor 257): after the sheet, it still updates the copy Hevy holds.
+    if ("unmapped" in result) return { kind: "needs-pairing", unmapped: result.unmapped, ...(holdsClaim(intent) || intent.kind === "reclaim" ? { retry: intent } : {}) };
     built = result;
   } catch (err) {
     // A workout deleted meanwhile is gone; a SIN 5xx on the reads is reported with the step that needed them.

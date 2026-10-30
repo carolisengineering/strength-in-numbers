@@ -23,12 +23,13 @@ import { RunStep, WrapUpStep } from "./RunStep";
 import { useImportSession } from "./useImportSession";
 import styles from "./ImportScreen.module.css";
 
+/** The steps from the run on (Spec 20.1 AC16–AC25). */
+const RUN_STEPS: ReadonlySet<ImportState["step"]> = new Set(["running", "paused", "stopped", "finishing", "routines_run", "done"]);
+
 /**
  * Spec 20.1 §5, D1: one screen with steps. Each step change moves focus to the new step's heading (AC29); the
  * session (everything read from Hevy) lives in `useImportSession` and goes when this unmounts (AC15).
  */
-/** The steps from the run on (Spec 20.1 AC16–AC25). */
-const RUN_STEPS: ReadonlySet<ImportState["step"]> = new Set(["running", "paused", "stopped", "finishing", "routines_run", "done"]);
 
 export function ImportScreen({ onRunStarted }: { onRunStarted?: () => void } = {}) {
   const session = useImportSession();

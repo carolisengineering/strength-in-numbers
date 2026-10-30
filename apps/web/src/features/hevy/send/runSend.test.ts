@@ -425,6 +425,20 @@ describe("minor 257 — a claim lost after Hevy took the write", () => {
     expect(h.link.read(WORKOUT_ID).state).toBe("sent");
   });
 
+  it("a reclaim that fails (offline begin) offers the reclaim again, never a plain Send", async () => {
+    const { h, id } = await lost();
+    h.link.fail("begin", "network");
+    const intent: SendIntent = { kind: "reclaim", hevyWorkoutId: id };
+    expect(await h.run(intent)).toEqual({ kind: "failed", reason: "network", retry: intent });
+    expect(h.hevy.writes()).toEqual([]);
+  });
+
+  it("a reclaim that meets an unmatched exercise offers the reclaim again after the sheet", async () => {
+    const { h, id } = await lost();
+    const intent: SendIntent = { kind: "reclaim", hevyWorkoutId: id };
+    expect(await h.run(intent, { getMapping: async () => ({ pairs: [], sectionRules: [] }) })).toMatchObject({ kind: "needs-pairing", retry: intent });
+  });
+
   it("if another device linked it meanwhile, reclaim updates the linked copy (begin's own)", async () => {
     const { h, id } = await lost();
     h.link.link(WORKOUT_ID, "h9", "sent", "v1:old");
