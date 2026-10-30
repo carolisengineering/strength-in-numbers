@@ -2,7 +2,6 @@ import type { HevyImportBatch, HevyImportResponse, HevyImportResult, HevyImportW
 
 import { ApiError } from "../../../api";
 import { BATCH_GAP_MS, BATCH_RETRY_WAITS_MS, RATE_LIMIT_DEFAULT_WAIT_MS } from "./constants";
-import { ImportReplyError } from "./hevyImportClient";
 import { importLane } from "./importLane";
 import { chunkBatches, sortNewestFirst, toImportWorkout } from "./importRequest";
 import { sendable } from "./importSummary";
@@ -29,7 +28,7 @@ export interface RunDeps {
 
 export interface RunEvents {
   batchDone(index: number, results: HevyImportResult[], firstStartTime: string): void;
-  /** `error` is the last failure, for `reportError` (the caller decides whether it is reportable). */
+  /** `error` is the failure that ended the run (none for a user Stop); the caller decides whether to report it. */
   paused(index: number, reason: PauseReason, error: unknown): void;
   stopped(index: number, reason: StopReason, error?: unknown): void;
   ended(): void;
@@ -93,7 +92,7 @@ export async function runImport(deps: RunDeps, batches: readonly HevyImportWorko
           delay = BATCH_RETRY_WAITS_MS[retries]!;
           retries += 1;
         } else {
-          return on.stopped(index, stopReasonFor(err), err instanceof ImportReplyError || !(err instanceof ApiError) ? err : undefined);
+          return on.stopped(index, stopReasonFor(err), err);
         }
         if (!(await wait(delay))) {
           if (deps.signal.aborted) return;

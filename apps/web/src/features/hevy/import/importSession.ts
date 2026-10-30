@@ -78,6 +78,8 @@ export interface ImportState {
   /** Phase B: the ticked routines' outcomes (AC23), and the step's progress while it runs. */
   routineResults: RoutineOutcome[];
   routineProgress: { done: number; total: number } | null;
+  /** Phase B: the finish step (AC22). `idle` when none was needed. */
+  finish: "idle" | "running" | "ok" | "failed";
 }
 
 export const initialImportState: ImportState = {
@@ -102,6 +104,7 @@ export const initialImportState: ImportState = {
   run: null,
   routineResults: [],
   routineProgress: null,
+  finish: "idle",
 };
 
 export type ImportAction =
@@ -134,7 +137,10 @@ export type ImportAction =
   | { type: "resume"; generation: number }
   | { type: "routinesStart"; total: number }
   | { type: "routinesProgress"; done: number; total: number }
-  | { type: "routinesDone"; outcomes: RoutineOutcome[] };
+  | { type: "routinesDone"; outcomes: RoutineOutcome[] }
+  | { type: "finishStart" }
+  | { type: "finishDone"; ok: boolean }
+  | { type: "toDone" };
 
 /** Actions that open a new generation, so they are never ignored as stale. */
 const OPENS_GENERATION = new Set<ImportAction["type"]>(["start", "retryRead", "checkStart", "runStart", "resume"]);
@@ -223,7 +229,14 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
     case "runStopped":
       return state.run === null ? state : { ...state, step: "stopped", run: { ...state.run, stopReason: action.reason } };
     case "runEnded":
-      return { ...state, step: action.finish ? "finishing" : "done" };
+      return action.finish ? { ...state, step: "finishing", finish: "running" } : { ...state, step: "done" };
+    case "finishStart":
+      // A Try again on the done screen keeps it; otherwise the finish is its own step.
+      return { ...state, step: state.step === "done" ? "done" : "finishing", finish: "running" };
+    case "finishDone":
+      return { ...state, finish: action.ok ? "ok" : "failed" };
+    case "toDone":
+      return { ...state, step: "done", routineProgress: null };
     case "resume":
       return state.run === null ? state : { ...state, step: "running", generation: action.generation, run: { ...state.run, pause: null, stopReason: null } };
     case "routinesStart":

@@ -69,11 +69,11 @@ describe("20.1 AC22 — finish", () => {
   });
 
   it("needsFinish: only when the run created a workout, or the status says stale", () => {
-    expect(needsFinish(run("create", "already_imported"), { recordsStale: false })).toBe(true);
-    expect(needsFinish(run("already_imported", "duplicate"), { recordsStale: false })).toBe(false);
-    expect(needsFinish(run("duplicate"), { recordsStale: true })).toBe(true);
-    expect(needsFinish(null, { recordsStale: false })).toBe(false);
-    expect(needsFinish(null, undefined)).toBe(false);
+    expect(needsFinish(run("create", "already_imported").results, { recordsStale: false })).toBe(true);
+    expect(needsFinish(run("already_imported", "duplicate").results, { recordsStale: false })).toBe(false);
+    expect(needsFinish(run("duplicate").results, { recordsStale: true })).toBe(true);
+    expect(needsFinish([], { recordsStale: false })).toBe(false);
+    expect(needsFinish([], undefined)).toBe(false);
   });
 });
 

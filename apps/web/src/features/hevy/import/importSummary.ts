@@ -145,6 +145,24 @@ export function sendable(results: readonly HevyImportResult[]): string[] {
 }
 
 /**
+ * AC17, AC25, §6.6: the dry run's results with each sent workout's replaced by the run's own (the truth: a sent
+ * `duplicate` may come back `create`, a `create` may come back `already_imported`). A sendable workout the run never
+ * sent (a Stop, or not yet) is left out of `results` and listed in `notSent` (O2 / D18: "Not imported (stopped)").
+ */
+export function finalResults(dryRun: readonly HevyImportResult[], run: readonly HevyImportResult[]): { results: HevyImportResult[]; notSent: string[] } {
+  const real = new Map(run.map((r) => [r.hevyWorkoutId, r]));
+  const results: HevyImportResult[] = [];
+  const notSent: string[] = [];
+  for (const r of dryRun) {
+    const sent = real.get(r.hevyWorkoutId);
+    if (sent !== undefined) results.push(sent);
+    else if (r.outcome === "create" || r.outcome === "duplicate") notSent.push(r.hevyWorkoutId);
+    else results.push(r);
+  }
+  return { results, notSent };
+}
+
+/**
  * AC14: the primary button's words, or "Nothing new to import" when there is no workout and no routine. Workouts
  * waiting for a pairing (AC13) are never "nothing new": they are still to import once paired.
  */

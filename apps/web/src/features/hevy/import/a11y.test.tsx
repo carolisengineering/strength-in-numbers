@@ -1,4 +1,4 @@
-import { cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,7 +24,9 @@ import { server } from "../../../test/msw/server";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { makeRoutine } from "../../../test/workoutFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
+import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
+import { MAPPING_UNAVAILABLE } from "./messages";
 import { HEVY_IMPORT_PATH } from "./paths";
 
 /** Spec 20.1 AC29 (D14: structural checks, no axe): landmarks, heading order, live regions and names per step. */
@@ -115,14 +117,17 @@ describe("20.1 AC29 — structure per step", () => {
     checkStructure("Pair exercises");
   });
 
-  it("summary: the disabled Import says why in text", async () => {
+  it("summary: Import is enabled; when a pre-write check fails it is disabled and says why in text (AC28)", async () => {
     setup();
-    const { user } = renderApp(HEVY_IMPORT_PATH);
+    const { user, queryClient } = renderApp(HEVY_IMPORT_PATH);
     await user.click(await screen.findByRole("button", { name: "Start" }));
     await screen.findByRole("heading", { level: 2, name: "Summary" }, { timeout: 5000 });
     checkStructure("Summary");
-    const button = screen.getByRole("button", { name: /^Import / });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/Importing comes in the next update/);
+    expect(screen.getByRole("button", { name: /^Import / })).toBeEnabled();
+    server.use(http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.json({ type: "about:blank", title: "Boom", status: 500 }, { status: 500 })));
+    await act(() => queryClient.refetchQueries({ queryKey: HEVY_KEYS.mapping }));
+    const button = await screen.findByRole("button", { name: /^Import / });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAccessibleDescription(MAPPING_UNAVAILABLE);
   });
 });

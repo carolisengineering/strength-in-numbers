@@ -2,21 +2,25 @@ import { useEffect, useRef } from "react";
 
 import { BackLink } from "../../../ui/BackLink";
 import { Button } from "../../../ui/Button";
+import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { Screen } from "../../../ui/Screen";
 import { Spinner } from "../../../ui/Spinner";
 import { HEVY_PATH } from "../paths";
 import { CheckingStep } from "./CheckingStep";
+import { DoneStep } from "./DoneStep";
 import { backFromSummary, isSummaryStale } from "./importSession";
 import { ImportSteps } from "./ImportSteps";
 import { ImportSummaryView } from "./ImportSummaryView";
-import { BACK_TO_HEVY, IMPORT_TITLE, PREPARING, PREPARING_FAILED, reconcileLine, TRY_AGAIN } from "./messages";
+import { BACK_TO_HEVY, IMPORT_TITLE, LEAVE_BODY, LEAVE_CONFIRM, LEAVE_TITLE, PREPARING, PREPARING_FAILED, reconcileLine, TRY_AGAIN } from "./messages";
 import { MarkersStep } from "./MarkersStep";
 import { NamesStep } from "./NamesStep";
 import { deviceZone, PreflightStep } from "./PreflightStep";
 import { reconcile } from "./readHevy";
 import { ReadingStep } from "./ReadingStep";
 import { RoutinePicksStep } from "./RoutinePicksStep";
+import { RunStep, WrapUpStep } from "./RunStep";
 import { useImportSession } from "./useImportSession";
+import { useLeaveGuard } from "./useLeaveGuard";
 import styles from "./ImportScreen.module.css";
 
 /**
@@ -38,6 +42,9 @@ export function ImportScreen() {
   }, [view]);
 
   const reconciled = state.read === null ? null : reconcile(state.read);
+  // AC20: leaving while the import writes asks first (Spec 20.1 D20: the finish and routines steps write too).
+  const writing = state.step === "running" || state.step === "finishing" || state.step === "routines_run";
+  const leave = useLeaveGuard(writing, session.stop);
 
   return (
     <Screen title={IMPORT_TITLE} lead={<BackLink to={HEVY_PATH} label={BACK_TO_HEVY} />}>
@@ -100,10 +107,30 @@ export function ImportScreen() {
             onBack={() => session.back(backFromSummary(state))}
             onBackToNames={() => void session.backToNames()}
             onCheckAgain={session.recheck}
+            onImport={session.run}
+            canImport={session.canImport}
+            blocked={session.importBlocked}
             headingRef={headingRef}
           />
         ) : null}
+        {state.step === "running" || state.step === "paused" || state.step === "stopped" ? (
+          <RunStep
+            state={state}
+            zone={deviceZone()}
+            stopping={session.stopping}
+            backOnline={session.backOnline}
+            onStop={session.stop}
+            onResume={session.resume}
+            onFinishUp={session.finishUp}
+            headingRef={headingRef}
+          />
+        ) : null}
+        {state.step === "finishing" || state.step === "routines_run" ? <WrapUpStep state={state} headingRef={headingRef} /> : null}
+        {state.step === "done" ? <DoneStep state={state} onRetryFinish={() => void session.retryFinish()} headingRef={headingRef} /> : null}
       </div>
+      <ConfirmDialog open={leave.open} title={LEAVE_TITLE} confirmLabel={LEAVE_CONFIRM} onConfirm={leave.confirm} onCancel={leave.cancel}>
+        <p>{LEAVE_BODY}</p>
+      </ConfirmDialog>
     </Screen>
   );
 }

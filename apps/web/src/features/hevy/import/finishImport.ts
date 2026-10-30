@@ -1,10 +1,9 @@
-import type { HevyStatus } from "@sin/core";
+import type { HevyImportResult, HevyStatus } from "@sin/core";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import type { HevyImportClient } from "./hevyImportClient";
 import { importLane } from "./importLane";
-import type { RunState } from "./importSession";
 
 /**
  * Spec 20.1 AC22, §6.8: the finish step, the only call that recomputes records. It queues on the lane, so it never
@@ -22,6 +21,6 @@ export async function finishImport(client: Pick<HevyImportClient, "finish">, sig
 }
 
 /** AC22: a run that created no workout does not finish, unless the status already says the records are stale. */
-export function needsFinish(run: RunState | null, status: Pick<HevyStatus, "recordsStale"> | undefined): boolean {
-  return (run?.results.some((r) => r.outcome === "create") ?? false) || status?.recordsStale === true;
+export function needsFinish(runResults: readonly HevyImportResult[], status: Pick<HevyStatus, "recordsStale"> | undefined): boolean {
+  return runResults.some((r) => r.outcome === "create") || status?.recordsStale === true;
 }

@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +27,8 @@ vi.mock("../../records/cache", async (original) => {
 
 import { API_BASE_URL } from "../../../test/accountHarness";
 import { setInstantPacing, userInfoOk, USER_ID, VALID_KEY } from "../../../test/hevyHarness";
-import { fakeImportApi } from "../../../test/hevyImportFakes";
+import { fakeImportApi, generateHevyWorkouts } from "../../../test/hevyImportFakes";
+import { finishRequests, importButton, realBatches, setupImportRun, toSummary } from "../../../test/hevyImportRun";
 import { server } from "../../../test/msw/server";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
@@ -97,5 +98,114 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
     await user.click(button);
     expect(await screen.findByText("Records updated.")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("button", { name: "Finish the last step" })).toBeNull());
+  });
+});
+
+const doneHeading = () => screen.findByRole("heading", { level: 2, name: "Done" }, { timeout: 5000 });
+
+describe("20.1 AC22 — finish after the run", () => {
+  it("after the last batch: one finish with no body, Updating your records… then Records updated.", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(30) });
+    const release = imports.gateFinish();
+    const { user } = await toSummary();
+    await user.click(importButton());
+    expect(await screen.findByText("Updating your records…")).toHaveAttribute("role", "status");
+    release();
+    await doneHeading();
+    expect(await screen.findByText("Records updated.")).toHaveAttribute("role", "status");
+    expect(finishRequests(imports)).toEqual([{ path: "/v1/hevy/import/finish", method: "POST", contentType: null, body: undefined }]);
+  });
+
+  it("a failed finish says so with Try again; the Hevy screen shows the banner until a finish succeeds", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(3) });
+    const { user } = await toSummary();
+    imports.failFinish([500]);
+    await user.click(importButton());
+    await doneHeading();
+    expect(await screen.findByText("Your workouts are in, but updating your records didn't finish.")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("link", { name: "Back to Hevy" })[0]!);
+    const banner = await screen.findByRole("region", { name: "Your last import didn't finish updating your records." });
+    await user.click(within(banner).getByRole("button", { name: "Finish the last step" }));
+    expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+    expect(finishRequests(imports)).toHaveLength(2);
+  });
+
+  it("Try again on the done screen finishes and says so", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(3) });
+    const { user } = await toSummary();
+    imports.failFinish([500]);
+    await user.click(importButton());
+    await doneHeading();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(finishRequests(imports)).toHaveLength(2);
+  });
+
+  it("a run that created nothing, with records not stale, sends no finish", async () => {
+    const workouts = generateHevyWorkouts(3);
+    const { imports } = setupImportRun(auth, { workouts, imports: { duplicateOf: new Map(workouts.map((w, i) => [w.id, `00000000-0000-4000-8000-00000000000${i}`])) } });
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await doneHeading();
+    expect(realBatches(imports)).toHaveLength(1);
+    expect(finishRequests(imports)).toEqual([]);
+    expect(screen.queryByText("Records updated.")).toBeNull();
+  });
+
+  it("Finish up from Stopped sends the finish once", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(60) });
+    const release = imports.gateRealBatch(1);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    release();
+    const finishUp = await screen.findByRole("button", { name: "Finish up" });
+    act(() => {
+      finishUp.click();
+      finishUp.click();
+    });
+    await doneHeading();
+    expect(finishRequests(imports)).toHaveLength(1);
+    expect(realBatches(imports)).toHaveLength(1);
+  });
+
+  it("refreshes the caches once after the run and once after the finish (AC24)", async () => {
+    setupImportRun(auth, { workouts: generateHevyWorkouts(3) });
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await doneHeading();
+    await screen.findByText("Records updated.");
+    expect(caches.imported).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("20.1 AC22 — no overlap (Review Focus 6)", () => {
+  it("Stop during a slow batch, then Finish up: the finish starts after the batch's reply", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(60), imports: { delayMs: 30 } });
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    await user.click(await screen.findByRole("button", { name: "Finish up" }));
+    await doneHeading();
+    expect(imports.log.map((r) => r.path).slice(-2)).toEqual(["/v1/hevy/import/workouts", "/v1/hevy/import/finish"]);
+    expect(imports.concurrency.maxInFlight).toBe(1);
+  });
+
+  it("leaving mid-batch, then the banner's finish: it waits for that batch", async () => {
+    const { imports } = setupImportRun(auth, { workouts: generateHevyWorkouts(60) });
+    const release = imports.gateRealBatch(2);
+    const { user } = await toSummary();
+    await user.click(importButton());
+    await screen.findByText(/^Importing… 25 of 60/);
+    await user.click(screen.getByRole("link", { name: /Back to Hevy/ }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Stop the import?" })).getByRole("button", { name: "Stop and leave" }));
+    await screen.findByRole("heading", { level: 1, name: "Hevy" });
+    release();
+    const banner = await screen.findByRole("region", { name: "Your last import didn't finish updating your records." });
+    await user.click(within(banner).getByRole("button", { name: "Finish the last step" }));
+    expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+    expect(imports.log.map((r) => r.path).slice(-2)).toEqual(["/v1/hevy/import/workouts", "/v1/hevy/import/finish"]);
+    expect(imports.concurrency.maxInFlight).toBe(1);
   });
 });

@@ -14,6 +14,7 @@ import { ME_QUERY_KEY } from "../features/me/useMe";
 import { createPacer } from "../features/hevy/client/pacer";
 import { hevyFixtures } from "./hevyFixtures";
 import { HevyScreen } from "../features/hevy/HevyScreen";
+import { setImportWaitForTests } from "../features/hevy/import/importWait";
 import { hevyKeyStore } from "../features/hevy/keyStore";
 import { setRetrySleepForTests, setSharedPacerForTests } from "../features/hevy/useHevyClient";
 import { memoryStorageAdapter } from "../storage/storage";
@@ -48,6 +49,11 @@ export function templatesHandler(templates: readonly unknown[], opts: { perPage?
 export function setInstantPacing(): void {
   setSharedPacerForTests(createPacer({ now: () => Date.now(), sleep: async () => {} }));
   setRetrySleepForTests(async () => {});
+  // Spec 20.1 Phase B: the import run's gap, retry and routine waits; an abort still ends the wait.
+  setImportWaitForTests(async (_ms, signal) => {
+    await Promise.resolve();
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  });
 }
 
 export function clearHevyKey(): void {
