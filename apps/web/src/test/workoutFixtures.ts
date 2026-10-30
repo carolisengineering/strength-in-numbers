@@ -52,6 +52,8 @@ export function makeSet(overrides: Record<string, unknown> = {}): SetEntry {
 
 export interface ExerciseSpec {
   id?: string;
+  /** Spec 20.2: the catalog exercise; minted when absent. */
+  exerciseId?: string;
   modality: Modality;
   name?: string;
   sets?: SetEntry[];
@@ -117,7 +119,7 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         id: weId,
         workoutId: id,
         position,
-        exerciseId: nextId(),
+        exerciseId: spec.exerciseId ?? nextId(),
         exerciseNameSnapshot: spec.name ?? `Exercise ${position + 1}`,
         modalitySnapshot: spec.modality,
         notes: spec.notes ?? null,
