@@ -302,7 +302,8 @@ function sectionRoute(w, m, p, raw) {
 }
 
 // --------------------------------------------------------------- layout evidence
-// The app shell is a 100dvh grid whose <main> scrolls, so window scrolling / Playwright fullPage
+// The app shell is a fixed, full-screen grid whose <main> scrolls (it is the frame, not a pinned layer: the
+// pinned checks below stop at it), so window scrolling / Playwright fullPage
 // see nothing below the fold. Find the element that actually scrolls and tag it.
 async function markScroller(page) {
   return page.evaluate(() => {
@@ -327,7 +328,7 @@ async function layoutDump(page) {
     const vw = window.innerWidth, vh = window.innerHeight;
     const scrollH = document.documentElement.scrollHeight;
     const pinnedOf = (el) => {
-      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+      for (let n = el; n && n !== document.documentElement && !n.matches("[data-testid=app-shell]"); n = n.parentElement) {
         const pos = getComputedStyle(n).position;
         if (pos === "fixed" || pos === "sticky") return pos;
       }
@@ -408,7 +409,7 @@ async function pinnedCoverage(page) {
       const modal = [...document.querySelectorAll("dialog")].find((d) => d.open && d.matches(":modal"));
       if (modal) return [];
       const pinnedOf = (el) => {
-        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        for (let n = el; n && n !== document.documentElement && !n.matches("[data-testid=app-shell]"); n = n.parentElement) {
           const pos = getComputedStyle(n).position;
           if (pos === "fixed" || pos === "sticky") return n;
         }
@@ -419,7 +420,7 @@ async function pinnedCoverage(page) {
       const pinnedRoots = new Set();
       for (const el of document.querySelectorAll("body *")) {
         const pos = getComputedStyle(el).position;
-        if ((pos === "fixed" || pos === "sticky") && vis(el)) pinnedRoots.add(el);
+        if ((pos === "fixed" || pos === "sticky") && vis(el) && !el.matches("[data-testid=app-shell]")) pinnedRoots.add(el);
       }
       const content = [...document.querySelectorAll("button, [role=button], a, input, select, textarea, h1, h2, h3, p, li, label")]
         .filter((el) => vis(el) && !pinnedOf(el));
@@ -599,6 +600,23 @@ try {
       await page.keyboard.press("Escape");
       await page.waitForTimeout(300);
     });
+    // #206: the keypad up. Chromium has no on-screen keyboard, so this sets what ui/visualViewport.ts would while
+    // one covers the bottom 336 px of a 390 × 844 phone; the bar should sit right on it, with no nav. Read the
+    // viewport shot: the -full shot keeps the 508 px frame at the top of a taller viewport, which is not a phone.
+    if (device === "mobile") {
+      await tryStep("keyboard up", async () => {
+        await go("/app/workouts");
+        await page.getByTestId("session-bar").scrollIntoViewIfNeeded();
+        await page.evaluate(() => {
+          const root = document.documentElement;
+          root.style.setProperty("--app-top", "0px");
+          root.style.setProperty("--app-height", "508px");
+          root.setAttribute("data-keyboard", "open");
+        });
+        await shoot(page, device, "01k-workout-keyboard-up", "#206: the session with a keypad up — the frame is the 508 px above it, the nav steps aside, the Log bar sits on the keypad");
+        // The next step's go() reloads the page, which clears all three.
+      });
+    }
     await tryStep("exercise options", async () => {
       await go("/app/workouts");
       await page.locator('button[aria-expanded="false"]').filter({ hasText: /option|more|…/i }).first().click({ timeout: 3000 });

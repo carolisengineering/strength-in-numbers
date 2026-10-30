@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 
 import { useMe } from "../features/me/useMe";
+import { trackKeyboardFrame } from "../ui/visualViewport";
 import styles from "./AppShell.module.css";
 import { NAV_ITEMS, navItemFor } from "./navItems";
 
@@ -21,6 +23,9 @@ export function AppShell() {
   // `||`, not `??`: a stored "" (the API stores displayName verbatim) should
   // fall back to the email too.
   const userLabel = me?.displayName || me?.email || "";
+
+  // While an on-screen keyboard is up the frame is the visible part of the screen (#206).
+  useEffect(() => trackKeyboardFrame(), []);
 
   return (
     <div className={styles.shell} data-testid="app-shell">
