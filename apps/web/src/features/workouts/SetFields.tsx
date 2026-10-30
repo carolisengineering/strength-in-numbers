@@ -54,6 +54,27 @@ function TextField({ name, label, inputMode, value, error, onChange, id, classNa
   );
 }
 
+/** A value and its unit select in one row under the value's label, so an error goes under both and never pulls the
+ *  select away from its value (#203). The label names the value; the select keeps its own `aria-label`. */
+function UnitField({ name, label, value, error, onChange, id, unitLabel, unit, units, onUnitChange }: { name: string; label: string; value: string; error?: string | undefined; onChange: (v: string) => void; id: (n: string) => string; unitLabel: string; unit: string; units: readonly string[]; onUnitChange: (v: string) => void }) {
+  return (
+    <Field id={id(name)} label={label} error={error}>
+      {(control) => (
+        <div className={styles.withUnit}>
+          <input {...control} className={styles.input} type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
+          <select className={styles.unit} aria-label={unitLabel} value={unit} onChange={(e) => onUnitChange(e.target.value)}>
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </Field>
+  );
+}
+
 /**
  * The modality-driven inputs, shared by the entry panel and the edit sheet (Spec 06.1 §5.4, D8). The visible measures
  * are exactly the modality's required ones (`visibleMeasures`), so the UI cannot construct a body the server's
@@ -75,29 +96,13 @@ function SheetFields(props: Common) {
           switch (measure) {
             case "distance":
               return (
-                <div className={styles.withUnit} key={measure}>
-                  <TextField name="distance" label="Distance" inputMode="decimal" value={draft.distance} error={errors.distance} onChange={(v) => onChange("distance", v)} id={id} className={styles.input} />
-                  <select className={styles.unit} aria-label="Distance unit" value={draft.distanceUnit} onChange={(e) => onChange("distanceUnit", e.target.value)}>
-                    {DISTANCE_UNITS.map((unit) => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <UnitField key={measure} name="distance" label="Distance" value={draft.distance} error={errors.distance} onChange={(v) => onChange("distance", v)} id={id}
+                  unitLabel="Distance unit" unit={draft.distanceUnit} units={DISTANCE_UNITS} onUnitChange={(v) => onChange("distanceUnit", v)} />
               );
             case "weight":
               return (
-                <div className={styles.withUnit} key={measure}>
-                  <TextField name="weight" label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"} inputMode="decimal" value={draft.weight} error={errors.weight} onChange={(v) => onChange("weight", v)} id={id} className={styles.input} />
-                  <select className={styles.unit} aria-label="Weight unit" value={draft.weightUnit} onChange={(e) => onChange("weightUnit", e.target.value)}>
-                    {WEIGHT_UNITS.map((unit) => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <UnitField key={measure} name="weight" label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"} value={draft.weight} error={errors.weight} onChange={(v) => onChange("weight", v)} id={id}
+                  unitLabel="Weight unit" unit={draft.weightUnit} units={WEIGHT_UNITS} onUnitChange={(v) => onChange("weightUnit", v)} />
               );
             case "reps":
               return <TextField key={measure} name="reps" label="Reps" inputMode="numeric" value={draft.reps} error={errors.reps} onChange={(v) => onChange("reps", v)} id={id} className={styles.input} />;

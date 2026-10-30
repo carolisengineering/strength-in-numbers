@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -18,4 +22,35 @@ describe("05.3 AC21 — feet in Set options", () => {
     await userEvent.click(screen.getByRole("button", { name: /Set options/ }));
     expect(options()).toEqual(["m", "km", "mi", "ft"]);
   });
+});
+
+// #203: in the New set sheet a "Required" under Reps dropped the Weight column a line, because the columns were
+// bottom-aligned. They are top-aligned now, and the unit select sits in the value's own row, so an error goes under
+// both and never pulls the select away from its value.
+describe("#203 — the sheet's fields line up when one shows an error", () => {
+  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.module.css"), "utf8");
+  const rule = (selector: string) =>
+    css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+  const weightProps = { ...props, modality: "weight_reps" as const, errors: { weight: "Required", reps: "Required" } };
+
+  it("top-aligns the measure columns, so a taller column never moves its neighbor", () => {
+    expect(rule(".measures")).toMatch(/align-items:\s*start/);
+    expect(css).not.toMatch(/align-items:\s*(flex-)?end/);
+  });
+
+  for (const [measure, label, unit, modality] of [
+    ["weight", "Weight", "Weight unit", "weight_reps"],
+    ["distance", "Distance", "Distance unit", "distance_duration"],
+  ] as const) {
+    it(`puts the ${measure} value and its unit in one row, with the error under the row`, () => {
+      render(<SetFields {...weightProps} modality={modality} errors={{ [measure]: "Required" }} variant="sheet" />);
+      const input = screen.getByLabelText(label);
+      const select = screen.getByRole("combobox", { name: unit });
+      expect(select.parentElement).toBe(input.parentElement);
+      const error = screen.getByRole("alert");
+      expect(input.parentElement?.nextElementSibling).toBe(error);
+      expect(input).toHaveAttribute("aria-describedby", error.id);
+      expect(input).toHaveAttribute("aria-invalid", "true");
+    });
+  }
 });
