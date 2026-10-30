@@ -1,6 +1,6 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { buildHevyWorkout, lineageRootId, type HevyStatus } from "@sin/core";
+import { buildHevyWorkout, type HevyStatus } from "@sin/core";
 
 import type { ApiClient } from "../../../api/client";
 import { useApi } from "../../../auth/useApi";
@@ -16,6 +16,7 @@ import { HEVY_KEYS } from "../keys";
 import { hevyMappingQuery } from "../mapping/useHevyMapping";
 import { useHevyClient } from "../useHevyClient";
 import { hevyStatusQuery } from "../useHevyStatus";
+import { rootOfRows } from "./rootOf";
 import { hevyLinkQuery } from "./useHevyLink";
 import { useSendRunner } from "./useSendToHevy";
 
@@ -50,23 +51,22 @@ async function ensureOwner(c: Current): Promise<void> {
 
 /** AC25's checks, in order; true only if the workout should be sent now. A rejected read is a silent no. */
 async function shouldSend(workoutId: string, read: () => Current): Promise<boolean> {
-  // 1. First, so a non-owner (or the owner with it off) makes no request at all.
+  // 1. First, so with it off nothing is read at all.
   if (!isHevyAutoPushOn()) return false;
+  // 2. A key on this device: the preference outlives logout, the key doesn't, so the next person reads nothing either.
+  if (read().hevy === null) return false;
+  // 3. Online: offline there is no begin, so no claim shows "Sending to Hevy…" for two minutes.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
   try {
-    // 2. The owner gate.
+    // 4. The owner gate.
     await ensureOwner(read());
-    // 3. A key on this device.
-    if (read().hevy === null) return false;
-    // 4. Online: offline there is no begin, so no claim shows "Sending to Hevy…" for two minutes.
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
     const c = read();
     // 5. Fresh, and finished.
     const detail = await c.queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => c.workouts.getById(workoutId), staleTime: 0, ...once });
     if (detail.endedAt === null) return false;
     // 6–7. Every exercise matched (O1: an unmatched one waits for the button).
     const mapping = await c.queryClient.fetchQuery({ ...hevyMappingQuery(c.api), ...once });
-    const roots = new Map<string, string>(c.catalog.getState().rows.map((row) => [row.id, lineageRootId(row)]));
-    if (!buildHevyWorkout(detail, mapping, { rootOf: (id) => roots.get(id) ?? id }).ok) return false;
+    if (!buildHevyWorkout(detail, mapping, { rootOf: rootOfRows(c.catalog.getState().rows) }).ok) return false;
     // 8. Create only: never a workout already linked (or being sent).
     const link = await c.queryClient.fetchQuery({ ...hevyLinkQuery(c.api, workoutId), ...once });
     return link.state === "none";
@@ -82,7 +82,8 @@ async function autoPush(workoutId: string, read: () => Current): Promise<void> {
   try {
     if (!(await shouldSend(workoutId, read))) return;
     // D6 / owner answer Q5: if a send lands between the link read and this begin, the run releases instead of updating.
-    void read().runner(workoutId, { kind: "send" }, { createOnly: true });
+    // The outcome is the section's to show; anything the run itself throws stays silent here too.
+    read().runner(workoutId, { kind: "send" }, { createOnly: true }).catch(() => {});
   } finally {
     checking.delete(workoutId);
   }

@@ -153,11 +153,13 @@ describe("20.2 AC25 — preconditions", () => {
     expect(s.hevy.calls).toEqual([]);
   });
 
-  it("no key on this device: no begin and no Hevy request", async () => {
+  it("no key on this device (the preference outlives logout, the key doesn't): no request at all", async () => {
     const s = setupHook({ key: false });
     emitWorkoutFinished({ workoutId: WORKOUT_ID });
     await settle();
-    expect(begins(s)).toEqual([]);
+    expect(s.n).toEqual({ status: 0, mapping: 0 });
+    expect(s.getById).not.toHaveBeenCalled();
+    expect(s.link.log).toEqual([]);
     expect(s.hevy.calls).toEqual([]);
   });
 

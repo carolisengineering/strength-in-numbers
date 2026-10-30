@@ -1,6 +1,6 @@
 import { useIsMutating, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { lineageRootId, type HevyLinkState } from "@sin/core";
+import type { HevyLinkState } from "@sin/core";
 
 import type { ApiClient } from "../../../api/client";
 import { useApi } from "../../../auth/useApi";
@@ -14,6 +14,7 @@ import { HEVY_KEYS, HEVY_SEND_KEYS } from "../keys";
 import { hevyMappingQuery } from "../mapping/useHevyMapping";
 import { sleep } from "../sharedClient";
 import { useHevyClient } from "../useHevyClient";
+import { rootOfRows } from "./rootOf";
 import { runSend, type SendIntent, type SendOutcome } from "./runSend";
 
 /**
@@ -82,15 +83,15 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
     mutationFn: async ({ intent, leaveOut, createOnly }: SendVariables): Promise<SendOutcome> => {
       // AC3 guard: the section never offers a button without a key.
       if (ctx.hevy === null) return { kind: "failed", reason: "bad_key" };
-      // The rows as they are at the tap (not a subscription); an unknown exercise is its own root.
-      const roots = new Map<string, string>(ctx.catalog.getState().rows.map((row) => [row.id, lineageRootId(row)]));
+      // The rows as they are at the tap (not a subscription).
+      const rootOf = rootOfRows(ctx.catalog.getState().rows);
       return runSend(intent, {
         workoutId,
         // AC16: both reads fail at once offline (`networkMode: "always"`), never paused and sent later.
         getDetail: () =>
           queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => ctx.workouts.getById(workoutId), staleTime: 0, retry: false, networkMode: "always" }),
         getMapping: () => queryClient.fetchQuery({ ...hevyMappingQuery(ctx.api), networkMode: "always" }),
-        rootOf: (id) => roots.get(id) ?? id,
+        rootOf,
         hevy: ctx.hevy,
         api: ctx.api,
         sleep: (ms) => sendSleep(ms),

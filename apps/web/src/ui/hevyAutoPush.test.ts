@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { clearUserData, isUserDataKey } from "../storage/clearUserData";
 import { memoryStorageAdapter, type StorageAdapter } from "../storage/storage";
@@ -50,5 +50,28 @@ describe("20.2 AC23 — the auto-push preference", () => {
     const storage = memoryStorageAdapter({ [HEVY_AUTO_PUSH_KEY]: "on" });
     clearUserData(storage);
     expect(storage.get(HEVY_AUTO_PUSH_KEY)).toBe("on");
+  });
+});
+
+describe("20.2 AC23 — a write the device's storage refuses", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setHevyAutoPush(false);
+    window.localStorage.clear();
+  });
+
+  it("holds for this page view, so the switch and auto-push agree; a later successful write takes over", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    setHevyAutoPush(true);
+    expect(window.localStorage.getItem(HEVY_AUTO_PUSH_KEY)).toBeNull();
+    expect(isHevyAutoPushOn()).toBe(true);
+    vi.restoreAllMocks();
+    setHevyAutoPush(false);
+    expect(isHevyAutoPushOn()).toBe(false);
+    setHevyAutoPush(true);
+    expect(window.localStorage.getItem(HEVY_AUTO_PUSH_KEY)).toBe("on");
+    expect(isHevyAutoPushOn()).toBe(true);
   });
 });

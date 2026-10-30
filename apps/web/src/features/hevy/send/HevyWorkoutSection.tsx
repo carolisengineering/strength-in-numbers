@@ -1,19 +1,18 @@
-import { buildHevyWorkout, lineageRootId, type UnmappedExercise, type WorkoutDetail } from "@sin/core";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { buildHevyWorkout, type UnmappedExercise, type WorkoutDetail } from "@sin/core";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link } from "react-router";
 
-import { useApi } from "../../../auth/useApi";
 import { Button } from "../../../ui/Button";
 import { isHevyAutoPushOn } from "../../../ui/hevyAutoPush";
 import { useCatalogStore } from "../../catalog/CatalogProvider";
-import { hevyMappingQuery } from "../mapping/useHevyMapping";
+import { useHevyMapping } from "../mapping/useHevyMapping";
 import { HEVY_PATH } from "../paths";
 import { useHevyKey } from "../useHevyKey";
 import { useHevyEnabled } from "../useHevyStatus";
 import { MatchForHevySheet } from "./MatchForHevySheet";
 import { HEVY_SEND_COPY, hevyFailureSentence, needsMatching, noticeSentence, withDay, type SendNotice } from "./messages";
 
+import { rootOfRows } from "./rootOf";
 import { problemSentence, type SendIntent } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
@@ -98,14 +97,16 @@ function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: st
  * Mounted only then, so the mapping is read only then; nothing shows while it loads or if it fails.
  */
 function NeedsMatchingLine({ workout }: { workout: WorkoutDetail }) {
-  const api = useApi();
   const catalog = useCatalogStore();
-  const mapping = useQuery(hevyMappingQuery(api));
-  if (mapping.data === undefined) return null;
-  const roots = new Map<string, string>(catalog.getState().rows.map((row) => [row.id, lineageRootId(row)]));
-  const built = buildHevyWorkout(workout, mapping.data, { rootOf: (id) => roots.get(id) ?? id });
-  if (built.ok) return null;
-  return <p className={styles.text}>{needsMatching(built.unmapped.length)}</p>;
+  // Subscribed, so a sync (a fork reaching the store) recounts; the store itself is not refreshed from here.
+  const rows = useSyncExternalStore(catalog.subscribe, () => catalog.getState().rows);
+  const mapping = useHevyMapping();
+  const unmatched = useMemo(() => {
+    if (mapping.data === undefined) return 0;
+    const built = buildHevyWorkout(workout, mapping.data, { rootOf: rootOfRows(rows) });
+    return built.ok ? 0 : built.unmapped.length;
+  }, [workout, mapping.data, rows]);
+  return unmatched === 0 ? null : <p className={styles.text}>{needsMatching(unmatched)}</p>;
 }
 
 /**

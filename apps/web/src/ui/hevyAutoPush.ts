@@ -7,8 +7,15 @@ import { localStorageAdapter, type StorageAdapter } from "../storage/storage";
  */
 export const HEVY_AUTO_PUSH_KEY = "sin:pref:hevy-auto-push";
 
+/**
+ * A choice the device's storage refused (private mode, a full quota): it holds for this page view, so the switch and
+ * what auto-push does agree. `null` once a write succeeds. Only for the device's own storage, not a passed adapter.
+ */
+let unsaved: boolean | null = null;
+
 /** The stored choice; anything unreadable or unknown means off. Never throws. */
 export function isHevyAutoPushOn(storage?: StorageAdapter): boolean {
+  if (storage === undefined && unsaved !== null) return unsaved;
   try {
     return (storage ?? localStorageAdapter()).get(HEVY_AUTO_PUSH_KEY) === "on";
   } catch {
@@ -16,13 +23,14 @@ export function isHevyAutoPushOn(storage?: StorageAdapter): boolean {
   }
 }
 
-/** Store a choice; off removes the key. A failed write is ignored (the choice holds for this page view only). */
+/** Store a choice; off removes the key. A failed write holds for this page view only. */
 export function setHevyAutoPush(on: boolean, storage?: StorageAdapter): void {
   try {
     const store = storage ?? localStorageAdapter();
     if (on) store.set(HEVY_AUTO_PUSH_KEY, "on");
     else store.remove(HEVY_AUTO_PUSH_KEY);
+    if (storage === undefined) unsaved = null;
   } catch {
-    // Storage is unavailable.
+    if (storage === undefined) unsaved = on;
   }
 }
