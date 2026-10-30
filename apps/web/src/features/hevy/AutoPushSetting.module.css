@@ -1,0 +1,28 @@
+/* Spec 20.2 AC23: one checkbox row on the Hevy screen, as Keep screen on (#108) is on Profile. */
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.box {
+  width: var(--space-6);
+  height: var(--space-6);
+  margin: 0;
+  accent-color: var(--color-selected);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}

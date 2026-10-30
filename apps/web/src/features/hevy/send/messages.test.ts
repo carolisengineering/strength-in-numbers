@@ -6,7 +6,7 @@ import { HEVY_EXPORT_NOTICES } from "@sin/core";
 
 import type { HevyErrorKind } from "../client/hevyErrors";
 import { HEVY_COPY } from "../messages";
-import { HEVY_SEND_COPY, hevyFailureSentence, noticeSentence } from "./messages";
+import { HEVY_SEND_COPY, hevyFailureSentence, needsMatching, noticeSentence } from "./messages";
 
 const KINDS: readonly HevyErrorKind[] = ["bad_key", "limit", "rate_limited", "rejected", "not_found", "server", "network", "unexpected_reply", "aborted"];
 
@@ -53,5 +53,17 @@ describe("20.2 AC15 — notice sentences", () => {
     [{ code: "left_out" as const, name: "Echo Bike" }, "Echo Bike was left out."],
   ])("%j", (notice, sentence) => {
     expect(noticeSentence(notice)).toBe(sentence);
+  });
+});
+
+describe("20.2 AC23 / AC25 — auto-push copy", () => {
+  it("the switch label and help, verbatim", () => {
+    expect(HEVY_SEND_COPY.autoPushLabel).toBe("Send each workout to Hevy when I finish it");
+    expect(HEVY_SEND_COPY.autoPushHelp).toBe("Works while the app is open. If something can't be sent, the workout's screen has a Send to Hevy button.");
+  });
+
+  it("the needs-matching line, singular and plural", () => {
+    expect(needsMatching(1)).toBe("1 exercise needs matching before this can go to Hevy.");
+    expect(needsMatching(3)).toBe("3 exercises need matching before this can go to Hevy.");
   });
 });
