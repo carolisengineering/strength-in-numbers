@@ -9,7 +9,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--field-min-width)), 1fr));
   gap: var(--space-3);
-  align-items: end;
+  /* Top: a column made taller by an error or a unit line below it must not move its neighbor (#203). */
+  align-items: start;
 }
 
 .measures > * {
@@ -21,15 +22,21 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--stepper-min-width)), 1fr));
 }
 
-/* A value and its unit select side by side; the unit is a narrow second column. */
+/* A value and its unit select side by side under the value's label; the unit is a narrow second column. */
 .withUnit {
   display: flex;
-  align-items: flex-end;
   gap: var(--space-2);
 }
 
 .withUnit > :first-child {
   flex: 1;
+}
+
+/* The unit select is inside its value's <Field>, which draws it like any control; this only keeps it narrow,
+   outranking Field's full width (`.field :where(select)`) whichever stylesheet loads last. */
+.withUnit > .unit {
+  flex: none;
+  width: auto;
 }
 
 .duration {
@@ -47,14 +54,6 @@
 .unit {
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
-}
-
-.unit {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
 }
 
 /* Spec 17.1 D6: duration and distance keep their fields, sized like the stepper figures. */

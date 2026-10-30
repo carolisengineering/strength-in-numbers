@@ -872,6 +872,12 @@ try {
       await page.getByRole("button", { name: /^Add set to Bench/ }).first().click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "33-edit-add-set", "Add set sheet, copied forward from the last set (Spec 18.0 AC8)");
+      // #203: an error under one field must not move the other; the unit select stays beside its value.
+      const sheet = page.locator("dialog[open]");
+      await sheet.getByLabel("Reps", { exact: true }).fill("");
+      await shoot(page, device, "33b-edit-add-set-reps-required", "#203: Reps empty — Required under Reps; Weight, its unit and Reps stay level");
+      await sheet.getByLabel("Weight", { exact: true }).fill("");
+      await shoot(page, device, "33c-edit-add-set-both-required", "#203: both empty — each Required under its own row; the unit select stays beside the weight");
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Edit details" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
