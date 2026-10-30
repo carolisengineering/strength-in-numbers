@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { readFileSync } from "node:fs";
@@ -68,6 +68,22 @@ describe("20.2 AC23 — the switch", () => {
     window.localStorage.setItem(HEVY_AUTO_PUSH_KEY, "on");
     renderHevyScreen();
     expect(await screen.findByRole("checkbox", { name: LABEL })).toBeChecked();
+  });
+
+  it("minor 264: another tab's change moves the box without a remount", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: true });
+    renderHevyScreen();
+    const box = await screen.findByRole("checkbox", { name: LABEL });
+    const otherTab = (value: string | null) =>
+      act(() => {
+        if (value === null) window.localStorage.removeItem(HEVY_AUTO_PUSH_KEY);
+        else window.localStorage.setItem(HEVY_AUTO_PUSH_KEY, value);
+        window.dispatchEvent(new StorageEvent("storage", { key: HEVY_AUTO_PUSH_KEY, storageArea: window.localStorage }));
+      });
+    otherTab("on");
+    expect(box).toBeChecked();
+    otherTab(null);
+    expect(box).not.toBeChecked();
   });
 
   it("no key: no switch", async () => {

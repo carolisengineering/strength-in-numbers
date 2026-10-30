@@ -1,4 +1,6 @@
-import { localStorageAdapter, type StorageAdapter } from "../storage/storage";
+import { useSyncExternalStore } from "react";
+
+import { localStorageAdapter, watchExternalWrites, type StorageAdapter } from "../storage/storage";
 
 /**
  * Spec 20.2 AC23: "Send each workout to Hevy when I finish it" — off by default, a per-device preference like
@@ -23,6 +25,9 @@ export function isHevyAutoPushOn(storage?: StorageAdapter): boolean {
   }
 }
 
+/** This tab's readers of the device's choice (minor 264). Only a write to the device's own storage tells them. */
+const listeners = new Set<() => void>();
+
 /** Store a choice; off removes the key. A failed write holds for this page view only. */
 export function setHevyAutoPush(on: boolean, storage?: StorageAdapter): void {
   try {
@@ -33,4 +38,26 @@ export function setHevyAutoPush(on: boolean, storage?: StorageAdapter): void {
   } catch {
     if (storage === undefined) unsaved = on;
   }
+  if (storage === undefined) listeners.forEach((l) => l());
+}
+
+/**
+ * Minor 264: hears a change to the device's choice, from this tab or another (the `storage` event). Another tab's write
+ * is what storage now holds, so it replaces a choice this page view kept after a refused write.
+ */
+export function subscribeHevyAutoPush(listener: () => void): () => void {
+  listeners.add(listener);
+  const unwatch = watchExternalWrites(HEVY_AUTO_PUSH_KEY, () => {
+    unsaved = null;
+    listener();
+  });
+  return () => {
+    listeners.delete(listener);
+    unwatch();
+  };
+}
+
+/** The device's choice, following every change (the switch, and what the workout screen shows with it). */
+export function useHevyAutoPushOn(): boolean {
+  return useSyncExternalStore(subscribeHevyAutoPush, () => isHevyAutoPushOn());
 }

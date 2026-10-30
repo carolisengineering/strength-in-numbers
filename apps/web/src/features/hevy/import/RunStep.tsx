@@ -10,12 +10,14 @@ import {
   FINISHING,
   KEEP_TAB_OPEN,
   PAUSED,
+  pausedLine,
   RESUME,
   ROUTINES_RUN_TITLE,
   RUN_TITLE,
   runningLine,
   STOP,
   STOP_AUTH,
+  STOP_ERROR,
   STOP_GATE,
   STOP_INVALID,
   stopInvalidPath,
@@ -79,7 +81,8 @@ export function RunStep({
       <p className={`${styles.status} ${styles.runLine}`} role="status">
         {mounted && !stopped ? (
           <>
-            <span>{runningLine(run.sent, run.total, skipped)}</span>
+            {/* Minor 252: paused says so, as the alert below it does. */}
+            <span>{state.step === "paused" ? pausedLine(run.sent, run.total) : runningLine(run.sent, run.total, skipped)}</span>
             {state.step === "running" && run.batchDate !== null ? (
               <>
                 {" "}
@@ -135,10 +138,15 @@ export function RunStep({
               {STOP_AUTH}
             </p>
           ) : null}
-          {reason?.kind === "user" || reason?.kind === "invalid" ? (
+          {reason?.kind === "error" ? (
+            <p className={styles.failure} role="alert">
+              {STOP_ERROR}
+            </p>
+          ) : null}
+          {reason?.kind === "user" || reason?.kind === "invalid" || reason?.kind === "error" ? (
             <div className={styles.actions}>
               {/* Nothing left to send after a Stop during the last batch: Finish up is the way on. */}
-              {reason.kind === "user" && run.sent < run.total ? (
+              {(reason.kind === "user" || reason.kind === "error") && run.sent < run.total ? (
                 <Button variant="secondary" onClick={onResume}>
                   {RESUME}
                 </Button>

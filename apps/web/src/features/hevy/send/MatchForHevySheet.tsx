@@ -1,4 +1,4 @@
-import { lineageRootId, sinEquipmentToHevy, sinMuscleToHevy, type HevyTemplate, type HevyType, type UnmappedExercise } from "@sin/core";
+import { sinEquipmentToHevy, sinMuscleToHevy, type HevyTemplate, type HevyType, type UnmappedExercise } from "@sin/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,6 +16,7 @@ import { useHevyClient } from "../useHevyClient";
 import { acceptableTemplates, allowedHevyTypes, canContinue, createDraftFor, initialExportCards, leftOut, upsertsFor, type CreateDraft, type ExportCard } from "./exportPairing";
 import { hevyExerciseCreateBody } from "./hevyExerciseCreateBody";
 import { HEVY_SEND_COPY as C, hevyFailureSentence } from "./messages";
+import { rootOfRows } from "./rootOf";
 import styles from "./MatchForHevySheet.module.css";
 
 // Plan copy.
@@ -31,9 +32,14 @@ type Mode = "choose" | "pick" | "create";
 // Plan copy.
 const ALREADY_IN_HEVY = "Hevy already has an exercise with this title. Pick it instead.";
 const AT_LEAST_ONE = "At least one exercise has to go to Hevy.";
+// Plan copy (minor 259).
+const NOT_SURE_CREATED = "Not sure whether Hevy created it. Check Hevy before creating it again.";
 const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-/** Whether Hevy already holds a custom exercise with this title (code review 1/2). */
-const hasCustomTitled = (templates: readonly HevyTemplate[] | undefined, title: string) => (templates ?? []).some((t) => t.is_custom && sameTitle(t.title, title));
+/** Hevy's custom exercise with this title, if it holds one (code review 1/2). */
+const customTitled = (templates: readonly HevyTemplate[] | undefined, title: string) => (templates ?? []).find((t) => t.is_custom && sameTitle(t.title, title));
+const hasCustomTitled = (templates: readonly HevyTemplate[] | undefined, title: string) => customTitled(templates, title) !== undefined;
+/** A failed create that may still have reached Hevy: the network, a `5xx`, an unreadable reply (as AC9 for a send). */
+const mayHaveCreated = (err: unknown) => !(err instanceof HevyError) || err.kind === "network" || err.kind === "server" || err.kind === "unexpected_reply";
 
 /**
  * Spec 20.2 AC13 / AC14, §5.2: "Match exercises for Hevy" — one card per unmapped exercise: pick a Hevy exercise,
@@ -60,10 +66,8 @@ export function MatchForHevySheet({
   const client = useHevyClient();
   const queryClient = useQueryClient();
   const rows = catalog.state.rows;
-  const rootOf = useMemo(() => {
-    const roots = new Map<string, string>(rows.map((r) => [r.id, lineageRootId(r)]));
-    return (id: string) => roots.get(id) ?? id;
-  }, [rows]);
+  // Minor 265: the send's own lookup, so the sheet and the send agree on which pair an exercise has.
+  const rootOf = useMemo(() => rootOfRows(rows), [rows]);
   const [cards, setCards] = useState<ExportCard[]>(() => initialExportCards(unmapped, mapping.data ?? { pairs: [], sectionRules: [] }, rootOf));
   const [modes, setModes] = useState<Record<string, Mode>>({});
   const [searches, setSearches] = useState<Record<string, string>>({});
@@ -71,6 +75,11 @@ export function MatchForHevySheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * Minor 259: the cards whose create failed without a clear answer, with the draft that was sent; they offer Check
+   * Hevy instead of Create, and the check looks for what was sent, whatever the fields say now.
+   */
+  const [unsure, setUnsure] = useState<Record<string, CreateDraft | undefined>>({});
   /** AC14: one create per card, never twice (a ref, so two clicks in one tick make one request). */
   const creating = useRef(new Set<string>());
   /**
@@ -116,11 +125,7 @@ export function MatchForHevySheet({
       const fresh = await queryClient.fetchQuery({ ...hevyTemplatesQuery(client), staleTime: 0 });
       if (hasCustomTitled(fresh, draft.title)) return;
       const reply = await client.createTemplate(hevyExerciseCreateBody(draft));
-      created.current.set(id, { draft, id: reply.id });
-      const choice = { kind: "create" as const, draft, created: { id: reply.id } };
-      setChoice(id, choice);
-      // Saved at once, so a Cancel can't leave Hevy holding an exercise nothing pairs (Continue saves it again).
-      patch.mutateAsync({ upsert: upsertsFor([{ exercise, choice }]) }).catch(() => {});
+      took(exercise, draft, reply.id);
     } catch (err) {
       if (err instanceof HevyError && err.kind === "limit") {
         setErrors((e) => ({ ...e, [id]: C.templateLimit }));
@@ -129,8 +134,40 @@ export function MatchForHevySheet({
       } else {
         const kind = err instanceof HevyError ? err.kind : "unexpected_reply";
         if (kind === "server" || kind === "unexpected_reply") reportError(err, { source: "hevy-send", op: "create-template" });
-        setErrors((e) => ({ ...e, [id]: hevyFailureSentence(kind) }));
+        // Minor 259: Hevy may have made it; a second tap could make a second, so the card asks Hevy instead.
+        if (mayHaveCreated(err)) setUnsure((u) => ({ ...u, [id]: draft }));
+        setErrors((e) => ({ ...e, [id]: mayHaveCreated(err) ? NOT_SURE_CREATED : hevyFailureSentence(kind) }));
       }
+    } finally {
+      creating.current.delete(id);
+    }
+  };
+
+  /** The create landed (or a check found it): the card pairs with it, saved at once. */
+  const took = (exercise: UnmappedExercise, draft: CreateDraft, hevyId: string) => {
+    created.current.set(exercise.exerciseId, { draft, id: hevyId });
+    const choice = { kind: "create" as const, draft, created: { id: hevyId } };
+    setChoice(exercise.exerciseId, choice);
+    setUnsure((u) => ({ ...u, [exercise.exerciseId]: undefined }));
+    // Saved at once, so a Cancel can't leave Hevy holding an exercise nothing pairs (Continue saves it again).
+    patch.mutateAsync({ upsert: upsertsFor([{ exercise, choice }]) }).catch(() => {});
+  };
+
+  /** Minor 259: after an unclear create, read Hevy's list fresh: found, the card takes it; not there, Create is back. */
+  const checkCreate = async (exercise: UnmappedExercise) => {
+    const id = exercise.exerciseId;
+    const draft = unsure[id];
+    if (!draft || client === null || creating.current.has(id)) return;
+    creating.current.add(id);
+    setErrors((e) => ({ ...e, [id]: "" }));
+    try {
+      const fresh = await queryClient.fetchQuery({ ...hevyTemplatesQuery(client), staleTime: 0 });
+      const found = customTitled(fresh, draft.title);
+      if (found) took(exercise, draft, found.id);
+      else setUnsure((u) => ({ ...u, [id]: undefined }));
+    } catch (err) {
+      const kind = err instanceof HevyError ? err.kind : "unexpected_reply";
+      setErrors((e) => ({ ...e, [id]: hevyFailureSentence(kind) }));
     } finally {
       creating.current.delete(id);
     }
@@ -252,14 +289,22 @@ export function MatchForHevySheet({
                     <Button variant="secondary" onClick={() => setMode(id, "choose")}>
                       {C.cancel}
                     </Button>
-                    {hasCustomTitled(templates.data, draft.title) ? <p className={styles.error}>{ALREADY_IN_HEVY}</p> : null}
-                    <Button
-                      variant="secondary"
-                      disabled={draft.title.trim() === "" || hasCustomTitled(templates.data, draft.title)}
-                      onClick={() => void confirmCreate(exercise)}
-                    >
-                      {C.create}
-                    </Button>
+                    {unsure[id] !== undefined ? (
+                      <Button variant="secondary" onClick={() => void checkCreate(exercise)}>
+                        {C.checkHevy}
+                      </Button>
+                    ) : (
+                      <>
+                        {hasCustomTitled(templates.data, draft.title) ? <p className={styles.error}>{ALREADY_IN_HEVY}</p> : null}
+                        <Button
+                          variant="secondary"
+                          disabled={draft.title.trim() === "" || hasCustomTitled(templates.data, draft.title)}
+                          onClick={() => void confirmCreate(exercise)}
+                        >
+                          {C.create}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : null}

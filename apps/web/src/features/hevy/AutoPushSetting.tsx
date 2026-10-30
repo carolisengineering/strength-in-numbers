@@ -1,23 +1,23 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 
-import { isHevyAutoPushOn, setHevyAutoPush } from "../../ui/hevyAutoPush";
+import { setHevyAutoPush, useHevyAutoPushOn } from "../../ui/hevyAutoPush";
 import { HEVY_SEND_COPY } from "./send/messages";
 import { useHevyKey } from "./useHevyKey";
 import styles from "./AutoPushSetting.module.css";
 
 /**
  * Spec 20.2 AC23: "Send each workout to Hevy when I finish it". A per-device setting like Keep screen on: stored on
- * this device only, no Save button. Shown only with a key on this device (the screen itself is the owner's).
+ * this device only, no Save button. Shown only with a key on this device (the screen itself is the owner's). It follows
+ * a change made in another tab (minor 264).
  */
 export function AutoPushSetting() {
   const { hasKey } = useHevyKey();
-  const [on, setOn] = useState(() => isHevyAutoPushOn());
+  const on = useHevyAutoPushOn();
   const helpId = useId();
 
   if (!hasKey) return null;
 
   function toggle() {
-    setOn(!on);
     setHevyAutoPush(!on);
   }
 

@@ -80,6 +80,8 @@ export interface ImportState {
   routineProgress: { done: number; total: number } | null;
   /** Phase B: the finish step (AC22). `idle` when none was needed. */
   finish: "idle" | "running" | "ok" | "failed";
+  /** Minor 250: the wrap-up threw after the finish had answered, so the ticked routines may not all exist. */
+  wrapUpFailed: boolean;
 }
 
 export const initialImportState: ImportState = {
@@ -105,6 +107,7 @@ export const initialImportState: ImportState = {
   routineResults: [],
   routineProgress: null,
   finish: "idle",
+  wrapUpFailed: false,
 };
 
 export type ImportAction =
@@ -141,7 +144,9 @@ export type ImportAction =
   /** AC22: the run created nothing and the server says nothing is stale. */
   | { type: "finishSkipped" }
   | { type: "finishDone"; ok: boolean }
-  | { type: "toDone" };
+  | { type: "toDone" }
+  /** Minor 250: the run or its wrap-up threw (no I/O path is expected to). */
+  | { type: "runFailed" };
 
 /** Actions that open a new generation, so they are never ignored as stale. */
 const OPENS_GENERATION = new Set<ImportAction["type"]>(["start", "retryRead", "checkStart", "runStart", "resume"]);
@@ -246,6 +251,18 @@ export function importSession(state: ImportState, action: ImportAction): ImportS
       return { ...state, routineProgress: { done: action.done, total: action.total } };
     case "routinesDone":
       return { ...state, step: "done", routineResults: action.outcomes, routineProgress: null };
+    case "runFailed":
+      // Never left on a busy step: a run still sending stops (Finish up is the way on); a wrap-up goes to the done
+      // screen, with a finish that never answered marked failed so its Try again shows.
+      if ((state.step === "running" || state.step === "paused") && state.run !== null) {
+        return { ...state, step: "stopped", run: { ...state.run, stopReason: { kind: "error" } } };
+      }
+      if (state.step === "finishing" || state.step === "routines_run" || state.step === "done") {
+        // A finish that never answered says so with its own Try again; past it, the routines are what may be missing.
+        const finishThrew = state.finish === "running";
+        return { ...state, step: "done", finish: finishThrew ? "failed" : state.finish, wrapUpFailed: state.wrapUpFailed || (!finishThrew && state.step !== "done"), routineProgress: null };
+      }
+      return state;
   }
 }
 

@@ -18,6 +18,7 @@ import { cleanupSendScreen, setupSendScreen, WORKOUT_ID } from "../../../test/he
 import { EXERCISE_A, EXERCISE_B, sendFixture } from "../../../test/hevySendFakes";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../test/msw/server";
+import { hevyFailureSentence } from "./messages";
 import { renderApp } from "../../../test/workoutHarness";
 
 afterEach(() => {
@@ -189,20 +190,59 @@ describe("20.2 AC14 — Create in Hevy", () => {
     expect((s.patches[0] as { upsert: { hevyTemplateId: string }[] }).upsert[0]!.hevyTemplateId).toBe("t1");
   });
 
-  it("code review 1/2: after a lost create reply, a Hevy exercise with that title blocks a second create", async () => {
+  it("minor 259: after a lost create reply the card offers Check Hevy, not Create; the check finds it and pairs it", async () => {
     const s = setup({ calories: true });
     s.hevy.fail("template", "network");
     const { sheet, user } = await openSheet();
     const card = within(sheet).getByRole("group", { name: "Echo Bike" });
     await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
     await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
-    expect(await within(card).findByText("Couldn't reach Hevy. Check your connection and try again.")).toBeInTheDocument();
+    expect(await within(card).findByText("Not sure whether Hevy created it. Check Hevy before creating it again.")).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Create in Hevy" })).toBeNull();
     // Hevy did make it: the refreshed template list now holds it.
     server.use(templatesHandler([...TEMPLATES, { id: "t9", title: "Echo Bike (calories)", type: "reps_only", is_custom: true }]));
+    await user.click(within(card).getByRole("button", { name: "Check Hevy" }));
+    expect(await within(card).findByText("Created in Hevy.")).toBeInTheDocument();
+    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
+  });
+
+  it("minor 259: the check looks for the title that was sent, even after the field is edited", async () => {
+    const s = setup({ calories: true });
+    s.hevy.fail("template", "network");
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await within(card).findByRole("button", { name: "Check Hevy" });
+    await user.clear(within(card).getByRole("textbox", { name: "Title" }));
+    await user.type(within(card).getByRole("textbox", { name: "Title" }), "Something Else");
+    server.use(templatesHandler([...TEMPLATES, { id: "t9", title: "Echo Bike (calories)", type: "reps_only", is_custom: true }]));
+    await user.click(within(card).getByRole("button", { name: "Check Hevy" }));
+    expect(await within(card).findByText("Created in Hevy.")).toBeInTheDocument();
+    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
+  });
+
+  it("minor 259: a check that doesn't find it gives Create back", async () => {
+    const s = setup({ calories: true });
+    s.hevy.fail("template", "5xx");
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    await user.click(await within(card).findByRole("button", { name: "Check Hevy" }));
+    expect(await within(card).findByRole("button", { name: "Create in Hevy" })).toBeEnabled();
+    expect(within(card).queryByText("Not sure whether Hevy created it. Check Hevy before creating it again.")).toBeNull();
+    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
+  });
+
+  it("code review 1/2: a Hevy exercise with that title already listed blocks a create", async () => {
+    setup({ calories: true });
+    server.use(templatesHandler([...TEMPLATES, { id: "t9", title: "Echo Bike (calories)", type: "reps_only", is_custom: true }]));
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
     await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
     expect(await within(card).findByText("Hevy already has an exercise with this title. Pick it instead.")).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "Create in Hevy" })).toBeDisabled();
-    expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
   });
 
   it("the custom exercise limit says so and returns the card to its choices", async () => {
@@ -216,17 +256,18 @@ describe("20.2 AC14 — Create in Hevy", () => {
     expect(within(card).getByRole("button", { name: "Pick a Hevy exercise" })).toBeInTheDocument();
   });
 
-  it("another failure shows the static sentence, keeps the draft, and is not retried", async () => {
+  it("a refusal shows the static sentence, keeps the draft, and is not retried", async () => {
     const s = setup({ calories: true });
-    s.hevy.fail("template", "5xx");
+    s.hevy.fail("template", "400");
     const { sheet, user } = await openSheet();
     const card = within(sheet).getByRole("group", { name: "Echo Bike" });
     await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
     await user.clear(within(card).getByRole("textbox", { name: "Title" }));
     await user.type(within(card).getByRole("textbox", { name: "Title" }), "Echo Bike Cals");
     await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
-    expect(await within(card).findByText("Hevy is having trouble right now. Try again later.")).toBeInTheDocument();
+    expect(await within(card).findByText(hevyFailureSentence("rejected"))).toBeInTheDocument();
     expect(within(card).getByRole("textbox", { name: "Title" })).toHaveValue("Echo Bike Cals");
+    expect(within(card).getByRole("button", { name: "Create in Hevy" })).toBeEnabled();
     expect(s.hevy.calls.filter((c) => c.op === "template")).toHaveLength(1);
   });
 });

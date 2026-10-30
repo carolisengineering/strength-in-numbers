@@ -37,7 +37,7 @@ describe("20.2 AC29 — one sequence", () => {
 
   it("auto-push sends only through the runner, create-only", () => {
     const hook = read("features/hevy/send/useHevyAutoPush.ts");
-    expect(hook).toContain('runner(workoutId, { kind: "send" }, { createOnly: true })');
+    expect(hook).toContain('runner(workoutId, { kind: "send" }, { createOnly: true, reads })');
     expect(hook).not.toMatch(/\brunSend\(/);
   });
 });

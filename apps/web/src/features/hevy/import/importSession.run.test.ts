@@ -52,6 +52,18 @@ describe("20.1 AC16 — reducer", () => {
     expect(importSession(finishing, { type: "finishSkipped" })).toMatchObject({ step: "finishing", finish: "idle" });
   });
 
+  it("minor 250 — runFailed: running or paused stops with the error reason; a wrap-up goes to done with an unanswered finish failed", () => {
+    expect(importSession(running, { type: "runFailed" })).toMatchObject({ step: "stopped", run: { stopReason: { kind: "error" } } });
+    const paused = importSession(running, { type: "runPaused", generation: 4, reason: "unreachable" });
+    expect(importSession(paused, { type: "runFailed" })).toMatchObject({ step: "stopped", run: { stopReason: { kind: "error" } } });
+    const finishing = importSession(running, { type: "finishStart" });
+    expect(importSession(finishing, { type: "runFailed" })).toMatchObject({ step: "done", finish: "failed" });
+    expect(importSession(finishing, { type: "runFailed" }).wrapUpFailed).toBe(false);
+    const routines = importSession(importSession(finishing, { type: "finishDone", ok: true }), { type: "routinesStart", total: 2 });
+    expect(importSession(routines, { type: "runFailed" })).toMatchObject({ step: "done", finish: "ok", routineProgress: null, wrapUpFailed: true });
+    expect(importSession(summary, { type: "runFailed" })).toBe(summary);
+  });
+
   it("a batchDone from an older generation is ignored", () => {
     expect(importSession(running, { type: "batchDone", generation: 3, results: [result("a")], nextDate: null })).toBe(running);
   });

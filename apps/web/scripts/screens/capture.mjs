@@ -125,11 +125,16 @@ function makeHandler(state) {
       } else if (m === "DELETE") res = { status: 204, contentType: "application/json", body: "" };
     }
     // Spec 20.1: the dry run, and (Phase B) the real run as `state.importMode` says: "hold" keeps it unanswered,
-    // "fail" answers 500 (the run retries, then pauses), "refuse" answers a 422 with a path (the run stops).
+    // "fail" answers 500 (the run retries, then pauses), "refuse" answers a 422 with a path (the run stops), "gate"
+    // holds the batch until `state.releaseImport()` and then answers it.
     else if (m === "POST" && p === "/v1/hevy/import/workouts") {
       const body = JSON.parse(req.postData() ?? "{}");
       if (body.dryRun !== false) res = json(D.hevyDryRun(body));
       else if (state.importMode === "hold") return; // never fulfilled
+      else if (state.importMode === "gate") {
+        await new Promise((release) => { state.releaseImport = release; });
+        res = json(D.hevyRealRun(body));
+      }
       else if (state.importMode === "fail") res = problem(500, "internal", "Internal error");
       else if (state.importMode === "refuse") res = { ...problem(422, "validation-error", "Invalid"), body: JSON.stringify({ type: "https://api.strengthinnumbers.app/problems/validation-error", title: "Invalid", status: 422, errors: [{ path: "workouts.3.startTime", message: "Invalid input" }] }) };
       else res = json(D.hevyRealRun(body));
@@ -1198,6 +1203,22 @@ try {
       await settle(stopped.ip);
       await shoot(stopped.ip, device, "hevy-import-stopped", "Stopped: the server refused a batch; the static reason, its field, and Finish up (Spec 20.1 AC19, AC20)");
       await stopped.ictx.close();
+
+      // Minor 253: a Stop by the lifter. The batch in flight lands, then the run stops with Finish up (a Stop during the
+      // only batch leaves nothing to resume).
+      const userStop = await importContext("gate");
+      await toSummary(userStop.ip);
+      await userStop.ip.getByRole("button", { name: /^Import \d/ }).click();
+      await userStop.ip.getByText(/^Importing… 0 of/).waitFor();
+      // The batch is held at the route before Stop, so there is a batch in flight to land.
+      while (!userStop.istate.releaseImport) await userStop.ip.waitForTimeout(50);
+      await userStop.ip.getByRole("button", { name: "Stop" }).click();
+      await userStop.ip.getByText("Stopping after this batch…").waitFor();
+      userStop.istate.releaseImport();
+      await userStop.ip.getByRole("heading", { level: 2, name: "Stopped" }).waitFor();
+      await settle(userStop.ip);
+      await shoot(userStop.ip, device, "hevy-import-stopped-user", "Stopped by the lifter: the batch in flight landed, the counts and Finish up (Spec 20.1 AC20)");
+      await userStop.ictx.close();
 
       // The run retries a 500 after 2 s, 4 s and 8 s before it pauses.
       const paused = await importContext("fail");

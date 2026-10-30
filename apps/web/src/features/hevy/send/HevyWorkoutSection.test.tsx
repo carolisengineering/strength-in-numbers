@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -15,6 +17,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 const observability = vi.hoisted(() => ({ reportError: vi.fn() }));
 vi.mock("../../../observability/reportError", () => ({ reportError: observability.reportError }));
 
+import { API_BASE_URL } from "../../../test/accountHarness";
 import { USER_ID, VALID_KEY } from "../../../test/hevyHarness";
 import { cleanupSendScreen, setupSendScreen, WORKOUT_ID } from "../../../test/hevySendHarness";
 import { sendFixture } from "../../../test/hevySendFakes";
@@ -23,6 +26,7 @@ import { server } from "../../../test/msw/server";
 import { inTimeZone } from "../../../test/timeZone";
 import { renderApp } from "../../../test/workoutHarness";
 import { hevyKeyStore } from "../keyStore";
+import { SENDING_RECHECK_MS } from "./useHevyLink";
 
 afterEach(() => {
   cleanup();
@@ -363,5 +367,100 @@ describe("20.2 AC21 — accessibility", () => {
     await waitFor(() => expect(live.textContent).toMatch(/^Sent to Hevy · /));
     expect(region.querySelector("[aria-live='polite']")).toBe(live);
     for (const b of within(region).queryAllByRole("button")) expect(b).toHaveAccessibleName();
+  });
+});
+
+describe("minor 257 — a claim lost after Hevy took the write", () => {
+  it("says Hevy has it; Try again updates that copy under a new claim, never a second one", async () => {
+    let release!: () => void;
+    const s = setupSendScreen(auth, { holdCreate: new Promise<void>((r) => (release = r)) });
+    const { user } = renderApp(HISTORY);
+    await user.click(await sendButton());
+    await waitFor(() => expect(linkCalls(s, "POST")).toHaveLength(1));
+    // The claim is lost while Hevy is writing (it went stale and was released).
+    s.link.rows.delete(WORKOUT_ID);
+    release();
+    expect(await within(await section()).findByText("Sent to Hevy, but the send was interrupted. Tap Try again; it won't send a second copy.")).toBeInTheDocument();
+    expect(within(await section()).queryByRole("button", { name: "Send to Hevy" })).toBeNull();
+    await user.click(within(await section()).getByRole("button", { name: "Try again" }));
+    expect(await within(await section()).findByText(/^Sent to Hevy · /)).toBeInTheDocument();
+    expect(s.hevy.calls.map((c) => c.op)).toEqual(["create", "update"]);
+    expect(s.hevy.store.size).toBe(1);
+  });
+});
+
+describe("minor 258 — a follow-up keeps a way on", () => {
+  const unsure = async () => {
+    const s = setupSendScreen(auth);
+    s.hevy.fail("create", "accept-then-lose");
+    const view = renderApp(HISTORY);
+    await view.user.click(await sendButton());
+    await within(await section()).findByText("Not sure whether Hevy received it. Check before sending again.");
+    return { s, user: view.user };
+  };
+
+  it("a check whose reads fail says so and offers Check Hevy again; the next check finds the copy", async () => {
+    const { s, user } = await unsure();
+    server.use(http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.error(), { once: true }));
+    await user.click(within(await section()).getByRole("button", { name: "Check Hevy" }));
+    expect(await within(await section()).findByText("Couldn't reach Hevy. Check your connection and try again.")).toBeInTheDocument();
+    await user.click(within(await section()).getByRole("button", { name: "Check Hevy" }));
+    expect(await within(await section()).findByText("Found it in Hevy; linked.")).toBeInTheDocument();
+    expect(s.hevy.writes()).toHaveLength(1);
+  });
+
+  it("a check that meets an unmatched exercise opens the sheet; closing it leaves Check Hevy, not a stuck Sending…", async () => {
+    const { s, user } = await unsure();
+    const { mapping } = sendFixture();
+    server.use(http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.json({ ...mapping, pairs: mapping.pairs.slice(0, 1) })));
+    await user.click(within(await section()).getByRole("button", { name: "Check Hevy" }));
+    const sheet = await screen.findByRole("dialog", { name: "Match exercises for Hevy" });
+    await user.click(within(sheet).getAllByRole("button", { name: "Cancel" }).at(-1)!);
+    const region = await section();
+    expect(await within(region).findByText("1 exercise needs matching before this can go to Hevy.")).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Check Hevy" })).toBeEnabled();
+    // The claim is kept: a released one would let a later Send skip the look in Hevy.
+    expect(s.link.rows.get(WORKOUT_ID)!.claimedAt).not.toBeNull();
+  });
+});
+
+describe("minor 260 — another device's claim clears on this screen", () => {
+  it("a link read as Sending… is read again once the claim's window has passed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = setupSendScreen(auth);
+      s.link.claim(WORKOUT_ID, 10_000);
+      renderApp(HISTORY);
+      expect(await within(await section()).findByText("Sending to Hevy…")).toBeInTheDocument();
+      const reads = linkCalls(s, "GET").length;
+      // The other device's send ends without a copy (its claim released).
+      s.link.rows.delete(WORKOUT_ID);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SENDING_RECHECK_MS);
+      });
+      expect(await within(await section()).findByText("Not in Hevy yet.")).toBeInTheDocument();
+      expect(linkCalls(s, "GET").length).toBe(reads + 1);
+      // Nothing is polled once it no longer reads Sending….
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SENDING_RECHECK_MS * 2);
+      });
+      expect(linkCalls(s, "GET").length).toBe(reads + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a link read as Sending… is read again when the window regains focus", async () => {
+    const s = setupSendScreen(auth);
+    s.link.claim(WORKOUT_ID, 10_000);
+    renderApp(HISTORY);
+    expect(await within(await section()).findByText("Sending to Hevy…")).toBeInTheDocument();
+    s.link.link(WORKOUT_ID, "h9");
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    expect(await within(await section()).findByText(/^Sent to Hevy · /)).toBeInTheDocument();
+    focusManager.setFocused(undefined);
   });
 });

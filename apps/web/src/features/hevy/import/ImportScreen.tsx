@@ -1,14 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { BackLink } from "../../../ui/BackLink";
 import { Button } from "../../../ui/Button";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { Screen } from "../../../ui/Screen";
 import { Spinner } from "../../../ui/Spinner";
+import { useLeaveGuard } from "../../../ui/useLeaveGuard";
 import { HEVY_PATH } from "../paths";
 import { CheckingStep } from "./CheckingStep";
 import { DoneStep } from "./DoneStep";
-import { backFromSummary, isSummaryStale } from "./importSession";
+import { backFromSummary, isSummaryStale, type ImportState } from "./importSession";
 import { ImportSteps } from "./ImportSteps";
 import { ImportSummaryView } from "./ImportSummaryView";
 import { BACK_TO_HEVY, IMPORT_TITLE, LEAVE_BODY, LEAVE_CONFIRM, LEAVE_TITLE, PREPARING, PREPARING_FAILED, reconcileLine, TRY_AGAIN } from "./messages";
@@ -20,16 +21,23 @@ import { ReadingStep } from "./ReadingStep";
 import { RoutinePicksStep } from "./RoutinePicksStep";
 import { RunStep, WrapUpStep } from "./RunStep";
 import { useImportSession } from "./useImportSession";
-import { useLeaveGuard } from "./useLeaveGuard";
 import styles from "./ImportScreen.module.css";
+
+/** The steps from the run on (Spec 20.1 AC16–AC25). */
+const RUN_STEPS: ReadonlySet<ImportState["step"]> = new Set(["running", "paused", "stopped", "finishing", "routines_run", "done"]);
 
 /**
  * Spec 20.1 §5, D1: one screen with steps. Each step change moves focus to the new step's heading (AC29); the
  * session (everything read from Hevy) lives in `useImportSession` and goes when this unmounts (AC15).
  */
-export function ImportScreen() {
+export function ImportScreen({ onRunStarted }: { onRunStarted?: () => void } = {}) {
   const session = useImportSession();
   const { state } = session;
+  const runStarted = RUN_STEPS.has(state.step);
+  // A layout effect, so the route pins the flow in the same commit as the run step: no event can land in between.
+  useLayoutEffect(() => {
+    if (runStarted) onRunStarted?.();
+  }, [runStarted, onRunStarted]);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Saving the names is the names step busy, not a new step: focus stays on Continue.
   const view = state.step === "saving_names" ? "names" : state.step;
@@ -126,7 +134,7 @@ export function ImportScreen() {
           />
         ) : null}
         {state.step === "finishing" || state.step === "routines_run" ? <WrapUpStep state={state} headingRef={headingRef} /> : null}
-        {state.step === "done" ? <DoneStep state={state} zone={deviceZone()} onRetryFinish={() => void session.retryFinish()} headingRef={headingRef} /> : null}
+        {state.step === "done" ? <DoneStep state={state} zone={deviceZone()} onRetryFinish={session.retryFinish} headingRef={headingRef} /> : null}
       </div>
       <ConfirmDialog open={leave.open} title={LEAVE_TITLE} confirmLabel={LEAVE_CONFIRM} onConfirm={leave.confirm} onCancel={leave.cancel}>
         <p>{LEAVE_BODY}</p>

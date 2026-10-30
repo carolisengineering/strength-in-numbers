@@ -1,6 +1,6 @@
 import { useIsMutating, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import type { HevyLinkState } from "@sin/core";
+import type { HevyLinkState, HevyMapping } from "@sin/core";
 
 import type { ApiClient } from "../../../api/client";
 import { useApi } from "../../../auth/useApi";
@@ -24,11 +24,20 @@ import { runSend, type SendIntent, type SendOutcome } from "./runSend";
  * `complete`, and `onSettled` (a mutation option, so it runs after an unmount) refreshes the link.
  */
 
+/**
+ * Minor 263: the mapping a caller has just read fresh, for this run only (auto-push's check). Never the workout: the run
+ * reads it right before its begin, so an edit made just after the finish is in the copy Hevy gets (AC4).
+ */
+export interface SendReads {
+  mapping: HevyMapping;
+}
+
 export interface SendVariables {
   intent: SendIntent;
   leaveOut?: ReadonlySet<string>;
   /** D6 / owner answer Q5: never update an existing copy (Phase B's auto-push). */
   createOnly?: boolean;
+  reads?: SendReads;
 }
 
 export interface SendContext {
@@ -80,7 +89,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
     mutationKey: HEVY_SEND_KEYS.send(workoutId),
     networkMode: "always" as const,
     retry: false,
-    mutationFn: async ({ intent, leaveOut, createOnly }: SendVariables): Promise<SendOutcome> => {
+    mutationFn: async ({ intent, leaveOut, createOnly, reads }: SendVariables): Promise<SendOutcome> => {
       // AC3 guard: the section never offers a button without a key.
       if (ctx.hevy === null) return { kind: "failed", reason: "bad_key" };
       // The rows as they are at the tap (not a subscription).
@@ -90,7 +99,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
         // AC16: both reads fail at once offline (`networkMode: "always"`), never paused and sent later.
         getDetail: () =>
           queryClient.fetchQuery({ queryKey: WORKOUT_KEYS.detail(workoutId), queryFn: () => ctx.workouts.getById(workoutId), staleTime: 0, retry: false, networkMode: "always" }),
-        getMapping: () => queryClient.fetchQuery({ ...hevyMappingQuery(ctx.api), networkMode: "always" }),
+        getMapping: () => (reads ? Promise.resolve(reads.mapping) : queryClient.fetchQuery({ ...hevyMappingQuery(ctx.api), networkMode: "always" })),
         rootOf,
         hevy: ctx.hevy,
         api: ctx.api,
@@ -113,7 +122,7 @@ export function sendMutationOptions(queryClient: QueryClient, ctx: SendContext, 
   };
 }
 
-export type SendRunOptions = { leaveOut?: ReadonlySet<string>; createOnly?: boolean };
+export type SendRunOptions = { leaveOut?: ReadonlySet<string>; createOnly?: boolean; reads?: SendReads };
 
 /**
  * Spec 20.2 Phase B: the send for any workout, made per call — the same options, deps, key and `onSettled` as the

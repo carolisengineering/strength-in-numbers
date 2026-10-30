@@ -128,7 +128,7 @@ describe("20.2 AC25 — preconditions", () => {
     await settle();
     expect(linkMethods(s)).toEqual(["GET", "POST", "PUT"]);
     expect(s.hevy.writes().map((c) => c.op)).toEqual(["create"]);
-    // The checks' read, then the send sequence's own fresh read.
+    // The checks' read, then the send sequence's own fresh read right before its begin (minor 263 shares only the mapping).
     expect(s.getById).toHaveBeenCalledTimes(2);
   });
 
@@ -205,8 +205,8 @@ describe("20.2 AC25 — preconditions", () => {
     const s = setupHook();
     emitWorkoutFinished({ workoutId: WORKOUT_ID });
     await waitFor(() => expect(linkMethods(s)).toContain("PUT"));
-    // Fetched for the check (the cache was empty), then read again by the send sequence itself.
-    expect(s.n.mapping).toBe(2);
+    // Fetched for the check (the cache was empty); the send builds from that read (minor 263).
+    expect(s.n.mapping).toBe(1);
   });
 
   it("a rejected read (the workout deleted right after the finish: 404) is silent", async () => {

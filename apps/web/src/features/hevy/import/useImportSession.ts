@@ -364,10 +364,25 @@ export function useImportSession() {
     [importClient, queryClient],
   );
 
+  /**
+   * Minor 250: a runner that throws (no I/O path is expected to: each catches its own) is reported and leaves the
+   * screen with a way on — stopped while sending, else the done screen — never on a busy step with the leave guard on.
+   */
+  const runSafely = useCallback(async (body: (signal: AbortSignal) => Promise<void>) => {
+    const signal = alive.current.signal;
+    try {
+      await body(signal);
+    } catch (err) {
+      reportError(err, { source: "hevy-import", op: "run" });
+      if (!signal.aborted) dispatch({ type: "runFailed" });
+    } finally {
+      busy.current = false;
+    }
+  }, []);
+
   /** AC16–AC20: drives `runImport` from batch `from`; a late event of an older generation is dropped by the reducer. */
   const drive = useCallback(
-    async (gen: number, from: number) => {
-      const signal = alive.current.signal;
+    async (gen: number, from: number, signal: AbortSignal) => {
       const stop = new AbortController();
       stopController.current = stop;
       stopRequested.current = false;
@@ -404,15 +419,8 @@ export function useImportSession() {
       }
       // AC24: what the run wrote is on the server now (a batch in flight always lands first), even if the screen is gone.
       applyImportedCaches(queryClient);
-      if (signal.aborted || !ended) {
-        busy.current = false;
-        return;
-      }
-      try {
-        await wrapUp(signal);
-      } finally {
-        busy.current = false;
-      }
+      if (signal.aborted || !ended) return;
+      await wrapUp(signal);
     },
     [importClient, queryClient, wrapUp],
   );
@@ -427,8 +435,8 @@ export function useImportSession() {
     const total = batchesRef.current.reduce((n, b) => n + b.length, 0);
     const gen = nextGeneration();
     dispatch({ type: "runStart", generation: gen, total, batchDate: batchesRef.current[0]?.[0]?.startTime ?? null });
-    void drive(gen, 0);
-  }, [drive]);
+    void runSafely((signal) => drive(gen, 0, signal));
+  }, [drive, runSafely]);
 
   /** AC19 / AC20 **Resume**: re-sends from the first batch not done (the failed one); the server skips what landed. */
   const resume = useCallback(() => {
@@ -436,9 +444,10 @@ export function useImportSession() {
     if (busy.current || (current.step !== "paused" && current.step !== "stopped") || current.run === null) return;
     busy.current = true;
     const gen = nextGeneration();
+    const from = current.run.batchesDone;
     dispatch({ type: "resume", generation: gen });
-    void drive(gen, current.run.batchesDone);
-  }, [drive]);
+    void runSafely((signal) => drive(gen, from, signal));
+  }, [drive, runSafely]);
 
   /** AC20 **Stop**: the batch in flight finishes, then the run stops; a pending wait ends at once. */
   const stop = useCallback(() => {
@@ -457,23 +466,21 @@ export function useImportSession() {
   const finishUp = useCallback(() => {
     if (busy.current || stateRef.current.step !== "stopped") return;
     busy.current = true;
-    void wrapUp(alive.current.signal).finally(() => {
-      busy.current = false;
-    });
-  }, [wrapUp]);
+    void runSafely(wrapUp);
+  }, [wrapUp, runSafely]);
 
   /** AC22 **Try again** on the done screen. */
-  const retryFinish = useCallback(async () => {
+  const retryFinish = useCallback(() => {
     if (busy.current || stateRef.current.step !== "done") return;
     busy.current = true;
-    const signal = alive.current.signal;
-    dispatch({ type: "finishStart" });
-    const outcome = await finishImport(importClient);
-    busy.current = false;
-    if (outcome === "ok") applyImportedCaches(queryClient);
-    if (signal.aborted) return;
-    dispatch({ type: "finishDone", ok: outcome === "ok" });
-  }, [importClient, queryClient]);
+    void runSafely(async (signal) => {
+      dispatch({ type: "finishStart" });
+      const outcome = await finishImport(importClient);
+      if (outcome === "ok") applyImportedCaches(queryClient);
+      if (signal.aborted) return;
+      dispatch({ type: "finishDone", ok: outcome === "ok" });
+    });
+  }, [importClient, queryClient, runSafely]);
 
   /** AC19: coming back online while paused offers Resume (it never resumes by itself). */
   const [backOnline, setBackOnline] = useState(false);

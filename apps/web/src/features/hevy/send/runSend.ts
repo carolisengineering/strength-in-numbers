@@ -33,9 +33,11 @@ export const COMPLETE_RETRY_WAITS_MS = Object.freeze([1000, 2000, 4000] as const
 /**
  * What the user asked for. The ones after an ambiguous failure carry the begin's fingerprint (and the Hevy id for an
  * update) instead of beginning again: the claim they hold is still fresh, so a second begin would be refused.
+ * `reclaim` follows a lost claim after Hevy took the write (minor 257): a new claim, then that copy is updated.
  */
 export type SendIntent =
   | { kind: "send" }
+  | { kind: "reclaim"; hevyWorkoutId: string }
   | { kind: "update" }
   | { kind: "relink" }
   | { kind: "check"; fingerprint: string }
@@ -47,19 +49,26 @@ export type RefusedSlug = "hevy-workout-not-finished" | "hevy-no-claim";
 
 export type SendOutcome =
   | { kind: "done"; foundExisting: boolean; notices: SendNotice[] }
-  | { kind: "needs-pairing"; unmapped: UnmappedExercise[] }
-  | { kind: "in-progress" }
+  /**
+   * `retry`: a follow-up met them while it holds the claim (minor 258). The claim is kept (a released one would let the
+   * next Send skip AC7's look in Hevy), so the same follow-up stays offered if the sheet is closed.
+   */
+  | { kind: "needs-pairing"; unmapped: UnmappedExercise[]; retry?: SendIntent }
+  /** `retry`: a reclaim met another claim; it stays offered (minor 257). */
+  | { kind: "in-progress"; retry?: SendIntent }
   | { kind: "unsure"; op: "post" | "put"; fingerprint: string; hevyWorkoutId: string | null }
   | { kind: "inconclusive"; fingerprint: string }
   | { kind: "unrecorded"; hevyWorkoutId: string; fingerprint: string }
   | { kind: "already-linked" }
   | { kind: "copy-gone" }
   | { kind: "not-sent" }
-  | { kind: "refused"; slug: RefusedSlug }
+  /** `hevyWorkoutId`: the copy Hevy holds when the claim was lost after the write (minor 257). */
+  | { kind: "refused"; slug: RefusedSlug; hevyWorkoutId?: string }
   | { kind: "gone" }
   /** D6 / owner answer Q5: a create-only send (auto-push) met a workout already in Hevy and wrote nothing. */
   | { kind: "skipped"; reason: "already_sent" }
-  | { kind: "failed"; reason: HevyErrorKind | "server" | "unknown" };
+  /** `retry`: a follow-up whose reads failed still holds the claim, so it is offered again as it was (minor 258). */
+  | { kind: "failed"; reason: HevyErrorKind | "server" | "unknown"; retry?: SendIntent };
 
 export type SendReportOp = "begin" | "hevy-post" | "hevy-put" | "complete" | "release" | "find-copy";
 
@@ -112,7 +121,28 @@ interface Built {
   notices: SendNotice[];
 }
 
+/** The intents that carry on from a claim an earlier run still holds. */
+const holdsClaim = (intent: SendIntent): intent is Extract<SendIntent, { kind: "check" | "send-anyway" | "retry-update" }> =>
+  intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update";
+
+/**
+ * The follow-ups of an earlier run (minors 257, 258): they build the same workout (so they leave out what it left out)
+ * and, where they can't go on, stay offered instead of falling back to Send, which could post a second copy.
+ */
+export const carriesOn = (intent: SendIntent): boolean => holdsClaim(intent) || intent.kind === "reclaim";
+
 export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendOutcome> {
+  const outcome = await sendOnce(intent, deps);
+  if (!carriesOn(intent)) return outcome;
+  // Unmatched exercises are met before anything is written or claimed: after the sheet, the same follow-up goes on.
+  if (outcome.kind === "needs-pairing") return { ...outcome, retry: intent };
+  // A reclaim holds no claim of its own, so wherever it stops it stays offered (minor 257). A follow-up that holds one
+  // is offered again only where the claim is untouched, which `sendOnce` marks itself.
+  if (intent.kind === "reclaim" && (outcome.kind === "failed" || outcome.kind === "in-progress") && outcome.retry === undefined) return { ...outcome, retry: intent };
+  return outcome;
+}
+
+async function sendOnce(intent: SendIntent, deps: SendDeps): Promise<SendOutcome> {
   if (intent.kind === "retry-complete") return complete(deps, intent.hevyWorkoutId, intent.fingerprint, false, []);
 
   // 1. Build, from the detail and the mapping as they are now (AC4 a–b, AC16).
@@ -124,9 +154,11 @@ export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendO
   } catch (err) {
     // A workout deleted meanwhile is gone; a SIN 5xx on the reads is reported with the step that needed them.
     if (err instanceof ApiError && err.status === 404) return { kind: "gone" };
-    if (isNetwork(err)) return { kind: "failed", reason: "network" };
+    // Minor 258: nothing touched the claim, so a follow-up is offered again as it was.
+    const retry = holdsClaim(intent) ? { retry: intent } : {};
+    if (isNetwork(err)) return { kind: "failed", reason: "network", ...retry };
     if (reportable(err)) deps.report("begin", err);
-    return { kind: "failed", reason: err instanceof ApiError && err.status >= 500 ? "server" : "unknown" };
+    return { kind: "failed", reason: err instanceof ApiError && err.status >= 500 ? "server" : "unknown", ...retry };
   }
 
   // After an ambiguous failure the claim is still held: carry on from it without a second begin.
@@ -151,6 +183,12 @@ export async function runSend(intent: SendIntent, deps: SendDeps): Promise<SendO
   if (deps.createOnly && begin.mode === "update") {
     await release(deps);
     return { kind: "skipped", reason: "already_sent" };
+  }
+
+  // Minor 257: Hevy holds this workout's copy from a run whose claim was lost; bring that copy up to date instead of
+  // making a second. If it was deleted in Hevy meanwhile, a create makes no duplicate.
+  if (intent.kind === "reclaim" && begin.mode === "create") {
+    return write(deps, built, { mode: "update", hevyWorkoutId: intent.hevyWorkoutId, fingerprint: begin.fingerprint, ifGone: "create" });
   }
 
   // 3. An interrupted earlier send may have reached Hevy: look before writing (AC7). Only a create can duplicate —
@@ -196,7 +234,7 @@ async function check(deps: SendDeps, built: Built, fingerprint: string, sendIfAb
 async function write(
   deps: SendDeps,
   built: Built,
-  claim: { mode: "create" | "update"; hevyWorkoutId: string | null; fingerprint: string },
+  claim: { mode: "create" | "update"; hevyWorkoutId: string | null; fingerprint: string; ifGone?: "create" },
 ): Promise<SendOutcome> {
   const update = claim.mode === "update" && claim.hevyWorkoutId !== null;
   let hevyWorkoutId: string;
@@ -208,6 +246,7 @@ async function write(
     if (err instanceof HevyError) {
       // AC12: the copy was deleted in Hevy.
       if (update && err.kind === "not_found") {
+        if (claim.ifGone === "create") return write(deps, built, { mode: "create", hevyWorkoutId: null, fingerprint: claim.fingerprint });
         await release(deps);
         return { kind: "copy-gone" };
       }
@@ -232,7 +271,8 @@ async function complete(deps: SendDeps, hevyWorkoutId: string, fingerprint: stri
       return { kind: "done", foundExisting, notices };
     } catch (err) {
       if (slugIs(err, 409, "hevy-id-in-use") || slugIs(err, 409, "hevy-link-conflict")) return { kind: "already-linked" };
-      if (slugIs(err, 409, "hevy-no-claim")) return { kind: "refused", slug: "hevy-no-claim" };
+      // Minor 257: Hevy has the copy; keep its id, so the next try updates it instead of sending a second.
+      if (slugIs(err, 409, "hevy-no-claim")) return { kind: "refused", slug: "hevy-no-claim", hevyWorkoutId };
       if (err instanceof ApiError && err.status === 404) return { kind: "gone" };
       const retryable = err instanceof ApiError && (err.isNetworkError || err.status >= 500 || err.status === 429);
       if (!retryable) {
