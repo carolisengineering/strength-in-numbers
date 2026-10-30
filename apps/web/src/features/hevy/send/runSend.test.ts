@@ -211,10 +211,12 @@ describe("20.2 AC10 — complete retries and its conflicts", () => {
     expect(h.order).not.toContain("release");
   });
 
-  it("409 hevy-no-claim → refused", async () => {
+  it("409 hevy-no-claim → refused, keeping the id of the copy Hevy took (minor 257)", async () => {
     const h = harness();
     h.link.fail("complete", { status: 409, slug: "hevy-no-claim" });
-    expect(await h.run({ kind: "send" })).toEqual({ kind: "refused", slug: "hevy-no-claim" });
+    const outcome = await h.run({ kind: "send" });
+    expect(outcome).toEqual({ kind: "refused", slug: "hevy-no-claim", hevyWorkoutId: expect.any(String) });
+    expect(h.hevy.store.has((outcome as { hevyWorkoutId: string }).hevyWorkoutId)).toBe(true);
   });
 });
 
@@ -390,5 +392,106 @@ describe("20.2 D2 — exercises left out", () => {
     const outcome = await h.run({ kind: "send" }, { leaveOut: new Set([exerciseId]) });
     expect(outcome).toMatchObject({ kind: "done", notices: expect.arrayContaining([{ code: "left_out", name: "Row" }]) });
     expect((h.hevy.calls[0]!.body as HevyPostWorkout).workout.exercises).toHaveLength(1);
+  });
+});
+
+describe("minor 257 — a claim lost after Hevy took the write", () => {
+  /** Hevy takes the POST, then complete is refused: the claim went stale and was released meanwhile. */
+  const lost = async () => {
+    const h = harness();
+    h.link.fail("complete", { status: 409, slug: "hevy-no-claim" });
+    const refused = (await h.run({ kind: "send" })) as Extract<SendOutcome, { kind: "refused" }>;
+    h.link.rows.delete(WORKOUT_ID);
+    h.order.length = 0;
+    h.hevy.calls.length = 0;
+    return { h, id: refused.hevyWorkoutId! };
+  };
+
+  it("reclaim begins again and updates that copy: no second POST, and the link records it", async () => {
+    const { h, id } = await lost();
+    expect(await h.run({ kind: "reclaim", hevyWorkoutId: id })).toMatchObject({ kind: "done" });
+    expect(h.order).toEqual(["detail", "mapping", "begin", "hevy-put", "complete"]);
+    expect(h.hevy.calls.map((c) => c.op)).toEqual(["update"]);
+    expect(h.hevy.store.size).toBe(1);
+    expect(h.link.read(WORKOUT_ID)).toMatchObject({ state: "sent", hevyWorkoutId: id });
+  });
+
+  it("if that copy was deleted in Hevy meanwhile, reclaim creates one (no duplicate is possible)", async () => {
+    const { h, id } = await lost();
+    h.hevy.store.delete(id);
+    expect(await h.run({ kind: "reclaim", hevyWorkoutId: id })).toMatchObject({ kind: "done" });
+    expect(h.hevy.calls.map((c) => c.op)).toEqual(["update", "create"]);
+    expect(h.order.filter((o) => o === "release")).toEqual([]);
+    expect(h.link.read(WORKOUT_ID).state).toBe("sent");
+  });
+
+  it("if another device linked it meanwhile, reclaim updates the linked copy (begin's own)", async () => {
+    const { h, id } = await lost();
+    h.link.link(WORKOUT_ID, "h9", "sent", "v1:old");
+    h.hevy.store.set("h9", { id: "h9", title: "x", start_time: "2026-10-24T17:05:00Z", end_time: "2026-10-24T18:00:00Z", exercises: [] });
+    expect(await h.run({ kind: "reclaim", hevyWorkoutId: id })).toMatchObject({ kind: "done" });
+    expect(h.hevy.calls).toMatchObject([{ op: "update", id: "h9" }]);
+  });
+});
+
+describe("minor 258 — a follow-up holds the claim", () => {
+  const unsure = async () => {
+    const h = harness();
+    h.hevy.fail("create", "network");
+    const outcome = (await h.run({ kind: "send" })) as Extract<SendOutcome, { kind: "unsure" }>;
+    h.order.length = 0;
+    return { h, fingerprint: outcome.fingerprint };
+  };
+
+  it("a check whose reads fail offers the same check again, and the claim is kept", async () => {
+    const { h, fingerprint } = await unsure();
+    const intent: SendIntent = { kind: "check", fingerprint };
+    expect(await h.run(intent, { getDetail: () => Promise.reject(networkError()) })).toEqual({ kind: "failed", reason: "network", retry: intent });
+    expect(h.order).not.toContain("release");
+    expect(h.link.rows.get(WORKOUT_ID)!.claimedAt).not.toBeNull();
+  });
+
+  it("a first send whose reads fail offers no follow-up", async () => {
+    const h = harness();
+    expect(await h.run({ kind: "send" }, { getDetail: () => Promise.reject(networkError()) })).toEqual({ kind: "failed", reason: "network" });
+  });
+
+  it("a check that meets an unmatched exercise keeps the claim and offers the same check again", async () => {
+    const { h, fingerprint } = await unsure();
+    const empty: HevyMapping = { pairs: [], sectionRules: [] };
+    const intent: SendIntent = { kind: "check", fingerprint };
+    expect(await h.run(intent, { getMapping: async () => empty })).toMatchObject({ kind: "needs-pairing", retry: intent });
+    expect(h.order).not.toContain("release");
+    expect(h.link.rows.get(WORKOUT_ID)!.claimedAt).not.toBeNull();
+  });
+
+  it("a first send that meets an unmatched exercise carries no follow-up", async () => {
+    const h = harness();
+    const outcome = await h.run({ kind: "send" }, { getMapping: async () => ({ pairs: [], sectionRules: [] }) });
+    expect(outcome.kind).toBe("needs-pairing");
+    expect(outcome).not.toHaveProperty("retry");
+  });
+});
+
+describe("minor 261 — an exercise unmatched in two sections", () => {
+  it("is listed once, so the sheet opens once with one card", async () => {
+    const h = harness();
+    const fixture = sendFixture();
+    const first = fixture.detail.exercises[0]!;
+    const sid = (id: string) => id as WorkoutDetail["sections"][number]["id"];
+    const weid = (id: string) => id as WorkoutDetail["exercises"][number]["id"];
+    const detail: WorkoutDetail = {
+      ...fixture.detail,
+      sections: [
+        { id: sid("s1"), name: "A", notes: null, position: 0, addedInWorkout: false },
+        { id: sid("s2"), name: "B", notes: null, position: 1, addedInWorkout: false },
+      ],
+      exercises: [
+        { ...first, id: weid("we1"), sectionId: sid("s1"), position: 0 },
+        { ...first, id: weid("we2"), sectionId: sid("s2"), position: 1 },
+      ],
+    };
+    const outcome = await h.run({ kind: "send" }, { getDetail: async () => detail, getMapping: async () => ({ pairs: [], sectionRules: [] }) });
+    expect(outcome).toEqual({ kind: "needs-pairing", unmapped: [{ exerciseId: first.exerciseId, name: first.exerciseNameSnapshot, modality: first.modalitySnapshot }] });
   });
 });

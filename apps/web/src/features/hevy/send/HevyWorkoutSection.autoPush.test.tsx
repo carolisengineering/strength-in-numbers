@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +22,7 @@ import { cleanupSendScreen, setupSendScreen, WORKOUT_ID } from "../../../test/he
 import { server } from "../../../test/msw/server";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { renderApp } from "../../../test/workoutHarness";
-import { setHevyAutoPush } from "../../../ui/hevyAutoPush";
+import { HEVY_AUTO_PUSH_KEY, setHevyAutoPush } from "../../../ui/hevyAutoPush";
 
 const HISTORY = `/app/history/${WORKOUT_ID}`;
 const section = () => screen.findByRole("region", { name: "Hevy" });
@@ -124,5 +124,19 @@ describe("20.2 AC25 — the needs-matching line", () => {
     await within(await section()).findByText("3 exercises need matching before this can go to Hevy.");
     await user.click(await sendButton());
     expect(await screen.findByRole("dialog", { name: "Match exercises for Hevy" })).toBeInTheDocument();
+  });
+});
+
+describe("minor 264 — another tab turns auto-push off", () => {
+  it("the needs-matching line goes without a remount", async () => {
+    setupSendScreen(auth, { detail: threeUnmatched(), mapping: NO_PAIRS });
+    renderApp(HISTORY);
+    await within(await section()).findByText("3 exercises need matching before this can go to Hevy.");
+    act(() => {
+      window.localStorage.removeItem(HEVY_AUTO_PUSH_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: HEVY_AUTO_PUSH_KEY, storageArea: window.localStorage }));
+    });
+    await waitFor(() => expect(screen.queryByText(/need(s)? matching/)).toBeNull());
+    expect(await sendButton()).toBeEnabled();
   });
 });

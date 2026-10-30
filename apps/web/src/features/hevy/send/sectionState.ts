@@ -1,13 +1,16 @@
 import type { HevyLinkState } from "@sin/core";
 
-import type { SendOutcome } from "./runSend";
+import type { SendIntent, SendOutcome } from "./runSend";
 
-/** The outcomes that stay on screen until the next run: the ones that ask the lifter to do something (§6.1). */
-export type OverlayOutcome = Extract<
-  SendOutcome,
-  { kind: "unsure" | "inconclusive" | "unrecorded" | "in-progress" | "failed" | "already-linked" | "copy-gone" | "refused" }
->;
+/**
+ * The outcomes that stay on screen until the next run: the ones that ask the lifter to do something (§6.1). A
+ * follow-up's needs-pairing is one (minor 258): it holds the claim, so closing the sheet must leave a way on.
+ */
+export type OverlayOutcome =
+  | Extract<SendOutcome, { kind: "unsure" | "inconclusive" | "unrecorded" | "in-progress" | "failed" | "already-linked" | "copy-gone" | "refused" }>
+  | (Extract<SendOutcome, { kind: "needs-pairing" }> & { retry: SendIntent });
 const OVERLAYS: ReadonlySet<SendOutcome["kind"]> = new Set(["unsure", "inconclusive", "unrecorded", "in-progress", "failed", "already-linked", "copy-gone", "refused"]);
+const isOverlay = (o: SendOutcome): o is OverlayOutcome => OVERLAYS.has(o.kind) || (o.kind === "needs-pairing" && o.retry !== undefined);
 
 export type SectionView =
   | { kind: "hidden" }
@@ -27,7 +30,7 @@ export function sectionView(input: { status: "ok" | "hidden"; link: HevyLinkStat
   const { status, link, pending, last } = input;
   if (status !== "ok" || link === "error" || link === "pending" || last?.kind === "gone") return { kind: "hidden" };
   if (pending) return { kind: "sending" };
-  if (last !== null && OVERLAYS.has(last.kind)) return { kind: "outcome", outcome: last as OverlayOutcome, base: link.state };
+  if (last !== null && isOverlay(last)) return { kind: "outcome", outcome: last, base: link.state };
   switch (link.state) {
     case "none":
       return { kind: "none" };

@@ -40,6 +40,8 @@ export const HEVY_SEND_COPY = Object.freeze({
   // Plan copy: the begin / complete refusals (`problemSentence`).
   notFinished: "This workout isn't finished yet.",
   noClaim: "The send was interrupted. Check this workout and try again.",
+  // Plan copy (minor 257): the same refusal after Hevy took the write; Try again updates that copy.
+  noClaimSent: "Sent to Hevy, but the send was interrupted. Tap Try again; it won't send a second copy.",
   // AC16 and AC14: 20.0's sentences, word for word.
   network: HEVY_COPY.network,
   templateLimit: HEVY_COPY.limit,

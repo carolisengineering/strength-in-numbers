@@ -1,4 +1,4 @@
-import { HevyLinkStateSchema, type HevyLinkState } from "@sin/core";
+import { HEVY_LINK_CLAIM_TTL_S, HevyLinkStateSchema, type HevyLinkState } from "@sin/core";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../api/client";
@@ -21,9 +21,23 @@ export function hevyLinkQuery(api: Pick<ApiClient, "get">, workoutId: string) {
   };
 }
 
-/** AC1 / AC2: only the owner (status `200`) ever reads it; for anyone else the only request is the status. */
+/**
+ * Minor 260: a claim seen as "sending" was made before it was read, so one claim window after that read it has surely
+ * ended (or been renewed): read again then. The second is a margin for the two clocks.
+ */
+export const SENDING_RECHECK_MS = (HEVY_LINK_CLAIM_TTL_S + 1) * 1000;
+
+/**
+ * AC1 / AC2: only the owner (status `200`) ever reads it; for anyone else the only request is the status. While it
+ * reads "sending" (another device's claim), it is read again once that claim's window has passed, and on focus.
+ */
 export function useHevyLink(workoutId: string, { enabled = true }: { enabled?: boolean } = {}): UseQueryResult<HevyLinkState> {
   const api = useApi();
   const owner = useHevyEnabled() === "on";
-  return useQuery({ ...hevyLinkQuery(api, workoutId), enabled: enabled && owner });
+  return useQuery({
+    ...hevyLinkQuery(api, workoutId),
+    enabled: enabled && owner,
+    refetchInterval: (query) => (query.state.data?.state === "sending" ? SENDING_RECHECK_MS : false),
+    refetchOnWindowFocus: (query) => query.state.data?.state === "sending",
+  });
 }

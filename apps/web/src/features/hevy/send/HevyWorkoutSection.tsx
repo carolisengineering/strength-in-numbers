@@ -3,7 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } fro
 import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
-import { isHevyAutoPushOn } from "../../../ui/hevyAutoPush";
+import { useHevyAutoPushOn } from "../../../ui/hevyAutoPush";
 import { useCatalogStore } from "../../catalog/CatalogProvider";
 import { useHevyMapping } from "../mapping/useHevyMapping";
 import { HEVY_PATH } from "../paths";
@@ -38,9 +38,11 @@ function outcomeSentence(outcome: OverlayOutcome): string {
     case "copy-gone":
       return C.copyGone;
     case "refused":
-      return problemSentence(outcome.slug) ?? C.generic;
+      return outcome.hevyWorkoutId !== undefined ? C.noClaimSent : (problemSentence(outcome.slug) ?? C.generic);
     case "failed":
       return outcome.reason === "server" || outcome.reason === "unknown" ? C.generic : outcome.reason === "network" ? C.network : hevyFailureSentence(outcome.reason);
+    case "needs-pairing":
+      return needsMatching(outcome.unmapped.length);
   }
 }
 
@@ -60,7 +62,10 @@ function statusSentence(view: Exclude<SectionView, { kind: "hidden" }>): string 
 }
 
 /** A follow-up of the run that left exercises out builds the same workout, so it leaves them out too. */
-const isFollowUp = (intent: SendIntent) => intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update";
+const isFollowUp = (intent: SendIntent) => intent.kind === "check" || intent.kind === "send-anyway" || intent.kind === "retry-update" || intent.kind === "reclaim";
+
+/** The button that offers a follow-up again (minor 258). */
+const RETRY_LABELS: Partial<Record<SendIntent["kind"], string>> = { check: C.checkHevy, "send-anyway": C.sendAnyway, "retry-update": C.tryAgain };
 
 /** The buttons a view offers (with a key), each with the intent it runs. */
 function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: string; intent: SendIntent | null }[] {
@@ -84,6 +89,15 @@ function actionsFor(view: Exclude<SectionView, { kind: "hidden" }>): { label: st
       return [];
     case "copy-gone":
       return [{ label: C.sendAsNew, intent: { kind: "relink" } }];
+    case "refused":
+      // Minor 257: Hevy holds the copy; Try again updates it under a new claim.
+      return o.hevyWorkoutId !== undefined ? [{ label: C.tryAgain, intent: { kind: "reclaim", hevyWorkoutId: o.hevyWorkoutId } }] : base(view.base);
+    case "failed":
+      // Minor 258: a follow-up whose reads failed still holds the claim; the same follow-up is the way on.
+      return o.retry !== undefined ? [{ label: RETRY_LABELS[o.retry.kind] ?? C.tryAgain, intent: o.retry }] : base(view.base);
+    case "needs-pairing":
+      // Minor 258: the sheet was closed; the follow-up (which reopens it) is still the way on.
+      return [{ label: RETRY_LABELS[o.retry.kind] ?? C.tryAgain, intent: o.retry }];
     case "in-progress":
       // AC6: the button returns even while another device's claim reads "sending" (a second tap is safe: 409 again).
       return base(view.base === "sending" ? "none" : view.base);
@@ -120,8 +134,8 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   const { hasKey } = useHevyKey();
   const link = useHevyLink(workout.id);
   const send = useSendToHevy(workout.id);
-  // AC25: read once per mount, like the switch that sets it.
-  const [autoPushOn] = useState(() => isHevyAutoPushOn());
+  // AC25: follows the switch, in this tab or another (minor 264).
+  const autoPushOn = useHevyAutoPushOn();
   const headingId = useId();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
