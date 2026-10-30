@@ -51,3 +51,44 @@ describe("20.0 AC31 — import boundaries", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/** `import [type] { a, b } from "spec"` (and default / namespace imports), with the names and whether it is type-only. */
+const importStatements = (source: string) =>
+  [...source.matchAll(/import\s+(type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/g)].map((m) => ({
+    typeOnly: m[1] !== undefined,
+    names: (/\{([^}]*)\}/.exec(m[2]!)?.[1] ?? m[2]!)
+      .split(",")
+      .map((n) => n.trim().replace(/^type\s+/, ""))
+      .filter((n) => n !== ""),
+    spec: m[3]!,
+  }));
+
+describe("20.2 AC1 — import boundary", () => {
+  it("features/workouts imports only HevyWorkoutSection and HevyDeleteNote, from features/hevy/send", () => {
+    const hits = production
+      .filter((path) => path.startsWith("features/workouts/"))
+      .flatMap((path) =>
+        importStatements(read(path))
+          .filter((i) => /(^|\/)hevy(\/|$)/.test(i.spec))
+          .filter((i) => !(/^(\.\.\/)+hevy\/send$/.test(i.spec) && i.names.every((n) => n === "HevyWorkoutSection" || n === "HevyDeleteNote")))
+          .map((i) => `${path} → ${i.spec} {${i.names.join(", ")}}`),
+      );
+    expect(hits).toEqual([]);
+  });
+
+  it("features/hevy imports from features/workouts only queries, finishEvents, or types", () => {
+    const hits = production
+      .filter((path) => path.startsWith("features/hevy/"))
+      .flatMap((path) =>
+        importStatements(read(path))
+          .filter((i) => /(^|\/)workouts\//.test(i.spec))
+          .filter((i) => !i.typeOnly && !/(^|\/)workouts\/(queries|finishEvents)$/.test(i.spec))
+          .map((i) => `${path} → ${i.spec}`),
+      );
+    expect(hits).toEqual([]);
+  });
+
+  it("the section is wired in (so the scan is not vacuous)", () => {
+    expect(importsFrom(read("features/workouts/FinishedWorkoutScreen.tsx"))).toContain("../hevy/send");
+  });
+});

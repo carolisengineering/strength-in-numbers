@@ -735,6 +735,12 @@ export function payloadChecks() {
     ["hevy folders page", "HevyFolderPageSchema", hevyPage(hevyFolders, "routine_folders", 1)],
     ["hevy routines page", "HevyRoutinePageSchema", hevyPage(hevyRoutines, "routines", 1)],
     ["hevy workouts page", "HevyWorkoutPageSchema", hevyPage(hevyWorkouts, "workouts", 1)],
+    // Spec 20.2: the link states, a begin, a created workout.
+    ["hevy link none", "HevyLinkStateSchema", hevyLinkOf("none")],
+    ["hevy link sent", "HevyLinkStateSchema", hevyLinkOf("sent")],
+    ["hevy link imported, changed", "HevyLinkStateSchema", hevyLinkOf("changed", "imported")],
+    ["hevy begin", "HevyLinkBeginSchema", hevyBegin],
+    ["hevy created workout", "HevyCreateWorkoutReplySchema", { workout: [hevyCreatedWorkout] }],
     ["hevy import dry run", "HevyImportResponseSchema", hevyDryRun({ dryRun: true, workouts: hevyWorkouts.map((w) => ({ hevyWorkoutId: w.id, exercises: w.exercises.map((e) => ({ sets: e.sets })) })) })],
   ];
 }
@@ -863,4 +869,30 @@ export function hevyDryRun(body) {
     return { ...base, outcome: "create" };
   });
   return { dryRun: body.dryRun, results };
+}
+
+// ---- Spec 20.2: Send to Hevy ----
+
+/** A workout's Hevy link in one of its states (`sent` / `changed` carry the Hevy id, the origin and the sync time). */
+export function hevyLinkOf(state, origin = "sent") {
+  const linked = state === "sent" || state === "changed";
+  return { state, hevyWorkoutId: linked ? "HW-SENT-1" : null, origin: linked ? origin : null, syncedAt: linked ? "2026-10-27T19:10:00.000Z" : null };
+}
+/** A begin's answer: a fresh claim to create. */
+export const hevyBegin = { mode: "create", hevyWorkoutId: null, staleClaim: false, fingerprint: `v1:${"0".repeat(64)}` };
+/** Hevy's answer to a create. */
+export const hevyCreatedWorkout = { id: "HW-SENT-1", title: "Lower A", start_time: "2026-10-27T17:00:00Z", end_time: "2026-10-27T18:10:00Z", exercises: [] };
+/** The Hevy type a send pairs each modality in the captured workouts with. */
+const SEND_TYPE = { weight_reps: "weight_reps", duration: "duration", reps_only: "reps_only", bodyweight_reps: "bodyweight_reps" };
+/** A mapping that pairs every exercise of `workout` (so a send builds), each to its own Hevy template. */
+export function hevyMappingFor(workout) {
+  const byExercise = new Map(workout.exercises.map((e) => [e.exerciseId, e.modalitySnapshot]));
+  return {
+    pairs: [...byExercise].map(([id, modality], i) => ({
+      ...pairOf("H-BENCH", "exercise", id, { exportAs: true }),
+      hevyTemplateId: `H-SEND-${i}`,
+      hevyType: SEND_TYPE[modality] ?? "weight_reps",
+    })),
+    sectionRules: [],
+  };
 }

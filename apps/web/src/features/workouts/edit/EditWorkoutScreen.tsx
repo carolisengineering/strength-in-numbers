@@ -565,7 +565,7 @@ function EditBody({
           <p>{removing ? `${plural(removing.sets.length, "set", "sets")} will be deleted.` : null}</p>
         </ConfirmDialog>
         <SectionDialogs actions={sectionActions} sections={workout.sections} />
-        <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
+        <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} workoutId={workoutId} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
 
         <ActionBar data-testid="edit-bar">
           <Button disabled={writing || structureBusy} onClick={() => void navigate(`/app/${section}/${workoutId}`, { replace: true })}>
