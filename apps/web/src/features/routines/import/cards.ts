@@ -1,5 +1,6 @@
 import {
   CreateExerciseSchema,
+  ROUTINE_SECTIONS_MAX,
   buildImportPlan,
   guessModality,
   matchExerciseName,
@@ -45,7 +46,8 @@ export function cardNames(read: ReadResult): ReadName[] {
 
 /** The sections the routine keeps (the 8-section cap), so the summary counts what `cardNames` counts (deferred minor 23). */
 export function keptSectionCount(read: ReadResult): number {
-  return buildImportPlan(read, () => "weight_reps").sections.length;
+  // Minor 218: the plan keeps the first ROUTINE_SECTIONS_MAX sections, so the count needs no plan.
+  return Math.min(read.sections.length, ROUTINE_SECTIONS_MAX);
 }
 
 /** AC24: exact or similar → that exercise, pre-picked; nothing similar → New. */
@@ -80,11 +82,25 @@ export type CardProblem =
   /** The matched or picked exercise has left the list (a sync dropped it). */
   | { readonly kind: "gone" };
 
+/** Minor 219: the first visible row per non-empty normalized name; the screen builds it once per `visible`. */
+export function nameKeyIndex(visible: readonly Exercise[]): ReadonlyMap<string, Exercise> {
+  const byKey = new Map<string, Exercise>();
+  for (const row of visible) {
+    const key = normalizeExerciseName(row.name);
+    if (key !== "" && !byKey.has(key)) byKey.set(key, row);
+  }
+  return byKey;
+}
+
 /**
  * AC27–AC28: only cards with a problem. Recomputed on the current `visible` rows, so a New name that now
- * exists, or a chosen exercise that a sync dropped, blocks Continue.
+ * exists, or a chosen exercise that a sync dropped, blocks Continue. `byKey` is `nameKeyIndex(visible)`.
  */
-export function cardProblems(cards: readonly CardState[], visible: readonly Exercise[]): ReadonlyMap<string, CardProblem> {
+export function cardProblems(
+  cards: readonly CardState[],
+  visible: readonly Exercise[],
+  byKey: ReadonlyMap<string, Exercise> = nameKeyIndex(visible),
+): ReadonlyMap<string, CardProblem> {
   const problems = new Map<string, CardProblem>();
   const visibleIds = new Set<string>(visible.map((row) => row.id));
   for (const card of cards) {
@@ -93,11 +109,6 @@ export function cardProblems(cards: readonly CardState[], visible: readonly Exer
   }
   const fresh = cards.filter((card) => card.selected === "new");
   if (fresh.length === 0) return problems;
-  const byKey = new Map<string, Exercise>();
-  for (const row of visible) {
-    const key = normalizeExerciseName(row.name);
-    if (key !== "" && !byKey.has(key)) byKey.set(key, row);
-  }
   const newKeys = fresh.map((card) => normalizeExerciseName(card.newValue.name));
   const repeated = duplicateNewNameKeys(fresh.map((card) => card.newValue.name));
   fresh.forEach((card, i) => {

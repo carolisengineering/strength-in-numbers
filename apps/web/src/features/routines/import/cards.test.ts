@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog } from "../../../test/importFixtures";
-import { cardNames, cardProblems, initialCards, chooseExisting, keptSectionCount, type CardState } from "./cards";
+import { normalizeExerciseName } from "@sin/core";
+import { cardNames, cardProblems, initialCards, chooseExisting, keptSectionCount, nameKeyIndex, type CardState } from "./cards";
 import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messages";
 
 const read = readWorkoutText(HIRAYA_TEXT);
@@ -66,4 +67,15 @@ describe("10.4 AC27 — names that already exist", () => {
   });
   it("chooseExisting selects that exercise as exact", () =>
     expect(chooseExisting(cards[2]!, importCatalog[0]!)).toMatchObject({ selected: "match", match: { kind: "exact", exerciseId: importCatalog[0]!.id } }));
+});
+
+describe("Minor 219 — the catalog key index", () => {
+  it("keeps the first visible row per normalized name", () => {
+    const first = makeExercise({ id: exerciseId(1), name: "Bench Press" });
+    const second = makeExercise({ id: exerciseId(2), name: "bench  press" });
+    expect(nameKeyIndex([first, second]).get(normalizeExerciseName("Bench Press"))?.id).toBe(first.id);
+  });
+  it("leaves out a name with the empty key", () => {
+    expect(nameKeyIndex([makeExercise({ id: exerciseId(3), name: "- • !" })]).size).toBe(0);
+  });
 });

@@ -1,4 +1,3 @@
-import type { Exercise } from "@sin/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
@@ -11,10 +10,10 @@ import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { IMPORT_EDIT_PATH, IMPORT_PATH } from "../paths";
-import { cardNames, cardProblems, initialCards, keptSectionCount, type CardProblem } from "./cards";
+import { cardNames, cardProblems, initialCards, keptSectionCount, nameKeyIndex, type CardProblem } from "./cards";
 import styles from "./ImportNames.module.css";
 import { useImportSession } from "./ImportSession";
-import { buildHandoff } from "./handoff";
+import { buildHandoff, indexRowsById } from "./handoff";
 import {
   BACK_TO_TEXT,
   CATALOG_FAILED,
@@ -72,11 +71,13 @@ function NamesBody() {
   }, [waiting, session, read, visible]);
 
   const cards = session.cards;
-  const problems = useMemo(() => (cards ? cardProblems(cards, visible) : new Map<string, CardProblem>()), [cards, visible]);
+  // Minor 219: the catalog's name keys are built once per catalog, not on every keystroke.
+  const byKey = useMemo(() => nameKeyIndex(visible), [visible]);
+  const problems = useMemo(() => (cards ? cardProblems(cards, visible, byKey) : new Map<string, CardProblem>()), [cards, visible, byKey]);
   // Minor 59: the count builds the import plan, so it is computed once per read, not on every keystroke.
   const sectionCount = useMemo(() => keptSectionCount(read), [read]);
   // Minor 29: one lookup of the store's raw rows for every card (a chosen exercise is named even if it left `visible`).
-  const exerciseById = useMemo(() => new Map<string, Exercise>(state.rows.map((row) => [row.id, row])), [state.rows]);
+  const exerciseById = useMemo(() => indexRowsById(state.rows), [state.rows]);
   const exerciseName = (id: string | null) => (id === null ? null : (exerciseById.get(id)?.name ?? null));
   const blocked = cards?.filter((card) => problems.has(card.key)) ?? [];
 
@@ -92,7 +93,7 @@ function NamesBody() {
 
   const continueToEditor = () => {
     if (cards === null || blocked.length > 0) return;
-    session.setHandoff(buildHandoff({ read, cards, rows: state.rows, placeholderFor: session.placeholderFor }));
+    session.setHandoff(buildHandoff({ read, cards, rowById: exerciseById, placeholderFor: session.placeholderFor }));
     navigate(IMPORT_EDIT_PATH);
   };
 

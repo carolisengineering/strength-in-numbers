@@ -51,7 +51,7 @@ const SCORE_WORDS_MAX = 6;
 function nextTextLine(all: readonly string[], i: number): number {
   for (let j = i + 1; j < all.length; j++) {
     const l = all[j]!;
-    if (!CLOCK_LINE.test(l) && !statusBarLine(l) && !iconLine(l)) return j;
+    if (!CLOCK_LINE.test(l) && !isStatusBarLine(l) && !isIconLine(l)) return j;
   }
   return -1;
 }
@@ -64,14 +64,14 @@ export function collapseLine(line: string): string {
 /** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
 const ICON_MAX_LENGTH = 8;
 
-// Items 77 and 112: each predicate has a private form over a line that is already collapsed (`cleanWorkoutText`
-// collapses each line once); the exported form collapses, then delegates.
+// Items 77 and 112, minor 222: the line predicates take a line already collapsed by `collapseLine`
+// (`cleanWorkoutText` collapses each line once). `isFurnitureLine` alone takes a raw line (Spec 10.4 §6.7).
 
-/** AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script, or the signal bars. */
-export function isIconLine(line: string): boolean {
-  return iconLine(collapseLine(line));
-}
-function iconLine(l: string): boolean {
+/**
+ * AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script,
+ * or the signal bars. `l` is collapsed.
+ */
+export function isIconLine(l: string): boolean {
   // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
   return l !== "" && l.length <= ICON_MAX_LENGTH && ((!ALNUM.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
 }
@@ -92,11 +92,8 @@ const STATUS_TAIL_MAX = 3;
 /** With no bars before the network name: only a battery or suffix mark (`O`, `C`, `UW`), never a word like `Row`. */
 const STATUS_TAIL_MAX_NO_BARS = 2;
 
-/** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. */
-export function isStatusBarLine(line: string): boolean {
-  return statusBarLine(collapseLine(line));
-}
-function statusBarLine(l: string): boolean {
+/** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. `l` is collapsed. */
+export function isStatusBarLine(l: string): boolean {
   const tokens = l.split(" ");
   if (tokens.length < 2 || tokens.length > 3) return false;
   const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
@@ -107,21 +104,18 @@ function statusBarLine(l: string): boolean {
   return tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= tailMax));
 }
 
-/** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
-export function isBadgeLine(line: string): boolean {
-  return badgeLine(collapseLine(line));
-}
-function badgeLine(l: string): boolean {
+/** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. `l` is collapsed. */
+export function isBadgeLine(l: string): boolean {
   return l.split("/").every((p) => HEADER_BADGES.has(p.trim().toLowerCase()));
 }
 
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return furnitureLine(l, badgeLine(l));
+  return furnitureLine(l, isBadgeLine(l));
 }
-/** `badge` is `badgeLine(l)`, which the cleaning loop computes once per line. */
+/** `badge` is `isBadgeLine(l)`, which the cleaning loop computes once per line. */
 function furnitureLine(l: string, badge: boolean): boolean {
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || iconLine(l) || statusBarLine(l) || badge;
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l) || isStatusBarLine(l) || badge;
 }
 
 const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
@@ -227,7 +221,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
   // Minor 84: an icon is chrome only beside a label of a tab bar. Reach 3 lets an icon read as two lines sit
   // between two labels (`Home`, `口`, `凸`, `Workouts`).
   const tabBar = nav.map((_, i) => navNear(i, 3));
-  const badge = all.map(badgeLine);
+  const badge = all.map(isBadgeLine);
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
@@ -502,14 +496,24 @@ function splitLoad(text: string): { text: string; load: string | null } {
   const at = text.indexOf(LOAD_MARK);
   return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
 }
+/** Minors 108, 215: "1 Mile Run for time" names the run; "for time" is how it is scored, so it goes to the note. */
+const FOR_TIME = /,?\s+(for time)$/i;
+/** A trailing "for time" (with a comma before it, if any) off `text`. */
+function takeForTime(text: string): { text: string; forTime: string | null } {
+  const m = FOR_TIME.exec(text);
+  return m ? { text: text.slice(0, m.index), forTime: m[1]! } : { text, forTime: null };
+}
 /**
- * A movement line's name part and load: the load comes off first, then a trailing comma (which belongs to the line, not
- * the load) is read on the name part by #155's rule.
+ * A movement line's name part, load and trailing `for time`: the load comes off first, then a trailing comma (which
+ * belongs to the line, not the load) is read on the name part by #155's rule, then a trailing "for time" comes off the
+ * name part (minor 215: every movement line; on an "A + B" line it describes the whole line, minor 216).
  */
-function splitMovement(raw: string): { text: string; load: string | null } {
-  const { text, load } = splitLoad(raw);
-  if (load === null || !load.endsWith(",")) return { text: dropMovementComma(text), load };
-  return { text: dropMovementComma(`${text},`), load: load.slice(0, -1).trimEnd() };
+function splitMovement(raw: string): { text: string; load: string | null; forTime: string | null } {
+  const { text: named, load: rawLoad } = splitLoad(raw);
+  const commaOnLoad = rawLoad !== null && rawLoad.endsWith(",");
+  const text = dropMovementComma(commaOnLoad ? `${named},` : named);
+  const load = commaOnLoad ? rawLoad.slice(0, -1).trimEnd() : rawLoad;
+  return { ...takeForTime(text), load };
 }
 /**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
@@ -681,45 +685,61 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (s.run !== null && s.run.kind !== "list") {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
-    const { text: raw, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
+    const forTimeNote = forTime === null ? [] : [forTime];
+    // Final review of minor 215: a line that only reads as structure once its "for time" is off ("21-15-9 for time",
+    // "Rounds for time") is the run's note and keeps it open, so the movements after it keep their sets.
+    // Code review: AC8's movement test counts the words as written, "for time" included, so a cue sentence that ends in
+    // it ("Finish with a 1 mile run for time") stays a note and closes the run, as before minor 215. An "A + B" line is
+    // tested part by part below (AC51), as before.
+    if (forTime !== null && !PLUS.test(raw) && !isMovementText(`${raw} ${forTime}`)) return null;
+    if (forTime !== null && (!isMovementText(raw) || isStructureName(raw))) return "note";
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
     if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side; a load belongs to the last side.
-    const parts = raw.split(PLUS);
-    if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
+    // A part's own "for time" ("10 Squats for time + 10 Burpees") is that part's note; the line's goes to every part.
+    const parts = raw.split(PLUS).map(takeForTime);
+    if (parts.length > 1 && parts.every((p) => isMovementText(p.text) && repFormOf(p.text) !== null)) {
       const run = s.run;
-      parts.forEach((part, i) => pushMovement(s, run, part, repFormOf(part), i === parts.length - 1 ? loadNote : []));
+      parts.forEach((part, i) =>
+        pushMovement(s, run, part.text, repFormOf(part.text), [
+          ...(part.forTime === null ? [] : [part.forTime]),
+          ...forTimeNote,
+          ...(i === parts.length - 1 ? loadNote : []),
+        ]),
+      );
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
     // "Max" is a rep count, never part of a name: "Max Hang" is Hang (owner, 2026-10-24; replaces item 70's fix).
     const max = MAX_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
-      pushMovement(s, s.run, max[2]!, null, [maxNote(max), ...loadNote], MAX_CAL.test(max[1]!));
+      pushMovement(s, s.run, max[2]!, null, [maxNote(max), ...forTimeNote, ...loadNote], MAX_CAL.test(max[1]!));
       return "movement";
     }
     // Spec 05.3 AC36: "20 Cal Row" → Row, with "20 Cal" as its note and the calories hint.
     const cal = leadingCalorieOf(raw);
     if (cal) {
-      pushMovement(s, s.run, cal.movement, null, [cal.measure, ...loadNote], true);
+      pushMovement(s, s.run, cal.movement, null, [cal.measure, ...forTimeNote, ...loadNote], true);
       return "movement";
     }
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
     if (s.run.kind === "lead-in" && s.run.strict && repFormOf(raw) === null && !LEADING_MEASURE.test(raw)) return "note";
     if (!isMovementText(raw)) return null;
-    pushMovement(s, s.run, raw, repFormOf(raw), loadNote);
+    pushMovement(s, s.run, raw, repFormOf(raw), [...forTimeNote, ...loadNote]);
     return "movement";
   }
 
   // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list.
   if (BULLET.test(line)) {
     s.run = null;
-    const { text, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const item = rowlessItemOf(text, { max: "any", counted: false });
-    if (!item) return null;
-    pushItem(s, { ...item, noteLines: load === null ? item.noteLines : [...item.noteLines, load], run: null });
+    // Code review: "- 3 Rounds for time" is structure, never an exercise named "Rounds".
+    if (!item || (forTime !== null && isStructureName(item.name))) return null;
+    pushItem(s, { ...item, noteLines: [...item.noteLines, ...(forTime === null ? [] : [forTime]), ...(load === null ? [] : [load])], run: null });
     return "movement";
   }
 
@@ -738,23 +758,17 @@ const isStructureName = (name: string) =>
 
 type CountedItem = Omit<MutableItem, "nameKey" | "section" | "run">;
 
-/** Minor 108: "1 Mile Run for time" names the run; "for time" is how it is scored. */
-const FOR_TIME = /\s+(for time)$/i;
-
 /**
  * Minor 110: the one reader of a rowless item, for a bare bullet (step 8) and an AC62 counted line. In order: a Max
  * form, then a leading calorie form, then a rep form, then (counted only) a leading distance.
  * - `max`: which Max forms count. A bullet takes any (AC50); a counted line only `Max Cal` (minor 109, owner ruling O3),
  *   so "Max effort today" stays a note.
  * - `counted`: AC62's extra rules. The whole line must pass AC8's movement test, a structure name ("5 Rounds") is not
- *   a movement, a leading distance counts, and a trailing "for time" goes to the note (minor 108).
+ *   a movement, and a leading distance counts.
+ * A trailing "for time" is already off: `splitMovement` takes it (minors 108, 215).
  */
-function rowlessItemOf(line: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
-  // The "for time" comes off first, so a counted Max Cal line names its movement alone too.
-  const forTime = opts.counted ? FOR_TIME.exec(line) : null;
-  const text = forTime ? line.slice(0, forTime.index) : line;
-  const item = maxItemOf(text, opts.max) ?? (opts.counted && !isMovementText(text) ? null : countedFormOf(text, opts.counted));
-  return item && forTime ? { ...item, noteLines: [...item.noteLines, forTime[1]!] } : item;
+function rowlessItemOf(text: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
+  return maxItemOf(text, opts.max) ?? (opts.counted && !isMovementText(text) ? null : countedFormOf(text, opts.counted));
 }
 
 function maxItemOf(text: string, which: "any" | "calories"): CountedItem | null {
@@ -786,14 +800,20 @@ function countedFormOf(text: string, counted: boolean): CountedItem | null {
  * before a variant label.
  */
 function countedLineOf(line: string, s: ReadState): boolean {
-  const { text, load } = splitMovement(line.replace(TRAILING_PLUS, ""));
+  const { text, load, forTime } = splitMovement(line.replace(TRAILING_PLUS, ""));
   if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
-  const parts = text.split(PLUS);
-  const items = parts.map((part) => rowlessItemOf(part, { max: "calories", counted: true }));
+  // A part's own "for time" is that part's note (minor 108 on "A for time + B"); the line's goes to every part.
+  const parts = text.split(PLUS).map(takeForTime);
+  const items = parts.map((part) => rowlessItemOf(part.text, { max: "calories", counted: true }));
   if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
   const run = s.run.id;
-  items.forEach((it, i) => pushItem(s, { ...it!, noteLines: load !== null && i === items.length - 1 ? [...it!.noteLines, load] : it!.noteLines, run }));
+  const forTimeNote = forTime === null ? [] : [forTime];
+  items.forEach((it, i) => {
+    const own = parts[i]!.forTime === null ? [] : [parts[i]!.forTime!];
+    const lastLoad = load !== null && i === items.length - 1 ? [load] : [];
+    pushItem(s, { ...it!, noteLines: [...it!.noteLines, ...own, ...forTimeNote, ...lastLoad], run });
+  });
   return true;
 }
 

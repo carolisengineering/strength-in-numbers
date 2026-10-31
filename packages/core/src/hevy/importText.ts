@@ -1,21 +1,20 @@
 import type { CodeCount } from "../dto/hevy-import.js";
 import { WORKOUT_FUTURE_SKEW_MAX_MS, WORKOUT_START_EDIT_FLOOR } from "../dto/workout.js";
 import { localDateFor } from "../time.js";
+import { cutClusters } from "./clusterCut.js";
 
 /**
  * Spec 19.1 AC2, AC8: the import's text and time rules. No `Intl` (AC14): cuts count UTF-16 units, as SIN's limits
- * do, and step by whole code points, so a cut never leaves half a surrogate pair.
+ * do, and end on a cluster boundary (`cutClusters`), so a cut never leaves half a surrogate pair, emoji or flag.
  */
 
-/** At most `max` UTF-16 units, by whole code points; a cut text loses its trailing whitespace. */
+/**
+ * At most `max` UTF-16 units, ending on a cluster boundary (minor 209; the name predates it and is kept, as it is a
+ * barrel export); a cut text loses its trailing whitespace and may be `""` when one cluster is longer than `max`.
+ */
 export function cutCodePoints(text: string, max: number): { text: string; cut: boolean } {
   if (text.length <= max) return { text, cut: false };
-  let out = "";
-  for (const point of text) {
-    if (out.length + point.length > max) break;
-    out += point;
-  }
-  return { text: out.trimEnd(), cut: true };
+  return { text: cutClusters(text, max).trimEnd(), cut: true };
 }
 
 const isControl = (code: number, keepWhitespace: boolean): boolean =>
@@ -34,7 +33,8 @@ function clean(raw: string | null, max: number, keepWhitespace: boolean): { valu
   const trimmed = stripControls(raw, keepWhitespace).trim();
   if (trimmed === "") return { value: null, cut: false };
   const { text, cut } = cutCodePoints(trimmed, max);
-  return { value: text, cut };
+  // A cut that keeps nothing (one cluster longer than the limit) is no text, never "".
+  return { value: text === "" ? null : text, cut };
 }
 
 /** A one-line text (a title, a name): every C0 character and DEL removed, trimmed, cut; empty is `null`. */

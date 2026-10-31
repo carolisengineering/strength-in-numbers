@@ -123,8 +123,20 @@ describe("Minor 146 — a cut never ends inside a cluster", () => {
     expect(r.name).toBe("Workout");
   });
 
+  it("Minor 214 — a name replaced by Workout reports no cut", () => {
+    const r = sectionFromPlaceholder("workout_placeholder", `H${"́".repeat(60)}`);
+    expect(r.notices).toEqual([]);
+  });
+
   it("a note cut inside a ZWJ sequence keeps it whole too", () => {
     const r = sectionFromPlaceholder("warmup_placeholder", `${"y".repeat(1997)}👩‍💻`);
     expect(r.note).toBe("y".repeat(1997));
   });
+});
+
+describe("Minor 211 — a lone CR ends a line", () => {
+  it("names the section by the text before it", () =>
+    expect(sectionFromPlaceholder("workout_placeholder", "EMOM 12\revery minute")).toEqual({ name: "EMOM 12", note: "every minute", notices: [] }));
+  it("CRLF still reads as one line end", () =>
+    expect(sectionFromPlaceholder("workout_placeholder", "A\r\n\r\nB")).toEqual({ name: "A", note: "B", notices: [] }));
 });

@@ -5,13 +5,13 @@ import { exerciseId } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog, randomPlan } from "../../../test/importFixtures";
 import { actions, reduce } from "../routineDraft";
 import { cardNames, initialCards } from "./cards";
-import { buildHandoff } from "./handoff";
+import { buildHandoff, indexRowsById } from "./handoff";
 import { draftFromImport } from "./importDraft";
 
 const read = readWorkoutText(HIRAYA_TEXT);
 const placeholders = new Map<string, string>();
 const placeholderFor = (k: string) => placeholders.get(k) ?? (placeholders.set(k, crypto.randomUUID()), placeholders.get(k)!);
-const handoff = buildHandoff({ read, cards: initialCards(cardNames(read), importCatalog), rows: importCatalog, placeholderFor });
+const handoff = buildHandoff({ read, cards: initialCards(cardNames(read), importCatalog), rowById: indexRowsById(importCatalog), placeholderFor });
 const idOf = (k: string) => handoff.exerciseIdOf.get(k)!;
 
 describe("10.4 AC29 — the draft from an import", () => {
@@ -45,7 +45,7 @@ describe("10.4 AC29 — the draft from an import", () => {
     expect(new Set(keys).size).toBe(keys.length);
     for (const ph of handoff.pending.keys()) expect(ExerciseIdSchema.safeParse(ph).success).toBe(true);
     const twice = readWorkoutText("Strength\n3 Sets:\n10 Zercher Curl\n10 Row\nAccessory\n2 Sets:\n8 Zercher Curls\nx.");
-    const h2 = buildHandoff({ read: twice, cards: initialCards(cardNames(twice), []), rows: [], placeholderFor });
+    const h2 = buildHandoff({ read: twice, cards: initialCards(cardNames(twice), []), rowById: indexRowsById([]), placeholderFor });
     const d2 = draftFromImport(h2.plan, (k) => h2.exerciseIdOf.get(k)!);
     expect(d2.items[0]!.exerciseId).toBe(d2.items[2]!.exerciseId);
   });

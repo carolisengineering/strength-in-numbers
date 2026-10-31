@@ -64,7 +64,7 @@ describe("10.4 AC42 — a clock line may carry one icon", () => {
 
 describe("10.4 AC43 — icon and count lines are furniture", () => {
   it.each(["→", "•0ll", "•ll", "★"])("%s is dropped and counted anywhere", (line) => {
-    expect(isIconLine(line)).toBe(true);
+    expect(isIconLine(collapseLine(line))).toBe(true);
     const r = cleanWorkoutText(`Intro\n${line}\nNext`);
     expect(r.lines).toEqual(["Intro", "Next"]);
     expect(r.furniture).toBe(1);
@@ -76,18 +76,18 @@ describe("10.4 AC43 — icon and count lines are furniture", () => {
     ["within two lines of the clock", "11:09\nIntro\n{}\nNext"],
   ])("a short line of letters in another script is an icon %s (item 71)", (_, text) => {
     for (const icon of ["口", "凸", "الهه"]) {
-      expect(isIconLine(icon)).toBe(false);
+      expect(isIconLine(collapseLine(icon))).toBe(false);
       expect(cleanWorkoutText(text.replace("{}", icon)).lines).not.toContain(icon);
     }
   });
   it.each(["Жим", "スクワット", "الهه"])("%s mid-list is someone's exercise, not an icon (item 71)", (line) =>
     expect(cleanWorkoutText(`11:08\nStrength\n3 Sets:\n10 Push-ups\n${line}\n10 Squats`).lines).toContain(line));
   it.each(["Søren Lunge", "Row", "10", "I", "Lo", "100m", "***", "---", "+", "|"])("%s is kept (Review Focus 2; plain ASCII marks are separators, not icons)", (line) => {
-    expect(isIconLine(line)).toBe(false);
+    expect(isIconLine(collapseLine(line))).toBe(false);
     expect(cleanWorkoutText(`Intro\n${line}`).lines).toContain(line);
   });
   it.each(["今日はスピードとパワーの日です。", "-".repeat(40), "\u0000\ud800" + "-".repeat(2_000)])("a long line with no Latin letter is text, not an icon: %#", (line) =>
-    expect(isIconLine(line)).toBe(false));
+    expect(isIconLine(collapseLine(line))).toBe(false));
   it("a bare number right after RESULTS (n) is dropped; elsewhere it stays", () => {
     expect(cleanWorkoutText("Intro\nRESULTS (2)\n49\nAccessory").lines).toEqual(["Intro", "Accessory"]);
     expect(cleanWorkoutText("Intro\n49\nAccessory").lines).toEqual(["Intro", "49", "Accessory"]);
@@ -183,23 +183,28 @@ describe("10.4 AC55 — more clock shapes", () => {
 
 describe("10.4 AC56 — the cellular status bar is furniture", () => {
   it.each(["•ll LTE O", "•I LTE C", "Il LTE O", "all LTE L", "•ill LTE C", "•ll 5G", "ll 5G UW", "•l 5G+ O"])("%s is dropped anywhere", (l) => {
-    expect(isStatusBarLine(l)).toBe(true);
+    expect(isStatusBarLine(collapseLine(l))).toBe(true);
     expect(cleanWorkoutText(`Workout: "X"\n${l}\nAMRAP 15`).lines).toEqual(['Workout: "X"', "AMRAP 15"]);
   });
-  it.each(["LTE coverage is spotty today", "5G Burpees", "LTE", "Row LTE"])("%s stays", (l) => expect(isStatusBarLine(l)).toBe(false));
+  it("Minor 222 — the predicates take a collapsed line", () => {
+    expect(isStatusBarLine(collapseLine("•ll  LTE  O"))).toBe(true);
+    expect(isIconLine(collapseLine("  ⚡︎  "))).toBe(true);
+    expect(isBadgeLine(collapseLine(" ROUNDS / REPS "))).toBe(true);
+  });
+  it.each(["LTE coverage is spotty today", "5G Burpees", "LTE", "Row LTE"])("%s stays", (l) => expect(isStatusBarLine(collapseLine(l))).toBe(false));
 });
 
 describe("Minor 107 — a network name needs bars before it", () => {
   it.each(["LTE Row", "5G Row", "3G Run"])("%s is not the status bar and is kept", (l) => {
-    expect(isStatusBarLine(l)).toBe(false);
+    expect(isStatusBarLine(collapseLine(l))).toBe(false);
     expect(cleanWorkoutText(`Intro\n${l}\nNext`).lines).toContain(l);
   });
   it("•ll LTE is still dropped as the status bar", () => {
-    expect(isStatusBarLine("•ll LTE")).toBe(true);
+    expect(isStatusBarLine(collapseLine("•ll LTE"))).toBe(true);
     expect(cleanWorkoutText("Intro\n•ll LTE\nNext").lines).toEqual(["Intro", "Next"]);
   });
   it.each(["LTE O", "5G UW", "LTE C", "5G+ O"])("code review — %s (the bars read on their own line) is still the status bar", (l) => {
-    expect(isStatusBarLine(l)).toBe(true);
+    expect(isStatusBarLine(collapseLine(l))).toBe(true);
     expect(cleanWorkoutText(`Intro\n•ll\n${l}\nNext`).lines).toEqual(["Intro", "Next"]);
   });
   it("code review — under an open run, a bars-less status bar is not read as an exercise", () => {
@@ -256,12 +261,12 @@ describe("10.4 AC55 — a bulleted time is not a clock (/code-review)", () => {
 
 describe("10.4 AC58 — combined badges", () => {
   it.each(["ROUNDS/REPS", "TIME/REPS", "rounds / reps"])("%s is a badge and tags the line above", (b) => {
-    expect(isBadgeLine(b)).toBe(true);
+    expect(isBadgeLine(collapseLine(b))).toBe(true);
     const r = cleanWorkoutText(`Workout: "MORRO BAY"\nIl LTE O\n${b}\nAMRAP 15`);
     expect(r.lines).toEqual(['Workout: "MORRO BAY"', "AMRAP 15"]);
     expect(r.tagged).toEqual([true, false]);
   });
-  it.each(["Log result/REPS", "ROUNDS/", "Push/Pull"])("%s is not", (b) => expect(isBadgeLine(b)).toBe(false));
+  it.each(["Log result/REPS", "ROUNDS/", "Push/Pull"])("%s is not", (b) => expect(isBadgeLine(collapseLine(b))).toBe(false));
 });
 
 describe("10.4 AC59 — the overlap ignores apostrophes", () => {

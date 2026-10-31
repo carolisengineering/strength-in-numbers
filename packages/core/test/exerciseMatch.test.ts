@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { guessModality, matchExerciseName, normalizeExerciseName, prepareCatalog } from "../src/exerciseMatch.js";
+import { guessModality, matchExerciseName, normalizeExerciseName, prepareCatalog, type PreparedCatalog } from "../src/exerciseMatch.js";
 import { prng } from "./helpers/history-generator.js";
 
 const BUILT_INS = ["Barbell back squat", "Barbell bench press", "Conventional deadlift", "Overhead press", "Barbell row", "Dumbbell lunge",
@@ -72,6 +72,12 @@ describe("Minor 18 — a prepared catalog", () => {
     } finally {
       normalize.mockRestore();
     }
+  });
+
+  it("Minor 221 code review — a catalog from another copy of the module still matches (no instanceof at runtime)", () => {
+    // Two copies of @sin/core (src and dist) can be loaded side by side; the nominal check is the type, not the class.
+    const other = { entries: prepareCatalog(rows).entries } as unknown as PreparedCatalog<(typeof rows)[number]>;
+    expect(matchExerciseName(rows[0]!.name, other)).toEqual(matchExerciseName(rows[0]!.name, prepareCatalog(rows)));
   });
 
   it("Review Focus 5 — a catalog prepared from new rows finds the new exercise", () => {

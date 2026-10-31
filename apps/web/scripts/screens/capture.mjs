@@ -345,6 +345,12 @@ async function layoutDump(page) {
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.display === "none" || Number(cs.opacity) === 0) return false;
       if (el.closest("dialog:not([open])")) return false;
+      // Minor 266: a closed <details> draws only its own <summary>; the controls under it are not on screen, though
+      // Chromium still reports stale boxes for them (they read as overlaps on the import cards' "More details").
+      for (let d = el.closest("details:not([open])"); d; d = d.parentElement?.closest("details:not([open])") ?? null) {
+        const summary = d.querySelector(":scope > summary");
+        if (!summary || !summary.contains(el)) return false;
+      }
       if (modal && !modal.contains(el)) return false;
       return true;
     };

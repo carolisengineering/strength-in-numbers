@@ -1,4 +1,5 @@
 import { SECTION_NAME_MAX, SECTION_NOTES_MAX } from "../dto/routine-section.js";
+import { cutClusters } from "./clusterCut.js";
 import type { SectionTreatment } from "./vocabulary.js";
 
 /** A section rule: how sections with this name are sent to Hevy. */
@@ -31,54 +32,6 @@ export function sectionTreatment(name: string, rules: readonly SectionRule[]): S
 
 export type SectionNotice = "section_name_cut" | "section_note_cut";
 
-const ZWJ = 0x200d;
-const isRegionalIndicator = (cp: number) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
-const MARK = /^\p{M}$/u;
-/** A code point that continues the cluster before it: a combining mark, ZWJ, a variation selector, a skin-tone
- * modifier or an emoji tag character. */
-function extendsCluster(point: string): boolean {
-  const cp = point.codePointAt(0)!;
-  return (
-    MARK.test(point) ||
-    cp === ZWJ ||
-    (cp >= 0xfe00 && cp <= 0xfe0f) ||
-    (cp >= 0x1f3fb && cp <= 0x1f3ff) ||
-    (cp >= 0xe0020 && cp <= 0xe007f)
-  );
-}
-
-/** Whether a cut between `before` (code points kept) and `next` (the first one dropped) splits a cluster. */
-function splitsCluster(before: readonly string[], next: string | undefined): boolean {
-  if (before.length === 0) return false;
-  const last = before[before.length - 1]!.codePointAt(0)!;
-  if (last === ZWJ) return true;
-  if (next === undefined) return false;
-  if (extendsCluster(next)) return true;
-  if (!isRegionalIndicator(last) || !isRegionalIndicator(next.codePointAt(0)!)) return false;
-  let run = 0;
-  for (let i = before.length - 1; i >= 0 && isRegionalIndicator(before[i]!.codePointAt(0)!); i--) run++;
-  return run % 2 === 1;
-}
-
-/**
- * The longest prefix of at most `max` UTF-16 units (SIN's limits count units) that ends on a cluster boundary: never
- * inside a surrogate pair (deferred minor 136), after a ZWJ, before a combining mark, variation selector or skin-tone
- * modifier, or between a flag's two regional indicators (minor 146). No `Intl.Segmenter` (core stays pure), so it
- * may end a little shorter than a true grapheme cut; it is never longer.
- */
-function cutUnits(text: string, max: number): string {
-  const points = [...text];
-  const kept: string[] = [];
-  let units = 0;
-  for (const p of points) {
-    if (units + p.length > max) break;
-    kept.push(p);
-    units += p.length;
-  }
-  while (splitsCluster(kept, points[kept.length])) kept.pop();
-  return kept.join("");
-}
-
 function noteOf(lines: readonly string[], notices: SectionNotice[]): string | null {
   const note = lines
     .map((line) => line.trim())
@@ -88,7 +41,7 @@ function noteOf(lines: readonly string[], notices: SectionNotice[]): string | nu
   if (note.length <= SECTION_NOTES_MAX) return note;
   notices.push("section_note_cut");
   // A cut keeps whole clusters, so one cluster longer than the limit leaves nothing: no note, never "".
-  return cutUnits(note, SECTION_NOTES_MAX).trimEnd() || null;
+  return cutClusters(note, SECTION_NOTES_MAX).trimEnd() || null;
 }
 
 /**
@@ -101,15 +54,18 @@ export function sectionFromPlaceholder(
   notes: string | null,
 ): { name: string; note: string | null; notices: SectionNotice[] } {
   const notices: SectionNotice[] = [];
-  const lines = (notes ?? "").split(/\r?\n/);
+  // Minor 211: CRLF, a lone CR and LF each end a line.
+  const lines = (notes ?? "").split(/\r\n?|\n/);
   if (role === "warmup_placeholder") return { name: "Warm-up", note: noteOf(lines, notices), notices };
 
   const first = lines.findIndex((line) => line.trim() !== "");
   if (first === -1) return { name: "Workout", note: null, notices };
   let name = lines[first]!.trim();
   if (name.length > SECTION_NAME_MAX) {
-    name = cutUnits(name, SECTION_NAME_MAX).trim() || "Workout";
-    notices.push("section_name_cut");
+    const kept = cutClusters(name, SECTION_NAME_MAX).trim();
+    // Minor 214: a cut that keeps nothing replaces the name with Workout, which is not a trimmed name.
+    if (kept !== "") notices.push("section_name_cut");
+    name = kept || "Workout";
   }
   return { name, note: noteOf(lines.slice(first + 1), notices), notices };
 }

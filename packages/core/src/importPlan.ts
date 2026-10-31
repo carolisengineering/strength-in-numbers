@@ -149,9 +149,12 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     found.set("sections-left-out", { code: "sections-left-out", count: names.length, names });
   }
   const inKeptSection = (it: ReadItem) => it.section === null || it.section < ROUTINE_SECTIONS_MAX;
-  // The reader emits items loose first, then section by section, so no sort is needed (minor 22; pinned in the
-  // totality test).
-  const surviving = read.items.filter(inKeptSection);
+  // The reader emits items loose first, then section by section (minor 22; pinned in the totality test). A read built
+  // another way is checked in one pass and sorted (stably) only when it is out of order (minor 220).
+  const kept = read.items.filter(inKeptSection);
+  const rank = (it: ReadItem) => it.section ?? -1;
+  const ordered = kept.every((it, i) => i === 0 || rank(kept[i - 1]!) <= rank(it));
+  const surviving = ordered ? kept : [...kept].sort((a, b) => rank(a) - rank(b));
 
   // (2) The first 30 items.
   if (surviving.length > ROUTINE_ITEMS_MAX) count("items-left-out", surviving.length - ROUTINE_ITEMS_MAX);
@@ -176,7 +179,8 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     if (it.run === null) return;
     runs.set(it.run, [...(runs.get(it.run) ?? []), i]);
   });
-  // A run's members are consecutive and runs arrive in first appearance, so the chunks are already in item order.
+  // Groups are numbered by each run's first appearance (the map keeps insertion order); the reader keeps a run's
+  // members consecutive, so its chunks are in item order too.
   const chunks: number[][] = [];
   for (const members of runs.values()) {
     if (members.length > SUPERSET_GROUP_MEMBERS_MAX) count("superset-split");
