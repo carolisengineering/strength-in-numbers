@@ -25,6 +25,7 @@ import { pinTimeZone } from "../../../test/timeZone";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { HEVY_GET_RETRY_WAITS_MS } from "../client/pacer";
+import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { HEVY_COPY } from "../messages";
 import { HEVY_PATH } from "../paths";
@@ -129,6 +130,16 @@ describe("20.1 AC2 — preflight", () => {
   });
 });
 
+describe("Minor 249 — Start is the one primary button", () => {
+  it("on preflight, the only primary button in the step is Start", async () => {
+    setup({ status: STATUS });
+    renderApp(HEVY_IMPORT_PATH);
+    const step = await screen.findByRole("region", { name: "Before you start" });
+    const primary = within(step).getAllByRole("button").filter((b) => b.dataset.variant === "primary");
+    expect(primary.map((b) => b.textContent)).toEqual(["Start"]);
+  });
+});
+
 describe("20.1 AC3 / AC5 — reading UI", () => {
   it("shows the stage and page in a polite status, and Cancel returns to preflight", async () => {
     const { hevy } = setup({ status: STATUS, hevy: { workouts: generateHevyWorkouts(120) } });
@@ -148,6 +159,20 @@ describe("20.1 AC3 / AC5 — reading UI", () => {
     const { user } = renderApp(HEVY_IMPORT_PATH);
     await startReading(user);
     expect(await screen.findByText("Reading Hevy… exercises, page 1 of 3")).toBeInTheDocument();
+  });
+
+  it("Minor 245 — Cancel stops a refetch of a stale template cache", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({ id: `T${i}`, title: `Template ${i}`, type: "weight_reps", is_custom: false }));
+    const { hevy } = setup({ status: STATUS, hevy: { templates: many } });
+    hevy.holdPage("/v1/exercise_templates", 2);
+    const { user, queryClient } = renderApp(HEVY_IMPORT_PATH);
+    // A list read 11 minutes ago: past its 10-minute staleTime, so this import's read refetches it.
+    queryClient.setQueryData(HEVY_KEYS.templates, many.slice(0, 1), { updatedAt: Date.now() - 11 * 60_000 });
+    await startReading(user);
+    await screen.findByText("Reading Hevy… exercises, page 1 of 3");
+    expect(queryClient.getQueryState(HEVY_KEYS.templates)?.fetchStatus).toBe("fetching");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(queryClient.getQueryState(HEVY_KEYS.templates)?.fetchStatus).toBe("idle"));
   });
 
   it("a stage that fails after the retries offers Try again, which restarts only that stage", async () => {

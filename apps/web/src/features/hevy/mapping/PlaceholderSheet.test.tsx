@@ -17,7 +17,7 @@ import { server } from "../../../test/msw/server";
 import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
-import { CHOOSE_MARKERS, NO_KEY_FOR_FILE, NO_MARKERS, mappingRateLimited, replaceExercisePairing } from "../messages";
+import { CHOOSE_MARKERS, NO_KEY_FOR_FILE, NO_MARKERS, mappingRateLimited, readingTemplates, replaceExercisePairing } from "../messages";
 
 const MAPPING_URL = `${API_BASE_URL}/v1/hevy/mapping`;
 const tpl = (id: string, title: string, type = "reps_only") => ({ id, title, type, is_custom: true, primary_muscle_group: "other", secondary_muscle_groups: [], equipment: "none" });
@@ -194,5 +194,15 @@ describe("Minor 194 — the markers search folds accents (minor 192's shared fol
     const warm = within(dialog).getByRole("group", { name: "Warmup" });
     expect(within(warm).getByRole("radio", { name: "Développé Couché" })).toBeInTheDocument();
     expect(within(warm).queryByRole("radio", { name: "Bench Press" })).toBeNull();
+  });
+});
+
+describe("Minor 232 — the markers sheet's loading line shows the page", () => {
+  it("while page 2 of 3 is on its way, the line reads page 1 of 3", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    server.use(templatesHandler(many, { hold: 2 }));
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    const dialog = await openMarkers();
+    expect(await within(dialog).findByText(readingTemplates(1, 3))).toHaveAttribute("role", "status");
   });
 });

@@ -75,6 +75,70 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
     expect(screen.queryByRole("button", { name: "Finish the last step" })).toBeNull();
   });
 
+  describe("Minor 241 — the records banner", () => {
+    const STATUS_URL = `${API_BASE_URL}/v1/hevy/status`;
+    const statusBody = (recordsStale: boolean) => ({ enabled: true, pairCount: 0, linkCount: 0, recordsStale });
+    /** The first status read says stale; the re-read after the finish waits for `answer` (its `recordsStale`). */
+    function heldStatusReread() {
+      let reads = 0;
+      let answer: (stale: boolean) => void = () => {};
+      const later = new Promise<boolean>((resolve) => (answer = resolve));
+      server.use(
+        http.get(STATUS_URL, async () => {
+          reads += 1;
+          if (reads === 1) return HttpResponse.json(statusBody(true));
+          return HttpResponse.json(statusBody(await later));
+        }),
+      );
+      return { answer, reads: () => reads };
+    }
+
+    it("its status line is there, empty, before the finish, and the same line says Records updated", async () => {
+      setup({ recordsStale: true });
+      const { user } = renderApp(HEVY_PATH);
+      const button = await screen.findByRole("button", { name: "Finish the last step" });
+      const before = screen.getAllByRole("status");
+      await user.click(button);
+      const updated = await screen.findByText("Records updated.");
+      expect(before).toContain(updated);
+    });
+
+    it("while empty the line is visually hidden, so it adds no gap to the screen (final review)", async () => {
+      setup({ recordsStale: true });
+      const { user } = renderApp(HEVY_PATH);
+      const button = await screen.findByRole("button", { name: "Finish the last step" });
+      // Each status line's class before the finish; the banner's is the one that later says Records updated.
+      const before = new Map(screen.getAllByRole("status").map((s) => [s, s.className]));
+      await user.click(button);
+      const updated = await screen.findByText("Records updated.");
+      expect(before.get(updated)).toMatch(/_hidden_/);
+      expect(updated.className).not.toMatch(/_hidden_/);
+    });
+
+    it("once the finish succeeds, no Finish button is offered while the status is re-read", async () => {
+      const imports = setup({ recordsStale: true });
+      const status = heldStatusReread();
+      const { user } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+      await waitFor(() => expect(status.reads()).toBe(2));
+      expect(screen.queryByRole("button", { name: "Finish the last step" })).toBeNull();
+      expect(finishes(imports)).toHaveLength(1);
+      status.answer(false);
+    });
+
+    it("if the re-read still says stale (another run), the banner comes back with Finish enabled (Review Focus 4)", async () => {
+      setup({ recordsStale: true });
+      const status = heldStatusReread();
+      const { user } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      await screen.findByText("Records updated.");
+      await waitFor(() => expect(status.reads()).toBe(2));
+      status.answer(true);
+      expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+    });
+  });
+
   it("a failed finish says so and stays; Try again succeeds and the banner goes", async () => {
     const imports = setup({ recordsStale: true });
     imports.failSequence([500]);

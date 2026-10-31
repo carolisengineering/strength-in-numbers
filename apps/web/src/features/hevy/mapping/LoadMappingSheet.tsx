@@ -50,7 +50,7 @@ import {
 import { useHevyClient } from "../useHevyClient";
 import { applyRule, resolveLines, sectionRulesRemoved, willBeRemoved, willChange, type LeftOut, type ResolveNotice, type Resolved } from "./resolveLines";
 import { useTemplatesProgress } from "./templatesProgress";
-import { hevyTemplatesQuery } from "./useHevyTemplates";
+import { fetchHevyTemplates } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
@@ -94,6 +94,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   const noteId = useId();
   // Each file read has a number; Cancel, close and unmount move it on, so a late answer is ignored.
   const readId = useRef(0);
+  /** Minor 231: true only while a template fetch this sheet started is in flight (`fetchHevyTemplates`). */
   const reading = useRef(false);
   const stopRead = () => {
     readId.current += 1;
@@ -135,20 +136,17 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     setStep({ kind: "reading" });
     setLastPage(FIRST_PAGE);
     let templates: HevyTemplate[];
-    reading.current = true;
     try {
       // Minor 191: the hook's read, so a cached or in-flight list is reused. Its progress is `useTemplatesProgress`.
-      templates = await queryClient.fetchQuery(hevyTemplatesQuery(client));
+      templates = await fetchHevyTemplates(queryClient, client, reading);
     } catch (error) {
       if (id !== readId.current) return;
-      reading.current = false;
       // A cancel from elsewhere (a key change removes the cached list) goes back to Choose, never stuck on Reading.
       if (isCancelledError(error)) return reset();
       const failure = error instanceof HevyError ? error : new HevyError("unexpected_reply");
       if (failure.kind === "unexpected_reply" || failure.kind === "server") reportError(failure, { source: "hevy", op: "templates" });
       return setStep({ kind: "choose", errors: [HEVY_COPY[failure.kind]] });
     }
-    reading.current = false;
     if (id !== readId.current) return;
     setStep({ kind: "checking" });
     if (catalogNow.current.syncToken === null) return setStep({ kind: "choose", errors: [CATALOG_NOT_READY] });

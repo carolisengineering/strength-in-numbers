@@ -1,4 +1,4 @@
-import { useId, type Ref } from "react";
+import { useEffect, useId, useState, type Ref } from "react";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
@@ -51,6 +51,9 @@ export function RoutinePicksStep({
 }) {
   const groups = state.read === null ? [] : groupRoutines(state.read.folders, state.read.routines);
   const chosen = state.picks.picked.size;
+  // Minor 242 (AC29): the live region is empty at first paint, so a count already there on Back is announced.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return (
     <section className={styles.step} aria-labelledby="hevy-import-step">
       <h2 className={styles.stepTitle} id="hevy-import-step" ref={headingRef} tabIndex={-1}>
@@ -78,7 +81,7 @@ export function RoutinePicksStep({
         </>
       ) : null}
       <p className={styles.status} role="status">
-        {chosen > 0 ? routinesChosen(chosen) : ""}
+        {mounted && chosen > 0 ? routinesChosen(chosen) : ""}
       </p>
       <div className={styles.actions}>
         <Button onClick={onContinue} disabled={routinesStatus !== "success"}>

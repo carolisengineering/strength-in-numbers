@@ -35,9 +35,9 @@ const BENCH = makeExercise({ id: exerciseId(1), name: "Bench Press" });
 const templates = GENERATED_TEMPLATE_IDS.map((id) => ({ id, title: `Template ${id}`, type: "weight_reps", is_custom: false }));
 const pairOf = (id: string): HevyPair => ({ hevyTemplateId: id, hevyTitle: `Template ${id}`, hevyType: "weight_reps", role: "exercise", exerciseId: BENCH.id, exerciseActive: true, measureRule: null, exportAs: false });
 
-function setup(opts: { workouts: HevyWorkout[]; routines?: HevyRoutine[]; imports?: FakeImportOptions }) {
+function setup(opts: { workouts: HevyWorkout[]; routines?: HevyRoutine[]; imports?: FakeImportOptions; templates?: unknown[] }) {
   prepareApp({ auth, fake: createWorkoutFake({ serveExercises: true, catalog: [BENCH] }), catalog: [BENCH] });
-  const hevy = fakeHevyApi({ templates, routines: opts.routines ?? [], workouts: opts.workouts });
+  const hevy = fakeHevyApi({ templates: opts.templates ?? templates, routines: opts.routines ?? [], workouts: opts.workouts });
   const imports = fakeImportApi(opts.imports);
   let pairs = GENERATED_TEMPLATE_IDS.map(pairOf);
   server.use(
@@ -120,7 +120,7 @@ describe("20.1 AC12 — summary", () => {
     const counts = within(screen.getByRole("list", { name: "130 workouts read" }));
     expect(counts.getByText("7 will be imported")).toBeInTheDocument();
     expect(counts.getByText("1 already in SIN")).toBeInTheDocument();
-    expect(counts.getByText("1 already match a workout in SIN (they'll be linked, not copied)")).toBeInTheDocument();
+    expect(counts.getByText("1 already matches a workout in SIN (it'll be linked, not copied)")).toBeInTheDocument();
     expect(counts.getByText("1 sent from SIN earlier")).toBeInTheDocument();
     expect(counts.getByText("120 can't be imported")).toBeInTheDocument();
     const sum = counts.getAllByRole("listitem").reduce((n, li) => n + Number(li.textContent!.split(" ")[0]!.replace(",", "")), 0);
@@ -177,6 +177,33 @@ describe("20.1 AC13 — unpaired remains", () => {
     s.removePair(missing);
     await user.click(screen.getByRole("button", { name: "Back to names" }));
     expect(await screen.findByRole("group", { name: `Template ${missing}` })).toBeInTheDocument();
+  });
+});
+
+describe("Minor 249 — Import is the summary's one primary button", () => {
+  it("only the confirm button is primary", async () => {
+    setup({ workouts: generateHevyWorkouts(6) });
+    await start();
+    await summaryHeading();
+    const step = screen.getByRole("region", { name: "Summary" });
+    const primary = within(step).getAllByRole("button").filter((b) => b.dataset.variant === "primary");
+    expect(primary.map((b) => b.textContent)).toEqual(["Import 6 workouts"]);
+  });
+});
+
+describe("Minor 244 — unpaired templates are keyed by id", () => {
+  it("two unpaired templates with one title are two rows, with no key warning", async () => {
+    const [a, b] = GENERATED_TEMPLATE_IDS;
+    // A built-in and a custom "Bench Press": same title, different ids, both unpaired.
+    const same = templates.map((t) => (t.id === a || t.id === b ? { ...t, title: "Bench Press" } : t));
+    setup({ workouts: generateHevyWorkouts(20), templates: same, imports: { pairedTemplateIds: new Set(GENERATED_TEMPLATE_IDS.slice(2)) } });
+    const error = vi.spyOn(console, "error");
+    await start();
+    await summaryHeading();
+    const card = screen.getByText(/Hevy exercises? (isn't|aren't) paired/).parentElement!;
+    expect(within(card).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Bench Press", "Bench Press"]);
+    expect(error.mock.calls.filter((c) => String(c[0]).includes("same key"))).toEqual([]);
+    error.mockRestore();
   });
 });
 

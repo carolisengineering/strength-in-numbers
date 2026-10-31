@@ -65,7 +65,7 @@ export async function toSummary(opts: { tick?: string[] } = {}) {
 }
 
 /** The Import button on the summary ("Import {n} workouts…"). */
-export const importButton = () => screen.getByRole("button", { name: /^Import \d/ });
+export const importButton = () => screen.getByRole("button", { name: /^(Import|Link) \d/ });
 
 export const realBatches = (imports: ReturnType<typeof fakeImportApi>) =>
   imports.log.filter((r) => r.path === "/v1/hevy/import/workouts" && (r.body as HevyImportBatch).dryRun === false).map((r) => r.body as HevyImportBatch);

@@ -126,6 +126,28 @@ describe("20.1 AC14 — confirm label and what the run sends", () => {
     expect(confirmLabel(agg, 0, 2)).toBe("Import 1 workout");
     expect(confirmLabel({ ...agg, create: 960 }, 12, 961)).toBe("Import 960 workouts and 12 routines");
     expect(confirmLabel(aggregateResults([], []), 0, 0)).toBe("Nothing new to import");
-    expect(confirmLabel(aggregateResults([], []), 2, 0)).toBe("Import 0 workouts and 2 routines");
+    expect(confirmLabel(aggregateResults([], []), 2, 0)).toBe("Import 2 routines");
+  });
+});
+
+describe("Minor 239 — words when no workout is created", () => {
+  const none = aggregateResults([], []);
+  it("matches only: the workouts are linked", () => {
+    expect(confirmLabel({ ...none, duplicate: 3 }, 0, 3)).toBe("Link 3 workouts");
+    expect(confirmLabel({ ...none, duplicate: 1 }, 0, 1)).toBe("Link 1 workout");
+    expect(confirmLabel({ ...none, duplicate: 3 }, 2, 3)).toBe("Link 3 workouts and import 2 routines");
+  });
+
+  it("routines only: no workout count", () => {
+    expect(confirmLabel(none, 1, 0)).toBe("Import 1 routine");
+  });
+
+  it("only workouts waiting for a pairing: no count", () => {
+    expect(confirmLabel({ ...none, unpaired: 4 }, 0, 0)).toBe("Import workouts");
+  });
+
+  it("with workouts to create, the words are unchanged", () => {
+    expect(confirmLabel({ ...none, create: 5, duplicate: 3 }, 0, 8)).toBe("Import 5 workouts");
+    expect(confirmLabel({ ...none, create: 5, duplicate: 3 }, 2, 8)).toBe("Import 5 workouts and 2 routines");
   });
 });

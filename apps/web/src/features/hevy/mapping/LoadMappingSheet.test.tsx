@@ -392,6 +392,37 @@ describe("Minor 197 — the sheet's progress comes from the shared read", () => 
     await within(dialog).findByRole("region", { name: "Preview" });
   });
 
+  it("Minor 231 — Cancel leaves a read another reader started running", async () => {
+    const pages = heldPages();
+    const { queryClient } = renderHevyScreen(undefined, { catalog: CATALOG });
+    // The markers sheet (or Pairings) started the read; the load sheet joins it, then is canceled.
+    const outside = queryClient.fetchQuery(hevyTemplatesQuery(hevyClientFor(() => VALID_KEY)));
+    await waitFor(() => expect(pages.asked).toContain(2));
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    await within(dialog).findByText(readingTemplates(1, 3));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(await within(dialog).findByLabelText("Choose a file")).toBeInTheDocument();
+    pages.release(2);
+    pages.release(3);
+    await expect(outside).resolves.toHaveLength(250);
+  });
+
+  it("Minor 231 — Cancel still stops a read the sheet started itself", async () => {
+    const pages = heldPages();
+    const { queryClient } = renderHevyScreen(undefined, { catalog: CATALOG });
+    await userEvent.click(await screen.findByRole("button", { name: "Load a file" }));
+    const dialog = await screen.findByRole("dialog", { name: "Load a mapping file" });
+    await choose(dialog, GOOD);
+    await waitFor(() => expect(pages.asked).toContain(2));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(queryClient.getQueryState(["hevy", "templates"])?.fetchStatus).toBe("idle"));
+    pages.release(2);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pages.asked).not.toContain(3);
+  });
+
   it("Review Focus 2 — a read that fails leaves no progress for the next one", async () => {
     server.use(
       http.get(HEVY_TEMPLATES, ({ request }) => {

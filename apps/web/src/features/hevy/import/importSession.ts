@@ -280,19 +280,19 @@ export function pickedRoutines(state: ImportState) {
   return state.read === null ? [] : state.read.routines.filter((r) => state.picks.picked.has(r.id));
 }
 
-/** The needs for the names step, counting the picked routines (AC9). */
-export function needsFor(state: ImportState, ctx: FlowContext): PairingNeed[] {
-  if (state.read === null) return [];
-  return pairingNeeds(templatesUsed(state.read, pickedRoutines(state)), state.read.templates, ctx.mapping, ctx.catalog);
-}
+export type PreparedStep = { step: "markers" } | { step: "checking" } | { step: "names"; needs: PairingNeed[] };
 
-/** AC8 / AC9: markers (unless skipped), then names when any are needed, else straight to checking. */
-export function nextStepAfterRoutines(state: ImportState, ctx: FlowContext): "markers" | "names" | "checking" {
-  if (state.read === null) return "checking";
+/**
+ * AC8 / AC9: markers (unless skipped), then names when any are needed (with those needs, counting the picked
+ * routines), else straight to checking. Minor 247: one walk of the template use per call.
+ */
+export function nextStepAfterRoutines(state: ImportState, ctx: FlowContext): PreparedStep {
+  if (state.read === null) return { step: "checking" };
   const used = templatesUsed(state.read, pickedRoutines(state));
   const missing = markersMissing(used, state.read.templates, ctx.mapping);
-  if (!state.markersSkipped && (missing.warmup !== null || missing.workout !== null)) return "markers";
-  return needsFor(state, ctx).length > 0 ? "names" : "checking";
+  if (!state.markersSkipped && (missing.warmup !== null || missing.workout !== null)) return { step: "markers" };
+  const needs = pairingNeeds(used, state.read.templates, ctx.mapping, ctx.catalog);
+  return needs.length > 0 ? { step: "names", needs } : { step: "checking" };
 }
 
 /** AC28 (Phase A form): the summary was computed against a different mapping than the one held now. */

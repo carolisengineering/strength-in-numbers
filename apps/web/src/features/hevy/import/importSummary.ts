@@ -7,7 +7,7 @@ import {
   type HevyWorkout,
 } from "@sin/core";
 
-import { DROP_LABELS, importLabel, NOTHING_NEW, OUTCOME_LABELS, UNREADABLE_LABEL, UNTITLED } from "./messages";
+import { DROP_LABELS, IMPORT_WORKOUTS, importLabel, linkLabel, NOTHING_NEW, OUTCOME_LABELS, routinesOnlyLabel, UNREADABLE_LABEL, UNTITLED } from "./messages";
 
 /** Spec 20.1 AC12, AC13, §6.6: the summary, folded from the dry-run results. Pure. */
 
@@ -164,9 +164,14 @@ export function finalResults(dryRun: readonly HevyImportResult[], run: readonly 
 
 /**
  * AC14: the primary button's words, or "Nothing new to import" when there is no workout and no routine. Workouts
- * waiting for a pairing (AC13) are never "nothing new": they are still to import once paired.
+ * waiting for a pairing (AC13) are never "nothing new": they are still to import once paired. Minor 239 (§12 D21):
+ * with none to create the words never count "0 workouts": matches are linked, routines alone are named alone, and
+ * only-unpaired reads "Import workouts".
  */
 export function confirmLabel(agg: Aggregate, routineCount: number, sendCount: number): string {
   if (sendCount === 0 && routineCount === 0 && agg.unpaired === 0) return NOTHING_NEW;
-  return importLabel(agg.create, routineCount);
+  if (agg.create > 0) return importLabel(agg.create, routineCount);
+  if (agg.duplicate > 0) return linkLabel(agg.duplicate, routineCount);
+  if (routineCount > 0) return routinesOnlyLabel(routineCount);
+  return IMPORT_WORKOUTS;
 }

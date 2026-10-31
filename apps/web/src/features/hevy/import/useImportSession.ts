@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { lineageRootId, translateHevyRoutine, type HevyImportResult, type HevyImportWorkout } from "@sin/core";
+import { lineageRootId, normalizeExerciseName, translateHevyRoutine, type HevyImportResult, type HevyImportWorkout } from "@sin/core";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
@@ -10,7 +10,7 @@ import { applyImportedCaches } from "../../records/cache";
 import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
 import { useHevyMapping } from "../mapping/useHevyMapping";
-import { hevyTemplatesQuery } from "../mapping/useHevyTemplates";
+import { fetchHevyTemplates } from "../mapping/useHevyTemplates";
 import { initialPairingCards, newPairingSaveRecord, savePairings } from "../pairing";
 import { useSavePairingsDeps } from "../pairing/useSavePairingsDeps";
 // Spec 20.1 D11 / D16 (owner ruling 2026-10-29): the one file in features/hevy that may use the routines list and create.
@@ -25,7 +25,6 @@ import {
   importSession,
   initialImportState,
   isSummaryStale,
-  needsFor,
   nextStepAfterRoutines,
   pickedRoutines,
   type ImportState,
@@ -68,7 +67,7 @@ export function useImportSession() {
 
   const generation = useRef(state.generation);
   const controller = useRef<AbortController | null>(null);
-  /** Minor 231: cancel the shared template read only if this read started it. */
+  /** Minors 231, 245: cancel the shared template read only while this import owns it (`fetchHevyTemplates`). */
   const startedTemplates = useRef(false);
   const stateRef = useRef<ImportState>(state);
   stateRef.current = state;
@@ -96,12 +95,7 @@ export function useImportSession() {
       stopIo();
       const io = new AbortController();
       controller.current = io;
-      const templates = () => {
-        const running = queryClient.isFetching({ queryKey: HEVY_KEYS.templates }) > 0;
-        const cached = queryClient.getQueryState(HEVY_KEYS.templates)?.status === "success";
-        startedTemplates.current = !running && !cached;
-        return queryClient.fetchQuery(hevyTemplatesQuery(client));
-      };
+      const templates = () => fetchHevyTemplates(queryClient, client, startedTemplates);
       readHevy(client, {
         signal: io.signal,
         templates,
@@ -110,11 +104,9 @@ export function useImportSession() {
         onProgress: (progress) => dispatch({ type: "readProgress", generation: gen, progress }),
       }).then(
         (read) => {
-          startedTemplates.current = false;
           if (!io.signal.aborted) dispatch({ type: "readDone", generation: gen, read });
         },
         (err: unknown) => {
-          startedTemplates.current = false;
           if (io.signal.aborted) return;
           if (err instanceof ReadStageError) {
             if (err.cause.kind === "server") reportError(err.cause, { source: "hevy-import", op: "read" });
@@ -160,11 +152,10 @@ export function useImportSession() {
   useEffect(() => {
     if (state.step !== "preparing" || flowContext === null) return;
     const next = nextStepAfterRoutines(state, flowContext);
-    if (next === "names") {
-      const needs = needsFor(state, flowContext);
-      dispatch({ type: "goto", step: "names", needs, cards: initialPairingCards(needs, catalog.visible) });
+    if (next.step === "names") {
+      dispatch({ type: "goto", step: "names", needs: next.needs, cards: initialPairingCards(next.needs, catalog.visible) });
     } else {
-      dispatch({ type: "goto", step: next });
+      dispatch({ type: "goto", step: next.step });
     }
   }, [state, flowContext, catalog.visible]);
 
@@ -199,10 +190,11 @@ export function useImportSession() {
     const created = saveRecord.current.created;
     if (!result.ok) {
       // AC10: what was created stays and is reused. Its card now picks that exercise, because as a New card the name
-      // would read as already taken and hold Continue.
+      // would read as already taken and hold Continue. Minor 240: only while the card still asks for that name; one
+      // renamed since keeps its New choice.
       const cards = stateRef.current.cards.map((card) => {
         const made = card.selected === "new" ? created.get(card.templateId) : undefined;
-        return made ? { ...card, selected: "picked" as const, pickedId: made.id } : card;
+        return made && made.nameKey === normalizeExerciseName(card.newValue.name) ? { ...card, selected: "picked" as const, pickedId: made.id } : card;
       });
       dispatch({ type: "namesCards", cards });
       dispatch({ type: "namesFailed", message: result.message });

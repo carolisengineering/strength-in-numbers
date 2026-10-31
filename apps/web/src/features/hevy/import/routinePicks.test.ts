@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HevyRoutinePageSchema, ROUTINES_PER_USER_MAX, translateHevyRoutine, type HevyFolder, type HevyPair, type HevyRoutine } from "@sin/core";
+import { HevyRoutinePageSchema, ROUTINES_PER_USER_MAX, hevyRoutineName, translateHevyRoutine, type HevyFolder, type HevyPair, type HevyRoutine } from "@sin/core";
 
 import { exerciseId } from "../../../test/catalogFixtures";
 import { hevyFixtures } from "../../../test/hevyFixtures";
@@ -12,6 +12,14 @@ const none: PickState = { picked: new Set() };
 function ctxFor(routines: HevyRoutine[], over: Partial<PickContext> = {}): PickContext {
   return { picks: none, existingNames: new Set(), routineCount: 0, routinesById: new Map(routines.map((r) => [r.id, r])), ...over };
 }
+
+describe("Minor 243 — the name key is core's routine name, lowercased", () => {
+  it("delegates to hevyRoutineName", () => {
+    for (const title of ["Push A", "  push a  ", "\u0001", "", "b".repeat(90), "Pull\u007f Day"]) {
+      expect(routineNameKey(title)).toBe(hevyRoutineName(title).toLowerCase());
+    }
+  });
+});
 
 describe("20.1 AC7 — grouping", () => {
   it("orders folders by index, keeps Hevy's order inside, and puts No folder last", () => {

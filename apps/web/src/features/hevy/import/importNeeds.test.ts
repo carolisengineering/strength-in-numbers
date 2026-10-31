@@ -133,3 +133,13 @@ describe("20.1 AC32 — templates Hevy no longer lists", () => {
     expect(inferHevyType([...sets])).toBe(type);
   });
 });
+
+describe("Minor 247 — sets are kept only for templates Hevy no longer lists", () => {
+  it("a listed template's use carries no sets; an unlisted one keeps every set", () => {
+    const read = readOf([hevyWorkout("w1", "A", "GONE"), hevyWorkout("w2", "A", "GONE")], [template("A")]);
+    const used = templatesUsed(read, []);
+    expect(used.get("A")!.sets).toEqual([]);
+    expect(used.get("GONE")!.sets).toHaveLength(2);
+    expect(used.get("A")!.workouts).toBe(2);
+  });
+});
