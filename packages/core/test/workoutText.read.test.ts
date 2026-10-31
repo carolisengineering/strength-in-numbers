@@ -449,9 +449,9 @@ describe("Minor 108 — a trailing for time goes to the note", () => {
 });
 
 describe("Minor 215 — structure lines with for time", () => {
-  it("2 Rounds for time is no exercise, as before", () => {
+  it("2 Rounds for time is no exercise (minor 283: it opens a run of 2)", () => {
     const r = read(["Metcon", "2 Rounds for time", "10 Squats"]);
-    expect(r.items.map((i) => [i.name, i.noteLines, i.section, i.run])).toEqual([["Squats", [], 0, 1]]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null, i.section, i.run])).toEqual([["Squats", 2, 0, 1]]);
   });
   it("For Time: is a note before the exercises, as before", () => {
     const r = read(['Workout: "S"', "For Time:", "21-15-9", "Power Clean"]);
@@ -462,9 +462,9 @@ describe("Minor 215 — structure lines with for time", () => {
     expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
     expect(r.sections[0]!.notes).toContain("21-15-9 for time");
   });
-  it("final review — that note keeps the run open, so the movement after it keeps its 3 sets", () => {
+  it("minor 283 — 21-15-9 for time under a run opens its own scheme run", () => {
     const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "10 Squats"]);
-    expect(r.items.map((i) => [i.name, i.rows?.length ?? null, i.run])).toEqual([["Squats", 3, 1]]);
+    expect(r.items.map((i) => [i.name, i.rows?.map((row) => row.repsLow) ?? null, i.run])).toEqual([["Squats", [21, 15, 9], 2]]);
   });
   it("final review — Rounds for time under a run is a note, not an exercise named Rounds", () => {
     const r = read(["Metcon", "3 Rounds", "10 Squats", "Rounds for time", "10 Burpees"]);
@@ -540,5 +540,37 @@ describe("Minor 216 — on an A + B line, for time goes to every part", () => {
       ["Squats", ["for time"]],
       ["Burpees", ["for time"]],
     ]);
+  });
+});
+
+describe("Minor 283 — a scheme or lead-in ending in for time opens its run (owner ruling 2026-10-31)", () => {
+  const view = (r: ReturnType<typeof read>) => r.items.map((i) => [i.name, i.rows?.map((row) => row.repsLow) ?? null, i.run]);
+  it("Fran: 21-15-9 for time then the movements", () => {
+    const r = read(["Fran", "21-15-9 for time", "Thrusters", "Pull-ups"]);
+    expect(view(r)).toEqual([
+      ["Thrusters", [21, 15, 9], 1],
+      ["Pull-ups", [21, 15, 9], 1],
+    ]);
+    expect(r.sections.map((sec) => sec.name)).toEqual(["Fran"]);
+    expect(r.sections[0]!.notes).toContain("21-15-9 for time");
+  });
+  it("3 Rounds for time opens a run of 3", () => {
+    const r = read(["Metcon", "3 Rounds for time", "10 Squats", "10 Burpees"]);
+    expect(view(r)).toEqual([
+      ["Squats", [10, 10, 10], 1],
+      ["Burpees", [10, 10, 10], 1],
+    ]);
+    expect(r.sections[0]!.notes).toContain("3 Rounds for time");
+  });
+  it("a mid-workout 3 Rounds for time starts a new run, so the movements after it take 3 sets", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Pull-ups", "3 Rounds for time", "10 Squats"]);
+    expect(view(r)).toEqual([
+      ["Pull-ups", [10, 10, 10, 10, 10], 1],
+      ["Squats", [10, 10, 10], 2],
+    ]);
+  });
+  it("a comma before for time is the same", () => {
+    const r = read(["Metcon", "3 Rounds, for time", "10 Squats"]);
+    expect(view(r)).toEqual([["Squats", [10, 10, 10], 1]]);
   });
 });

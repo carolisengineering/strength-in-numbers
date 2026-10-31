@@ -649,29 +649,35 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "set-line";
   }
 
+  // Minor 283 (owner ruling 2026-10-31): a scheme or lead-in may end in "for time" ("21-15-9 for time", "3 Rounds for
+  // time"). It opens its run as it would without it, and the line stays in the note, so how it is scored is kept.
+  const timed = takeForTime(line);
+  const head = timed.text;
+  const scored = timed.forTime !== null;
+
   // 4. A scheme opens a run (AC8).
-  if (SCHEME.test(line)) {
-    const reps = line.split(/\s*[-–]\s*/).map(Number);
+  if (SCHEME.test(head)) {
+    const reps = head.split(/\s*[-–]\s*/).map(Number);
     s.run = { id: ++s.runs, kind: "scheme", reps, text: reps.join("-") };
-    return "scheme";
+    return scored ? "note" : "scheme";
   }
 
   // 5. A lead-in opens a run of N sets (AC9); "N Sets, 1 Set Every M:SS" also stays in the note (AC48).
-  const every = LEAD_IN_SETS_EVERY.exec(line);
+  const every = LEAD_IN_SETS_EVERY.exec(head);
   if (every && Number(every[1]) >= 1) {
     s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
     return "note";
   }
   // AC61: "3-4 Sets" opens a run of the low end and stays in the note, so the range is not lost.
-  const range = LEAD_IN_RANGE.exec(line);
+  const range = LEAD_IN_RANGE.exec(head);
   if (range && Number(range[1]) >= 1 && Number(range[1]) <= Number(range[2])) {
     s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]) };
     return "note";
   }
-  const n = leadInCount(line);
+  const n = leadInCount(head);
   if (n !== null) {
     s.run = { id: ++s.runs, kind: "lead-in", n };
-    return "lead-in";
+    return scored ? "note" : "lead-in";
   }
 
   // 6. A separator closes the open run.
