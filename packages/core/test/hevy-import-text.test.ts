@@ -85,6 +85,18 @@ describe("19.1 AC8 — text", () => {
     expect(cleanNotes("n".repeat(4001), 4000)).toEqual({ value: "n".repeat(4000), cut: true });
   });
 
+  describe("Minor 209 — titles and notes keep clusters whole", () => {
+    const a = (n: number) => "a".repeat(n);
+    it("a title cut inside a ZWJ sequence drops the whole sequence", () =>
+      expect(cleanLine(`${a(118)}👩‍💻`, 120)).toEqual({ value: a(118), cut: true }));
+    it("a title cut between a flag's two halves drops the flag", () =>
+      expect(cleanLine(`${a(118)}🇺🇸`, 120)).toEqual({ value: a(118), cut: true }));
+    it("a note cut before a combining mark drops its letter too", () =>
+      expect(cleanNotes(`${"n".repeat(4000)}́`, 4000)).toEqual({ value: "n".repeat(3999), cut: true }));
+    it("a title that is one cluster longer than the limit is null, never an empty string", () =>
+      expect(cleanLine(`H${"́".repeat(130)}`, 120)).toEqual({ value: null, cut: true }));
+  });
+
   it("cutCodePoints trims the end it leaves", () => {
     expect(cutCodePoints("abc def", 4)).toEqual({ text: "abc", cut: true });
     expect(cutCodePoints("abc", 4)).toEqual({ text: "abc", cut: false });
