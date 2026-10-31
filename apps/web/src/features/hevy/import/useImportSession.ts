@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { lineageRootId, translateHevyRoutine, type HevyImportResult, type HevyImportWorkout } from "@sin/core";
+import { lineageRootId, normalizeExerciseName, translateHevyRoutine, type HevyImportResult, type HevyImportWorkout } from "@sin/core";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
@@ -192,10 +192,11 @@ export function useImportSession() {
     const created = saveRecord.current.created;
     if (!result.ok) {
       // AC10: what was created stays and is reused. Its card now picks that exercise, because as a New card the name
-      // would read as already taken and hold Continue.
+      // would read as already taken and hold Continue. Minor 240: only while the card still asks for that name; one
+      // renamed since keeps its New choice.
       const cards = stateRef.current.cards.map((card) => {
         const made = card.selected === "new" ? created.get(card.templateId) : undefined;
-        return made ? { ...card, selected: "picked" as const, pickedId: made.id } : card;
+        return made && made.nameKey === normalizeExerciseName(card.newValue.name) ? { ...card, selected: "picked" as const, pickedId: made.id } : card;
       });
       dispatch({ type: "namesCards", cards });
       dispatch({ type: "namesFailed", message: result.message });

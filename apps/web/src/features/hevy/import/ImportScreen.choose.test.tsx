@@ -324,6 +324,44 @@ describe("20.1 AC10 — saving the names", () => {
     expect(new Set(upsert.map((p) => p.exerciseId)).size).toBe(2);
   }, 20_000);
 
+  describe("Minor 240 — a failed save switches a New card only to the exercise made for its name", () => {
+    it("an unchanged New card picks the exercise an earlier attempt created", async () => {
+      const { fake } = setup({ workouts, templates });
+      // The create of Seated Row lands; the pairs PATCH fails.
+      server.use(http.patch(MAPPING_URL, () => HttpResponse.json({ error: "boom" }, { status: 500 })));
+      const { user } = await start();
+      await screen.findByRole("heading", { level: 2, name: "Pair exercises" });
+      await user.click(screen.getByRole("button", { name: "Continue" }));
+      expect(await screen.findByRole("alert", {}, { timeout: 10_000 })).toBeInTheDocument();
+      expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/exercises")).toHaveLength(1);
+      expect(within(screen.getByRole("group", { name: "Seated Row" })).getByRole("radio", { name: "New exercise" })).not.toBeChecked();
+    }, 20_000);
+
+    it("a New card renamed after the first failure keeps its new name when the retry fails too", async () => {
+      const { fake } = setup({ workouts, templates });
+      server.use(http.patch(MAPPING_URL, () => HttpResponse.json({ error: "boom" }, { status: 500 })));
+      const { user } = await start();
+      await screen.findByRole("heading", { level: 2, name: "Pair exercises" });
+      await user.click(screen.getByRole("button", { name: "Continue" }));
+      expect(await screen.findByRole("alert", {}, { timeout: 10_000 })).toBeInTheDocument();
+      // The card now picks the Seated Row that was made; the lifter goes back to New under another name.
+      const card = screen.getByRole("group", { name: "Seated Row" });
+      await user.click(within(card).getByRole("radio", { name: "New exercise" }));
+      const name = within(card).getByLabelText(/^Name/);
+      await user.clear(name);
+      await user.type(name, "Row Two");
+      // The retry's create of Row Two fails.
+      fake.failNext({ method: "POST", path: /^\/v1\/exercises$/ }, () => problem(500, "internal"));
+      await user.click(screen.getByRole("button", { name: "Continue" }));
+      await waitFor(() => expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/exercises")).toHaveLength(2), { timeout: 10_000 });
+      // The save is over once Continue can be pressed again; the card is read afresh (the list re-renders it).
+      await waitFor(() => expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled(), { timeout: 10_000 });
+      const after = screen.getByRole("group", { name: "Seated Row" });
+      expect(within(after).getByRole("radio", { name: "New exercise" })).toBeChecked();
+      expect(within(after).getByLabelText(/^Name/)).toHaveValue("Row Two");
+    }, 20_000);
+  });
+
   it("a full exercise cap shows the 20.0 sentence and returns to the cards as chosen", async () => {
     const { fake } = setup({ workouts, templates });
     fake.failNext({ method: "POST", path: /^\/v1\/exercises$/ }, () => problem(409, "exercise-limit-reached"));
