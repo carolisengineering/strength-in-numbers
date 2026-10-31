@@ -1,4 +1,3 @@
-import type { Exercise } from "@sin/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
