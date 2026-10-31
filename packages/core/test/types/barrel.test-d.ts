@@ -124,6 +124,7 @@ import {
   type UserId,
   type WeightUnit,
 } from "../../src/index.js";
+import type { PreparedCatalog } from "../../src/index.js";
 
 describe("barrel — src/index.ts re-exports the whole stable surface", () => {
   it("value exports resolve", () => {
@@ -242,5 +243,13 @@ describe("barrel — src/index.ts re-exports the whole stable surface", () => {
     expectTypeOf(cutCodePoints).returns.toEqualTypeOf<{ text: string; cut: boolean }>();
     expectTypeOf(hevyWeightFromKg).returns.toBeNumber();
     expectTypeOf(assignSupersets<number>).returns.toEqualTypeOf<{ groups: (number | null)[]; overLimit: number; cut: number }>();
+  });
+});
+
+describe("Minor 221 — a prepared catalog is nominal", () => {
+  it("a plain object is not a PreparedCatalog", () => {
+    // @ts-expect-error a plain object is not a PreparedCatalog: only prepareCatalog makes one
+    const c: PreparedCatalog<{ id: string; name: string; ownerUserId: string | null }> = { entries: [] };
+    expectTypeOf(c).not.toBeNever();
   });
 });

@@ -82,18 +82,32 @@ function keysOf(name: string): NameKeys {
 
 /**
  * Minor 18: the catalog's keys and tokens, computed once, so matching many names normalizes each row once. Build it from
- * the rows the caller shows now; an index of older rows does not know a newer exercise.
+ * the rows the caller shows now; an index of older rows does not know a newer exercise. Minor 221: a class only
+ * `prepareCatalog` makes (its private field makes it nominal), so an object that merely has `entries` is not an index.
  */
-export interface PreparedCatalog<R extends MatchableRow> {
-  readonly entries: readonly (NameKeys & { readonly row: R })[];
+export class PreparedCatalog<R extends MatchableRow> {
+  readonly #entries: readonly (NameKeys & { readonly row: R })[];
+
+  private constructor(rows: readonly R[]) {
+    this.#entries = rows.map((row) => ({ row, ...keysOf(row.name) }));
+  }
+
+  /** Use `prepareCatalog`. */
+  static of<R extends MatchableRow>(rows: readonly R[]): PreparedCatalog<R> {
+    return new PreparedCatalog(rows);
+  }
+
+  get entries(): readonly (NameKeys & { readonly row: R })[] {
+    return this.#entries;
+  }
 }
 
 export function prepareCatalog<R extends MatchableRow>(rows: readonly R[]): PreparedCatalog<R> {
-  return { entries: rows.map((row) => ({ row, ...keysOf(row.name) })) };
+  return PreparedCatalog.of(rows);
 }
 
 function isPrepared<R extends MatchableRow>(rows: readonly R[] | PreparedCatalog<R>): rows is PreparedCatalog<R> {
-  return !Array.isArray(rows);
+  return rows instanceof PreparedCatalog;
 }
 
 function score(a: readonly string[], b: readonly string[]): number {
