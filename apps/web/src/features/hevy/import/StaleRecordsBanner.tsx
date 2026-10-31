@@ -16,8 +16,9 @@ import styles from "./ImportScreen.module.css";
  * flight on this page; success refreshes what the import changed. A finish answering `recomputed: false` is done.
  *
  * Minor 241: "Records updated." goes into one polite status line that is always there (empty until a finish
- * succeeds, and visually hidden while empty so it adds no gap to the screen's column), so it is announced. After a success the card stays hidden until the status has been read again since
- * the finish; from then on `recordsStale` alone decides (another run may have made the records stale again).
+ * succeeds, and visually hidden while empty so it adds no gap to the screen's column), so it is announced. After a
+ * success the card stays hidden until the status has been read again since the finish; from then on `recordsStale`
+ * alone decides (another run may have made the records stale again).
  */
 export function StaleRecordsBanner() {
   const status = useHevyStatus();
