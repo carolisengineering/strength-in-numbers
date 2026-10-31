@@ -1,17 +1,13 @@
-import { cutCodePoints, ROUTINE_NAME_MAX, ROUTINES_PER_USER_MAX, type HevyFolder, type HevyRoutine } from "@sin/core";
+import { hevyRoutineName, ROUTINES_PER_USER_MAX, type HevyFolder, type HevyRoutine } from "@sin/core";
 
 /** Spec 20.1 AC7, §6.4: the routine checklist by Hevy folder, with the cap room. Pure. */
 
-/** The name the server will compare: what `translateHevyRoutine` names the routine, lowercased (the `lower(name)` index). */
+/**
+ * The name the server will compare: what `translateHevyRoutine` names the routine, lowercased (the `lower(name)`
+ * index). Minor 243: core's `hevyRoutineName`, so the two can't drift.
+ */
 export function routineNameKey(name: string): string {
-  let cleaned = "";
-  for (let i = 0; i < name.length; i += 1) {
-    const code = name.charCodeAt(i);
-    if (code > 0x1f && code !== 0x7f) cleaned += name[i];
-  }
-  const trimmed = cleaned.trim();
-  if (trimmed === "") return "hevy routine";
-  return cutCodePoints(trimmed, ROUTINE_NAME_MAX).text.toLowerCase();
+  return hevyRoutineName(name).toLowerCase();
 }
 
 export interface RoutineGroup {

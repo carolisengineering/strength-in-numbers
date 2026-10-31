@@ -29,7 +29,8 @@ export function templatesUsed(read: HevyRead, pickedRoutines: readonly HevyRouti
     const seen = new Set<string>();
     for (const e of w.exercises) {
       const use = entry(e.exercise_template_id, e.title);
-      use.sets.push(...e.sets);
+      // Minor 247: sets only infer the type of a template Hevy no longer lists (AC32); a listed one has its own.
+      if (!read.templates.has(e.exercise_template_id)) use.sets.push(...e.sets);
       if (!seen.has(e.exercise_template_id)) use.workouts += 1;
       seen.add(e.exercise_template_id);
     }

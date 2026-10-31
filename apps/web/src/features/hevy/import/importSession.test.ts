@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HevyMapping, HevyRoutine, HevyTemplate, HevyWorkout } from "@sin/core";
 
+import type * as ImportNeeds from "./importNeeds";
+import { pairingNeeds, templatesUsed } from "./importNeeds";
 import { importSession, initialImportState, isSummaryStale, nextStepAfterRead, nextStepAfterRoutines, type ImportState } from "./importSession";
 import type { HevyRead } from "./readHevy";
+
+vi.mock("./importNeeds", async (importOriginal) => {
+  const actual = await importOriginal<typeof ImportNeeds>();
+  return { ...actual, templatesUsed: vi.fn(actual.templatesUsed) };
+});
 
 const template = (id: string, title = id): HevyTemplate => ({ id, title, type: "weight_reps", is_custom: false });
 const workout = (id: string, ...templates: string[]): HevyWorkout => ({
@@ -67,13 +74,23 @@ describe("20.1 AC3 / AC5 — reducer", () => {
   it("after routines: markers, names, or checking", () => {
     const read = readOf([workout("w1", "A", "WU")], [routine("r1", "WO")], [template("A"), template("WU", "Warmup"), template("WO", "workout")]);
     const base: ImportState = { ...initialImportState, read };
-    expect(nextStepAfterRoutines(base, { mapping: paired(), catalog })).toBe("markers");
+    expect(nextStepAfterRoutines(base, { mapping: paired(), catalog }).step).toBe("markers");
     // The workout marker is used only by the routine: once picked, it is missing too.
-    expect(nextStepAfterRoutines({ ...base, markersSkipped: true }, { mapping: paired("WU"), catalog })).toBe("names");
-    expect(nextStepAfterRoutines(base, { mapping: paired("WU", "A"), catalog })).toBe("checking");
-    expect(nextStepAfterRoutines({ ...base, picks: { picked: new Set(["r1"]) } }, { mapping: paired("WU", "A"), catalog })).toBe("markers");
-    expect(nextStepAfterRoutines({ ...base, markersSkipped: true }, { mapping: paired(), catalog })).toBe("names");
-    expect(nextStepAfterRoutines({ ...initialImportState }, { mapping: paired(), catalog })).toBe("checking");
+    expect(nextStepAfterRoutines({ ...base, markersSkipped: true }, { mapping: paired("WU"), catalog }).step).toBe("names");
+    expect(nextStepAfterRoutines(base, { mapping: paired("WU", "A"), catalog }).step).toBe("checking");
+    expect(nextStepAfterRoutines({ ...base, picks: { picked: new Set(["r1"]) } }, { mapping: paired("WU", "A"), catalog }).step).toBe("markers");
+    expect(nextStepAfterRoutines({ ...base, markersSkipped: true }, { mapping: paired(), catalog }).step).toBe("names");
+    expect(nextStepAfterRoutines({ ...initialImportState }, { mapping: paired(), catalog }).step).toBe("checking");
+  });
+
+  it("Minor 247 — names comes with its needs, from one walk of the template use", () => {
+    const read = readOf([workout("w1", "A", "WU")], [routine("r1", "WO")], [template("A"), template("WU", "Warmup"), template("WO", "workout")]);
+    const state: ImportState = { ...initialImportState, read, markersSkipped: true };
+    const ctx = { mapping: paired("WU"), catalog };
+    vi.mocked(templatesUsed).mockClear();
+    const next = nextStepAfterRoutines(state, ctx);
+    expect(templatesUsed).toHaveBeenCalledTimes(1);
+    expect(next).toEqual({ step: "names", needs: pairingNeeds(templatesUsed(read, []), read.templates, ctx.mapping, ctx.catalog) });
   });
 
   it("back keeps the read and the picks", () => {

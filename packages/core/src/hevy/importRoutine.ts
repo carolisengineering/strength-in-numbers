@@ -72,6 +72,14 @@ interface Candidate {
  * body always parses with `RoutineWriteSchema` and passes `plannedSetViolations`. A superset never spans a section
  * (the schema refuses it): groups are per (section, Hevy superset id), kept with 2–8 members.
  */
+/**
+ * Minor 243: the name a Hevy routine gets in SIN (control characters removed, trimmed, cut to `ROUTINE_NAME_MAX`
+ * code points; empty is "Hevy routine"). The import screen's duplicate-name check keys on this, lowercased.
+ */
+export function hevyRoutineName(title: string | null): string {
+  return cleanLine(title, ROUTINE_NAME_MAX).value ?? BLANK_ROUTINE_NAME;
+}
+
 export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportContext, "now">): HevyRoutineTranslation {
   const unpaired = unpairedTemplateIds(
     routine.exercises.map((e) => e.exercise_template_id),
@@ -139,7 +147,7 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
     };
   });
 
-  const input: RoutineWrite = { name: name.value ?? BLANK_ROUTINE_NAME, items };
+  const input: RoutineWrite = { name: hevyRoutineName(routine.title), items };
   if (sections.length > 0) input.sections = sections;
   return { ok: true, input, notices: notices.list() };
 }

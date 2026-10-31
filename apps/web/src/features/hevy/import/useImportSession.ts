@@ -25,7 +25,6 @@ import {
   importSession,
   initialImportState,
   isSummaryStale,
-  needsFor,
   nextStepAfterRoutines,
   pickedRoutines,
   type ImportState,
@@ -153,11 +152,10 @@ export function useImportSession() {
   useEffect(() => {
     if (state.step !== "preparing" || flowContext === null) return;
     const next = nextStepAfterRoutines(state, flowContext);
-    if (next === "names") {
-      const needs = needsFor(state, flowContext);
-      dispatch({ type: "goto", step: "names", needs, cards: initialPairingCards(needs, catalog.visible) });
+    if (next.step === "names") {
+      dispatch({ type: "goto", step: "names", needs: next.needs, cards: initialPairingCards(next.needs, catalog.visible) });
     } else {
-      dispatch({ type: "goto", step: next });
+      dispatch({ type: "goto", step: next.step });
     }
   }, [state, flowContext, catalog.visible]);
 

@@ -3,7 +3,9 @@ import {
   HevyRoutineSchema,
   QUICK_LINE_KEYS,
   RoutineWriteSchema,
+  hevyRoutineName,
   plannedSetViolations,
+  ROUTINE_NAME_MAX,
   translateHevyRoutine,
   type HevyRoutine,
   type HevyRoutineExercise,
@@ -284,5 +286,29 @@ describe("Minor 148 — trimmed notices count kept sections only", () => {
     const t = ok(translateHevyRoutine(hevyRoutine([item("WORKOUT", { notes: longNotes }), item("SQUAT")]), ctx));
     expect(t.input.sections).toHaveLength(1);
     expect([count(t.notices, "section_name_trimmed"), count(t.notices, "section_notes_trimmed")]).toEqual([1, 1]);
+  });
+});
+
+describe("Minor 243 — hevyRoutineName", () => {
+  it("removes control characters and trims", () => {
+    expect(hevyRoutineName("  Push\u0007 Day ")).toBe("Push Day");
+  });
+
+  it("an empty, control-only or missing title is Hevy routine", () => {
+    expect(hevyRoutineName("")).toBe("Hevy routine");
+    expect(hevyRoutineName("\u0001")).toBe("Hevy routine");
+    expect(hevyRoutineName(null)).toBe("Hevy routine");
+  });
+
+  it("is cut to the routine name limit (UTF-16 length, as the schema counts) without splitting a pair", () => {
+    const cut = hevyRoutineName("😀".repeat(200));
+    expect(cut).toHaveLength(ROUTINE_NAME_MAX);
+    expect(cut).toBe("😀".repeat(ROUTINE_NAME_MAX / 2));
+  });
+
+  it("is the name translateHevyRoutine gives the routine", () => {
+    for (const title of ["Upper A", "  Lower\u0002 B ", "", "r".repeat(90)]) {
+      expect(ok(translateHevyRoutine(hevyRoutine([item("BENCH")], title), ctx)).input.name).toBe(hevyRoutineName(title));
+    }
   });
 });
