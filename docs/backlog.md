@@ -753,3 +753,49 @@ and `*.run.app` addresses. A domain costs about $10–15 a year and is the one a
 origins added to the Auth0 production application (callback, logout, web origins), the API's
 `WEB_ORIGIN`, and the CSP `connect-src` together, with the parity test updated and runbook D4.d
 re-run.
+
+## BL-35
+
+**Removing an exercise mid-workout once threw the lifter out of the workout screen.**
+
+**Status: Open.** Reported by the owner on 2026-10-27, not yet reproduced (a second try worked).
+The workout was started from a routine and was mostly logged. Removing one exercise closed the
+live workout screen and went back to Workouts.
+
+**What can close the screen:** the remove itself can't. `remove-exercise` treats a `404` as
+success (`sessionErrors.ts`). But `create-set`, `update-set` and `update-note` map a `404` to
+`{ type: "gone" }`, and `EntryRow` / `SetEditSheet` / `ActiveSession` then call `gone("gone")`,
+which clears the drafts and rest timer and hands back to Workouts. The most likely race: a set
+log, set edit or note on the exercise being removed is still in flight (or retried) when the
+remove lands. The server answers `404` because the exercise row is gone, and the screen reads
+that as "the whole workout is gone." Other candidates to rule out: a section action's `onGone`,
+and the `unavailable` path's refetch briefly seeing no active workout.
+
+**Probably no data was lost:** the gone path refetches `/active`, and if the workout is still
+active `WorkoutsScreen` shows "Your workout was out of date, so it has been reloaded." and the
+lifter can go back in. Still worth checking which notice showed, and that the other exercises'
+sets were intact.
+
+**Done looks like:** a test that removes an exercise while a set write on it is pending, and
+the screen stays put. A `404` from a set or note write on an exercise that is no longer in the
+cached workout refetches and drops the stale write; it never takes the gone path. The gone
+path runs only when a refetch confirms the workout is no longer the active one.
+
+## BL-36
+
+**Moving an exercise or changing a superset mid-workout feels slow.**
+
+**Status: Open.** Reported by the owner on 2026-10-27. A separate issue from BL-35.
+
+**Why it is slow:** session regroups are pessimistic and online-only by design (Spec 10.1).
+`planSessionChange` produces an ordered list of `PATCH /v1/workout-exercises/{id}` calls,
+`useRegroup` sends them **one at a time** (group patches first, position last), and the screen
+changes only after the server answers and `/active` is re-read. A move or link that touches
+several exercises therefore costs several round trips plus a refetch. On staging, Render's free
+plan and Neon add latency to each one.
+
+**Done looks like:** the delay is measured first (round trips per action and time per round
+trip, on the phone). Then the fix is chosen from the numbers: show the new order or grouping
+right away and roll back on failure; or one batched regroup endpoint so an action is one round
+trip; or both. Whatever is chosen must keep Spec 10.1's guarantees (minimal patches, untouched
+groups keep their numbers, a failure leaves a consistent list).

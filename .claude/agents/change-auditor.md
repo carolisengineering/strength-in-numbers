@@ -22,18 +22,50 @@ covers the vuln pass. You focus on what those two miss:
 3. **Migration safety (§11).** Any Prisma migration is additive / expand-only. No column
    drop/rename in the same release as the code that stops using it. If a migration was added,
    `docs/runbooks/first-deploy.md` B4 is still accurate.
-4. **Project pitfalls.** `pnpm run lint` (not bare). Error contract on root + `/v1` scope.
-   `resolveDatabaseUrl` sslmode/sslaccept=strict/connection_limit. Bounded graceful-shutdown drain. `X-Request-Id`
-   validation regex. Neon direct-vs-`-pooler` host. `@prisma/client` generated in the Docker
-   runtime stage.
-5. **Docs drift.** DESIGN.md / the spec / the runbook updated to match the code where the
-   project's convention requires it.
+4. **Project pitfalls.** The full rule lists are the root `CLAUDE.md` (repo-wide) and
+   `apps/api/CLAUDE.md`, `apps/web/CLAUDE.md`, `packages/core/CLAUDE.md`; read the ones for the
+   packages the diff touches and check the diff against the bullets for the specs it touches.
+   The ones most often missed:
+   - **Repo-wide:** `pnpm run lint` (not bare). Never the word "dummy". Image pins are
+     multi-arch index digests, and `postgres-image.ts` matches compose.
+   - **API:**
+     - Error contract on root + `/v1` scope.
+     - A new route method is in `CORS_METHODS`.
+     - Every `/v1` write route declares `writeGroup`.
+     - A public route opts in with `config.published`.
+     - No hand-set `Cache-Control`.
+     - Span and metric attributes go through the telemetry allow-list.
+     - `resolveDatabaseUrl` sslmode / sslaccept=strict / connection_limit.
+     - Bounded graceful-shutdown drain. `X-Request-Id` validation regex.
+     - Neon direct-vs-`-pooler` host. `@prisma/client` generated in the Docker runtime stage.
+     - A new user-owned table cascades from `user`.
+     - Lock order: `lockUserRecords` first.
+   - **Web:**
+     - No non-test module names `localStorage` / `sessionStorage`; storage goes through the
+       `StorageAdapter`, and per-user keys use a prefix in `USER_DATA_KEY_PREFIXES`.
+     - Design values only in `tokens.css` (`assert:css-tokens`).
+     - Teal is interactive, brass is records only.
+     - No inline styles (CSP).
+     - Component and pure-module file names don't collide on a case-insensitive disk.
+     - Online-only writes use `networkMode: "always"` and `retry: false`.
+     - A `connect-src` change lands in both `render.yaml` and `apps/web/firebase.json`.
+   - **Core:** no React / DOM / Node imports (purity check). Validation messages are static.
+5. **Docs drift.** Updated to match the code wherever the project's convention requires it:
+   - DESIGN.md, the spec (including its Status line) and the runbook.
+   - The `CLAUDE.md` bullet for the spec. A changed rule is updated in the package's file,
+     not added to the root.
 
 ## Process
 - `git fetch -q origin && git diff origin/main...HEAD --stat`, then read the full diff.
 - Read the relevant spec and DESIGN.md sections.
-- Run `pnpm run lint`, `pnpm --filter @sin/api run typecheck`, `pnpm --filter @sin/api run
-  test:unit`; report pass/fail — do not fix.
+- Run `pnpm run lint` and `pnpm run typecheck`, then the unit suite of each package the diff
+  touches:
+  - `pnpm --filter @sin/api run test:unit`
+  - `pnpm --filter @sin/web run test:coverage` (includes the coverage gates)
+  - `pnpm --filter @sin/core run test:unit` (includes the purity check)
+
+  For a web change also run `pnpm --filter @sin/web run assert:css-tokens`. Report pass/fail —
+  do not fix.
 
 ## Output
 Findings list, most severe first. Each: `file:line` · what's wrong · why it matters · suggested
