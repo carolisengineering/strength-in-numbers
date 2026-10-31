@@ -54,15 +54,18 @@ export function sectionFromPlaceholder(
   notes: string | null,
 ): { name: string; note: string | null; notices: SectionNotice[] } {
   const notices: SectionNotice[] = [];
-  const lines = (notes ?? "").split(/\r?\n/);
+  // Minor 211: CRLF, a lone CR and LF each end a line.
+  const lines = (notes ?? "").split(/\r\n?|\n/);
   if (role === "warmup_placeholder") return { name: "Warm-up", note: noteOf(lines, notices), notices };
 
   const first = lines.findIndex((line) => line.trim() !== "");
   if (first === -1) return { name: "Workout", note: null, notices };
   let name = lines[first]!.trim();
   if (name.length > SECTION_NAME_MAX) {
-    name = cutClusters(name, SECTION_NAME_MAX).trim() || "Workout";
-    notices.push("section_name_cut");
+    const kept = cutClusters(name, SECTION_NAME_MAX).trim();
+    // Minor 214: a cut that keeps nothing replaces the name with Workout, which is not a trimmed name.
+    if (kept !== "") notices.push("section_name_cut");
+    name = kept || "Workout";
   }
   return { name, note: noteOf(lines.slice(first + 1), notices), notices };
 }

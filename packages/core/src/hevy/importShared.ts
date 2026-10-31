@@ -55,8 +55,8 @@ export function placeholderSection(
   role: "warmup_placeholder" | "workout_placeholder",
   rawNotes: string | null,
 ): { name: string; notes: string | null; nameCut: boolean; notesCut: boolean } {
-  // A lone CR splits a line like LF (minor 150): `sectionFromPlaceholder` splits on LF, and the name loses its CR.
-  const notes = cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value?.replace(/\r\n?/g, "\n") ?? null;
+  // A lone CR splits a line like LF (minors 150, 211): `sectionFromPlaceholder` splits on CRLF, CR and LF.
+  const notes = cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value;
   const section = sectionFromPlaceholder(role, notes);
   return {
     name: cleanLine(section.name, SECTION_NAME_MAX).value ?? "Workout",
