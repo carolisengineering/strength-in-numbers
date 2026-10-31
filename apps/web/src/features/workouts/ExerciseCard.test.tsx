@@ -378,7 +378,8 @@ describe("AC24 (06.2 AC14, 06.2 AC15) — Log set failures surface on the row", 
   });
 });
 
-const normalizeIds = (html: string) => html.replace(/(«|:|_)r_?[0-9a-z]+(»|:|_)/g, "ID");
+// `data-variant` is Button's test hook (minor 249), added after this baseline was recorded.
+const normalizeIds = (html: string) => html.replace(/(«|:|_)r_?[0-9a-z]+(»|:|_)/g, "ID").replace(/ data-variant="[a-z]+"/g, "");
 
 describe("10.1 AC16 — an exercise with no targets or notes renders exactly today's markup", () => {
   it("snapshot of the pre-10.1 card", async () => {

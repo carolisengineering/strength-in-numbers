@@ -180,6 +180,17 @@ describe("20.1 AC13 — unpaired remains", () => {
   });
 });
 
+describe("Minor 249 — Import is the summary's one primary button", () => {
+  it("only the confirm button is primary", async () => {
+    setup({ workouts: generateHevyWorkouts(6) });
+    await start();
+    await summaryHeading();
+    const step = screen.getByRole("region", { name: "Summary" });
+    const primary = within(step).getAllByRole("button").filter((b) => b.dataset.variant === "primary");
+    expect(primary.map((b) => b.textContent)).toEqual(["Import 6 workouts"]);
+  });
+});
+
 describe("Minor 244 — unpaired templates are keyed by id", () => {
   it("two unpaired templates with one title are two rows, with no key warning", async () => {
     const [a, b] = GENERATED_TEMPLATE_IDS;

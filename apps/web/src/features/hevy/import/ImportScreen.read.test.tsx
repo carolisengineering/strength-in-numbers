@@ -130,6 +130,16 @@ describe("20.1 AC2 — preflight", () => {
   });
 });
 
+describe("Minor 249 — Start is the one primary button", () => {
+  it("on preflight, the only primary button in the step is Start", async () => {
+    setup({ status: STATUS });
+    renderApp(HEVY_IMPORT_PATH);
+    const step = await screen.findByRole("region", { name: "Before you start" });
+    const primary = within(step).getAllByRole("button").filter((b) => b.dataset.variant === "primary");
+    expect(primary.map((b) => b.textContent)).toEqual(["Start"]);
+  });
+});
+
 describe("20.1 AC3 / AC5 — reading UI", () => {
   it("shows the stage and page in a polite status, and Cancel returns to preflight", async () => {
     const { hevy } = setup({ status: STATUS, hevy: { workouts: generateHevyWorkouts(120) } });

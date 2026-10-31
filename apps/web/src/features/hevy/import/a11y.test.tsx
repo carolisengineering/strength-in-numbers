@@ -1,4 +1,5 @@
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +28,9 @@ import { importButton, setupImportRun, toSummary } from "../../../test/hevyImpor
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
-import { MAPPING_UNAVAILABLE } from "./messages";
+import { initialImportState } from "./importSession";
+import { MAPPING_UNAVAILABLE, routinesChosen } from "./messages";
+import { RoutinePicksStep } from "./RoutinePicksStep";
 import { HEVY_IMPORT_PATH } from "./paths";
 
 /** Spec 20.1 AC29 (D14: structural checks, no axe): landmarks, heading order, live regions and names per step. */
@@ -76,6 +79,28 @@ function checkStructure(stepTitle: string) {
     expect(control).toHaveAccessibleName();
   }
 }
+
+describe("Minor 242 — the routines count is empty at first paint", () => {
+  const props = {
+    state: { ...initialImportState, step: "routines" as const, picks: { picked: new Set(["r1"]) } },
+    pickContext: { picks: { picked: new Set(["r1"]) }, existingNames: new Set<string>(), routineCount: 0, routinesById: new Map() },
+    routinesStatus: "success" as const,
+    onRetryRoutines: () => {},
+    onToggle: () => {},
+    onTickAll: () => {},
+    onContinue: () => {},
+    headingRef: null,
+  };
+
+  it("coming back with a routine ticked, the first paint's status is empty, then it says the count", () => {
+    // The server render runs no effects: it is the first paint.
+    const first = document.createElement("div");
+    first.innerHTML = renderToStaticMarkup(<RoutinePicksStep {...props} />);
+    expect(first.querySelector('[role="status"]')).toBeEmptyDOMElement();
+    render(<RoutinePicksStep {...props} />);
+    expect(screen.getByRole("status")).toHaveTextContent(routinesChosen(1));
+  });
+});
 
 describe("20.1 AC29 — structure per step", () => {
   it("preflight: landmarks, headings, names, and no live region has text at first paint", async () => {

@@ -43,6 +43,9 @@ export function Button({
       {...rest}
       type={type}
       className={classes}
+      // Minor 249: the variant as a plain attribute, so a test can tell the primary button (CSS module classes are
+      // not processed in Vitest). No style reads it.
+      data-variant={variant}
       disabled={disabled || busy}
       // `busy` also disables; a caller that must keep focus while in flight (Spec 06.1's Log set)
       // passes `aria-busy` itself and guards the double tap in its own handler.
