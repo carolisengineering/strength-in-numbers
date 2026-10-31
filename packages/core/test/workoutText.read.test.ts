@@ -447,3 +447,51 @@ describe("Minor 108 — a trailing for time goes to the note", () => {
     expect(r.sections[0]!.notes).toBe("5 Rounds for time");
   });
 });
+
+describe("Minor 215 — structure lines with for time", () => {
+  it("2 Rounds for time opens the run and is no exercise, as before", () => {
+    const r = read(["Metcon", "2 Rounds for time", "10 Squats"]);
+    expect(r.items.map((i) => [i.name, i.noteLines, i.section, i.run])).toEqual([["Squats", [], 0, 1]]);
+  });
+  it("For Time: is a note before the exercises, as before", () => {
+    const r = read(['Workout: "S"', "For Time:", "21-15-9", "Power Clean"]);
+    expect(r.items.map((i) => [i.name, i.noteLines, i.section, i.run])).toEqual([["Power Clean", [], 0, 1]]);
+  });
+  it("21-15-9 for time under a run is a note now, no longer an exercise named after it", () => {
+    const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "10 Squats"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
+    expect(r.sections[0]!.notes).toContain("21-15-9 for time");
+  });
+});
+
+describe("Minor 215 — a trailing for time goes to the note on every movement line", () => {
+  it("under a run", () => {
+    const r = read(["Metcon", "3 Rounds", "400 m Run for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([["400 m Run", ["400 m", "for time"]]]);
+  });
+  it("on a bullet", () => {
+    const r = read(["Metcon", "- 21 Thrusters for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([["Thrusters", ["for time"]]]);
+  });
+  it("before a load, which stays last", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Thrusters for time @ 95 lb"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([["Thrusters", ["for time", "@ 95 lb"]]]);
+  });
+});
+
+describe("Minor 216 — on an A + B line, for time goes to every part", () => {
+  it("a counted line", () => {
+    const r = read(["Metcon", "400 m Run + 50 Burpees for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([
+      ["400 m Run", ["400 m", "for time"]],
+      ["Burpees", ["for time"]],
+    ]);
+  });
+  it("under a run", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Squats + 10 Burpees for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([
+      ["Squats", ["for time"]],
+      ["Burpees", ["for time"]],
+    ]);
+  });
+});

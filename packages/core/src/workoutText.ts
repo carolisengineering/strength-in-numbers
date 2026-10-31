@@ -502,14 +502,20 @@ function splitLoad(text: string): { text: string; load: string | null } {
   const at = text.indexOf(LOAD_MARK);
   return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
 }
+/** Minors 108, 215: "1 Mile Run for time" names the run; "for time" is how it is scored, so it goes to the note. */
+const FOR_TIME = /\s+(for time)$/i;
 /**
- * A movement line's name part and load: the load comes off first, then a trailing comma (which belongs to the line, not
- * the load) is read on the name part by #155's rule.
+ * A movement line's name part, load and trailing `for time`: the load comes off first, then a trailing comma (which
+ * belongs to the line, not the load) is read on the name part by #155's rule, then a trailing "for time" comes off the
+ * name part (minor 215: every movement line; on an "A + B" line it describes the whole line, minor 216).
  */
-function splitMovement(raw: string): { text: string; load: string | null } {
-  const { text, load } = splitLoad(raw);
-  if (load === null || !load.endsWith(",")) return { text: dropMovementComma(text), load };
-  return { text: dropMovementComma(`${text},`), load: load.slice(0, -1).trimEnd() };
+function splitMovement(raw: string): { text: string; load: string | null; forTime: string | null } {
+  const { text: named, load: rawLoad } = splitLoad(raw);
+  const commaOnLoad = rawLoad !== null && rawLoad.endsWith(",");
+  const text = dropMovementComma(commaOnLoad ? `${named},` : named);
+  const load = commaOnLoad ? rawLoad.slice(0, -1).trimEnd() : rawLoad;
+  const forTime = FOR_TIME.exec(text);
+  return forTime ? { text: text.slice(0, forTime.index), load, forTime: forTime[1]! } : { text, load, forTime: null };
 }
 /**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
@@ -681,8 +687,9 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (s.run !== null && s.run.kind !== "list") {
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
-    const { text: raw, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
+    const forTimeNote = forTime === null ? [] : [forTime];
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
     if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
@@ -690,36 +697,36 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const parts = raw.split(PLUS);
     if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
       const run = s.run;
-      parts.forEach((part, i) => pushMovement(s, run, part, repFormOf(part), i === parts.length - 1 ? loadNote : []));
+      parts.forEach((part, i) => pushMovement(s, run, part, repFormOf(part), [...forTimeNote, ...(i === parts.length - 1 ? loadNote : [])]));
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
     // "Max" is a rep count, never part of a name: "Max Hang" is Hang (owner, 2026-10-24; replaces item 70's fix).
     const max = MAX_LINE.exec(raw);
     if (max && isMovementText(max[2]!)) {
-      pushMovement(s, s.run, max[2]!, null, [maxNote(max), ...loadNote], MAX_CAL.test(max[1]!));
+      pushMovement(s, s.run, max[2]!, null, [maxNote(max), ...forTimeNote, ...loadNote], MAX_CAL.test(max[1]!));
       return "movement";
     }
     // Spec 05.3 AC36: "20 Cal Row" → Row, with "20 Cal" as its note and the calories hint.
     const cal = leadingCalorieOf(raw);
     if (cal) {
-      pushMovement(s, s.run, cal.movement, null, [cal.measure, ...loadNote], true);
+      pushMovement(s, s.run, cal.movement, null, [cal.measure, ...forTimeNote, ...loadNote], true);
       return "movement";
     }
     // AC48: coaching text after "N Sets, 1 Set Every M:SS" ("Build to a heavy 5") is a note, not an exercise.
     if (s.run.kind === "lead-in" && s.run.strict && repFormOf(raw) === null && !LEADING_MEASURE.test(raw)) return "note";
     if (!isMovementText(raw)) return null;
-    pushMovement(s, s.run, raw, repFormOf(raw), loadNote);
+    pushMovement(s, s.run, raw, repFormOf(raw), [...forTimeNote, ...loadNote]);
     return "movement";
   }
 
   // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list.
   if (BULLET.test(line)) {
     s.run = null;
-    const { text, load } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const item = rowlessItemOf(text, { max: "any", counted: false });
     if (!item) return null;
-    pushItem(s, { ...item, noteLines: load === null ? item.noteLines : [...item.noteLines, load], run: null });
+    pushItem(s, { ...item, noteLines: [...item.noteLines, ...(forTime === null ? [] : [forTime]), ...(load === null ? [] : [load])], run: null });
     return "movement";
   }
 
@@ -738,23 +745,17 @@ const isStructureName = (name: string) =>
 
 type CountedItem = Omit<MutableItem, "nameKey" | "section" | "run">;
 
-/** Minor 108: "1 Mile Run for time" names the run; "for time" is how it is scored. */
-const FOR_TIME = /\s+(for time)$/i;
-
 /**
  * Minor 110: the one reader of a rowless item, for a bare bullet (step 8) and an AC62 counted line. In order: a Max
  * form, then a leading calorie form, then a rep form, then (counted only) a leading distance.
  * - `max`: which Max forms count. A bullet takes any (AC50); a counted line only `Max Cal` (minor 109, owner ruling O3),
  *   so "Max effort today" stays a note.
  * - `counted`: AC62's extra rules. The whole line must pass AC8's movement test, a structure name ("5 Rounds") is not
- *   a movement, a leading distance counts, and a trailing "for time" goes to the note (minor 108).
+ *   a movement, and a leading distance counts.
+ * A trailing "for time" is already off: `splitMovement` takes it (minors 108, 215).
  */
-function rowlessItemOf(line: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
-  // The "for time" comes off first, so a counted Max Cal line names its movement alone too.
-  const forTime = opts.counted ? FOR_TIME.exec(line) : null;
-  const text = forTime ? line.slice(0, forTime.index) : line;
-  const item = maxItemOf(text, opts.max) ?? (opts.counted && !isMovementText(text) ? null : countedFormOf(text, opts.counted));
-  return item && forTime ? { ...item, noteLines: [...item.noteLines, forTime[1]!] } : item;
+function rowlessItemOf(text: string, opts: { max: "any" | "calories"; counted: boolean }): CountedItem | null {
+  return maxItemOf(text, opts.max) ?? (opts.counted && !isMovementText(text) ? null : countedFormOf(text, opts.counted));
 }
 
 function maxItemOf(text: string, which: "any" | "calories"): CountedItem | null {
@@ -786,14 +787,17 @@ function countedFormOf(text: string, counted: boolean): CountedItem | null {
  * before a variant label.
  */
 function countedLineOf(line: string, s: ReadState): boolean {
-  const { text, load } = splitMovement(line.replace(TRAILING_PLUS, ""));
+  const { text, load, forTime } = splitMovement(line.replace(TRAILING_PLUS, ""));
   if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
   const parts = text.split(PLUS);
   const items = parts.map((part) => rowlessItemOf(part, { max: "calories", counted: true }));
   if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
   const run = s.run.id;
-  items.forEach((it, i) => pushItem(s, { ...it!, noteLines: load !== null && i === items.length - 1 ? [...it!.noteLines, load] : it!.noteLines, run }));
+  const forTimeNote = forTime === null ? [] : [forTime];
+  items.forEach((it, i) =>
+    pushItem(s, { ...it!, noteLines: [...it!.noteLines, ...forTimeNote, ...(load !== null && i === items.length - 1 ? [load] : [])], run }),
+  );
   return true;
 }
 
