@@ -497,7 +497,12 @@ function splitLoad(text: string): { text: string; load: string | null } {
   return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
 }
 /** Minors 108, 215: "1 Mile Run for time" names the run; "for time" is how it is scored, so it goes to the note. */
-const FOR_TIME = /\s+(for time)$/i;
+const FOR_TIME = /,?\s+(for time)$/i;
+/** A trailing "for time" (with a comma before it, if any) off `text`. */
+function takeForTime(text: string): { text: string; forTime: string | null } {
+  const m = FOR_TIME.exec(text);
+  return m ? { text: text.slice(0, m.index), forTime: m[1]! } : { text, forTime: null };
+}
 /**
  * A movement line's name part, load and trailing `for time`: the load comes off first, then a trailing comma (which
  * belongs to the line, not the load) is read on the name part by #155's rule, then a trailing "for time" comes off the
@@ -508,8 +513,7 @@ function splitMovement(raw: string): { text: string; load: string | null; forTim
   const commaOnLoad = rawLoad !== null && rawLoad.endsWith(",");
   const text = dropMovementComma(commaOnLoad ? `${named},` : named);
   const load = commaOnLoad ? rawLoad.slice(0, -1).trimEnd() : rawLoad;
-  const forTime = FOR_TIME.exec(text);
-  return forTime ? { text: text.slice(0, forTime.index), load, forTime: forTime[1]! } : { text, load, forTime: null };
+  return { ...takeForTime(text), load };
 }
 /**
  * Spec 05.3 AC36: "20 Cal Row", "15 Cals Ski Erg", "20cal Row" — a calorie goal on a movement. The name is the movement
@@ -684,14 +688,24 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     const forTimeNote = forTime === null ? [] : [forTime];
+    // Final review of minor 215: a line that only reads as structure once its "for time" is off ("21-15-9 for time",
+    // "Rounds for time") is the run's note and keeps it open, so the movements after it keep their sets.
+    if (forTime !== null && (!isMovementText(raw) || isStructureName(raw))) return "note";
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
     if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side; a load belongs to the last side.
-    const parts = raw.split(PLUS);
-    if (parts.length > 1 && parts.every((p) => isMovementText(p) && repFormOf(p) !== null)) {
+    // A part's own "for time" ("10 Squats for time + 10 Burpees") is that part's note; the line's goes to every part.
+    const parts = raw.split(PLUS).map(takeForTime);
+    if (parts.length > 1 && parts.every((p) => isMovementText(p.text) && repFormOf(p.text) !== null)) {
       const run = s.run;
-      parts.forEach((part, i) => pushMovement(s, run, part, repFormOf(part), [...forTimeNote, ...(i === parts.length - 1 ? loadNote : [])]));
+      parts.forEach((part, i) =>
+        pushMovement(s, run, part.text, repFormOf(part.text), [
+          ...(part.forTime === null ? [] : [part.forTime]),
+          ...forTimeNote,
+          ...(i === parts.length - 1 ? loadNote : []),
+        ]),
+      );
       return "movement";
     }
     // AC50: "Max Cal X with remaining time" → X, with "Max Cal, with remaining time" as its note.
@@ -783,15 +797,18 @@ function countedFormOf(text: string, counted: boolean): CountedItem | null {
 function countedLineOf(line: string, s: ReadState): boolean {
   const { text, load, forTime } = splitMovement(line.replace(TRAILING_PLUS, ""));
   if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
-  const parts = text.split(PLUS);
-  const items = parts.map((part) => rowlessItemOf(part, { max: "calories", counted: true }));
+  // A part's own "for time" is that part's note (minor 108 on "A for time + B"); the line's goes to every part.
+  const parts = text.split(PLUS).map(takeForTime);
+  const items = parts.map((part) => rowlessItemOf(part.text, { max: "calories", counted: true }));
   if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
   const run = s.run.id;
   const forTimeNote = forTime === null ? [] : [forTime];
-  items.forEach((it, i) =>
-    pushItem(s, { ...it!, noteLines: [...it!.noteLines, ...forTimeNote, ...(load !== null && i === items.length - 1 ? [load] : [])], run }),
-  );
+  items.forEach((it, i) => {
+    const own = parts[i]!.forTime === null ? [] : [parts[i]!.forTime!];
+    const lastLoad = load !== null && i === items.length - 1 ? [load] : [];
+    pushItem(s, { ...it!, noteLines: [...it!.noteLines, ...own, ...forTimeNote, ...lastLoad], run });
+  });
   return true;
 }
 

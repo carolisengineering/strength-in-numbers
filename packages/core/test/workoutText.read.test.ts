@@ -449,7 +449,7 @@ describe("Minor 108 — a trailing for time goes to the note", () => {
 });
 
 describe("Minor 215 — structure lines with for time", () => {
-  it("2 Rounds for time opens the run and is no exercise, as before", () => {
+  it("2 Rounds for time is no exercise, as before", () => {
     const r = read(["Metcon", "2 Rounds for time", "10 Squats"]);
     expect(r.items.map((i) => [i.name, i.noteLines, i.section, i.run])).toEqual([["Squats", [], 0, 1]]);
   });
@@ -461,6 +461,38 @@ describe("Minor 215 — structure lines with for time", () => {
     const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "10 Squats"]);
     expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
     expect(r.sections[0]!.notes).toContain("21-15-9 for time");
+  });
+  it("final review — that note keeps the run open, so the movement after it keeps its 3 sets", () => {
+    const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "10 Squats"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null, i.run])).toEqual([["Squats", 3, 1]]);
+  });
+  it("final review — Rounds for time under a run is a note, not an exercise named Rounds", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Squats", "Rounds for time", "10 Burpees"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
+      ["Squats", 3],
+      ["Burpees", 3],
+    ]);
+  });
+});
+
+describe("Minor 215 final review — a comma before for time, and for time on a single part", () => {
+  it("10 Push-ups, for time under a run is the exercise, with for time as its note", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Push-ups, for time"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([["Push-ups", ["for time"]]]);
+  });
+  it("a counted A + B line with for time on its first part puts it on that part only", () => {
+    const r = read(["Metcon", "10 Squats for time + 10 Burpees"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([
+      ["Squats", ["for time"]],
+      ["Burpees", []],
+    ]);
+  });
+  it("the same under a run", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Squats for time + 10 Burpees"]);
+    expect(r.items.map((i) => [i.name, i.noteLines])).toEqual([
+      ["Squats", ["for time"]],
+      ["Burpees", []],
+    ]);
   });
 });
 
