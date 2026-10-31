@@ -132,6 +132,12 @@ export const SUMMARY_LABELS = Object.freeze({
   cannotImport: "can't be imported",
   unpaired: "waiting for a pairing",
 } as const);
+/** Minor 248: the count lines are `{n} {label}`; only the duplicate line changes for one. */
+const SUMMARY_LABELS_ONE: Partial<Record<keyof typeof SUMMARY_LABELS, string>> = {
+  duplicate: "already matches a workout in SIN (it'll be linked, not copied)",
+};
+export const summaryCountLine = (key: keyof typeof SUMMARY_LABELS, n: number) =>
+  `${fmt(n)} ${(n === 1 ? SUMMARY_LABELS_ONE[key] : undefined) ?? SUMMARY_LABELS[key]}`;
 export const setsLine = (kept: number, dropped: number) => `Sets: ${fmt(kept)} kept, ${fmt(dropped)} dropped`;
 export const routinesChosenLine = (n: number) => `${plural(n, "routine", "routines")} will be created.`;
 export const exercisesCreatedLine = (n: number) => `${plural(n, "exercise was", "exercises were")} created while pairing.`;
@@ -152,6 +158,13 @@ export const BACK_TO_NAMES = "Back to names";
 /** AC13 / AC14: confirm. */
 export const importLabel = (workouts: number, routines: number) =>
   `Import ${plural(workouts, "workout", "workouts")}${routines > 0 ? ` and ${plural(routines, "routine", "routines")}` : ""}`;
+/** Minor 239: no workout to create, some that match a SIN workout (they are sent to be linked). */
+export const linkLabel = (workouts: number, routines: number) =>
+  `Link ${plural(workouts, "workout", "workouts")}${routines > 0 ? ` and import ${plural(routines, "routine", "routines")}` : ""}`;
+/** Minor 239: no workout to create or link, some routines. */
+export const routinesOnlyLabel = (routines: number) => `Import ${plural(routines, "routine", "routines")}`;
+/** Minor 239: only workouts waiting for a pairing (the button is disabled and the card above says why). */
+export const IMPORT_WORKOUTS = "Import workouts";
 export const NOTHING_NEW = "Nothing new to import";
 export const DONE = "Done";
 

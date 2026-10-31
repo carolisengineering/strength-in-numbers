@@ -19,6 +19,7 @@ import {
   routinesChosenLine,
   setsLine,
   SUMMARY_LABELS,
+  summaryCountLine,
   SUMMARY_STALE,
   SUMMARY_TITLE,
   unpairedLine,
@@ -63,7 +64,8 @@ export function ImportSummaryView({
   const label = confirmLabel(agg, routineCount, sendCount);
   const nothing = label === NOTHING_NEW;
   const noteId = useId();
-  const templateTitles = agg.unpairedTemplates.map((id) => state.read?.templates.get(id)?.title ?? id);
+  // Minor 244: keyed by template id; a built-in and a custom template can share a title.
+  const unpairedTemplates = agg.unpairedTemplates.map((id) => ({ id, title: state.read?.templates.get(id)?.title ?? id }));
 
   const counts: [keyof typeof SUMMARY_LABELS, number][] = [
     ["create", agg.create],
@@ -100,7 +102,7 @@ export function ImportSummaryView({
           .filter(([key, n]) => key === "create" || n > 0)
           .map(([key, n]) => (
             <li key={key}>
-              {fmt(n)} {SUMMARY_LABELS[key]}
+              {summaryCountLine(key, n)}
             </li>
           ))}
       </ul>
@@ -118,10 +120,10 @@ export function ImportSummaryView({
       ) : null}
       {agg.unpaired > 0 ? (
         <div className={styles.card}>
-          <p className={styles.text}>{unpairedLine(templateTitles.length)}</p>
+          <p className={styles.text}>{unpairedLine(unpairedTemplates.length)}</p>
           <ul className={styles.list}>
-            {templateTitles.map((t) => (
-              <li key={t}>{t}</li>
+            {unpairedTemplates.map((t) => (
+              <li key={t.id}>{t.title}</li>
             ))}
           </ul>
           <div className={styles.actions}>
