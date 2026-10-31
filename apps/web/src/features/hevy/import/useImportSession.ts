@@ -10,7 +10,7 @@ import { applyImportedCaches } from "../../records/cache";
 import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
 import { useHevyMapping } from "../mapping/useHevyMapping";
-import { hevyTemplatesQuery } from "../mapping/useHevyTemplates";
+import { fetchHevyTemplates } from "../mapping/useHevyTemplates";
 import { initialPairingCards, newPairingSaveRecord, savePairings } from "../pairing";
 import { useSavePairingsDeps } from "../pairing/useSavePairingsDeps";
 // Spec 20.1 D11 / D16 (owner ruling 2026-10-29): the one file in features/hevy that may use the routines list and create.
@@ -68,7 +68,7 @@ export function useImportSession() {
 
   const generation = useRef(state.generation);
   const controller = useRef<AbortController | null>(null);
-  /** Minor 231: cancel the shared template read only if this read started it. */
+  /** Minors 231, 245: cancel the shared template read only while this import owns it (`fetchHevyTemplates`). */
   const startedTemplates = useRef(false);
   const stateRef = useRef<ImportState>(state);
   stateRef.current = state;
@@ -96,12 +96,7 @@ export function useImportSession() {
       stopIo();
       const io = new AbortController();
       controller.current = io;
-      const templates = () => {
-        const running = queryClient.isFetching({ queryKey: HEVY_KEYS.templates }) > 0;
-        const cached = queryClient.getQueryState(HEVY_KEYS.templates)?.status === "success";
-        startedTemplates.current = !running && !cached;
-        return queryClient.fetchQuery(hevyTemplatesQuery(client));
-      };
+      const templates = () => fetchHevyTemplates(queryClient, client, startedTemplates);
       readHevy(client, {
         signal: io.signal,
         templates,
@@ -110,11 +105,9 @@ export function useImportSession() {
         onProgress: (progress) => dispatch({ type: "readProgress", generation: gen, progress }),
       }).then(
         (read) => {
-          startedTemplates.current = false;
           if (!io.signal.aborted) dispatch({ type: "readDone", generation: gen, read });
         },
         (err: unknown) => {
-          startedTemplates.current = false;
           if (io.signal.aborted) return;
           if (err instanceof ReadStageError) {
             if (err.cause.kind === "server") reportError(err.cause, { source: "hevy-import", op: "read" });

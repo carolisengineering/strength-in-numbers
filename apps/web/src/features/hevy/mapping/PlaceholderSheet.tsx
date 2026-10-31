@@ -11,6 +11,7 @@ import { HevyError } from "../client/hevyErrors";
 import {
   HEVY_COPY,
   MAPPING_LOADING,
+  readingTemplates,
   MARKER_NONE,
   MARKERS_SHEET_TITLE,
   MARKER_WARMUP,
@@ -24,6 +25,7 @@ import {
 } from "../messages";
 import { useHevyClient } from "../useHevyClient";
 import { useHevyMapping } from "./useHevyMapping";
+import { useTemplatesProgress } from "./templatesProgress";
 import { useHevyTemplates } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations, type PairInput } from "./useMappingMutations";
 import styles from "./PlaceholderSheet.module.css";
@@ -40,6 +42,8 @@ export interface PlaceholderSheetProps {
 export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   const client = useHevyClient();
   const templates = useHevyTemplates();
+  // Minor 232: the shared read's page, as the load sheet shows it.
+  const progress = useTemplatesProgress();
   const { patch } = useMappingMutations();
   const mapping = useHevyMapping();
   const { state: catalog } = useCatalog();
@@ -123,7 +127,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
       {client === null ? (
         <p role="status">{NO_KEY_FOR_FILE}</p>
       ) : templates.isPending ? (
-        <p role="status">{MAPPING_LOADING}</p>
+        <p role="status">{progress !== null ? readingTemplates(progress.page, progress.pageCount) : MAPPING_LOADING}</p>
       ) : templates.isError ? (
         <p role="alert">{templates.error instanceof HevyError ? HEVY_COPY[templates.error.kind] : HEVY_COPY.unexpected_reply}</p>
       ) : (

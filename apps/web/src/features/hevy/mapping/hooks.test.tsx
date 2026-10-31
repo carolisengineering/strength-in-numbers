@@ -21,13 +21,13 @@ import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { useHevyKey } from "../useHevyKey";
 import { useHevyMapping } from "./useHevyMapping";
-import { reportTemplatesPage, useTemplatesProgress } from "./templatesProgress";
+import { beginTemplatesRead, reportTemplatesPage, useTemplatesProgress } from "./templatesProgress";
 import { useHevyTemplates } from "./useHevyTemplates";
 
 // A pass-through spy, so the read's progress reports can be counted.
 vi.mock("./templatesProgress", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./templatesProgress")>();
-  return { ...actual, reportTemplatesPage: vi.fn(actual.reportTemplatesPage) };
+  return { ...actual, beginTemplatesRead: vi.fn(actual.beginTemplatesRead), reportTemplatesPage: vi.fn(actual.reportTemplatesPage) };
 });
 import { useMappingMutations, type PairInput } from "./useMappingMutations";
 
@@ -139,14 +139,18 @@ describe("20.0 AC19 — templates in memory only", () => {
       }),
     );
     const setItem = vi.spyOn(Storage.prototype, "setItem");
+    vi.mocked(beginTemplatesRead).mockClear();
     vi.mocked(reportTemplatesPage).mockClear();
     const queryClient = makeQueryClient();
     const { result } = renderHook(() => useHevyTemplates(), { wrapper: wrapperFor(queryClient) });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data!.map((t) => t.id)).toEqual(["p1a", "p1b", "p2a", "p2b", "p3a", "p3b"]);
     // Minor 197: the read reports to the shared progress store (a start at 1/1, then each page), and clears it after.
-    const pages = vi.mocked(reportTemplatesPage).mock.calls.map(([p]) => `${p.page}/${p.pageCount}`);
-    expect(pages).toEqual(["1/1", "1/3", "2/3", "3/3"]);
+    // Minor 230: under one token, the one its start returned.
+    expect(beginTemplatesRead).toHaveBeenCalledTimes(1);
+    const token = vi.mocked(beginTemplatesRead).mock.results[0]!.value as number;
+    const pages = vi.mocked(reportTemplatesPage).mock.calls.map(([t, p]) => `${t === token ? "" : "other:"}${p.page}/${p.pageCount}`);
+    expect(pages).toEqual(["1/3", "2/3", "3/3"]);
     expect(renderHook(() => useTemplatesProgress()).result.current).toBeNull();
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.queryKey))).not.toContain(VALID_KEY);
     expect(setItem).not.toHaveBeenCalled();
