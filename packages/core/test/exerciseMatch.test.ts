@@ -74,10 +74,10 @@ describe("Minor 18 — a prepared catalog", () => {
     }
   });
 
-  it("Minor 221 — a hand-made object is not trusted as a prepared catalog", () => {
-    const fake = { entries: [] } as unknown as PreparedCatalog<(typeof rows)[number]>;
-    expect(() => matchExerciseName(rows[0]!.name, fake)).toThrow();
-    expect(matchExerciseName(rows[0]!.name, prepareCatalog(rows)).kind).toBe("exact");
+  it("Minor 221 code review — a catalog from another copy of the module still matches (no instanceof at runtime)", () => {
+    // Two copies of @sin/core (src and dist) can be loaded side by side; the nominal check is the type, not the class.
+    const other = { entries: prepareCatalog(rows).entries } as unknown as PreparedCatalog<(typeof rows)[number]>;
+    expect(matchExerciseName(rows[0]!.name, other)).toEqual(matchExerciseName(rows[0]!.name, prepareCatalog(rows)));
   });
 
   it("Review Focus 5 — a catalog prepared from new rows finds the new exercise", () => {

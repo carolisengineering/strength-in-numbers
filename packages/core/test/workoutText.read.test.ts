@@ -475,6 +475,21 @@ describe("Minor 215 — structure lines with for time", () => {
   });
 });
 
+describe("Minor 215 code review — for time does not turn a sentence or a structure bullet into an exercise", () => {
+  it("a long cue sentence ending in for time stays a note, as on main", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Pull-ups", "Finish with a 1 mile run for time"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Pull-ups"]);
+    expect(r.sections[0]!.notes).toContain("Finish with a 1 mile run for time");
+  });
+  it("Then complete the following circuit for time is no exercise", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Pull-ups", "Then complete the following circuit for time", "Row 500m"]);
+    expect(r.items.map((i) => i.name)).not.toContain("Then complete the following circuit");
+  });
+  it("a bulleted 3 Rounds for time is no exercise named Rounds", () => {
+    expect(read(["Metcon", "- 3 Rounds for time"]).items).toEqual([]);
+  });
+});
+
 describe("Minor 215 final review — a comma before for time, and for time on a single part", () => {
   it("10 Push-ups, for time under a run is the exercise, with for time as its note", () => {
     const r = read(["Metcon", "3 Rounds", "10 Push-ups, for time"]);

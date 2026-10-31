@@ -690,6 +690,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const forTimeNote = forTime === null ? [] : [forTime];
     // Final review of minor 215: a line that only reads as structure once its "for time" is off ("21-15-9 for time",
     // "Rounds for time") is the run's note and keeps it open, so the movements after it keep their sets.
+    // Code review: AC8's movement test counts the words as written, "for time" included, so a cue sentence that ends in
+    // it ("Finish with a 1 mile run for time") stays a note and closes the run, as before minor 215. An "A + B" line is
+    // tested part by part below (AC51), as before.
+    if (forTime !== null && !PLUS.test(raw) && !isMovementText(`${raw} ${forTime}`)) return null;
     if (forTime !== null && (!isMovementText(raw) || isStructureName(raw))) return "note";
     // AC49: lines that describe the interval go to the note and keep the run open.
     // A parenthesized cue ("(each leg)") is a note too.
@@ -733,7 +737,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     s.run = null;
     const { text, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const item = rowlessItemOf(text, { max: "any", counted: false });
-    if (!item) return null;
+    // Code review: "- 3 Rounds for time" is structure, never an exercise named "Rounds".
+    if (!item || (forTime !== null && isStructureName(item.name))) return null;
     pushItem(s, { ...item, noteLines: [...item.noteLines, ...(forTime === null ? [] : [forTime]), ...(load === null ? [] : [load])], run: null });
     return "movement";
   }
