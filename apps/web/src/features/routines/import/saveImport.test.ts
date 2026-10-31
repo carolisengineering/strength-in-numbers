@@ -13,7 +13,7 @@ import { LIMIT_MESSAGE, OFFLINE_SAVE, RATE_LIMITED } from "../messages";
 import { actions, reduce, type Draft } from "../routineDraft";
 import { toRoutineInput } from "../validateDraft";
 import { cardNames, initialCards } from "./cards";
-import { buildHandoff, type PendingExercise } from "./handoff";
+import { buildHandoff, indexRowsById, type PendingExercise } from "./handoff";
 import { draftFromImport } from "./importDraft";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
 import { createFailed } from "./messages";
@@ -22,7 +22,7 @@ import { prepareImportBody, referencedPending, withExerciseIds, type SaveImportD
 const read = readWorkoutText(HIRAYA_TEXT);
 const placeholders = new Map<string, string>();
 const placeholderFor = (k: string) => placeholders.get(k) ?? (placeholders.set(k, crypto.randomUUID()), placeholders.get(k)!);
-const handoff = buildHandoff({ read, cards: initialCards(cardNames(read), importCatalog), rows: importCatalog, placeholderFor });
+const handoff = buildHandoff({ read, cards: initialCards(cardNames(read), importCatalog), rowById: indexRowsById(importCatalog), placeholderFor });
 const pending = handoff.pending;
 const pendingInfo = new Map([...pending].map(([id, p]) => [id, { name: p.input.name, modality: p.input.modality }]));
 const lookup = lookupIn(importCatalog, { synced: true, pending: pendingInfo });

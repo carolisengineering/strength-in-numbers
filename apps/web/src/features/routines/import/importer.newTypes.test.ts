@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { importCatalog } from "../../../test/importFixtures";
 import { cardNames, initialCards } from "./cards";
-import { buildHandoff } from "./handoff";
+import { buildHandoff, indexRowsById } from "./handoff";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "../../../../../../packages/core/test/fixtures");
 const ph = (k: string) => `ph-${k}`;
@@ -27,7 +27,7 @@ describe("18.1 AC34 — importer hint", () => {
   it("20 Cal Row gives New Row with Calories; the item has no reps and keeps the 20 Cal note; saving creates a calories exercise", () => {
     const { read, cards } = cardsFor(["Engine", "3 Sets:", "20 Cal Row", "x."].join("\n"), []);
     expect(cards[0]).toMatchObject({ written: "Row", selected: "new", newValue: { modality: "calories" } });
-    const h = buildHandoff({ read, cards: cards.map((c) => ({ ...c, newValue: { ...c.newValue, name: "Row" } })), rows: [], placeholderFor: ph });
+    const h = buildHandoff({ read, cards: cards.map((c) => ({ ...c, newValue: { ...c.newValue, name: "Row" } })), rowById: indexRowsById([]), placeholderFor: ph });
     expect(h.plan.items[0]).toMatchObject({ form: { targetRepsLow: null, targetRepsHigh: null } });
     expect(h.plan.items[0]!.notes).toContain("20 Cal");
     expect([...h.pending.values()][0]!.input).toMatchObject({ name: "Row", modality: "calories" });
@@ -36,7 +36,7 @@ describe("18.1 AC34 — importer hint", () => {
     const bike = makeExercise({ id: exerciseId(42), name: "Echo Bike", modality: "duration", equipmentId: null });
     const { read, cards } = cardsFor(["Engine", "3 Rounds:", "Max Cal Echo Bike", "x."].join("\n"), [bike]);
     expect(cards[0]).toMatchObject({ selected: "match", match: { exerciseId: bike.id } });
-    const h = buildHandoff({ read, cards, rows: [bike], placeholderFor: ph });
+    const h = buildHandoff({ read, cards, rowById: indexRowsById([bike]), placeholderFor: ph });
     expect(h.exerciseIdOf.get(cards[0]!.key)).toBe(bike.id);
     expect(h.pending.size).toBe(0);
   });
@@ -45,7 +45,7 @@ describe("18.1 AC34 — importer hint", () => {
   it("Minor 90 (owner ruling O1) — a name read with and without a calorie form gets no hint, so 10 Row keeps its reps", () => {
     const { read, cards } = cardsFor(["Engine", "3 Sets:", "10 Row", "Max Cal Row", "x."].join("\n"), []);
     expect(cards[0]!.newValue.modality).toBe("weight_reps");
-    const h = buildHandoff({ read, cards: cards.map((c) => ({ ...c, selected: "match" as const, match: null })), rows: [], placeholderFor: ph });
+    const h = buildHandoff({ read, cards: cards.map((c) => ({ ...c, selected: "match" as const, match: null })), rowById: indexRowsById([]), placeholderFor: ph });
     expect(h.plan.items[0]!.notes ?? "").not.toContain("reps as written");
   });
   it("Minor 90 (owner ruling O1) — Max Cal in one section and plain Echo Bike in another make one card with no Calories guess", () => {

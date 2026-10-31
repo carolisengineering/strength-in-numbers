@@ -32,15 +32,19 @@ export function emptyHandoff(read: ReadResult): ImportHandoff {
   return { plan: buildImportPlan(read, () => "weight_reps"), exerciseIdOf: new Map(), pending: new Map() };
 }
 
+/** Minor 223: the catalog store's raw rows by id; the Check screen builds it once and shares it with `buildHandoff`. */
+export function indexRowsById(rows: readonly Exercise[]): ReadonlyMap<string, Exercise> {
+  return new Map<string, Exercise>(rows.map((row) => [row.id, row]));
+}
+
 export function buildHandoff(args: {
   read: ReadResult;
   cards: readonly CardState[];
-  /** The catalog store's raw rows (a chosen row may have left `visible` since). */
-  rows: readonly Exercise[];
+  /** `indexRowsById` over the catalog store's raw rows (a chosen row may have left `visible` since). */
+  rowById: ReadonlyMap<string, Exercise>;
   placeholderFor: (cardKey: string) => string;
 }): ImportHandoff {
-  const { read, cards, rows, placeholderFor } = args;
-  const rowById = new Map<string, Exercise>(rows.map((row) => [row.id, row]));
+  const { read, cards, rowById, placeholderFor } = args;
   const writtenOf = new Map(read.names.map((name) => [name.key, name.written]));
   // Spec 18.1 AC34: the reader's calories hint (a "Max Cal …" or "20 Cal …" line) seeds both fallback guesses.
   const caloriesOf = new Map(read.names.map((name) => [name.key, name.calories]));
