@@ -51,7 +51,7 @@ const SCORE_WORDS_MAX = 6;
 function nextTextLine(all: readonly string[], i: number): number {
   for (let j = i + 1; j < all.length; j++) {
     const l = all[j]!;
-    if (!CLOCK_LINE.test(l) && !statusBarLine(l) && !iconLine(l)) return j;
+    if (!CLOCK_LINE.test(l) && !isStatusBarLine(l) && !isIconLine(l)) return j;
   }
   return -1;
 }
@@ -64,14 +64,14 @@ export function collapseLine(line: string): string {
 /** Screen icons read as text are short; a longer line with no Latin letter is someone's text (a note in another script). */
 const ICON_MAX_LENGTH = 8;
 
-// Items 77 and 112: each predicate has a private form over a line that is already collapsed (`cleanWorkoutText`
-// collapses each line once); the exported form collapses, then delegates.
+// Items 77 and 112, minor 222: the line predicates take a line already collapsed by `collapseLine`
+// (`cleanWorkoutText` collapses each line once). `isFurnitureLine` alone takes a raw line (Spec 10.4 §6.7).
 
-/** AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script, or the signal bars. */
-export function isIconLine(line: string): boolean {
-  return iconLine(collapseLine(line));
-}
-function iconLine(l: string): boolean {
+/**
+ * AC43: a status-bar or tab-bar icon read as text, dropped anywhere: a short line with no letter or digit in any script,
+ * or the signal bars. `l` is collapsed.
+ */
+export function isIconLine(l: string): boolean {
   // Plain ASCII marks ("***", "---", "|") are the author's separators, not icons.
   return l !== "" && l.length <= ICON_MAX_LENGTH && ((!ALNUM.test(l) && NON_ASCII.test(l)) || SIGNAL_BARS.test(l));
 }
@@ -92,11 +92,8 @@ const STATUS_TAIL_MAX = 3;
 /** With no bars before the network name: only a battery or suffix mark (`O`, `C`, `UW`), never a word like `Row`. */
 const STATUS_TAIL_MAX_NO_BARS = 2;
 
-/** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. */
-export function isStatusBarLine(line: string): boolean {
-  return statusBarLine(collapseLine(line));
-}
-function statusBarLine(l: string): boolean {
+/** AC56: the cellular status bar as Live Text reads it (`•ll LTE O`, `all LTE L`, `ll 5G UW`): dropped anywhere. `l` is collapsed. */
+export function isStatusBarLine(l: string): boolean {
   const tokens = l.split(" ");
   if (tokens.length < 2 || tokens.length > 3) return false;
   const network = tokens.findIndex((t) => NETWORK.has(t.toLowerCase()));
@@ -107,21 +104,18 @@ function statusBarLine(l: string): boolean {
   return tokens.every((t, i) => i === network || (i < network ? SIGNAL_TOKEN.test(t) : t.length <= tailMax));
 }
 
-/** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. */
-export function isBadgeLine(line: string): boolean {
-  return badgeLine(collapseLine(line));
-}
-function badgeLine(l: string): boolean {
+/** AC45, AC58: a header badge, or badge words joined by `/` (`ROUNDS/REPS`). `Log result` is a button, never a badge. `l` is collapsed. */
+export function isBadgeLine(l: string): boolean {
   return l.split("/").every((p) => HEADER_BADGES.has(p.trim().toLowerCase()));
 }
 
 export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
-  return furnitureLine(l, badgeLine(l));
+  return furnitureLine(l, isBadgeLine(l));
 }
-/** `badge` is `badgeLine(l)`, which the cleaning loop computes once per line. */
+/** `badge` is `isBadgeLine(l)`, which the cleaning loop computes once per line. */
 function furnitureLine(l: string, badge: boolean): boolean {
-  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || iconLine(l) || statusBarLine(l) || badge;
+  return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l) || isStatusBarLine(l) || badge;
 }
 
 const NAV = new Set(NAV_LINES.map((l) => l.toLowerCase()));
@@ -227,7 +221,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
   // Minor 84: an icon is chrome only beside a label of a tab bar. Reach 3 lets an icon read as two lines sit
   // between two labels (`Home`, `口`, `凸`, `Workouts`).
   const tabBar = nav.map((_, i) => navNear(i, 3));
-  const badge = all.map(badgeLine);
+  const badge = all.map(isBadgeLine);
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
