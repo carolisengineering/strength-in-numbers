@@ -103,6 +103,18 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
       expect(before).toContain(updated);
     });
 
+    it("while empty the line is visually hidden, so it adds no gap to the screen (final review)", async () => {
+      setup({ recordsStale: true });
+      const { user } = renderApp(HEVY_PATH);
+      const button = await screen.findByRole("button", { name: "Finish the last step" });
+      // Each status line's class before the finish; the banner's is the one that later says Records updated.
+      const before = new Map(screen.getAllByRole("status").map((s) => [s, s.className]));
+      await user.click(button);
+      const updated = await screen.findByText("Records updated.");
+      expect(before.get(updated)).toMatch(/_hidden_/);
+      expect(updated.className).not.toMatch(/_hidden_/);
+    });
+
     it("once the finish succeeds, no Finish button is offered while the status is re-read", async () => {
       const imports = setup({ recordsStale: true });
       const status = heldStatusReread();

@@ -11,7 +11,7 @@ export interface TemplateUse {
   routines: number;
   /** The title the workouts (or routines) use, for a template Hevy no longer lists (AC32). */
   title: string;
-  /** Every set logged with it, to infer a missing template's type (AC32). */
+  /** For a template Hevy no longer lists, every set logged with it, to infer its type (AC32); empty otherwise (minor 247). */
   sets: HevySet[];
 }
 

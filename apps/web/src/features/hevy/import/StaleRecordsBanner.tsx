@@ -7,6 +7,7 @@ import { useHevyStatus } from "../useHevyStatus";
 import { finishImport } from "./finishImport";
 import { useHevyImportClient } from "./hevyImportClient";
 import { FINISH_FAILED, FINISH_LAST_STEP, FINISHING, RECORDS_UPDATED, STALE_RECORDS, TRY_AGAIN } from "./messages";
+import hidden from "../../../ui/VisuallyHidden.module.css";
 import styles from "./ImportScreen.module.css";
 
 /**
@@ -15,7 +16,7 @@ import styles from "./ImportScreen.module.css";
  * flight on this page; success refreshes what the import changed. A finish answering `recomputed: false` is done.
  *
  * Minor 241: "Records updated." goes into one polite status line that is always there (empty until a finish
- * succeeds), so it is announced. After a success the card stays hidden until the status has been read again since
+ * succeeds, and visually hidden while empty so it adds no gap to the screen's column), so it is announced. After a success the card stays hidden until the status has been read again since
  * the finish; from then on `recordsStale` alone decides (another run may have made the records stale again).
  */
 export function StaleRecordsBanner() {
@@ -37,10 +38,11 @@ export function StaleRecordsBanner() {
   const stale = status.data?.recordsStale === true;
   const awaitingReread = phase === "done" && status.dataUpdatedAt <= finishedAt.current;
   const showCard = stale && !awaitingReread;
+  const line = phase === "done" && !showCard ? RECORDS_UPDATED : "";
   return (
     <>
-      <p className={styles.status} role="status">
-        {phase === "done" && !showCard ? RECORDS_UPDATED : ""}
+      <p className={line === "" ? `${styles.status} ${hidden.hidden}` : styles.status} role="status">
+        {line}
       </p>
       {showCard ? (
         <section className={styles.card} aria-label={STALE_RECORDS}>

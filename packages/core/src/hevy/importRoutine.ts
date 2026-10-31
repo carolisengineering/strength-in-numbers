@@ -67,19 +67,19 @@ interface Candidate {
 }
 
 /**
- * Spec 19.1 AC11: a Hevy routine as a `POST /v1/routines` body in the `sets` form, or why not. Placeholders become
- * sections (AC3's naming, at most 8, loose first), skips are left out, and every cap is applied with a notice, so the
- * body always parses with `RoutineWriteSchema` and passes `plannedSetViolations`. A superset never spans a section
- * (the schema refuses it): groups are per (section, Hevy superset id), kept with 2–8 members.
- */
-/**
  * Minor 243: the name a Hevy routine gets in SIN (control characters removed, trimmed, cut to `ROUTINE_NAME_MAX`
- * code points; empty is "Hevy routine"). The import screen's duplicate-name check keys on this, lowercased.
+ * UTF-16 units without splitting a pair; empty is "Hevy routine"). The import screen's duplicate-name check keys on this, lowercased.
  */
 export function hevyRoutineName(title: string | null): string {
   return cleanLine(title, ROUTINE_NAME_MAX).value ?? BLANK_ROUTINE_NAME;
 }
 
+/**
+ * Spec 19.1 AC11: a Hevy routine as a `POST /v1/routines` body in the `sets` form, or why not. Placeholders become
+ * sections (AC3's naming, at most 8, loose first), skips are left out, and every cap is applied with a notice, so the
+ * body always parses with `RoutineWriteSchema` and passes `plannedSetViolations`. A superset never spans a section
+ * (the schema refuses it): groups are per (section, Hevy superset id), kept with 2–8 members.
+ */
 export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportContext, "now">): HevyRoutineTranslation {
   const unpaired = unpairedTemplateIds(
     routine.exercises.map((e) => e.exercise_template_id),
