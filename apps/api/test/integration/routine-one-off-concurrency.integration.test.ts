@@ -39,7 +39,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
     db = await startIntegrationDb();
   }, 180_000);
   afterAll(() => {
-    for (const [pair, counts] of tallies) console.info(`race ${pair}: ${[...counts].map(([o, n]) => `${o}=${n}`).join(" ")}`);
+    for (const [pair, counts] of tallies) process.stdout.write(`race ${pair}: ${[...counts].map(([o, n]) => `${o}=${n}`).join(" ")}\n`);
   });
   afterAll(async () => {
     await db?.stop();
