@@ -579,7 +579,22 @@ describe("10.4 AC67 / minor 280 — a line that is only for time is the run's no
     expect(r.sections[0]!.notes).toBe("for time");
   });
   it.each(["For Time", "for time:", "FOR TIME:", "- for time", "• For time"])("%s is the same", (line) =>
-    expect(names(read(["Metcon", "3 Rounds", line, "10 Squats"]))).toEqual(["Squats"]));
+    expect(read(["Metcon", "3 Rounds", line, "10 Squats"]).items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]));
+  it("final review: For Time: after the run's movements heads a new block and closes the run, as before", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "10 Push-ups", "For Time:", "1 Mile Run"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
+      ["Squats", 5],
+      ["Push-ups", 5],
+      ["1 Mile Run", null],
+    ]);
+  });
+  it("a bare for time after the run's movements is still the run's note, never an exercise", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "for time", "10 Push-ups"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([
+      ["Squats", 5],
+      ["Push-ups", 5],
+    ]);
+  });
   it("with no open run it stays a note, as before", () => {
     const r = read(["Metcon", "for time", "Back Squat"]);
     expect([names(r), r.sections[0]!.notes]).toEqual([[], "for time\nBack Squat"]);
