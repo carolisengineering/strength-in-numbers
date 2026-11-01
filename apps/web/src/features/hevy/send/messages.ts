@@ -86,8 +86,11 @@ export function hevyFailureSentence(kind: HevyErrorKind): string {
   return AC8[kind] ?? HEVY_COPY[kind];
 }
 
-/** A notice the send shows once (AC15): 19.0's export notices, plus an exercise left out of this send (D2). */
-export type SendNotice = ExportNotice | { code: "left_out"; name: string };
+/**
+ * A notice the send shows once (AC15): 19.0's export notices, plus an exercise left out of this send (D2), and a
+ * reclaim that updated another device's copy, so its own earlier copy stays in Hevy (D25, minor 270).
+ */
+export type SendNotice = ExportNotice | { code: "left_out"; name: string } | { code: "earlier_copy" };
 
 const sets = (n: number) => `${fmt(n)} ${n === 1 ? "set" : "sets"}`;
 const quoted = (names: readonly string[]) =>
@@ -98,6 +101,9 @@ export function noticeSentence(notice: SendNotice): string | null {
   switch (notice.code) {
     case "left_out":
       return `${notice.name} was left out.`;
+    case "earlier_copy":
+      // Owner copy (Carol, 2026-11-01).
+      return "An earlier copy is still in Hevy; delete it there.";
     case "sets_not_sent":
       return notice.count === 1 ? "1 set wasn't sent because it was incomplete." : `${sets(notice.count)} weren't sent because they were incomplete.`;
     case "rpe_dropped":

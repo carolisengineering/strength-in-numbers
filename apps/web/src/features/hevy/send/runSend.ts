@@ -195,7 +195,11 @@ async function sendOnce(intent: SendIntent, deps: SendDeps): Promise<SendOutcome
   // whatever was tapped (an Update can meet a stale claim-only row); a relink means the old copy is gone.
   if (begin.mode === "create" && begin.staleClaim && intent.kind !== "relink") return check(deps, built, begin.fingerprint, true);
 
-  return write(deps, built, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint });
+  // D25 / minor 270 (owner decision 2026-11-01): another device linked its own copy before this reclaim, so that copy
+  // is updated and the one this run made stays in Hevy, unlinked (Hevy's API can't delete it). Say so when it's done.
+  const leftBehind = intent.kind === "reclaim" && begin.mode === "update" && begin.hevyWorkoutId !== intent.hevyWorkoutId;
+  const sent = leftBehind ? { ...built, notices: [...built.notices, { code: "earlier_copy" as const }] } : built;
+  return write(deps, sent, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint });
 }
 
 async function build(deps: SendDeps): Promise<Built | { unmapped: UnmappedExercise[] }> {
