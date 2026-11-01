@@ -588,6 +588,13 @@ describe("10.4 AC67 / minor 280 — a line that is only for time is the run's no
       ["1 Mile Run", null],
     ]);
   });
+  it("For Time: right after a new run's lead-in keeps that run open, though an earlier run had movements", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "3 Rounds", "For Time:", "10 Burpees"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([
+      ["Squats", 5],
+      ["Burpees", 3],
+    ]);
+  });
   it("a bare for time after the run's movements is still the run's note, never an exercise", () => {
     const r = read(["Metcon", "5 Rounds", "10 Squats", "for time", "10 Push-ups"]);
     expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([
