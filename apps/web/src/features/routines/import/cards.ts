@@ -82,30 +82,36 @@ export type CardProblem =
   /** The matched or picked exercise has left the list (a sync dropped it). */
   | { readonly kind: "gone" };
 
-/** Minor 219: the first visible row per non-empty normalized name; the screen builds it once per `visible`. */
-export function nameKeyIndex(visible: readonly Exercise[]): ReadonlyMap<string, Exercise> {
+/** One catalog's lookups for the cards, built together from the same rows (minors 219, 281). */
+export interface CatalogIndex {
+  /** The first visible row per non-empty normalized name. */
+  readonly byKey: ReadonlyMap<string, Exercise>;
+  /** Every visible row's id. */
+  readonly ids: ReadonlySet<string>;
+}
+
+/** Minors 219, 281: the screen builds it once per `visible`, and `cardProblems` takes only this. */
+export function catalogIndex(visible: readonly Exercise[]): CatalogIndex {
   const byKey = new Map<string, Exercise>();
+  const ids = new Set<string>();
   for (const row of visible) {
+    ids.add(row.id);
     const key = normalizeExerciseName(row.name);
     if (key !== "" && !byKey.has(key)) byKey.set(key, row);
   }
-  return byKey;
+  return { byKey, ids };
 }
 
 /**
- * AC27–AC28: only cards with a problem. Recomputed on the current `visible` rows, so a New name that now
- * exists, or a chosen exercise that a sync dropped, blocks Continue. `byKey` is `nameKeyIndex(visible)`.
+ * AC27–AC28: only cards with a problem. Recomputed on the current visible rows' index, so a New name that now
+ * exists, or a chosen exercise that a sync dropped, blocks Continue. Minor 281: it takes the index only, so names
+ * and ids always come from the same rows.
  */
-export function cardProblems(
-  cards: readonly CardState[],
-  visible: readonly Exercise[],
-  byKey: ReadonlyMap<string, Exercise> = nameKeyIndex(visible),
-): ReadonlyMap<string, CardProblem> {
+export function cardProblems(cards: readonly CardState[], index: CatalogIndex): ReadonlyMap<string, CardProblem> {
   const problems = new Map<string, CardProblem>();
-  const visibleIds = new Set<string>(visible.map((row) => row.id));
   for (const card of cards) {
     const id = card.selected === "picked" ? card.pickedId : card.selected === "match" ? (card.match?.exerciseId ?? null) : undefined;
-    if (id !== undefined && (id === null || !visibleIds.has(id))) problems.set(card.key, { kind: "gone" });
+    if (id !== undefined && (id === null || !index.ids.has(id))) problems.set(card.key, { kind: "gone" });
   }
   const fresh = cards.filter((card) => card.selected === "new");
   if (fresh.length === 0) return problems;
@@ -115,7 +121,7 @@ export function cardProblems(
     const message = newNameProblem(card.newValue.name);
     if (message !== null) return void problems.set(card.key, { kind: "name", message });
     const key = newKeys[i]!;
-    const existing = key === "" ? undefined : byKey.get(key);
+    const existing = key === "" ? undefined : index.byKey.get(key);
     if (existing) return void problems.set(card.key, { kind: "exists", exercise: existing });
     if (repeated.has(i)) return void problems.set(card.key, { kind: "same-new" });
     if (!CreateExerciseSchema.safeParse(toCreateExerciseInput(card.newValue)).success) problems.set(card.key, { kind: "invalid" });

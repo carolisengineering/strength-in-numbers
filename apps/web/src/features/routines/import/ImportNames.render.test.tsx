@@ -19,7 +19,7 @@ vi.mock("./cards", async (importOriginal) => {
     ...actual,
     keptSectionCount: vi.fn(actual.keptSectionCount),
     cardNames: vi.fn(actual.cardNames),
-    nameKeyIndex: vi.fn(actual.nameKeyIndex),
+    catalogIndex: vi.fn(actual.catalogIndex),
   };
 });
 
@@ -27,7 +27,7 @@ import { cardGroup, cardGroups, importCatalog, readHiraya } from "../../../test/
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { IMPORT_PATH } from "../paths";
-import { cardNames, keptSectionCount, nameKeyIndex } from "./cards";
+import { cardNames, catalogIndex, keptSectionCount } from "./cards";
 
 afterEach(() => cleanupApp());
 
@@ -54,16 +54,16 @@ describe("Minor 59 — the section count is not rebuilt on a keystroke", () => {
     expect(vi.mocked(cardNames).mock.calls.length).toBeLessThanOrEqual(1);
   });
 
-  it("minor 219 — typing three characters into a New card's name builds the catalog key index at most once more", async () => {
+  it("minors 219, 281 — typing five characters into a New card's name builds the catalog index at most once more", async () => {
     prepareApp({ auth, fake: createWorkoutFake(), catalog: [...importCatalog] });
     const { user } = renderApp(IMPORT_PATH);
     await readHiraya(user);
     await waitFor(() => expect(cardGroups()).toHaveLength(8));
     const name = within(await cardGroup("Hand Release Pushups")).getByLabelText("Name");
     // The screen builds the index itself (and hands it to cardProblems), so this spy sees every build.
-    expect(vi.mocked(nameKeyIndex)).toHaveBeenCalled();
-    vi.mocked(nameKeyIndex).mockClear();
-    await user.type(name, "abc");
-    expect(vi.mocked(nameKeyIndex).mock.calls.length).toBeLessThanOrEqual(1);
+    expect(vi.mocked(catalogIndex)).toHaveBeenCalled();
+    vi.mocked(catalogIndex).mockClear();
+    await user.type(name, "abcde");
+    expect(vi.mocked(catalogIndex).mock.calls.length).toBeLessThanOrEqual(1);
   });
 });

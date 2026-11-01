@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { exerciseId } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog } from "../../../test/importFixtures";
-import { cardNames, cardProblems, initialCards } from "./cards";
+import { cardNames, cardProblems, catalogIndex, initialCards } from "./cards";
 import { buildHandoff, emptyHandoff, indexRowsById } from "./handoff";
 import { NEW_NAME_TOO_LONG } from "./messages";
 
@@ -35,7 +35,7 @@ describe("10.4 AC28 — Continue's hand-off", () => {
   it("a long strength-block name is a card problem, not a Save failure (Review Focus 5)", () => {
     const r = readWorkoutText(`Workout: "${"Long ".repeat(30)}"\nSet 1: 5 Reps\nx.`);
     const [card] = initialCards(cardNames(r), importCatalog);
-    expect(cardProblems([card!], importCatalog).get(card!.key)).toEqual({ kind: "name", message: NEW_NAME_TOO_LONG });
+    expect(cardProblems([card!], catalogIndex(importCatalog)).get(card!.key)).toEqual({ kind: "name", message: NEW_NAME_TOO_LONG });
   });
   it("emptyHandoff: the plan with no ids and nothing to create", () => {
     const r = readWorkoutText("Warmup\nWalk.\nCooldown\nStretch.");

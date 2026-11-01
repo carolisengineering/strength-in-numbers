@@ -1,10 +1,9 @@
-import { readWorkoutText } from "@sin/core";
+import { normalizeExerciseName, readWorkoutText } from "@sin/core";
 import { describe, expect, it } from "vitest";
 
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog } from "../../../test/importFixtures";
-import { normalizeExerciseName } from "@sin/core";
-import { cardNames, cardProblems, initialCards, chooseExisting, keptSectionCount, nameKeyIndex, type CardState } from "./cards";
+import { cardNames, cardProblems, catalogIndex, initialCards, chooseExisting, keptSectionCount, type CardState } from "./cards";
 import { NEW_NAME_INVALID, NEW_NAME_REQUIRED, NEW_NAME_TOO_LONG } from "./messages";
 
 const read = readWorkoutText(HIRAYA_TEXT);
@@ -45,37 +44,41 @@ describe("10.4 AC24 — one card per name, pre-decided", () => {
 describe("10.4 AC27 — names that already exist", () => {
   const asNew = (c: CardState, name: string): CardState => ({ ...c, selected: "new", newValue: { ...c.newValue, name } });
   it("matches a visible exercise ignoring case, punctuation, hyphens and plurals", () =>
-    expect(cardProblems([asNew(cards[2]!, "overhead-presses")], importCatalog).get(cards[2]!.key)).toMatchObject({ kind: "exists", exercise: { name: "Overhead press" } }));
+    expect(cardProblems([asNew(cards[2]!, "overhead-presses")], catalogIndex(importCatalog)).get(cards[2]!.key)).toMatchObject({ kind: "exists", exercise: { name: "Overhead press" } }));
   it("two New cards with one name: both blocked", () => {
-    const p = cardProblems([asNew(cards[5]!, "Raise Front"), asNew(cards[6]!, "raise-fronts")], importCatalog);
+    const p = cardProblems([asNew(cards[5]!, "Raise Front"), asNew(cards[6]!, "raise-fronts")], catalogIndex(importCatalog));
     expect([p.get(cards[5]!.key), p.get(cards[6]!.key)]).toEqual([{ kind: "same-new" }, { kind: "same-new" }]);
   });
   it.each([["", NEW_NAME_REQUIRED], ["   ", NEW_NAME_REQUIRED], ["x".repeat(121), NEW_NAME_TOO_LONG], ["Bad\u0007Name", NEW_NAME_INVALID]])("%j → %s", (name, message) =>
-    expect(cardProblems([asNew(cards[2]!, name)], importCatalog).get(cards[2]!.key)).toEqual({ kind: "name", message }));
+    expect(cardProblems([asNew(cards[2]!, name)], catalogIndex(importCatalog)).get(cards[2]!.key)).toEqual({ kind: "name", message }));
   it("a New card with no type is invalid", () =>
-    expect(cardProblems([{ ...cards[2]!, newValue: { ...cards[2]!.newValue, modality: null } }], importCatalog).get(cards[2]!.key)).toEqual({ kind: "invalid" }));
-  it("only New cards are checked", () => expect(cardProblems(cards, importCatalog).size).toBe(0));
+    expect(cardProblems([{ ...cards[2]!, newValue: { ...cards[2]!.newValue, modality: null } }], catalogIndex(importCatalog)).get(cards[2]!.key)).toEqual({ kind: "invalid" }));
+  it("only New cards are checked", () => expect(cardProblems(cards, catalogIndex(importCatalog)).size).toBe(0));
   it("the catalog gaining the name later flags it (Review Focus 2)", () => {
     const later = [...importCatalog, makeExercise({ id: exerciseId(99), name: "Hand-release push-up" })];
-    expect(cardProblems([cards[2]!], later).get(cards[2]!.key)).toMatchObject({ kind: "exists" });
+    expect(cardProblems([cards[2]!], catalogIndex(later)).get(cards[2]!.key)).toMatchObject({ kind: "exists" });
   });
   it("a matched or picked exercise that has left the list blocks the card", () => {
     const without = importCatalog.filter((e) => e.name !== "Power Clean");
-    expect(cardProblems(cards, without).get(cards[1]!.key)).toEqual({ kind: "gone" });
+    expect(cardProblems(cards, catalogIndex(without)).get(cards[1]!.key)).toEqual({ kind: "gone" });
     const picked = { ...cards[5]!, selected: "picked" as const, pickedId: exerciseId(77) };
-    expect(cardProblems([picked], importCatalog).get(picked.key)).toEqual({ kind: "gone" });
+    expect(cardProblems([picked], catalogIndex(importCatalog)).get(picked.key)).toEqual({ kind: "gone" });
   });
   it("chooseExisting selects that exercise as exact", () =>
     expect(chooseExisting(cards[2]!, importCatalog[0]!)).toMatchObject({ selected: "match", match: { kind: "exact", exerciseId: importCatalog[0]!.id } }));
 });
 
-describe("Minor 219 — the catalog key index", () => {
+describe("Minors 219, 281 — the catalog index", () => {
   it("keeps the first visible row per normalized name", () => {
     const first = makeExercise({ id: exerciseId(1), name: "Bench Press" });
     const second = makeExercise({ id: exerciseId(2), name: "bench  press" });
-    expect(nameKeyIndex([first, second]).get(normalizeExerciseName("Bench Press"))?.id).toBe(first.id);
+    expect(catalogIndex([first, second]).byKey.get(normalizeExerciseName("Bench Press"))?.id).toBe(first.id);
   });
   it("leaves out a name with the empty key", () => {
-    expect(nameKeyIndex([makeExercise({ id: exerciseId(3), name: "- • !" })]).size).toBe(0);
+    expect(catalogIndex([makeExercise({ id: exerciseId(3), name: "- • !" })]).byKey.size).toBe(0);
+  });
+  it("holds every visible row's id, from the same rows as its names", () => {
+    const rows = [makeExercise({ id: exerciseId(1), name: "Bench Press" }), makeExercise({ id: exerciseId(3), name: "- • !" })];
+    expect([...catalogIndex(rows).ids]).toEqual([exerciseId(1), exerciseId(3)]);
   });
 });
