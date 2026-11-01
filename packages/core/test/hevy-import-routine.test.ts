@@ -63,6 +63,11 @@ describe("19.1 AC11 — translateHevyRoutine: name", () => {
     expect([t.input.name.length, count(t.notices, "name_trimmed")]).toEqual([80, 1]);
   });
 
+  it("minor 276: a title the cut keeps nothing of is 'Hevy routine', with no name_trimmed", () => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("BENCH")], `H${"\u0301".repeat(90)}`), ctx));
+    expect([t.input.name, count(t.notices, "name_trimmed")]).toEqual(["Hevy routine", 0]);
+  });
+
   it("no routine-level notes are written", () => {
     expect(Object.hasOwn(ok(translateHevyRoutine(routine("routine-basic"), ctx)).input, "notes")).toBe(false);
   });

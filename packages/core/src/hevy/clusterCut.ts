@@ -41,14 +41,14 @@ function joinsHangul(before: Jamo, after: Jamo): boolean {
   return after === "T";
 }
 
-const isLoneHigh = (point: string) => point.length === 1 && point.charCodeAt(0) >= 0xd800 && point.charCodeAt(0) <= 0xdbff;
+const isLoneSurrogate = (point: string) => point.length === 1 && point.charCodeAt(0) >= 0xd800 && point.charCodeAt(0) <= 0xdfff;
 
 /** Whether a cut between `before` (code points kept) and `next` (the first one dropped) splits a cluster. */
 function splitsCluster(before: readonly string[], next: string | undefined): boolean {
   if (before.length === 0) return false;
   const lastPoint = before[before.length - 1]!;
-  // Minor 206: a high surrogate that was already alone in the input is never left at the end of a cut.
-  if (isLoneHigh(lastPoint)) return true;
+  // Minors 206, 279: a surrogate (high or low) that was already alone in the input is never left at the end of a cut.
+  if (isLoneSurrogate(lastPoint)) return true;
   const last = lastPoint.codePointAt(0)!;
   if (last === ZWJ) return true;
   if (next === undefined) return false;

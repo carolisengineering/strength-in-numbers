@@ -95,6 +95,11 @@ describe("19.1 AC4 — stored exercises", () => {
     expect([blank.workout.title, blank.notices]).toEqual([null, []]);
   });
 
+  it("minor 276: a title the cut keeps nothing of is null, with no title_trimmed", () => {
+    const t = created(translateHevyWorkout(hworkout([bench()], { title: `H${"\u0301".repeat(130)}` }), ctx));
+    expect([t.workout.title, count(t.notices, "title_trimmed")]).toEqual([null, 0]);
+  });
+
   it("a description over 4000 is notes_trimmed", () => {
     const t = created(translateHevyWorkout(hworkout([bench()], { description: "d".repeat(4001) }), ctx));
     expect([t.workout.notes!.length, count(t.notices, "notes_trimmed")]).toEqual([4000, 1]);
