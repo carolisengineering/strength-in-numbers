@@ -235,6 +235,59 @@ async function upsertReference(
   }
 }
 
+/** One file entry's write, decided before anything is written (minor 286). */
+type ExerciseAction =
+  | { kind: "insert"; ex: ExerciseInput }
+  | { kind: "retire"; id: string }
+  | { kind: "update"; id: string; ex: ExerciseInput }
+  | { kind: "unchanged" }
+  | { kind: "skipped" };
+
+/**
+ * Minor 286: what the seed does to each file entry, decided before any write so the rows it will change can be locked
+ * first. Throws the same `SeedError`s, in the same order, as the write loop did, and logs the never-shipped warning.
+ */
+function planExerciseSeed(
+  exercises: readonly ExerciseInput[],
+  byKey: ReadonlyMap<string, GlobalExerciseRow>,
+  log: SeedLogger,
+): ExerciseAction[] {
+  return exercises.map((ex): ExerciseAction => {
+    const key = ex.catalogKey;
+    const row = byKey.get(key);
+
+    if (!row) {
+      if (ex.retired) {
+        log.warn({ catalogKey: key }, `"${key}" is marked retired but was never seeded; skipped`);
+        return { kind: "skipped" };
+      }
+      return { kind: "insert", ex };
+    }
+
+    if (ex.retired) return row.is_active ? { kind: "retire", id: row.id } : { kind: "unchanged" };
+
+    if (!row.is_active) {
+      throw new SeedError(
+        `"${key}" is retired in the database but not marked retired in the file; un-retiring is not a seed operation (Spec 03.1 §6.3)`,
+        key,
+      );
+    }
+
+    if (row.name !== ex.name || row.modality !== ex.modality) {
+      throw new SeedError(
+        `"${key}" changed an identifying field (name/modality) on a live row; retire the old key and add a new one instead (append-only, DESIGN §4.2)`,
+        key,
+      );
+    }
+
+    const changed =
+      row.primary_muscle_id !== ex.primaryMuscleId ||
+      row.equipment_id !== ex.equipmentId ||
+      !sameArray(row.secondary_muscle_ids, ex.secondaryMuscleIds);
+    return changed ? { kind: "update", id: row.id, ex } : { kind: "unchanged" };
+  });
+}
+
 export async function seedCatalog(
   prisma: PrismaClient,
   catalog: Catalog,
@@ -280,74 +333,54 @@ export async function seedCatalog(
         revisionTimestamp: ts,
       };
 
-      for (const ex of catalog.exercises) {
-        const key = ex.catalogKey;
-        const row = byKey.get(key);
+      // Minor 286: decide every write first, then lock the built-ins that will change in id order, as the Hevy
+      // import's share lock takes them (minor 207), so the two can't deadlock. `NO KEY` is the lock the UPDATEs take
+      // anyway, so a foreign-key insert of a built-in (`FOR KEY SHARE`) never waits on it. Nothing to change, no lock.
+      const actions = planExerciseSeed(catalog.exercises, byKey, log);
+      const changing = actions.flatMap((a) => (a.kind === "retire" || a.kind === "update" ? [a.id] : []));
+      if (changing.length > 0) {
+        await tx.$queryRaw`
+          SELECT "id" FROM "exercise" WHERE "id" = ANY(${changing}::uuid[])
+          ORDER BY "id" FOR NO KEY UPDATE`;
+      }
 
-        if (!row) {
-          if (ex.retired) {
-            log.warn(
-              { catalogKey: key },
-              `"${key}" is marked retired but was never seeded; skipped`,
-            );
-            summary.skipped += 1;
-            continue;
-          }
-          await tx.$executeRaw`
-            INSERT INTO "exercise"
-              ("id", "catalog_key", "owner_user_id", "name", "modality",
-               "primary_muscle_id", "secondary_muscle_ids", "equipment_id",
-               "is_active", "created_at", "updated_at")
-            VALUES
-              (${uuidv7()}::uuid, ${key}, NULL, ${ex.name}, ${ex.modality},
-               ${ex.primaryMuscleId}, ${ex.secondaryMuscleIds}::text[],
-               ${ex.equipmentId}, true, ${ts}, ${ts})`;
-          summary.inserted += 1;
-          continue;
-        }
-
-        if (ex.retired) {
-          if (!row.is_active) {
+      for (const a of actions) {
+        switch (a.kind) {
+          case "insert":
+            await tx.$executeRaw`
+              INSERT INTO "exercise"
+                ("id", "catalog_key", "owner_user_id", "name", "modality",
+                 "primary_muscle_id", "secondary_muscle_ids", "equipment_id",
+                 "is_active", "created_at", "updated_at")
+              VALUES
+                (${uuidv7()}::uuid, ${a.ex.catalogKey}, NULL, ${a.ex.name}, ${a.ex.modality},
+                 ${a.ex.primaryMuscleId}, ${a.ex.secondaryMuscleIds}::text[],
+                 ${a.ex.equipmentId}, true, ${ts}, ${ts})`;
+            summary.inserted += 1;
+            break;
+          case "retire":
+            await tx.$executeRaw`
+              UPDATE "exercise" SET "is_active" = false, "updated_at" = ${ts}
+              WHERE "id" = ${a.id}::uuid`;
+            summary.retired += 1;
+            break;
+          case "update":
+            await tx.$executeRaw`
+              UPDATE "exercise"
+              SET "primary_muscle_id" = ${a.ex.primaryMuscleId},
+                  "secondary_muscle_ids" = ${a.ex.secondaryMuscleIds}::text[],
+                  "equipment_id" = ${a.ex.equipmentId},
+                  "updated_at" = ${ts}
+              WHERE "id" = ${a.id}::uuid`;
+            summary.updated += 1;
+            break;
+          case "unchanged":
             summary.unchanged += 1;
-            continue;
-          }
-          await tx.$executeRaw`
-            UPDATE "exercise" SET "is_active" = false, "updated_at" = ${ts}
-            WHERE "id" = ${row.id}::uuid`;
-          summary.retired += 1;
-          continue;
+            break;
+          case "skipped":
+            summary.skipped += 1;
+            break;
         }
-
-        if (!row.is_active) {
-          throw new SeedError(
-            `"${key}" is retired in the database but not marked retired in the file; un-retiring is not a seed operation (Spec 03.1 §6.3)`,
-            key,
-          );
-        }
-
-        if (row.name !== ex.name || row.modality !== ex.modality) {
-          throw new SeedError(
-            `"${key}" changed an identifying field (name/modality) on a live row; retire the old key and add a new one instead (append-only, DESIGN §4.2)`,
-            key,
-          );
-        }
-
-        const changed =
-          row.primary_muscle_id !== ex.primaryMuscleId ||
-          row.equipment_id !== ex.equipmentId ||
-          !sameArray(row.secondary_muscle_ids, ex.secondaryMuscleIds);
-        if (!changed) {
-          summary.unchanged += 1;
-          continue;
-        }
-        await tx.$executeRaw`
-          UPDATE "exercise"
-          SET "primary_muscle_id" = ${ex.primaryMuscleId},
-              "secondary_muscle_ids" = ${ex.secondaryMuscleIds}::text[],
-              "equipment_id" = ${ex.equipmentId},
-              "updated_at" = ${ts}
-          WHERE "id" = ${row.id}::uuid`;
-        summary.updated += 1;
       }
 
       const inFile = new Set(catalog.exercises.map((e) => e.catalogKey));
