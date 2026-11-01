@@ -72,8 +72,7 @@ describe("AC9 (amended by 07.4) — addWorkoutExercise on a finished workout", (
     exerciseRepo.byId.set(exercise.id, exercise);
     stub.queueRows([w]);
     stub.queueRows([{ ended_at: w.ended_at }]); // FOR SHARE
-    stub.queueRows([{ n: 1 }]);
-    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
+    stub.queueRows([{ n: 1, section_id: null, section_position: null, added_in_workout: null }]); // minor 54: with the last section — none
     stub.queueRows([inserted(w.id)]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
     const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
@@ -91,8 +90,7 @@ describe("AC9 (amended by 07.4) — addWorkoutExercise on a finished workout", (
     stub.queueRows([w]); // phase 1: in progress
     stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // live FOR SHARE: now finished → restart
     stub.queueRows([{ ended_at: new Date("2026-09-15T11:00:00.000Z") }]); // finished FOR SHARE
-    stub.queueRows([{ n: 0 }]);
-    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
+    stub.queueRows([{ n: 0, section_id: null, section_position: null, added_in_workout: null }]); // minor 54: with the last section — none
     stub.queueRows([inserted(w.id)]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
     const result = await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
@@ -145,8 +143,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
     exerciseRepo.byId.set(exercise.id, exercise);
     stub.queueRows([w]); // phase 1
     stub.queueRows([{ ended_at: null }]); // FOR SHARE re-check
-    stub.queueRows([{ n: 2 }]); // count read: 2 existing rows -> append at position 2
-    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
+    stub.queueRows([{ n: 2, section_id: null, section_position: null, added_in_workout: null }]); // count read: 2 existing rows -> append at position 2 // minor 54: with the last section — none
     stub.queueRows([
       {
         id: uuidv7(),
@@ -173,7 +170,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
 });
 
 describe("AC13 — statement order: the advisory lock is the first statement other than SET CONSTRAINTS, the count read is later and separate", () => {
-  it("orders SET CONSTRAINTS, lock, FOR SHARE, count, sections (Spec 09.4 C4), insert", async () => {
+  it("orders SET CONSTRAINTS, lock, FOR SHARE, count with the last section (Spec 09.4 C4, minor 54), insert", async () => {
     const stub = new ScriptedPrisma();
     const w = workoutRow();
     const exerciseRepo = new FakeExerciseRepository();
@@ -181,8 +178,7 @@ describe("AC13 — statement order: the advisory lock is the first statement oth
     exerciseRepo.byId.set(exercise.id, exercise);
     stub.queueRows([w]);
     stub.queueRows([{ ended_at: null }]);
-    stub.queueRows([{ n: 0 }]);
-    stub.queueRows([]); // Spec 09.4 C4: the sections read — none
+    stub.queueRows([{ n: 0, section_id: null, section_position: null, added_in_workout: null }]); // minor 54: with the last section — none
     stub.queueRows([
       {
         id: uuidv7(),
@@ -207,8 +203,44 @@ describe("AC13 — statement order: the advisory lock is the first statement oth
     expect(txCalls[0]!.sql).toContain("SET CONSTRAINTS");
     expect(txCalls[1]!.sql).toContain("pg_advisory_xact_lock");
     expect(txCalls[2]!.sql).toContain("FOR SHARE");
+    // Minor 54: the count and the last section are one read, still after the lock and separate from it.
     expect(txCalls[3]!.sql).toContain("count(*)");
-    expect(txCalls[4]!.sql).toContain(`FROM "workout_section"`);
-    expect(txCalls[5]!.sql).toContain("INSERT INTO");
+    expect(txCalls[3]!.sql).toContain(`FROM "workout_section"`);
+    expect(txCalls[4]!.sql).toContain("INSERT INTO");
+  });
+});
+
+describe("Minor 54 — a plain add reads the count and the last section in one statement", () => {
+  it("one read names both workout_exercise and workout_section; no separate count(*) read", async () => {
+    const stub = new ScriptedPrisma();
+    const w = workoutRow();
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    stub.queueRows([w]);
+    stub.queueRows([{ ended_at: null }]);
+    stub.queueRows([{ n: 2, section_id: null, section_position: null, added_in_workout: null }]);
+    stub.queueRows([
+      {
+        id: uuidv7(),
+        workout_id: w.id,
+        position: 2,
+        exercise_id: exercise.id,
+        exercise_name_snapshot: exercise.name,
+        modality_snapshot: exercise.modality,
+        notes: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+        planned_sets: [],
+        section_id: null,
+      },
+    ]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
+
+    await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id });
+
+    const reads = stub.calls.map((c) => c.sql);
+    expect(reads.filter((sql) => sql.includes("workout_section") && sql.includes("workout_exercise"))).toHaveLength(1);
+    expect(reads.filter((sql) => sql.includes("count(*)") && !sql.includes("workout_section"))).toHaveLength(0);
   });
 });
