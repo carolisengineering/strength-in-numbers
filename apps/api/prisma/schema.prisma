@@ -391,6 +391,7 @@ model HevyLink {
   hevyWorkoutId     String?   @map("hevy_workout_id") // NULL while only a claim
   origin            String
   claimedAt         DateTime? @map("claimed_at") @db.Timestamptz(6)
+  claimFingerprint  String?   @map("claim_fingerprint") // Spec 19.0 D29: the begin's fingerprint, while a claim is held
   syncedFingerprint String?   @map("synced_fingerprint")
   syncedAt          DateTime? @map("synced_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

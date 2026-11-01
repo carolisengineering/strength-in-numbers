@@ -153,6 +153,7 @@ interface LinkRow {
   hevy_workout_id: string | null;
   origin: string;
   claimed_at: Date | null;
+  claim_fingerprint: string | null;
   synced_fingerprint: string | null;
   synced_at: Date | null;
   fresh: boolean;
@@ -165,11 +166,11 @@ const NONE: HevyLinkState = { state: "none", hevyWorkoutId: null, origin: null, 
 async function linkRow(db: Tx | PrismaClient, userId: string, workoutId: string, forUpdate: boolean): Promise<LinkRow | null> {
   const rows = forUpdate
     ? await db.$queryRaw<LinkRow[]>`
-        SELECT id::text, hevy_workout_id, origin, claimed_at, synced_fingerprint, synced_at,
+        SELECT id::text, hevy_workout_id, origin, claimed_at, claim_fingerprint, synced_fingerprint, synced_at,
                coalesce(claimed_at > now() - make_interval(secs => ${HEVY_LINK_CLAIM_TTL_S}), false) AS fresh
         FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`
     : await db.$queryRaw<LinkRow[]>`
-        SELECT id::text, hevy_workout_id, origin, claimed_at, synced_fingerprint, synced_at,
+        SELECT id::text, hevy_workout_id, origin, claimed_at, claim_fingerprint, synced_fingerprint, synced_at,
                coalesce(claimed_at > now() - make_interval(secs => ${HEVY_LINK_CLAIM_TTL_S}), false) AS fresh
         FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid`;
   return rows[0] ?? null;
@@ -297,11 +298,13 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         if (owned[0].ended_at === null) throw new HevyWorkoutNotFinishedError();
 
         const row = await linkRow(tx, userId, workoutId, true);
-        let begun: Omit<HevyLinkBeginRecord, "source">;
+        // D29 (minors 139, 144): the fingerprint is read before the claim is written, so the claim stores it.
+        const fingerprint = hevyFingerprint(fingerprintSourceOf((await readWorkoutDetail(tx, userId, workoutId))!));
+        let begun: Omit<HevyLinkBeginRecord, "fingerprint">;
         if (!row) {
           await tx.$executeRaw`
-            INSERT INTO "hevy_link" (id, user_id, workout_id, origin, claimed_at)
-            VALUES (gen_random_uuid(), ${userId}::uuid, ${workoutId}::uuid, 'sent', now())`;
+            INSERT INTO "hevy_link" (id, user_id, workout_id, origin, claimed_at, claim_fingerprint)
+            VALUES (gen_random_uuid(), ${userId}::uuid, ${workoutId}::uuid, 'sent', now(), ${fingerprint})`;
           begun = { mode: "create", hevyWorkoutId: null, staleClaim: false };
         } else {
           if (row.claimed_at !== null && row.fresh) throw new HevySendInProgressError();
@@ -309,16 +312,17 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
           if (row.hevy_workout_id === null || opts.relink) {
             // A claim-only row taken over, or a relink after the Hevy copy was deleted in Hevy (Spec 20.2 AC12).
             await tx.$executeRaw`
-              UPDATE "hevy_link" SET hevy_workout_id = NULL, origin = 'sent', claimed_at = now(), updated_at = now()
+              UPDATE "hevy_link" SET hevy_workout_id = NULL, origin = 'sent', claimed_at = now(), claim_fingerprint = ${fingerprint},
+                updated_at = now()
               WHERE id = ${row.id}::uuid`;
             begun = { mode: "create", hevyWorkoutId: null, staleClaim };
           } else {
-            await tx.$executeRaw`UPDATE "hevy_link" SET claimed_at = now(), updated_at = now() WHERE id = ${row.id}::uuid`;
+            await tx.$executeRaw`
+              UPDATE "hevy_link" SET claimed_at = now(), claim_fingerprint = ${fingerprint}, updated_at = now() WHERE id = ${row.id}::uuid`;
             begun = { mode: "update", hevyWorkoutId: row.hevy_workout_id, staleClaim };
           }
         }
-        const detail = await readWorkoutDetail(tx, userId, workoutId);
-        return { ...begun, source: fingerprintSourceOf(detail!) };
+        return { ...begun, fingerprint };
       }, { timeout: HEVY_LINK_TX_TIMEOUT_MS });
     },
 
@@ -342,6 +346,10 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         // completing after a newer send), so it is checked before the claim.
         if (row.hevy_workout_id !== null && row.hevy_workout_id !== body.hevyWorkoutId) throw new HevyLinkConflictError();
         if (row.claimed_at === null) throw new HevyNoClaimError();
+        // D29 (minors 139, 144): the claim belongs to the begin whose fingerprint it stored. Another fingerprint is an
+        // older run's complete after a newer begin, or a client's own value: refused, the claim kept. A claim taken
+        // before 0017's code has none stored and completes as before.
+        if (row.claim_fingerprint !== null && row.claim_fingerprint !== body.fingerprint) throw new HevyNoClaimError();
         const holder = await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text FROM "hevy_link"
           WHERE user_id = ${userId}::uuid AND hevy_workout_id = ${body.hevyWorkoutId} AND id <> ${row.id}::uuid`;
@@ -349,8 +357,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         try {
           await tx.$executeRaw`
             UPDATE "hevy_link"
-            SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = ${body.fingerprint}, synced_at = now(),
-                claimed_at = NULL, updated_at = now()
+            SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = coalesce(claim_fingerprint, ${body.fingerprint}),
+                synced_at = now(), claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
             WHERE id = ${row.id}::uuid AND claimed_at IS NOT NULL`;
         } catch (err) {
           // §6.6: a racing complete that took the same Hevy id; named by its columns ($queryRaw has no constraint name).
@@ -372,7 +380,7 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         await tx.$executeRaw`
           DELETE FROM "hevy_link" WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid AND hevy_workout_id IS NULL`;
         await tx.$executeRaw`
-          UPDATE "hevy_link" SET claimed_at = NULL, updated_at = now()
+          UPDATE "hevy_link" SET claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
           WHERE workout_id = ${workoutId}::uuid AND user_id = ${userId}::uuid AND claimed_at IS NOT NULL`;
       });
     },

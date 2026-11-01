@@ -1433,7 +1433,7 @@ export class FakeHevyRepository implements HevyRepository {
 
   async beginLink(userId: string, workoutId: string): Promise<HevyLinkBeginRecord> {
     this.links.push({ userId, workoutId, hevyWorkoutId: null, claimed: true });
-    return { mode: "create", hevyWorkoutId: null, staleClaim: false, source: `v1["${workoutId}"]` };
+    return { mode: "create", hevyWorkoutId: null, staleClaim: false, fingerprint: `v1:${"0".repeat(64)}` };
   }
 
   async completeLink(userId: string, workoutId: string, body: HevyLinkComplete): Promise<HevyLinkState> {

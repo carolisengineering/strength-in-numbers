@@ -14,8 +14,8 @@ export interface HevyLinkBeginRecord {
   mode: "create" | "update";
   hevyWorkoutId: string | null;
   staleClaim: boolean;
-  /** `@sin/core` `hevyFingerprintSource` of the workout read in the begin transaction; the route hashes it. */
-  source: string;
+  /** The fingerprint of the workout read in the begin transaction, also stored on the claim (Spec 19.0 D29). */
+  fingerprint: string;
 }
 
 export interface HevyRepository {

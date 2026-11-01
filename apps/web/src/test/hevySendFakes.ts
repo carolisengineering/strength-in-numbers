@@ -74,6 +74,8 @@ export interface LinkRow {
   hevyWorkoutId: string | null;
   origin: HevyLinkOrigin;
   claimedAt: number | null;
+  /** Spec 19.0 D29: the begin's fingerprint while a claim is held (NULL for a claim seeded as from before 0017). */
+  claimFingerprint?: string | null;
   fingerprint: string | null;
   syncedAt: string | null;
 }
@@ -124,16 +126,16 @@ export function fakeHevyLink(opts: { detailOf: (id: string) => WorkoutDetail | n
     const row = rows.get(id);
     const fingerprint = hevyFingerprintOf(detail);
     if (!row) {
-      rows.set(id, { hevyWorkoutId: null, origin: "sent", claimedAt: now(), fingerprint: null, syncedAt: null });
+      rows.set(id, { hevyWorkoutId: null, origin: "sent", claimedAt: now(), claimFingerprint: fingerprint, fingerprint: null, syncedAt: null });
       return { mode: "create", hevyWorkoutId: null, staleClaim: false, fingerprint };
     }
     if (row.claimedAt !== null && fresh(row)) throw problem(409, "hevy-send-in-progress");
     const staleClaim = row.claimedAt !== null;
     if (row.hevyWorkoutId === null || relink) {
-      rows.set(id, { ...row, hevyWorkoutId: null, origin: "sent", claimedAt: now() });
+      rows.set(id, { ...row, hevyWorkoutId: null, origin: "sent", claimedAt: now(), claimFingerprint: fingerprint });
       return { mode: "create", hevyWorkoutId: null, staleClaim, fingerprint };
     }
-    rows.set(id, { ...row, claimedAt: now() });
+    rows.set(id, { ...row, claimedAt: now(), claimFingerprint: fingerprint });
     return { mode: "update", hevyWorkoutId: row.hevyWorkoutId, staleClaim, fingerprint };
   }
 
@@ -144,9 +146,18 @@ export function fakeHevyLink(opts: { detailOf: (id: string) => WorkoutDetail | n
     if (row.claimedAt === null && row.hevyWorkoutId === body.hevyWorkoutId && row.fingerprint === body.fingerprint) return read(id);
     if (row.hevyWorkoutId !== null && row.hevyWorkoutId !== body.hevyWorkoutId) throw problem(409, "hevy-link-conflict");
     if (row.claimedAt === null) throw problem(409, "hevy-no-claim");
+    // D29 (minors 139, 144): another fingerprint than the begin's is refused, the claim kept; NULL completes as before.
+    const stored = row.claimFingerprint ?? null;
+    if (stored !== null && stored !== body.fingerprint) throw problem(409, "hevy-no-claim");
     for (const [other, r] of rows) if (other !== id && r.hevyWorkoutId === body.hevyWorkoutId) throw problem(409, "hevy-id-in-use");
-    // D22 hold (minor 144): the body's fingerprint is stored, as the server does today.
-    rows.set(id, { ...row, hevyWorkoutId: body.hevyWorkoutId, fingerprint: body.fingerprint, syncedAt: new Date(now()).toISOString(), claimedAt: null });
+    rows.set(id, {
+      ...row,
+      hevyWorkoutId: body.hevyWorkoutId,
+      fingerprint: stored ?? body.fingerprint,
+      syncedAt: new Date(now()).toISOString(),
+      claimedAt: null,
+      claimFingerprint: null,
+    });
     return read(id);
   }
 
@@ -155,7 +166,7 @@ export function fakeHevyLink(opts: { detailOf: (id: string) => WorkoutDetail | n
     const row = rows.get(id);
     if (!row) return;
     if (row.hevyWorkoutId === null) rows.delete(id);
-    else rows.set(id, { ...row, claimedAt: null });
+    else rows.set(id, { ...row, claimedAt: null, claimFingerprint: null });
   }
 
   const idOf = (path: string) => /\/v1\/workouts\/([^/]+)\/hevy-link$/.exec(path)?.[1] ?? "";

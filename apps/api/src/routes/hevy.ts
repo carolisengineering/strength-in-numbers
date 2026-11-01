@@ -19,7 +19,6 @@ import {
   HevyWorkoutNotFinishedError,
   NotFoundError,
 } from "../errors/app-error.js";
-import { hevyFingerprint } from "../hevy/fingerprint.js";
 import type { HevyRepository } from "../repositories/hevy.js";
 import type { HevyImportRepository } from "../repositories/hevy-import.js";
 import { registerHevyImportRoutes } from "./hevy-import.js";
@@ -138,7 +137,7 @@ export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): v
         const begun = await repo.beginLink(request.user!.id, request.params.id, { relink: request.body?.relink === true });
         // AC37: never a Hevy id.
         request.log.info({ user_id: request.user!.id, mode: begun.mode, stale_claim: begun.staleClaim }, "hevy_link_begun");
-        return { mode: begun.mode, hevyWorkoutId: begun.hevyWorkoutId, staleClaim: begun.staleClaim, fingerprint: hevyFingerprint(begun.source) };
+        return { mode: begun.mode, hevyWorkoutId: begun.hevyWorkoutId, staleClaim: begun.staleClaim, fingerprint: begun.fingerprint };
       },
     );
 

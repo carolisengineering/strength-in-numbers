@@ -1,6 +1,4 @@
 // Spec 19.0 AC19 / AC20 — migration 0016 (the hevy tables, the widened source CHECK), real Postgres.
-// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from new-modalities-migration, CLAUDE.md).
-import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -63,7 +61,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 — migration 0016 (real Pos
     await insertWorkout(db, user);
     workoutHash = await tableHash(db, "workout");
     exerciseHash = await tableHash(db, "exercise");
-    for (const dir of MIGRATIONS.filter((d) => d >= "0016")) applyMigrationFile(db.url, dir);
+    for (const dir of MIGRATIONS.filter((d) => d >= "0016" && d < "0017")) applyMigrationFile(db.url, dir); // 0016 alone: 0017 owns the no-drift check
   }, 240_000);
   afterAll(async () => {
     await db?.stop();
@@ -204,21 +202,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 — migration 0016 (real Pos
       const rows = await db.prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "exercise" WHERE id = $1::uuid`, exercise);
       expect(Number(rows[0]!.n)).toBe(1);
     });
-  });
-
-  it("19.0 AC20 — prisma migrate diff reports no difference beyond the two generated set_entry columns", () => {
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2);
-    const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });
