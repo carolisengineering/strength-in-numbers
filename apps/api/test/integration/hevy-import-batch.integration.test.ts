@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { HevyImportResult, HevyImportWorkout } from "@sin/core";
 import { fingerprintSourceOf, hevyFingerprint } from "../../src/hevy/fingerprint.js";
 import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
+import { emptyHevyImportTally } from "../../src/repositories/hevy-import.js";
 import { readWorkoutDetail } from "../../src/repositories/workout.prisma.js";
 import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { importWorkoutFixture, insertLink, rowCounts, seedPairs } from "./hevy-import-helpers.js";
@@ -183,6 +184,41 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import batch (real 
       });
       expect(out.results[0]!.outcome).toBe("create");
       expect(out.results[0]!.workoutId).not.toBeNull();
+    });
+  });
+
+  describe("Minors 208, 210 — the batch tally", () => {
+    const two = (hevyWorkoutId: string, day: number, n: number) =>
+      importWorkoutFixture({
+        hevyWorkoutId,
+        startTime: `2026-09-${String(day).padStart(2, "0")}T10:00:00Z`,
+        endTime: `2026-09-${String(day).padStart(2, "0")}T11:00:00Z`,
+        exercises: [bench(Array.from({ length: n }, () => set({ weightKg: 60, reps: 5 })))],
+      });
+
+    it("Minor 210 — each batch returns its own totals when one tally is reused", async () => {
+      const tally = emptyHevyImportTally();
+      const first = await repo().importBatch(u, { dryRun: false, workouts: [two("H-1", 1, 2)] }, NOW, tally);
+      const second = await repo().importBatch(u, { dryRun: false, workouts: [two("H-2", 2, 3)] }, NOW, tally);
+      expect(first.setsCreated).toBe(2);
+      expect(second.setsCreated).toBe(3);
+      expect(tally.setsCreated).toBe(5);
+    });
+
+    it("Minor 208 — a batch that throws on its third workout has the first two in the tally", async () => {
+      const tally = emptyHevyImportTally();
+      let workouts = 0;
+      const seams = {
+        onWriteStep: async (step: string) => {
+          if (step === "workout" && ++workouts === 3) throw new Error("boom on the third");
+        },
+      };
+      await expect(
+        repo(seams).importBatch(u, { dryRun: false, workouts: [two("H-1", 1, 2), two("H-2", 2, 3), two("H-3", 3, 1)] }, NOW, tally),
+      ).rejects.toThrow("boom on the third");
+      expect(tally.results).toBe(2);
+      expect(tally.outcomes.create).toBe(2);
+      expect(tally.setsCreated).toBe(5);
     });
   });
 
