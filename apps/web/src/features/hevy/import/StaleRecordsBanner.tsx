@@ -1,8 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { useSession } from "../../../auth/useSession";
+
 import { Button } from "../../../ui/Button";
 import { applyImportedCaches } from "../../records/cache";
+import { HEVY_KEYS } from "../keys";
 import { useHevyStatus } from "../useHevyStatus";
 import { finishImport } from "./finishImport";
 import { useHevyImportClient } from "./hevyImportClient";
@@ -18,26 +21,34 @@ import styles from "./ImportScreen.module.css";
  * Minor 241: "Records updated." goes into one polite status line that is always there (empty until a finish
  * succeeds, and visually hidden while empty so it adds no gap to the screen's column), so it is announced. After a
  * success the card stays hidden until the status has been read again since the finish; from then on `recordsStale`
- * alone decides (another run may have made the records stale again).
+ * alone decides (another run may have made the records stale again). Minor 274: "read again" is the status query's
+ * `dataUpdateCount` passing the count at the finish, never a clock comparison (a device clock can go backward).
  */
 export function StaleRecordsBanner() {
   const status = useHevyStatus();
   const client = useHevyImportClient();
   const queryClient = useQueryClient();
+  const userId = useSession().user?.id ?? null;
   const [phase, setPhase] = useState<"idle" | "busy" | "failed" | "done">("idle");
-  const finishedAt = useRef(0);
+  const finishedCount = useRef(0);
+  /** How many times the status has been read (the query cache's count; the hook's result doesn't carry it). */
+  const statusReads = () => queryClient.getQueryState(HEVY_KEYS.status(userId))?.dataUpdateCount ?? 0;
 
   const finish = async () => {
     if (phase === "busy") return;
     setPhase("busy");
     if ((await finishImport(client)) === "failed") return setPhase("failed");
-    finishedAt.current = Date.now();
+    // Read now, not from the render that started the finish: a status read may have landed meanwhile.
+    finishedCount.current = statusReads();
     setPhase("done");
     applyImportedCaches(queryClient);
   };
 
   const stale = status.data?.recordsStale === true;
-  const awaitingReread = phase === "done" && status.dataUpdatedAt <= finishedAt.current;
+  // `dataUpdatedAt` is read here so this re-renders on every status read, even one with unchanged data; the count,
+  // not the time, decides whether one has landed since the finish (minor 274).
+  const reads = status.dataUpdatedAt === 0 ? 0 : statusReads();
+  const awaitingReread = phase === "done" && reads <= finishedCount.current;
   const showCard = stale && !awaitingReread;
   const line = phase === "done" && !showCard ? RECORDS_UPDATED : "";
   return (

@@ -137,6 +137,22 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
       status.answer(true);
       expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
     });
+
+    it("minor 274: the device clock going back an hour before the re-read still brings the card back", async () => {
+      setup({ recordsStale: true });
+      const status = heldStatusReread();
+      const { user } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      await screen.findByText("Records updated.");
+      await waitFor(() => expect(status.reads()).toBe(2));
+      vi.setSystemTime(Date.now() - 60 * 60_000);
+      try {
+        status.answer(true);
+        expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("a failed finish says so and stays; Try again succeeds and the banner goes", async () => {

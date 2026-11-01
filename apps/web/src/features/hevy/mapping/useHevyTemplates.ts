@@ -34,18 +34,26 @@ export function hevyTemplatesQuery(client: HevyClient) {
   } as const;
 }
 
+/** One call's template read: its answer, and whether this call started the fetch and it is still running. */
+export interface TemplatesRead {
+  readonly promise: Promise<HevyTemplate[]>;
+  readonly owned: () => boolean;
+}
+
 /**
- * Minors 231, 245: the template read for a reader that may cancel it. `owner.current` is true only while a fetch this
- * call started is in flight: a running read is joined and never owned (canceling it would strand its other reader),
- * a fresh cache answers at once, and a stale one refetches and is owned. A reader cancels only while it owns the read.
+ * Minors 231, 245: the template read for a reader that may cancel it. `owned()` is true only while a fetch this call
+ * started is in flight: a running read is joined and never owned (canceling it would strand its other reader), a
+ * fresh cache answers at once, and a stale one refetches and is owned. A reader cancels only while it owns the read.
+ * Minor 271: a read paused offline is still running. Minor 272: each call has its own handle, so a reader's second,
+ * overlapping call can't clear the first's ownership.
  */
-export async function fetchHevyTemplates(queryClient: QueryClient, client: HevyClient, owner: { current: boolean }): Promise<HevyTemplate[]> {
-  owner.current = queryClient.isFetching({ queryKey: HEVY_KEYS.templates }) === 0;
-  try {
-    return await queryClient.fetchQuery(hevyTemplatesQuery(client));
-  } finally {
-    owner.current = false;
-  }
+export function fetchHevyTemplates(queryClient: QueryClient, client: HevyClient): TemplatesRead {
+  const running = queryClient.getQueryState(HEVY_KEYS.templates)?.fetchStatus;
+  let owns = running === undefined || running === "idle";
+  const promise = queryClient.fetchQuery(hevyTemplatesQuery(client)).finally(() => {
+    owns = false;
+  });
+  return { promise, owned: () => owns };
 }
 
 export function useHevyTemplates(): UseQueryResult<HevyTemplate[]> {
