@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createServer } from "node:net";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { createServer, type AddressInfo, type Server } from "node:net";
 import type { FastifyInstance } from "fastify";
 import { context, diag, metrics, propagation, trace } from "@opentelemetry/api";
 import { parseTelemetryEnv } from "../../../src/telemetry/config.js";
-import { startTelemetry, type TelemetryHandle } from "../../../src/telemetry/sdk.js";
+import { startPrometheus, startTelemetry, type TelemetryHandle } from "../../../src/telemetry/sdk.js";
 
 const freePort = () =>
   new Promise<number>((resolve) => {
@@ -47,6 +47,38 @@ describe("AC13 — Prometheus endpoint is local-only and off the API port", () =
     const text = await (await fetch(`http://127.0.0.1:${promPort}/metrics`)).text();
     expect(text).not.toMatch(/http_route="\/metrics"/);
     expect(text).not.toMatch(/http_server_request_duration_seconds_count\{(?![^}]*http_route)[^}]*\}/);
+  });
+
+  it("#120 — the endpoint listens on loopback, not every interface", async () => {
+    const port = await freePort();
+    const { config } = parseTelemetryEnv({ OTEL_METRICS_EXPORTER: "prometheus", OTEL_EXPORTER_PROMETHEUS_PORT: String(port) });
+    const report = vi.fn();
+    const exporter = startPrometheus(config.metrics, report);
+    try {
+      await exporter.startServer(); // the same start startPrometheus began
+      const server = (exporter as unknown as { _server: Server })._server;
+      expect((server.address() as AddressInfo).address).toBe("127.0.0.1");
+      expect(report).not.toHaveBeenCalled();
+    } finally {
+      await exporter.shutdown();
+    }
+  });
+
+  it("#120 — a taken port is one metrics warning that names the address", async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const port = (blocker.address() as AddressInfo).port;
+    try {
+      const { config } = parseTelemetryEnv({ OTEL_METRICS_EXPORTER: "prometheus", OTEL_EXPORTER_PROMETHEUS_PORT: String(port) });
+      const report = vi.fn();
+      startPrometheus(config.metrics, report);
+      await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+      expect(report.mock.calls[0]![0]).toBe(
+        `Prometheus /metrics could not listen on 127.0.0.1:${port} (listen EADDRINUSE: address already in use 127.0.0.1:${port}); no metrics are served`,
+      );
+    } finally {
+      await new Promise((resolve) => blocker.close(resolve));
+    }
   });
 
   it("GET /metrics on the API port is the normal problem+json 404", async () => {

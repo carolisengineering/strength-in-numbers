@@ -37,6 +37,16 @@ OTEL_TRACES_SAMPLER_ARG=1
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local
 ```
 
+`/metrics` listens on `127.0.0.1:9464` only, so nothing else on your network can read it (#120).
+`OTEL_EXPORTER_PROMETHEUS_HOST` and `OTEL_EXPORTER_PROMETHEUS_PORT` change the address:
+- **macOS / Windows (Docker Desktop):** nothing to change. The compose Prometheus reaches the
+  host's loopback through `host.docker.internal` (checked 2026-11-01).
+- **Linux:** `host.docker.internal` is the Docker bridge address (`host-gateway`), which a
+  loopback listener doesn't answer. Set `OTEL_EXPORTER_PROMETHEUS_HOST` to the bridge address
+  (usually `172.17.0.1`), not `0.0.0.0`, which would expose it to your network again.
+- **API in compose** (the `api:9464` target): set `OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0` on
+  the `api` service. That listens inside the container only; compose doesn't publish `9464`.
+
 Then run the API and the local IdP (two terminals):
 
 ```bash
@@ -72,7 +82,10 @@ write rate limits answer `429`, which is expected.
 
 1. **Prometheus targets** (`http://localhost:9090/targets`): `si-api` at
    `host.docker.internal:9464` is **UP**. `api:9464` is DOWN unless the API also runs in
-   compose. That is expected.
+   compose. That is expected. If `host.docker.internal:9464` is DOWN, look in the API log for
+   `Prometheus /metrics could not listen on 127.0.0.1:9464 (listen EADDRINUSE …)`: another
+   process has the port, so no metrics are served. Stop it, or set
+   `OTEL_EXPORTER_PROMETHEUS_PORT` and change the target in `ops/prometheus/prometheus.yml`.
 2. **Grafana** (`http://localhost:3001`, no login) → Dashboards → *strength-in-numbers* →
    **si-api — overview** and **si-api — usage**: every panel shows data. The *Restarts*
    annotation appears only after the API restarts.
@@ -138,7 +151,9 @@ Set `OTEL_METRICS_EXPORTER=otlp` and `OTEL_TRACES_EXPORTER=otlp` on **si-api**:
   blueprint matches.
 
 After the restart, the API log has no `ConfigError`. Any later export failure shows as one
-`warn` line per signal per 5 minutes: `telemetry export problem: …` with `signal`.
+`warn` line per signal per 5 minutes: `telemetry export problem: …` with `signal`. Other SDK
+warnings have their own line, at most one per 5 minutes: `telemetry SDK warning: …` with
+`signal: "sdk"` (#126). They never hide an export failure.
 
 ## 4. Import dashboards and alerts
 

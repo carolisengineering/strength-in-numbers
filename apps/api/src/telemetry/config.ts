@@ -18,6 +18,8 @@ export interface TelemetryConfig {
   readonly environment: string | undefined;
   readonly metrics: {
     readonly exporter: MetricsExporterKind;
+    /** OTEL_EXPORTER_PROMETHEUS_HOST, default 127.0.0.1 (loopback only, #120). */
+    readonly prometheusHost: string;
     /** OTEL_EXPORTER_PROMETHEUS_PORT, default 9464. */
     readonly prometheusPort: number;
     /** Full URL including /v1/metrics. */
@@ -75,6 +77,9 @@ function parseKeyValueList(raw: string): Record<string, string> | undefined {
 
 /** The SERVICE_NAME default, shared with `Config`'s schema. */
 export const DEFAULT_SERVICE_NAME = "si-api";
+export const DEFAULT_PROMETHEUS_HOST = "127.0.0.1";
+/** A host name, IPv4 or bare IPv6 address: no scheme, port, path or spaces. */
+const PROMETHEUS_HOST_RE = /^[A-Za-z0-9._:-]{1,253}$/;
 
 /** `serviceName` comes from `Config` (#127); this parser never reads SERVICE_NAME itself. */
 export function parseTelemetryEnv(
@@ -143,6 +148,13 @@ export function parseTelemetryEnv(
     }
   }
 
+  // #120: loopback unless overridden. The OTel spec's default is "localhost",
+  // but that can resolve to ::1 only, which Docker's host.docker.internal
+  // (IPv4) wouldn't reach; 127.0.0.1 is the same on every machine.
+  const host = str(env, "OTEL_EXPORTER_PROMETHEUS_HOST") ?? DEFAULT_PROMETHEUS_HOST;
+  if (!PROMETHEUS_HOST_RE.test(host)) {
+    issues.push("OTEL_EXPORTER_PROMETHEUS_HOST: must be a host name or an IP address");
+  }
   const port = Number(str(env, "OTEL_EXPORTER_PROMETHEUS_PORT") ?? "9464");
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     issues.push("OTEL_EXPORTER_PROMETHEUS_PORT: must be an integer between 1 and 65535");
@@ -169,6 +181,7 @@ export function parseTelemetryEnv(
       environment: resourceAttrs["deployment.environment"],
       metrics: Object.freeze({
         exporter: metricsExporter,
+        prometheusHost: host,
         prometheusPort: port,
         otlpUrl: metricsUrl,
         exportIntervalMs: interval,
