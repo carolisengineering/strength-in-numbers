@@ -45,6 +45,16 @@ describe("Minors 40, 227 — a refused create keeps the expired one-offs (its sw
     expect(routines.routines.has(expired)).toBe(true);
   });
 
+  it("code review — a refused create doesn't undo a concurrent create that landed while it waited", async () => {
+    const { routines, user, fields } = setup();
+    const bad = { name: "Broken", items: [{ exerciseId: uuidv7() }] };
+    const [ok, refused] = await Promise.allSettled([routines.create(user, fields("Push")), routines.create(user, bad)]);
+    expect(ok.status).toBe("fulfilled");
+    expect(refused.status).toBe("rejected");
+    const pushed = (ok as PromiseFulfilledResult<{ routine: { id: string } }>).value.routine.id;
+    expect(routines.routines.has(pushed)).toBe(true);
+  });
+
   it("a successful create still sweeps", async () => {
     const { routines, user, fields, expiredOneOff } = setup();
     const expired = await expiredOneOff();

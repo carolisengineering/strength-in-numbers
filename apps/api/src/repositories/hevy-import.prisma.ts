@@ -172,7 +172,7 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
           const usable = await tx.$queryRaw<{ id: string }[]>`
             SELECT id::text FROM "exercise"
             WHERE id = ANY(${ids}::uuid[]) AND is_active AND (owner_user_id IS NULL OR owner_user_id = ${userId}::uuid)
-            ORDER BY id
+            ORDER BY "exercise".id
             FOR SHARE`;
           if (usable.length !== ids.length) throw new RejectedSignal();
 

@@ -143,7 +143,7 @@ describe("AC10 — exercise resolution and snapshotting", () => {
     exerciseRepo.byId.set(exercise.id, exercise);
     stub.queueRows([w]); // phase 1
     stub.queueRows([{ ended_at: null }]); // FOR SHARE re-check
-    stub.queueRows([{ n: 2, section_id: null, section_position: null, added_in_workout: null }]); // count read: 2 existing rows -> append at position 2 // minor 54: with the last section — none
+    stub.queueRows([{ n: 2, section_id: null, section_position: null, added_in_workout: null }]); // count read (minor 54: with the last section — none): 2 existing rows -> append at position 2
     stub.queueRows([
       {
         id: uuidv7(),

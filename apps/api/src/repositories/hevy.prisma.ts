@@ -199,8 +199,9 @@ async function readLinkState(db: Tx | PrismaClient, userId: string, workoutId: s
 const DUPLICATE_MARKER = "only one pair may have this role";
 
 /**
- * Minor 212: begin and complete read the whole workout (the fingerprint) inside their transaction, under the row locks,
- * so they get the import write's explicit timeout rather than Prisma's default 5 s.
+ * Minor 212: begin and complete read the whole workout (`readLinkState` → `readWorkoutDetail` and the fingerprint)
+ * inside their transaction, under the row locks, so they get an explicit timeout rather than Prisma's default 5 s: the
+ * same 30 s the import write passes (`hevy-import.prisma.ts`; change both together).
  */
 export const HEVY_LINK_TX_TIMEOUT_MS = 30_000;
 

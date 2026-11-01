@@ -236,7 +236,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
   });
 
   describe("Minor 207 — the usable-exercise share lock takes rows in id order", () => {
-    it("the FOR SHARE select is ordered by id, so it can't lock built-ins in a different order than the seed", async () => {
+    it("the FOR SHARE select is ordered by the uuid id column (the seed's side is not ordered yet; see the runbook)", async () => {
       const seen: string[] = [];
       // The real client, with every in-transaction $queryRaw recorded on its way through.
       const recordingTx = (tx: object) =>
@@ -264,7 +264,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
       await createHevyImportRepository(recording).writeImportedWorkout(U, "H-ORDER", await translate(rich()));
       const share = seen.filter((sql) => /FOR SHARE/.test(sql) && /FROM "exercise"/.test(sql));
       expect(share).toHaveLength(1);
-      expect(share[0]).toMatch(/ORDER BY id\s+FOR SHARE/);
+      expect(share[0]).toMatch(/ORDER BY "exercise"\.id\s+FOR SHARE/);
     });
   });
 
