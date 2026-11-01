@@ -13,7 +13,7 @@ The web side (Spec 20.1) runs these steps. You only need them to understand or r
 
 Don't run a finish while batches are still in flight. A finish over 30 s can time a concurrent batch out to a `500`, which is safe to retry.
 
-Don't run `seed:catalog` during an import either. The import locks the exercise rows it writes in id order, but the seed's multi-row `UPDATE`s lock built-ins in scan order, so Postgres can abort one side with `40P01` (a deadlock). On the import side that's a `500` for one batch, and resending the batch is safe (minor 207).
+Don't run `seed:catalog` during an import either. The import share-locks the exercise rows it uses, in id order, but the seed's multi-row `UPDATE`s lock built-ins in scan order, so Postgres can abort one side with `40P01` (a deadlock). On the import side that's a `500` for one batch, and resending the batch is safe (minor 207).
 
 ## Records stuck stale
 

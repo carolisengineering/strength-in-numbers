@@ -21,7 +21,8 @@ const ITERATIONS = 50;
 
 /**
  * Minor 36: which legal outcome each round of a race hit. Every race only checks that each end state is legal; the
- * tallies show whether both interleavings were exercised, and a pair that reliably reaches all of its outcomes asserts it.
+ * tallies show whether both interleavings were exercised. None is asserted: the rarer outcome is too rare per round
+ * to require in 50 rounds without a flaky test.
  */
 const tallies = new Map<string, Map<string, number>>();
 function seen(pair: string, outcome: string): void {

@@ -199,15 +199,15 @@ async function readLinkState(db: Tx | PrismaClient, userId: string, workoutId: s
 const DUPLICATE_MARKER = "only one pair may have this role";
 
 /**
- * Spec 19.0 §6: the Hevy mapping and links over raw SQL (the CHECK lists and partial unique indexes are the
- * migration's, `0016`). No advisory lock key (D16): mapping writes lock the user row, a begin locks the workout row.
- */
-/**
  * Minor 212: begin and complete read the whole workout (the fingerprint) inside their transaction, under the row locks,
  * so they get the import write's explicit timeout rather than Prisma's default 5 s.
  */
 export const HEVY_LINK_TX_TIMEOUT_MS = 30_000;
 
+/**
+ * Spec 19.0 §6: the Hevy mapping and links over raw SQL (the CHECK lists and partial unique indexes are the
+ * migration's, `0016`). No advisory lock key (D16): mapping writes lock the user row, a begin locks the workout row.
+ */
 export function createHevyRepository(prisma: PrismaClient): HevyRepository {
   return {
     async status(userId): Promise<HevyStatusRecord> {
