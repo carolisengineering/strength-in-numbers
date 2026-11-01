@@ -129,7 +129,7 @@
 }
 
 .pick label {
-  font-weight: 600;
+  font-weight: var(--font-weight-label);
 }
 
 .pick .muted {

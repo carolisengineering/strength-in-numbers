@@ -13,7 +13,7 @@
   margin-bottom: var(--space-2);
   color: var(--color-muted);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--font-weight-label);
 }
 
 /* A segmented control: three equal options in one bordered strip. */
