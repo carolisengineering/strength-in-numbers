@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { expectNoAxeViolations } from "../../../test/axe";
-import { card, changeTimeButton } from "../../../test/sessionHelpers";
+import { addSetButton, card, changeTimeButton } from "../../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
@@ -95,6 +95,13 @@ describe.each(["light", "dark"] as const)("Minor 9 — axe, %s theme", (theme) =
     const { user } = await openEdit();
     await user.click(within(card("Bench Press")).getByRole("button", { name: /60 kg × 8/ }));
     await screen.findByRole("dialog", { name: /^Set 1/ });
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("the Add set sheet open", async () => {
+    const { user } = await openEdit();
+    await user.click(addSetButton("Bench Press"));
+    await screen.findByRole("dialog", { name: "New set · Bench Press" });
     await expectNoAxeViolations(document.body);
   });
 
