@@ -1172,9 +1172,14 @@ export class FakeRoutineRepository implements RoutineRepository {
   /** Spec 09.3 — each `FakeWorkoutRepository` built on this fake adds one: the routines its live workouts were started from. */
   private readonly liveRoutineProviders: (() => Set<string>)[] = [];
 
-  /** Minor 39: every workout fake built on this one adds its provider; none replaces another's. */
-  addLiveRoutineProvider(fn: () => Set<string>): void {
+  /** Minor 39: every workout fake built on this one adds its provider; none replaces another's. Minor 229: the returned
+   * function removes it again. */
+  addLiveRoutineProvider(fn: () => Set<string>): () => void {
     this.liveRoutineProviders.push(fn);
+    return () => {
+      const at = this.liveRoutineProviders.indexOf(fn);
+      if (at !== -1) this.liveRoutineProviders.splice(at, 1);
+    };
   }
 
   /** Spec 09.3 §6.1 — drop the caller's expired one-offs that no live workout holds; returns how many. */
@@ -1279,7 +1284,19 @@ export class FakeRoutineRepository implements RoutineRepository {
     return this.owned(actingUserId, id);
   }
 
+  /** Minors 40, 227: the real create sweeps inside its transaction, so a refused create rolls the sweep back. */
   async create(actingUserId: string, fields: RoutineCreateFields): Promise<{ routine: RoutineRecord; swept: number }> {
+    const before = new Map(this.routines);
+    try {
+      return await this.sweepThenCreate(actingUserId, fields);
+    } catch (err) {
+      this.routines.clear();
+      for (const [id, routine] of before) this.routines.set(id, routine);
+      throw err;
+    }
+  }
+
+  private async sweepThenCreate(actingUserId: string, fields: RoutineCreateFields): Promise<{ routine: RoutineRecord; swept: number }> {
     const removed = this.sweep(actingUserId);
     const now0 = Date.now();
     const counted = [...this.routines.values()].filter(
