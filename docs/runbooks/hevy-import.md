@@ -13,7 +13,7 @@ The web side (Spec 20.1) runs these steps. You only need them to understand or r
 
 Don't run a finish while batches are still in flight. A finish over 30 s can time a concurrent batch out to a `500`, which is safe to retry.
 
-Running `seed:catalog` during an import is safe: both lock built-in exercises in id order (minors 207, 286). Still, prefer to seed when no import is running. If a batch ever answers a `500` with `40P01` (a deadlock), resending it is safe.
+Prefer to run `seed:catalog` when no import is running. If one does overlap, it's safe: both lock built-in exercises in id order (minors 207, 286), and a batch that ever answers a `500` with `40P01` (a deadlock) can be resent.
 
 ## Records stuck stale
 

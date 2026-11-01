@@ -140,6 +140,11 @@ describe("19.1 AC11 — items", () => {
     expect(t.input.items.map((i) => i.notes?.length ?? null)).toEqual([500, 5]);
     expect(count(t.notices, "notes_trimmed")).toBe(1);
   });
+
+  it("minor 289: an item note the cut keeps nothing of is dropped, with no notes_trimmed", () => {
+    const t = ok(translateHevyRoutine(hevyRoutine([item("BENCH", { notes: `H${"́".repeat(501)}` })]), ctx));
+    expect([t.input.items[0]!.notes, count(t.notices, "notes_trimmed")]).toEqual([undefined, 0]);
+  });
 });
 
 describe("19.1 AC11 — supersets", () => {

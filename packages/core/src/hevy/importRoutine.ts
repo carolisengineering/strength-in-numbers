@@ -114,7 +114,7 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
       item.restSeconds = clamped;
     }
     const notes = cleanNotes(e.notes ?? null, ROUTINE_ITEM_NOTES_MAX);
-    if (notes.cut) own.add("notes_trimmed");
+    if (notes.cut && notes.value !== null) own.add("notes_trimmed"); // minor 289
     if (notes.value !== null) item.notes = notes.value;
     if (e.sets.length > PLANNED_SETS_PER_ITEM_MAX) own.add("sets_cut");
     item.sets = e.sets.slice(0, PLANNED_SETS_PER_ITEM_MAX).map((s) => rowOf(s, info.modality, ctx.unit, own));
