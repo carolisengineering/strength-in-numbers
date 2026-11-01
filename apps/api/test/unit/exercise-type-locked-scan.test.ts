@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const SRC = fileURLToPath(new URL("../../src", import.meta.url));
@@ -11,8 +12,13 @@ function files(dir: string): string[] {
   });
 }
 
-/** Block and line comments out, so a doc comment's example is not a throw site. */
-const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+/**
+ * Block and line comments out, so a doc comment's example is not a throw site. The TypeScript printer drops comments
+ * by parsing, so a string that looks like a comment (`"src/*"` … `"*\/"`) can't hide code between them (minor 228).
+ */
+const printer = ts.createPrinter({ removeComments: true });
+const stripComments = (src: string) =>
+  printer.printFile(ts.createSourceFile("scan.ts", src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS));
 
 /** The text between a call's parentheses, from the `(` at `open`. */
 function argsAt(src: string, open: number): string {
@@ -53,6 +59,16 @@ describe("Minor 105 — every real ExerciseTypeLockedError names both types", ()
     }
     expect(sites.length).toBeGreaterThanOrEqual(2);
     for (const s of sites) expect(s.args, s.file).toHaveLength(2);
+  });
+
+  it("Minor 228 — a throw between two strings that hold /* and */ is kept", () => {
+    const src = 'const a = "src/*"; throw new ExerciseTypeLockedError(x, y); const b = "*/";';
+    expect(stripComments(src)).toContain("throw new ExerciseTypeLockedError");
+  });
+
+  it("Minor 228 — real comments still go", () => {
+    const src = "/* throw new ExerciseTypeLockedError(a, b) */ ok();\n// throw new ExerciseTypeLockedError(c, d)\n";
+    expect(stripComments(src)).not.toContain("ExerciseTypeLockedError");
   });
 
   it("the scan sees a bare call (self-check)", () => {
