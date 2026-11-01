@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
-import { ApiError } from "../../api";
+import { isNotFound } from "../../api";
 import { WORKOUT_KEYS } from "../workouts/queries";
 import { isOneOff } from "./oneOff";
 import { ROUTINE_KEYS, useRoutineClient } from "./queries";
@@ -70,7 +70,7 @@ export function useDeleteRoutine(): UseMutationResult<void, Error, string> {
         await client.remove(id);
       } catch (error) {
         // A repeat of an applied delete answers 404: already gone is success (AC24).
-        if (!(error instanceof ApiError && error.status === 404)) throw error;
+        if (!isNotFound(error)) throw error;
       }
     },
     onSuccess: (_, id) => {
@@ -101,7 +101,7 @@ export function useKeepRoutine(): UseMutationResult<void, Error, string> {
       void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
     },
     onError: (error, id) => {
-      if (!(error instanceof ApiError && error.status === 404)) return;
+      if (!isNotFound(error)) return;
       queryClient.removeQueries({ queryKey: ROUTINE_KEYS.detail(id), exact: true });
       void queryClient.invalidateQueries({ queryKey: ROUTINE_KEYS.list });
     },

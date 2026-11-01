@@ -16,4 +16,5 @@ export {
   type Problem,
   type ProblemFieldError,
 } from "./problem";
+export { ignoreNotFound, isNotFound } from "./notFound";
 export { newRequestId, REQUEST_ID_HEADER } from "./requestId";

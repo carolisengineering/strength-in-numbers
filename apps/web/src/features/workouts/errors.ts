@@ -67,15 +67,6 @@ export function classifyWorkoutError(error: unknown, context?: { op: string }): 
   }
 }
 
-/** A repeat of an already-applied delete answers 404: it already happened, so the screen treats it as success (minor 68). */
-export async function ignoreNotFound(run: () => Promise<void>): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    if (!(error instanceof ApiError && error.status === 404)) throw error;
-  }
-}
-
 /**
  * The workout is gone (its detail answers 404): the one rule the edit screen's vanished view and its section re-read
  * both use (minor 67).

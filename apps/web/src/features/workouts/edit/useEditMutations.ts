@@ -1,6 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
 import type { CreateSet, SetEntry, UpdateSet, UpdatedWorkout, WorkoutDetail, WorkoutExercise } from "@sin/core";
-import { ignoreNotFound } from "../errors";
+import { ignoreNotFound } from "../../../api";
 import { track } from "../../../observability/track";
 import { applyEditedCaches } from "../../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";

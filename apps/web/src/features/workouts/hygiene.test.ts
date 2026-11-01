@@ -91,13 +91,25 @@ const allSources = import.meta.glob(["../../**/*.ts", "../../**/*.tsx", "!../../
   eager: true,
 }) as Record<string, string>;
 
-describe("Minor 4/68 — ignoreNotFound is defined once", () => {
-  it("one definition, in features/workouts/errors.ts", () => {
+describe("Minor 4/68/234 — one not-found rule, in src/api", () => {
+  it("ignoreNotFound and isNotFound are defined once, in src/api/notFound.ts", () => {
     expect(Object.keys(allSources).length).toBeGreaterThan(200);
-    const defining = Object.entries(allSources)
-      .filter(([, source]) => /function ignoreNotFound\b|const ignoreNotFound\b/.test(stripComments(source)))
+    const defining = (name: string) =>
+      Object.entries(allSources)
+        .filter(([, source]) => new RegExp(`function ${name}\\b|const ${name}\\b`).test(stripComments(source)))
+        .map(([path]) => path);
+    expect(defining("ignoreNotFound")).toEqual(["../../api/notFound.ts"]);
+    expect(defining("isNotFound")).toEqual(["../../api/notFound.ts"]);
+  });
+
+  it("no source outside src/api swallows a 404 inline", () => {
+    // The swallow shape only. Other 404 checks (the Hevy gate, runSend's "gone", workoutClient, the outbox,
+    // classifyWorkoutError) mean something else and stay as written.
+    const swallow = /!\(\s*\w+ instanceof ApiError && \w+\.status === 404\s*\)/;
+    const hits = Object.entries(allSources)
+      .filter(([path]) => !path.startsWith("../../api/"))
+      .filter(([, source]) => swallow.test(stripComments(source)))
       .map(([path]) => path);
-    // Vite keys a file in this test's own folder as `./name`.
-    expect(defining).toEqual(["./errors.ts"]);
+    expect(hits).toEqual([]);
   });
 });
