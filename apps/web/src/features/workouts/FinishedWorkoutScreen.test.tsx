@@ -21,6 +21,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { WORKOUT_KEYS } from "./queries";
 
 afterEach(() => {
   observability.track.mockReset();
@@ -238,6 +239,31 @@ describe("AC30 — finished workout summary", () => {
 
     expect(await screen.findByTestId("not-found")).toBeInTheDocument();
     expect(screen.getByTestId("app-shell")).toContainElement(screen.getByTestId("not-found"));
+  });
+
+  describe("Minor 238 — the summary uses the edit screen's gone rule", () => {
+    async function shownThenRefetched(status: 404 | 500) {
+      const workout = finished();
+      const fake = createWorkoutFake({ finished: [workout] });
+      prepareApp({ auth, fake });
+      const { queryClient } = renderApp(`/app/workouts/${workout.id}`);
+      expect(await screen.findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
+      fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () =>
+        problemResponse(status, status === 404 ? "not-found" : "internal"),
+      );
+      await queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workout.id) });
+    }
+
+    it("a cached workout whose refetch answers 404 is gone: NotFound", async () => {
+      await shownThenRefetched(404);
+      expect(await screen.findByTestId("not-found")).toBeInTheDocument();
+    });
+
+    it("a cached workout whose refetch fails otherwise keeps the summary", async () => {
+      await shownThenRefetched(500);
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Workout summary" })).toBeInTheDocument());
+      expect(screen.queryByTestId("not-found")).toBeNull();
+    });
   });
 });
 

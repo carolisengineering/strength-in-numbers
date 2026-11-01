@@ -60,7 +60,7 @@ async function openEdit() {
   return app;
 }
 
-describe.each(["light", "dark"] as const)("Minor 9 — axe, %s theme", (theme) => {
+describe.each(["light", "dark"] as const)("Minor 9 / 18.0 AC44, AC57 — axe, %s theme", (theme) => {
   beforeEach(() => {
     document.documentElement.dataset.theme = theme;
   });
