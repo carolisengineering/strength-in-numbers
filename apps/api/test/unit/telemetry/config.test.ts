@@ -33,11 +33,19 @@ describe("AC2 — fail-fast telemetry config", () => {
     [{ OTEL_TRACES_SAMPLER_ARG: "abc" }, "OTEL_TRACES_SAMPLER_ARG"],
     [{ OTEL_TRACES_SAMPLER: "jaeger_remote" }, "OTEL_TRACES_SAMPLER"],
     [{ OTEL_EXPORTER_PROMETHEUS_PORT: "70000" }, "OTEL_EXPORTER_PROMETHEUS_PORT"],
+    [{ OTEL_EXPORTER_PROMETHEUS_HOST: "http://0.0.0.0" }, "OTEL_EXPORTER_PROMETHEUS_HOST"],
+    [{ OTEL_EXPORTER_PROMETHEUS_HOST: "0.0.0.0 9464" }, "OTEL_EXPORTER_PROMETHEUS_HOST"],
     [{ OTEL_EXPORTER_OTLP_ENDPOINT: "not a url", OTEL_TRACES_EXPORTER: "otlp" }, "OTEL_EXPORTER_OTLP_ENDPOINT"],
     [{ OTEL_METRICS_EXPORTER: "prometheus", NODE_ENV: "production" }, "OTEL_METRICS_EXPORTER"],
   ])("%j → issue naming %s", (env, varName) => {
     const issues = issuesFor(env as Record<string, string>);
     expect(issues.some((i) => i.startsWith(`${varName}:`))).toBe(true);
+  });
+
+  it("#120 — the Prometheus endpoint listens on loopback unless overridden", () => {
+    expect(ok({}).metrics.prometheusHost).toBe("127.0.0.1");
+    expect(ok({ OTEL_EXPORTER_PROMETHEUS_HOST: "0.0.0.0" }).metrics.prometheusHost).toBe("0.0.0.0");
+    expect(ok({ OTEL_EXPORTER_PROMETHEUS_HOST: "::1" }).metrics.prometheusHost).toBe("::1");
   });
 
   it("never echoes a header value in an issue", () => {

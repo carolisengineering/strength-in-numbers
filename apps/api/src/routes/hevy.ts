@@ -45,8 +45,9 @@ const workoutIdParams = z.object({ id: z.string() });
  * of an unknown route, never a `413` / `400` / `422` / `429` that would show the route exists. No route is published.
  */
 export function registerHevyRoutes(app: FastifyInstance, deps: HevyRouteDeps): void {
-  app.register(async (scope) => {
-    scope.addHook("onRequest", async (request: FastifyRequest) => {
+  // Named functions, so the hook span reads "onRequest - hevyGate", not source text (#123).
+  app.register(async function hevyScope(scope) {
+    scope.addHook("onRequest", async function hevyGate(request: FastifyRequest) {
       if (!request.user || !deps.hevyEnabledUserIds.has(request.user.id)) {
         // The same internal text as the unknown-route handler (errors/contract.ts), so even the log line matches.
         throw new NotFoundError(`route ${request.method} ${request.url} not found`);

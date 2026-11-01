@@ -1,4 +1,4 @@
-import { diag, DiagLogLevel, metrics } from "@opentelemetry/api";
+import { diag, DiagLogLevel, metrics, type Span } from "@opentelemetry/api";
 import { setGlobalErrorHandler } from "@opentelemetry/core";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
@@ -8,7 +8,12 @@ import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
-import { MeterProvider, PeriodicExportingMetricReader, type MetricReader } from "@opentelemetry/sdk-metrics";
+import {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type MetricReader,
+  type PushMetricExporter,
+} from "@opentelemetry/sdk-metrics";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ExportResultCode } from "@opentelemetry/core";
 import {
@@ -28,7 +33,7 @@ import type { TelemetryConfig } from "./config.js";
 import { AllowlistSpanProcessor } from "./allowlist.js";
 import { buildViews } from "./views.js";
 import { registerProcessStartTime } from "./metrics.js";
-import { createThrottledReporter, type WarnSink } from "./diag.js";
+import { createThrottledReporter, exportErrorText, type WarnSink } from "./diag.js";
 
 /**
  * Spec 13.0 §6.1–§6.7 — explicit providers from our parsed config (D14), never
@@ -54,8 +59,11 @@ export const IGNORED_PATHS: ReadonlySet<string> = new Set(["/healthz", "/readyz"
  * AC11 — reports a failed span export as "traces". The batch processor hands
  * the exporter's raw error (e.g. "connect ECONNREFUSED …") to the global error
  * handler, and that text names no signal; `reported` lets the handler skip it.
+ * #121: the text names an `AggregateError`'s inner errors, and a result with
+ * no error is passed on carrying the one reported here, so the processor
+ * doesn't make its own and report the same failure again.
  */
-function reportingSpanExporter(
+export function reportingSpanExporter(
   inner: SpanExporter,
   report: (message: string, err: unknown) => void,
   reported: WeakSet<object>,
@@ -64,14 +72,46 @@ function reportingSpanExporter(
     export: (spans, done) =>
       inner.export(spans, (result) => {
         if (result.code !== ExportResultCode.SUCCESS) {
-          const err = result.error ?? new Error("span export failed");
+          const err = result.error ?? new Error("span export failed with no error");
           reported.add(err);
-          report(`span export failed: ${err.message}`, err);
+          report(`span export failed: ${exportErrorText(err)}`, err);
+          done(result.error ? result : { ...result, error: err });
+          return;
         }
         done(result);
       }),
     shutdown: () => inner.shutdown(),
     forceFlush: () => inner.forceFlush?.() ?? Promise.resolve(),
+  };
+}
+
+/**
+ * #121 — the metrics side of the same wrapper. The periodic reader turns the
+ * exporter's error into text itself ("metrics export failed (error
+ * AggregateError)"), losing an `AggregateError`'s inner errors, so the failure
+ * is reported here first, as "metrics". The reader's own report then lands in
+ * the same throttle slot and is dropped. The aggregation choices are passed
+ * through, or the reader would fall back to its defaults.
+ */
+export function reportingMetricExporter(
+  inner: PushMetricExporter,
+  report: (message: string, err: unknown) => void,
+): PushMetricExporter {
+  return {
+    export: (resourceMetrics, done) =>
+      inner.export(resourceMetrics, (result) => {
+        if (result.code !== ExportResultCode.SUCCESS) {
+          const err = result.error ?? new Error("metrics export failed with no error");
+          report(`metrics export failed: ${exportErrorText(err)}`, err);
+        }
+        done(result);
+      }),
+    forceFlush: () => inner.forceFlush(),
+    shutdown: () => inner.shutdown(),
+    ...(inner.selectAggregationTemporality
+      ? { selectAggregationTemporality: inner.selectAggregationTemporality.bind(inner) }
+      : {}),
+    ...(inner.selectAggregation ? { selectAggregation: inner.selectAggregation.bind(inner) } : {}),
   };
 }
 
@@ -104,6 +144,34 @@ export const IGNORE_HOOKS = {
   fastify: (opts: { url: string }): boolean => isIgnoredUrl(opts.url),
 } as const;
 
+/**
+ * Spec 13.0 §7, #128 — the per-request id (already in every log line: a valid
+ * client X-Request-Id, else a random UUID, `genReqId` in app.ts) on the request
+ * span, so a trace can be found from a log line and vice versa. Only an
+ * instrumented app calls it; a telemetry-off app has no hook at all.
+ */
+export const stampRequestId = (span: Pick<Span, "setAttribute">, request: { id: string }): void => {
+  span.setAttribute("sin.request_id", request.id);
+};
+
+/**
+ * #120 — the dev-only `/metrics` server listens on `config.prometheusHost`
+ * (loopback unless overridden), never every interface. Its own start is
+ * awaited here, so a taken port is one clear metrics `warn` naming the
+ * address, not a diag error with no signal.
+ */
+export function startPrometheus(
+  metricsConfig: TelemetryConfig["metrics"],
+  report: (message: string, err: unknown) => void,
+): PrometheusExporter {
+  const { prometheusHost: host, prometheusPort: port } = metricsConfig;
+  const exporter = new PrometheusExporter({ host, port, endpoint: "/metrics", preventServerStart: true });
+  exporter.startServer().catch((err: unknown) => {
+    report(`Prometheus /metrics could not listen on ${host}:${port} (${exportErrorText(err)}); no metrics are served`, err);
+  });
+  return exporter;
+}
+
 export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps): TelemetryHandle | undefined {
   if (!config.enabled && !deps.spanExporter && !deps.metricReader) return undefined;
 
@@ -116,7 +184,7 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const reportedSpanErrors = new WeakSet<object>();
   setGlobalErrorHandler((err) => {
     if (typeof err === "object" && err !== null && reportedSpanErrors.has(err)) return;
-    reporter.report(err instanceof Error ? err.message : String(err), err);
+    reporter.report(exportErrorText(err), err);
   });
 
   const resource = resourceFromAttributes({
@@ -154,10 +222,13 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const reader: MetricReader | undefined =
     deps.metricReader ??
     (config.metrics.exporter === "prometheus"
-      ? new PrometheusExporter({ port: config.metrics.prometheusPort, endpoint: "/metrics" })
+      ? startPrometheus(config.metrics, (message, err) => reporter.report(message, err, "metrics"))
       : config.metrics.exporter === "otlp"
         ? new PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({ url: config.metrics.otlpUrl, headers: { ...config.otlpHeaders } }),
+            exporter: reportingMetricExporter(
+              new OTLPMetricExporter({ url: config.metrics.otlpUrl, headers: { ...config.otlpHeaders } }),
+              (message, err) => reporter.report(message, err, "metrics"),
+            ),
             exportIntervalMillis: config.metrics.exportIntervalMs,
           })
         : undefined);
@@ -176,6 +247,7 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
       new FastifyOtelInstrumentation({
         registerOnInitialization: true,
         ignorePaths: IGNORE_HOOKS.fastify,
+        requestHook: stampRequestId,
       }),
       new PrismaInstrumentation({
         ignoreSpanTypes: ["prisma:client:serialize", "prisma:engine:serialize", "prisma:engine:response_json_serialization"],

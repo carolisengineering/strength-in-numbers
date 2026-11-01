@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { Writable } from "node:stream";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   startTestTelemetry,
   stopTestTelemetry,
@@ -111,6 +113,30 @@ describe("AC6 (unit half) / AC7 — request spans carry only allowlisted attribu
       Object.fromEntries(Object.entries(a).filter(([k]) => k !== "server.address"));
     const dump = JSON.stringify(spans.map((s) => ({ a: withoutServerAddress(s.attributes), n: s.name, e: s.events })));
     for (const leak of ["127.0.0.1", "secret-agent", WORKOUT_ID, "x=1", "test-token"]) expect(dump).not.toContain(leak);
+  });
+});
+
+describe("#128 — the request id is stamped by @fastify/otel's requestHook", () => {
+  it("lands on the request span", async () => {
+    await fetch(`${base}/v1/workouts/${WORKOUT_ID}`, { headers: { ...BEARER, "x-request-id": "req-telemetry-128" } });
+    const request = h.spans.getFinishedSpans().find((s) => s.name === "request");
+    expect(request?.attributes["sin.request_id"]).toBe("req-telemetry-128");
+  });
+
+  it("a telemetry-off app has no hook for it (buildApp never names the attribute or the OTel API)", () => {
+    const appSource = readFileSync(fileURLToPath(new URL("../../../src/app.ts", import.meta.url)), "utf8");
+    expect(appSource).not.toMatch(/@opentelemetry|setAttribute\(/);
+  });
+});
+
+describe("#123 — no span is named with a plugin's source text", () => {
+  it("hook spans name the plugin or hook function", async () => {
+    await fetch(`${base}/v1/workouts/${WORKOUT_ID}`, { headers: BEARER });
+    await fetch(`${base}/v1/hevy/status`, { headers: BEARER }); // the Hevy scope's gate answers 404
+    const names = h.spans.getFinishedSpans().map((s) => s.name);
+    expect(names).toContain("onRequest - v1Scope -> auth");
+    expect(names).toContain("onRequest - hevyGate");
+    for (const name of names) expect(name, name).toMatch(/^[\w /:.>-]+$/);
   });
 });
 

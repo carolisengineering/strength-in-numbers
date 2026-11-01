@@ -5,7 +5,6 @@ import Fastify, {
 } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
-import { trace } from "@opentelemetry/api";
 import fastifySwagger from "@fastify/swagger";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
@@ -127,13 +126,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     ajv: { customOptions: { allErrors: true, removeAdditional: false } },
   });
 
-  // Spec 13.0 §7 — the per-request id (already in every log line: a valid client
-  // X-Request-Id, else a random UUID — genReqId above) on the
-  // active span, so a trace can be found from a log line and vice versa. No-op
-  // when telemetry is off (no active span).
-  app.addHook("onRequest", async (request) => {
-    trace.getActiveSpan()?.setAttribute("sin.request_id", request.id);
-  });
+  // Spec 13.0 §7: the request id reaches the request span through
+  // @fastify/otel's `requestHook` (telemetry/sdk.ts `stampRequestId`), so a
+  // telemetry-off app runs no hook for it (#128).
 
   // Treat an empty `application/json` body as "no body" rather than letting
   // Fastify's default parser throw `FST_ERR_CTP_EMPTY_JSON_BODY`. Clients that
@@ -270,9 +265,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
 
   registerErrorContract(app, { clientIpSource: config.clientIpSource });
 
-  // Everything under /v1 requires a valid token + a live user.
+  // Everything under /v1 requires a valid token + a live user. A named function:
+  // @fastify/otel names hook spans after the plugin, and an anonymous one's name
+  // is its source text (#123).
   await app.register(
-    async (v1) => {
+    async function v1Scope(v1) {
       registerErrorContract(v1, { clientIpSource: config.clientIpSource });
       // #17 / #18: every /v1 response's Cache-Control, in one place.
       registerV1CachePolicy(v1);
