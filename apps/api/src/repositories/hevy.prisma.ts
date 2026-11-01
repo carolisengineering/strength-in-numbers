@@ -298,6 +298,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         if (owned[0].ended_at === null) throw new HevyWorkoutNotFinishedError();
 
         const row = await linkRow(tx, userId, workoutId, true);
+        // A fresh claim is refused before the workout is read: a 409 does no work under the row lock.
+        if (row && row.claimed_at !== null && row.fresh) throw new HevySendInProgressError();
         // D29 (minors 139, 144): the fingerprint is read before the claim is written, so the claim stores it.
         const fingerprint = hevyFingerprint(fingerprintSourceOf((await readWorkoutDetail(tx, userId, workoutId))!));
         let begun: Omit<HevyLinkBeginRecord, "fingerprint">;
@@ -307,7 +309,6 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
             VALUES (gen_random_uuid(), ${userId}::uuid, ${workoutId}::uuid, 'sent', now(), ${fingerprint})`;
           begun = { mode: "create", hevyWorkoutId: null, staleClaim: false };
         } else {
-          if (row.claimed_at !== null && row.fresh) throw new HevySendInProgressError();
           const staleClaim = row.claimed_at !== null;
           if (row.hevy_workout_id === null || opts.relink) {
             // A claim-only row taken over, or a relink after the Hevy copy was deleted in Hevy (Spec 20.2 AC12).
@@ -350,6 +351,7 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         // older run's complete after a newer begin, or a client's own value: refused, the claim kept. A claim taken
         // before 0017's code has none stored and completes as before.
         if (row.claim_fingerprint !== null && row.claim_fingerprint !== body.fingerprint) throw new HevyNoClaimError();
+        // From here the body's fingerprint is the claim's own (or the claim predates 0017), so storing it stores the begin's.
         const holder = await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text FROM "hevy_link"
           WHERE user_id = ${userId}::uuid AND hevy_workout_id = ${body.hevyWorkoutId} AND id <> ${row.id}::uuid`;
@@ -357,8 +359,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
         try {
           await tx.$executeRaw`
             UPDATE "hevy_link"
-            SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = coalesce(claim_fingerprint, ${body.fingerprint}),
-                synced_at = now(), claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
+            SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = ${body.fingerprint}, synced_at = now(),
+                claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
             WHERE id = ${row.id}::uuid AND claimed_at IS NOT NULL`;
         } catch (err) {
           // §6.6: a racing complete that took the same Hevy id; named by its columns ($queryRaw has no constraint name).

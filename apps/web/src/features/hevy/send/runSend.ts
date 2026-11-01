@@ -22,9 +22,9 @@ import { HEVY_SEND_COPY, type SendNotice } from "./messages";
  * and offers a check. No Hevy write is ever retried by itself; only `complete` (a SIN call) is, three times.
  * React-free; never throws.
  *
- * D22 hold (minors 139, 144): the fingerprint is the begin's, sent back untouched and kept only in the outcome
- * (mutation state), so a server-held fingerprint or a claim token would change one call and the `retry-complete`
- * intent, and nothing else.
+ * The fingerprint is the begin's, sent back untouched and kept only in the outcome (mutation state). Since Spec 19.0
+ * D29 (minors 139, 144) the server also keeps it on the claim and refuses any other at complete (`hevy-no-claim`),
+ * so a follow-up must carry the begin's value, never one of its own.
  */
 
 /** §6.2: the waits before re-sending `complete` after a network failure, a `5xx` or a `429`. */

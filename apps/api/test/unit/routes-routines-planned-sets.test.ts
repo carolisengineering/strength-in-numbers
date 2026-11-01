@@ -70,10 +70,13 @@ describe("AC26 — counts only in routine log lines", () => {
     await app.inject({ method: "PUT", url: `/v1/routines/${id}`, headers: BEARER, payload: body });
     expect(lines.find((l) => l.msg === "routine_created")).toMatchObject({ planned_set_count: 2 });
     expect(lines.find((l) => l.msg === "routine_updated")).toMatchObject({ planned_set_count: 2 });
-    // Minor 293: a random request id may contain 4321 or 77 ("f2c25be1-4785-4321-…"); UUIDs aren't the payload.
+    // Minor 293: what varies per run isn't the payload: a random request id may contain 4321 ("f2c25be1-4785-4321-…"),
+    // and the timing, pid and clock fields may hold 77 ("responseTime":77.31). Only the rest is matched.
     const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-    expect("f2c25be1-4785-4321-a6fb-fadddff9465c".replace(UUID, "<uuid>")).not.toMatch(/4321/);
-    expect(JSON.stringify(lines).replace(UUID, "<uuid>")).not.toMatch(/distinctive-|4321|\b77\b/);
+    const payloadOnly = (ls: Record<string, unknown>[]) =>
+      JSON.stringify(ls.map(({ responseTime: _r, pid: _p, time: _t, ...rest }) => rest)).replace(UUID, "<uuid>");
+    expect(payloadOnly([{ reqId: "f2c25be1-4785-4321-a6fb-fadddff9465c", responseTime: 77.31, pid: 77, time: 1793538787989 }])).not.toMatch(/4321|\b77\b/);
+    expect(payloadOnly(lines)).not.toMatch(/distinctive-|4321|\b77\b/);
   });
 });
 
