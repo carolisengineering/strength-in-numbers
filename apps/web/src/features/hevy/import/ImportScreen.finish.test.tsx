@@ -137,6 +137,39 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
       status.answer(true);
       expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
     });
+
+    it("minor 274: a status entry reset after the re-read (its read count starts over) still brings the card back", async () => {
+      setup({ recordsStale: true });
+      let reads = 0;
+      server.use(
+        http.get(STATUS_URL, () => {
+          reads += 1;
+          return HttpResponse.json(statusBody(reads !== 2)); // stale, then fresh after the finish, then stale again
+        }),
+      );
+      const { user, queryClient } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      await waitFor(() => expect(reads).toBe(2));
+      expect(await screen.findByText("Records updated.")).toBeInTheDocument();
+      await act(() => queryClient.resetQueries({ queryKey: ["hevy", "status"] }));
+      expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+    });
+
+    it("minor 274: the device clock going back an hour before the re-read still brings the card back", async () => {
+      setup({ recordsStale: true });
+      const status = heldStatusReread();
+      const { user } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      await screen.findByText("Records updated.");
+      await waitFor(() => expect(status.reads()).toBe(2));
+      vi.setSystemTime(Date.now() - 60 * 60_000);
+      try {
+        status.answer(true);
+        expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("a failed finish says so and stays; Try again succeeds and the banner goes", async () => {

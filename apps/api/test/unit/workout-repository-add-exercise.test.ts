@@ -8,20 +8,20 @@ import { createWorkoutRepository } from "../../src/repositories/workout.prisma.j
 import { FakeExerciseRepository, makeExerciseRecord } from "../helpers/fakes.js";
 
 class ScriptedPrisma {
-  calls: { sql: string }[] = [];
+  calls: { sql: string; values: unknown[] }[] = [];
   private queryQueue: Array<() => unknown[]> = [];
   private execCount = 0;
   queueRows(rows: unknown[]): void {
     this.queryQueue.push(() => rows);
   }
-  $queryRaw = (strings: TemplateStringsArray): Promise<unknown[]> => {
-    this.calls.push({ sql: strings.join("?") });
+  $queryRaw = (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]> => {
+    this.calls.push({ sql: strings.join("?"), values });
     const next = this.queryQueue.shift();
     if (!next) throw new Error("ScriptedPrisma: no queued response for $queryRaw");
     return Promise.resolve(next());
   };
-  $executeRaw = (strings: TemplateStringsArray): Promise<number> => {
-    this.calls.push({ sql: strings.join("?") });
+  $executeRaw = (strings: TemplateStringsArray, ...values: unknown[]): Promise<number> => {
+    this.calls.push({ sql: strings.join("?"), values });
     this.execCount += 1;
     return Promise.resolve(this.execCount);
   };
@@ -277,5 +277,11 @@ describe("Minor 288 — a positioned add doesn't read the last section", () => {
     expect(stub.calls.some((c) => c.sql.includes("workout_section"))).toBe(false);
     expect(stub.calls.filter((c) => c.sql.includes("count(*)"))).toHaveLength(1);
     expect(stub.calls.some((c) => c.sql.includes("SET position = position + 1"))).toBe(true); // placed at 1, not appended
+    // Minor 291: the INSERT binds no section (section_id is the 8th bound value: id, workout, position,
+    // exercise, name, modality, notes, section).
+    const insert = stub.calls.find((c) => c.sql.includes('INSERT INTO "workout_exercise"'));
+    expect(insert!.sql).toMatch(/notes, section_id, created_at/);
+    expect(insert!.values).toHaveLength(8);
+    expect(insert!.values[7]).toBeNull();
   });
 });

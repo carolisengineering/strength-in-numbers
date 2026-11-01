@@ -139,8 +139,7 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
   const drops = new CodeCounter<HevyImportDropCode>(HEVY_IMPORT_DROP_CODES);
   const notices = new CodeCounter<HevyImportNoticeCode>(HEVY_IMPORT_NOTICE_CODES);
   const title = cleanLine(w.title, WORKOUT_TITLE_MAX);
-  // Minor 276: a cut that keeps nothing leaves no title, which is not a trimmed title.
-  if (title.cut && title.value !== null) notices.add("title_trimmed");
+  if (title.cut) notices.add("title_trimmed");
   const notes = cleanNotes(w.description, WORKOUT_NOTES_MAX);
   if (notes.cut) notices.add("notes_trimmed");
 

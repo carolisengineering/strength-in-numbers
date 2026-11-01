@@ -1,8 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { useSession } from "../../../auth/useSession";
+
 import { Button } from "../../../ui/Button";
 import { applyImportedCaches } from "../../records/cache";
+import { HEVY_KEYS } from "../keys";
 import { useHevyStatus } from "../useHevyStatus";
 import { finishImport } from "./finishImport";
 import { useHevyImportClient } from "./hevyImportClient";
@@ -18,26 +21,31 @@ import styles from "./ImportScreen.module.css";
  * Minor 241: "Records updated." goes into one polite status line that is always there (empty until a finish
  * succeeds, and visually hidden while empty so it adds no gap to the screen's column), so it is announced. After a
  * success the card stays hidden until the status has been read again since the finish; from then on `recordsStale`
- * alone decides (another run may have made the records stale again).
+ * alone decides (another run may have made the records stale again). Minor 274: "read again" is the status read's
+ * stamp (`dataUpdatedAt`) differing from the one at the finish. Inequality, never an ordering: a device clock can go
+ * backward, and a reset entry starts over, but any new read changes the stamp.
  */
 export function StaleRecordsBanner() {
   const status = useHevyStatus();
   const client = useHevyImportClient();
   const queryClient = useQueryClient();
+  const userId = useSession().user?.id ?? null;
   const [phase, setPhase] = useState<"idle" | "busy" | "failed" | "done">("idle");
-  const finishedAt = useRef(0);
+  /** The status read's stamp when the finish succeeded; null before any finish. */
+  const finishedStamp = useRef<number | null>(null);
 
   const finish = async () => {
     if (phase === "busy") return;
     setPhase("busy");
     if ((await finishImport(client)) === "failed") return setPhase("failed");
-    finishedAt.current = Date.now();
+    // Read now, not from the render that started the finish: a status read may have landed meanwhile.
+    finishedStamp.current = queryClient.getQueryState(HEVY_KEYS.status(userId))?.dataUpdatedAt ?? 0;
     setPhase("done");
     applyImportedCaches(queryClient);
   };
 
   const stale = status.data?.recordsStale === true;
-  const awaitingReread = phase === "done" && status.dataUpdatedAt <= finishedAt.current;
+  const awaitingReread = phase === "done" && status.dataUpdatedAt === finishedStamp.current;
   const showCard = stale && !awaitingReread;
   const line = phase === "done" && !showCard ? RECORDS_UPDATED : "";
   return (

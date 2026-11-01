@@ -16,7 +16,7 @@ import type {
   WorkoutDetail,
   WorkoutExercise,
 } from "@sin/core";
-import { ignoreNotFound } from "./errors";
+import { ignoreNotFound } from "../../api";
 import { emitWorkoutFinished } from "./finishEvents";
 import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";

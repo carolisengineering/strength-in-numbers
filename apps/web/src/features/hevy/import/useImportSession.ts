@@ -10,7 +10,7 @@ import { applyImportedCaches } from "../../records/cache";
 import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
 import { useHevyMapping } from "../mapping/useHevyMapping";
-import { fetchHevyTemplates } from "../mapping/useHevyTemplates";
+import { fetchHevyTemplates, type TemplatesRead } from "../mapping/useHevyTemplates";
 import { initialPairingCards, newPairingSaveRecord, savePairings } from "../pairing";
 import { useSavePairingsDeps } from "../pairing/useSavePairingsDeps";
 // Spec 20.1 D11 / D16 (owner ruling 2026-10-29): the one file in features/hevy that may use the routines list and create.
@@ -67,16 +67,16 @@ export function useImportSession() {
 
   const generation = useRef(state.generation);
   const controller = useRef<AbortController | null>(null);
-  /** Minors 231, 245: cancel the shared template read only while this import owns it (`fetchHevyTemplates`). */
-  const startedTemplates = useRef(false);
+  /** Minors 231, 245, 272: this import's latest template read; the shared read is canceled only while it owns it. */
+  const startedTemplates = useRef<Pick<TemplatesRead, "owned"> | null>(null);
   const stateRef = useRef<ImportState>(state);
   stateRef.current = state;
 
   const stopIo = useCallback(() => {
     controller.current?.abort();
     controller.current = null;
-    if (startedTemplates.current) void queryClient.cancelQueries({ queryKey: HEVY_KEYS.templates });
-    startedTemplates.current = false;
+    if (startedTemplates.current?.owned()) void queryClient.cancelQueries({ queryKey: HEVY_KEYS.templates });
+    startedTemplates.current = null;
   }, [queryClient]);
 
   useEffect(() => stopIo, [stopIo]);
@@ -95,7 +95,11 @@ export function useImportSession() {
       stopIo();
       const io = new AbortController();
       controller.current = io;
-      const templates = () => fetchHevyTemplates(queryClient, client, startedTemplates);
+      const templates = () => {
+        const handle = fetchHevyTemplates(queryClient, client);
+        startedTemplates.current = handle;
+        return handle.promise;
+      };
       readHevy(client, {
         signal: io.signal,
         templates,
@@ -226,6 +230,9 @@ export function useImportSession() {
       return [];
     });
     dispatch({ type: "checkStart", generation: gen, mapping: mapping.data, unreadable });
+    // Minor 273: these handlers clear `checking` before testing `aborted`; harmless while no control leaves the
+    // checking step mid-check (minor 246). If one is added, hold the run's AbortController in the ref and clear it
+    // only for its own run.
     runDryRun(importClient, workouts, { signal: io.signal, onProgress: (done, total) => dispatch({ type: "checkProgress", generation: gen, done, total }) }).then(
       (results) => {
         checking.current = false;

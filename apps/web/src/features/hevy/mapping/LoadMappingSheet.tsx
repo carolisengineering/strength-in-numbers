@@ -50,7 +50,7 @@ import {
 import { useHevyClient } from "../useHevyClient";
 import { applyRule, resolveLines, sectionRulesRemoved, willBeRemoved, willChange, type LeftOut, type ResolveNotice, type Resolved } from "./resolveLines";
 import { useTemplatesProgress } from "./templatesProgress";
-import { fetchHevyTemplates } from "./useHevyTemplates";
+import { fetchHevyTemplates, type TemplatesRead } from "./useHevyTemplates";
 import { classifyMappingError, mappingErrorMessage, useMappingMutations } from "./useMappingMutations";
 import styles from "./LoadMappingSheet.module.css";
 
@@ -94,12 +94,12 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   const noteId = useId();
   // Each file read has a number; Cancel, close and unmount move it on, so a late answer is ignored.
   const readId = useRef(0);
-  /** Minor 231: true only while a template fetch this sheet started is in flight (`fetchHevyTemplates`). */
-  const reading = useRef(false);
+  /** Minors 231, 272: this sheet's latest template read; it is canceled only while that read owns the fetch. */
+  const reading = useRef<Pick<TemplatesRead, "owned"> | null>(null);
   const stopRead = () => {
     readId.current += 1;
-    if (reading.current) void queryClient.cancelQueries({ queryKey: HEVY_KEYS.templates });
-    reading.current = false;
+    if (reading.current?.owned()) void queryClient.cancelQueries({ queryKey: HEVY_KEYS.templates });
+    reading.current = null;
   };
   // Minor 184: leaving the screen mid-read stops the paced Hevy reads.
   useEffect(() => () => stopRead(), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -138,7 +138,9 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
     let templates: HevyTemplate[];
     try {
       // Minor 191: the hook's read, so a cached or in-flight list is reused. Its progress is `useTemplatesProgress`.
-      templates = await fetchHevyTemplates(queryClient, client, reading);
+      const read = fetchHevyTemplates(queryClient, client);
+      reading.current = read;
+      templates = await read.promise;
     } catch (error) {
       if (id !== readId.current) return;
       // A cancel from elsewhere (a key change removes the cached list) goes back to Choose, never stuck on Reading.

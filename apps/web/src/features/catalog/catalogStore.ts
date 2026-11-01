@@ -8,7 +8,7 @@ import {
 import { z } from "zod";
 
 import type { ApiClient } from "../../api/client";
-import { ApiError } from "../../api/problem";
+import { isNotFound } from "../../api/notFound";
 import { reportError } from "../../observability/reportError";
 import { track } from "../../observability/track";
 import type { StorageAdapter } from "../../storage/storage";
@@ -310,7 +310,7 @@ export function createCatalogStore(deps: CatalogStoreDeps): CatalogStore {
       await api.delete(exercisePath(id));
     } catch (error) {
       // A 404 is "already gone" (Spec 18.2 AC50): drop the row now rather than wait for the refresh.
-      if (!(error instanceof ApiError && error.status === 404)) throw error;
+      if (!isNotFound(error)) throw error;
     }
     const row = state.rows.find((r) => r.id === id);
     if (row) {

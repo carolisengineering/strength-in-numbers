@@ -10,7 +10,7 @@ import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Screen } from "../../../ui/Screen";
 import { IMPORT_EDIT_PATH, IMPORT_PATH } from "../paths";
-import { cardNames, cardProblems, initialCards, keptSectionCount, nameKeyIndex, type CardProblem } from "./cards";
+import { cardNames, cardProblems, catalogIndex, initialCards, keptSectionCount, type CardProblem } from "./cards";
 import styles from "./ImportNames.module.css";
 import { useImportSession } from "./ImportSession";
 import { buildHandoff, indexRowsById } from "./handoff";
@@ -72,8 +72,8 @@ function NamesBody() {
 
   const cards = session.cards;
   // Minor 219: the catalog's name keys are built once per catalog, not on every keystroke.
-  const byKey = useMemo(() => nameKeyIndex(visible), [visible]);
-  const problems = useMemo(() => (cards ? cardProblems(cards, visible, byKey) : new Map<string, CardProblem>()), [cards, visible, byKey]);
+  const index = useMemo(() => catalogIndex(visible), [visible]);
+  const problems = useMemo(() => (cards ? cardProblems(cards, index) : new Map<string, CardProblem>()), [cards, index]);
   // Minor 59: the count builds the import plan, so it is computed once per read, not on every keystroke.
   const sectionCount = useMemo(() => keptSectionCount(read), [read]);
   // Minor 29: one lookup of the store's raw rows for every card (a chosen exercise is named even if it left `visible`).

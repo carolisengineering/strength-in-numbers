@@ -43,6 +43,7 @@
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "2.1.9",
+    "axe-core": "4.10.2",
     "eslint-plugin-react-hooks": "7.1.1",
     "firebase-tools": "15.34.1",
     "jsdom": "30.0.1",

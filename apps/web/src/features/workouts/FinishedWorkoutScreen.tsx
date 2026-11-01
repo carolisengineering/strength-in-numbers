@@ -67,11 +67,13 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
+  // Minors 235, 238: the load error is classified once, as on the edit screen. A gone workout is gone even with a
+  // cached copy.
+  const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
+  if (failure?.kind === "not-found") return <NotFound />;
   // Spec 18.0 (final review #1): a failed *refresh* keeps the cached workout on screen (the edit screen's re-reads on
   // focus make that common); only a failure with nothing cached replaces the summary.
-  if (detail.isError && (detail.data === undefined || classifyWorkoutError(detail.error).kind === "not-found")) {
-    const failure = classifyWorkoutError(detail.error, { op: "load-workout" });
-    if (failure.kind === "not-found") return <NotFound />;
+  if (failure !== null && detail.data === undefined) {
     return (
       <Screen title="Workout summary" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice

@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Routine } from "@sin/core";
-import { ApiError } from "../../api";
+import { isNotFound } from "../../api";
 import type { RoutineClient } from "./routineClient";
 
 export const ROUTINE_KEYS = {
@@ -61,7 +61,7 @@ export function useRoutine(id: string, options: { suspend?: boolean } = {}): Rou
   if (fromList) return { status: "found", routine: fromList };
   if (detail.data) return { status: "found", routine: detail.data };
   if (detail.isError) {
-    if (detail.error instanceof ApiError && detail.error.status === 404) return { status: "not-found" };
+    if (isNotFound(detail.error)) return { status: "not-found" };
     return { status: "error", error: detail.error, retry: () => void detail.refetch() };
   }
   return { status: "pending" };

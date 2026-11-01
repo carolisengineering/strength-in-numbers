@@ -20,7 +20,6 @@ import { makeRoutine, makeRoutineItem, makeWorkoutDetail } from "../../test/work
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { card, changeTimeButton, finishButton, logButton, restBetweenSets } from "../../test/sessionHelpers";
-import { DOUBLE_TAP_MS } from "./logAction";
 
 pinTimeZone("Europe/London");
 beforeEach(() => {
@@ -45,16 +44,6 @@ function boot() {
 }
 
 type App = ReturnType<typeof boot>;
-
-/**
- * Minor 202: the Log bar drops a tap within `DOUBLE_TAP_MS` of the last one by `Date.now()`, and this file fakes Date
- * with `shouldAdvanceTime`, which lags real time under a parallel run (a probe saw 580 ms of fake time over 654 ms
- * real). So the rest moves the fake clock past the window itself instead of trusting it to keep up.
- */
-async function restPastDoubleTap() {
-  await restBetweenSets();
-  vi.setSystemTime(Date.now() + DOUBLE_TAP_MS);
-}
 
 /** Change Time: two days back, 18:00, took 1 h. */
 async function backdate(user: App["user"]) {
@@ -108,7 +97,7 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
       await user.type(within(card("Bench Press")).getByLabelText("Reps"), "5");
       await user.click(logButton("Bench Press"));
       await within(card("Bench Press")).findByText(/60 kg × 5/);
-      await restPastDoubleTap();
+      await restBetweenSets(); // minors 202, 237: it moves this file's faked clock past the window
       await user.click(logButton("Bench Press"));
       await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });
@@ -127,7 +116,7 @@ describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
     await finishAndCheck(app, async () => {
       await user.click(logButton("Bench Press"));
       await within(card("Bench Press")).findByText(/60 kg × 5/);
-      await restPastDoubleTap();
+      await restBetweenSets(); // minors 202, 237: it moves this file's faked clock past the window
       await user.click(logButton("Bench Press"));
       await waitFor(() => expect(within(card("Bench Press")).getAllByText(/60 kg × 5/)).toHaveLength(2), { timeout: 5_000 });
     });

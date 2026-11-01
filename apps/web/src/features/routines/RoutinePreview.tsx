@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { Link, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Routine, RoutineItem } from "@sin/core";
-import { ApiError } from "../../api";
+import { isNotFound } from "../../api";
 import { BackLink } from "../../ui/BackLink";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -48,7 +48,7 @@ function RoutinePreview({ id }: { id: string }) {
   const remove = useDeleteRoutine();
   const keep = useKeepRoutine();
   // Spec 10.5 AC8: a Keep answered 404 means a finish removed the routine — show it gone.
-  const keepGone = keep.error instanceof ApiError && keep.error.status === 404;
+  const keepGone = isNotFound(keep.error);
   // While deleting / deleted the id is about to vanish: never fall back to a detail read for it (§6.4).
   const lookup = useRoutine(id, { suspend: remove.isPending || remove.isSuccess || keepGone });
   const error = lookup.status === "error" ? lookup.error : null;
@@ -139,16 +139,11 @@ export function RoutineItems({ routine }: { routine: Routine }) {
   );
 }
 
-function deleteMessage(failure: ClassifiedRoutineError): string {
-  if (failure.kind === "network") return OFFLINE_DELETE;
+/** Keep and Delete's one failure sentence (minor 52): offline, rate-limited, or the action's own fallback. */
+function failureMessage(failure: ClassifiedRoutineError, offline: string, fallback: string): string {
+  if (failure.kind === "network") return offline;
   if (failure.kind === "rate-limited") return RATE_LIMITED;
-  return DELETE_FAILED;
-}
-
-function keepMessage(failure: ClassifiedRoutineError): string {
-  if (failure.kind === "network") return OFFLINE_KEEP;
-  if (failure.kind === "rate-limited") return RATE_LIMITED;
-  return KEEP_FAILED;
+  return fallback;
 }
 
 function PreviewBody({
@@ -308,24 +303,19 @@ function PreviewBody({
       ) : null}
       {deleteFailure ? (
         <InlineNotice tone="error" requestId={deleteFailure.kind === "network" ? null : deleteFailure.requestId}>
-          {deleteMessage(deleteFailure)}
+          {failureMessage(deleteFailure, OFFLINE_DELETE, DELETE_FAILED)}
         </InlineNotice>
       ) : null}
       {keepFailure ? (
-        keepFailure.kind === "network" || keepFailure.kind === "rate-limited" ? (
-          <InlineNotice tone="error" requestId={keepFailure.kind === "network" ? null : keepFailure.requestId}>
-            {keepMessage(keepFailure)}
-          </InlineNotice>
-        ) : (
-          <InlineNotice
-            tone="error"
-            requestId={keepFailure.requestId}
-            actionLabel="Retry"
-            onAction={() => void onKeep()}
-          >
-            {keepMessage(keepFailure)}
-          </InlineNotice>
-        )
+        <InlineNotice
+          tone="error"
+          requestId={keepFailure.kind === "network" ? null : keepFailure.requestId}
+          {...(keepFailure.kind === "network" || keepFailure.kind === "rate-limited"
+            ? {}
+            : { actionLabel: "Retry", onAction: () => void onKeep() })}
+        >
+          {failureMessage(keepFailure, OFFLINE_KEEP, KEEP_FAILED)}
+        </InlineNotice>
       ) : null}
       {routine.notes ? <p className={styles.notes}>{routine.notes}</p> : null}
       <RoutineItems routine={routine} />

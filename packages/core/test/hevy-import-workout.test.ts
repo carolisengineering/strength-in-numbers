@@ -105,6 +105,12 @@ describe("19.1 AC4 — stored exercises", () => {
     expect([t.workout.notes!.length, count(t.notices, "notes_trimmed")]).toEqual([4000, 1]);
   });
 
+  it("minor 289: a description or exercise note the cut keeps nothing of is null, with no notes_trimmed", () => {
+    const one = `H${"\u0301".repeat(4001)}`;
+    const t = created(translateHevyWorkout(hworkout([hex("BENCH", bench().sets, { notes: one })], { description: one }), ctx));
+    expect([t.workout.notes, t.workout.exercises[0]!.notes, count(t.notices, "notes_trimmed")]).toEqual([null, null, 0]);
+  });
+
   it("the times, local date and offset are the request's", () => {
     const t = created(translateHevyWorkout(hworkout([bench()], { startTime: "2026-10-01T03:30:00Z", tzOffsetMinutes: -300 }), ctx));
     expect([t.workout.startedAt, t.workout.endedAt, t.workout.localDate, t.workout.tzOffsetMinutes]).toEqual([

@@ -1,5 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
+import { vi } from "vitest";
+
+import { DOUBLE_TAP_MS } from "../features/workouts/logAction";
 
 /**
  * Session-screen selectors shared by every test file (Spec 17.1). A later task that moves a control changes the
@@ -52,8 +55,18 @@ export function cardNames(): string[] {
   });
 }
 
-/** A same-values tap within the 600 ms double-tap window is the same tap (Spec 06.2, 17.1): a real next set comes later. */
-export const restBetweenSets = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 650));
+/**
+ * A same-values tap within the 600 ms double-tap window is the same tap (Spec 06.2, 17.1): a real next set comes later.
+ *
+ * Minors 202, 237: the Log bar drops a tap within `DOUBLE_TAP_MS` of the last one by `Date.now()`. A test that fakes
+ * Date (frozen, or `shouldAdvanceTime`, which lags real time under a parallel run: a probe saw 580 ms of fake time over
+ * 654 ms real) would not see the window pass, so with fake timers the rest advances the fake clock itself, by more than
+ * the window. That never waits on `setTimeout`, which may be faked too. Real-timer callers just wait.
+ */
+export async function restBetweenSets(): Promise<void> {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(DOUBLE_TAP_MS + 50);
+  else await new Promise((resolve) => setTimeout(resolve, 650));
+}
 
 /** Spec 17.1 AC23: Set type and the unit selects sit under "Set options" in the current-set panel. */
 export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promise<void> {

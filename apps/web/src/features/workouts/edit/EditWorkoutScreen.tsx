@@ -95,7 +95,8 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
 
   const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
 
-  const gone = detail.isError && isWorkoutGone(detail.error);
+  // Minor 235: gone comes from the one classification above.
+  const gone = failure?.kind === "not-found";
   if (vanished || (gone && detail.data !== undefined)) {
     return (
       <Screen title="Edit workout">
