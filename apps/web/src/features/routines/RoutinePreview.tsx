@@ -140,7 +140,7 @@ export function RoutineItems({ routine }: { routine: Routine }) {
 }
 
 /** Keep and Delete's one failure sentence (minor 52): offline, rate-limited, or the action's own fallback. */
-function failureMessage(failure: { kind: string }, offline: string, fallback: string): string {
+function failureMessage(failure: ClassifiedRoutineError, offline: string, fallback: string): string {
   if (failure.kind === "network") return offline;
   if (failure.kind === "rate-limited") return RATE_LIMITED;
   return fallback;

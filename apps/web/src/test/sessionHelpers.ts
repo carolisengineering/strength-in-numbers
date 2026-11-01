@@ -60,12 +60,12 @@ export function cardNames(): string[] {
  *
  * Minors 202, 237: the Log bar drops a tap within `DOUBLE_TAP_MS` of the last one by `Date.now()`. A test that fakes
  * Date (frozen, or `shouldAdvanceTime`, which lags real time under a parallel run: a probe saw 580 ms of fake time over
- * 654 ms real) would not see the window pass, so with fake timers the rest also moves the clock past it. Real-timer
- * callers just wait.
+ * 654 ms real) would not see the window pass, so with fake timers the rest advances the fake clock itself, by more than
+ * the window. That never waits on `setTimeout`, which may be faked too. Real-timer callers just wait.
  */
 export async function restBetweenSets(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 650));
-  if (vi.isFakeTimers()) vi.setSystemTime(Date.now() + DOUBLE_TAP_MS);
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(DOUBLE_TAP_MS + 50);
+  else await new Promise((resolve) => setTimeout(resolve, 650));
 }
 
 /** Spec 17.1 AC23: Set type and the unit selects sit under "Set options" in the current-set panel. */

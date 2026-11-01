@@ -14,7 +14,7 @@ import { useMe } from "../me/useMe";
 import { HevyDeleteNote, HevyWorkoutSection } from "../hevy/send";
 import { PersonalRecordsBlock } from "../records/PersonalRecordsBlock";
 import { SupersetBracket } from "../routines/SupersetBracket";
-import { classifyWorkoutError, isWorkoutGone } from "./errors";
+import { classifyWorkoutError } from "./errors";
 import { formatLocalDate } from "./format";
 import { finishStatsFor } from "./finishStats";
 import { FinishStats } from "./FinishStatsList";
@@ -67,12 +67,13 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
-  // A gone workout is gone even with a cached copy (minor 238: the edit screen's rule, `isWorkoutGone`).
-  if (detail.isError && isWorkoutGone(detail.error)) return <NotFound />;
+  // Minors 235, 238: the load error is classified once, as on the edit screen. A gone workout is gone even with a
+  // cached copy.
+  const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
+  if (failure?.kind === "not-found") return <NotFound />;
   // Spec 18.0 (final review #1): a failed *refresh* keeps the cached workout on screen (the edit screen's re-reads on
   // focus make that common); only a failure with nothing cached replaces the summary.
-  if (detail.isError && detail.data === undefined) {
-    const failure = classifyWorkoutError(detail.error, { op: "load-workout" });
+  if (failure !== null && detail.data === undefined) {
     return (
       <Screen title="Workout summary" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice

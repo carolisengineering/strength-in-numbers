@@ -15,6 +15,13 @@ describe("Minor 237 — restBetweenSets clears the double-tap window", () => {
     expect(Date.now() - before).toBeGreaterThanOrEqual(DOUBLE_TAP_MS);
   });
 
+  it("with setTimeout faked too (the default fake timers), it still finishes and moves the clock", async () => {
+    vi.useFakeTimers();
+    const before = Date.now();
+    await restBetweenSets();
+    expect(Date.now() - before).toBeGreaterThanOrEqual(DOUBLE_TAP_MS);
+  }, 2_000);
+
   it("with real timers, it just waits about 650 ms", async () => {
     const before = Date.now();
     await restBetweenSets();
