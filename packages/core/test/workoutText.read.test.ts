@@ -578,13 +578,20 @@ describe("10.4 AC67 / minor 280 — a line that is only for time is the run's no
     expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]);
     expect(r.sections[0]!.notes).toBe("for time");
   });
-  it.each(["For Time", "for time:", "FOR TIME:", "- for time", "• For time"])("%s is the same", (line) =>
+  it.each(["For Time", "for time:", "FOR TIME:", "- for time", "• For time", "For Time.", "For time!", "For Time :"])("%s is the same", (line) =>
     expect(read(["Metcon", "3 Rounds", line, "10 Squats"]).items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]));
   it("final review: For Time: after the run's movements heads a new block and closes the run, as before", () => {
     const r = read(["Metcon", "5 Rounds", "10 Squats", "10 Push-ups", "For Time:", "1 Mile Run"]);
     expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
       ["Squats", 5],
       ["Push-ups", 5],
+      ["1 Mile Run", null],
+    ]);
+  });
+  it("code review: For Time : (a space before the colon) after the run's movements closes the run like For Time:", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "For Time :", "1 Mile Run"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
+      ["Squats", 5],
       ["1 Mile Run", null],
     ]);
   });

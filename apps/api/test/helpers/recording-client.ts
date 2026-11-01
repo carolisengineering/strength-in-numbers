@@ -5,7 +5,8 @@ type Tagged = (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
 /**
  * The real client, with every `$queryRaw` and `$executeRaw` run inside `$transaction` recorded (its SQL text, in
  * order) on its way through. Everything else passes through unchanged. For tests that pin a statement's shape or
- * order against a real database (minors 207, 286).
+ * order against a real database (minors 207, 286). Only the interactive `$transaction(fn)` form is wrapped, and the
+ * `Unsafe` raw calls are not recorded: a test of code that uses either needs this helper extended first.
  */
 export function recordingClient(prisma: PrismaClient): { client: PrismaClient; seen: string[] } {
   const seen: string[] = [];

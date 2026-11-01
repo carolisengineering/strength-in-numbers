@@ -71,8 +71,11 @@ interface Candidate {
  * UTF-16 units without splitting a pair; empty is "Hevy routine"). The import screen's duplicate-name check keys on this, lowercased.
  */
 export function hevyRoutineName(title: string | null): string {
-  return cleanLine(title, ROUTINE_NAME_MAX).value ?? BLANK_ROUTINE_NAME;
+  return routineNameOf(cleanLine(title, ROUTINE_NAME_MAX));
 }
+
+/** The one fallback rule (minor 275): the cleaned title, or "Hevy routine" when nothing is left. */
+const routineNameOf = (cleaned: { value: string | null }): string => cleaned.value ?? BLANK_ROUTINE_NAME;
 
 /**
  * Spec 19.1 AC11: a Hevy routine as a `POST /v1/routines` body in the `sets` form, or why not. Placeholders become
@@ -148,8 +151,8 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
     };
   });
 
-  // Minor 275: the title is cleaned once, above; `hevyRoutineName` is the same rule for the import screen.
-  const input: RoutineWrite = { name: name.value ?? BLANK_ROUTINE_NAME, items };
+  // Minor 275: the title is cleaned once, above; `hevyRoutineName` applies the same `routineNameOf` for the import screen.
+  const input: RoutineWrite = { name: routineNameOf(name), items };
   if (sections.length > 0) input.sections = sections;
   return { ok: true, input, notices: notices.list() };
 }

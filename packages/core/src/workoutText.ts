@@ -501,7 +501,7 @@ const FOR_TIME = /(?:,\s*|\s+)(for time)$/i;
 /** Minor 283: a scheme or lead-in may also end in a colon ("21-15-9 For Time:", "3 Rounds For Time:"). */
 const FOR_TIME_HEAD = /(?:,\s*|\s+)(for time):?$/i;
 /** Minor 280 (AC67): a line that is only "for time" (after any bullet) under an open run is the run's note (step 7). */
-const BARE_FOR_TIME = /^for time:?$/i;
+const BARE_FOR_TIME = /^for time\s*[:.!]?$/i; // OCR may add a space or a period (code review)
 /** A trailing "for time" (after a space or a comma, with or without a space) off `text`. */
 function takeForTime(text: string, pattern: RegExp = FOR_TIME): { text: string; forTime: string | null } {
   const m = pattern.exec(text);
