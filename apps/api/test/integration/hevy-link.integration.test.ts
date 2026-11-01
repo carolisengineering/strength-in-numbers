@@ -298,6 +298,91 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
     });
   });
 
+  describe("19.0 AC28 / minors 139, 144 — complete checks the begin's fingerprint (D29)", () => {
+    const fpOf = async (w: string, payload?: object) => ((await begin(w, payload)).json() as { fingerprint: string }).fingerprint;
+    const linkCols = async (w: string) =>
+      (
+        await db.prisma.$queryRawUnsafe<{ claimed: boolean; claim_fingerprint: string | null; synced_fingerprint: string | null }[]>(
+          `SELECT claimed_at IS NOT NULL AS claimed, claim_fingerprint, synced_fingerprint FROM hevy_link WHERE workout_id = $1::uuid`,
+          w,
+        )
+      )[0]!;
+
+    it("144: a well-formed fingerprint that isn't the begin's is hevy-no-claim, and the claim stays", async () => {
+      const { workoutId } = await finished();
+      await begin(workoutId);
+      const res = await complete(workoutId, "H1", `v1:${"b".repeat(64)}`);
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ type: expect.stringContaining("hevy-no-claim") });
+      expect((await state(workoutId)).state).toBe("sending");
+      expect((await linkCols(workoutId)).claimed).toBe(true);
+    });
+
+    it("139: an old run's late complete can't clear a newer update's claim after an edit", async () => {
+      const w = await finished();
+      const fpA = await fpOf(w.workoutId);
+      expect((await complete(w.workoutId, "H1", fpA)).statusCode).toBe(200);
+      await app.inject({ method: "PATCH", url: `/v1/sets/${w.setIds[0]}`, headers: A, payload: { weight: 62.5 } });
+      const fpB = await fpOf(w.workoutId);
+      expect(fpB).not.toBe(fpA);
+      const late = await complete(w.workoutId, "H1", fpA);
+      expect(late.statusCode).toBe(409);
+      expect(late.json()).toMatchObject({ type: expect.stringContaining("hevy-no-claim") });
+      expect((await linkCols(w.workoutId)).claimed).toBe(true);
+      const own = await complete(w.workoutId, "H1", fpB);
+      expect(own.statusCode).toBe(200);
+      expect(own.json()).toMatchObject({ state: "sent", hevyWorkoutId: "H1" });
+    });
+
+    it("144: complete stores the begin's fingerprint and clears the stored one", async () => {
+      const { workoutId } = await finished();
+      const fp = await fpOf(workoutId);
+      await complete(workoutId, "H1", fp);
+      expect(await linkCols(workoutId)).toEqual({ claimed: false, claim_fingerprint: null, synced_fingerprint: fp });
+    });
+
+    it("every claim path stores its begin's fingerprint; release clears it", async () => {
+      const { workoutId: w1 } = await finished();
+      const first = await fpOf(w1);
+      expect((await linkCols(w1)).claim_fingerprint).toBe(first);
+      await age(w1);
+      const takeover = await fpOf(w1);
+      expect((await linkCols(w1)).claim_fingerprint).toBe(takeover);
+      await release(w1);
+      const { workoutId: w2 } = await finished();
+      await send(w2, "H2");
+      const update = await fpOf(w2);
+      expect((await linkCols(w2)).claim_fingerprint).toBe(update);
+      await release(w2);
+      expect((await linkCols(w2)).claim_fingerprint).toBeNull();
+      const relink = await fpOf(w2, { relink: true });
+      expect((await linkCols(w2)).claim_fingerprint).toBe(relink);
+    });
+
+    it("Review Focus 1: with the workout unchanged, an old run's replay is accepted and the newer run's complete replays", async () => {
+      const { workoutId } = await finished();
+      const fpA = await fpOf(workoutId);
+      await complete(workoutId, "H1", fpA);
+      const fpB = await fpOf(workoutId);
+      expect(fpB).toBe(fpA);
+      const late = await complete(workoutId, "H1", fpA);
+      expect(late.statusCode).toBe(200);
+      expect(late.json()).toMatchObject({ state: "sent", hevyWorkoutId: "H1" });
+      const own = await complete(workoutId, "H1", fpB);
+      expect(own.statusCode).toBe(200);
+      expect(own.json()).toEqual(late.json());
+    });
+
+    it("Review Focus 2: a claim with no stored fingerprint (taken before 0017) completes as before, storing the body's", async () => {
+      const { workoutId } = await finished();
+      await begin(workoutId);
+      await db.prisma.$executeRawUnsafe(`UPDATE hevy_link SET claim_fingerprint = NULL WHERE workout_id = $1::uuid`, workoutId);
+      const body = `v1:${"c".repeat(64)}`;
+      expect((await complete(workoutId, "H1", body)).statusCode).toBe(200);
+      expect((await linkCols(workoutId)).synced_fingerprint).toBe(body);
+    });
+  });
+
   describe("19.0 AC29 — changed since sent", () => {
     type Edit = (w: Awaited<ReturnType<typeof finished>>) => Promise<{ statusCode: number }>;
     const changes: [string, Edit][] = [

@@ -51,6 +51,7 @@ describe("20.2 AC15 — notice sentences", () => {
       "Sections 'Warm-up' and 'Finisher' had no marker exercise, so their notes went on the first exercise.",
     ],
     [{ code: "left_out" as const, name: "Echo Bike" }, "Echo Bike was left out."],
+    [{ code: "earlier_copy" as const }, "An earlier copy is still in Hevy; delete it there."],
   ])("%j", (notice, sentence) => {
     expect(noticeSentence(notice)).toBe(sentence);
   });

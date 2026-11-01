@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -136,6 +140,47 @@ describe("20.1 AC22 — the Hevy screen's stale-records banner", () => {
       await waitFor(() => expect(status.reads()).toBe(2));
       status.answer(true);
       expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+    });
+
+    it("minor 295: with the clock frozen (every read stamped the same millisecond), a stale re-read brings the card back", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-01T12:00:00Z") });
+      try {
+        const imports = setup({ recordsStale: true });
+        let reads = 0;
+        server.use(
+          http.get(STATUS_URL, () => {
+            reads += 1;
+            return HttpResponse.json(statusBody(true));
+          }),
+        );
+        const { user } = renderApp(HEVY_PATH);
+        await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+        await waitFor(() => expect(finishes(imports)).toHaveLength(1));
+        await waitFor(() => expect(reads).toBeGreaterThanOrEqual(2));
+        await waitFor(() => expect(screen.getByRole("button", { name: "Finish the last step" })).toBeEnabled());
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("Review Focus 5: a re-read that fails shows the cached status, so Finish is offered again", async () => {
+      setup({ recordsStale: true });
+      let reads = 0;
+      server.use(
+        http.get(STATUS_URL, () => {
+          reads += 1;
+          return reads === 1 ? HttpResponse.json(statusBody(true)) : HttpResponse.error();
+        }),
+      );
+      const { user } = renderApp(HEVY_PATH);
+      await user.click(await screen.findByRole("button", { name: "Finish the last step" }));
+      expect(await screen.findByRole("button", { name: "Finish the last step" })).toBeEnabled();
+      expect(reads).toBeGreaterThanOrEqual(2);
+    });
+
+    it("minor 294: the banner names no status key of its own", () => {
+      const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "StaleRecordsBanner.tsx"), "utf8");
+      expect(source).not.toMatch(/HEVY_KEYS|useSession/);
     });
 
     it("minor 274: a status entry reset after the re-read (its read count starts over) still brings the card back", async () => {

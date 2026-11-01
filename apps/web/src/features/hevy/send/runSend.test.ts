@@ -336,12 +336,18 @@ describe("20.2 — a deleted workout", () => {
 });
 
 describe("20.2 Review Focus 3 — a workout with no title", () => {
-  it("the scan compares against the built title (the routine name), not detail.title", async () => {
-    const h = harness({ detail: sendFixture({ title: null, routineName: "Leg Day" }).detail });
+  it("the scan's tiebreak compares against the built title (the routine name), not detail.title (minor 262)", async () => {
+    const detail = sendFixture({ title: null, routineName: "Leg Day" }).detail;
+    // The copy Hevy would hold for this workout, made by a send on its own harness.
+    const maker = harness({ detail });
+    await maker.run({ kind: "send" });
+    const made = [...maker.hevy.store.values()][0]!;
+    const h = harness({ detail });
     h.link.claim(WORKOUT_ID, 5 * 60_000);
-    await h.hevy.client.createWorkout({ workout: { title: "Leg Day", description: null, start_time: "2026-10-24T17:05:00+00:00", end_time: "2026-10-24T18:10:00Z", is_private: true, exercises: [] } } as never);
-    h.hevy.calls.length = 0;
+    h.hevy.store.set("other", { ...made, id: "other", title: "Other" });
+    h.hevy.store.set("leg", { ...made, id: "leg", title: "Leg Day" });
     expect(await h.run({ kind: "send" })).toMatchObject({ kind: "done", foundExisting: true });
+    expect(h.link.rows.get(WORKOUT_ID)?.hevyWorkoutId).toBe("leg");
   });
 });
 
@@ -452,6 +458,24 @@ describe("minor 257 — a claim lost after Hevy took the write", () => {
     h.hevy.store.set("h9", { id: "h9", title: "x", start_time: "2026-10-24T17:05:00Z", end_time: "2026-10-24T18:00:00Z", exercises: [] });
     expect(await h.run({ kind: "reclaim", hevyWorkoutId: id })).toMatchObject({ kind: "done" });
     expect(h.hevy.calls).toMatchObject([{ op: "update", id: "h9" }]);
+  });
+
+  it("20.2 D25 / minor 270: that run says the earlier copy is still in Hevy; no POST", async () => {
+    const { h, id } = await lost();
+    h.link.link(WORKOUT_ID, "h9", "sent", "v1:old");
+    h.hevy.store.set("h9", { id: "h9", title: "x", start_time: "2026-10-24T17:05:00Z", end_time: "2026-10-24T18:00:00Z", exercises: [] });
+    const outcome = await h.run({ kind: "reclaim", hevyWorkoutId: id });
+    expect(outcome).toMatchObject({ kind: "done" });
+    expect((outcome as Extract<SendOutcome, { kind: "done" }>).notices).toContainEqual({ code: "earlier_copy" });
+    expect(h.hevy.calls.map((c) => [c.op, c.id])).toEqual([["update", "h9"]]);
+  });
+
+  it("minor 270: a reclaim that updates its own copy carries no earlier-copy notice", async () => {
+    const { h, id } = await lost();
+    h.link.link(WORKOUT_ID, id, "sent", "v1:old");
+    const outcome = await h.run({ kind: "reclaim", hevyWorkoutId: id });
+    expect(outcome).toMatchObject({ kind: "done" });
+    expect((outcome as Extract<SendOutcome, { kind: "done" }>).notices).not.toContainEqual({ code: "earlier_copy" });
   });
 });
 

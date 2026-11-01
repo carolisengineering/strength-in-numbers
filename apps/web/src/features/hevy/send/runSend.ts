@@ -13,7 +13,7 @@ import { ApiError } from "../../../api";
 import type { ApiClient } from "../../../api/client";
 import type { HevyClient } from "../client/hevyClient";
 import { HevyError, type HevyErrorKind } from "../client/hevyErrors";
-import { findHevyCopy } from "./findHevyCopy";
+import { findHevyCopy, withSets } from "./findHevyCopy";
 import { HEVY_SEND_COPY, type SendNotice } from "./messages";
 
 /**
@@ -22,9 +22,9 @@ import { HEVY_SEND_COPY, type SendNotice } from "./messages";
  * and offers a check. No Hevy write is ever retried by itself; only `complete` (a SIN call) is, three times.
  * React-free; never throws.
  *
- * D22 hold (minors 139, 144): the fingerprint is the begin's, sent back untouched and kept only in the outcome
- * (mutation state), so a server-held fingerprint or a claim token would change one call and the `retry-complete`
- * intent, and nothing else.
+ * The fingerprint is the begin's, sent back untouched and kept only in the outcome (mutation state). Since Spec 19.0
+ * D29 (minors 139, 144) the server also keeps it on the claim and refuses any other at complete (`hevy-no-claim`),
+ * so a follow-up must carry the begin's value, never one of its own.
  */
 
 /** §6.2: the waits before re-sending `complete` after a network failure, a `5xx` or a `429`. */
@@ -195,7 +195,11 @@ async function sendOnce(intent: SendIntent, deps: SendDeps): Promise<SendOutcome
   // whatever was tapped (an Update can meet a stale claim-only row); a relink means the old copy is gone.
   if (begin.mode === "create" && begin.staleClaim && intent.kind !== "relink") return check(deps, built, begin.fingerprint, true);
 
-  return write(deps, built, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint });
+  // D25 / minor 270 (owner decision 2026-11-01): another device linked its own copy before this reclaim, so that copy
+  // is updated and the one this run made stays in Hevy, unlinked (Hevy's API can't delete it). Say so when it's done.
+  const leftBehind = intent.kind === "reclaim" && begin.mode === "update" && begin.hevyWorkoutId !== intent.hevyWorkoutId;
+  const sent = leftBehind ? { ...built, notices: [...built.notices, { code: "earlier_copy" as const }] } : built;
+  return write(deps, sent, { mode: begin.mode, hevyWorkoutId: begin.hevyWorkoutId, fingerprint: begin.fingerprint });
 }
 
 async function build(deps: SendDeps): Promise<Built | { unmapped: UnmappedExercise[] }> {
@@ -218,7 +222,8 @@ async function build(deps: SendDeps): Promise<Built | { unmapped: UnmappedExerci
 async function check(deps: SendDeps, built: Built, fingerprint: string, sendIfAbsent = false): Promise<SendOutcome> {
   let found: Awaited<ReturnType<typeof findHevyCopy>>;
   try {
-    found = await findHevyCopy(deps.hevy, { startTime: built.body.workout.start_time, title: built.body.workout.title });
+    const workout = built.body.workout;
+    found = await findHevyCopy(deps.hevy, { startTime: workout.start_time, title: workout.title, exercisesWithSets: withSets(workout.exercises) });
   } catch (err) {
     if (reportable(err)) deps.report("find-copy", err);
     return { kind: "inconclusive", fingerprint };
