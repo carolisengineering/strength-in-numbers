@@ -497,10 +497,12 @@ function splitLoad(text: string): { text: string; load: string | null } {
   return at < 0 ? { text, load: null } : { text: text.slice(0, at).trim(), load: text.slice(at + 1).trim() };
 }
 /** Minors 108, 215: "1 Mile Run for time" names the run; "for time" is how it is scored, so it goes to the note. */
-const FOR_TIME = /,?\s+(for time)$/i;
-/** A trailing "for time" (with a comma before it, if any) off `text`. */
-function takeForTime(text: string): { text: string; forTime: string | null } {
-  const m = FOR_TIME.exec(text);
+const FOR_TIME = /(?:,\s*|\s+)(for time)$/i;
+/** Minor 283: a scheme or lead-in may also end in a colon ("21-15-9 For Time:", "3 Rounds For Time:"). */
+const FOR_TIME_HEAD = /(?:,\s*|\s+)(for time):?$/i;
+/** A trailing "for time" (after a space or a comma, with or without a space) off `text`. */
+function takeForTime(text: string, pattern: RegExp = FOR_TIME): { text: string; forTime: string | null } {
+  const m = pattern.exec(text);
   return m ? { text: text.slice(0, m.index), forTime: m[1]! } : { text, forTime: null };
 }
 /**
@@ -649,29 +651,36 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "set-line";
   }
 
+  // Minor 283 (owner ruling 2026-10-31): a scheme or lead-in may end in "for time" ("21-15-9 for time", "3 Rounds for
+  // time"). It opens its run as it would without it, and the line stays in the note, so how it is scored is kept.
+  const timed = takeForTime(line, FOR_TIME_HEAD);
+  const head = timed.text;
+  const scored = timed.forTime !== null;
+
   // 4. A scheme opens a run (AC8).
-  if (SCHEME.test(line)) {
-    const reps = line.split(/\s*[-–]\s*/).map(Number);
+  if (SCHEME.test(head)) {
+    const reps = head.split(/\s*[-–]\s*/).map(Number);
     s.run = { id: ++s.runs, kind: "scheme", reps, text: reps.join("-") };
-    return "scheme";
+    return scored ? "note" : "scheme";
   }
 
   // 5. A lead-in opens a run of N sets (AC9); "N Sets, 1 Set Every M:SS" also stays in the note (AC48).
+  // AC48 reads the line as written: "3 Sets, for time" is "N Sets, …" and keeps coaching text out of the exercises.
   const every = LEAD_IN_SETS_EVERY.exec(line);
   if (every && Number(every[1]) >= 1) {
     s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
     return "note";
   }
   // AC61: "3-4 Sets" opens a run of the low end and stays in the note, so the range is not lost.
-  const range = LEAD_IN_RANGE.exec(line);
+  const range = LEAD_IN_RANGE.exec(head);
   if (range && Number(range[1]) >= 1 && Number(range[1]) <= Number(range[2])) {
     s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]) };
     return "note";
   }
-  const n = leadInCount(line);
+  const n = leadInCount(head);
   if (n !== null) {
     s.run = { id: ++s.runs, kind: "lead-in", n };
-    return "lead-in";
+    return scored ? "note" : "lead-in";
   }
 
   // 6. A separator closes the open run.
@@ -688,8 +697,9 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     const forTimeNote = forTime === null ? [] : [forTime];
-    // Final review of minor 215: a line that only reads as structure once its "for time" is off ("21-15-9 for time",
-    // "Rounds for time") is the run's note and keeps it open, so the movements after it keep their sets.
+    // Final review of minor 215: a line that only reads as structure once its "for time" is off ("Rounds for time",
+    // with no count) is the run's note and keeps it open. A scheme or lead-in with "for time" ("21-15-9 for time",
+    // "3 Rounds for time") never gets here: steps 4–5 open its run (minor 283).
     // Code review: AC8's movement test counts the words as written, "for time" included, so a cue sentence that ends in
     // it ("Finish with a 1 mile run for time") stays a note and closes the run, as before minor 215. An "A + B" line is
     // tested part by part below (AC51), as before.
@@ -700,7 +710,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     if (WORK_REST.test(raw) || raw.endsWith(",") || isRestLine(raw) || RX_LINE.test(raw) || PARENTHESIZED.test(raw)) return "note";
     // AC51: "A + B" with a rep form on every side is one exercise per side; a load belongs to the last side.
     // A part's own "for time" ("10 Squats for time + 10 Burpees") is that part's note; the line's goes to every part.
-    const parts = raw.split(PLUS).map(takeForTime);
+    const parts = raw.split(PLUS).map((part) => takeForTime(part));
     if (parts.length > 1 && parts.every((p) => isMovementText(p.text) && repFormOf(p.text) !== null)) {
       const run = s.run;
       parts.forEach((part, i) =>
@@ -803,7 +813,7 @@ function countedLineOf(line: string, s: ReadState): boolean {
   const { text, load, forTime } = splitMovement(line.replace(TRAILING_PLUS, ""));
   if (text.endsWith(",") || WORK_REST.test(text) || isRestLine(text) || RX_LINE.test(text) || PARENTHESIZED.test(text)) return false;
   // A part's own "for time" is that part's note (minor 108 on "A for time + B"); the line's goes to every part.
-  const parts = text.split(PLUS).map(takeForTime);
+  const parts = text.split(PLUS).map((part) => takeForTime(part));
   const items = parts.map((part) => rowlessItemOf(part.text, { max: "calories", counted: true }));
   if (items.some((it) => it === null)) return false;
   if (s.run?.kind !== "list") s.run = { id: ++s.runs, kind: "list" };
