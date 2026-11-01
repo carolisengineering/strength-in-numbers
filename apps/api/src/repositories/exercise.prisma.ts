@@ -366,20 +366,16 @@ export function createExerciseRepository(
           ${typeGuard}
         RETURNING ${exerciseColumns()}
       `;
-      const updated = (await write())[0];
-      if (updated) return { exercise: toRecord(updated), modalityChanged };
-
-      // Lost a race against a concurrent DELETE on the same row (§6 atomicity
-      // note) — re-derive the correct 404/409 rather than assume one.
-      const recheck = toRecord(await loadVisibleRow(actingUserId, id));
-      if (!recheck.isActive) throw new ExerciseRetiredError();
-      if (guarded) {
-        // Spec 03.4 AC15: the NOT EXISTS refused it — unless the set it saw was deleted in the gap; then once more.
-        if (await lineageHasSets(actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
-        const retried = (await write())[0];
-        if (retried) return { exercise: toRecord(retried), modalityChanged };
-        // Minor 103: a DELETE can land between the recheck and the retry; it is still a retire, not a broken invariant.
+      // Spec 03.4 §6.3 step 4, as one bounded loop (minor 225): write; on a miss, recheck why. A retired row (a DELETE
+      // that won the race, §6 atomicity note; minor 103 during the retry) is `exercise-retired`; for a guarded type
+      // change, sets in the lineage are `exercise-type-locked` (AC15; minor 224: also a set logged during the retry).
+      // Otherwise the set the NOT EXISTS saw was deleted in the gap, so the statement runs once more (minor 102).
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const updated = (await write())[0];
+        if (updated) return { exercise: toRecord(updated), modalityChanged };
         if (!toRecord(await loadVisibleRow(actingUserId, id)).isActive) throw new ExerciseRetiredError();
+        if (!guarded) break;
+        if (await lineageHasSets(actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
       }
       // #24: ownership cannot change under a caller, so a row that is still owned and
       // active here means an invariant broke — surface it as one, not as "use fork".
