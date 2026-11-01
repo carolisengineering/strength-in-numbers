@@ -500,6 +500,8 @@ function splitLoad(text: string): { text: string; load: string | null } {
 const FOR_TIME = /(?:,\s*|\s+)(for time)$/i;
 /** Minor 283: a scheme or lead-in may also end in a colon ("21-15-9 For Time:", "3 Rounds For Time:"). */
 const FOR_TIME_HEAD = /(?:,\s*|\s+)(for time):?$/i;
+/** Minor 280 (AC67): a line that is only "for time" (after any bullet) under an open run is the run's note. */
+const BARE_FOR_TIME = /^for time:?$/i;
 /** A trailing "for time" (after a space or a comma, with or without a space) off `text`. */
 function takeForTime(text: string, pattern: RegExp = FOR_TIME): { text: string; forTime: string | null } {
   const m = pattern.exec(text);
@@ -692,6 +694,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 
   // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null && s.run.kind !== "list") {
+    if (BARE_FOR_TIME.test(line.replace(BULLET, "").trim())) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));

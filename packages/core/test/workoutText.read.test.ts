@@ -571,6 +571,21 @@ describe("10.4 AC8 / minor 283 — a scheme or lead-in ending in for time opens 
   });
 });
 
+describe("10.4 AC67 / minor 280 — a line that is only for time is the run's note", () => {
+  const names = (r: ReturnType<typeof read>) => r.items.map((i) => i.name);
+  it("3 Rounds / for time / 10 Squats: one exercise of 3 sets, for time in the section note", () => {
+    const r = read(["Metcon", "3 Rounds", "for time", "10 Squats"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]);
+    expect(r.sections[0]!.notes).toBe("for time");
+  });
+  it.each(["For Time", "for time:", "FOR TIME:", "- for time", "• For time"])("%s is the same", (line) =>
+    expect(names(read(["Metcon", "3 Rounds", line, "10 Squats"]))).toEqual(["Squats"]));
+  it("with no open run it stays a note, as before", () => {
+    const r = read(["Metcon", "for time", "Back Squat"]);
+    expect([names(r), r.sections[0]!.notes]).toEqual([[], "for time\nBack Squat"]);
+  });
+});
+
 describe("10.4 AC8 / minor 283 code review — the usual spellings, and AC48 kept", () => {
   const view = (r: ReturnType<typeof read>) => r.items.map((i) => [i.name, i.rows?.map((row) => row.repsLow) ?? null]);
   it("Fran with a colon: 21-15-9 For Time:", () => {
