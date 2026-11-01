@@ -8,7 +8,12 @@ import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
-import { MeterProvider, PeriodicExportingMetricReader, type MetricReader } from "@opentelemetry/sdk-metrics";
+import {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type MetricReader,
+  type PushMetricExporter,
+} from "@opentelemetry/sdk-metrics";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ExportResultCode } from "@opentelemetry/core";
 import {
@@ -28,7 +33,7 @@ import type { TelemetryConfig } from "./config.js";
 import { AllowlistSpanProcessor } from "./allowlist.js";
 import { buildViews } from "./views.js";
 import { registerProcessStartTime } from "./metrics.js";
-import { createThrottledReporter, errorText, type WarnSink } from "./diag.js";
+import { createThrottledReporter, exportErrorText, type WarnSink } from "./diag.js";
 
 /**
  * Spec 13.0 §6.1–§6.7 — explicit providers from our parsed config (D14), never
@@ -69,7 +74,7 @@ export function reportingSpanExporter(
         if (result.code !== ExportResultCode.SUCCESS) {
           const err = result.error ?? new Error("span export failed with no error");
           reported.add(err);
-          report(`span export failed: ${errorText(err)}`, err);
+          report(`span export failed: ${exportErrorText(err)}`, err);
           done(result.error ? result : { ...result, error: err });
           return;
         }
@@ -77,6 +82,36 @@ export function reportingSpanExporter(
       }),
     shutdown: () => inner.shutdown(),
     forceFlush: () => inner.forceFlush?.() ?? Promise.resolve(),
+  };
+}
+
+/**
+ * #121 — the metrics side of the same wrapper. The periodic reader turns the
+ * exporter's error into text itself ("metrics export failed (error
+ * AggregateError)"), losing an `AggregateError`'s inner errors, so the failure
+ * is reported here first, as "metrics". The reader's own report then lands in
+ * the same throttle slot and is dropped. The aggregation choices are passed
+ * through, or the reader would fall back to its defaults.
+ */
+export function reportingMetricExporter(
+  inner: PushMetricExporter,
+  report: (message: string, err: unknown) => void,
+): PushMetricExporter {
+  return {
+    export: (resourceMetrics, done) =>
+      inner.export(resourceMetrics, (result) => {
+        if (result.code !== ExportResultCode.SUCCESS) {
+          const err = result.error ?? new Error("metrics export failed with no error");
+          report(`metrics export failed: ${exportErrorText(err)}`, err);
+        }
+        done(result);
+      }),
+    forceFlush: () => inner.forceFlush(),
+    shutdown: () => inner.shutdown(),
+    ...(inner.selectAggregationTemporality
+      ? { selectAggregationTemporality: inner.selectAggregationTemporality.bind(inner) }
+      : {}),
+    ...(inner.selectAggregation ? { selectAggregation: inner.selectAggregation.bind(inner) } : {}),
   };
 }
 
@@ -132,7 +167,7 @@ export function startPrometheus(
   const { prometheusHost: host, prometheusPort: port } = metricsConfig;
   const exporter = new PrometheusExporter({ host, port, endpoint: "/metrics", preventServerStart: true });
   exporter.startServer().catch((err: unknown) => {
-    report(`Prometheus /metrics could not listen on ${host}:${port} (${errorText(err)}); no metrics are served`, err);
+    report(`Prometheus /metrics could not listen on ${host}:${port} (${exportErrorText(err)}); no metrics are served`, err);
   });
   return exporter;
 }
@@ -149,7 +184,7 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const reportedSpanErrors = new WeakSet<object>();
   setGlobalErrorHandler((err) => {
     if (typeof err === "object" && err !== null && reportedSpanErrors.has(err)) return;
-    reporter.report(errorText(err), err);
+    reporter.report(exportErrorText(err), err);
   });
 
   const resource = resourceFromAttributes({
@@ -190,7 +225,10 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
       ? startPrometheus(config.metrics, (message, err) => reporter.report(message, err, "metrics"))
       : config.metrics.exporter === "otlp"
         ? new PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({ url: config.metrics.otlpUrl, headers: { ...config.otlpHeaders } }),
+            exporter: reportingMetricExporter(
+              new OTLPMetricExporter({ url: config.metrics.otlpUrl, headers: { ...config.otlpHeaders } }),
+              (message, err) => reporter.report(message, err, "metrics"),
+            ),
             exportIntervalMillis: config.metrics.exportIntervalMs,
           })
         : undefined);

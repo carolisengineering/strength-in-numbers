@@ -68,15 +68,16 @@ describe("AC13 — Prometheus endpoint is local-only and off the API port", () =
     const blocker = createServer();
     await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const port = (blocker.address() as AddressInfo).port;
+    const { config } = parseTelemetryEnv({ OTEL_METRICS_EXPORTER: "prometheus", OTEL_EXPORTER_PROMETHEUS_PORT: String(port) });
+    const report = vi.fn();
+    const exporter = startPrometheus(config.metrics, report);
     try {
-      const { config } = parseTelemetryEnv({ OTEL_METRICS_EXPORTER: "prometheus", OTEL_EXPORTER_PROMETHEUS_PORT: String(port) });
-      const report = vi.fn();
-      startPrometheus(config.metrics, report);
       await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
       expect(report.mock.calls[0]![0]).toBe(
         `Prometheus /metrics could not listen on 127.0.0.1:${port} (listen EADDRINUSE: address already in use 127.0.0.1:${port}); no metrics are served`,
       );
     } finally {
+      await exporter.shutdown();
       await new Promise((resolve) => blocker.close(resolve));
     }
   });

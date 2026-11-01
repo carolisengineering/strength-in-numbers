@@ -44,8 +44,10 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local
 - **Linux:** `host.docker.internal` is the Docker bridge address (`host-gateway`), which a
   loopback listener doesn't answer. Set `OTEL_EXPORTER_PROMETHEUS_HOST` to the bridge address
   (usually `172.17.0.1`), not `0.0.0.0`, which would expose it to your network again.
-- **API in compose** (the `api:9464` target): set `OTEL_EXPORTER_PROMETHEUS_HOST=0.0.0.0` on
-  the `api` service. That listens inside the container only; compose doesn't publish `9464`.
+- **API in compose** (the `api:9464` target): the `api` service in `docker-compose.yml` sets no
+  telemetry variables. Add `OTEL_METRICS_EXPORTER: prometheus` and
+  `OTEL_EXPORTER_PROMETHEUS_HOST: 0.0.0.0` to its `environment`. `0.0.0.0` there means inside
+  the container only; compose doesn't publish `9464`.
 
 Then run the API and the local IdP (two terminals):
 

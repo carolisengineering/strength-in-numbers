@@ -1,8 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { ExportResultCode, type ExportResult } from "@opentelemetry/core";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
-import { createThrottledReporter, errorText } from "../../../src/telemetry/diag.js";
-import { reportingSpanExporter } from "../../../src/telemetry/sdk.js";
+import { createThrottledReporter, exportErrorText } from "../../../src/telemetry/diag.js";
+import {
+  AggregationTemporality,
+  InstrumentType,
+  type PushMetricExporter,
+} from "@opentelemetry/sdk-metrics";
+import { reportingMetricExporter, reportingSpanExporter } from "../../../src/telemetry/sdk.js";
 
 describe("AC11 — export failures are logged at warn, throttled per signal", () => {
   it("logs once per signal per 5 minutes", () => {
@@ -70,6 +75,22 @@ describe("#126 — an SDK warning has its own slot and wording", () => {
     expect(sink.warn.mock.calls[0]![0]).toMatchObject({ signal: "metrics" });
   });
 
+  it.each([
+    ["export request failure (error: Error: connect ECONNREFUSED)", "export"],
+    ["export response retryable (status: 503)", "export"],
+    ["Received Partial Success response:", "export"],
+    ["span export failed: Timeout", "export"],
+    ["Configuration: Could not parse environment-provided export URL: 'x', falling back to undefined", "sdk"],
+    ["Export succeeded but could not deserialize response - is the response specification compliant?", "sdk"],
+    ['Header "x" has invalid value (y) and will be ignored', "sdk"],
+  ])("%j is an %s line", (message, kind) => {
+    const sink = { warn: vi.fn() };
+    createThrottledReporter(sink, { now: () => 0 }).diagLogger.warn(message);
+    expect(sink.warn.mock.calls[0]![1]).toBe(
+      kind === "sdk" ? `telemetry SDK warning: ${message}` : `telemetry export problem: ${message}`,
+    );
+  });
+
   it("an Error passed as the diag message is read as its text", () => {
     const sink = { warn: vi.fn() };
     const r = createThrottledReporter(sink, { now: () => 0 });
@@ -82,17 +103,17 @@ describe("#126 — an SDK warning has its own slot and wording", () => {
 describe("#121 — span export failures read clearly and are reported once", () => {
   const refused = (addr: string) => Object.assign(new Error(`connect ECONNREFUSED ${addr}`), { code: "ECONNREFUSED" });
 
-  it("errorText names an AggregateError's inner errors, else the code, else the name", () => {
-    expect(errorText(new AggregateError([refused("::1:4318"), refused("127.0.0.1:4318")]))).toBe(
+  it("exportErrorText names an AggregateError's inner errors, else the code, else the name", () => {
+    expect(exportErrorText(new AggregateError([refused("::1:4318"), refused("127.0.0.1:4318")]))).toBe(
       "connect ECONNREFUSED ::1:4318; connect ECONNREFUSED 127.0.0.1:4318",
     );
-    expect(errorText(new AggregateError([refused("a"), refused("a")], "export failed"))).toBe(
+    expect(exportErrorText(new AggregateError([refused("a"), refused("a")], "export failed"))).toBe(
       "export failed: connect ECONNREFUSED a",
     );
-    expect(errorText(new AggregateError(["a", "b", "c", "d", "e"].map((x) => new Error(x))))).toBe("a; b; c (+2 more)");
-    expect(errorText(Object.assign(new Error(""), { code: "ETIMEDOUT" }))).toBe("ETIMEDOUT");
-    expect(errorText(new TypeError(""))).toBe("TypeError");
-    expect(errorText("plain")).toBe("plain");
+    expect(exportErrorText(new AggregateError(["a", "b", "c", "d", "e"].map((x) => new Error(x))))).toBe("a; b; c (+2 more)");
+    expect(exportErrorText(Object.assign(new Error(""), { code: "ETIMEDOUT" }))).toBe("ETIMEDOUT");
+    expect(exportErrorText(new TypeError(""))).toBe("TypeError");
+    expect(exportErrorText("plain")).toBe("plain");
   });
 
   const failingExporter = (error: Error | undefined): SpanExporter => ({
@@ -112,6 +133,37 @@ describe("#121 — span export failures read clearly and are reported once", () 
     );
     expect(passedOn?.error).toBe(err);
     expect(reported.has(err)).toBe(true);
+  });
+
+  it("a failed metrics export is reported with its inner errors, before the reader flattens them", () => {
+    const err = new AggregateError([refused("::1:4318"), refused("127.0.0.1:4318")]);
+    const temporality = vi.fn(() => AggregationTemporality.DELTA);
+    const inner: PushMetricExporter = {
+      export: (_metrics, done) => done({ code: ExportResultCode.FAILED, error: err }),
+      forceFlush: () => Promise.resolve(),
+      shutdown: () => Promise.resolve(),
+      selectAggregationTemporality: temporality,
+    };
+    const report = vi.fn();
+    const wrapped = reportingMetricExporter(inner, report);
+    let passedOn: ExportResult | undefined;
+    wrapped.export({} as never, (r) => (passedOn = r));
+    expect(report).toHaveBeenCalledWith(
+      "metrics export failed: connect ECONNREFUSED ::1:4318; connect ECONNREFUSED 127.0.0.1:4318",
+      err,
+    );
+    expect(passedOn?.error).toBe(err);
+    // The aggregation choices still reach the reader; an absent one stays absent.
+    expect(wrapped.selectAggregationTemporality?.(InstrumentType.COUNTER)).toBe(AggregationTemporality.DELTA);
+    expect(wrapped.selectAggregation).toBeUndefined();
+  });
+
+  it("the reader's own flattened report of that failure lands in the same slot and is dropped", () => {
+    const sink = { warn: vi.fn() };
+    const r = createThrottledReporter(sink, { now: () => 0 });
+    r.report("metrics export failed: connect ECONNREFUSED ::1:4318", undefined, "metrics");
+    r.report("PeriodicExportingMetricReader: metrics export failed (error AggregateError)");
+    expect(sink.warn).toHaveBeenCalledTimes(1);
   });
 
   it("a failure with no error passes on the reported one, so the global handler skips it", () => {
