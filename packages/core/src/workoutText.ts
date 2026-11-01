@@ -393,7 +393,7 @@ interface MutableItem {
 /** `list`: AC62, counted lines with no lead-in; its items are rowless. */
 type Run =
   | { id: number; kind: "scheme"; reps: number[]; text: string }
-  | { id: number; kind: "lead-in"; n: number; strict?: boolean }
+  | { id: number; kind: "lead-in"; n: number; strict?: boolean; line?: string }
   | { id: number; kind: "list" };
 
 /** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
@@ -433,6 +433,8 @@ interface ReadState {
   section: number | null;
   run: Run | null;
   runs: number;
+  /** AC68: a lead-in line a scheme just replaced before any movement; the caller moves it into the note. */
+  replacedLeadIn: string | null;
 }
 
 const SET_LINE = /^set\s+(\d{1,3})\s*:\s*(\d{1,4})\s+reps?(?:\s*@\s*(.+))?$/i;
@@ -661,6 +663,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
 
   // 4. A scheme opens a run (AC8).
   if (SCHEME.test(head)) {
+    // AC68 (minor 284, owner ruling 2026-11-01): a scheme that replaces a lead-in with no movement yet keeps its line
+    // in the note ("3 Rounds" / "21-15-9" is those three rounds); the sets are the scheme's, never repeated.
+    const open = s.run;
+    if (open?.kind === "lead-in" && open.line !== undefined && !s.items.some((it) => it.run === open.id)) s.replacedLeadIn = open.line;
     const reps = head.split(/\s*[-–]\s*/).map(Number);
     s.run = { id: ++s.runs, kind: "scheme", reps, text: reps.join("-") };
     return scored ? "note" : "scheme";
@@ -681,7 +687,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   }
   const n = leadInCount(head);
   if (n !== null) {
-    s.run = { id: ++s.runs, kind: "lead-in", n };
+    // `line` only when it is placed as a lead-in: a scored one is already in the note (AC68 must not add it twice).
+    s.run = scored ? { id: ++s.runs, kind: "lead-in", n } : { id: ++s.runs, kind: "lead-in", n, line };
     return scored ? "note" : "lead-in";
   }
 
@@ -859,7 +866,7 @@ function isVariantLabel(line: string): boolean {
 
 export function readWorkoutText(raw: string): ReadResult {
   const clean = cleanWorkoutText(raw);
-  const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0 };
+  const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0, replacedLeadIn: null };
   const placed: { text: string; as: LinePlacement }[] = [];
   let name: string | null = null;
   let nameFromWorkout = false;
@@ -914,6 +921,18 @@ export function readWorkoutText(raw: string): ReadResult {
       return;
     }
     const as = readConstruct(line, s);
+    if (s.replacedLeadIn !== null) {
+      // AC68: the replaced lead-in goes to the note before this line, and is placed as a note.
+      const leadIn = s.replacedLeadIn;
+      s.replacedLeadIn = null;
+      (current ? current.notes : s.routineNotes).push(leadIn);
+      for (let i = placed.length - 1; i >= 0; i -= 1) {
+        if (placed[i]!.as === "lead-in" && placed[i]!.text === leadIn) {
+          placed[i] = { text: leadIn, as: "note" };
+          break;
+        }
+      }
+    }
     if (as === "note") (current ? current.notes : s.routineNotes).push(line);
     if (as) {
       placed.push({ text: line, as });

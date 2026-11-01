@@ -636,3 +636,38 @@ describe("10.4 AC8 / minor 283 code review — the usual spellings, and AC48 kep
     expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
   });
 });
+
+describe("10.4 AC68 / minor 284 — a scheme keeps the lead-in it replaces in the note (owner ruling 2026-11-01)", () => {
+  const view = (r: ReturnType<typeof read>) => r.items.map((i) => [i.name, i.rows?.map((row) => row.repsLow) ?? null]);
+  it("3 Rounds then 21-15-9: the scheme's sets, and 3 Rounds in the section note", () => {
+    const r = read(["Metcon", "3 Rounds", "21-15-9", "Thrusters", "Pull-ups"]);
+    expect(view(r)).toEqual([
+      ["Thrusters", [21, 15, 9]],
+      ["Pull-ups", [21, 15, 9]],
+    ]);
+    expect(r.items[0]!.run).toBe(r.items[1]!.run);
+    expect(r.sections[0]!.notes).toBe("3 Rounds");
+    expect(r.lines.placed.find((p) => p.text === "3 Rounds")?.as).toBe("note");
+  });
+  it("a scored scheme after it: both lines in the note, in line order", () => {
+    const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "Thrusters"]);
+    expect(r.sections[0]!.notes).toBe("3 Rounds\n21-15-9 for time");
+  });
+  it("with no heading, the line goes to the routine's notes once", () => {
+    const r = read(["3 Rounds", "21-15-9", "Thrusters"]);
+    expect(r.notes.split("\n").filter((l) => l === "3 Rounds")).toHaveLength(1);
+  });
+  it("unchanged: a lead-in followed by movements gives N sets and stays out of the note", () => {
+    const r = read(["Accessory", "3 Rounds", "- Curl", "x."]);
+    expect(r.items[0]!.rows).toHaveLength(3);
+    expect(r.sections[0]!.notes).not.toContain("3 Rounds");
+  });
+  it("unchanged: a lead-in that already has a movement stays out of the note when a scheme follows", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Squats", "21-15-9", "Thrusters"]);
+    expect(r.sections[0]!.notes).not.toContain("3 Rounds");
+  });
+  it("Review Focus 4: under Warmup the line is already a note, and appears once", () => {
+    const r = read(["Warmup", "3 Rounds", "21-15-9", "Thrusters"]);
+    expect(r.sections[0]!.notes.split("\n").filter((l) => l === "3 Rounds")).toHaveLength(1);
+  });
+});
