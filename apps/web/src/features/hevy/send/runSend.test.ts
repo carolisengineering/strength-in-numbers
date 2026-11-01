@@ -336,12 +336,18 @@ describe("20.2 — a deleted workout", () => {
 });
 
 describe("20.2 Review Focus 3 — a workout with no title", () => {
-  it("the scan compares against the built title (the routine name), not detail.title", async () => {
-    const h = harness({ detail: sendFixture({ title: null, routineName: "Leg Day" }).detail });
+  it("the scan's tiebreak compares against the built title (the routine name), not detail.title (minor 262)", async () => {
+    const detail = sendFixture({ title: null, routineName: "Leg Day" }).detail;
+    // The copy Hevy would hold for this workout, made by a send on its own harness.
+    const maker = harness({ detail });
+    await maker.run({ kind: "send" });
+    const made = [...maker.hevy.store.values()][0]!;
+    const h = harness({ detail });
     h.link.claim(WORKOUT_ID, 5 * 60_000);
-    await h.hevy.client.createWorkout({ workout: { title: "Leg Day", description: null, start_time: "2026-10-24T17:05:00+00:00", end_time: "2026-10-24T18:10:00Z", is_private: true, exercises: [] } } as never);
-    h.hevy.calls.length = 0;
+    h.hevy.store.set("other", { ...made, id: "other", title: "Other" });
+    h.hevy.store.set("leg", { ...made, id: "leg", title: "Leg Day" });
     expect(await h.run({ kind: "send" })).toMatchObject({ kind: "done", foundExisting: true });
+    expect(h.link.rows.get(WORKOUT_ID)?.hevyWorkoutId).toBe("leg");
   });
 });
 

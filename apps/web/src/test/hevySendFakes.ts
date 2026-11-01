@@ -258,12 +258,20 @@ export function fakeHevyWrites(opts: { workouts?: HevyWorkout[] } = {}) {
   function fail(op: HevyOp, ...modes: HevyFailureMode[]): void {
     failures.set(op, [...(failures.get(op) ?? []), ...modes]);
   }
+  /** As Hevy stores it: the exercises kept, in order (the lost-response check counts those with sets, minor 262). */
   const asWorkout = (id: string, body: HevyPostWorkout): HevyWorkout => ({
     id,
     title: body.workout.title,
     start_time: body.workout.start_time,
     end_time: body.workout.end_time,
-    exercises: [],
+    exercises: body.workout.exercises.map((e, index) => ({
+      index,
+      title: e.exercise_template_id,
+      exercise_template_id: e.exercise_template_id,
+      superset_id: e.superset_id,
+      notes: e.notes,
+      sets: e.sets.map((set, i) => ({ ...set, index: i })),
+    })),
   });
   /** Throws the queued failure, if any; "accept-then-lose" runs `accept` first. */
   function maybeFail(op: HevyOp, accept?: () => void): void {

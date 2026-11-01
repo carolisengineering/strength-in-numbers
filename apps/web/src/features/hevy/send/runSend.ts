@@ -13,7 +13,7 @@ import { ApiError } from "../../../api";
 import type { ApiClient } from "../../../api/client";
 import type { HevyClient } from "../client/hevyClient";
 import { HevyError, type HevyErrorKind } from "../client/hevyErrors";
-import { findHevyCopy } from "./findHevyCopy";
+import { findHevyCopy, withSets } from "./findHevyCopy";
 import { HEVY_SEND_COPY, type SendNotice } from "./messages";
 
 /**
@@ -218,7 +218,8 @@ async function build(deps: SendDeps): Promise<Built | { unmapped: UnmappedExerci
 async function check(deps: SendDeps, built: Built, fingerprint: string, sendIfAbsent = false): Promise<SendOutcome> {
   let found: Awaited<ReturnType<typeof findHevyCopy>>;
   try {
-    found = await findHevyCopy(deps.hevy, { startTime: built.body.workout.start_time, title: built.body.workout.title });
+    const workout = built.body.workout;
+    found = await findHevyCopy(deps.hevy, { startTime: workout.start_time, title: workout.title, exercisesWithSets: withSets(workout.exercises) });
   } catch (err) {
     if (reportable(err)) deps.report("find-copy", err);
     return { kind: "inconclusive", fingerprint };
