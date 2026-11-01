@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { recordingClient } from "../helpers/recording-client.js";
 import { createWorkoutRepository, readWorkoutDetail } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
@@ -236,31 +237,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
   });
 
   describe("Minor 207 — the usable-exercise share lock takes rows in id order", () => {
-    it("the FOR SHARE select is ordered by the uuid id column (the seed's side is not ordered yet; see the runbook)", async () => {
-      const seen: string[] = [];
-      // The real client, with every in-transaction $queryRaw recorded on its way through.
-      const recordingTx = (tx: object) =>
-        new Proxy(tx, {
-          get(target, key) {
-            const value = Reflect.get(target, key) as unknown;
-            if (key === "$queryRaw") {
-              return (strings: TemplateStringsArray, ...values: unknown[]) => {
-                seen.push(Prisma.sql(strings, ...values).sql);
-                return (value as (s: TemplateStringsArray, ...v: unknown[]) => unknown).call(target, strings, ...values);
-              };
-            }
-            return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
-          },
-        });
-      const recording = new Proxy(db.prisma, {
-        get(target, key) {
-          if (key === "$transaction") {
-            return (fn: (tx: object) => Promise<unknown>, opts?: unknown) => target.$transaction((tx) => fn(recordingTx(tx)), opts as never);
-          }
-          const value = Reflect.get(target, key) as unknown;
-          return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
-        },
-      }) as PrismaClient;
+    it("the FOR SHARE select is ordered by the uuid id column, as the seed's lock is (minor 286)", async () => {
+      const { client: recording, seen } = recordingClient(db.prisma);
       await createHevyImportRepository(recording).writeImportedWorkout(U, "H-ORDER", await translate(rich()));
       const share = seen.filter((sql) => /FOR SHARE/.test(sql) && /FROM "exercise"/.test(sql));
       expect(share).toHaveLength(1);

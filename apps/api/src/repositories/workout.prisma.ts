@@ -259,12 +259,10 @@ async function finishedPatch(
   if (next.startChanged) await shiftSetTimes(tx, current.id, current.started_at, next.startedAt);
   if (next.startChanged || next.endChanged) await clampSetTimes(tx, current.id);
   const recompute = next.startChanged ? await recomputeTimed(tx, userId, current.id, await rootsForWorkout(tx, current.id)) : null;
-  const countRows = await tx.$queryRaw<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${current.id}::uuid
-  `;
+  const exerciseCount = await countExercises(tx, current.id);
   return {
     workout: toRecord(row),
-    exerciseCount: countRows[0]!.n,
+    exerciseCount,
     newRecords: [],
     // Title / notes never touch records, but a start change in the same request did recompute them:
     // both log lines then report the same recompute (§9).
@@ -346,6 +344,29 @@ async function countExercises(tx: RawClient, workoutId: string): Promise<number>
     SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
   `;
   return rows[0]!.n;
+}
+
+/** Minor 54: the exercise count and the last section (highest position) in one read; most workouts have no section. */
+async function countAndLastSection(
+  tx: RawClient,
+  workoutId: string,
+): Promise<{ n: number; last: { id: string; position: number; addedInWorkout: boolean }[] }> {
+  const rows = await tx.$queryRaw<
+    { n: number; section_id: string | null; section_position: number | null; added_in_workout: boolean | null }[]
+  >`
+    SELECT (SELECT count(*)::int FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid) AS n,
+           ls.id::text AS section_id, ls.position AS section_position, ls.added_in_workout
+    FROM (SELECT 1) AS one
+    LEFT JOIN LATERAL (
+      SELECT id, position, added_in_workout FROM "workout_section"
+      WHERE workout_id = ${workoutId}::uuid ORDER BY position DESC LIMIT 1
+    ) AS ls ON true
+  `;
+  const r = rows[0]!;
+  return {
+    n: r.n,
+    last: r.section_id === null ? [] : [{ id: r.section_id, position: r.section_position!, addedInWorkout: r.added_in_workout === true }],
+  };
 }
 
 export function createWorkoutRepository(
@@ -684,9 +705,7 @@ export function createWorkoutRepository(
         // §9: `exercise_count` for the `workout_finished` log line comes from
         // this transaction (the lock above already holds the row), not a
         // second round trip after commit.
-        const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${id}::uuid
-        `;
+        const exerciseCount = await countExercises(tx, id);
         // Spec 07.0 §6.3: after the UPDATE so the loader's `ended_at IS NOT
         // NULL` sees this workout as finished (a transaction reads its own
         // writes). The PR lock was taken at the top of this transaction.
@@ -702,7 +721,7 @@ export function createWorkoutRepository(
         const oneOff = finishing && oneOffId ? await settleOneOff(tx, actingUserId, oneOffId, patch.keepRoutine === true) : "none";
         return {
           workout: toRecord(updatedRows[0]!),
-          exerciseCount: countRows[0]!.n,
+          exerciseCount,
           newRecords,
           finishedEdit: null,
           hadPlannedDuration: finishing && (current.planned_duration_s ?? null) !== null,
@@ -733,10 +752,7 @@ export function createWorkoutRepository(
         // DELETE runs, so the route's `workout_deleted` log line reflects
         // exactly what was destroyed.
         const wasFinished = owned[0].ended_at !== null;
-        const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${id}::uuid
-        `;
-        const exerciseCount = countRows[0]!.n;
+        const exerciseCount = await countExercises(tx, id);
 
         // Spec 07.0 §6.3: only a finished workout can have sourced records.
         // Capture its lineage roots before the DELETE cascades its exercises away.
@@ -789,34 +805,24 @@ export function createWorkoutRepository(
         // The structure lock (§6.8; a vanished workout is §6.7's not-found).
         await lockWorkoutStructure(tx, mode, workoutId, workoutMissing);
 
-        // Minor 54: the count and the last section (highest position) in one read; most workouts have no section.
-        const countRows = await tx.$queryRaw<
-          { n: number; section_id: string | null; section_position: number | null; added_in_workout: boolean | null }[]
-        >`
-          SELECT (SELECT count(*)::int FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid) AS n,
-                 ls.id::text AS section_id, ls.position AS section_position, ls.added_in_workout
-          FROM (SELECT 1) AS one
-          LEFT JOIN LATERAL (
-            SELECT id, position, added_in_workout FROM "workout_section"
-            WHERE workout_id = ${workoutId}::uuid ORDER BY position DESC LIMIT 1
-          ) AS ls ON true
-        `;
-        const read = countRows[0]!;
-        const n = read.n;
-
-        // Spec 09.4 §6.5 (C4): with no `position`, the add joins the last section iff it was added in the workout.
+        // One read either way, after the structure lock (Spec 05.0 AC13). Spec 09.4 §6.5 (C4): with no `position`, the
+        // add joins the last section iff it was added in the workout, so only that add reads it (minors 54, 288).
         let sectionId: string | null = null;
-        let position = fields.position ?? computeAppendPosition(n);
+        let n: number;
+        let position: number;
         if (fields.position === undefined) {
-          const last =
-            read.section_id === null ? [] : [{ id: read.section_id, position: read.section_position!, addedInWorkout: read.added_in_workout === true }];
-          const target = sectionForNewExercise(last);
+          const read = await countAndLastSection(tx, workoutId);
+          n = read.n;
+          position = computeAppendPosition(n);
+          const target = sectionForNewExercise(read.last);
           if (target) {
             sectionId = target.id;
             position = insertIndexForSection(await exerciseRanks(tx, workoutId, null), target.position);
           }
         } else {
+          n = await countExercises(tx, workoutId);
           assertAddPositionInRange(fields.position, n);
+          position = fields.position;
         }
         if (position < n) {
           await tx.$executeRaw`

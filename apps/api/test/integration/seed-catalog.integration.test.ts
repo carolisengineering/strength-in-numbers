@@ -14,6 +14,7 @@ import {
   startIntegrationDb,
   type IntegrationDb,
 } from "./helpers.js";
+import { recordingClient } from "../helpers/recording-client.js";
 
 /**
  * Spec 03.1 §6.3 / §10 AC4 — the seed against a real Postgres, always driven
@@ -299,6 +300,36 @@ describe.skipIf(!shouldRunIntegration())("Catalog seed — integration (AC4)", (
     expect(summary).toMatchObject({ inserted: 1, skipped: 1 });
     expect((await exerciseRows()).map((r) => r.catalog_key)).toEqual(["bench-press"]);
     expect(warnings.some((w) => w.obj.catalogKey === "overhead-press")).toBe(true);
+  });
+
+  describe("Minor 286 — the seed locks the rows it will update, in id order, before any UPDATE", () => {
+    const recordedRun = async (dir: string) => {
+      const { client, seen } = recordingClient(db.prisma);
+      await seedCatalog(client, await loadCatalog(dir), log);
+      return seen;
+    };
+    const isLock = (sql: string) => /FROM "exercise"/.test(sql) && /FOR NO KEY UPDATE/.test(sql);
+
+    it("one FOR NO KEY UPDATE select ordered by id, before the first UPDATE of an exercise", async () => {
+      await run(await writeCatalog({}));
+      const seen = await recordedRun(
+        await writeCatalog({ exercises: [{ ...bench, equipmentId: "dumbbell" }, { ...press, retired: true }] }),
+      );
+      const locks = seen.filter(isLock);
+      expect(locks).toHaveLength(1);
+      expect(locks[0]).toMatch(/ORDER BY "id"\s+FOR NO KEY UPDATE/);
+      const firstUpdate = seen.findIndex((sql) => /^\s*UPDATE "exercise"/.test(sql));
+      expect(firstUpdate).toBeGreaterThan(-1);
+      expect(seen.findIndex(isLock)).toBeLessThan(firstUpdate);
+      // A plain FOR UPDATE would make every foreign-key insert of a built-in wait for the whole seed.
+      expect(seen.some((sql) => /FOR UPDATE/.test(sql) && !/FOR NO KEY UPDATE/.test(sql))).toBe(false);
+    });
+
+    it("a seed that changes nothing takes no row lock", async () => {
+      await run(await writeCatalog({}));
+      const seen = await recordedRun(await writeCatalog({}));
+      expect(seen.some((sql) => /FOR NO KEY UPDATE/.test(sql))).toBe(false);
+    });
   });
 
   it("a DB exercise row absent from the file is left intact with a warning", async () => {

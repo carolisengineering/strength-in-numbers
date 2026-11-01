@@ -18,6 +18,11 @@ describe("Minor 206 — a lone high surrogate is not left at the end", () => {
   it("a lone one mid-text is passed through as before", () => expect(cutClusters(`a\uD800b${a(20)}`, 5)).toBe(`a\uD800b${a(2)}`));
 });
 
+describe("Minor 279 — a lone low surrogate is not left at the end", () => {
+  it("is dropped", () => expect(cutClusters(`${a(9)}\uDC00zzz`, 10)).toBe(a(9)));
+  it("a lone one mid-text is passed through as before", () => expect(cutClusters(`a\uDC00b${a(20)}`, 5)).toBe(`a\uDC00b${a(2)}`));
+});
+
 describe("cutClusters", () => {
   it("text within the limit is returned unchanged", () => expect(cutClusters("abc", 3)).toBe("abc"));
   it("does not trim", () => expect(cutClusters("ab cd", 3)).toBe("ab "));

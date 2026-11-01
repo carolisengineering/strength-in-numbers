@@ -244,3 +244,38 @@ describe("Minor 54 — a plain add reads the count and the last section in one s
     expect(reads.filter((sql) => sql.includes("count(*)") && !sql.includes("workout_section"))).toHaveLength(0);
   });
 });
+
+describe("Minor 288 — a positioned add doesn't read the last section", () => {
+  it("no call names workout_section; the count is its own read", async () => {
+    const stub = new ScriptedPrisma();
+    const w = workoutRow();
+    const exerciseRepo = new FakeExerciseRepository();
+    const exercise = makeExerciseRecord({ isActive: true });
+    exerciseRepo.byId.set(exercise.id, exercise);
+    stub.queueRows([w]);
+    stub.queueRows([{ ended_at: null }]);
+    stub.queueRows([{ n: 2 }]);
+    stub.queueRows([
+      {
+        id: uuidv7(),
+        workout_id: w.id,
+        position: 1,
+        exercise_id: exercise.id,
+        exercise_name_snapshot: exercise.name,
+        modality_snapshot: exercise.modality,
+        notes: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+        planned_sets: [],
+        section_id: null,
+      },
+    ]);
+    const repo = createWorkoutRepository(stub as unknown as PrismaClient, exerciseRepo);
+
+    await repo.addWorkoutExercise(w.user_id, w.id, { exerciseId: exercise.id, position: 1 });
+
+    expect(stub.calls.some((c) => c.sql.includes("workout_section"))).toBe(false);
+    expect(stub.calls.filter((c) => c.sql.includes("count(*)"))).toHaveLength(1);
+    expect(stub.calls.some((c) => c.sql.includes("SET position = position + 1"))).toBe(true); // placed at 1, not appended
+  });
+});

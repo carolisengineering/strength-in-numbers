@@ -571,6 +571,50 @@ describe("10.4 AC8 / minor 283 — a scheme or lead-in ending in for time opens 
   });
 });
 
+describe("10.4 AC67 / minor 280 — a line that is only for time is the run's note", () => {
+  const names = (r: ReturnType<typeof read>) => r.items.map((i) => i.name);
+  it("3 Rounds / for time / 10 Squats: one exercise of 3 sets, for time in the section note", () => {
+    const r = read(["Metcon", "3 Rounds", "for time", "10 Squats"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]);
+    expect(r.sections[0]!.notes).toBe("for time");
+  });
+  it.each(["For Time", "for time:", "FOR TIME:", "- for time", "• For time", "For Time.", "For time!", "For Time :"])("%s is the same", (line) =>
+    expect(read(["Metcon", "3 Rounds", line, "10 Squats"]).items.map((i) => [i.name, i.rows?.length])).toEqual([["Squats", 3]]));
+  it("final review: For Time: after the run's movements heads a new block and closes the run, as before", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "10 Push-ups", "For Time:", "1 Mile Run"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
+      ["Squats", 5],
+      ["Push-ups", 5],
+      ["1 Mile Run", null],
+    ]);
+  });
+  it("code review: For Time : (a space before the colon) after the run's movements closes the run like For Time:", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "For Time :", "1 Mile Run"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length ?? null])).toEqual([
+      ["Squats", 5],
+      ["1 Mile Run", null],
+    ]);
+  });
+  it("For Time: right after a new run's lead-in keeps that run open, though an earlier run had movements", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "3 Rounds", "For Time:", "10 Burpees"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([
+      ["Squats", 5],
+      ["Burpees", 3],
+    ]);
+  });
+  it("a bare for time after the run's movements is still the run's note, never an exercise", () => {
+    const r = read(["Metcon", "5 Rounds", "10 Squats", "for time", "10 Push-ups"]);
+    expect(r.items.map((i) => [i.name, i.rows?.length])).toEqual([
+      ["Squats", 5],
+      ["Push-ups", 5],
+    ]);
+  });
+  it("with no open run it stays a note, as before", () => {
+    const r = read(["Metcon", "for time", "Back Squat"]);
+    expect([names(r), r.sections[0]!.notes]).toEqual([[], "for time\nBack Squat"]);
+  });
+});
+
 describe("10.4 AC8 / minor 283 code review — the usual spellings, and AC48 kept", () => {
   const view = (r: ReturnType<typeof read>) => r.items.map((i) => [i.name, i.rows?.map((row) => row.repsLow) ?? null]);
   it("Fran with a colon: 21-15-9 For Time:", () => {

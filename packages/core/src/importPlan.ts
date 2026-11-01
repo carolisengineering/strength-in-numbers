@@ -150,11 +150,9 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
   }
   const inKeptSection = (it: ReadItem) => it.section === null || it.section < ROUTINE_SECTIONS_MAX;
   // The reader emits items loose first, then section by section (minor 22; pinned in the totality test). A read built
-  // another way is checked in one pass and sorted (stably) only when it is out of order (minor 220).
-  const kept = read.items.filter(inKeptSection);
+  // another way is put in that order too (minor 220): the sort is stable, so an ordered read comes back as it was (minor 282).
   const rank = (it: ReadItem) => it.section ?? -1;
-  const ordered = kept.every((it, i) => i === 0 || rank(kept[i - 1]!) <= rank(it));
-  const surviving = ordered ? kept : [...kept].sort((a, b) => rank(a) - rank(b));
+  const surviving = read.items.filter(inKeptSection).sort((a, b) => rank(a) - rank(b));
 
   // (2) The first 30 items.
   if (surviving.length > ROUTINE_ITEMS_MAX) count("items-left-out", surviving.length - ROUTINE_ITEMS_MAX);
