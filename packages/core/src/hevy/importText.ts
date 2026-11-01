@@ -33,8 +33,9 @@ function clean(raw: string | null, max: number, keepWhitespace: boolean): { valu
   const trimmed = stripControls(raw, keepWhitespace).trim();
   if (trimmed === "") return { value: null, cut: false };
   const { text, cut } = cutCodePoints(trimmed, max);
-  // A cut that keeps nothing (one cluster longer than the limit) is no text, never "".
-  return { value: text === "" ? null : text, cut };
+  // A cut that keeps nothing (one cluster longer than the limit) is no text, never "", and not a trim: there is no
+  // shortened text to report (minors 276, 289). Every caller's `*_trimmed` notice tests `cut` alone.
+  return text === "" ? { value: null, cut: false } : { value: text, cut };
 }
 
 /** A one-line text (a title, a name): every C0 character and DEL removed, trimmed, cut; empty is `null`. */

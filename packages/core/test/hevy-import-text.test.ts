@@ -93,8 +93,10 @@ describe("19.1 AC8 — text", () => {
       expect(cleanLine(`${a(118)}🇺🇸`, 120)).toEqual({ value: a(118), cut: true }));
     it("a note cut before a combining mark drops its letter too", () =>
       expect(cleanNotes(`${"n".repeat(4000)}́`, 4000)).toEqual({ value: "n".repeat(3999), cut: true }));
-    it("a title that is one cluster longer than the limit is null, never an empty string", () =>
-      expect(cleanLine(`H${"́".repeat(130)}`, 120)).toEqual({ value: null, cut: true }));
+    it("a title that is one cluster longer than the limit is null, never an empty string, and not a cut (minors 276, 289)", () => {
+      expect(cleanLine(`H${"\u0301".repeat(130)}`, 120)).toEqual({ value: null, cut: false });
+      expect(cleanNotes(`H${"\u0301".repeat(4001)}`, 4000)).toEqual({ value: null, cut: false });
+    });
   });
 
   it("cutCodePoints trims the end it leaves", () => {

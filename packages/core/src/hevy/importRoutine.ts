@@ -93,7 +93,7 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
   const notices = new CodeCounter<HevyRoutineNoticeCode>(HEVY_ROUTINE_NOTICE_CODES);
   const name = cleanLine(routine.title, ROUTINE_NAME_MAX);
   // Minor 276: a cut that keeps nothing replaces the name with "Hevy routine", which is not a trimmed name.
-  if (name.cut && name.value !== null) notices.add("name_trimmed");
+  if (name.cut) notices.add("name_trimmed");
 
   const walk = new SectionWalk(notices);
   const candidates: Candidate[] = [];
@@ -114,7 +114,7 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
       item.restSeconds = clamped;
     }
     const notes = cleanNotes(e.notes ?? null, ROUTINE_ITEM_NOTES_MAX);
-    if (notes.cut && notes.value !== null) own.add("notes_trimmed"); // minor 289
+    if (notes.cut) own.add("notes_trimmed");
     if (notes.value !== null) item.notes = notes.value;
     if (e.sets.length > PLANNED_SETS_PER_ITEM_MAX) own.add("sets_cut");
     item.sets = e.sets.slice(0, PLANNED_SETS_PER_ITEM_MAX).map((s) => rowOf(s, info.modality, ctx.unit, own));

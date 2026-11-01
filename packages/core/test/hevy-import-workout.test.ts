@@ -106,7 +106,7 @@ describe("19.1 AC4 — stored exercises", () => {
   });
 
   it("minor 289: a description or exercise note the cut keeps nothing of is null, with no notes_trimmed", () => {
-    const one = `H${"́".repeat(4001)}`;
+    const one = `H${"\u0301".repeat(4001)}`;
     const t = created(translateHevyWorkout(hworkout([hex("BENCH", bench().sets, { notes: one })], { description: one }), ctx));
     expect([t.workout.notes, t.workout.exercises[0]!.notes, count(t.notices, "notes_trimmed")]).toEqual([null, null, 0]);
   });

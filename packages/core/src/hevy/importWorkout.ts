@@ -139,11 +139,9 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
   const drops = new CodeCounter<HevyImportDropCode>(HEVY_IMPORT_DROP_CODES);
   const notices = new CodeCounter<HevyImportNoticeCode>(HEVY_IMPORT_NOTICE_CODES);
   const title = cleanLine(w.title, WORKOUT_TITLE_MAX);
-  // Minor 276: a cut that keeps nothing leaves no title, which is not a trimmed title.
-  if (title.cut && title.value !== null) notices.add("title_trimmed");
+  if (title.cut) notices.add("title_trimmed");
   const notes = cleanNotes(w.description, WORKOUT_NOTES_MAX);
-  // Minor 289: as titles (minor 276), a cut that keeps nothing is not a trimmed note.
-  if (notes.cut && notes.value !== null) notices.add("notes_trimmed");
+  if (notes.cut) notices.add("notes_trimmed");
 
   const walk = new SectionWalk(notices);
   const exercises: ImportedExercise[] = [];
@@ -179,7 +177,7 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
       continue;
     }
     const exerciseNotes = cleanNotes(e.notes, WORKOUT_NOTES_MAX);
-    if (exerciseNotes.cut && exerciseNotes.value !== null) notices.add("notes_trimmed");
+    if (exerciseNotes.cut) notices.add("notes_trimmed");
     exercises.push({
       exerciseId: pair.exerciseId!,
       nameSnapshot: info.name,

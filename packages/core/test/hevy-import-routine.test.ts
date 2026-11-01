@@ -142,7 +142,7 @@ describe("19.1 AC11 — items", () => {
   });
 
   it("minor 289: an item note the cut keeps nothing of is dropped, with no notes_trimmed", () => {
-    const t = ok(translateHevyRoutine(hevyRoutine([item("BENCH", { notes: `H${"́".repeat(501)}` })]), ctx));
+    const t = ok(translateHevyRoutine(hevyRoutine([item("BENCH", { notes: `H${"\u0301".repeat(501)}` })]), ctx));
     expect([t.input.items[0]!.notes, count(t.notices, "notes_trimmed")]).toEqual([undefined, 0]);
   });
 });
