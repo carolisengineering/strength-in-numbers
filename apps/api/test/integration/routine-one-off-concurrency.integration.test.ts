@@ -19,6 +19,18 @@ import { assertSectionsConsistent } from "./section-helpers.js";
  */
 const ITERATIONS = 50;
 
+/**
+ * Minor 36: which legal outcome each round of a race hit. Every race only checks that each end state is legal; the
+ * tallies show whether both interleavings were exercised. None is asserted: the rarer outcome is too rare per round
+ * to require in 50 rounds without a flaky test.
+ */
+const tallies = new Map<string, Map<string, number>>();
+function seen(pair: string, outcome: string): void {
+  const counts = tallies.get(pair) ?? new Map<string, number>();
+  counts.set(outcome, (counts.get(outcome) ?? 0) + 1);
+  tallies.set(pair, counts);
+}
+
 type Outcome = PromiseSettledResult<unknown>;
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Postgres)", () => {
@@ -27,6 +39,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
   }, 180_000);
+  afterAll(() => {
+    for (const [pair, counts] of tallies) process.stdout.write(`race ${pair}: ${[...counts].map(([o, n]) => `${o}=${n}`).join(" ")}\n`);
+  });
   afterAll(async () => {
     await db?.stop();
   });
@@ -98,6 +113,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         const [s, sw] = await race(() => start(u, routine.id), () => sweep(u));
         expect(ok(sw)).toBe(true);
         const after = await state(routine.id, null, u);
+        seen("a start vs sweep", ok(s) ? "start held it" : "swept, start 404");
         if (ok(s)) {
           expect(after.exists).toBe(true);
           const wId = (s as PromiseFulfilledResult<{ workout: { id: string } }>).value.workout.id;
@@ -130,6 +146,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         const [p, sw] = await race(() => routines().replace(u, routine.id, routineFixture([ex], { name: "Edited" })), () => sweep(u));
         expect(ok(sw)).toBe(true);
         const after = await state(routine.id, null, u);
+        seen("c PUT vs sweep", !ok(p) ? "swept, PUT 404" : after.exists ? "PUT landed" : "PUT then swept");
         if (!ok(p)) {
           rejectedWith(p, NotFoundError);
           expect(after.exists).toBe(false);
@@ -145,6 +162,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         const [k, sw] = await race(() => routines().keep(u, routine.id), () => sweep(u));
         expect(ok(sw)).toBe(true);
         const after = await state(routine.id, null, u);
+        seen("d Keep vs sweep", ok(k) ? "kept" : "swept, Keep 404");
         if (ok(k)) {
           expect(after).toMatchObject({ exists: true, oneOff: false });
         } else {
@@ -202,6 +220,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         expect(ok(f)).toBe(true);
         const after = await state(routine.id, workout.id, u);
         expect(after.workout?.ended).toBe(true);
+        seen("Keep vs finish", ok(k) ? "Keep first" : "finish first, Keep 404");
         if (ok(k)) {
           expect(after).toMatchObject({ exists: true, oneOff: false });
           expect((f as PromiseFulfilledResult<{ oneOff: string }>).value.oneOff).toBe("none");
@@ -232,6 +251,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         expect(ok(d)).toBe(true);
         const after = await state(routine.id, workout.id, u);
         expect(after.workout).toBeUndefined();
+        seen("finish vs discard", ok(f) ? "finished then deleted" : "deleted, finish 404");
         if (ok(f)) {
           expect(after.exists).toBe(false);
         } else {
@@ -262,6 +282,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off races (real Post
         expect(ok(f)).toBe(true);
         expect(ok(s)).toBe(false);
         rejectedWith(s, WorkoutInProgressExistsError, NotFoundError);
+        seen("start vs finish", (s as PromiseRejectedResult).reason instanceof NotFoundError ? "start 404" : "start 409 in progress");
         const after = await state(routine.id, workout.id, u);
         expect(after.exists).toBe(false);
         expect(after.liveCount).toBe(0);

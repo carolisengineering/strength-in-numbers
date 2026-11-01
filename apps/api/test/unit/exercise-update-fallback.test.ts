@@ -100,21 +100,31 @@ describe("03.4 AC15 — atomic, with a recheck", () => {
 });
 
 /** A type change whose UPDATEs and visibility reads answer in turn (the last answer repeats); the lineage has no sets. */
-function repoScripted(opts: { updates: unknown[][]; reads: unknown[][] }) {
+function repoScripted(opts: { updates: unknown[][]; reads: unknown[][]; probes?: boolean[] }) {
   let u = 0;
   let r = 0;
+  let p = 0;
   const statements: string[] = [];
   const queryRaw = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = Prisma.sql(strings, ...values).sql.replace(/\$\d+/g, "?");
     statements.push(sql);
     if (/^\s*UPDATE "exercise"/.test(sql)) return opts.updates[Math.min(u++, opts.updates.length - 1)];
-    if (/set_entry/.test(sql)) return [{ has_sets: false }];
+    // Each set probe answers the next scripted value (false once the script runs out).
+    if (/set_entry/.test(sql)) return [{ has_sets: opts.probes?.[p++] ?? false }];
     if (/FROM "exercise"\s+WHERE id = \?::uuid/.test(sql)) return opts.reads[Math.min(r++, opts.reads.length - 1)];
     throw new Error(`unexpected statement: ${sql}`);
   });
   const prisma = { $queryRaw: queryRaw } as unknown as PrismaClient;
   return { repo: createExerciseRepository(prisma), statements };
 }
+
+describe("Minor 224 — a set logged during the retry is exercise-type-locked", () => {
+  it("the retry misses, the row is still active, and the lineage now has sets: 409 exercise-type-locked, never 500", async () => {
+    const { repo, statements } = repoScripted({ updates: [[]], reads: [[ownedRow(true)]], probes: [false, true] });
+    await expect(repo.updateExercise(USER, ID, { modality: "duration" })).rejects.toBeInstanceOf(ExerciseTypeLockedError);
+    expect(updates(statements)).toHaveLength(2);
+  });
+});
 
 describe("Minor 102 — the retry can succeed", () => {
   it("a set that vanished in the gap: the second UPDATE writes, and the result is that exercise with modalityChanged", async () => {

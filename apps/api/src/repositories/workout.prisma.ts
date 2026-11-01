@@ -340,6 +340,14 @@ export async function readWorkoutDetail(db: DetailClient, userId: string, id: st
   return rows[0] ? toDetailWith(db, rows[0]) : null;
 }
 
+/** The workout's exercise count (minor 226). */
+async function countExercises(tx: RawClient, workoutId: string): Promise<number> {
+  const rows = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
+  `;
+  return rows[0]!.n;
+}
+
 export function createWorkoutRepository(
   prisma: PrismaClient,
   exerciseRepository: ExerciseRepository,
@@ -781,19 +789,28 @@ export function createWorkoutRepository(
         // The structure lock (§6.8; a vanished workout is §6.7's not-found).
         await lockWorkoutStructure(tx, mode, workoutId, workoutMissing);
 
-        const countRows = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
+        // Minor 54: the count and the last section (highest position) in one read; most workouts have no section.
+        const countRows = await tx.$queryRaw<
+          { n: number; section_id: string | null; section_position: number | null; added_in_workout: boolean | null }[]
+        >`
+          SELECT (SELECT count(*)::int FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid) AS n,
+                 ls.id::text AS section_id, ls.position AS section_position, ls.added_in_workout
+          FROM (SELECT 1) AS one
+          LEFT JOIN LATERAL (
+            SELECT id, position, added_in_workout FROM "workout_section"
+            WHERE workout_id = ${workoutId}::uuid ORDER BY position DESC LIMIT 1
+          ) AS ls ON true
         `;
-        const n = countRows[0]!.n;
+        const read = countRows[0]!;
+        const n = read.n;
 
         // Spec 09.4 §6.5 (C4): with no `position`, the add joins the last section iff it was added in the workout.
         let sectionId: string | null = null;
         let position = fields.position ?? computeAppendPosition(n);
         if (fields.position === undefined) {
-          const sections = await tx.$queryRaw<{ id: string; position: number; added_in_workout: boolean }[]>`
-            SELECT id::text, position, added_in_workout FROM "workout_section" WHERE workout_id = ${workoutId}::uuid
-          `;
-          const target = sectionForNewExercise(sections.map((s) => ({ id: s.id, position: s.position, addedInWorkout: s.added_in_workout })));
+          const last =
+            read.section_id === null ? [] : [{ id: read.section_id, position: read.section_position!, addedInWorkout: read.added_in_workout === true }];
+          const target = sectionForNewExercise(last);
           if (target) {
             sectionId = target.id;
             position = insertIndexForSection(await exerciseRanks(tx, workoutId, null), target.position);
@@ -881,7 +898,7 @@ export function createWorkoutRepository(
         const nextSection = patch.sectionId === undefined ? target.section_id : (patch.sectionId?.toLowerCase() ?? null);
         const sectioned = nextSection !== target.section_id;
         // The workout's exercise count: a section move already read every other exercise's rank (minor 55).
-        let n: number | null = null;
+        let ranks: number[] | null = null;
         if (sectioned) {
           let rank = -1;
           if (nextSection !== null) {
@@ -895,16 +912,11 @@ export function createWorkoutRepository(
             if (!section) throw new NotFoundError("workout section not found in this workout");
             rank = section.position;
           }
-          const ranks = await exerciseRanks(tx, workoutId, id);
-          n = ranks.length + 1;
+          ranks = await exerciseRanks(tx, workoutId, id);
           requestedPosition = insertIndexForSection(ranks, rank);
         }
-        if (n === null) {
-          const countRows = await tx.$queryRaw<{ n: number }[]>`
-            SELECT count(*)::int AS n FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid
-          `;
-          n = countRows[0]!.n;
-        }
+        // Minor 226: one const, from the ranks a section move read, else one count.
+        const n = ranks ? ranks.length + 1 : await countExercises(tx, workoutId);
 
         let nextPosition = target.position;
         if (requestedPosition !== undefined && requestedPosition !== target.position) {

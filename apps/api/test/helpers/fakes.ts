@@ -1172,20 +1172,30 @@ export class FakeRoutineRepository implements RoutineRepository {
   /** Spec 09.3 — each `FakeWorkoutRepository` built on this fake adds one: the routines its live workouts were started from. */
   private readonly liveRoutineProviders: (() => Set<string>)[] = [];
 
-  /** Minor 39: every workout fake built on this one adds its provider; none replaces another's. */
-  addLiveRoutineProvider(fn: () => Set<string>): void {
+  /** Minor 39: every workout fake built on this one adds its provider; none replaces another's. Minor 229: the returned
+   * function removes it again. */
+  addLiveRoutineProvider(fn: () => Set<string>): () => void {
     this.liveRoutineProviders.push(fn);
+    return () => {
+      const at = this.liveRoutineProviders.indexOf(fn);
+      if (at !== -1) this.liveRoutineProviders.splice(at, 1);
+    };
   }
 
   /** Spec 09.3 §6.1 — drop the caller's expired one-offs that no live workout holds; returns how many. */
   private sweep(actingUserId: string): number {
+    return this.sweptRoutines(actingUserId).length;
+  }
+
+  /** The sweep, returning the routines it removed, so a refused create can put back exactly those. */
+  private sweptRoutines(actingUserId: string): RoutineRecord[] {
     const now = Date.now();
     const held = new Set(this.liveRoutineProviders.flatMap((fn) => [...fn()]));
-    let removed = 0;
+    const removed: RoutineRecord[] = [];
     for (const r of [...this.routines.values()]) {
       if (r.userId === actingUserId && r.oneOffUntil !== null && r.oneOffUntil.getTime() <= now && !held.has(r.id)) {
         this.routines.delete(r.id);
-        removed += 1;
+        removed.push(r);
       }
     }
     return removed;
@@ -1279,8 +1289,25 @@ export class FakeRoutineRepository implements RoutineRepository {
     return this.owned(actingUserId, id);
   }
 
+  /**
+   * Minors 40, 227: the real create sweeps inside its transaction, so a refused create rolls the sweep back. Only the
+   * swept routines are put back, so a concurrent write that landed while this create waited stays (code review).
+   */
   async create(actingUserId: string, fields: RoutineCreateFields): Promise<{ routine: RoutineRecord; swept: number }> {
-    const removed = this.sweep(actingUserId);
+    const swept = this.sweptRoutines(actingUserId);
+    try {
+      return await this.createAfterSweep(actingUserId, fields, swept.length);
+    } catch (err) {
+      for (const routine of swept) this.routines.set(routine.id, routine);
+      throw err;
+    }
+  }
+
+  private async createAfterSweep(
+    actingUserId: string,
+    fields: RoutineCreateFields,
+    removed: number,
+  ): Promise<{ routine: RoutineRecord; swept: number }> {
     const now0 = Date.now();
     const counted = [...this.routines.values()].filter(
       (r) => r.userId === actingUserId && (r.oneOffUntil === null || r.oneOffUntil.getTime() > now0),

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -232,6 +232,39 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
       const outs = await Promise.all([repo().writeImportedWorkout(U, "H-RICH", w), repo().writeImportedWorkout(U, "H-RICH", w)]);
       expect(outs.map((o) => o.kind).sort()).toEqual(["already_linked", "created"]);
       expect(await rowCounts(db)).toMatchObject({ workout: 1, workout_section: 1, workout_exercise: 2, set_entry: 3, hevy_link: 1 });
+    });
+  });
+
+  describe("Minor 207 — the usable-exercise share lock takes rows in id order", () => {
+    it("the FOR SHARE select is ordered by the uuid id column (the seed's side is not ordered yet; see the runbook)", async () => {
+      const seen: string[] = [];
+      // The real client, with every in-transaction $queryRaw recorded on its way through.
+      const recordingTx = (tx: object) =>
+        new Proxy(tx, {
+          get(target, key) {
+            const value = Reflect.get(target, key) as unknown;
+            if (key === "$queryRaw") {
+              return (strings: TemplateStringsArray, ...values: unknown[]) => {
+                seen.push(Prisma.sql(strings, ...values).sql);
+                return (value as (s: TemplateStringsArray, ...v: unknown[]) => unknown).call(target, strings, ...values);
+              };
+            }
+            return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+          },
+        });
+      const recording = new Proxy(db.prisma, {
+        get(target, key) {
+          if (key === "$transaction") {
+            return (fn: (tx: object) => Promise<unknown>, opts?: unknown) => target.$transaction((tx) => fn(recordingTx(tx)), opts as never);
+          }
+          const value = Reflect.get(target, key) as unknown;
+          return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+        },
+      }) as PrismaClient;
+      await createHevyImportRepository(recording).writeImportedWorkout(U, "H-ORDER", await translate(rich()));
+      const share = seen.filter((sql) => /FOR SHARE/.test(sql) && /FROM "exercise"/.test(sql));
+      expect(share).toHaveLength(1);
+      expect(share[0]).toMatch(/ORDER BY "exercise"\.id\s+FOR SHARE/);
     });
   });
 

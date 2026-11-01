@@ -172,6 +172,7 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
           const usable = await tx.$queryRaw<{ id: string }[]>`
             SELECT id::text FROM "exercise"
             WHERE id = ANY(${ids}::uuid[]) AND is_active AND (owner_user_id IS NULL OR owner_user_id = ${userId}::uuid)
+            ORDER BY "exercise".id
             FOR SHARE`;
           if (usable.length !== ids.length) throw new RejectedSignal();
 
@@ -294,6 +295,9 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     const decided = new Map<string, HevyLinkHit["origin"]>();
     const claimed = new Set<string>();
     const results: HevyImportResult[] = [];
+    // Minor 210: this batch's own totals; the caller's tally gets the same counts as each workout is answered.
+    let setsCreated = 0;
+    let setsDropped = 0;
 
     for (const w of batch.workouts) {
       const base: HevyImportResult = {
@@ -378,13 +382,13 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
         setCount: t.workout.exercises.reduce((n, e) => n + e.sets.length, 0),
       };
       let workoutId: string | null = null;
-      if (batch.dryRun) {
-        // The real run's pure re-check, so a translator bug reads `rejected` in both (minor 155).
-        if (importableProblem(t.workout) !== null) {
-          answer({ outcome: "rejected" });
-          continue;
-        }
-      } else {
+      // The real run's pure re-check, once for both runs, so a translator bug reads `rejected` in both (minors 155,
+      // 213). `writeImportedWorkout` keeps its own guard: it is the write's test seam.
+      if (importableProblem(t.workout) !== null) {
+        answer({ outcome: "rejected" });
+        continue;
+      }
+      if (!batch.dryRun) {
         const out = await writeImportedWorkout(userId, w.hevyWorkoutId, t.workout);
         if (out.kind === "already_linked") {
           answer({ outcome: "already_imported" });
@@ -397,11 +401,14 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
         workoutId = out.workoutId;
       }
       decided.set(w.hevyWorkoutId, "imported");
+      const droppedHere = t.drops.reduce((n, d) => n + (d.code === "exercise_no_sets" ? 0 : d.count), 0);
+      setsCreated += created.setCount;
+      setsDropped += droppedHere;
       tally.setsCreated += created.setCount;
-      tally.setsDropped += t.drops.reduce((n, d) => n + (d.code === "exercise_no_sets" ? 0 : d.count), 0);
+      tally.setsDropped += droppedHere;
       answer({ outcome: "create", workoutId: workoutId === null ? null : parseWorkoutId(workoutId), ...created });
     }
-    return { results, setsCreated: tally.setsCreated, setsDropped: tally.setsDropped };
+    return { results, setsCreated, setsDropped };
   }
 
   /**
