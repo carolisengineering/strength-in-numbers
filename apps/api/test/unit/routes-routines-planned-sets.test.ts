@@ -74,7 +74,13 @@ describe("AC26 — counts only in routine log lines", () => {
     // and the timing, pid and clock fields may hold 77 ("responseTime":77.31). Only the rest is matched.
     const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
     const payloadOnly = (ls: Record<string, unknown>[]) =>
-      JSON.stringify(ls.map(({ responseTime: _r, pid: _p, time: _t, ...rest }) => rest)).replace(UUID, "<uuid>");
+      JSON.stringify(
+        ls.map((line) => {
+          const rest = { ...line };
+          for (const key of ["responseTime", "pid", "time"]) delete rest[key];
+          return rest;
+        }),
+      ).replace(UUID, "<uuid>");
     expect(payloadOnly([{ reqId: "f2c25be1-4785-4321-a6fb-fadddff9465c", responseTime: 77.31, pid: 77, time: 1793538787989 }])).not.toMatch(/4321|\b77\b/);
     expect(payloadOnly(lines)).not.toMatch(/distinctive-|4321|\b77\b/);
   });
