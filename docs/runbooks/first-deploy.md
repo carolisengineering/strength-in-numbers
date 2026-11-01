@@ -526,6 +526,14 @@ eligible sets.
 5. Production (Spec 15): `deploy-prod` never migrates. Apply `0016` by hand the same way before approving the release, then set `hevy_enabled_user_ids` in Terraform by hand (Part F) after her first production sign-in; it is not in `infra/prod.tfvars`.
 6. Rollback: revert the code; the tables stay, unused. Once Spec 19.1 has written rows with `source = 'hevy'`, the widened CHECK cannot be narrowed back without deleting them. No `records:rebuild` (nothing here writes a set).
 
+### 0017 — Hevy link claim fingerprint (Spec 19.0 D29, minors 139 / 144)
+
+1. **Before merging** the owner-calls branch (merging auto-deploys staging, and the new code reads `hevy_link.claim_fingerprint` on every link read, begin and complete — without the column each answers `500`): `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds one nullable column, no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link` (a `claim_fingerprint text` column). Expand-only, so the running API is unaffected.
+2. Merge (Render deploys). A claim taken by the old code just before has no stored fingerprint and completes as before.
+3. Verify on one of Carol's finished workouts: `POST $BASE/v1/workouts/{id}/hevy-link` answers a `fingerprint`; `SELECT claim_fingerprint FROM hevy_link WHERE workout_id = '<id>'` equals it; then `DELETE` the same URL (release) and the column reads `NULL`. No backfill, no `records:rebuild`.
+4. Production (Spec 15): `deploy-prod` never migrates. Apply `0017` by hand the same way before approving the release.
+5. Rollback: revert the code; the column stays, unused by old code. Before rolling forward again, clear what old code may have left behind: `UPDATE hevy_link SET claim_fingerprint = NULL WHERE claim_fingerprint IS NOT NULL;` (old code takes and replaces claims without touching it, so a leftover value could refuse a later complete).
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

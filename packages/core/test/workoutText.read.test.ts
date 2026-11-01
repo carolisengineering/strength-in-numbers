@@ -653,6 +653,10 @@ describe("10.4 AC68 / minor 284 — a scheme keeps the lead-in it replaces in th
     const r = read(["Metcon", "3 Rounds", "21-15-9 for time", "Thrusters"]);
     expect(r.sections[0]!.notes).toBe("3 Rounds\n21-15-9 for time");
   });
+  it.each(["for time", "Rx"])("final review: a note line between them (%s) keeps line order", (between) => {
+    const r = read(["Metcon", "3 Rounds", between, "21-15-9", "Thrusters"]);
+    expect(r.sections[0]!.notes).toBe(`3 Rounds\n${between}`);
+  });
   it("with no heading, the line goes to the routine's notes once", () => {
     const r = read(["3 Rounds", "21-15-9", "Thrusters"]);
     expect(r.notes.split("\n").filter((l) => l === "3 Rounds")).toHaveLength(1);
