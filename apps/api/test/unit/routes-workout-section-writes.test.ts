@@ -150,7 +150,7 @@ describe("09.4 AC21 — workout_exercise_sectioned", () => {
   });
 });
 
-describe("09.4 AC21 — no new telemetry surface", () => {
+describe("09.4 AC21 / 09.5 AC33 — no new telemetry surface", () => {
   it("the span allowlist and the metric names are exactly today's", () => {
     expect([...SPAN_ATTRIBUTE_ALLOWLIST].sort()).toEqual([
       "db.query.text", "db.statement", "db.system", "error.type", "http.request.method", "http.response.status_code",

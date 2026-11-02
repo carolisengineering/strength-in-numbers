@@ -4,13 +4,17 @@ import { pino } from "pino";
 import { describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { WorkoutSectionSchema } from "@sin/core";
-import { buildTestApp, GENEROUS_LIMITS } from "../helpers/build-test-app.js";
+import { CORS_METHODS } from "../../src/plugins/cors-methods.js";
+import { buildTestApp, GENEROUS_LIMITS, limitsWith, RATE_LIMITS } from "../helpers/build-test-app.js";
 import { FakeExerciseRepository, FakeWorkoutRepository } from "../helpers/fakes.js";
 
 const BEARER = { authorization: "Bearer test-token", "content-type": "application/json" };
 const STARTED_AT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 const BASE_KEYS = new Set(["level", "time", "pid", "hostname", "msg", "reqId", "client_ip"]);
 const fieldsOf = (line: Record<string, unknown>) => Object.keys(line).filter((k) => !BASE_KEYS.has(k)).sort();
+
+/** CORS_METHODS at the branch base: Phase B adds no method (PUT and DELETE are already listed). */
+const CORS_METHODS_BEFORE = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"];
 
 async function setup(timer: unknown = { format: "amrap", capSeconds: 720 }) {
   const lines: Record<string, unknown>[] = [];
@@ -29,6 +33,13 @@ async function setup(timer: unknown = { format: "amrap", capSeconds: 720 }) {
     (await call("POST", `/v1/workouts/${workoutId}/sections`, { name: "Zq7 Main", ...(timer === null ? {} : { timer }) })).json(),
   );
   return { call, lines, workoutRepo, workoutId, section, url: `/v1/workout-sections/${section.id}` };
+}
+
+/** `setup`, plus the in-memory section record to seed recorded data the routes alone cannot reach in one step. */
+async function setupWithRecord(timer: unknown) {
+  const s = await setup(timer);
+  const record = () => s.workoutRepo.sectionsByWorkout.get(s.workoutId)!.sections.find((x) => x.id === s.section.id)!;
+  return { ...s, record };
 }
 
 describe("09.5 AC14 — path and body validation", () => {
@@ -133,5 +144,76 @@ describe("09.5 AC33 — result log lines", () => {
     const cleared = lines.filter((l) => l.msg === "workout_section_result_cleared");
     expect(cleared.map(fieldsOf)).toEqual([["removed", "section_id", "user_id", "workout_id"]]);
     expect(JSON.stringify(lines)).not.toMatch(/\b613\b|\b8461\b/);
+  });
+});
+
+describe("09.5 AC31 — route config", () => {
+  async function withLimits(groups: Record<string, number>) {
+    const workoutRepo = new FakeWorkoutRepository(new FakeExerciseRepository());
+    const { app } = await buildTestApp({ workoutRepository: workoutRepo, rateLimits: limitsWith({ groups }) });
+    const call = (method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, payload?: unknown) =>
+      app.inject({ method, url, headers: payload === undefined ? { authorization: BEARER.authorization } : BEARER, ...(payload === undefined ? {} : { payload: payload as object }) });
+    return { app, call };
+  }
+  const SECTION = "/v1/workout-sections/00000000-0000-4000-8000-000000000001";
+  const RECORD_WRITES: [string, string, unknown][] = [
+    ["PUT", `${SECTION}/round-times/3`, { seconds: 60 }],
+    ["DELETE", `${SECTION}/round-times/3`, undefined],
+    ["PUT", `${SECTION}/result`, { rounds: 1, reps: 1 }],
+    ["DELETE", `${SECTION}/result`, undefined],
+  ];
+
+  it("the four record writes are in the sets write group; the section create and PATCH stay in workouts", async () => {
+    const noSets = await withLimits({ sets: 0 });
+    for (const [method, url, body] of RECORD_WRITES) {
+      expect((await noSets.call(method as "PUT", url, body)).statusCode, `${method} ${url}`).toBe(429);
+    }
+    expect((await noSets.call("PATCH", SECTION, { name: "N" })).statusCode).toBe(404);
+
+    const noWorkouts = await withLimits({ workouts: 0 });
+    expect((await noWorkouts.call("PATCH", SECTION, { name: "N" })).statusCode).toBe(429);
+    for (const [method, url, body] of RECORD_WRITES) {
+      expect((await noWorkouts.call(method as "PUT", url, body)).statusCode, `${method} ${url}`).toBe(404);
+    }
+  });
+
+  it("RATE_LIMITS and CORS_METHODS are unchanged", () => {
+    expect(RATE_LIMITS.groups).toEqual({ sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10, hevy: 60 });
+    expect([...CORS_METHODS].sort()).toEqual(CORS_METHODS_BEFORE);
+  });
+
+  it("the four routes are published with their problems", async () => {
+    const { app } = await withLimits({});
+    await app.ready();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as { paths: Record<string, Record<string, unknown>> };
+    expect(Object.keys(doc.paths["/v1/workout-sections/{id}/round-times/{round}"]!).sort()).toEqual(["delete", "put"]);
+    expect(Object.keys(doc.paths["/v1/workout-sections/{id}/result"]!).sort()).toEqual(["delete", "put"]);
+  });
+});
+
+describe("09.5 AC31 — the two 409s render on /v1", () => {
+  it.each([
+    ["section-timer-mismatch", "PUT", "/round-times/1", { seconds: 60 }],
+    ["section-result-exists", "PATCH", "", { timer: { format: "time_cap", capSeconds: 900 } }],
+  ] as const)("%s", async (slug, method, suffix, body) => {
+    const { call, url, record } = await setupWithRecord(slug === "section-timer-mismatch" ? null : { format: "amrap", capSeconds: 720 });
+    if (slug === "section-result-exists") record().roundTimes = [{ round: 1, seconds: 100 }];
+    const res = await call(method, `${url}${suffix}`, body);
+    expect(res.statusCode).toBe(409);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json().type).toMatch(new RegExp(`/${slug}$`));
+  });
+});
+
+describe("09.5 AC32 — no value in a 422", () => {
+  it.each([
+    ["PUT", "/round-times/7", { seconds: 98765 }, "98765"],
+    ["PUT", "/result", { rounds: 61234 }, "61234"],
+    ["PATCH", "", { timer: { format: "set_timer", roundSeconds: 54321, rounds: 4 } }, "54321"],
+  ] as const)("%s …%s: the body never echoes %j", async (method, suffix, body, value) => {
+    const { call, url } = await setup();
+    const res = await call(method, `${url}${suffix}`, body);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).not.toContain(value);
   });
 });
