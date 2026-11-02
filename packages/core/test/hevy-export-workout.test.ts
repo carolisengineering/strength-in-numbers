@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHevyWorkout, exportPairFor, type HevyMapping, type HevyPostWorkout } from "../src/index.js";
+import { buildHevyWorkout, exportPairFor, type HevyMapping, type HevyPostWorkout, type WorkoutSection } from "../src/index.js";
 import { detail, exercise, exerciseId, identityRoot, mappingFor, pair, section, set } from "./fixtures/hevy/workout-detail.js";
 
 const deps = { rootOf: identityRoot };
@@ -192,5 +192,117 @@ describe("19.0 AC12 — pure and total", () => {
 
   it("zero exercises gives an empty list", () => {
     expect(body(detail({ exercises: [] })).exercises).toEqual([]);
+  });
+});
+
+// Spec 09.5 Phase C — timed sections.
+const SET_TIMER_5 = { format: "set_timer", roundSeconds: 300, rounds: 5 } as const;
+const FIVE_ROUNDS = [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 1, seconds }));
+const MAIN_LINE = "Set Timer 5 × 5:00 · 3:41, 3:38, 3:30, 3:25, 3:28 · total 17:42";
+const timed = (n: number, name: string, timer: WorkoutSection["timer"], o: Partial<WorkoutSection> = {}) => section(n, name, { timer, ...o });
+const noResult = { rounds: null, reps: null, finishSeconds: null, capped: false };
+
+describe("09.5 AC26 — a timed section is the workout placeholder", () => {
+  it("a Set Timer with a note and five rounds: name, timer line and note, one duration set, before its first exercise", () => {
+    const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
+    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }));
+    expect(w.exercises[0]).toEqual({
+      exercise_template_id: "WORK",
+      superset_id: null,
+      notes: `Main\n${MAIN_LINE}\nRx`,
+      sets: [{ type: "normal", duration_seconds: 1062 }],
+    });
+    expect(w.exercises[1]!.exercise_template_id).toBe("T0");
+  });
+
+  it("no section note: no third line", () => {
+    const main = timed(0, "Main", SET_TIMER_5, { roundTimes: FIVE_ROUNDS });
+    expect(body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] })).exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}`);
+  });
+
+  it("a timed Warm-up is WORK (not WARM), with its name line", () => {
+    const warm = timed(0, "Warm-up", { format: "amrap", capSeconds: 300 }, { notes: "Easy" });
+    const w = body(detail({ sections: [warm], exercises: [exercise(0, { sectionId: warm.id })] }));
+    expect(w.exercises[0]).toEqual({
+      exercise_template_id: "WORK",
+      superset_id: null,
+      notes: "Warm-up\nAMRAP 5:00\nEasy",
+      sets: [{ type: "normal", duration_seconds: 300 }],
+    });
+  });
+
+  it("a timed Accessory is WORK, and the first exercise's own notes are unchanged", () => {
+    const acc = timed(0, "Accessory", { format: "amrap", capSeconds: 720 }, { notes: "light" });
+    const w = body(detail({ sections: [acc], exercises: [exercise(0, { sectionId: acc.id, notes: "ex" })] }));
+    expect(w.exercises[0]!.exercise_template_id).toBe("WORK");
+    expect(w.exercises[0]!.notes).toBe("Accessory\nAMRAP 12:00\nlight");
+    expect(w.exercises[1]!.notes).toBe("ex");
+  });
+
+  it("a notes_on_first user rule does not apply to a timed section", () => {
+    const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
+    const mapping = { ...mappingFor(6), sectionRules: [{ name: "Main", treatment: "notes_on_first" as const }] };
+    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }), mapping);
+    expect(w.exercises[0]!.exercise_template_id).toBe("WORK");
+    expect(w.exercises[1]!.notes).toBe(null);
+  });
+
+  it("nothing recorded on a Set Timer sends no set; an AMRAP with no result sends its cap", () => {
+    const st = timed(0, "Main", SET_TIMER_5);
+    expect(body(detail({ sections: [st], exercises: [exercise(0, { sectionId: st.id })] })).exercises[0]!.sets).toEqual([]);
+    const am = timed(0, "Finisher", { format: "amrap", capSeconds: 720 });
+    expect(body(detail({ sections: [am], exercises: [exercise(0, { sectionId: am.id })] })).exercises[0]!.sets).toEqual([
+      { type: "normal", duration_seconds: 720 },
+    ]);
+  });
+
+  it("a capped Time Cap sends the cap (O1)", () => {
+    const tc = timed(0, "Finisher", { format: "time_cap", capSeconds: 900 }, { result: { ...noResult, rounds: 4, reps: 7, capped: true } });
+    const w = body(detail({ sections: [tc], exercises: [exercise(0, { sectionId: tc.id })] }));
+    expect(w.exercises[0]!.sets).toEqual([{ type: "normal", duration_seconds: 900 }]);
+    expect(w.exercises[0]!.notes).toBe("Finisher\nTime Cap 15:00 · Capped · 4 rounds + 7 reps");
+  });
+
+  it("a timed section in two runs: two WORK markers with the same notes, only the first carries the duration", () => {
+    const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
+    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id }), exercise(1), exercise(2, { sectionId: main.id })] }));
+    expect(w.exercises.map((e) => e.exercise_template_id)).toEqual(["WORK", "T0", "T1", "WORK", "T2"]);
+    expect(w.exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}\nRx`);
+    expect(w.exercises[3]!.notes).toBe(w.exercises[0]!.notes);
+    expect(w.exercises[0]!.sets).toEqual([{ type: "normal", duration_seconds: 1062 }]);
+    expect(w.exercises[3]!.sets).toEqual([]);
+  });
+});
+
+describe("09.5 AC26 / D16 — an empty timed section emits nothing", () => {
+  it("a Time Cap section with a result and no exercises leaves the body as without it", () => {
+    const tc = timed(1, "Finisher", { format: "time_cap", capSeconds: 900 }, { result: { ...noResult, finishSeconds: 860 } });
+    const exercises = () => [exercise(0), exercise(1)];
+    expect(body(detail({ sections: [tc], exercises: exercises() })).exercises).toEqual(body(detail({ exercises: exercises() })).exercises);
+  });
+});
+
+describe("09.5 AC27 — no placeholder pair", () => {
+  const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
+  const d = () =>
+    detail({
+      sections: [main],
+      exercises: [exercise(0, { sectionId: main.id, notes: "ex" }), exercise(1), exercise(2, { sectionId: main.id })],
+    });
+  const markerless = mappingFor(3, { placeholders: false });
+
+  it("the name, timer line and note go on the first exercise of each run, before its own notes", () => {
+    const w = body(d(), markerless);
+    expect(w.exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}\nRx\n\nex`);
+    expect(w.exercises[2]!.notes).toBe(`Main\n${MAIN_LINE}\nRx`);
+  });
+
+  it("no exercise carries a duration set", () => {
+    const w = body(d(), markerless);
+    expect(w.exercises.flatMap((e) => e.sets).some((s) => "duration_seconds" in s && s.duration_seconds !== undefined)).toBe(false);
+  });
+
+  it("section_no_placeholder is counted once over two runs", () => {
+    expect(notices(d(), markerless)).toEqual([{ code: "section_no_placeholder", count: 1, names: ["Main"] }]);
   });
 });
