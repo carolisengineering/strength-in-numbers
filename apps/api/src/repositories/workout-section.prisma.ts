@@ -114,12 +114,22 @@ export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, worko
   const locked = workouts[0];
   if (!locked) throw sectionNotFound();
   assertStillLive(mode, locked.ended_at);
-  const sections = await tx.$queryRaw<WorkoutSectionDbRow[]>`
-    SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
+  return lockSectionThenRead(tx, sectionId);
+}
+
+/**
+ * Locks the section row, then reads it with its round times in a SECOND statement. Under READ COMMITTED a
+ * `SELECT … FOR UPDATE` that waited for the lock re-checks the locked row but evaluates its subqueries against the
+ * snapshot taken before the wait, so a `round_times` read in the same statement could miss a round another writer
+ * just committed — and a rule checked against it would pass when it must not (AC22 (a), found by the race test).
+ */
+async function lockSectionThenRead(tx: RawClient, sectionId: string): Promise<WorkoutSectionDbRow> {
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id::text FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
   `;
-  const section = sections[0];
-  if (!section) throw sectionNotFound();
-  return section;
+  if (locked.length === 0) throw sectionNotFound();
+  const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid`;
+  return rows[0]!;
 }
 
 /** Spec 09.4 §6.4 — create / update / remove a workout's own section, live or finished (07.4 `withWriteMode`). */
@@ -170,11 +180,8 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
         await lockWorkoutStructure(tx, mode, pre.workout_id, sectionNotFound);
-        const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`
-          SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
-        `;
-        const current = rows[0];
-        if (!current) throw sectionNotFound();
+        // Lock, then read the rounds and result fresh (see lockSectionThenRead): the timer change decides on them.
+        const current = await lockSectionThenRead(tx, sectionId);
         const name = patch.name ?? current.name;
         const notes = "notes" in patch && patch.notes !== undefined ? patch.notes : current.notes;
         const nameChanged = name !== current.name;
