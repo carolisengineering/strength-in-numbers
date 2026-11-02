@@ -104,3 +104,77 @@ describe("09.5 Phase A — an untimed workout's source is unchanged", () => {
     expect(hevyFingerprintSource(d)).toBe(GOLDEN_BASE);
   });
 });
+
+// Spec 09.5 Phase C — timed sections in the fingerprint (§6.7, D18).
+describe("09.5 AC29 — timed data in the fingerprint", () => {
+  const noResult = { rounds: null, reps: null, finishSeconds: null, capped: false };
+  const st = () =>
+    section(0, "Main", {
+      notes: "Rx",
+      timer: { format: "set_timer", roundSeconds: 300, rounds: 5 },
+      roundTimes: [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 1, seconds })),
+    });
+  const tc = () =>
+    section(1, "Finisher", { timer: { format: "time_cap", capSeconds: 900 }, result: { ...noResult, rounds: 4, reps: 7, capped: true } });
+  const timedBase = (): WorkoutDetail =>
+    detail({ sections: [st(), tc(), section(2, "Cooldown")], exercises: [exercise(0, { sectionId: st().id }), exercise(1, { sectionId: tc().id })] });
+  const src = (d: WorkoutDetail) => hevyFingerprintSource(d);
+  const withSection = (i: number, f: (s: WorkoutDetail["sections"][number]) => WorkoutDetail["sections"][number]) => {
+    const d = timedBase();
+    return { ...d, sections: d.sections.map((s, j) => (j === i ? f(s) : s)) };
+  };
+
+  it("(b) the version tag stays v1", () => {
+    expect(src(timedBase()).startsWith("v1")).toBe(true);
+  });
+
+  it.each<[string, () => WorkoutDetail]>([
+    ["roundSeconds", () => withSection(0, (s) => ({ ...s, timer: { format: "set_timer", roundSeconds: 301, rounds: 5 } }))],
+    ["rounds", () => withSection(0, (s) => ({ ...s, timer: { format: "set_timer", roundSeconds: 300, rounds: 6 } }))],
+    ["the time cap's capSeconds", () => withSection(1, (s) => ({ ...s, timer: { format: "time_cap", capSeconds: 960 } }))],
+    ["one round's seconds", () => withSection(0, (s) => ({ ...s, roundTimes: s.roundTimes.map((r) => (r.round === 3 ? { ...r, seconds: 211 } : r)) }))],
+    ["adding a round", () => withSection(0, (s) => ({ ...s, timer: { format: "set_timer", roundSeconds: 300, rounds: 6 }, roundTimes: [...s.roundTimes, { round: 6, seconds: 200 }] }))],
+    ["removing a round", () => withSection(0, (s) => ({ ...s, roundTimes: s.roundTimes.slice(0, 4) }))],
+    ["the result's rounds", () => withSection(1, (s) => ({ ...s, result: { ...s.result!, rounds: 5 } }))],
+    ["the result's reps", () => withSection(1, (s) => ({ ...s, result: { ...s.result!, reps: 8 } }))],
+    ["the result's finishSeconds", () => withSection(1, (s) => ({ ...s, result: { ...noResult, finishSeconds: 860 } }))],
+    ["the capped flag", () => withSection(1, (s) => ({ ...s, result: { ...s.result!, capped: false } }))],
+    ["setting a timer on an untimed section", () => withSection(2, (s) => ({ ...s, timer: { format: "amrap", capSeconds: 600 } }))],
+  ])("(c) a change to %s changes the source", (_label, mutate) => {
+    expect(src(mutate())).not.toBe(src(timedBase()));
+  });
+
+  it("round times hash in round order, whatever order they are given in", () => {
+    const at = (order: number[]) =>
+      src(withSection(0, (s) => ({ ...s, roundTimes: order.map((round) => ({ round, seconds: 200 + round })) })));
+    expect(at([3, 1])).toBe(at([1, 3]));
+  });
+
+  it("the timed entry's exact shape (§6.7): absent plan numbers are null, round times sorted", () => {
+    const s = section(0, "Main", {
+      notes: "Rx",
+      timer: { format: "amrap", capSeconds: 720 },
+      result: { ...noResult, rounds: 5, reps: 7 },
+      roundTimes: [{ round: 2, seconds: 515 }, { round: 1, seconds: 250 }],
+    });
+    const out = src(detail({ title: null, notes: null, routineName: null, sections: [s], exercises: [] }));
+    expect(out).toBe(
+      'v1[null,null,"2026-10-01T10:00:00.000-05:00","2026-10-01T11:00:00.000-05:00",null,' +
+        '[["Main","Rx",0,["amrap",null,null,720],[5,7,null,false],[[1,250],[2,515]]]],[]]',
+    );
+    const untimedResult = src(detail({ title: null, notes: null, routineName: null, sections: [section(0, "Main", { notes: "Rx" })], exercises: [] }));
+    expect(untimedResult).toBe('v1[null,null,"2026-10-01T10:00:00.000-05:00","2026-10-01T11:00:00.000-05:00",null,[["Main","Rx",0]],[]]');
+  });
+
+  it("a timed section with no result has null in the result slot", () => {
+    const s = section(0, "Main", { timer: { format: "set_timer", roundSeconds: 300, rounds: 5 } });
+    expect(src(detail({ sections: [s] }))).toContain('[["Main",null,0,["set_timer",300,5,null],null,[]]]');
+  });
+
+  it("an empty timed section (no exercises) still changes the source", () => {
+    const empty = () => section(0, "Finisher", { timer: null });
+    const untimed = detail({ sections: [empty()], exercises: [exercise(0)] });
+    const timedEmpty = detail({ sections: [{ ...empty(), timer: { format: "time_cap", capSeconds: 900 }, result: { ...noResult, finishSeconds: 860 } }], exercises: [exercise(0)] });
+    expect(src(timedEmpty)).not.toBe(src(untimed));
+  });
+});
