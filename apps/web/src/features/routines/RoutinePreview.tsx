@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Routine, RoutineItem } from "@sin/core";
 import { isNotFound } from "../../api";
 import { BackLink } from "../../ui/BackLink";
+import { TimerLine } from "../sectionTimer/TimerLine";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -130,6 +131,7 @@ export function RoutineItems({ routine }: { routine: Routine }) {
             <h2 id={`preview-section-${block.section.id}`} className={styles.sectionName}>
               {block.section.name}
             </h2>
+            {block.section.timer ? <TimerLine timer={block.section.timer} /> : null}
             {block.section.notes ? <p className={styles.sectionNotes}>{block.section.notes}</p> : null}
             {block.items.length > 0 ? list(block.items, block.start, `Exercises in ${block.section.name}`) : null}
           </section>

@@ -17,7 +17,8 @@ import type { Draft, DraftItem, DraftSet } from "./routineDraft";
 import { SECTION_NAME_INVALID, SECTION_NOTES_INVALID } from "./messages";
 import { parseSectionName, parseSectionNotes } from "./sectionText";
 import { WEIGHT_MESSAGE } from "./targetFormat";
-import { toTimerInput } from "../sectionTimer/timerFields";
+import { CAP_MAX_ERROR, ROUND_LENGTH_MAX_ERROR, ROUNDS_RANGE_ERROR, TIMER_CHECK_ERROR } from "../sectionTimer/timerCopy";
+import { toTimerInput, type TimerFieldName } from "../sectionTimer/timerFields";
 
 /** The POST/PUT body (Spec 09 §5) before Zod's transforms. */
 export type RoutineWriteInput = z.input<typeof RoutineWriteSchema>;
@@ -35,7 +36,14 @@ export type ItemField =
 export type DraftIssue =
   | { readonly scope: "name" | "notes" | "items" | "form"; readonly message: string }
   | { readonly scope: "item"; readonly itemKey: string; readonly field: ItemField; readonly message: string }
-  | { readonly scope: "section"; readonly sectionKey: string; readonly field: "name" | "notes"; readonly message: string }
+  | {
+      readonly scope: "section";
+      readonly sectionKey: string;
+      readonly field: "name" | "notes" | "timer";
+      /** Spec 10.7 AC10: which timer field (or the group) a `timer` issue sits under. */
+      readonly timerField?: TimerFieldName | "group";
+      readonly message: string;
+    }
   | { readonly scope: "row"; readonly itemKey: string; readonly rowKey: string; readonly field: "reps" | "weight"; readonly message: string };
 
 export interface DraftValidation {
@@ -159,7 +167,15 @@ export function issueForPath(
   if (head === "items" && path.length === 1) return { scope: "items", message: ITEMS_REQUIRED };
   if (head === "sections") {
     const sectionKey = typeof index === "number" ? sectionKeys[index] : undefined;
-    if (sectionKey === undefined || path.length !== 3) return null;
+    if (sectionKey === undefined) return null;
+    if (field === "timer") {
+      // Spec 10.7 AC10: the app's words for the field the server names; anything else sits under the group.
+      const sub = path.length === 4 ? path[3] : undefined;
+      const known = sub === "rounds" || sub === "roundSeconds" || sub === "capSeconds" ? sub : null;
+      const message = known === null ? TIMER_CHECK_ERROR : TIMER_FIELD_MESSAGES[known];
+      return { scope: "section", sectionKey, field: "timer", timerField: known ?? "group", message };
+    }
+    if (path.length !== 3) return null;
     if (field === "name") return { scope: "section", sectionKey, field: "name", message: SECTION_NAME_INVALID };
     if (field === "notes") return { scope: "section", sectionKey, field: "notes", message: SECTION_NOTES_INVALID };
     return null;
@@ -190,11 +206,17 @@ export function issueForPath(
   return null;
 }
 
+const TIMER_FIELD_MESSAGES: Readonly<Record<TimerFieldName, string>> = {
+  rounds: ROUNDS_RANGE_ERROR,
+  roundSeconds: ROUND_LENGTH_MAX_ERROR,
+  capSeconds: CAP_MAX_ERROR,
+};
+
 /** Plan-mode row keys per item (`null` for a quick-mode item), so a `sets.<j>` path can find its row. */
 export type PlanKeys = readonly (readonly string[] | null)[];
 
 const issueId = (issue: DraftIssue): string =>
-  issue.scope === "item" ? `item:${issue.itemKey}:${issue.field}` : issue.scope === "section" ? `section:${issue.sectionKey}:${issue.field}` : issue.scope === "row" ? `row:${issue.rowKey}:${issue.field}` : issue.scope;
+  issue.scope === "item" ? `item:${issue.itemKey}:${issue.field}` : issue.scope === "section" ? `section:${issue.sectionKey}:${issue.field}${issue.timerField ? `:${issue.timerField}` : ""}` : issue.scope === "row" ? `row:${issue.rowKey}:${issue.field}` : issue.scope;
 
 /** The same function the API runs (Spec 09.1 AC23) over the rows this body carries; maps to the sheet's places. */
 export function plannedViolationIssues(draft: Draft, body: RoutineWriteInput, modalityOf: ModalityOf): DraftIssue[] {
