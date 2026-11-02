@@ -85,12 +85,11 @@ describe("10.7 AC13 — editor coupling (reducer)", () => {
     expect(groups(run(timedM(spec), actions.add(exerciseId(20))))).toEqual(expected);
   });
 
-  it("moving an item into a timed section that is one superset joins it; leaving a group elsewhere shows the notice", () => {
+  it("moving an item into a timed section that is one superset joins it", () => {
     const d = sectioned("z1 y1", ["M", "a1 b1"]);
     const timed = { ...d, sections: d.sections.map((s) => ({ ...s, timer: SET_TIMER })) };
     const moved = run(timed, actions.moveItemToSection("z", "M"));
     expect(groups(moved)).toEqual([1, 1, 1]);
-    expect(moved.unlinkNotice).toBe(true);
   });
 
   it.each<[string, (d: Draft) => Draft]>([
@@ -150,5 +149,23 @@ describe("10.7 AC13 — editor coupling (reducer)", () => {
       actions.setSectionTimer("M", { format: "set_timer", roundSeconds: 240, rounds: 5 }),
     );
     expect(groups(after)).toEqual(before);
+  });
+});
+
+describe("10.7 AC13 — the unlink notice tells the truth", () => {
+  it("a grouped exercise moved into a timed section that joins it shows no unlink notice", () => {
+    const d = sectioned("z1 y1", ["M", "a1 b1"]);
+    const timed = { ...d, sections: d.sections.map((s) => ({ ...s, timer: SET_TIMER })) };
+    const moved = run(timed, actions.moveItemToSection("z", "M"));
+    expect(groups(moved)).toEqual([1, 1, 1]);
+    expect(moved.unlinkNotice).toBe(false);
+  });
+
+  it("a grouped exercise moved into a timed section it can't join still shows it", () => {
+    const d = sectioned("z1 y1", ["M", "a1 b1 c2 d2"]);
+    const timed = { ...d, sections: d.sections.map((s) => ({ ...s, timer: SET_TIMER })) };
+    const moved = run(timed, actions.moveItemToSection("z", "M"));
+    expect(moved.items.find((i) => i.key === "z")!.supersetGroup).toBeNull();
+    expect(moved.unlinkNotice).toBe(true);
   });
 });

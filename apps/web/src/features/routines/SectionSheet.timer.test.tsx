@@ -94,3 +94,26 @@ describe("10.7 AC58 — text as text", () => {
     expect(document.querySelector("img")).toBeNull();
   });
 });
+
+describe("10.7 AC4 — a new format starts clean", () => {
+  it("after a failed Done, switching format drops the old format's errors", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Enter the time limit.");
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "time_cap");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("a server group error goes once None is chosen", async () => {
+    const user = userEvent.setup();
+    const { dialog } = sheet({ section: { ...section, timer: { format: "amrap", capSeconds: 720 } }, messages: { timer: { group: "Check the timer and try again." } } });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Check the timer and try again.");
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+});

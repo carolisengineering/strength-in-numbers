@@ -442,7 +442,9 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const target = action.sectionKey === null ? undefined : state.sections.find((s) => s.key === action.sectionKey);
       // Spec 10.7 AC13: moved into a timed section, it joins that section's one superset (§6.4 join).
       const next = withItems(state, target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : rest);
-      return item.supersetGroup === null ? next : { ...next, unlinkNotice: true };
+      // The notice says the exercise was unlinked: only true when it left a superset and didn't join one there.
+      const regrouped = next.items.find((i) => i.key === item.key)!.supersetGroup !== null;
+      return item.supersetGroup === null || regrouped ? next : { ...next, unlinkNotice: true };
     }
     case "dismissUnlinkNotice":
       return state.unlinkNotice ? { ...state, unlinkNotice: false } : state;

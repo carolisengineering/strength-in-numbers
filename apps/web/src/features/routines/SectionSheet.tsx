@@ -59,7 +59,16 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
         <Field id="section-notes" label="Note" hint="Optional" {...(errors.notes ? { error: errors.notes } : {})}>
           {(control) => <textarea {...control} className={styles.input} rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />}
         </Field>
-        <TimerFields idPrefix="section-timer" value={timer} errors={timerErrors} onChange={setTimer} />
+        <TimerFields
+          idPrefix="section-timer"
+          value={timer}
+          errors={timerErrors}
+          onChange={(next) => {
+            // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.
+            if (next.format !== timer.format) setTimerErrors({});
+            setTimer(next);
+          }}
+        />
         <Button type="submit" block>
           Done
         </Button>
