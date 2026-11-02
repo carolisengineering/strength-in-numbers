@@ -234,7 +234,12 @@ describe("CORS (Criterion 15)", () => {
     ["POST", "/v1/workouts/00000000-0000-4000-8000-000000000001/sections"],
     ["PATCH", "/v1/workout-sections/00000000-0000-4000-8000-000000000001"],
     ["DELETE", "/v1/workout-sections/00000000-0000-4000-8000-000000000001"],
-  ])("09.4 AC20 — the preflight for %s %s allows the method", async (method, url) => {
+    // Spec 09.5 AC31 — the keyed record writes.
+    ["PUT", "/v1/workout-sections/00000000-0000-4000-8000-000000000001/round-times/3"],
+    ["DELETE", "/v1/workout-sections/00000000-0000-4000-8000-000000000001/round-times/3"],
+    ["PUT", "/v1/workout-sections/00000000-0000-4000-8000-000000000001/result"],
+    ["DELETE", "/v1/workout-sections/00000000-0000-4000-8000-000000000001/result"],
+  ])("09.4 AC20 / 09.5 AC31 — the preflight for %s %s allows the method", async (method, url) => {
     const { app } = await buildTestApp();
     const res = await app.inject({
       method: "OPTIONS",

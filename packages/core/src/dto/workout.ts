@@ -11,7 +11,7 @@ import { noControlChars } from "./exercise.js";
 import { PersonalRecordSchema } from "./personal-record.js";
 import { PlannedSetSchema } from "./planned-set.js";
 import { SetEntrySchema } from "./set-entry.js";
-import { RoundTimeSchema, SectionResultSchema, SectionTimerSchema } from "./section-timer.js";
+import { RoundTimeSchema, SectionResultSchema, SectionTimerSchema, TimedSectionSummarySchema } from "./section-timer.js";
 
 export const WORKOUT_TITLE_MAX = 120;
 export const WORKOUT_NOTES_MAX = 4000;
@@ -236,6 +236,8 @@ export const WorkoutSummarySchema = WorkoutSchema.extend({
   totalVolume: z.number().positive().nullable(),
   /** `personal_record` rows this workout holds now (07.0 D18), not counting `best_set_volume` (Spec 07.3): the figure the finish summary lists. */
   recordCount: z.number().int().min(0),
+  /** Spec 09.5 AC25 — the workout's timed sections in position order, each with its derived score; `[]` when none. */
+  timedSections: z.array(TimedSectionSummarySchema),
 });
 export type WorkoutSummary = z.infer<typeof WorkoutSummarySchema>;
 

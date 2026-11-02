@@ -89,8 +89,13 @@ const MATRIX: Record<string, Slugs> = {
   "PATCH /v1/workout-exercises/{id}": withCentral("body", { 404: ["not-found"] }),
   // Spec 09.4 AC20 — a workout's own sections.
   "POST /v1/workouts/{id}/sections": withCentral("body", { 404: ["not-found"], 409: ["workout-section-limit"] }),
-  "PATCH /v1/workout-sections/{id}": withCentral("body", { 404: ["not-found"] }),
+  "PATCH /v1/workout-sections/{id}": withCentral("body", { 404: ["not-found"], 409: ["section-result-exists"] }), // Spec 09.5 AC13
   "DELETE /v1/workout-sections/{id}": withCentral("body", { 404: ["not-found"] }),
+  // Spec 09.5 AC31 — the keyed record writes.
+  "PUT /v1/workout-sections/{id}/round-times/{round}": withCentral("body", { 404: ["not-found"], 409: ["section-timer-mismatch"] }),
+  "DELETE /v1/workout-sections/{id}/round-times/{round}": withCentral("body", { 404: ["not-found"] }),
+  "PUT /v1/workout-sections/{id}/result": withCentral("body", { 404: ["not-found"], 409: ["section-timer-mismatch"] }),
+  "DELETE /v1/workout-sections/{id}/result": withCentral("body", { 404: ["not-found"] }),
   "DELETE /v1/workout-exercises/{id}": withCentral("body", {
     404: ["not-found"],
     409: ["workout-would-be-empty"],

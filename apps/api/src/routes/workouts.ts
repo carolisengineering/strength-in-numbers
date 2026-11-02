@@ -13,6 +13,7 @@ import {
   WorkoutHistoryQuerySchema,
   WorkoutHistoryResponseSchema,
   milliToDecimalString,
+  sectionScore,
   type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
@@ -57,6 +58,8 @@ function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
     workingSetCount: r.workingSetCount,
     totalVolume: r.totalVolumeMilli === null ? null : Number(milliToDecimalString(r.totalVolumeMilli)),
     recordCount: r.recordCount,
+    // Spec 09.5 AC25 — the score is derived here by the one implementation, never stored.
+    timedSections: r.timedSections.map((s) => ({ id: s.id as WorkoutSummary["timedSections"][number]["id"], position: s.position, name: s.name, timer: s.timer, score: sectionScore(s) })),
   };
 }
 

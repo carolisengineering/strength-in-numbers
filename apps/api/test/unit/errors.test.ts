@@ -17,6 +17,8 @@ import {
   SyncTokenExpiredError,
   RoutineNameTakenError,
   RoutineLimitError,
+  SectionResultExistsError,
+  SectionTimerMismatchError,
   WorkoutSectionLimitError,
 } from "../../src/errors/app-error.js";
 import { toProblem, PROBLEM_BASE_URL } from "../../src/errors/problem.js";
@@ -47,6 +49,8 @@ describe("AppError hierarchy", () => {
       [new RoutineNameTakenError(), 409, "routine-name-taken"],
       [new RoutineLimitError(), 409, "routine-limit"],
       [new WorkoutSectionLimitError(), 409, "workout-section-limit"],
+      [new SectionTimerMismatchError(), 409, "section-timer-mismatch"],
+      [new SectionResultExistsError(), 409, "section-result-exists"],
     ];
     for (const [err, status, slug] of cases) {
       expect(err, slug).toBeInstanceOf(AppError);
@@ -187,5 +191,22 @@ describe("SyncTokenExpiredError (Spec 03.3 §5)", () => {
     expect(body.type).toBe(`${PROBLEM_BASE_URL}sync-token-expired`);
     expect(body.title).toBe("Sync token expired");
     expect(body.detail).toContain("Discard your cached catalog");
+  });
+});
+
+describe("09.5 AC31 — the two timed-section 409s render with fixed text", () => {
+  it.each([
+    [new SectionTimerMismatchError(), "section-timer-mismatch", "Section timer mismatch", "This section's timer doesn't take that."],
+    [
+      new SectionResultExistsError(),
+      "section-result-exists",
+      "Section result exists",
+      "Changing the timer would clear the recorded times and result. Send discardResult to confirm.",
+    ],
+  ])("%#: %s", (err, slug, title, detail) => {
+    const { status, body } = toProblem(err, INSTANCE);
+    expect(status).toBe(409);
+    expect(body).toMatchObject({ type: `${PROBLEM_BASE_URL}${slug}`, title, status: 409, detail, instance: INSTANCE });
+    expect(body.errors).toBeUndefined();
   });
 });

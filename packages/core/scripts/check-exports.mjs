@@ -222,6 +222,13 @@ const EXPECTED = [
   "roundTimeIssues",
   "resultIssues",
   "timerFitsRecorded",
+  "timersEqual",
+  "timerChangeKeepsRecorded",
+  "SectionScoreSchema",
+  "TimedSectionSummarySchema",
+  "SectionRoundParamsSchema",
+  "ROUND_PARAM_MESSAGE",
+  "DISCARD_RESULT_NEEDS_TIMER",
   // dto — routines (Spec 09 §5)
   "ROUTINE_NAME_MAX",
   "ROUTINE_NOTES_MAX",

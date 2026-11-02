@@ -6,7 +6,9 @@ import { ValidationError } from "../../src/errors/app-error.js";
 import { encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
-import { WorkoutHistoryResponseSchema } from "@sin/core";
+import { sectionScore, WorkoutHistoryResponseSchema } from "@sin/core";
+import { settleCapture, startCapture } from "./one-off-helpers.js";
+import { addTimedSection, insertWorkoutSection, recordRounds, setResult } from "./section-helpers.js";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
@@ -328,6 +330,44 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
       } finally {
         await app.close();
       }
+    });
+  });
+
+  describe("09.5 AC25 — History row timedSections", () => {
+    it("lists only the timed sections, in position order, with what sectionScore needs; one page statement as before", async () => {
+      const u = await insertUser(db);
+      const plain = (await logWorkout(db, u, { startedAt: at(1), exercises: [] })).workoutId;
+      const { workoutId } = await logWorkout(db, u, { startedAt: at(2), exercises: [] });
+      const before = (await list(u, 10)).items;
+
+      await insertWorkoutSection(db, workoutId, 0, "Warm-up");
+      const setTimer = await addTimedSection(db, workoutId, 1, "Main", { format: "set_timer", roundSeconds: 300, rounds: 5 });
+      await recordRounds(db, setTimer, [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 1, seconds })));
+      await addTimedSection(db, workoutId, 2, "Finisher", { format: "amrap", capSeconds: 720 });
+      const cap = await addTimedSection(db, workoutId, 3, "Cap", { format: "time_cap", capSeconds: 900 });
+      await setResult(db, cap, { rounds: 4, reps: 7, finishSeconds: null, capped: true });
+
+      const seen = await startCapture(db);
+      const page = await list(u, 10);
+      await settleCapture(db, seen);
+      expect(seen).toHaveLength(2); // the page statement and the volume statement, as before (07.1)
+
+      const row = page.items.find((w) => w.id === workoutId)!;
+      expect(row.timedSections.map((s) => [s.position, s.name])).toEqual([[1, "Main"], [2, "Finisher"], [3, "Cap"]]);
+      expect(row.timedSections.map((s) => sectionScore(s))).toEqual([
+        { kind: "total_time", seconds: 1062, rounds: 5 },
+        null,
+        { kind: "capped", rounds: 4, reps: 7 },
+      ]);
+      const detail = await repo().getWorkoutById(u, workoutId);
+      for (const s of row.timedSections) {
+        expect(sectionScore(s)).toEqual(sectionScore(detail.sections.find((d) => d.id === s.id)!));
+      }
+      expect(page.items.find((w) => w.id === plain)!.timedSections).toEqual([]);
+
+      const strip = (items: typeof before) => items.map((i) => Object.fromEntries(Object.entries(i).filter(([k]) => !["timedSections", "updatedAt"].includes(k))));
+      expect(strip(page.items)).toEqual(strip(before));
+      expect(page.next).toBeNull();
     });
   });
 });

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   CreateWorkoutSectionSchema,
+  DISCARD_RESULT_NEEDS_TIMER,
   RoutineItemSchema,
   RoutineSectionSchema,
   UpdateWorkoutSectionSchema,
@@ -119,5 +120,32 @@ describe("09.5 AC1 — contract", () => {
         if (line !== undefined) expect(line, `${file} ${key}`).not.toMatch(/\.default\(|\.catch\(|\.optional\(/);
       }
     }
+  });
+});
+
+describe("09.5 AC1 — section request bodies", () => {
+  it.each([
+    [{ name: "Main", timer: { format: "amrap", capSeconds: 720 } }],
+    [{ name: "Main", timer: null }],
+    [{ name: "Main" }],
+    [{ name: "Main", timer: { format: "time_cap" } }],
+  ])("CreateWorkoutSectionSchema accepts %j", (body) => {
+    expect(CreateWorkoutSectionSchema.safeParse(body).success).toBe(true);
+  });
+  it.each([[{ timer: { format: "time_cap" } }], [{ timer: null, discardResult: true }], [{ name: "N", timer: null }]])(
+    "UpdateWorkoutSectionSchema accepts %j",
+    (body) => {
+      expect(UpdateWorkoutSectionSchema.safeParse(body).success).toBe(true);
+    },
+  );
+  it("discardResult alone fails on discardResult with the static message", () => {
+    const r = UpdateWorkoutSectionSchema.safeParse({ discardResult: true });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues.map((i) => [i.path.join("."), i.message])).toEqual([["discardResult", DISCARD_RESULT_NEEDS_TIMER]]);
+  });
+  it("discardResult: false fails (literal true only); an unknown key fails; a bad timer fails on its field", () => {
+    expect(paths(UpdateWorkoutSectionSchema.safeParse({ timer: null, discardResult: false }))).toEqual(["discardResult"]);
+    expect(CreateWorkoutSectionSchema.safeParse({ name: "A", result: null }).success).toBe(false);
+    expect(paths(UpdateWorkoutSectionSchema.safeParse({ timer: { format: "set_timer", roundSeconds: 300 } }))).toEqual(["timer.rounds"]);
   });
 });

@@ -16,3 +16,21 @@ describe("AC16 — GET /v1/workouts is in the published contract", () => {
     expect(doc.paths["/v1/workouts"]!.post).toBeDefined();
   });
 });
+
+describe("09.5 AC25 — the History item schema", () => {
+  type S = { properties?: Record<string, S>; items?: S; required?: string[]; anyOf?: S[]; oneOf?: S[] } & Record<string, unknown>;
+  it("requires timedSections; score is a nullable union of four variants", async () => {
+    const { app } = await buildTestApp();
+    await app.ready();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as {
+      paths: Record<string, Record<string, { responses: Record<string, { content: Record<string, { schema: S }> }> }>>;
+    };
+    const item = doc.paths["/v1/workouts"]!.get!.responses["200"]!.content["application/json"]!.schema.properties!.items!.items!;
+    expect(item.required!.at(-1)).toBe("timedSections");
+    const timed = item.properties!.timedSections!.items!;
+    expect(timed.required).toEqual(["id", "position", "name", "timer", "score"]);
+    const score = timed.properties!.score!;
+    expect(score.anyOf!.some((s) => s.type === "null")).toBe(true);
+    expect(score.anyOf!.find((s) => s.oneOf)!.oneOf).toHaveLength(4);
+  });
+});

@@ -23,7 +23,13 @@ import {
   toCanonicalKg,
   toCanonicalMeters,
   WORKOUT_SUMMARY_NAMES_MAX,
+  timerChangeKeepsRecorded,
+  timersEqual,
+  roundTimeIssues,
+  resultIssues,
   type Modality,
+  type SectionTimerInput,
+  type SetSectionResult,
 } from "@sin/core";
 import { timerFromColumns, timerToColumns } from "../../src/repositories/section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
@@ -57,6 +63,8 @@ import {
   NotFoundError,
   RoutineLimitError,
   RoutineNameTakenError,
+  SectionResultExistsError,
+  SectionTimerMismatchError,
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
@@ -669,6 +677,11 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           })),
         ),
         recordCount: 0, // the fake keeps no personal_record rows
+        // Spec 09.5 AC25: the timed sections by position, as the History statement selects them.
+        timedSections: (this.sectionsByWorkout.get(w.id)?.sections ?? [])
+          .filter((s) => s.timer !== null)
+          .sort((a, b) => a.position - b.position)
+          .map((s) => ({ id: s.id, position: s.position, name: s.name, timer: s.timer!, result: s.result, roundTimes: s.roundTimes })),
       };
     });
     const last = page[page.length - 1];
@@ -1051,14 +1064,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   async addWorkoutSection(
     actingUserId: string,
     workoutId: string,
-    fields: { name: string; notes: string | null },
+    fields: { name: string; notes: string | null; timer?: SectionTimerInput | null },
   ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }> {
     const workout = this.ownedWorkoutOrThrow(actingUserId, workoutId);
     const snap = this.sectionSnapshot(workoutId);
     if (snap.sections.length >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
     const section: WorkoutSectionRecord = {
       id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true,
-      timer: null, result: null, roundTimes: [],
+      timer: timerFromColumns(timerToColumns(fields.timer)), result: null, roundTimes: [],
     };
     snap.sections = [...snap.sections, section];
     return { ...section, workoutId, sectionCount: snap.sections.length, finishedEdit: FakeWorkoutRepository.edit(workout) };
@@ -1067,16 +1080,100 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   async updateWorkoutSection(
     actingUserId: string,
     sectionId: string,
-    patch: { name?: string; notes?: string | null },
-  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }> {
+    patch: { name?: string; notes?: string | null; timer?: SectionTimerInput | null; discardResult?: true },
+  ): Promise<
+    WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean; timerChanged: boolean; resultCleared: boolean }
+  > {
     const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
     const current = list[index]!;
-    const next = { ...current, name: patch.name ?? current.name, notes: patch.notes === undefined ? current.notes : patch.notes };
+    // Spec 09.5 AC13, as the repository decides it.
+    const timer = patch.timer === undefined ? current.timer : timerFromColumns(timerToColumns(patch.timer));
+    const timerChanged = !timersEqual(timer, current.timer);
+    let resultCleared = false;
+    if (timerChanged && !timerChangeKeepsRecorded(current.timer, timer, current.roundTimes, current.result)) {
+      if (patch.discardResult !== true) throw new SectionResultExistsError();
+      resultCleared = true;
+    }
+    const next: WorkoutSectionRecord = {
+      ...current,
+      name: patch.name ?? current.name,
+      notes: patch.notes === undefined ? current.notes : patch.notes,
+      timer,
+      ...(resultCleared ? { result: null, roundTimes: [] } : {}),
+    };
     const nameChanged = next.name !== current.name;
     const notesChanged = next.notes !== current.notes;
     list[index] = next;
-    const changed = nameChanged || notesChanged;
-    return { ...next, workoutId: workout.id, nameChanged, notesChanged, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null };
+    const changed = nameChanged || notesChanged || timerChanged;
+    return {
+      ...next, workoutId: workout.id, nameChanged, notesChanged, timerChanged, resultCleared,
+      finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null,
+    };
+  }
+
+  /** Spec 09.5 §6.2, over the in-memory section. */
+  async setSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+    seconds: number,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    if (current.timer === null) throw new SectionTimerMismatchError();
+    const issues = roundTimeIssues(current.timer, current.roundTimes, round, seconds);
+    if (issues.length > 0) throw new ValidationError(issues.map(({ path, message }) => ({ path, message })));
+    if (current.roundTimes.some((r) => r.round === round && r.seconds === seconds)) {
+      return { ...current, workoutId: workout.id, changed: false, finishedEdit: null };
+    }
+    const roundTimes = [...current.roundTimes.filter((r) => r.round !== round), { round, seconds }].sort((a, b) => a.round - b.round);
+    const next = { ...current, roundTimes };
+    list[index] = next;
+    return { ...next, workoutId: workout.id, changed: true, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async clearSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const removed = current.roundTimes.some((r) => r.round === round);
+    list[index] = { ...current, roundTimes: current.roundTimes.filter((r) => r.round !== round) };
+    return { workoutId: workout.id, removed, finishedEdit: removed ? FakeWorkoutRepository.edit(workout) : null };
+  }
+
+  /** Spec 09.5 §6.4, over the in-memory section. */
+  async setSectionResult(
+    actingUserId: string,
+    sectionId: string,
+    body: SetSectionResult,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const timer = current.timer;
+    if (timer === null || timer.format === "set_timer") throw new SectionTimerMismatchError();
+    const issues = resultIssues(timer, body);
+    if (issues.length > 0) throw new ValidationError(issues.map(({ path, message }) => ({ path, message })));
+    const result = { rounds: body.rounds ?? null, reps: body.reps ?? null, finishSeconds: body.finishSeconds ?? null, capped: body.capped ?? false };
+    if (JSON.stringify(result) === JSON.stringify(current.result)) {
+      return { ...current, workoutId: workout.id, changed: false, finishedEdit: null };
+    }
+    const next = { ...current, result };
+    list[index] = next;
+    return { ...next, workoutId: workout.id, changed: true, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async clearSectionResult(
+    actingUserId: string,
+    sectionId: string,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const removed = current.result !== null;
+    list[index] = { ...current, result: null };
+    return { workoutId: workout.id, removed, finishedEdit: removed ? FakeWorkoutRepository.edit(workout) : null };
   }
 
   async removeWorkoutSection(

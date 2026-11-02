@@ -7,7 +7,7 @@
  * does with `isExerciseId`.
  */
 import type { FinishedEdit } from "./write-mode.js";
-import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SetType, WeightUnit } from "@sin/core";
+import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SectionTimerInput, SetSectionResult, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
@@ -38,6 +38,18 @@ export interface WorkoutSummaryRecord extends WorkoutRecord {
   workingSetCount: number;
   totalVolumeMilli: number | null;
   recordCount: number;
+  /** Spec 09.5 AC25 — the timed sections in position order, with what `sectionScore` reads; `[]` when none. */
+  timedSections: TimedSectionRecord[];
+}
+
+/** Spec 09.5 AC25 — a History row's timed section; the route derives its `score` with `@sin/core` `sectionScore`. */
+export interface TimedSectionRecord {
+  id: string;
+  position: number;
+  name: string;
+  timer: SectionTimer;
+  result: SectionResult | null;
+  roundTimes: RoundTime[];
 }
 
 export interface ListFinishedWorkoutsOptions {
@@ -375,7 +387,7 @@ export interface WorkoutRepository {
   addWorkoutSection(
     actingUserId: string,
     workoutId: string,
-    fields: { name: string; notes: string | null },
+    fields: { name: string; notes: string | null; timer?: SectionTimerInput | null },
   ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }>;
 
   /** Spec 09.4 §6.4 — changes exactly the keys present; a body equal to the stored values writes nothing
@@ -383,8 +395,46 @@ export interface WorkoutRepository {
   updateWorkoutSection(
     actingUserId: string,
     sectionId: string,
-    patch: { name?: string; notes?: string | null },
-  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }>;
+    patch: { name?: string; notes?: string | null; timer?: SectionTimerInput | null; discardResult?: true },
+  ): Promise<
+    WithFinishedEdit<WorkoutSectionRecord> & {
+      workoutId: string;
+      nameChanged: boolean;
+      notesChanged: boolean;
+      /** Spec 09.5 AC13 — the stored timer changed (after normalizing a cap-less time cap). */
+      timerChanged: boolean;
+      /** Spec 09.5 AC13 — `discardResult` cleared the round times and result. */
+      resultCleared: boolean;
+    }
+  >;
+
+  /** Spec 09.5 §6.2 — sets one round's time, keyed (section, round); a repeat of the stored value writes nothing
+   * (`changed: false`, `finishedEdit: null`). Throws `NotFoundError`, `SectionTimerMismatchError` (untimed) or
+   * `ValidationError` (the §6.3 rules). */
+  setSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+    seconds: number,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }>;
+
+  /** Spec 09.5 AC15 — clears one round; `removed: false` when there was none (an untimed section included). Throws `NotFoundError`. */
+  clearSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }>;
+
+  /** Spec 09.5 §6.4 — replaces the whole result of an AMRAP / Time Cap section; an equal value writes nothing
+   * (`changed: false`). Throws `NotFoundError`, `SectionTimerMismatchError` (untimed, Set Timer) or `ValidationError`. */
+  setSectionResult(
+    actingUserId: string,
+    sectionId: string,
+    body: SetSectionResult,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }>;
+
+  /** Spec 09.5 AC17 — clears the four result columns and leaves the round times. Throws `NotFoundError`. */
+  clearSectionResult(actingUserId: string, sectionId: string): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }>;
 
   /** Spec 09.4 §6.4 — deletes the section (its exercises stay where they are, loose) and renumbers the later
    * sections densely. `exerciseCount` is how many exercises were in it. Throws `NotFoundError`. */

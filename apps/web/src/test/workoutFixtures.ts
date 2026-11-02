@@ -160,6 +160,7 @@ export function makeWorkoutSummary(overrides: Record<string, unknown> = {}): Wor
     workingSetCount: 3,
     totalVolume: 1500,
     recordCount: 0,
+    timedSections: [],
     ...overrides,
   });
 }

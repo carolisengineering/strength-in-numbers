@@ -150,7 +150,7 @@ describe("09.4 AC21 — workout_exercise_sectioned", () => {
   });
 });
 
-describe("09.4 AC21 — no new telemetry surface", () => {
+describe("09.4 AC21 / 09.5 AC33 — no new telemetry surface", () => {
   it("the span allowlist and the metric names are exactly today's", () => {
     expect([...SPAN_ATTRIBUTE_ALLOWLIST].sort()).toEqual([
       "db.query.text", "db.statement", "db.system", "error.type", "http.request.method", "http.response.status_code",
@@ -205,5 +205,67 @@ describe("09.4 AC21 — logging hygiene", () => {
     const text = JSON.stringify(lines);
     expect(text).not.toContain(SECRET_NAME);
     expect(text).not.toContain(SECRET_NOTE);
+  });
+});
+
+describe("09.5 AC12 / AC13 — timers over HTTP", () => {
+  const AMRAP = { format: "amrap", capSeconds: 720 };
+  async function timed() {
+    const s = await setup();
+    const created = await s.call("POST", `/v1/workouts/${s.workoutId}/sections`, { name: "Zq7 Main", timer: AMRAP });
+    expect(created.statusCode).toBe(201);
+    const section = WorkoutSectionSchema.parse(created.json());
+    const record = () => s.workoutRepo.sectionsByWorkout.get(s.workoutId)!.sections.find((x) => x.id === section.id)!;
+    return { ...s, section, record };
+  }
+
+  it("09.5 AC12 — create carries the timer with nothing recorded; a time cap without its cap echoes capSeconds: null", async () => {
+    const { call, workoutId, section } = await timed();
+    expect([section.timer, section.result, section.roundTimes]).toEqual([AMRAP, null, []]);
+    const forTime = await call("POST", `/v1/workouts/${workoutId}/sections`, { name: "Chipper", timer: { format: "time_cap" } });
+    expect(forTime.json().timer).toEqual({ format: "time_cap", capSeconds: null });
+  });
+
+  it("09.5 AC13 — PATCH 409 section-result-exists over recorded data; discardResult clears it", async () => {
+    const { call, section, record } = await timed();
+    record().roundTimes = [{ round: 1, seconds: 250 }];
+    const refused = await call("PATCH", `/v1/workout-sections/${section.id}`, { timer: { format: "time_cap", capSeconds: 900 } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.headers["content-type"]).toContain("application/problem+json");
+    expect(refused.json().type).toMatch(/\/section-result-exists$/);
+    expect(record().timer).toEqual(AMRAP);
+    const done = await call("PATCH", `/v1/workout-sections/${section.id}`, { timer: { format: "time_cap", capSeconds: 900 }, discardResult: true });
+    expect(done.statusCode).toBe(200);
+    expect([done.json().timer, done.json().roundTimes]).toEqual([{ format: "time_cap", capSeconds: 900 }, []]);
+  });
+
+  it("09.5 AC1 — discardResult without timer is 422 on discardResult", async () => {
+    const { call, section } = await timed();
+    const res = await call("PATCH", `/v1/workout-sections/${section.id}`, { discardResult: true });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().errors[0].path).toBe("discardResult");
+  });
+
+  it("09.5 AC33 — timer log lines carry ids, the format and booleans only", async () => {
+    const { call, workoutId, section, lines, workoutRepo, record } = await timed();
+    expect(lines.find((l) => l.msg === "workout_section_added")).toMatchObject({ timer_format: "amrap" });
+
+    await call("PATCH", `/v1/workout-sections/${section.id}`, { timer: AMRAP });
+    await call("PATCH", `/v1/workout-sections/${section.id}`, { name: "Zq7 Main renamed" });
+    expect(lines.filter((l) => l.msg === "workout_section_timer_set")).toEqual([]);
+
+    record().roundTimes = [{ round: 1, seconds: 250 }];
+    await call("PATCH", `/v1/workout-sections/${section.id}`, { timer: { format: "set_timer", roundSeconds: 277, rounds: 4 }, discardResult: true });
+    const timerLines = lines.filter((l) => l.msg === "workout_section_timer_set");
+    expect(timerLines).toHaveLength(1);
+    const fields = timerLines[0]!;
+    const base = new Set(["level", "time", "pid", "hostname", "msg", "reqId", "client_ip"]);
+    expect(Object.keys(fields).filter((k) => !base.has(k)).sort()).toEqual(["cleared", "format", "section_id", "user_id", "workout_id"]);
+    expect(fields).toMatchObject({ workout_id: workoutId, section_id: section.id, format: "set_timer", cleared: true });
+
+    workoutRepo.workouts.get(workoutId)!.endedAt = new Date();
+    await call("PATCH", `/v1/workout-sections/${section.id}`, { timer: null });
+    expect(lines.filter((l) => l.msg === "workout_edited").at(-1)).toMatchObject({ edit: "section_timer_changed", records_recomputed: false });
+    expect(JSON.stringify(lines)).not.toMatch(/Zq7|\b277\b/);
   });
 });

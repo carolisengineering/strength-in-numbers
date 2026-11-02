@@ -18,7 +18,10 @@ export type FinishedEditKind =
   | "section_added"
   | "section_changed"
   | "section_removed"
-  | "exercise_sectioned";
+  | "exercise_sectioned"
+  /** Spec 09.5 AC20 / D21 — a timer set, changed or removed; a round time or the result set or cleared. */
+  | "section_timer_changed"
+  | "section_result_changed";
 
 /** `workout_edited`, after commit, iff the write ran in finished mode. */
 export function logFinishedEdit(log: FastifyBaseLogger, userId: string, edit: FinishedEditKind, finishedEdit: FinishedEdit | null): void {
