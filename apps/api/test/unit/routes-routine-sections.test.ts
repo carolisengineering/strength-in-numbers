@@ -203,3 +203,28 @@ describe("AC28 — counts only in routine log lines", () => {
     expect(JSON.stringify(lines)).not.toMatch(/distinctive-/);
   });
 });
+
+describe("09.5 AC32 — no value in a 422", () => {
+  it("an out-of-range timer is 422 on its paths and the body echoes neither number", async () => {
+    const app = await setup();
+    const res = await post(app, {
+      name: "Timed",
+      sections: [{ key: "a", name: "A", timer: { format: "set_timer", roundSeconds: 98765, rounds: 4321 } }],
+      items: [{ exerciseId: EX.id, sectionKey: "a" }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(paths(res)).toEqual(["sections.0.timer.roundSeconds", "sections.0.timer.rounds"]);
+    expect(res.body).not.toMatch(/98765|4321/);
+  });
+
+  it("an unknown format is 422 and does not echo it", async () => {
+    const app = await setup();
+    const res = await post(app, {
+      name: "Timed",
+      sections: [{ key: "a", name: "A", timer: { format: "emom-zq9", capSeconds: 60 } }],
+      items: [{ exerciseId: EX.id, sectionKey: "a" }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.body).not.toContain("emom-zq9");
+  });
+});
