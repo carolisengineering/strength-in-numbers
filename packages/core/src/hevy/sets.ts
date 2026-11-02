@@ -175,6 +175,11 @@ const FIELDS: Readonly<Record<HevyType, readonly HevyField[]>> = Object.freeze({
   short_distance_weight: ["weight_kg", "distance_meters"],
 });
 
+/** Whether a set of this Hevy type holds `duration_seconds` (AC8); a timed section's marker set needs it (Spec 09.5 AC26). */
+export function hevyTypeHoldsDuration(type: HevyType | null): boolean {
+  return type !== null && FIELDS[type].includes("duration_seconds");
+}
+
 const MEASURE_OF: Readonly<Record<MeasureName, (s: SetEntry) => number | null>> = Object.freeze({
   reps: (s) => s.reps,
   weight: (s) => s.weightKg,

@@ -201,11 +201,17 @@ const FIVE_ROUNDS = [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 
 const MAIN_LINE = "Set Timer 5 × 5:00 · 3:41, 3:38, 3:30, 3:25, 3:28 · total 17:42";
 const timed = (n: number, name: string, timer: WorkoutSection["timer"], o: Partial<WorkoutSection> = {}) => section(n, name, { timer, ...o });
 const noResult = { rounds: null, reps: null, finishSeconds: null, capped: false };
+/** The Hevy "Workout" placeholder as a duration template, so a timed marker can carry its duration set (19.0 AC8). */
+const durationWork = (m: HevyMapping = mappingFor(6)): HevyMapping => ({
+  ...m,
+  pairs: m.pairs.map((p) => (p.role === "workout_placeholder" ? { ...p, hevyType: "duration" as const } : p)),
+});
+const tbody = (d: ReturnType<typeof detail>, mapping: HevyMapping = durationWork()) => body(d, mapping);
 
 describe("09.5 AC26 — a timed section is the workout placeholder", () => {
   it("a Set Timer with a note and five rounds: name, timer line and note, one duration set, before its first exercise", () => {
     const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
-    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }));
+    const w = tbody(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }));
     expect(w.exercises[0]).toEqual({
       exercise_template_id: "WORK",
       superset_id: null,
@@ -217,12 +223,12 @@ describe("09.5 AC26 — a timed section is the workout placeholder", () => {
 
   it("no section note: no third line", () => {
     const main = timed(0, "Main", SET_TIMER_5, { roundTimes: FIVE_ROUNDS });
-    expect(body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] })).exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}`);
+    expect(tbody(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] })).exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}`);
   });
 
   it("a timed Warm-up is WORK (not WARM), with its name line", () => {
     const warm = timed(0, "Warm-up", { format: "amrap", capSeconds: 300 }, { notes: "Easy" });
-    const w = body(detail({ sections: [warm], exercises: [exercise(0, { sectionId: warm.id })] }));
+    const w = tbody(detail({ sections: [warm], exercises: [exercise(0, { sectionId: warm.id })] }));
     expect(w.exercises[0]).toEqual({
       exercise_template_id: "WORK",
       superset_id: null,
@@ -233,7 +239,7 @@ describe("09.5 AC26 — a timed section is the workout placeholder", () => {
 
   it("a timed Accessory is WORK, and the first exercise's own notes are unchanged", () => {
     const acc = timed(0, "Accessory", { format: "amrap", capSeconds: 720 }, { notes: "light" });
-    const w = body(detail({ sections: [acc], exercises: [exercise(0, { sectionId: acc.id, notes: "ex" })] }));
+    const w = tbody(detail({ sections: [acc], exercises: [exercise(0, { sectionId: acc.id, notes: "ex" })] }));
     expect(w.exercises[0]!.exercise_template_id).toBe("WORK");
     expect(w.exercises[0]!.notes).toBe("Accessory\nAMRAP 12:00\nlight");
     expect(w.exercises[1]!.notes).toBe("ex");
@@ -242,30 +248,30 @@ describe("09.5 AC26 — a timed section is the workout placeholder", () => {
   it("a notes_on_first user rule does not apply to a timed section", () => {
     const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
     const mapping = { ...mappingFor(6), sectionRules: [{ name: "Main", treatment: "notes_on_first" as const }] };
-    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }), mapping);
+    const w = tbody(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id })] }), mapping);
     expect(w.exercises[0]!.exercise_template_id).toBe("WORK");
     expect(w.exercises[1]!.notes).toBe(null);
   });
 
   it("nothing recorded on a Set Timer sends no set; an AMRAP with no result sends its cap", () => {
     const st = timed(0, "Main", SET_TIMER_5);
-    expect(body(detail({ sections: [st], exercises: [exercise(0, { sectionId: st.id })] })).exercises[0]!.sets).toEqual([]);
+    expect(tbody(detail({ sections: [st], exercises: [exercise(0, { sectionId: st.id })] })).exercises[0]!.sets).toEqual([]);
     const am = timed(0, "Finisher", { format: "amrap", capSeconds: 720 });
-    expect(body(detail({ sections: [am], exercises: [exercise(0, { sectionId: am.id })] })).exercises[0]!.sets).toEqual([
+    expect(tbody(detail({ sections: [am], exercises: [exercise(0, { sectionId: am.id })] })).exercises[0]!.sets).toEqual([
       { type: "normal", duration_seconds: 720 },
     ]);
   });
 
   it("a capped Time Cap sends the cap (O1)", () => {
     const tc = timed(0, "Finisher", { format: "time_cap", capSeconds: 900 }, { result: { ...noResult, rounds: 4, reps: 7, capped: true } });
-    const w = body(detail({ sections: [tc], exercises: [exercise(0, { sectionId: tc.id })] }));
+    const w = tbody(detail({ sections: [tc], exercises: [exercise(0, { sectionId: tc.id })] }));
     expect(w.exercises[0]!.sets).toEqual([{ type: "normal", duration_seconds: 900 }]);
     expect(w.exercises[0]!.notes).toBe("Finisher\nTime Cap 15:00 · Capped · 4 rounds + 7 reps");
   });
 
   it("a timed section in two runs: two WORK markers with the same notes, only the first carries the duration", () => {
     const main = timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: FIVE_ROUNDS });
-    const w = body(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id }), exercise(1), exercise(2, { sectionId: main.id })] }));
+    const w = tbody(detail({ sections: [main], exercises: [exercise(0, { sectionId: main.id }), exercise(1), exercise(2, { sectionId: main.id })] }));
     expect(w.exercises.map((e) => e.exercise_template_id)).toEqual(["WORK", "T0", "T1", "WORK", "T2"]);
     expect(w.exercises[0]!.notes).toBe(`Main\n${MAIN_LINE}\nRx`);
     expect(w.exercises[3]!.notes).toBe(w.exercises[0]!.notes);
@@ -304,5 +310,25 @@ describe("09.5 AC27 — no placeholder pair", () => {
 
   it("section_no_placeholder is counted once over two runs", () => {
     expect(notices(d(), markerless)).toEqual([{ code: "section_no_placeholder", count: 1, names: ["Main"] }]);
+  });
+});
+
+describe("09.5 AC26 / 19.0 AC8 — the duration set only on a placeholder whose Hevy type holds a duration", () => {
+  const withWorkType = (hevyType: HevyMapping["pairs"][number]["hevyType"]): HevyMapping => {
+    const m = mappingFor(6);
+    return { ...m, pairs: m.pairs.map((p) => (p.role === "workout_placeholder" ? { ...p, hevyType } : p)) };
+  };
+  const am = () => timed(0, "Finisher", { format: "amrap", capSeconds: 720 });
+  const markerOf = (mapping: HevyMapping) => {
+    const s = am();
+    return body(detail({ sections: [s], exercises: [exercise(0, { sectionId: s.id })] }), mapping).exercises[0]!;
+  };
+
+  it.each(["reps_only", "weight_reps", "bodyweight_reps", "short_distance_weight"] as const)("a %s placeholder: no set, the timer line still in the notes", (t) => {
+    expect(markerOf(withWorkType(t))).toEqual({ exercise_template_id: "WORK", superset_id: null, notes: "Finisher\nAMRAP 12:00", sets: [] });
+  });
+
+  it.each(["duration", "weight_duration", "distance_duration"] as const)("a %s placeholder: the duration set", (t) => {
+    expect(markerOf(withWorkType(t)).sets).toEqual([{ type: "normal", duration_seconds: 720 }]);
   });
 });

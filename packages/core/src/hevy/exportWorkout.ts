@@ -3,7 +3,7 @@ import type { WorkoutDetail, WorkoutExerciseDetail, WorkoutSection } from "../dt
 import type { Modality } from "../enums.js";
 import { hevyPairingProblem } from "./pairing.js";
 import { sectionTreatment } from "./sections.js";
-import { HEVY_EXPORT_NOTICES, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
+import { HEVY_EXPORT_NOTICES, hevyTypeHoldsDuration, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
 import { hevyTimerDurationSeconds, hevyTimerLine } from "./timedSection.js";
 import type { HevyMapping, HevyPair } from "./types.js";
 import type { HevyType } from "./vocabulary.js";
@@ -50,9 +50,12 @@ const nameAndNote = (s: WorkoutSection): string => {
   return s.notes ? `${head}\n${s.notes}` : head;
 };
 
-/** Spec 09.5 §6.7: a timed section's single duration set, on the first marker that sends it; `[]` otherwise. */
-function markerSets(sec: WorkoutSection, durationSent: Set<string>): HevyPostExercise["sets"] {
-  if (!sec.timer || durationSent.has(sec.id)) return [];
+/**
+ * Spec 09.5 §6.7: a timed section's single duration set, on the first marker that sends it; `[]` otherwise. Only a
+ * placeholder whose Hevy type holds a duration gets it (19.0 AC8: a set carries only the fields its type holds).
+ */
+function markerSets(sec: WorkoutSection, marker: HevyPair, durationSent: Set<string>): HevyPostExercise["sets"] {
+  if (!sec.timer || durationSent.has(sec.id) || !hevyTypeHoldsDuration(marker.hevyType)) return [];
   const d = hevyTimerDurationSeconds({ timer: sec.timer, result: sec.result, roundTimes: sec.roundTimes });
   if (d === null) return [];
   durationSent.add(sec.id);
@@ -120,7 +123,7 @@ export function buildHevyWorkout(
             exercise_template_id: marker.hevyTemplateId,
             superset_id: null,
             notes: treatment === "warmup_placeholder" ? sec.notes : nameAndNote(sec),
-            sets: markerSets(sec, durationSent),
+            sets: markerSets(sec, marker, durationSent),
           });
         } else {
           notes = joinNotes(nameAndNote(sec), notes);
