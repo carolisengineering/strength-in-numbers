@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { isWorkoutId, isWorkoutSectionId, ROUTINE_SECTIONS_MAX } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError, WorkoutSectionLimitError } from "../errors/app-error.js";
+import { roundTimesJson } from "./section-timer-columns.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { WorkoutRepository } from "./workout.js";
 import { toWorkoutSectionRecord, type WorkoutSectionDbRow } from "./workout.prisma.js";
@@ -62,7 +63,11 @@ export async function exerciseRanks(tx: RawClient, workoutId: string, excludeId:
 const workoutNotFound = () => new NotFoundError("workout not found or not owned by the acting user");
 const sectionNotFound = () => new NotFoundError("workout section not found or not owned by the acting user");
 
-const SECTION_COLUMNS = Prisma.raw("id, position, name, notes, added_in_workout");
+/** Spec 09.5 — the RETURNING / SELECT list carries the timer, result and round times like the reads (Review Focus 2). */
+const SECTION_COLUMNS = Prisma.raw(
+  `id, position, name, notes, added_in_workout, timer_format, timer_round_s, timer_rounds, timer_cap_s,
+   result_rounds, result_reps, result_finish_s, result_capped, ${roundTimesJson('"workout_section".id').sql} AS round_times`,
+);
 
 type SectionMethods = Pick<WorkoutRepository, "addWorkoutSection" | "updateWorkoutSection" | "removeWorkoutSection">;
 

@@ -35,6 +35,8 @@ export interface RoutineRouteDeps {
 }
 
 const plannedSetCount = (r: RoutineRecord): number => r.items.reduce((n, it) => n + it.sets.length, 0);
+/** Spec 09.5 §9 — sections with a timer (a count; never the plan numbers). */
+const timedSectionCount = (r: RoutineRecord): number => r.sections.filter((s) => s.timer !== null).length;
 
 /** Spec 09.3 §9 — ids and counts only, once per read or create that removed ≥ 1 expired one-off. */
 function logOneOffsExpired(log: FastifyBaseLogger, userId: string, count: number): void {
@@ -107,6 +109,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
             user_id: actingUserId,
             item_count: created.items.length,
             section_count: created.sections.length,
+            timed_section_count: timedSectionCount(created),
             planned_set_count: plannedSetCount(created),
             one_off: created.oneOffUntil !== null,
           },
@@ -142,6 +145,7 @@ export function registerRoutineRoutes(app: FastifyInstance, deps: RoutineRouteDe
           user_id: actingUserId,
           item_count: updated.items.length,
           section_count: updated.sections.length,
+          timed_section_count: timedSectionCount(updated),
           planned_set_count: plannedSetCount(updated),
         },
         "routine_updated",

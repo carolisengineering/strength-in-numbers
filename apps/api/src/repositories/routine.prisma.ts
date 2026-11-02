@@ -21,6 +21,7 @@ import {
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
+import { timerFromColumns, timerToColumns, type TimerColumns } from "./section-timer-columns.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -54,7 +55,7 @@ export interface ItemDbRow {
   section_id: string | null;
 }
 
-export interface SectionDbRow {
+export interface SectionDbRow extends TimerColumns {
   id: string;
   position: number;
   name: string;
@@ -98,7 +99,9 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
            FROM "routine_item" ri WHERE ri.routine_id = r.id
          ), '[]'::json) AS items,
          COALESCE((
-           SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes)
+           SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes,
+                                             'timer_format', s.timer_format, 'timer_round_s', s.timer_round_s,
+                                             'timer_rounds', s.timer_rounds, 'timer_cap_s', s.timer_cap_s)
                            ORDER BY s.position)
            FROM "routine_section" s WHERE s.routine_id = r.id
          ), '[]'::json) AS sections
@@ -142,7 +145,7 @@ function toRoutine(r: RoutineDbRow): RoutineRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     oneOffUntil: r.one_off_until,
-    sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes })),
+    sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes, timer: timerFromColumns(s) })),
     items: r.items.map(toItem),
   };
 }
@@ -192,10 +195,14 @@ async function insertSections(
   const values = sections.map((s, j) => {
     const id = uuidv7();
     idByKey.set(s.key, id);
-    return Prisma.sql`(${id}::uuid, ${routineId}::uuid, ${j}, ${s.name}, ${s.notes ?? null}, now(), now())`;
+    // Spec 09.5 AC6 — the timer plan through the one column mapping; absent / null = all NULL.
+    const t = timerToColumns(s.timer);
+    return Prisma.sql`(${id}::uuid, ${routineId}::uuid, ${j}, ${s.name}, ${s.notes ?? null}, ${t.timer_format}::text,
+      ${t.timer_round_s}::int, ${t.timer_rounds}::smallint, ${t.timer_cap_s}::int, now(), now())`;
   });
   await tx.$executeRaw`
-    INSERT INTO "routine_section" (id, routine_id, position, name, notes, created_at, updated_at)
+    INSERT INTO "routine_section" (id, routine_id, position, name, notes, timer_format, timer_round_s, timer_rounds, timer_cap_s,
+                                   created_at, updated_at)
     VALUES ${Prisma.join(values)}
   `;
   return idByKey;

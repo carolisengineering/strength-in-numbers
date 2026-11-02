@@ -464,7 +464,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }
     const groups = normalizeSupersetGroups(input.items.map((i) => i.supersetGroup ?? null));
     const existing = selfId === null ? undefined : state.routines.get(selfId);
-    const sectionRows = (input.sections ?? []).map((s, position) => ({ id: uuid(), position, name: s.name, notes: s.notes ?? null }));
+    const sectionRows = (input.sections ?? []).map((s, position) => ({ id: uuid(), position, name: s.name, notes: s.notes ?? null, timer: null }));
     const sectionIdOfKey = new Map((input.sections ?? []).map((s, j) => [s.key, sectionRows[j]!.id]));
     const routine = RoutineSchema.parse({
       id: selfId ?? uuid(),
@@ -521,7 +521,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       }
       const workoutIdForStart = uuid();
       if (routine) state.links.set(workoutIdForStart, routine.id);
-      const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false }));
+      const startSections = (routine?.sections ?? []).map((s) => ({ id: uuid(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false, timer: s.timer, result: null, roundTimes: [] }));
       // Spec 09.2 §6.4: the join is on section position (each copy keeps its routine section's position).
       const startSectionOf = (routineSectionId: string | null): string | null => {
         if (routineSectionId === null) return null;
@@ -916,6 +916,9 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         name: parsed.data.name,
         notes: parsed.data.notes ?? null,
         addedInWorkout: true,
+        timer: null,
+        result: null,
+        roundTimes: [],
       });
       store({ ...detail, sections: [...detail.sections, section] });
       return HttpResponse.json(section, { status: 201 });

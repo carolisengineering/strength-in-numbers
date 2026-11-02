@@ -38,7 +38,7 @@ const baseWorkout = () =>
     ],
   });
 const sectionOf = (w: WorkoutDetail, extra: Partial<WorkoutSection> = {}) =>
-  WorkoutSectionSchema.parse({ id: "01900000-0000-7000-8000-0000000000aa", position: w.sections.length, name: "Cooldown", notes: null, addedInWorkout: true, ...extra });
+  WorkoutSectionSchema.parse({ id: "01900000-0000-7000-8000-0000000000aa", position: w.sections.length, name: "Cooldown", notes: null, addedInWorkout: true, timer: null, result: null, roundTimes: [], ...extra });
 
 type Deps = Omit<SectionActionDeps, "workout" | "mutations" | "structureLock">;
 

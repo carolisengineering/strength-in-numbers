@@ -6,7 +6,7 @@ import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
-import { addWorkoutSection } from "./section-helpers.js";
+import { addTimedSection, addWorkoutSection, recordRounds, setResult } from "./section-helpers.js";
 import { bearer, makeAccountApp, TRUNCATE_ACCOUNTS } from "./account-helpers.js";
 
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000);
@@ -45,7 +45,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
       id,
       routineFixture([custom, global], {
         notes: "Routine note\r\nsecond line",
-        sections: [{ key: "main", name: "Main", notes: "Heavy singles" }],
+        // Spec 09.5 AC11 — the routine section carries a timer; the start copies it onto the workout.
+        sections: [{ key: "main", name: "Main", notes: "Heavy singles", timer: { format: "set_timer", roundSeconds: 300, rounds: 5 } }],
         sectionKeys: ["main", "main"],
       }),
     )).routine;
@@ -59,6 +60,12 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     expect(started.statusCode).toBe(201);
     // Spec 09.4 AC19 — a section added during the workout travels through the same aggregate.
     await addWorkoutSection(db, started.json().id as string, 1, "Finisher", "EMOM 10 min");
+    // Spec 09.5 AC11 — round times on the copied Set Timer, and a capped Time Cap on the finished workout.
+    const activeSections = await db.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id::text FROM "workout_section" WHERE workout_id = $1::uuid ORDER BY position`, started.json().id);
+    await recordRounds(db, activeSections[0]!.id, [{ round: 1, seconds: 221 }, { round: 2, seconds: 218 }, { round: 3, seconds: 210 }]);
+    const cap = await addTimedSection(db, w1.workoutId, 0, "Cap", { format: "time_cap", capSeconds: 900 });
+    await setResult(db, cap, { rounds: 4, reps: 7, finishSeconds: null, capped: true });
     return { id, global, custom, routine, w1, activeId: started.json().id as string };
   }
 
@@ -113,6 +120,23 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     expect(active.exercises.every((e) => e.sectionId === active.sections[0]!.id)).toBe(true);
     const read = await app.inject({ method: "GET", url: `/v1/workouts/${s.activeId}`, headers: bearer("exp-a") });
     expect(active).toEqual(read.json()); // Spec 11 AC6 parity, with section rows present
+  });
+
+  it("09.5 AC11 — export carries timers through the shared aggregates", async () => {
+    app = await makeAccountApp(db);
+    const s = await seed("exp-a");
+    const body = AccountExportSchema.parse((await exportOf("exp-a")).json());
+    expect(body.formatVersion).toBe(1);
+    expect(body.routines.find((r) => r.id === s.routine.id)!.sections[0]!.timer).toEqual({ format: "set_timer", roundSeconds: 300, rounds: 5 });
+    const active = body.workouts.find((w) => w.id === s.activeId)!;
+    const read = (await app.inject({ method: "GET", url: `/v1/workouts/${s.activeId}`, headers: bearer("exp-a") })).json();
+    expect(active.sections).toEqual(read.sections);
+    expect(active.sections[0]!.roundTimes).toEqual([{ round: 1, seconds: 221 }, { round: 2, seconds: 218 }, { round: 3, seconds: 210 }]);
+    const finished = body.workouts.find((w) => w.id === s.w1.workoutId)!;
+    const finishedRead = (await app.inject({ method: "GET", url: `/v1/workouts/${s.w1.workoutId}`, headers: bearer("exp-a") })).json();
+    expect(finished.sections).toEqual(finishedRead.sections);
+    expect(finished.sections[0]!.result).toEqual({ rounds: 4, reps: 7, finishSeconds: null, capped: true });
+    expect(finished.sections[0]!.timer).toEqual({ format: "time_cap", capSeconds: 900 });
   });
 
   it("AC6 — parity: each workout, routine and exercise deep-equals its read route", async () => {

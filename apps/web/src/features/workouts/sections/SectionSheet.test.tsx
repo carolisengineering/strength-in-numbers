@@ -6,7 +6,7 @@ import { SECTION_COPY } from "./sectionCopy";
 import { SectionSheet, type SectionSheetProps } from "./SectionSheet";
 
 const NO_ERRORS = { name: null, notes: null, form: null };
-const stored = { id: "00000000-0000-4000-8000-000000000001", position: 0, name: "Warm-up", notes: "5 min", addedInWorkout: true } as WorkoutSection;
+const stored = { id: "00000000-0000-4000-8000-000000000001", position: 0, name: "Warm-up", notes: "5 min", addedInWorkout: true, timer: null, result: null, roundTimes: [] as WorkoutSection["roundTimes"] } as WorkoutSection;
 
 function renderSheet(props: Partial<SectionSheetProps> = {}) {
   const callbacks = { onSubmit: vi.fn(), onClose: vi.fn(), onRemove: vi.fn() };

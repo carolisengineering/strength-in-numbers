@@ -72,6 +72,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
       workoutId,
     );
     await db.prisma.$executeRawUnsafe(`INSERT INTO "hevy_account" (user_id) VALUES ($1::uuid)`, userId);
+    // Spec 09.5 AC11: a timed section with a recorded round, so workout_section_round has victim rows.
+    const timed = await db.prisma.$queryRawUnsafe<{ id: string }[]>(
+      `INSERT INTO "workout_section" (id, workout_id, position, name, timer_format, timer_cap_s)
+       SELECT gen_random_uuid(), $1::uuid, count(*), 'Timed', 'amrap', 720 FROM "workout_section" WHERE workout_id = $1::uuid
+       RETURNING id::text`,
+      workoutId,
+    );
+    await db.prisma.$executeRawUnsafe(
+      `INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds) VALUES ($1::uuid, 1, 240)`,
+      timed[0]!.id,
+    );
     // The in-progress workout is started from the routine, so workout_planned_set has
     // victim rows (AC23's vacuous-pass guard; routineFixture's legacy items expand to rows).
     await workouts().createWorkout(
@@ -130,6 +141,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
       if (e.rule !== "c" && e.rule !== "n") expect(NON_CASCADE_ALLOWLIST, `non-cascade edge ${key}`).toContain(key);
     }
     for (const [table, set] of before) expect(set.size, `fixture has no ${table} rows (vacuous)`).toBeGreaterThan(0);
+    // Spec 09.5 AC11 — discovery reaches the round table through the workout_section cascade; no allowlist entry.
+    expect(reached.has("workout_section_round")).toBe(true);
 
     const summary = await runPurge(db.prisma, silent, { confirm: true, skipGrace: false });
     expect(summary).toMatchObject({ purged: 1, skipped: 0, failed: 0 });

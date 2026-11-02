@@ -38,6 +38,12 @@ const wRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** Spec 09.5 — the columns `workoutSectionsJson` adds to each section, all empty. */
+const UNTIMED_SECTION_COLUMNS = {
+  timer_format: null, timer_round_s: null, timer_rounds: null, timer_cap_s: null,
+  result_rounds: null, result_reps: null, result_finish_s: null, result_capped: false, round_times: [],
+};
+
 const weRow = (workoutId: string, position: number) => ({
   id: uuidv7(),
   workout_id: workoutId,
@@ -122,13 +128,13 @@ describe("AC3 — the detail read issues ONE more statement for the sections and
     stub.queueRows([workout]); // workout lookup
     stub.queueRows([{ ...weRow(workout.id, 0), section_id: sectionId }, weRow(workout.id, 1)]); // exercises
     stub.queueRows([]); // sets
-    stub.queueRows([{ routine_notes_snapshot: "Keep it short", sections: [{ id: sectionId, position: 0, name: "Warm-up", notes: null }] }]);
+    stub.queueRows([{ routine_notes_snapshot: "Keep it short", sections: [{ id: sectionId, position: 0, name: "Warm-up", notes: null, added_in_workout: false, ...UNTIMED_SECTION_COLUMNS }] }]);
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
     const detail = await repo.getWorkoutById(uuidv7(), workout.id);
     expect(stub.calls).toHaveLength(4);
     expect(stub.calls[3]!.sql).toContain('FROM "workout_section"');
     expect(detail.routineNotes).toBe("Keep it short");
-    expect(detail.sections).toEqual([{ id: sectionId, position: 0, name: "Warm-up", notes: null }]);
+    expect(detail.sections).toEqual([{ id: sectionId, position: 0, name: "Warm-up", notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [] }]);
     expect(detail.exercises.map((e) => e.sectionId)).toEqual([sectionId, null]);
   });
   it("a workout with no snapshot reads routineNotes null and sections []", async () => {

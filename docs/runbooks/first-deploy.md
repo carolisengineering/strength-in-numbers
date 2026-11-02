@@ -534,6 +534,17 @@ eligible sets.
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0017` by hand the same way before approving the release.
 5. Rollback: revert the code; the column stays, unused by old code. Before rolling forward again, clear what old code may have left behind: `UPDATE hevy_link SET claim_fingerprint = NULL WHERE claim_fingerprint IS NOT NULL;` (old code takes and replaces claims without touching it, so a leftover value could refuse a later complete).
 
+### 0018 — Timed sections (Spec 09.5)
+
+1. **Before merging** Phase A (merging auto-deploys staging, and the new code selects the `timer_*` / `result_*` columns and `workout_section_round` on every routine and workout read — without them each answers `500`): `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds nullable plan and result columns on `routine_section` / `workout_section`, one `result_capped BOOLEAN NOT NULL DEFAULT false` (metadata-only), three CHECKs over small tables and the new `workout_section_round` table; no data statement. Check `db:migrate:status` again (do not assume) and `\d workout_section_round`. Expand-only, so the running API is unaffected.
+2. Merge (Render deploys). The web bundle that ships with it parses `timer` on routine sections and `timer` / `result` / `roundTimes` on workout sections as required, so the Routines and session screens fail to parse for the minutes until the API is live (accepted on staging, as for 09.1 / 09.2 / 09.4).
+3. Verify: a routine read (`GET $BASE/v1/routines`) shows `"timer": null` on every section; `GET $BASE/v1/workouts/{id}` on a sectioned workout shows `"timer": null, "result": null, "roundTimes": []` on each section. Both consistency queries return `0`:
+   - `SELECT count(*) FROM workout_section WHERE timer_format IS NOT NULL;` (immediately after the deploy, before any test write);
+   - `SELECT count(*) FROM workout_section_round r JOIN workout_section s ON s.id = r.workout_section_id WHERE s.timer_format IS NULL;`
+   No backfill, no `records:rebuild`. (Phase B adds the write checks of spec §11 step 4.)
+4. Production (Spec 15): `deploy-prod` never migrates. Apply `0018` by hand the same way before approving the release.
+5. Rollback: revert the code; the columns and table stay, inert, and old code ignores them (timed sections read as ordinary sections). If Spec 10.7 is merged, revert it first. A routine `PUT` from old code writes sections without a timer, which clears a plan: that matters only after timers were set.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

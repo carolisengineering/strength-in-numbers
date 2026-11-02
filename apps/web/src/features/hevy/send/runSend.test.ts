@@ -528,8 +528,8 @@ describe("minor 261 — an exercise unmatched in two sections", () => {
     const detail: WorkoutDetail = {
       ...fixture.detail,
       sections: [
-        { id: sid("s1"), name: "A", notes: null, position: 0, addedInWorkout: false },
-        { id: sid("s2"), name: "B", notes: null, position: 1, addedInWorkout: false },
+        { id: sid("s1"), name: "A", notes: null, position: 0, addedInWorkout: false, timer: null, result: null, roundTimes: [] },
+        { id: sid("s2"), name: "B", notes: null, position: 1, addedInWorkout: false, timer: null, result: null, roundTimes: [] },
       ],
       exercises: [
         { ...first, id: weid("we1"), sectionId: sid("s1"), position: 0 },

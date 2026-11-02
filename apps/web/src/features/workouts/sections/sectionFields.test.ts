@@ -4,7 +4,7 @@ import { SECTION_COPY } from "./sectionCopy";
 import { checkSectionFields, sectionBody } from "./sectionFields";
 
 const stored = (name: string, notes: string | null): WorkoutSection =>
-  ({ id: "00000000-0000-4000-8000-000000000001", position: 0, name, notes, addedInWorkout: true }) as WorkoutSection;
+  ({ id: "00000000-0000-4000-8000-000000000001", position: 0, name, notes, addedInWorkout: true, timer: null, result: null, roundTimes: [] as WorkoutSection["roundTimes"] }) as WorkoutSection;
 
 describe("10.6 AC5 — checkSectionFields", () => {
   it.each([

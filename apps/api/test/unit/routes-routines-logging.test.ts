@@ -256,3 +256,52 @@ describe("Minor 39 — two workout fakes on one routine fake", () => {
     expect([listed.swept, listed.routines.map((r) => r.name).sort()]).toEqual([0, ["A", "B"]]);
   });
 });
+
+describe("09.5 AC33 — routine and start lines count timed sections, and carry no names or seconds", () => {
+  it("routine_created / routine_updated / workout_started_from_routine carry timed_section_count", async () => {
+    const { logger, lines } = capturingLogger();
+    const exerciseRepo = new FakeExerciseRepository();
+    exerciseRepo.byId.set(EX.id, EX);
+    const routineRepo = new FakeRoutineRepository(exerciseRepo);
+    const { app } = await buildTestApp({
+      logger,
+      exerciseRepository: exerciseRepo,
+      routineRepository: routineRepo,
+      workoutRepository: new FakeWorkoutRepository(exerciseRepo, routineRepo),
+      rateLimits: GENEROUS_LIMITS,
+    });
+    const payload = {
+      name: "R",
+      sections: [
+        { key: "a", name: "Zq7 Main", notes: "Zq7 note", timer: { format: "set_timer", roundSeconds: 277, rounds: 5 } },
+        { key: "b", name: "Zq7 Cool" },
+        { key: "c", name: "Zq7 Finisher", timer: { format: "amrap", capSeconds: 733 } },
+      ],
+      items: [{ exerciseId: EX.id, sectionKey: "a" }],
+    };
+    const created = await app.inject({ method: "POST", url: "/v1/routines", headers: BEARER, payload });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id;
+    const updated = await app.inject({
+      method: "PUT",
+      url: `/v1/routines/${id}`,
+      headers: BEARER,
+      payload: { ...payload, sections: payload.sections.map((s) => ({ ...s, timer: { format: "time_cap" } })) },
+    });
+    expect(updated.statusCode).toBe(200);
+    const started = await app.inject({
+      method: "POST",
+      url: "/v1/workouts",
+      headers: BEARER,
+      payload: { clientGeneratedId: uuidv7(), startedAt: new Date().toISOString(), routineId: id },
+    });
+    expect(started.statusCode).toBe(201);
+
+    const byMsg = (m: string) => lines.find((l) => l.msg === m);
+    expect(byMsg("routine_created")).toMatchObject({ timed_section_count: 2 });
+    expect(byMsg("routine_updated")).toMatchObject({ timed_section_count: 3 });
+    expect(byMsg("workout_started_from_routine")).toMatchObject({ timed_section_count: 3 });
+    const text = JSON.stringify(lines);
+    expect(text).not.toMatch(/Zq7|\b277\b|\b733\b/);
+  });
+});

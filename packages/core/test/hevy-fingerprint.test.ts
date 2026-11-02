@@ -85,3 +85,22 @@ describe("19.0 AC13 — the fingerprint source", () => {
     expect(hevyFingerprintSource(shuffled)).toBe(hevyFingerprintSource(base()));
   });
 });
+
+describe("09.5 Phase A — an untimed workout's source is unchanged", () => {
+  // Computed from the pre-change hevyFingerprintSource (main 53fc203), before WorkoutSection gained keys.
+  const GOLDEN_BASE =
+    'v1["Push","n","2026-10-01T10:00:00.000-05:00","2026-10-01T11:00:00.000-05:00","Upper",[["Finisher","fast",0],["Cooldown",null,1]],[[0,"00000000-0000-4000-8000-000000001000","e",1,0,[["working",5,60,null,null,null,8],["working",5,60,null,null,null,null]]],[1,"00000000-0000-4000-8000-000000001001",null,1,-1,[["working",5,60,null,null,null,null]]]]]';
+  const GOLDEN_EMPTY = 'v1["A",null,"2026-10-01T10:00:00.000-05:00","2026-10-01T11:00:00.000-05:00",null,[],[]]';
+
+  it("matches the pre-change goldens", () => {
+    expect(hevyFingerprintSource(base())).toBe(GOLDEN_BASE);
+    expect(hevyFingerprintSource(detail({ title: "A" }))).toBe(GOLDEN_EMPTY);
+  });
+
+  it("an untimed section's result and round times never reach the source", () => {
+    const d = base();
+    d.sections[0]!.roundTimes = [{ round: 1, seconds: 221 }];
+    d.sections[0]!.result = { rounds: 4, reps: 7, finishSeconds: null, capped: true };
+    expect(hevyFingerprintSource(d)).toBe(GOLDEN_BASE);
+  });
+});

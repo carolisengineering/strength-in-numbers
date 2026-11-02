@@ -7,7 +7,7 @@ import { NewExercisesLine } from "./NewExercisesLine";
 
 let n = 0;
 const sec = (name: string, position: number, addedInWorkout: boolean): WorkoutSection =>
-  ({ id: `00000000-0000-4000-8000-00000000000${(n += 1)}`, position, name, notes: null, addedInWorkout }) as WorkoutSection;
+  ({ id: `00000000-0000-4000-8000-00000000000${(n += 1)}`, position, name, notes: null, addedInWorkout, timer: null, result: null, roundTimes: [] as WorkoutSection["roundTimes"] }) as WorkoutSection;
 
 const line = (sections: WorkoutSection[]) => render(<NewExercisesLine sections={sections} />).container;
 

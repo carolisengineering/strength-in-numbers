@@ -31,3 +31,16 @@ describe("AC10 — per-user export budget", () => {
     expect((await get(app, "c")).statusCode).toBe(429);
   });
 });
+
+describe("09.5 AC31 — limits unchanged", () => {
+  it("RATE_LIMITS is exactly today's value (Phase A adds no group and no limit)", () => {
+    expect(RATE_LIMITS).toEqual({
+      windowMs: 60_000,
+      ip: 600,
+      docs: 30,
+      exportPerUser: 3,
+      groups: { sets: 120, workouts: 60, exercises: 20, routines: 30, me: 10, hevy: 60 },
+      inflight: 4,
+    });
+  });
+});

@@ -7,7 +7,7 @@
  * does with `isExerciseId`.
  */
 import type { FinishedEdit } from "./write-mode.js";
-import type { DistanceUnit, PlannedSet, SetType, WeightUnit } from "@sin/core";
+import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
@@ -83,6 +83,12 @@ export interface WorkoutSectionRecord {
   notes: string | null;
   /** Spec 09.4 — origin: created during the workout (true) or copied from the routine (false). */
   addedInWorkout: boolean;
+  /** Spec 09.5 — the timer plan, `null` = untimed. */
+  timer: SectionTimer | null;
+  /** Spec 09.5 — `null` when nothing is recorded. */
+  result: SectionResult | null;
+  /** Spec 09.5 — ordered by round, `[]` when none. */
+  roundTimes: RoundTime[];
 }
 
 export interface WorkoutDetailRecord extends WorkoutRecord {
@@ -214,6 +220,8 @@ export interface CreateWorkoutResult {
   plannedSetCount: number;
   /** Spec 09.2 §9: `workout_section` rows copied — 0 for a manual start and for a replay. */
   sectionCount: number;
+  /** Spec 09.5 §9: copied sections with a timer — 0 for a manual start and for a replay. */
+  timedSectionCount: number;
 }
 
 /**

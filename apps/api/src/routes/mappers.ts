@@ -88,7 +88,7 @@ export function toRoutineItemDto(r: RoutineItemRecord): RoutineItem {
 }
 
 export function toRoutineSectionDto(r: RoutineSectionRecord): RoutineSection {
-  return { id: r.id as RoutineSection["id"], position: r.position, name: r.name, notes: r.notes };
+  return { id: r.id as RoutineSection["id"], position: r.position, name: r.name, notes: r.notes, timer: r.timer };
 }
 
 /** Keys in `RoutineSchema` order: `JSON.stringify` of this IS the wire bytes
@@ -151,7 +151,16 @@ export function toWorkoutExerciseDto(r: WorkoutExerciseRecord): WorkoutExercise 
 }
 
 export function toWorkoutSectionDto(r: WorkoutSectionRecord): WorkoutSection {
-  return { id: r.id as WorkoutSection["id"], position: r.position, name: r.name, notes: r.notes, addedInWorkout: r.addedInWorkout };
+  return {
+    id: r.id as WorkoutSection["id"],
+    position: r.position,
+    name: r.name,
+    notes: r.notes,
+    addedInWorkout: r.addedInWorkout,
+    timer: r.timer,
+    result: r.result,
+    roundTimes: r.roundTimes,
+  };
 }
 
 /** DB record -> wire DTO, keys in `SetEntrySchema` field order. */

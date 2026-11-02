@@ -126,3 +126,21 @@ describe("07.4 AC31 — PATCH /v1/workouts/{id} publishes the Change Time keys",
     expect(body.required ?? []).toEqual([]);
   });
 });
+
+describe("09.5 AC1 — OpenAPI (workout sections)", () => {
+  type S = { properties?: Record<string, S>; items?: S; required?: string[]; anyOf?: S[] } & Record<string, unknown>;
+  it("workout sections carry timer, result and roundTimes as required keys, after addedInWorkout", async () => {
+    const { app } = await buildTestApp();
+    await app.ready();
+    const doc = (await app.inject({ method: "GET", url: "/openapi.json" })).json() as {
+      paths: Record<string, Record<string, { responses: Record<string, { content: Record<string, { schema: S }> }> }>>;
+    };
+    for (const path of ["/v1/workouts/{id}", "/v1/workouts/active"]) {
+      const section = doc.paths[path]!.get!.responses["200"]!.content["application/json"]!.schema.properties!.sections!.items!;
+      expect(section.required, path).toEqual(["id", "position", "name", "notes", "addedInWorkout", "timer", "result", "roundTimes"]);
+      expect(section.properties!.result!.anyOf!.some((s) => s.type === "null"), path).toBe(true);
+      expect(section.properties!.roundTimes!.type, path).toBe("array");
+      expect(section.properties!.roundTimes!.items!.required, path).toEqual(["round", "seconds"]);
+    }
+  });
+});

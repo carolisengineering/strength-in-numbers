@@ -11,6 +11,7 @@ import { noControlChars } from "./exercise.js";
 import { PersonalRecordSchema } from "./personal-record.js";
 import { PlannedSetSchema } from "./planned-set.js";
 import { SetEntrySchema } from "./set-entry.js";
+import { RoundTimeSchema, SectionResultSchema, SectionTimerSchema } from "./section-timer.js";
 
 export const WORKOUT_TITLE_MAX = 120;
 export const WORKOUT_NOTES_MAX = 4000;
@@ -116,6 +117,12 @@ export const WorkoutSectionSchema = z.object({
   notes: z.string().nullable(),
   /** Spec 09.4 — true iff created during the workout (`POST …/sections`); copied from the routine = false. */
   addedInWorkout: z.boolean(),
+  /** Spec 09.5 — the timer plan (copied from the routine at start), `null` = untimed. */
+  timer: SectionTimerSchema.nullable(),
+  /** Spec 09.5 — the recorded result; `null` when nothing is recorded (AC10). */
+  result: SectionResultSchema.nullable(),
+  /** Spec 09.5 — the recorded rounds, ordered by `round`; `[]` when none. Never null. */
+  roundTimes: z.array(RoundTimeSchema),
 });
 export type WorkoutSection = z.infer<typeof WorkoutSectionSchema>;
 

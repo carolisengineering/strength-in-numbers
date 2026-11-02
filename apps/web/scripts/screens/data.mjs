@@ -185,8 +185,8 @@ export const routines = [
     name: "Push Day",
     notes: "Keep rest short on the accessories. Add 2.5 kg to bench when all working sets hit 5.",
     sections: [
-      { id: SEC_MAIN, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set." },
-      { id: SEC_ACC, position: 1, name: "Accessories", notes: null },
+      { id: SEC_MAIN, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set.", timer: null },
+      { id: SEC_ACC, position: 1, name: "Accessories", notes: null, timer: null },
     ],
     items: [
       item("bench_press", 0, {
@@ -371,8 +371,8 @@ function pushSession(n, daysAgo, bench, ohp, incline, lat, push2 = true, details
     { key: "lateral_raise", sectionId: sa, routineItem: pushItems[3], sets: [W(15, lat), W(13, lat), W(12, lat)] },
     ...(push2 ? [{ key: "triceps_pushdown", sectionId: sa, superset: null, routineItem: { ...pushItems[4], supersetGroup: null }, sets: [W(12, 32.5), W(11, 32.5), W(10, 32.5)] }] : []),
   ], { ...details, routine: push, sections: [
-    { id: sm, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set.", addedInWorkout: false },
-    { id: sa, position: 1, name: "Accessories", notes: null, addedInWorkout: false },
+    { id: sm, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set.", addedInWorkout: false, timer: null, result: null, roundTimes: [] },
+    { id: sa, position: 1, name: "Accessories", notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [] },
   ] });
 }
 function lowerSession(n, daysAgo, squat, rdl, legPress) {
@@ -449,8 +449,8 @@ export const active = makeWorkout(ACTIVE_N, activeStart, 0, [
   active: true,
   routine: push,
   sections: [
-    { id: WS_MAIN, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set.", addedInWorkout: false },
-    { id: WS_ACC, position: 1, name: "Accessories", notes: null, addedInWorkout: false },
+    { id: WS_MAIN, position: 0, name: "Main lifts", notes: "Full warm-up before the first working set.", addedInWorkout: false, timer: null, result: null, roundTimes: [] },
+    { id: WS_ACC, position: 1, name: "Accessories", notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [] },
   ],
 });
 // Active sets were logged at real times within the 38 minutes.
@@ -523,8 +523,8 @@ export const activeSections = makeWorkout(51, sectionsStart, 0, [
 ], {
   active: true,
   sections: [
-    { id: AS_STRENGTH, position: 0, name: "Strength", notes: "EMOM 10 min: 5 reps on the minute", addedInWorkout: false },
-    { id: AS_COOLDOWN, position: 1, name: "Cooldown", notes: "Easy stretching, 5 min", addedInWorkout: true },
+    { id: AS_STRENGTH, position: 0, name: "Strength", notes: "EMOM 10 min: 5 reps on the minute", addedInWorkout: false, timer: null, result: null, roundTimes: [] },
+    { id: AS_COOLDOWN, position: 1, name: "Cooldown", notes: "Easy stretching, 5 min", addedInWorkout: true, timer: null, result: null, roundTimes: [] },
   ],
 });
 

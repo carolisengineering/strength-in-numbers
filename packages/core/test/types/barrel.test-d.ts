@@ -125,6 +125,50 @@ import {
   type WeightUnit,
 } from "../../src/index.js";
 import type { PreparedCatalog } from "../../src/index.js";
+import {
+  describeTimer,
+  formatClock,
+  resultIssues,
+  roundTimeIssues,
+  scoreText,
+  sectionScore,
+  timerFitsRecorded,
+  TIMER_FORMAT_VALUES,
+  TIMER_ISSUE_CODES,
+  type RoundTime,
+  type SectionResult,
+  type SectionScore,
+  type SectionTimer,
+  type SectionTimerInput,
+  type SetSectionResult,
+  type TimerFormat,
+  type TimerIssue,
+  type TimerIssueCode,
+} from "../../src/index.js";
+
+describe("09.5 — timed-section exports", () => {
+  it("pins the literal tuples and the helper signatures", () => {
+    expectTypeOf(TIMER_FORMAT_VALUES).toEqualTypeOf<readonly ["set_timer", "amrap", "time_cap"]>();
+    expectTypeOf<TimerFormat>().toEqualTypeOf<"set_timer" | "amrap" | "time_cap">();
+    expectTypeOf<TimerIssueCode>().toEqualTypeOf<(typeof TIMER_ISSUE_CODES)[number]>();
+    expectTypeOf(TIMER_ISSUE_CODES[0]).toEqualTypeOf<"round_beyond_rounds">();
+    expectTypeOf<TimerIssue>().toEqualTypeOf<{ path: string; code: TimerIssueCode; message: string }>();
+    expectTypeOf<SectionTimer["format"]>().toEqualTypeOf<TimerFormat>();
+    expectTypeOf<Extract<SectionTimer, { format: "time_cap" }>["capSeconds"]>().toEqualTypeOf<number | null>();
+    expectTypeOf<Extract<SectionTimerInput, { format: "time_cap" }>["capSeconds"]>().toEqualTypeOf<number | null | undefined>();
+    expectTypeOf<SectionResult>().toEqualTypeOf<{ rounds: number | null; reps: number | null; finishSeconds: number | null; capped: boolean }>();
+    expectTypeOf<RoundTime>().toEqualTypeOf<{ round: number; seconds: number }>();
+    expectTypeOf<SetSectionResult>().not.toBeAny();
+    expectTypeOf<SectionScore["kind"]>().toEqualTypeOf<"total_time" | "rounds_reps" | "finish_time" | "capped">();
+    expectTypeOf(formatClock).toEqualTypeOf<(seconds: number) => string>();
+    expectTypeOf(describeTimer).toEqualTypeOf<(timer: SectionTimer) => string>();
+    expectTypeOf(scoreText).toEqualTypeOf<(score: SectionScore) => string>();
+    expectTypeOf(sectionScore).returns.toEqualTypeOf<SectionScore | null>();
+    expectTypeOf(roundTimeIssues).returns.toEqualTypeOf<TimerIssue[]>();
+    expectTypeOf(resultIssues).returns.toEqualTypeOf<TimerIssue[]>();
+    expectTypeOf(timerFitsRecorded).returns.toEqualTypeOf<TimerIssue[]>();
+  });
+});
 
 describe("barrel — src/index.ts re-exports the whole stable surface", () => {
   it("value exports resolve", () => {

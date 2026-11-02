@@ -25,6 +25,7 @@ import {
   WORKOUT_SUMMARY_NAMES_MAX,
   type Modality,
 } from "@sin/core";
+import { timerFromColumns, timerToColumns } from "../../src/repositories/section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
 import { uuidv7 } from "uuidv7";
 import type {
@@ -540,7 +541,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const key = `${actingUserId}:${fields.clientGeneratedId}`;
     const existingId = this.byClientKey.get(key);
     if (existingId) {
-      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
+      return { workout: this.workouts.get(existingId)!, created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
     }
     const hasActive = [...this.workouts.values()].some(
       (w) => w.userId === actingUserId && w.endedAt === null,
@@ -575,7 +576,10 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       // Spec 09 §6.5 in miniature: 404 for an absent/foreign routine, 409 on a
       // retired item (nothing persisted), else copy every item in order.
       const routine = await this.routineRepository!.getById(actingUserId, fields.routineId);
-      sectionRecords = routine.sections.map((s) => ({ id: uuidv7(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false }));
+      sectionRecords = routine.sections.map((s) => ({
+        id: uuidv7(), position: s.position, name: s.name, notes: s.notes, addedInWorkout: false,
+        timer: s.timer, result: null, roundTimes: [], // Spec 09.5 AC9: the start copies the plan; nothing is recorded
+      }));
       const wsByRoutineSection = new Map(routine.sections.map((s, j) => [s.id, sectionRecords[j]!.id]));
       routineNotes = routine.notes;
       for (const item of routine.items) {
@@ -619,6 +623,7 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       copiedCount: copied.length,
       plannedSetCount: copied.reduce((n, e) => n + e.plannedSets.length, 0),
       sectionCount: sectionRecords.length,
+      timedSectionCount: sectionRecords.filter((s) => s.timer !== null).length,
     };
   }
 
@@ -1051,7 +1056,10 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const workout = this.ownedWorkoutOrThrow(actingUserId, workoutId);
     const snap = this.sectionSnapshot(workoutId);
     if (snap.sections.length >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
-    const section: WorkoutSectionRecord = { id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true };
+    const section: WorkoutSectionRecord = {
+      id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true,
+      timer: null, result: null, roundTimes: [],
+    };
     snap.sections = [...snap.sections, section];
     return { ...section, workoutId, sectionCount: snap.sections.length, finishedEdit: FakeWorkoutRepository.edit(workout) };
   }
@@ -1233,7 +1241,8 @@ export class FakeRoutineRepository implements RoutineRepository {
     const sections = (fields.sections ?? []).map((s, j) => {
       const id = uuidv7();
       idByKey.set(s.key, id);
-      return { id, position: j, name: s.name, notes: s.notes ?? null };
+      // Spec 09.5: through the same column round trip as the database, so `{ format: "time_cap" }` echoes `capSeconds: null`.
+      return { id, position: j, name: s.name, notes: s.notes ?? null, timer: timerFromColumns(timerToColumns(s.timer)) };
     });
     return { sections, idByKey };
   }

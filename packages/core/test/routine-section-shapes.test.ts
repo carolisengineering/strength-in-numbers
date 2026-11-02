@@ -8,13 +8,14 @@ const item = {
   targetRpe: null, restSeconds: null, supersetGroup: null, notes: null, sets: [], sectionId: null,
 };
 const routine = {
-  id: G(3), name: "R", notes: null, sections: [{ id: G(4), position: 0, name: "Main", notes: null }],
+  id: G(3), name: "R", notes: null, sections: [{ id: G(4), position: 0, name: "Main", notes: null, timer: null }],
   items: [item], createdAt: "2026-10-13T10:00:00.000Z", updatedAt: "2026-10-13T10:00:00.000Z", oneOffUntil: null,
 };
 
 describe("AC1 — routine response shapes", () => {
-  it("RoutineSection is exactly { id, position, name, notes } (no key, no routineId)", () => {
-    expect(Object.keys(RoutineSectionSchema.shape)).toEqual(["id", "position", "name", "notes"]);
+  it("RoutineSection is exactly { id, position, name, notes, timer } (no key, no routineId)", () => {
+    // Amended by Spec 09.5 AC1: `timer` is the new last key.
+    expect(Object.keys(RoutineSectionSchema.shape)).toEqual(["id", "position", "name", "notes", "timer"]);
   });
   it("Routine key order puts sections between notes and items; RoutineItem ends with sectionId", () => {
     // Amended by Spec 09.3 AC1: `oneOffUntil` is the new last key.
