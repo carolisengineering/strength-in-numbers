@@ -1,4 +1,5 @@
 import { describe, expectTypeOf, it } from "vitest";
+import type { z } from "zod";
 // Named imports from the barrel ARE the assertion: if src/index.ts stops
 // re-exporting any of these, `vitest --typecheck` fails here — no hardcoded
 // name list to drift out of sync with check-exports.mjs.
@@ -133,6 +134,9 @@ import {
   scoreText,
   sectionScore,
   timerFitsRecorded,
+  SectionScoreSchema,
+  TimedSectionSummarySchema,
+  type TimedSectionSummary,
   TIMER_FORMAT_VALUES,
   TIMER_ISSUE_CODES,
   type RoundTime,
@@ -167,6 +171,10 @@ describe("09.5 — timed-section exports", () => {
     expectTypeOf(roundTimeIssues).returns.toEqualTypeOf<TimerIssue[]>();
     expectTypeOf(resultIssues).returns.toEqualTypeOf<TimerIssue[]>();
     expectTypeOf(timerFitsRecorded).returns.toEqualTypeOf<TimerIssue[]>();
+    // Spec 09.5 Phase B — the History score schema and the Phase A type must not drift.
+    expectTypeOf<z.infer<typeof SectionScoreSchema>>().toEqualTypeOf<SectionScore>();
+    expectTypeOf<z.infer<typeof TimedSectionSummarySchema>>().toEqualTypeOf<TimedSectionSummary>();
+    expectTypeOf<TimedSectionSummary["timer"]>().toEqualTypeOf<SectionTimer>();
   });
 });
 

@@ -57,6 +57,7 @@ function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
     workingSetCount: r.workingSetCount,
     totalVolume: r.totalVolumeMilli === null ? null : Number(milliToDecimalString(r.totalVolumeMilli)),
     recordCount: r.recordCount,
+    timedSections: [], // Spec 09.5 AC25: filled from the History statement in Task 7 of the Phase B plan
   };
 }
 

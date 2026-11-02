@@ -632,6 +632,8 @@ export function summaryOf(w) {
     totalVolume: vol > 0 ? round(vol) : null,
     // Spec 07.3: the served count excludes set-volume records.
     recordCount: records.filter((r) => r.workoutId === w.id && r.recordType !== "best_set_volume").length,
+    // Spec 09.5 AC25: the fake data has no timed sections.
+    timedSections: [],
   };
 }
 

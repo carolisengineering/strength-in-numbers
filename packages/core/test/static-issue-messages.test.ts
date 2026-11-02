@@ -87,11 +87,17 @@ describe("#57 — Zod messages on exported schemas never echo the value (probe)"
       "SetSectionResultSchema",
       "SetRoundTimeSchema",
       "RoundTimeSchema",
+      "CreateWorkoutSectionSchema",
+      "UpdateWorkoutSectionSchema",
+      "SectionRoundParamsSchema",
+      "SectionScoreSchema",
+      "TimedSectionSummarySchema",
     ]) {
       expect(names, name).toContain(name);
     }
     // The discriminator's own message is one of the functions probed.
     expect(collectErrorFns(core.SectionTimerSchema).flatMap(messagesOf)).toContain("unknown timer format");
+    expect(collectErrorFns(core.SectionRoundParamsSchema).flatMap(messagesOf)).toContain("a round number from 1 to 100");
   });
 
   it.each(exportedSchemas)("%s", (_name, schema) => {

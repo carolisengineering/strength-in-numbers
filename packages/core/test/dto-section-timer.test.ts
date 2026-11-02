@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   RESULT_REPS_MAX,
   RESULT_ROUNDS_MAX,
+  ROUND_PARAM_MESSAGE,
+  SectionRoundParamsSchema,
   SectionTimerInputSchema,
   SectionTimerSchema,
   SetRoundTimeSchema,
@@ -122,5 +124,20 @@ describe("09.5 AC2 — result and round-time bodies", () => {
     [{ seconds: 60, round: 1 }, [""]],
   ])("SetRoundTimeSchema %j → %j", (body, expected) => {
     expect(paths(SetRoundTimeSchema.safeParse(body))).toEqual(expected);
+  });
+});
+
+describe("09.5 AC14 — round path parameter", () => {
+  it.each([
+    ["1", 1],
+    ["42", 42],
+    ["100", 100],
+  ])("%s → %i", (round, n) => {
+    expect(SectionRoundParamsSchema.parse({ id: "x", round })).toEqual({ id: "x", round: n });
+  });
+  it.each(["0", "101", "03", "3.0", "1e1", " 3", "-1", "", "abc", "999"])("%j → 422 on round (Review Focus 1)", (round) => {
+    const r = SectionRoundParamsSchema.safeParse({ id: "x", round });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues.map((i) => [i.path.join("."), i.message])).toEqual([["round", ROUND_PARAM_MESSAGE]]);
   });
 });

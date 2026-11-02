@@ -30,6 +30,7 @@ const summary = {
   workingSetCount: 15,
   totalVolume: 843.705,
   recordCount: 2,
+  timedSections: [],
 };
 
 describe("AC18 — history constants", () => {
@@ -68,5 +69,39 @@ describe("AC18 — WorkoutHistoryResponseSchema", () => {
   it("wraps items and a nullable next", () => {
     expect(WorkoutHistoryResponseSchema.parse({ items: [summary], next: "v1.abc" }).items).toHaveLength(1);
     expect(WorkoutHistoryResponseSchema.parse({ items: [], next: null }).next).toBeNull();
+  });
+});
+
+describe("09.5 AC25 — History row shape", () => {
+  const item = {
+    id: "018fcb3e-3b8a-7d6e-9c1a-000000000020",
+    position: 1,
+    name: "Main",
+    timer: { format: "set_timer", roundSeconds: 300, rounds: 5 },
+    score: { kind: "total_time", seconds: 1062, rounds: 5 },
+  };
+  it("timedSections is the last key of a History row (07.1 key-set pin)", () => {
+    expect(Object.keys(WorkoutSummarySchema.parse({ ...summary, timedSections: [] }))).toEqual([
+      "id", "title", "notes", "startedAt", "endedAt", "localDate", "tzOffsetMinutes", "clientGeneratedId", "source",
+      "createdAt", "updatedAt", "routineName", "plannedDurationSeconds",
+      "exerciseCount", "exerciseNames", "workingSetCount", "totalVolume", "recordCount", "timedSections",
+    ]);
+  });
+  it("timedSections is required", () => {
+    const without: Record<string, unknown> = { ...summary };
+    delete without["timedSections"];
+    expect(WorkoutSummarySchema.safeParse(without).success).toBe(false);
+  });
+  it("an item with a score, and with score null, parses; a timed-section item without a timer fails", () => {
+    expect(WorkoutSummarySchema.safeParse({ ...summary, timedSections: [item] }).success).toBe(true);
+    expect(WorkoutSummarySchema.safeParse({ ...summary, timedSections: [{ ...item, score: null }] }).success).toBe(true);
+    expect(WorkoutSummarySchema.safeParse({ ...summary, timedSections: [{ ...item, timer: null }] }).success).toBe(false);
+  });
+  it.each([
+    [{ kind: "rounds_reps", rounds: 5, reps: 7 }],
+    [{ kind: "finish_time", seconds: 860 }],
+    [{ kind: "capped", rounds: null, reps: 7 }],
+  ])("score %j parses", (score) => {
+    expect(WorkoutSummarySchema.safeParse({ ...summary, timedSections: [{ ...item, score }] }).success).toBe(true);
   });
 });

@@ -5,6 +5,7 @@
  * Every message here is static (#57): Zod's own, or a module constant.
  */
 import { z } from "zod";
+import { WorkoutSectionIdSchema } from "../ids.js";
 
 export const TIMER_FORMAT_VALUES = ["set_timer", "amrap", "time_cap"] as const;
 export type TimerFormat = (typeof TIMER_FORMAT_VALUES)[number];
@@ -139,3 +140,36 @@ export const TIMER_ISSUE_MESSAGES: Readonly<Record<TimerIssueCode, string>> = Ob
 });
 
 export type TimerIssue = { path: string; code: TimerIssueCode; message: string };
+
+/** Spec 09.5 §5 — the derived score as History sends it; mirrors `SectionScore` in `timer.ts` (a type test pins them). */
+export const SectionScoreSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("total_time"), seconds: z.number().int(), rounds: z.number().int() }),
+  z.object({ kind: z.literal("rounds_reps"), rounds: z.number().int(), reps: z.number().int() }),
+  z.object({ kind: z.literal("finish_time"), seconds: z.number().int() }),
+  z.object({ kind: z.literal("capped"), rounds: z.number().int().nullable(), reps: z.number().int().nullable() }),
+]);
+
+/** Spec 09.5 AC25 — one timed section of a History row: always has a timer; `score` is `sectionScore` of the section. */
+export const TimedSectionSummarySchema = z.object({
+  id: WorkoutSectionIdSchema,
+  position: z.number().int().min(0),
+  name: z.string(),
+  timer: SectionTimerSchema,
+  score: SectionScoreSchema.nullable(),
+});
+export type TimedSectionSummary = z.infer<typeof TimedSectionSummarySchema>;
+
+export const ROUND_PARAM_MESSAGE = "a round number from 1 to 100";
+
+/**
+ * Spec 09.5 AC14 — `/v1/workout-sections/{id}/round-times/{round}`. `round` must be a canonical whole number
+ * 1–100: `"03"`, `"3.0"`, `"1e1"`, `" 3"` and `"-1"` are refused, never coerced (Review Focus 1).
+ */
+export const SectionRoundParamsSchema = z.object({
+  id: z.string(),
+  round: z
+    .string()
+    .regex(/^[1-9]\d{0,2}$/, ROUND_PARAM_MESSAGE)
+    .transform(Number)
+    .pipe(z.number().max(TIMER_ROUNDS_MAX, ROUND_PARAM_MESSAGE)),
+});

@@ -206,6 +206,8 @@ function summaryOf(detail: WorkoutDetail, records: readonly PersonalRecord[]) {
     totalVolume: qualifying ? volume : null,
     // Spec 07.3: the served count does not include set-volume records, so a History row matches the finish summary.
     recordCount: records.filter((r) => r.workoutId === detail.id && r.recordType !== "best_set_volume").length,
+    // Spec 09.5 AC25: a History row's timed sections; the web shows them from Spec 10.7, so the fake sends none yet.
+    timedSections: [],
   };
 }
 
