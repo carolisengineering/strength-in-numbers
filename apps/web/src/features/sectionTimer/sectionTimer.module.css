@@ -1,0 +1,21 @@
+/* Spec 10.7 Phase A — the Timer group and the plan line. Tokens only (AC60). */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.input,
+.select {
+  min-height: var(--tap-target-min);
+}
+
+.groupError {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.line {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
