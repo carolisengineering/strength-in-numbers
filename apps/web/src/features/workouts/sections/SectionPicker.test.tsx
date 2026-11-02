@@ -5,7 +5,7 @@ import type { WorkoutSection } from "@sin/core";
 import { SectionPicker } from "./SectionPicker";
 
 const sec = (id: string, name: string, position: number) =>
-  ({ id: `00000000-0000-4000-8000-00000000000${id}`, position, name, notes: null, addedInWorkout: false }) as WorkoutSection;
+  ({ id: `00000000-0000-4000-8000-00000000000${id}`, position, name, notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [] as WorkoutSection["roundTimes"] }) as WorkoutSection;
 const SECTIONS = [sec("2", "Strength", 1), sec("1", "Warm-up", 0)];
 
 function renderPicker(props: Partial<Parameters<typeof SectionPicker>[0]> = {}) {

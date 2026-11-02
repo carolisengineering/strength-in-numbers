@@ -259,7 +259,7 @@ function sectionRoute(w, m, p, raw) {
   let seg;
   if (m === "POST" && p === `/v1/workouts/${w.id}/sections`) {
     if (w.sections.length >= 8) return problem(409, "workout-section-limit", "Section limit");
-    const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true };
+    const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true, timer: null, result: null, roundTimes: [] };
     w.sections = [...w.sections, section];
     return json(section, 201);
   }

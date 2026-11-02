@@ -95,7 +95,7 @@ export interface WorkoutDetailOptions {
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
 export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetail {
   const id = opts.id ?? nextId();
-  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null, addedInWorkout: s.addedInWorkout ?? false }));
+  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null, addedInWorkout: s.addedInWorkout ?? false, timer: null, result: null, roundTimes: [] }));
   return WorkoutDetailSchema.parse({
     id,
     title: opts.title ?? null,
@@ -207,7 +207,7 @@ export const routineId = (n: number): string => `20000000-0000-4000-8000-${Strin
 export const sectionId = (n: number): string => `60000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 export function makeRoutineSection(overrides: Record<string, unknown> = {}): RoutineSection {
-  return RoutineSectionSchema.parse({ id: sectionId(1), position: 0, name: "Warm-up", notes: null, ...overrides });
+  return RoutineSectionSchema.parse({ id: sectionId(1), position: 0, name: "Warm-up", notes: null, timer: null, ...overrides });
 }
 
 export function makeRoutineItem(overrides: Record<string, unknown> = {}): RoutineItem {

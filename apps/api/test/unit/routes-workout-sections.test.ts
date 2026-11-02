@@ -72,10 +72,11 @@ describe("AC1 — the start response and a History list row are unchanged", () =
 });
 
 describe("09.4 AC1 — key sets", () => {
-  it("WorkoutSection ends with addedInWorkout and the detail's sections carry exactly its keys", async () => {
+  it("WorkoutSection has addedInWorkout after notes and the detail's sections carry exactly its keys", async () => {
     const { detail } = await sectionedWorkout();
     const keys = Object.keys(WorkoutSectionSchema.shape);
-    expect(keys.at(-1)).toBe("addedInWorkout");
+    // Amended by Spec 09.5 AC1: addedInWorkout is no longer last; timer, result, roundTimes follow it.
+    expect(keys.slice(4)).toEqual(["addedInWorkout", "timer", "result", "roundTimes"]);
     for (const s of detail.sections) expect(Object.keys(s)).toEqual(keys);
     expect(detail.sections.map((s: { addedInWorkout: boolean }) => s.addedInWorkout)).toEqual([false, false]);
   });

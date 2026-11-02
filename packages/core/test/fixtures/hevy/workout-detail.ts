@@ -57,7 +57,7 @@ export function exercise(n: number, o: Partial<WorkoutExerciseDetail> = {}): Wor
 }
 
 export function section(n: number, name: string, o: Partial<WorkoutSection> = {}): WorkoutSection {
-  return { id: uuid(500 + n) as WorkoutSection["id"], position: n, name, notes: null, addedInWorkout: false, ...o };
+  return { id: uuid(500 + n) as WorkoutSection["id"], position: n, name, notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [], ...o };
 }
 
 export function detail(o: Partial<WorkoutDetail> = {}): WorkoutDetail {

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { RoutineSectionIdSchema } from "../ids.js";
 import { noControlChars } from "./exercise.js";
 import { noControlCharsExceptWhitespace } from "./workout.js";
+import { SectionTimerSchema } from "./section-timer.js";
 
 export const ROUTINE_SECTIONS_MAX = 8;
 export const SECTION_NAME_MAX = 40;
@@ -43,5 +44,7 @@ export const RoutineSectionSchema = z.object({
   position: z.number().int().min(0),
   name: z.string(),
   notes: z.string().nullable(),
+  /** Spec 09.5 — the timer plan, `null` = untimed. */
+  timer: SectionTimerSchema.nullable(),
 });
 export type RoutineSection = z.infer<typeof RoutineSectionSchema>;

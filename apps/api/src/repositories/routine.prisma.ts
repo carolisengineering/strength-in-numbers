@@ -21,6 +21,7 @@ import {
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
+import { timerFromColumns, type TimerColumns } from "./section-timer-columns.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -54,7 +55,7 @@ export interface ItemDbRow {
   section_id: string | null;
 }
 
-export interface SectionDbRow {
+export interface SectionDbRow extends TimerColumns {
   id: string;
   position: number;
   name: string;
@@ -98,7 +99,9 @@ const ROUTINE_WITH_ITEMS = (where: Prisma.Sql, orderBy: Prisma.Sql) => Prisma.sq
            FROM "routine_item" ri WHERE ri.routine_id = r.id
          ), '[]'::json) AS items,
          COALESCE((
-           SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes)
+           SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes,
+                                             'timer_format', s.timer_format, 'timer_round_s', s.timer_round_s,
+                                             'timer_rounds', s.timer_rounds, 'timer_cap_s', s.timer_cap_s)
                            ORDER BY s.position)
            FROM "routine_section" s WHERE s.routine_id = r.id
          ), '[]'::json) AS sections
@@ -142,7 +145,7 @@ function toRoutine(r: RoutineDbRow): RoutineRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     oneOffUntil: r.one_off_until,
-    sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes })),
+    sections: r.sections.map((s) => ({ id: s.id, position: s.position, name: s.name, notes: s.notes, timer: timerFromColumns(s) })),
     items: r.items.map(toItem),
   };
 }

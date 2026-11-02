@@ -15,11 +15,11 @@ const detail = {
 };
 
 describe("AC1 — workout response shapes", () => {
-  it("WorkoutSection is exactly { id, position, name, notes, addedInWorkout } (addedInWorkout last, amended by 09.4 AC1)", () => {
-    expect(Object.keys(WorkoutSectionSchema.shape)).toEqual(["id", "position", "name", "notes", "addedInWorkout"]);
+  it("WorkoutSection is exactly { id, position, name, notes, addedInWorkout, timer, result, roundTimes } (amended by 09.4 AC1, then 09.5 AC1)", () => {
+    expect(Object.keys(WorkoutSectionSchema.shape)).toEqual(["id", "position", "name", "notes", "addedInWorkout", "timer", "result", "roundTimes"]);
   });
   it("09.4 AC1 — addedInWorkout is required: no default, optional or catch", () => {
-    expect(WorkoutSectionSchema.safeParse({ id: "018fcb3e-3b8a-7d6e-9c1a-0000000b0001", position: 0, name: "W", notes: null }).success).toBe(false);
+    expect(WorkoutSectionSchema.safeParse({ id: "018fcb3e-3b8a-7d6e-9c1a-0000000b0001", position: 0, name: "W", notes: null, timer: null, result: null, roundTimes: [] }).success).toBe(false);
   });
   it("WorkoutExercise ends with sectionId (after plannedSets)", () => {
     const keys = Object.keys(WorkoutExerciseSchema.shape);

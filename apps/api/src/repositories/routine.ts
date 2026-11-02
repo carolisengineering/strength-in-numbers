@@ -6,7 +6,7 @@
  * any query (`isRoutineId`), as `workout.ts` does with `isWorkoutId`.
  */
 
-import type { PlannedSet, PlannedSetInput } from "@sin/core";
+import type { PlannedSet, PlannedSetInput, SectionTimer } from "@sin/core";
 
 export interface RoutineItemRecord {
   id: string;
@@ -33,6 +33,8 @@ export interface RoutineSectionRecord {
   position: number;
   name: string;
   notes: string | null;
+  /** Spec 09.5 — the timer plan, `null` = untimed. */
+  timer: SectionTimer | null;
 }
 
 export interface RoutineRecord {
