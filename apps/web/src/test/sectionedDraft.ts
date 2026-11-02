@@ -33,7 +33,7 @@ export function sectioned(loose: string, ...sections: [key: string, items: strin
   return {
     name: "Push B",
     notes: "",
-    sections: sections.map(([key]) => ({ key, name: key, notes: "" })),
+    sections: sections.map(([key]) => ({ key, name: key, notes: "", timer: null })),
     items,
     dirty: false,
     adjusted: false,

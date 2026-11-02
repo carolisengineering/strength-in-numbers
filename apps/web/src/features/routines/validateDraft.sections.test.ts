@@ -27,8 +27,8 @@ describe("10.3 AC7 — the request body", () => {
     const d: Draft = {
       ...sectioned("x", ["W", "a"], ["M", "b1 c1"]),
       sections: [
-        { key: "W", name: " Warm-up ", notes: "5 min rower " },
-        { key: "M", name: "Main", notes: "  " },
+        { key: "W", name: " Warm-up ", notes: "5 min rower ", timer: null },
+        { key: "M", name: "Main", notes: "  ", timer: null },
       ],
     };
     const out = body(d);
@@ -47,7 +47,7 @@ describe("10.3 AC7 — the request body", () => {
 });
 
 describe("10.3 AC8 — validation", () => {
-  const named = (name: string, notes = ""): Draft => ({ ...sectioned("", ["W", "a"]), name: "R", sections: [{ key: "W", name, notes }] });
+  const named = (name: string, notes = ""): Draft => ({ ...sectioned("", ["W", "a"]), name: "R", sections: [{ key: "W", name, notes, timer: null }] });
   const sectionIssues = (d: Draft) => validateDraft(d, opts).issues.filter((i) => i.scope === "section");
 
   it.each([

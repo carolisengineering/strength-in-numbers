@@ -31,7 +31,7 @@ const secondsOver59 = (digits: string) => digits !== "" && digitsToSeconds(digit
 /**
  * Spec 10.7 AC4–AC5: the Timer group — a `Timer` select (None / Set Timer / AMRAP / Time Cap), then the chosen
  * format's fields. `Seconds go up to 59.` never flashes mid-entry: it shows once the field is left (or after Done),
- * and only while the digits still say it (Review Focus 1).
+ * and only while the digits still say it.
  */
 export function TimerFields({ idPrefix, value, errors = {}, onChange }: TimerFieldsProps) {
   const [left, setLeft] = useState<Partial<Record<"roundDigits" | "capDigits", boolean>>>({});

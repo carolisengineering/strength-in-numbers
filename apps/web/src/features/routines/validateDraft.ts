@@ -17,6 +17,7 @@ import type { Draft, DraftItem, DraftSet } from "./routineDraft";
 import { SECTION_NAME_INVALID, SECTION_NOTES_INVALID } from "./messages";
 import { parseSectionName, parseSectionNotes } from "./sectionText";
 import { WEIGHT_MESSAGE } from "./targetFormat";
+import { toTimerInput } from "../sectionTimer/timerFields";
 
 /** The POST/PUT body (Spec 09 §5) before Zod's transforms. */
 export type RoutineWriteInput = z.input<typeof RoutineWriteSchema>;
@@ -121,7 +122,13 @@ export function toRoutineInput(draft: Draft, options: { modalityOf: ModalityOf }
   const requestKey = new Map(draft.sections.map((s, j) => [s.key, `s${j + 1}`]));
   const sections = draft.sections.map((s) => {
     const sectionNotes = s.notes.trim();
-    return { key: requestKey.get(s.key)!, name: s.name.trim(), ...(sectionNotes === "" ? {} : { notes: sectionNotes }) };
+    return {
+      key: requestKey.get(s.key)!,
+      name: s.name.trim(),
+      ...(sectionNotes === "" ? {} : { notes: sectionNotes }),
+      // Spec 10.7 AC8: the last key and only when set, so an untimed body is byte-identical to before.
+      ...(s.timer === null ? {} : { timer: toTimerInput(s.timer) }),
+    };
   });
   return {
     name: draft.name.trim(),
