@@ -48,18 +48,22 @@ function noteOf(lines: readonly string[], notices: SectionNotice[]): string | nu
  * Spec 19.0 AC10: the section a Hevy placeholder exercise starts on import. A warm-up marker is `Warm-up` with its
  * notes as the note; a workout marker is named by the first non-blank line of its notes (`Workout` when there is
  * none), the remaining lines, trimmed, being the note. Names and notes are cut to SIN's section limits, with a notice.
+ * Spec 09.5 AC30: a `lead` line (the import's `Time m:ss`) becomes the note's first line after the name is taken,
+ * so a cut trims the tail, never the lead.
  */
 export function sectionFromPlaceholder(
   role: "warmup_placeholder" | "workout_placeholder",
   notes: string | null,
+  lead: string | null = null,
 ): { name: string; note: string | null; notices: SectionNotice[] } {
   const notices: SectionNotice[] = [];
   // Minor 211: CRLF, a lone CR and LF each end a line.
   const lines = (notes ?? "").split(/\r\n?|\n/);
-  if (role === "warmup_placeholder") return { name: "Warm-up", note: noteOf(lines, notices), notices };
+  const withLead = (rest: readonly string[]) => (lead === null ? rest : [lead, ...rest]);
+  if (role === "warmup_placeholder") return { name: "Warm-up", note: noteOf(withLead(lines), notices), notices };
 
   const first = lines.findIndex((line) => line.trim() !== "");
-  if (first === -1) return { name: "Workout", note: null, notices };
+  if (first === -1) return { name: "Workout", note: lead === null ? null : noteOf([lead], notices), notices };
   let name = lines[first]!.trim();
   if (name.length > SECTION_NAME_MAX) {
     const kept = cutClusters(name, SECTION_NAME_MAX).trim();
@@ -67,5 +71,5 @@ export function sectionFromPlaceholder(
     if (kept !== "") notices.push("section_name_cut");
     name = kept || "Workout";
   }
-  return { name, note: noteOf(lines.slice(first + 1), notices), notices };
+  return { name, note: noteOf(withLead(lines.slice(first + 1)), notices), notices };
 }

@@ -121,6 +121,12 @@ export function assignSupersets<K>(
   return { groups, overLimit, cut };
 }
 
+/** Spec 09.5 AC30: the sum of a placeholder's positive set durations, or `null` when it has none. */
+function placeholderDuration(sets: readonly { durationSeconds: number | null }[]): number | null {
+  const positive = sets.map((s) => s.durationSeconds).filter((d): d is number => d !== null && d > 0);
+  return positive.length === 0 ? null : positive.reduce((sum, d) => sum + d, 0);
+}
+
 /**
  * Spec 19.1 AC2–AC9: one Hevy workout as SIN rows, or why it is not imported. `time_invalid` wins, then `unpaired`
  * (nothing else is computed), then `no_usable_sets`. Every dropped set and every value set aside is counted. Pure:
@@ -150,7 +156,7 @@ export function translateHevyWorkout(w: HevyImportWorkout, ctx: HevyImportContex
     const pair = ctx.pairs.get(e.exerciseTemplateId)!;
     if (pair.role === "warmup_placeholder" || pair.role === "workout_placeholder") {
       notices.add("placeholder_sets_ignored", e.sets.length);
-      walk.placeholder(pair.role, e.notes);
+      walk.placeholder(pair.role, e.notes, placeholderDuration(e.sets));
       continue;
     }
     if (pair.role === "skip") {

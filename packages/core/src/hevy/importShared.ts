@@ -1,6 +1,7 @@
 import { ROUTINE_SECTIONS_MAX, SECTION_NAME_MAX } from "../dto/routine-section.js";
 import type { Modality, UnitPreference } from "../enums.js";
 import { cleanLine, cleanNotes } from "./importText.js";
+import { formatClock } from "../timer.js";
 import { sectionFromPlaceholder } from "./sections.js";
 import type { HevyPair } from "./types.js";
 
@@ -50,14 +51,17 @@ export function unpairedTemplateIds(templateIds: Iterable<string>, ctx: PairLook
 /**
  * AC3 / AC11: the section a placeholder starts, through 19.0's `sectionFromPlaceholder`. Control characters are
  * removed first (the note keeps TAB, LF, CR; the name keeps none), because SIN's section schemas refuse them.
+ * Spec 09.5 AC30: a duration that rounds to a positive whole number of seconds adds a `Time m:ss` first note line.
  */
 export function placeholderSection(
   role: "warmup_placeholder" | "workout_placeholder",
   rawNotes: string | null,
+  durationSeconds: number | null,
 ): { name: string; notes: string | null; nameCut: boolean; notesCut: boolean } {
   // A lone CR splits a line like LF (minors 150, 211): `sectionFromPlaceholder` splits on CRLF, CR and LF.
   const notes = cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value;
-  const section = sectionFromPlaceholder(role, notes);
+  const seconds = durationSeconds === null ? 0 : Math.round(durationSeconds);
+  const section = sectionFromPlaceholder(role, notes, seconds > 0 ? `Time ${formatClock(seconds)}` : null);
   return {
     name: cleanLine(section.name, SECTION_NAME_MAX).value ?? "Workout",
     notes: section.note,
@@ -83,14 +87,15 @@ export class SectionWalk {
 
   constructor(private readonly notices: { add(code: SectionNoticeCode): void }) {}
 
-  placeholder(role: "warmup_placeholder" | "workout_placeholder", rawNotes: string | null): void {
+  /** `durationSeconds`: the placeholder's summed duration (Spec 09.5 AC30); the routine walk passes `null`. */
+  placeholder(role: "warmup_placeholder" | "workout_placeholder", rawNotes: string | null, durationSeconds: number | null): void {
     if (this.open !== null) this.notices.add("section_empty");
     if (this.sections.length >= ROUTINE_SECTIONS_MAX) {
       this.notices.add("sections_over_limit");
       this.open = null;
       return;
     }
-    this.open = placeholderSection(role, rawNotes);
+    this.open = placeholderSection(role, rawNotes, durationSeconds);
   }
 
   /** The section index for a stored exercise, creating the open section if there is one. */

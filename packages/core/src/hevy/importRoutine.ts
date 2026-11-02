@@ -100,7 +100,8 @@ export function translateHevyRoutine(routine: HevyRoutine, ctx: Omit<HevyImportC
   for (const e of routine.exercises) {
     const pair = ctx.pairs.get(e.exercise_template_id)!;
     if (pair.role === "warmup_placeholder" || pair.role === "workout_placeholder") {
-      walk.placeholder(pair.role, e.notes ?? null);
+      // Spec 09.5 AC30 names only the workout import: a routine placeholder's duration is not kept.
+      walk.placeholder(pair.role, e.notes ?? null, null);
       continue;
     }
     if (pair.role === "skip") continue;

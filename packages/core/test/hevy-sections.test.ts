@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECTION_DEFAULT_RULES, SECTION_NAME_MAX, sectionFromPlaceholder, sectionKey, sectionTreatment } from "../src/index.js";
+import { SECTION_DEFAULT_RULES, SECTION_NAME_MAX, SECTION_NOTES_MAX, sectionFromPlaceholder, sectionKey, sectionTreatment } from "../src/index.js";
 
 describe("19.0 AC10 — section treatment", () => {
   it("the defaults: Warm-up gets a marker, Accessory goes on the first exercise", () => {
@@ -139,4 +139,36 @@ describe("Minor 211 — a lone CR ends a line", () => {
     expect(sectionFromPlaceholder("workout_placeholder", "EMOM 12\revery minute")).toEqual({ name: "EMOM 12", note: "every minute", notices: [] }));
   it("CRLF still reads as one line end", () =>
     expect(sectionFromPlaceholder("workout_placeholder", "A\r\n\r\nB")).toEqual({ name: "A", note: "B", notices: [] }));
+});
+
+describe("09.5 AC30 — a lead line in the placeholder note", () => {
+  it("a workout placeholder: the name is taken first, then the lead is the note's first line", () => {
+    expect(sectionFromPlaceholder("workout_placeholder", "Main\nRx", "Time 17:42")).toEqual({ name: "Main", note: "Time 17:42\nRx", notices: [] });
+  });
+
+  it("a warm-up placeholder: the lead comes before its notes", () => {
+    expect(sectionFromPlaceholder("warmup_placeholder", "Bike", "Time 5:00")).toEqual({ name: "Warm-up", note: "Time 5:00\nBike", notices: [] });
+  });
+
+  it.each([null, "\n  \n"])("a workout placeholder with no non-blank line (%j) is Workout, the note the lead alone", (notes) => {
+    expect(sectionFromPlaceholder("workout_placeholder", notes, "Time 17:42")).toEqual({ name: "Workout", note: "Time 17:42", notices: [] });
+  });
+
+  it("a note at the limit keeps the lead and loses the tail", () => {
+    const r = sectionFromPlaceholder("workout_placeholder", `Main\n${"x".repeat(SECTION_NOTES_MAX)}`, "Time 17:42");
+    expect(r.name).toBe("Main");
+    expect(r.note!.startsWith("Time 17:42\n")).toBe(true);
+    expect(r.note!.length).toBeLessThanOrEqual(SECTION_NOTES_MAX);
+    expect(r.notices).toEqual(["section_note_cut"]);
+  });
+
+  it.each<["warmup_placeholder" | "workout_placeholder", string | null]>([
+    ["workout_placeholder", "Main\nRx"],
+    ["workout_placeholder", null],
+    ["workout_placeholder", "  \n"],
+    ["warmup_placeholder", "Bike"],
+    ["warmup_placeholder", null],
+  ])("a null lead is 19.0's result (%s, %j)", (role, notes) => {
+    expect(sectionFromPlaceholder(role, notes, null)).toEqual(sectionFromPlaceholder(role, notes));
+  });
 });
