@@ -1,3 +1,4 @@
+import type { WorkoutDetail } from "@sin/core";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -11,10 +12,13 @@ import { createPersonalRecordRepository } from "../../src/repositories/personal-
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
+import { hevyFingerprint } from "../../src/hevy/fingerprint.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
+import { legacyHevyFingerprintSourceV1 } from "../helpers/legacy-fingerprint-source.js";
 import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
+import { addTimedSection, recordRounds, setResult } from "./section-helpers.js";
 
 const A_ID = "0192a1b2-0000-7000-8000-0000000000aa";
 const B_ID = "0192a1b2-0000-7000-8000-0000000000bb";
@@ -478,6 +482,47 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
       expect(lines.find((l) => l.msg === "hevy_link_completed")).toMatchObject({ user_id: A_ID });
       expect(lines.find((l) => l.msg === "hevy_link_released")).toMatchObject({ user_id: A_ID });
       expect(JSON.stringify(lines.filter((l) => String(l.msg).startsWith("hevy_link")))).not.toContain("HEVYID42");
+    });
+  });
+
+  describe("09.5 AC29 — changed since sent with timed sections", () => {
+    it("(d) a fingerprint stored before 0018 (the frozen 19.0 source) still reads sent", async () => {
+      const { workoutId } = await finished();
+      expect((await app.inject({ method: "POST", url: `/v1/workouts/${workoutId}/sections`, headers: A, payload: { name: "Main", notes: "Rx" } })).statusCode).toBe(201);
+      await send(workoutId);
+      const detail = (await app.inject({ method: "GET", url: `/v1/workouts/${workoutId}`, headers: A })).json() as WorkoutDetail;
+      expect(detail.sections).toHaveLength(1);
+      await db.prisma.$executeRawUnsafe(
+        `UPDATE hevy_link SET synced_fingerprint = $2 WHERE workout_id = $1::uuid`,
+        workoutId,
+        hevyFingerprint(legacyHevyFingerprintSourceV1(detail)),
+      );
+      expect((await state(workoutId)).state).toBe("sent");
+    });
+
+    it("a timer, a round time and a result each mark a sent workout changed; a resend brings it back", async () => {
+      const { workoutId } = await finished();
+      const added = await app.inject({ method: "POST", url: `/v1/workouts/${workoutId}/sections`, headers: A, payload: { name: "Main" } });
+      const main = (added.json() as { id: string }).id;
+      await send(workoutId);
+      expect((await state(workoutId)).state).toBe("sent");
+
+      // Setting a timer on a section that was already sent (the untimed entry is unchanged, so only timed data can flag it).
+      const timer = { format: "set_timer", roundSeconds: 300, rounds: 5 };
+      expect((await app.inject({ method: "PATCH", url: `/v1/workout-sections/${main}`, headers: A, payload: { timer } })).statusCode).toBe(200);
+      expect((await state(workoutId)).state).toBe("changed");
+      await send(workoutId);
+      expect((await state(workoutId)).state).toBe("sent");
+
+      await recordRounds(db, main, [{ round: 1, seconds: 221 }]);
+      expect((await state(workoutId)).state).toBe("changed");
+      await send(workoutId);
+
+      const fin = await addTimedSection(db, workoutId, 1, "Finisher", { format: "time_cap", capSeconds: 900 });
+      await send(workoutId);
+      expect((await state(workoutId)).state).toBe("sent");
+      await setResult(db, fin, { rounds: null, reps: null, finishSeconds: 860, capped: false });
+      expect((await state(workoutId)).state).toBe("changed");
     });
   });
 });

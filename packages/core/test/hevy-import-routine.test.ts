@@ -322,3 +322,15 @@ describe("Minor 243 — hevyRoutineName", () => {
     }
   });
 });
+
+describe("09.5 AC30 — routine import is unchanged", () => {
+  it("a routine placeholder whose set has a duration imports exactly as one without", () => {
+    const withDuration = translateHevyRoutine(
+      hevyRoutine([item("WORKOUT", { notes: "Main\nRx", sets: [{ type: "normal", duration_seconds: 600 }] }), item("BENCH")]),
+      ctx,
+    );
+    const without = translateHevyRoutine(hevyRoutine([item("WORKOUT", { notes: "Main\nRx", sets: [{ type: "normal" }] }), item("BENCH")]), ctx);
+    expect(withDuration).toEqual(without);
+    expect(ok(withDuration).input.sections).toEqual([{ key: "s1", name: "Main", notes: "Rx" }]);
+  });
+});

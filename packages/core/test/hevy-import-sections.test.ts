@@ -136,3 +136,41 @@ describe("Minor 150 — a lone CR splits like LF", () => {
     expect(r.workout.sections).toEqual([{ name: "A", notes: "B" }]);
   });
 });
+
+describe("09.5 AC30 — a placeholder's duration on import", () => {
+  const timedMarker = (durations: (number | null)[], id = "WORKOUT", notes: string | null = "Main\nRx") =>
+    hex(id, durations.map((durationSeconds) => hset({ durationSeconds })), { notes });
+  const translate = (m: ReturnType<typeof timedMarker>) => created(translateHevyWorkout(hworkout([m, lift()]), ctx));
+
+  it("one set's duration becomes a Time first line", () => {
+    expect(translate(timedMarker([1062])).workout.sections).toEqual([{ name: "Main", notes: "Time 17:42\nRx" }]);
+  });
+
+  it("the positive durations are summed", () => {
+    expect(translate(timedMarker([600, 462])).workout.sections[0]!.notes).toBe("Time 17:42\nRx");
+  });
+
+  it("only 0, null or negative durations: the note is exactly today's", () => {
+    expect(translate(timedMarker([0, null, -5])).workout.sections).toEqual(translate(timedMarker([null])).workout.sections);
+    expect(translate(timedMarker([0, null, -5])).workout.sections[0]!.notes).toBe("Rx");
+  });
+
+  it("a fractional sum is rounded to whole seconds", () => {
+    expect(translate(timedMarker([59.6])).workout.sections[0]!.notes).toBe("Time 1:00\nRx");
+  });
+
+  it("a warm-up placeholder too", () => {
+    expect(translate(timedMarker([300], "WARMUP", "Bike")).workout.sections).toEqual([{ name: "Warm-up", notes: "Time 5:00\nBike" }]);
+  });
+
+  it("placeholder_sets_ignored still counts every placeholder set; the notice list is otherwise unchanged", () => {
+    const withDurations = translate(timedMarker([600, 462, 0]));
+    const without = translate(timedMarker([null, null, null]));
+    expect(count(withDurations.notices, "placeholder_sets_ignored")).toBe(3);
+    expect(withDurations.notices).toEqual(without.notices);
+  });
+
+  it("no timer key appears anywhere in the translation", () => {
+    expect(JSON.stringify(translate(timedMarker([1062])))).not.toContain('"timer"');
+  });
+});

@@ -3,7 +3,8 @@ import type { WorkoutDetail, WorkoutExerciseDetail, WorkoutSection } from "../dt
 import type { Modality } from "../enums.js";
 import { hevyPairingProblem } from "./pairing.js";
 import { sectionTreatment } from "./sections.js";
-import { HEVY_EXPORT_NOTICES, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
+import { HEVY_EXPORT_NOTICES, hevyTypeHoldsDuration, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
+import { hevyTimerDurationSeconds, hevyTimerLine } from "./timedSection.js";
 import type { HevyMapping, HevyPair } from "./types.js";
 import type { HevyType } from "./vocabulary.js";
 
@@ -43,14 +44,31 @@ export function exportPairFor(
 }
 
 const joinNotes = (prefix: string, notes: string | null): string => (notes ? `${prefix}\n\n${notes}` : prefix);
-const nameAndNote = (s: WorkoutSection): string => (s.notes ? `${s.name}\n${s.notes}` : s.name);
+/** The section name, then (a timed section, Spec 09.5 AC26) its timer line, then its note when it has one. */
+const nameAndNote = (s: WorkoutSection): string => {
+  const head = s.timer ? `${s.name}\n${hevyTimerLine({ timer: s.timer, result: s.result, roundTimes: s.roundTimes })}` : s.name;
+  return s.notes ? `${head}\n${s.notes}` : head;
+};
+
+/**
+ * Spec 09.5 §6.7: a timed section's single duration set, on the first marker that sends it; `[]` otherwise. Only a
+ * placeholder whose Hevy type holds a duration gets it (19.0 AC8: a set carries only the fields its type holds).
+ */
+function markerSets(sec: WorkoutSection, marker: HevyPair, durationSent: Set<string>): HevyPostExercise["sets"] {
+  if (!sec.timer || durationSent.has(sec.id) || !hevyTypeHoldsDuration(marker.hevyType)) return [];
+  const d = hevyTimerDurationSeconds({ timer: sec.timer, result: sec.result, roundTimes: sec.roundTimes });
+  if (d === null) return [];
+  durationSent.add(sec.id);
+  return [{ type: "normal", duration_seconds: d }];
+}
 
 /**
  * Spec 19.0 AC11–AC12: the body to send to Hevy for a finished workout. Pure and total: the input is never mutated,
  * an unsendable set is counted and left out, and every exercise needs an export pair (else `ok: false` with the
  * unmapped list and nothing else computed). Sections follow AC10: a marker exercise for Warm-up and named sections,
  * the note on the first exercise for Accessory, and the name and note on the first exercise when the marker pair is
- * missing.
+ * missing. A timed section (Spec 09.5 AC26) is always the workout placeholder, whatever its name or rule, with its
+ * timer line in the notes and one duration set on its first run's marker (§6.7).
  */
 export function buildHevyWorkout(
   detail: WorkoutDetail,
@@ -88,12 +106,14 @@ export function buildHevyWorkout(
   let previousSection: string | null = null;
   // A markerless section is counted and named once, however many runs it has (deferred minor 137).
   const markerlessIds = new Set<string>();
+  // A timed section sends its duration once, on its first run's marker; later runs' markers have no set.
+  const durationSent = new Set<string>();
   for (const ex of exercises) {
     let notes = ex.notes;
     const sec = ex.sectionId === null ? undefined : sections.get(ex.sectionId);
     // A section's treatment applies where a run of its exercises starts (a workout's list may be non-contiguous).
     if (sec && ex.sectionId !== previousSection) {
-      const treatment = sectionTreatment(sec.name, mapping.sectionRules);
+      const treatment = sec.timer ? "workout_placeholder" : sectionTreatment(sec.name, mapping.sectionRules);
       if (treatment === "notes_on_first") {
         if (sec.notes) notes = joinNotes(sec.notes, notes);
       } else {
@@ -103,7 +123,7 @@ export function buildHevyWorkout(
             exercise_template_id: marker.hevyTemplateId,
             superset_id: null,
             notes: treatment === "warmup_placeholder" ? sec.notes : nameAndNote(sec),
-            sets: [],
+            sets: markerSets(sec, marker, durationSent),
           });
         } else {
           notes = joinNotes(nameAndNote(sec), notes);

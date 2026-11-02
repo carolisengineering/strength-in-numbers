@@ -131,6 +131,9 @@ import type { PreparedCatalog ,
 import {
   describeTimer,
   formatClock,
+  hevyTimerDurationSeconds,
+  hevyTimerLine,
+  type TimedSectionData,
   resultIssues,
   roundTimeIssues,
   scoreText,
@@ -175,6 +178,10 @@ describe("09.5 — timed-section exports", () => {
     expectTypeOf<z.infer<typeof SectionScoreSchema>>().toEqualTypeOf<SectionScore>();
     expectTypeOf<z.infer<typeof TimedSectionSummarySchema>>().toEqualTypeOf<TimedSectionSummary>();
     expectTypeOf<TimedSectionSummary["timer"]>().toEqualTypeOf<SectionTimer>();
+    // Spec 09.5 Phase C — the Hevy timer line and marker duration.
+    expectTypeOf(hevyTimerLine).toEqualTypeOf<(s: TimedSectionData) => string>();
+    expectTypeOf(hevyTimerDurationSeconds).toEqualTypeOf<(s: TimedSectionData) => number | null>();
+    expectTypeOf<TimedSectionData["timer"]>().toEqualTypeOf<SectionTimer>();
   });
 });
 

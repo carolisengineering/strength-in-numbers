@@ -332,6 +332,10 @@ const EXPECTED = [
   "buildHevyWorkout",
   "HEVY_FINGERPRINT_VERSION",
   "hevyFingerprintSource",
+  // hevy — a timed section's timer line and marker duration (Spec 09.5 AC28, §6.7)
+  "hevyTimerLine",
+  "hevyTimerDurationSeconds",
+  "hevyTypeHoldsDuration",
   // hevy — mapping CSV, export-as, reference tables, HTTP DTOs (Spec 19.0 AC14, AC15, §5)
   "MAPPING_CSV_HEADER",
   "MAPPING_CSV_MAX_BYTES",
