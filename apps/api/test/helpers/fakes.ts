@@ -676,6 +676,11 @@ export class FakeWorkoutRepository implements WorkoutRepository {
           })),
         ),
         recordCount: 0, // the fake keeps no personal_record rows
+        // Spec 09.5 AC25: the timed sections by position, as the History statement selects them.
+        timedSections: (this.sectionsByWorkout.get(w.id)?.sections ?? [])
+          .filter((s) => s.timer !== null)
+          .sort((a, b) => a.position - b.position)
+          .map((s) => ({ id: s.id, position: s.position, name: s.name, timer: s.timer!, result: s.result, roundTimes: s.roundTimes })),
       };
     });
     const last = page[page.length - 1];

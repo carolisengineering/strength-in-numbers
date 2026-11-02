@@ -38,6 +38,18 @@ export interface WorkoutSummaryRecord extends WorkoutRecord {
   workingSetCount: number;
   totalVolumeMilli: number | null;
   recordCount: number;
+  /** Spec 09.5 AC25 — the timed sections in position order, with what `sectionScore` reads; `[]` when none. */
+  timedSections: TimedSectionRecord[];
+}
+
+/** Spec 09.5 AC25 — a History row's timed section; the route derives its `score` with `@sin/core` `sectionScore`. */
+export interface TimedSectionRecord {
+  id: string;
+  position: number;
+  name: string;
+  timer: SectionTimer;
+  result: SectionResult | null;
+  roundTimes: RoundTime[];
 }
 
 export interface ListFinishedWorkoutsOptions {

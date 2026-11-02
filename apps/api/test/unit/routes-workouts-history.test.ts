@@ -131,3 +131,24 @@ describe("AC19 — logging", () => {
     expect(all).not.toMatch(/totalVolume/);
   });
 });
+
+describe("09.5 AC25 — History rows carry timedSections", () => {
+  it("timedSections is the last key; a timed section serializes as { id, position, name, timer, score }", async () => {
+    const { app, seed, workoutRepo } = await setup();
+    seed(1);
+    const workoutId = [...workoutRepo.workouts.keys()][0]!;
+    const timed = {
+      id: uuidv7(), position: 1, name: "Main", notes: "n", addedInWorkout: false,
+      timer: { format: "set_timer" as const, roundSeconds: 300, rounds: 5 },
+      result: null,
+      roundTimes: [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 1, seconds })),
+    };
+    const untimed = { id: uuidv7(), position: 0, name: "Warm-up", notes: null, addedInWorkout: false, timer: null, result: null, roundTimes: [] };
+    workoutRepo.sectionsByWorkout.set(workoutId, { routineNotes: null, sections: [untimed, timed] });
+    const item = (await get(app)).json().items[0];
+    expect(Object.keys(item).slice(-2)).toEqual(["recordCount", "timedSections"]);
+    expect(item.timedSections).toEqual([
+      { id: timed.id, position: 1, name: "Main", timer: timed.timer, score: { kind: "total_time", seconds: 1062, rounds: 5 } },
+    ]);
+  });
+});
