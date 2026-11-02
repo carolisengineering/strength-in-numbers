@@ -5,6 +5,7 @@ import {
   CreateWorkoutSectionSchema,
   SectionRoundParamsSchema,
   SetRoundTimeSchema,
+  SetSectionResultSchema,
   UpdateWorkoutSectionSchema,
   WorkoutSectionSchema,
 } from "@sin/core";
@@ -149,6 +150,45 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
       request.log.info(
         { workout_id: cleared.workoutId, section_id: id, user_id: userId, round, removed: cleared.removed },
         "workout_section_round_cleared",
+      );
+      logFinishedEdit(request.log, userId, "section_result_changed", cleared.finishedEdit);
+      reply.code(204).send();
+      return reply;
+    },
+  );
+
+
+  // Spec 09.5 §6.4 — the result is one whole value: PUT replaces it, DELETE clears it (round times stay).
+  r.put(
+    "/workout-sections/:id/result",
+    {
+      schema: { params: idParams, body: SetSectionResultSchema, response: { 200: WorkoutSectionSchema } },
+      config: { published: true, problems: [NotFoundError, SectionTimerMismatchError], writeGroup: "sets" },
+    },
+    async (request) => {
+      const userId = request.user!.id;
+      const saved = await deps.workoutRepository.setSectionResult(userId, request.params.id, request.body);
+      request.log.info(
+        { workout_id: saved.workoutId, section_id: saved.id, user_id: userId, changed: saved.changed },
+        "workout_section_result_set",
+      );
+      logFinishedEdit(request.log, userId, "section_result_changed", saved.finishedEdit);
+      return toWorkoutSectionDto(saved);
+    },
+  );
+
+  r.delete(
+    "/workout-sections/:id/result",
+    {
+      schema: { params: idParams, response: { 204: z.undefined() } },
+      config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
+    },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const cleared = await deps.workoutRepository.clearSectionResult(userId, request.params.id);
+      request.log.info(
+        { workout_id: cleared.workoutId, section_id: request.params.id, user_id: userId, removed: cleared.removed },
+        "workout_section_result_cleared",
       );
       logFinishedEdit(request.log, userId, "section_result_changed", cleared.finishedEdit);
       reply.code(204).send();

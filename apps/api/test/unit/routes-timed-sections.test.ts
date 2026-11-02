@@ -101,3 +101,37 @@ describe("09.5 AC33 — round log lines", () => {
     expect(lines.filter((l) => l.msg === "workout_edited").at(-1)).toMatchObject({ edit: "section_result_changed", records_recomputed: false });
   });
 });
+
+describe("09.5 AC16 — 422 and 409 over HTTP", () => {
+  it("rounds 1000 is 422 on rounds; a Set Timer result is 409 section-timer-mismatch; DELETE is 204 either way", async () => {
+    const { call, url } = await setup();
+    const big = await call("PUT", `${url}/result`, { rounds: 1000, reps: 1 });
+    expect([big.statusCode, big.json().errors[0].path]).toEqual([422, "rounds"]);
+    const ok = await call("PUT", `${url}/result`, { rounds: 5, reps: 7 });
+    expect([ok.statusCode, WorkoutSectionSchema.parse(ok.json()).result]).toEqual([200, { rounds: 5, reps: 7, finishSeconds: null, capped: false }]);
+    for (let i = 0; i < 2; i++) expect((await call("DELETE", `${url}/result`)).statusCode).toBe(204);
+
+    const setTimer = await setup({ format: "set_timer", roundSeconds: 300, rounds: 5 });
+    const res = await setTimer.call("PUT", `${setTimer.url}/result`, { rounds: 1, reps: 1 });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().type).toMatch(/\/section-timer-mismatch$/);
+  });
+});
+
+describe("09.5 AC33 — result log lines", () => {
+  it("carry ids and booleans only; no rounds or reps", async () => {
+    const { call, url, lines } = await setup();
+    await call("PUT", `${url}/result`, { rounds: 613, reps: 8461 });
+    await call("PUT", `${url}/result`, { rounds: 613, reps: 8461 });
+    await call("DELETE", `${url}/result`);
+    const set = lines.filter((l) => l.msg === "workout_section_result_set");
+    expect(set.map(fieldsOf)).toEqual([
+      ["changed", "section_id", "user_id", "workout_id"],
+      ["changed", "section_id", "user_id", "workout_id"],
+    ]);
+    expect(set.map((l) => l.changed)).toEqual([true, false]);
+    const cleared = lines.filter((l) => l.msg === "workout_section_result_cleared");
+    expect(cleared.map(fieldsOf)).toEqual([["removed", "section_id", "user_id", "workout_id"]]);
+    expect(JSON.stringify(lines)).not.toMatch(/\b613\b|\b8461\b/);
+  });
+});

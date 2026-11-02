@@ -7,7 +7,7 @@
  * does with `isExerciseId`.
  */
 import type { FinishedEdit } from "./write-mode.js";
-import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SectionTimerInput, SetType, WeightUnit } from "@sin/core";
+import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SectionTimerInput, SetSectionResult, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
@@ -412,6 +412,17 @@ export interface WorkoutRepository {
     sectionId: string,
     round: number,
   ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }>;
+
+  /** Spec 09.5 §6.4 — replaces the whole result of an AMRAP / Time Cap section; an equal value writes nothing
+   * (`changed: false`). Throws `NotFoundError`, `SectionTimerMismatchError` (untimed, Set Timer) or `ValidationError`. */
+  setSectionResult(
+    actingUserId: string,
+    sectionId: string,
+    body: SetSectionResult,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }>;
+
+  /** Spec 09.5 AC17 — clears the four result columns and leaves the round times. Throws `NotFoundError`. */
+  clearSectionResult(actingUserId: string, sectionId: string): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }>;
 
   /** Spec 09.4 §6.4 — deletes the section (its exercises stay where they are, loose) and renumbers the later
    * sections densely. `exerciseCount` is how many exercises were in it. Throws `NotFoundError`. */

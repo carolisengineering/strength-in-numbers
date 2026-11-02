@@ -3,6 +3,7 @@ import {
   isWorkoutId,
   isWorkoutSectionId,
   ROUTINE_SECTIONS_MAX,
+  resultIssues,
   roundTimeIssues,
   timerFitsRecorded,
   type SectionTimer,
@@ -88,7 +89,13 @@ const sameTimer = (a: SectionTimer | null, b: SectionTimer | null): boolean => J
 
 type SectionMethods = Pick<
   WorkoutRepository,
-  "addWorkoutSection" | "updateWorkoutSection" | "removeWorkoutSection" | "setSectionRoundTime" | "clearSectionRoundTime"
+  | "addWorkoutSection"
+  | "updateWorkoutSection"
+  | "removeWorkoutSection"
+  | "setSectionRoundTime"
+  | "clearSectionRoundTime"
+  | "setSectionResult"
+  | "clearSectionResult"
 >;
 
 /** A handler-raised 422 from the `@sin/core` rules: `{ path, message }` only — the `code` never reaches the wire (AC3). */
@@ -285,6 +292,58 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
         // No timer check and no rule: a clear always succeeds (AC15), and an untimed section has nothing to remove.
         const removed = await tx.$executeRaw`
           DELETE FROM "workout_section_round" WHERE workout_section_id = ${sectionId}::uuid AND round_no = ${round}
+        `;
+        return {
+          workoutId: pre.workout_id,
+          removed: removed > 0,
+          finishedEdit: mode === "finished" && removed > 0 ? noRecompute(pre.workout_id) : null,
+        };
+      });
+    },
+
+    async setSectionResult(actingUserId, sectionId, body) {
+      const pre = await sectionPreflight(actingUserId, sectionId);
+      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, mode, pre.workout_id, sectionId));
+        const timer = current.timer;
+        // A Set Timer's score is its round times, so it takes no result (§6.4).
+        if (timer === null || timer.format === "set_timer") throw new SectionTimerMismatchError();
+        const issues = resultIssues(timer, body);
+        if (issues.length > 0) throw timerValidationError(issues);
+        const rounds = body.rounds ?? null;
+        const reps = body.reps ?? null;
+        const finish = body.finishSeconds ?? null;
+        const capped = body.capped ?? false;
+        // Normalized before the compare, so explicit defaults are a replay (Review Focus 5).
+        const updated = await tx.$queryRaw<WorkoutSectionDbRow[]>`
+          UPDATE "workout_section"
+          SET result_rounds = ${rounds}::smallint, result_reps = ${reps}::smallint,
+              result_finish_s = ${finish}::int, result_capped = ${capped}::boolean, updated_at = now()
+          WHERE id = ${sectionId}::uuid
+            AND (result_rounds, result_reps, result_finish_s, result_capped)
+                IS DISTINCT FROM (${rounds}::smallint, ${reps}::smallint, ${finish}::int, ${capped}::boolean)
+          RETURNING ${SECTION_COLUMNS}
+        `;
+        if (updated.length === 0) return { ...current, workoutId: pre.workout_id, changed: false, finishedEdit: null };
+        return {
+          ...toWorkoutSectionRecord(updated[0]!),
+          workoutId: pre.workout_id,
+          changed: true,
+          finishedEdit: mode === "finished" ? noRecompute(pre.workout_id) : null,
+        };
+      });
+    },
+
+    async clearSectionResult(actingUserId, sectionId) {
+      const pre = await sectionPreflight(actingUserId, sectionId);
+      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+        await lockSectionForRecord(tx, mode, pre.workout_id, sectionId);
+        // No timer check: a clear always succeeds (AC17); the round times stay.
+        const removed = await tx.$executeRaw`
+          UPDATE "workout_section"
+          SET result_rounds = NULL, result_reps = NULL, result_finish_s = NULL, result_capped = false, updated_at = now()
+          WHERE id = ${sectionId}::uuid
+            AND (result_rounds IS NOT NULL OR result_reps IS NOT NULL OR result_finish_s IS NOT NULL OR result_capped)
         `;
         return {
           workoutId: pre.workout_id,

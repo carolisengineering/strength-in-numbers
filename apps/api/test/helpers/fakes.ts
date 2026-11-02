@@ -25,8 +25,10 @@ import {
   WORKOUT_SUMMARY_NAMES_MAX,
   timerFitsRecorded,
   roundTimeIssues,
+  resultIssues,
   type Modality,
   type SectionTimerInput,
+  type SetSectionResult,
 } from "@sin/core";
 import { timerFromColumns, timerToColumns } from "../../src/repositories/section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
@@ -1136,6 +1138,38 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const current = list[index]!;
     const removed = current.roundTimes.some((r) => r.round === round);
     list[index] = { ...current, roundTimes: current.roundTimes.filter((r) => r.round !== round) };
+    return { workoutId: workout.id, removed, finishedEdit: removed ? FakeWorkoutRepository.edit(workout) : null };
+  }
+
+  /** Spec 09.5 §6.4, over the in-memory section. */
+  async setSectionResult(
+    actingUserId: string,
+    sectionId: string,
+    body: SetSectionResult,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const timer = current.timer;
+    if (timer === null || timer.format === "set_timer") throw new SectionTimerMismatchError();
+    const issues = resultIssues(timer, body);
+    if (issues.length > 0) throw new ValidationError(issues.map(({ path, message }) => ({ path, message })));
+    const result = { rounds: body.rounds ?? null, reps: body.reps ?? null, finishSeconds: body.finishSeconds ?? null, capped: body.capped ?? false };
+    if (JSON.stringify(result) === JSON.stringify(current.result)) {
+      return { ...current, workoutId: workout.id, changed: false, finishedEdit: null };
+    }
+    const next = { ...current, result };
+    list[index] = next;
+    return { ...next, workoutId: workout.id, changed: true, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async clearSectionResult(
+    actingUserId: string,
+    sectionId: string,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const removed = current.result !== null;
+    list[index] = { ...current, result: null };
     return { workoutId: workout.id, removed, finishedEdit: removed ? FakeWorkoutRepository.edit(workout) : null };
   }
 
