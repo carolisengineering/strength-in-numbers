@@ -6,7 +6,7 @@
  * any query (`isRoutineId`), as `workout.ts` does with `isWorkoutId`.
  */
 
-import type { PlannedSet, PlannedSetInput, SectionTimer } from "@sin/core";
+import type { PlannedSet, PlannedSetInput, SectionTimer, SectionTimerInput } from "@sin/core";
 
 export interface RoutineItemRecord {
   id: string;
@@ -59,7 +59,7 @@ export interface RoutineWriteFields {
   name: string;
   notes?: string | null | undefined;
   /** Spec 09.2 — the routine's whole section list; `key` is request-local and never stored (D6). */
-  sections?: { key: string; name: string; notes?: string | null | undefined }[] | undefined;
+  sections?: { key: string; name: string; notes?: string | null | undefined; timer?: SectionTimerInput | null | undefined }[] | undefined;
   items: {
     exerciseId: string;
     targetSets?: number | null | undefined;

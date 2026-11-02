@@ -211,7 +211,7 @@ function toExerciseRecord(r: WorkoutExerciseDbRow): WorkoutExerciseRecord {
 }
 
 type InsertOutcome =
-  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number; plannedSetCount: number; sectionCount: number }
+  | { kind: "inserted"; row: WorkoutDbRow; copiedCount: number; plannedSetCount: number; sectionCount: number; timedSectionCount: number }
   | { kind: "no-row" }
   | { kind: "active-conflict" };
 
@@ -414,7 +414,7 @@ export function createWorkoutRepository(
       `;
       const insertedRow = rows[0];
       return insertedRow
-        ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 }
+        ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 }
         : { kind: "no-row" };
     } catch (err) {
       if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
@@ -454,12 +454,19 @@ export function createWorkoutRepository(
         // Spec 09.2 §6.4: sections first, so the item read can join to them. Same transaction, same
         // FOR SHARE (D6: gen_random_uuid — Postgres 16 has no uuidv7()). Fresh ids; position, name,
         // notes verbatim.
-        const sectionCount = await tx.$executeRaw`
-          INSERT INTO "workout_section" (id, workout_id, position, name, notes, created_at, updated_at)
-          SELECT gen_random_uuid(), ${id}::uuid, rs.position, rs.name, rs.notes, now(), now()
+        // Spec 09.5 AC9: the timer plan is copied in the same INSERT; the result columns take their defaults
+        // (nothing recorded). RETURNING counts the timed ones without another statement.
+        const copiedSections = await tx.$queryRaw<{ timed: boolean }[]>`
+          INSERT INTO "workout_section" (id, workout_id, position, name, notes, timer_format, timer_round_s, timer_rounds,
+                                         timer_cap_s, created_at, updated_at)
+          SELECT gen_random_uuid(), ${id}::uuid, rs.position, rs.name, rs.notes, rs.timer_format, rs.timer_round_s,
+                 rs.timer_rounds, rs.timer_cap_s, now(), now()
           FROM "routine_section" rs
           WHERE rs.routine_id = ${routine.id}::uuid
+          RETURNING (timer_format IS NOT NULL) AS timed
         `;
+        const sectionCount = copiedSections.length;
+        const timedSectionCount = copiedSections.filter((s) => s.timed).length;
 
         const items = await tx.$queryRaw<RoutineItemCopyRow[]>`
           SELECT ri.position, ri.exercise_id, e.name, e.modality, e.is_active, ri.target_sets,
@@ -515,7 +522,7 @@ export function createWorkoutRepository(
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         `;
-        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount } as InsertOutcome;
+        return { kind: "inserted", row: updated[0]!, copiedCount: items.length, plannedSetCount, sectionCount, timedSectionCount } as InsertOutcome;
       });
     } catch (err) {
       if (err instanceof StartOutcomeSignal) return err.outcome;
@@ -575,19 +582,20 @@ export function createWorkoutRepository(
           copiedCount: attempt1.copiedCount,
           plannedSetCount: attempt1.plannedSetCount,
           sectionCount: attempt1.sectionCount,
+          timedSectionCount: attempt1.timedSectionCount,
         };
       }
 
       if (attempt1.kind === "active-conflict") {
         const stored = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
+        if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
         throw new WorkoutInProgressExistsError();
       }
 
       // attempt1.kind === "no-row": the idempotency key already existed *or*
       // its row was concurrently deleted between the insert and this re-read.
       const stored1 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
+      if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
 
       // Delete race: retry the insert exactly once (§6.2 step 3, D40).
       const attempt2 = await attempt();
@@ -599,11 +607,12 @@ export function createWorkoutRepository(
           copiedCount: attempt2.copiedCount,
           plannedSetCount: attempt2.plannedSetCount,
           sectionCount: attempt2.sectionCount,
+          timedSectionCount: attempt2.timedSectionCount,
         };
       }
 
       const stored2 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
-      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0 };
+      if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
 
       if (attempt2.kind === "active-conflict") {
         // The retry raced a *different* in-progress workout: a genuine

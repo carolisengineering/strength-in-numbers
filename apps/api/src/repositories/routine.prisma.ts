@@ -21,7 +21,7 @@ import {
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
-import { timerFromColumns, type TimerColumns } from "./section-timer-columns.js";
+import { timerFromColumns, timerToColumns, type TimerColumns } from "./section-timer-columns.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineRepository, RoutineWriteFields } from "./routine.js";
 import {
   assertPlannedSetsFitModalities,
@@ -195,10 +195,14 @@ async function insertSections(
   const values = sections.map((s, j) => {
     const id = uuidv7();
     idByKey.set(s.key, id);
-    return Prisma.sql`(${id}::uuid, ${routineId}::uuid, ${j}, ${s.name}, ${s.notes ?? null}, now(), now())`;
+    // Spec 09.5 AC6 — the timer plan through the one column mapping; absent / null = all NULL.
+    const t = timerToColumns(s.timer);
+    return Prisma.sql`(${id}::uuid, ${routineId}::uuid, ${j}, ${s.name}, ${s.notes ?? null}, ${t.timer_format}::text,
+      ${t.timer_round_s}::int, ${t.timer_rounds}::smallint, ${t.timer_cap_s}::int, now(), now())`;
   });
   await tx.$executeRaw`
-    INSERT INTO "routine_section" (id, routine_id, position, name, notes, created_at, updated_at)
+    INSERT INTO "routine_section" (id, routine_id, position, name, notes, timer_format, timer_round_s, timer_rounds, timer_cap_s,
+                                   created_at, updated_at)
     VALUES ${Prisma.join(values)}
   `;
   return idByKey;

@@ -142,3 +142,23 @@ describe("AC8 — a superset stays inside one section", () => {
     expect(RoutineWriteSchema.safeParse(body()).success).toBe(true);
   });
 });
+
+describe("09.5 AC6 — routine section input", () => {
+  it.each([
+    [{ format: "set_timer", roundSeconds: 300, rounds: 5 }],
+    [{ format: "amrap", capSeconds: 720 }],
+    [{ format: "time_cap", capSeconds: 900 }],
+    [{ format: "time_cap", capSeconds: null }],
+    [{ format: "time_cap" }],
+    [null],
+  ])("accepts sections[0].timer = %j", (timer) => {
+    expect(RoutineWriteSchema.safeParse(body({ sections: [sec({ timer })] })).success).toBe(true);
+  });
+  it("an absent timer is accepted", () => {
+    expect(RoutineWriteSchema.safeParse(body({ sections: [sec()] })).success).toBe(true);
+  });
+  it("a bad field reports its full path", () => {
+    const r = RoutineWriteSchema.safeParse(body({ sections: [sec({ timer: { format: "set_timer", roundSeconds: 0, rounds: 5 } })] }));
+    expect(paths(r)).toEqual(["sections.0.timer.roundSeconds"]);
+  });
+});

@@ -114,7 +114,8 @@ describe("09.5 AC1 — contract", () => {
     for (const file of ["../src/dto/workout.ts", "../src/dto/routine-section.ts"]) {
       const source = readFileSync(join(here, file), "utf8");
       for (const key of ["timer", "result", "roundTimes"]) {
-        const line = source.split("\n").find((l) => new RegExp(`^\\s*${key}:`).test(l));
+        // Response schemas only: a request schema's `timer` (`SectionTimerInputSchema`) is optional by design.
+        const line = source.split("\n").find((l) => new RegExp(`^\\s*${key}:`).test(l) && !l.includes("InputSchema"));
         if (line !== undefined) expect(line, `${file} ${key}`).not.toMatch(/\.default\(|\.catch\(|\.optional\(/);
       }
     }

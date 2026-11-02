@@ -220,6 +220,8 @@ export interface CreateWorkoutResult {
   plannedSetCount: number;
   /** Spec 09.2 §9: `workout_section` rows copied — 0 for a manual start and for a replay. */
   sectionCount: number;
+  /** Spec 09.5 §9: copied sections with a timer — 0 for a manual start and for a replay. */
+  timedSectionCount: number;
 }
 
 /**

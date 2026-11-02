@@ -11332,6 +11332,92 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "timer": {
+                          "anyOf": [
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "set_timer"
+                                      ]
+                                    },
+                                    "roundSeconds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 3600
+                                    },
+                                    "rounds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    }
+                                  },
+                                  "required": [
+                                    "format",
+                                    "roundSeconds",
+                                    "rounds"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amrap"
+                                      ]
+                                    },
+                                    "capSeconds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10800
+                                    }
+                                  },
+                                  "required": [
+                                    "format",
+                                    "capSeconds"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "time_cap"
+                                      ]
+                                    },
+                                    "capSeconds": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10800
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "format"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -12725,6 +12811,92 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 2000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "timer": {
+                          "anyOf": [
+                            {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "set_timer"
+                                      ]
+                                    },
+                                    "roundSeconds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 3600
+                                    },
+                                    "rounds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    }
+                                  },
+                                  "required": [
+                                    "format",
+                                    "roundSeconds",
+                                    "rounds"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "amrap"
+                                      ]
+                                    },
+                                    "capSeconds": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10800
+                                    }
+                                  },
+                                  "required": [
+                                    "format",
+                                    "capSeconds"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "time_cap"
+                                      ]
+                                    },
+                                    "capSeconds": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10800
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "format"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
                             },
                             {
                               "type": "null"
