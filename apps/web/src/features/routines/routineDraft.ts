@@ -1,6 +1,7 @@
 import {
   canLinkRule,
   deriveTargets,
+  groupRangeRule,
   isLinked as isLinkedRule,
   isUniformWorking,
   linkRule,
@@ -9,12 +10,17 @@ import {
   PLANNED_SETS_PER_ITEM_MAX,
   ROUTINE_ITEMS_MAX,
   ROUTINE_SECTIONS_MAX,
+  runOrdinals,
+  SUPERSET_GROUP_MEMBERS_MAX,
+  timedGroupRange,
   unlinkRule,
   type Routine,
+  type SectionTimer,
   type SessionSlot,
   type SetType,
   type WeightUnit,
 } from "@sin/core";
+import { sameTimer } from "../sectionTimer/timerFields";
 import type { Targets, WeightedRow } from "./targetFormat";
 
 /**
@@ -34,6 +40,8 @@ export interface DraftSection {
   readonly name: string;
   /** "" = no note (like `Draft.notes`); trimmed and omitted when blank by `toRoutineInput`. */
   readonly notes: string;
+  /** Spec 10.7 AC8: the section's timer plan; `null` = untimed. Sent only when set (`toRoutineInput`). */
+  readonly timer: SectionTimer | null;
 }
 
 /** The text on a link toggle the lifter can never see: supersets do not cross a section boundary (Spec 10.3 AC5). */
@@ -95,6 +103,7 @@ export type DraftAction =
   | { readonly type: "addSection"; readonly name: string; readonly key: string }
   | { readonly type: "renameSection"; readonly key: string; readonly name: string }
   | { readonly type: "setSectionNotes"; readonly key: string; readonly notes: string }
+  | { readonly type: "setSectionTimer"; readonly key: string; readonly timer: SectionTimer | null }
   | { readonly type: "moveSectionUp"; readonly key: string }
   | { readonly type: "moveSectionDown"; readonly key: string }
   | { readonly type: "deleteSection"; readonly key: string }
@@ -129,6 +138,7 @@ export const actions = {
   addSection: (name: string): DraftAction => ({ type: "addSection", name, key: newKey() }),
   renameSection: (key: string, name: string): DraftAction => ({ type: "renameSection", key, name }),
   setSectionNotes: (key: string, notes: string): DraftAction => ({ type: "setSectionNotes", key, notes }),
+  setSectionTimer: (key: string, timer: SectionTimer | null): DraftAction => ({ type: "setSectionTimer", key, timer }),
   moveSectionUp: (key: string): DraftAction => ({ type: "moveSectionUp", key }),
   moveSectionDown: (key: string): DraftAction => ({ type: "moveSectionDown", key }),
   deleteSection: (key: string): DraftAction => ({ type: "deleteSection", key }),
@@ -265,6 +275,44 @@ function move(items: readonly DraftItem[], index: number, dir: -1 | 1): DraftIte
   return out ? [...items.slice(0, start), ...fromSlots(part, out), ...items.slice(end)] : null;
 }
 
+/**
+ * Spec 10.7 AC13, §6.4: a timed section's grouping fills in on its triggers, never rewrites. `settle` first so the
+ * section's slice is contiguous; then `timedGroupRange` says whether (and what) to group, and `groupRangeRule` groups
+ * it, capped at `SUPERSET_GROUP_MEMBERS_MAX`. Labels are segment-local, which `settle` keeps apart (runs split at
+ * section boundaries). The caller settles again.
+ */
+function regroupSection(
+  items: readonly DraftItem[],
+  sections: readonly DraftSection[],
+  sectionKey: string,
+  trigger: "fill" | { readonly join: string },
+): DraftItem[] {
+  const settled = settle(items, sections);
+  const start = settled.findIndex((i) => i.sectionKey === sectionKey);
+  if (start < 0) return settled;
+  let end = start;
+  while (end < settled.length && settled[end]!.sectionKey === sectionKey) end += 1;
+  const part = settled.slice(start, end);
+  const slots = slotsOf(part);
+  const range = timedGroupRange(slots, trigger);
+  if (range === null) return settled;
+  const grouped = groupRangeRule(slots, range.from, range.to).slots;
+  return [...settled.slice(0, start), ...fromSlots(part, grouped), ...settled.slice(end)];
+}
+
+/**
+ * Spec 10.7 AC13: the editor's "only the first 8 are grouped" line — a timed section with more than 8 items whose
+ * first 8 are one run and whose 9th is ungrouped. Derived, so it needs no draft field.
+ */
+export function groupCapShown(items: readonly DraftItem[], section: DraftSection): boolean {
+  if (section.timer === null) return false;
+  const part = items.filter((i) => i.sectionKey === section.key);
+  if (part.length <= SUPERSET_GROUP_MEMBERS_MAX) return false;
+  const runs = runOrdinals(part.map((i) => i.supersetGroup));
+  const first = runs[0];
+  return first !== null && runs.slice(0, SUPERSET_GROUP_MEMBERS_MAX).every((r) => r === first) && runs[SUPERSET_GROUP_MEMBERS_MAX] === null;
+}
+
 const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items, state.sections), dirty: true });
 
 const withSections = (state: Draft, sections: readonly DraftSection[], items: readonly DraftItem[]): Draft => ({
@@ -297,7 +345,10 @@ export function reduce(state: Draft, action: DraftAction): Draft {
         plan: null,
         sectionKey: state.sections[state.sections.length - 1]?.key ?? null,
       };
-      return withItems(state, [...state.items, item]);
+      const last = state.sections[state.sections.length - 1];
+      const appended = [...state.items, item];
+      // Spec 10.7 AC13: an exercise added to a timed last section joins its one superset (§6.4 join).
+      return withItems(state, last?.timer ? regroupSection(appended, state.sections, last.key, { join: item.key }) : appended);
     }
     case "remove":
       return state.items.some((i) => i.key === action.key)
@@ -345,7 +396,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     case "addSection": {
       const name = action.name.trim();
       if (name === "" || state.sections.length >= ROUTINE_SECTIONS_MAX) return state;
-      return { ...state, sections: [...state.sections, { key: action.key, name, notes: "" }], dirty: true };
+      return { ...state, sections: [...state.sections, { key: action.key, name, notes: "", timer: null }], dirty: true };
     }
     case "renameSection": {
       const name = action.name.trim();
@@ -357,6 +408,14 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const section = state.sections.find((s) => s.key === action.key);
       if (!section || section.notes === action.notes) return state;
       return { ...state, sections: state.sections.map((s) => (s.key === action.key ? { ...s, notes: action.notes } : s)), dirty: true };
+    }
+    case "setSectionTimer": {
+      const section = state.sections.find((s) => s.key === action.key);
+      if (!section || sameTimer(section.timer, action.timer)) return state;
+      const sections = state.sections.map((s) => (s.key === action.key ? { ...s, timer: action.timer } : s));
+      // Spec 10.7 AC13: becoming timed, or changing format, fills in the grouping; numbers, None, rename and notes never do.
+      const fills = action.timer !== null && (section.timer === null || section.timer.format !== action.timer.format);
+      return withSections(state, sections, fills ? regroupSection(state.items, sections, action.key, "fill") : state.items);
     }
     case "moveSectionUp":
     case "moveSectionDown": {
@@ -379,8 +438,13 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       if (item.sectionKey === action.sectionKey) return state;
       // Appended at the end of the whole list, then `settle`'s stable sort puts it at the end of its target run.
       const moved: DraftItem = { ...item, sectionKey: action.sectionKey, supersetGroup: null };
-      const next = withItems(state, [...state.items.filter((i) => i.key !== item.key), moved]);
-      return item.supersetGroup === null ? next : { ...next, unlinkNotice: true };
+      const rest = [...state.items.filter((i) => i.key !== item.key), moved];
+      const target = action.sectionKey === null ? undefined : state.sections.find((s) => s.key === action.sectionKey);
+      // Spec 10.7 AC13: moved into a timed section, it joins that section's one superset (§6.4 join).
+      const next = withItems(state, target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : rest);
+      // The notice says the exercise was unlinked: only true when it left a superset and didn't join one there.
+      const regrouped = next.items.find((i) => i.key === item.key)!.supersetGroup !== null;
+      return item.supersetGroup === null || regrouped ? next : { ...next, unlinkNotice: true };
     }
     case "dismissUnlinkNotice":
       return state.unlinkNotice ? { ...state, unlinkNotice: false } : state;
@@ -393,7 +457,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       return state.adjusted ? { ...state, adjusted: false } : state;
     case "load": {
       const sortedSections = [...action.routine.sections].sort((a, b) => a.position - b.position);
-      const sections: DraftSection[] = sortedSections.map((s, j) => ({ key: action.sectionKeys[j] ?? newKey(), name: s.name, notes: s.notes ?? "" }));
+      const sections: DraftSection[] = sortedSections.map((s, j) => ({ key: action.sectionKeys[j] ?? newKey(), name: s.name, notes: s.notes ?? "", timer: s.timer }));
       const keyById = new Map(sortedSections.map((s, j) => [s.id as string, sections[j]!.key]));
       const raw: DraftItem[] = [...action.routine.items]
         .sort((a, b) => a.position - b.position)

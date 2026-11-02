@@ -1,0 +1,119 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { ENTER_ROUND_LENGTH, ENTER_ROUNDS } from "../sectionTimer/timerCopy";
+import type { DraftSection } from "./routineDraft";
+import { SectionHeader } from "./SectionHeader";
+import { SectionSheet } from "./SectionSheet";
+
+const section: DraftSection = { key: "M", name: "Main", notes: "Rx", timer: null };
+const sheet = (props: Partial<Parameters<typeof SectionSheet>[0]> = {}) => {
+  const onDone = vi.fn();
+  const onClose = vi.fn();
+  render(<SectionSheet open section={section} onDone={onDone} onClose={onClose} {...props} />);
+  return { onDone, onClose, dialog: screen.getByRole("dialog", { name: "Edit section" }) };
+};
+
+describe("10.7 AC9 — the routine section sheet", () => {
+  it("the Timer group sits under Note", () => {
+    const { dialog } = sheet();
+    const labels = [...dialog.querySelectorAll("label")].map((l) => l.textContent);
+    expect(labels).toEqual(["Name", "Note", "Timer"]);
+  });
+
+  it("Done with an invalid timer shows every error, keeps name and note, and commits nothing", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "set_timer");
+    await user.clear(within(dialog).getByLabelText("Name"));
+    await user.type(within(dialog).getByLabelText("Name"), "Main lift");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(onDone).not.toHaveBeenCalled();
+    expect(within(dialog).getAllByRole("alert").map((a) => a.textContent)).toEqual([ENTER_ROUNDS, ENTER_ROUND_LENGTH]);
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Main lift");
+    expect(within(dialog).getByLabelText("Note")).toHaveValue("Rx");
+  });
+
+  it("Done with a valid timer commits name, note and timer once", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "set_timer");
+    await user.type(within(dialog).getByLabelText("Rounds"), "5");
+    await user.type(within(dialog).getByLabelText("Round length"), "500");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith("Main", "Rx", { format: "set_timer", roundSeconds: 300, rounds: 5 });
+  });
+
+  it("a timed section opens on its format and numbers; None commits null", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet({ section: { ...section, timer: { format: "time_cap", capSeconds: null } } });
+    expect(within(dialog).getByLabelText("Timer")).toHaveValue("time_cap");
+    expect(within(dialog).getByLabelText("Cap")).toHaveValue("");
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledWith("Main", "Rx", null);
+  });
+
+  it("server messages show under their timer fields when the sheet opens", () => {
+    const { dialog } = sheet({ section: { ...section, timer: { format: "amrap", capSeconds: 720 } }, messages: { timer: { capSeconds: "Keep it to 180:00 or less." } } });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Keep it to 180:00 or less.");
+  });
+
+  it("Close calls onClose and commits nothing", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone, onClose } = sheet();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await user.click(within(dialog).getByRole("button", { name: /close/i }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("10.7 AC58 — text as text", () => {
+  it("a timed section named like markup renders as text in its header", () => {
+    const name = "<img src=x onerror=alert(1)>";
+    render(
+      <SectionHeader
+        name={name}
+        notes=""
+        timer={{ format: "amrap", capSeconds: 720 }}
+        index={0}
+        count={1}
+        headingId="h"
+        error={null}
+        errorId="e"
+        registerMain={() => {}}
+        onOpen={() => {}}
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    expect(screen.getByText(name)).toBeInTheDocument();
+    expect(document.querySelector("img")).toBeNull();
+  });
+});
+
+describe("10.7 AC4 — a new format starts clean", () => {
+  it("after a failed Done, switching format drops the old format's errors", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Enter the time limit.");
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "time_cap");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("a server group error goes once None is chosen", async () => {
+    const user = userEvent.setup();
+    const { dialog } = sheet({ section: { ...section, timer: { format: "amrap", capSeconds: 720 } }, messages: { timer: { group: "Check the timer and try again." } } });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Check the timer and try again.");
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+});

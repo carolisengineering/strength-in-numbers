@@ -1,3 +1,4 @@
+import type { TimerFieldErrors } from "../sectionTimer/timerFields";
 import type { RowErrors } from "./planRows";
 import type { DraftIssue, ItemField } from "./validateDraft";
 
@@ -41,12 +42,20 @@ export function itemMessage(issues: readonly DraftIssue[], itemKey: string): str
   return found ? found.message : null;
 }
 
-/** The section-scope messages for one section's sheet, first per field. */
-export function sectionMessagesFor(issues: readonly DraftIssue[], sectionKey: string): { name?: string; notes?: string } {
-  const out: { name?: string; notes?: string } = {};
+export type SectionMessages = { name?: string; notes?: string; timer?: TimerFieldErrors };
+
+/** The section-scope messages for one section's sheet, first per field (a timer issue per timer field, Spec 10.7 AC10). */
+export function sectionMessagesFor(issues: readonly DraftIssue[], sectionKey: string): SectionMessages {
+  const out: SectionMessages = {};
   for (const issue of issues) {
     if (issue.scope !== "section" || issue.sectionKey !== sectionKey) continue;
-    if (out[issue.field] === undefined) out[issue.field] = issue.message;
+    if (issue.field === "timer") {
+      const timer = (out.timer ??= {});
+      const at = issue.timerField ?? "group";
+      if (timer[at] === undefined) timer[at] = issue.message;
+    } else if (out[issue.field] === undefined) {
+      out[issue.field] = issue.message;
+    }
   }
   return out;
 }

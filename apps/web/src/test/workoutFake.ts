@@ -466,7 +466,8 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
     }
     const groups = normalizeSupersetGroups(input.items.map((i) => i.supersetGroup ?? null));
     const existing = selfId === null ? undefined : state.routines.get(selfId);
-    const sectionRows = (input.sections ?? []).map((s, position) => ({ id: uuid(), position, name: s.name, notes: s.notes ?? null, timer: null }));
+    // Spec 10.7 AC14: the timer is echoed as the server stores it — an absent Time Cap cap reads `capSeconds: null`.
+    const sectionRows = (input.sections ?? []).map((s, position) => ({ id: uuid(), position, name: s.name, notes: s.notes ?? null, timer: s.timer?.format === "time_cap" ? { format: "time_cap", capSeconds: s.timer.capSeconds ?? null } : (s.timer ?? null) }));
     const sectionIdOfKey = new Map((input.sections ?? []).map((s, j) => [s.key, sectionRows[j]!.id]));
     const routine = RoutineSchema.parse({
       id: selfId ?? uuid(),

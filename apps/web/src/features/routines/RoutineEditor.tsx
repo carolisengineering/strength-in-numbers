@@ -37,7 +37,8 @@ import {
 import { cameFromBack, routinePath, WORKOUTS_PATH } from "./paths";
 import { ROUTINE_KEYS, useRoutine, useRoutines } from "./queries";
 import { reportRoutineUnexpected } from "./reportRoutine";
-import { actions, canLink, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine, type Draft } from "./routineDraft";
+import { GROUP_CAP_LINE } from "../sectionTimer/timerCopy";
+import { actions, canLink, groupCapShown, initialDraft, isLinked, plannedRowsOf, reduce, runPosition, draftFromRoutine, type Draft } from "./routineDraft";
 import { classifyRoutineError, serverIssuesFor } from "./routineErrors";
 import { BackToWorkouts, RoutineGone } from "./RoutinePreview";
 import { fieldMessagesFor, itemMessage, rowMessagesFor, sectionError, sectionMessagesFor } from "./sheetIssues";
@@ -427,6 +428,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
                 <SectionHeader
                   name={section.name}
                   notes={section.notes}
+                  timer={section.timer}
                   index={j}
                   count={draft.sections.length}
                   headingId={headingId}
@@ -457,6 +459,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
                 ) : (
                   <p className={sectionStyles.reason}>{SECTION_EMPTY_HINT}</p>
                 )}
+                {groupCapShown(draft.items, section) ? <p className={sectionStyles.reason}>{GROUP_CAP_LINE}</p> : null}
               </section>
             );
           })}
@@ -539,9 +542,10 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
           open={sectionSheet.open}
           section={sheetSection}
           messages={sectionMessagesFor(issues, sheetSection.key)}
-          onDone={(name, notes) => {
+          onDone={(name, notes, timer) => {
             dispatch(actions.renameSection(sheetSection.key, name));
             dispatch(actions.setSectionNotes(sheetSection.key, notes));
+            dispatch(actions.setSectionTimer(sheetSection.key, timer));
             setSectionSheet((s) => s && { ...s, open: false });
           }}
           onClose={() => setSectionSheet((s) => s && { ...s, open: false })}

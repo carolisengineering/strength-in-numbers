@@ -1,11 +1,15 @@
+import type { SectionTimer } from "@sin/core";
 import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
 import { PencilIcon } from "../../ui/icons";
+import { TimerLine } from "../sectionTimer/TimerLine";
 import styles from "./Sections.module.css";
 
 export interface SectionHeaderProps {
   name: string;
   notes: string;
+  /** Spec 10.7 AC9: the plan line under the name, above the note. */
+  timer: SectionTimer | null;
   index: number;
   count: number;
   /** The id the surrounding `<section>` is labeled by: it sits on the visible name, so the region reads "Main". */
@@ -53,6 +57,7 @@ export function SectionHeader(props: SectionHeaderProps) {
           Options
         </Button>
       </div>
+      {props.timer ? <TimerLine timer={props.timer} /> : null}
       {props.notes.trim() === "" ? null : <p className={styles.notes}>{props.notes}</p>}
       {props.error ? (
         <p id={props.errorId} className={styles.reason}>

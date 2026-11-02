@@ -173,9 +173,10 @@ function makeHandler(state) {
     else if (m === "GET" && p === "/v1/muscle-groups") res = json({ muscleGroups: D.muscleGroups });
     else if (m === "GET" && p === "/v1/equipment") res = json({ equipment: D.equipment });
     // Spec 10.5 AC26: the one-off is listed only while `showClass` is on, until the one-off finish removes it.
-    else if (m === "GET" && p === "/v1/routines") res = json({ routines: state.routines ?? (state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines) });
+    // Spec 10.7 AC63: the timed routine is served only while `showTimed` is on.
+    else if (m === "GET" && p === "/v1/routines") res = json({ routines: state.routines ?? (state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : state.showTimed ? [D.TIMED, ...D.routines] : D.routines) });
     else if (m === "GET" && (seg = /^\/v1\/routines\/([^/]+)$/.exec(p))) {
-      const listed = state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : D.routines;
+      const listed = state.showClass && !state.classGone ? [D.CLASS, ...D.routines] : state.showTimed ? [D.TIMED, ...D.routines] : D.routines;
       const r = listed.find((x) => x.id === decodeURIComponent(seg[1]));
       res = r ? json(r) : problem(404, "not-found", "Not found");
     } else if (m === "POST" && /^\/v1\/routines\/[^/]+\/keep$/.test(p)) {
@@ -806,6 +807,32 @@ try {
 
     await go(`/app/workouts/routines/new`);
     await shoot(page, device, "10-routine-new", "Routine editor, create mode (empty)");
+
+    // Spec 10.7 AC63: the section sheet's Timer group in each format, and the timed editor's headers and brackets.
+    state.showTimed = true;
+    for (const [format, slug, label, fill] of [
+      ["set_timer", "set-timer", "Set Timer", [["Rounds", "5"], ["Round length", "500"]]],
+      ["amrap", "amrap", "AMRAP", [["Time limit", "1200"]]],
+      ["time_cap", "time-cap", "Time Cap", []],
+    ]) {
+      await tryStep(`routine timer sheet ${slug}`, async () => {
+        await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
+        await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
+        const sheet = page.locator("dialog[open]");
+        await sheet.getByLabel("Timer").selectOption(format);
+        for (const [field, digits] of fill) {
+          await sheet.getByLabel(field, { exact: true }).fill("");
+          await sheet.getByLabel(field, { exact: true }).pressSequentially(digits);
+        }
+        await shoot(page, device, `90-routine-timer-sheet-${slug}`, `Section sheet: the Timer group set to ${label} (Spec 10.7 AC4, AC9)`);
+        await page.keyboard.press("Escape");
+      });
+    }
+    await tryStep("routine timed header", async () => {
+      await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
+      await shoot(page, device, "91-routine-timed-header", "Routine editor: each timed section's plan line under its name, above the note, with the brackets (Spec 10.7 AC9, AC13)");
+    });
+    state.showTimed = false;
 
     // Spec 10.5 AC26: a one-off on the list and preview, the Finish dialog's line and box, the list after a finish.
     await tryStep("one-off routines", async () => {

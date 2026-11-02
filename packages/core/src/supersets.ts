@@ -135,22 +135,60 @@ export function moveRule(slots: readonly SessionSlot[], index: number, dir: -1 |
   return canonical(rest);
 }
 
+/**
+ * Spec 10.7 AC12: make slots `from..to` one run. Only the first `SUPERSET_GROUP_MEMBERS_MAX` are grouped; the rest
+ * of the range is ungrouped and `capped` says so. Slots outside the range keep their runs (a run straddling an end
+ * keeps its outside members; a remainder of one is ungrouped). Invalid bounds return the input unchanged.
+ */
+export function groupRangeRule(slots: readonly SessionSlot[], from: number, to: number): { slots: SessionSlot[]; capped: boolean } {
+  if (from < 0 || from > to || to >= slots.length) return { slots: [...slots], capped: false };
+  const label = maxLabel(slots) + 1;
+  const kept = from + Math.min(to - from + 1, SUPERSET_GROUP_MEMBERS_MAX) - 1;
+  const out = slots.map((x, k) => (k < from || k > to ? x : { id: x.id, group: k <= kept ? label : null }));
+  return { slots: canonical(out), capped: to - from + 1 > SUPERSET_GROUP_MEMBERS_MAX };
+}
+
+/**
+ * Spec 10.7 AC12, §6.4: the range of a timed section's `segment` to group, or `null` to leave it alone. Grouping only
+ * fills in, never rewrites. `fill` (the section became timed): the whole segment, only when no slot is in a run.
+ * `{ join }` (an exercise was added or moved in): the whole segment when the other slots are one exercise, or are
+ * all one run. Indexes are relative to `segment`; fewer than 2 slots is `null`.
+ */
+export function timedGroupRange(
+  segment: readonly SessionSlot[],
+  trigger: "fill" | { readonly join: string },
+): { from: number; to: number } | null {
+  if (segment.length < 2) return null;
+  const whole = { from: 0, to: segment.length - 1 };
+  if (trigger === "fill") return runOrdinals(segment.map((x) => x.group)).every((r) => r === null) ? whole : null;
+  const others = segment.filter((x) => x.id !== trigger.join);
+  if (others.length === 1) return whole;
+  if (others.length < 2) return null;
+  const runs = runOrdinals(others.map((x) => x.group));
+  return runs[0] !== null && runs.every((r) => r === runs[0]) ? whole : null;
+}
+
 export type SessionOp =
   | { readonly type: "toggleLink"; readonly index: number }
-  | { readonly type: "move"; readonly id: string; readonly direction: "up" | "down" };
+  | { readonly type: "move"; readonly id: string; readonly direction: "up" | "down" }
+  | { readonly type: "groupRange"; readonly from: number; readonly to: number };
 
 export type SessionPatch =
   | { readonly id: string; readonly supersetGroup: number | null }
   | { readonly id: string; readonly position: number };
 
 export type SessionPlan =
-  | { readonly ok: true; readonly patches: SessionPatch[]; readonly next: SessionSlot[] }
+  | { readonly ok: true; readonly patches: SessionPatch[]; readonly next: SessionSlot[]; readonly capped?: true }
   | { readonly ok: false; readonly reason: "cap"; readonly message: string }
   | { readonly ok: false; readonly reason: "no-free-group" };
 
-type Applied = { result: SessionSlot[]; movedId: string | null } | { cap: string } | null;
+type Applied = { result: SessionSlot[]; movedId: string | null; capped?: boolean } | { cap: string } | null;
 
 function applyRule(current: readonly SessionSlot[], op: SessionOp): Applied {
+  if (op.type === "groupRange") {
+    const grouped = groupRangeRule(current, op.from, op.to);
+    return { result: grouped.slots, movedId: null, capped: grouped.capped };
+  }
   if (op.type === "toggleLink") {
     if (isLinked(current, op.index)) return { result: unlinkRule(current, op.index), movedId: null };
     const linked = linkRule(current, op.index);
@@ -219,7 +257,7 @@ export function planSessionChange(current: readonly SessionSlot[], op: SessionOp
   const applied = applyRule(current, op);
   if (applied === null) return { ok: true, patches: [], next: [...current] };
   if ("cap" in applied) return { ok: false, reason: "cap", message: applied.cap };
-  const { result, movedId } = applied;
+  const { result, movedId, capped } = applied;
 
   const stored = new Map(current.map((x) => [x.id, x.group]));
   const before = canonical(current);
@@ -313,5 +351,5 @@ export function planSessionChange(current: readonly SessionSlot[], op: SessionOp
     const to = next.findIndex((x) => x.id === movedId);
     if (from !== to) patches.push({ id: movedId, position: to });
   }
-  return { ok: true, patches, next };
+  return { ok: true, patches, next, ...(capped ? { capped: true as const } : {}) };
 }
