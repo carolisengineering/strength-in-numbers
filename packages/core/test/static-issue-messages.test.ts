@@ -78,6 +78,22 @@ describe("#57 — Zod messages on exported schemas never echo the value (probe)"
     expect(exportedSchemas.flatMap(([, schema]) => collectErrorFns(schema)).length).toBeGreaterThan(5);
   });
 
+  it("09.5 AC32 — probes the timed-section schemas", () => {
+    const names = new Set(exportedSchemas.map(([name]) => name));
+    for (const name of [
+      "SectionTimerSchema",
+      "SectionTimerInputSchema",
+      "SectionResultSchema",
+      "SetSectionResultSchema",
+      "SetRoundTimeSchema",
+      "RoundTimeSchema",
+    ]) {
+      expect(names, name).toContain(name);
+    }
+    // The discriminator's own message is one of the functions probed.
+    expect(collectErrorFns(core.SectionTimerSchema).flatMap(messagesOf)).toContain("unknown timer format");
+  });
+
   it.each(exportedSchemas)("%s", (_name, schema) => {
     for (const fn of collectErrorFns(schema)) {
       for (const message of messagesOf(fn)) expect(message).not.toContain(SENTINEL);
@@ -134,6 +150,7 @@ function isModuleConstant(source: string, name: string): boolean {
 const ALLOWED_MESSAGE_EXPRESSIONS: Record<string, readonly string[]> = {
   "dto/exercise.ts": ["issue.message"], // re-issues `muscleIdCrossFieldIssues`, whose messages are literals scanned here
   "supersets.ts": ["applied.cap"], // the editor's `LINK_CAP_MESSAGE`, never a Zod issue
+  "timer.ts": ["TIMER_ISSUE_MESSAGES"], // Spec 09.5 §6.9: a frozen table of literals indexed by a fixed code; frozen and pinned in timer.test.ts
 };
 
 describe("#57 — issue messages built in code are static (source scan)", () => {
