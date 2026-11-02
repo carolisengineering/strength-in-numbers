@@ -222,6 +222,8 @@ const EXPECTED = [
   "roundTimeIssues",
   "resultIssues",
   "timerFitsRecorded",
+  "timersEqual",
+  "timerChangeKeepsRecorded",
   "SectionScoreSchema",
   "TimedSectionSummarySchema",
   "SectionRoundParamsSchema",

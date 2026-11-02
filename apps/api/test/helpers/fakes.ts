@@ -23,7 +23,8 @@ import {
   toCanonicalKg,
   toCanonicalMeters,
   WORKOUT_SUMMARY_NAMES_MAX,
-  timerFitsRecorded,
+  timerChangeKeepsRecorded,
+  timersEqual,
   roundTimeIssues,
   resultIssues,
   type Modality,
@@ -1087,14 +1088,11 @@ export class FakeWorkoutRepository implements WorkoutRepository {
     const current = list[index]!;
     // Spec 09.5 AC13, as the repository decides it.
     const timer = patch.timer === undefined ? current.timer : timerFromColumns(timerToColumns(patch.timer));
-    const timerChanged = JSON.stringify(timer) !== JSON.stringify(current.timer);
+    const timerChanged = !timersEqual(timer, current.timer);
     let resultCleared = false;
-    if (timerChanged && (current.roundTimes.length > 0 || current.result !== null)) {
-      const keeps =
-        timer !== null && current.timer !== null && timer.format === current.timer.format &&
-        timerFitsRecorded(timer, current.roundTimes, current.result).length === 0;
-      if (!keeps && patch.discardResult !== true) throw new SectionResultExistsError();
-      resultCleared = !keeps;
+    if (timerChanged && !timerChangeKeepsRecorded(current.timer, timer, current.roundTimes, current.result)) {
+      if (patch.discardResult !== true) throw new SectionResultExistsError();
+      resultCleared = true;
     }
     const next: WorkoutSectionRecord = {
       ...current,

@@ -9,7 +9,9 @@ import {
   roundTimeIssues,
   scoreText,
   sectionScore,
+  timerChangeKeepsRecorded,
   timerFitsRecorded,
+  timersEqual,
   TIMER_ISSUE_CODES,
   TIMER_ISSUE_MESSAGES,
   type RoundTime,
@@ -238,5 +240,28 @@ describe("09.5 AC3 — single implementation", () => {
   it.each([/function formatClock\b/, /function sectionScore\b/, /function scoreText\b/, /["'`]Set Timer /])("only timer.ts matches %s", (pattern) => {
     const hits = files.filter((f) => !/\.test\.tsx?$/.test(f) && pattern.test(readFileSync(f, "utf8")));
     expect(hits.map((f) => f.slice(ROOT.length + 1))).toEqual(["packages/core/src/timer.ts"]);
+  });
+});
+
+describe("09.5 AC13 — timersEqual / timerChangeKeepsRecorded (one implementation of the keep rule)", () => {
+  it("timersEqual compares by format and fields, not key order", () => {
+    expect(timersEqual(setTimer, { rounds: 5, roundSeconds: 300, format: "set_timer" } as SectionTimer)).toBe(true);
+    expect(timersEqual(setTimer, { ...setTimer, rounds: 6 })).toBe(false);
+    expect(timersEqual(amrap, timeCap)).toBe(false);
+    expect(timersEqual(forTime, { format: "time_cap", capSeconds: null })).toBe(true);
+    expect(timersEqual(null, null)).toBe(true);
+    expect(timersEqual(amrap, null)).toBe(false);
+  });
+
+  it.each<[string, SectionTimer | null, SectionTimer | null, RoundTime[], SectionResult | null, boolean]>([
+    ["nothing recorded keeps anything", amrap, setTimer, [], null, true],
+    ["same format that fits keeps", setTimer, { ...setTimer, rounds: 6 }, rt({ 1: 221 }), null, true],
+    ["same format that doesn't fit", setTimer, { ...setTimer, rounds: 2 }, rt({ 3: 200 }), null, false],
+    ["a different format never keeps", amrap, timeCap, rt({ 1: 250 }), null, false],
+    ["removal never keeps", setTimer, null, rt({ 1: 221 }), null, false],
+    ["a result counts as recorded", timeCap, forTime, [], result({ capped: true, rounds: 4 }), false],
+    ["adding a timer to an untimed section keeps (nothing to keep)", null, amrap, [], null, true],
+  ])("%s", (_name, stored, next, rounds, res, keeps) => {
+    expect(timerChangeKeepsRecorded(stored, next, rounds, res)).toBe(keeps);
   });
 });

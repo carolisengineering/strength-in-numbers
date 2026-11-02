@@ -167,3 +167,33 @@ export function timerFitsRecorded(timer: SectionTimer, roundTimes: readonly Roun
   }
   return issues;
 }
+
+/** Spec 09.5 AC13 — two timers (or two absences) are the same plan: same format and the same numbers, whatever the key order. */
+export function timersEqual(a: SectionTimer | null, b: SectionTimer | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.format !== b.format) return false;
+  switch (a.format) {
+    case "set_timer":
+      return b.format === "set_timer" && a.roundSeconds === b.roundSeconds && a.rounds === b.rounds;
+    case "amrap":
+    case "time_cap":
+      return (b.format === "amrap" || b.format === "time_cap") && (a.capSeconds ?? null) === (b.capSeconds ?? null);
+  }
+}
+
+/**
+ * Spec 09.5 AC13 / §6.6 — whether changing `stored` to `next` keeps what is recorded. Nothing recorded: always.
+ * Otherwise only a same-format change whose numbers still contain the round times and result
+ * (`timerFitsRecorded`); a different format or removal never does. When this is false the change needs
+ * `discardResult`, and the server answers `409 section-result-exists` without it. Callers check equality first.
+ */
+export function timerChangeKeepsRecorded(
+  stored: SectionTimer | null,
+  next: SectionTimer | null,
+  roundTimes: readonly RoundTime[],
+  result: SectionResult | null,
+): boolean {
+  if (roundTimes.length === 0 && result === null) return true;
+  if (stored === null || next === null || stored.format !== next.format) return false;
+  return timerFitsRecorded(next, roundTimes, result).length === 0;
+}

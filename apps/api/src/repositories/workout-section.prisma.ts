@@ -5,8 +5,8 @@ import {
   ROUTINE_SECTIONS_MAX,
   resultIssues,
   roundTimeIssues,
-  timerFitsRecorded,
-  type SectionTimer,
+  timerChangeKeepsRecorded,
+  timersEqual,
   type TimerIssue,
 } from "@sin/core";
 import { uuidv7 } from "uuidv7";
@@ -83,9 +83,6 @@ const SECTION_COLUMNS = Prisma.raw(
   `id, position, name, notes, added_in_workout, timer_format, timer_round_s, timer_rounds, timer_cap_s,
    result_rounds, result_reps, result_finish_s, result_capped, ${roundTimesJson('"workout_section".id').sql} AS round_times`,
 );
-
-/** Two timers as `timerFromColumns` builds them (fixed key order), so a string compare is a deep compare. */
-const sameTimer = (a: SectionTimer | null, b: SectionTimer | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 type SectionMethods = Pick<
   WorkoutRepository,
@@ -189,18 +186,12 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
         const stored = toWorkoutSectionRecord(current);
         // Spec 09.5 AC13 — normalize first, so `{ format: "time_cap" }` equals a stored For Time (Review Focus 4).
         const timer = patch.timer === undefined ? stored.timer : timerFromColumns(timerToColumns(patch.timer));
-        const timerChanged = !sameTimer(timer, stored.timer);
-        const recorded = stored.roundTimes.length > 0 || stored.result !== null;
+        const timerChanged = !timersEqual(timer, stored.timer);
         let resultCleared = false;
-        if (timerChanged && recorded) {
-          const keeps =
-            timer !== null &&
-            stored.timer !== null &&
-            timer.format === stored.timer.format &&
-            timerFitsRecorded(timer, stored.roundTimes, stored.result).length === 0;
+        if (timerChanged && !timerChangeKeepsRecorded(stored.timer, timer, stored.roundTimes, stored.result)) {
           // Before any write, so a refused timer change takes the rename with it (Review Focus 3).
-          if (!keeps && patch.discardResult !== true) throw new SectionResultExistsError();
-          resultCleared = !keeps;
+          if (patch.discardResult !== true) throw new SectionResultExistsError();
+          resultCleared = true;
         }
         if (!nameChanged && !notesChanged && !timerChanged) {
           // An equal body writes nothing; `discardResult` is ignored (Review Focus 2).
