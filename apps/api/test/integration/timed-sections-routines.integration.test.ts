@@ -18,6 +18,7 @@ import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent } from "./section-helpers.js";
 
 const SET_TIMER = { format: "set_timer", roundSeconds: 300, rounds: 5 };
+const omit = (o: Record<string, unknown>, keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
 const AMRAP = { format: "amrap", capSeconds: 720 };
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.5 — routine timers (real Postgres)", () => {
@@ -138,8 +139,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.5 — routine timers (real Pos
     // A PUT re-mints ids and updatedAt (Spec 09 D2), so two PUTs never share bytes; what must hold is that
     // the same body stores and echoes the same document apart from those (Review Focus 5).
     const withoutIds = (r: { sections: Record<string, unknown>[]; items: Record<string, unknown>[] }) => ({
-      sections: r.sections.map(({ id: _i, ...s }) => s),
-      items: r.items.map(({ id: _i, sectionId: _s, ...i }) => i),
+      sections: r.sections.map((s) => omit(s, ["id"])),
+      items: r.items.map((i) => omit(i, ["id", "sectionId"])),
     });
     const again = doc(l.ex, [{ ...SET_TIMER, rounds: 6 }, { format: "time_cap" }]);
     const firstPut = (await l.send("PUT", url, again)).json();
@@ -152,7 +153,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.5 — routine timers (real Pos
     const afterReplay = await etag();
 
     const now = (await l.get(url)).json();
-    const preDeploy = { ...now, sections: now.sections.map(({ timer: _t, ...s }: Record<string, unknown>) => s) };
+    const preDeploy = { ...now, sections: now.sections.map((s: Record<string, unknown>) => omit(s, ["timer"])) };
     const conditional = await l.get(url, { "if-none-match": strongEtag(`routine:${created.id}`, JSON.stringify(preDeploy)) });
     expect(conditional.statusCode).toBe(200);
     expect(await l.get(url, { "if-none-match": afterReplay }).then((r) => r.statusCode)).toBe(304);
