@@ -157,7 +157,6 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
     },
   );
 
-
   // Spec 09.5 §6.4 — the result is one whole value: PUT replaces it, DELETE clears it (round times stay).
   r.put(
     "/workout-sections/:id/result",
@@ -195,5 +194,4 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
       return reply;
     },
   );
-
 }
