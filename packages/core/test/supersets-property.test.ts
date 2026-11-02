@@ -45,6 +45,7 @@ function ruleResult(list: readonly SessionSlot[], op: SessionOp): SessionSlot[] 
     const r = linkRule(list, op.index);
     return r.ok ? r.slots : null;
   }
+  if (op.type === "groupRange") return groupRangeRule(list, op.from, op.to).slots;
   return moveRule(list, list.findIndex((x) => x.id === op.id), op.direction === "up" ? -1 : 1);
 }
 
@@ -111,5 +112,38 @@ describe("10.1 AC10 — planSessionChange properties (tolerant inputs)", () => {
       const touched = !current.some((x, i) => currentRuns[i] !== null && ids.every((id) => current.filter((_, k) => currentRuns[k] === currentRuns[i]).some((y) => y.id === id)) && current.filter((_, k) => currentRuns[k] === currentRuns[i]).length === ids.length);
       if (touched) expect(plan.next.filter((x) => x.group === n).map((x) => x.id).sort()).toEqual([...ids].sort());
     }
+  });
+});
+
+// Spec 10.7 AC12 — groupRangeRule over random lists and ranges.
+import { canonical, groupRangeRule } from "../src/supersets.js";
+import { SUPERSET_GROUP_MEMBERS_MAX } from "../src/dto/routine.js";
+
+describe("10.7 AC12 — groupRange output is canonical and touches nothing outside the range", () => {
+  it.each(SEEDS)("seed %i", (seed) => {
+    const rnd = prng(seed);
+    const list = invariantList(rnd);
+    const from = Math.floor(rnd() * list.length);
+    const to = from + Math.floor(rnd() * (list.length - from));
+    const { slots, capped } = groupRangeRule(list, from, to);
+    expect(slots).toEqual(canonical(slots));
+    expect(slots.map((x) => x.id)).toEqual(list.map((x) => x.id));
+    // Every run has 2–8 members.
+    const sizes = new Map<number, number>();
+    for (const x of slots) if (x.group !== null) sizes.set(x.group, (sizes.get(x.group) ?? 0) + 1);
+    for (const n of sizes.values()) expect(n >= 2 && n <= SUPERSET_GROUP_MEMBERS_MAX).toBe(true);
+    // Two outside slots on the same side of the range share a run after iff they did before.
+    const before = runOrdinals(groupsOf(list));
+    const after = groupsOf(slots);
+    for (const side of [[0, from - 1], [to + 1, list.length - 1]] as const) {
+      for (let i = side[0]; i <= side[1]; i++) {
+        for (let j = i + 1; j <= side[1]; j++) {
+          const was = before[i] !== null && before[i] === before[j] && before.slice(i, j + 1).every((b) => b === before[i]);
+          const is = after[i] !== null && after[i] === after[j];
+          expect(is).toBe(was);
+        }
+      }
+    }
+    expect(capped).toBe(to - from + 1 > SUPERSET_GROUP_MEMBERS_MAX);
   });
 });

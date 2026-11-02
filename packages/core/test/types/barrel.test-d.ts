@@ -139,6 +139,12 @@ import {
   scoreText,
   sectionScore,
   timerFitsRecorded,
+  groupRangeRule,
+  timedGroupRange,
+  planSessionChange,
+  type SessionOp,
+  type SessionPlan,
+  type SessionSlot,
   type TimedSectionSummary,
   TIMER_FORMAT_VALUES,
   TIMER_ISSUE_CODES,
@@ -174,6 +180,12 @@ describe("09.5 — timed-section exports", () => {
     expectTypeOf(roundTimeIssues).returns.toEqualTypeOf<TimerIssue[]>();
     expectTypeOf(resultIssues).returns.toEqualTypeOf<TimerIssue[]>();
     expectTypeOf(timerFitsRecorded).returns.toEqualTypeOf<TimerIssue[]>();
+    // Spec 10.7 AC12 — a timed section's grouping rules and the widened session op.
+    expectTypeOf(groupRangeRule).toEqualTypeOf<(slots: readonly SessionSlot[], from: number, to: number) => { slots: SessionSlot[]; capped: boolean }>();
+    expectTypeOf(timedGroupRange).returns.toEqualTypeOf<{ from: number; to: number } | null>();
+    expectTypeOf<Extract<SessionOp, { type: "groupRange" }>>().toEqualTypeOf<{ readonly type: "groupRange"; readonly from: number; readonly to: number }>();
+    expectTypeOf<Extract<SessionPlan, { ok: true }>["capped"]>().toEqualTypeOf<true | undefined>();
+    expectTypeOf(planSessionChange).parameter(1).toEqualTypeOf<SessionOp>();
     // Spec 09.5 Phase B — the History score schema and the Phase A type must not drift.
     expectTypeOf<z.infer<typeof SectionScoreSchema>>().toEqualTypeOf<SectionScore>();
     expectTypeOf<z.infer<typeof TimedSectionSummarySchema>>().toEqualTypeOf<TimedSectionSummary>();

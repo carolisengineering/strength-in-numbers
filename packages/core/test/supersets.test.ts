@@ -265,3 +265,94 @@ describe("10.1 AC9 — minimality and order", () => {
     }
   });
 });
+
+// Spec 10.7 Phase A — a timed section's grouping fills in, never rewrites (AC12).
+import { groupRangeRule, timedGroupRange } from "../src/supersets.js";
+
+describe("10.7 AC12 — groupRangeRule", () => {
+  const g = (slots: readonly (number | null)[], from: number, to: number) => {
+    const r = groupRangeRule(s(...slots), from, to);
+    return { groups: groupsOf(r.slots), capped: r.capped };
+  };
+
+  it.each<[string, (number | null)[], number, number, (number | null)[], boolean]>([
+    ["0 slots", [], 0, -1, [], false],
+    ["1 ungrouped slot: a group of one is no run", [null], 0, 0, [null], false],
+    ["2 ungrouped: one run", [null, null], 0, 1, [1, 1], false],
+    ["8 ungrouped: one run", Array(8).fill(null), 0, 7, Array(8).fill(1), false],
+    ["9 ungrouped: the first 8 run, the 9th loose, capped", Array(9).fill(null), 0, 8, [...Array(8).fill(1), null], true],
+    ["10 ungrouped: the first 8 run, the last 2 loose, capped", Array(10).fill(null), 0, 9, [...Array(8).fill(1), null, null], true],
+    ["an already-grouped range becomes one run", [3, 3, 5, 5], 0, 3, [1, 1, 1, 1], false],
+  ])("%s", (_l, input, from, to, groups, capped) => {
+    expect(g(input, from, to)).toEqual({ groups, capped });
+  });
+
+  it("slots outside the range keep their runs; a run straddling `from` loses its in-range members", () => {
+    // a b | c d e : the run a-b-c straddles from=2; outside, a-b stays a run of two.
+    expect(g([7, 7, 7, null, null], 2, 4).groups).toEqual([1, 1, 2, 2, 2]);
+    // a | b c : the run a-b straddles from=1; a's remainder of one becomes null.
+    expect(g([4, 4, null], 1, 2).groups).toEqual([null, 1, 1]);
+    // a run after the range is untouched.
+    expect(g([null, null, 9, 9], 0, 1).groups).toEqual([1, 1, 2, 2]);
+  });
+
+  it.each<[string, number, number]>([
+    ["from > to", 2, 1],
+    ["from < 0", -1, 1],
+    ["to >= length", 0, 3],
+  ])("invalid bounds (%s) return the input unchanged, not capped", (_l, from, to) => {
+    const input = s(5, 5, null);
+    expect(groupRangeRule(input, from, to)).toEqual({ slots: input, capped: false });
+  });
+});
+
+describe("10.7 AC12 — timedGroupRange", () => {
+  const S = (id: string, group: number | null): SessionSlot => ({ id, group });
+
+  it.each<[string, SessionSlot[], { from: number; to: number } | null]>([
+    ["0 slots", [], null],
+    ["1 slot", [S("a", null)], null],
+    ["an ungrouped 3", [S("a", null), S("b", null), S("c", null)], { from: 0, to: 2 }],
+    ["one superset of 3 plus a loose one", [S("a", 1), S("b", 1), S("c", 1), S("d", null)], null],
+    ["two supersets", [S("a", 1), S("b", 1), S("c", 2), S("d", 2)], null],
+    ["already one run", [S("a", 1), S("b", 1), S("c", 1)], null],
+  ])("fill: %s", (_l, segment, expected) => {
+    expect(timedGroupRange(segment, "fill")).toEqual(expected);
+  });
+
+  it.each<[string, SessionSlot[], { from: number; to: number } | null]>([
+    ["a lone other", [S("a", null), S("n", null)], { from: 0, to: 1 }],
+    ["others forming one run of 3", [S("a", 2), S("b", 2), S("c", 2), S("n", null)], { from: 0, to: 3 }],
+    ["one superset of 3 plus a loose other", [S("a", 1), S("b", 1), S("c", 1), S("d", null), S("n", null)], null],
+    ["two supersets", [S("a", 1), S("b", 1), S("c", 2), S("d", 2), S("n", null)], null],
+    ["an ungrouped 3", [S("a", null), S("b", null), S("c", null), S("n", null)], null],
+    ["one superset of 8", [...Array.from({ length: 8 }, (_, i) => S(`x${i}`, 1)), S("n", null)], { from: 0, to: 8 }],
+    ["the joiner in the middle, the others one run", [S("a", 1), S("n", null), S("b", 1)], { from: 0, to: 2 }],
+    ["the joiner alone", [S("n", null)], null],
+  ])("join: %s", (_l, segment, expected) => {
+    expect(timedGroupRange(segment, { join: "n" })).toEqual(expected);
+  });
+});
+
+describe("10.7 AC12 — planSessionChange groupRange", () => {
+  it("minimal patches: only the newly grouped slots; an untouched run keeps its number", () => {
+    const plan = okPlan(s(4, 4, null, null, null), { type: "groupRange", from: 2, to: 4 });
+    expect(plan.patches).toEqual([
+      { id: "c", supersetGroup: 1 },
+      { id: "d", supersetGroup: 1 },
+      { id: "e", supersetGroup: 1 },
+    ]);
+    expect(plan.next.map((x) => x.group)).toEqual([4, 4, 1, 1, 1]);
+    expect("capped" in plan).toBe(false);
+  });
+
+  it("a 9-slot range is capped", () => {
+    const plan = okPlan(s(...Array<null>(9).fill(null)), { type: "groupRange", from: 0, to: 8 });
+    expect(plan.capped).toBe(true);
+    expect(plan.next.map((x) => x.group)).toEqual([...Array<number>(8).fill(1), null]);
+  });
+
+  it("a range that is already exactly one run: no patches and no capped key", () => {
+    expect(planSessionChange(s(6, 6, 6), { type: "groupRange", from: 0, to: 2 })).toEqual({ ok: true, patches: [], next: s(6, 6, 6) });
+  });
+});
