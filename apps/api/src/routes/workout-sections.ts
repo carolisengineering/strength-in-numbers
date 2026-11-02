@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { CreateWorkoutSectionSchema, UpdateWorkoutSectionSchema, WorkoutSectionSchema } from "@sin/core";
-import { NotFoundError, WorkoutSectionLimitError } from "../errors/app-error.js";
+import { NotFoundError, SectionResultExistsError, WorkoutSectionLimitError } from "../errors/app-error.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import { logFinishedEdit } from "./finished-edit-log.js";
 import { toWorkoutSectionDto } from "./mappers.js";
@@ -30,7 +30,11 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
     async (request, reply) => {
       const userId = request.user!.id;
       const notes = request.body.notes ?? null;
-      const created = await deps.workoutRepository.addWorkoutSection(userId, request.params.id, { name: request.body.name, notes });
+      const created = await deps.workoutRepository.addWorkoutSection(userId, request.params.id, {
+        name: request.body.name,
+        notes,
+        timer: request.body.timer ?? null,
+      });
       request.log.info(
         {
           workout_id: created.workoutId,
@@ -38,6 +42,7 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
           user_id: userId,
           section_count: created.sectionCount,
           has_notes: notes !== null,
+          timer_format: created.timer?.format ?? null,
         },
         "workout_section_added",
       );
@@ -51,11 +56,23 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
     "/workout-sections/:id",
     {
       schema: { params: idParams, body: UpdateWorkoutSectionSchema, response: { 200: WorkoutSectionSchema } },
-      config: { published: true, problems: [NotFoundError], writeGroup: "workouts" },
+      config: { published: true, problems: [NotFoundError, SectionResultExistsError], writeGroup: "workouts" },
     },
     async (request) => {
       const userId = request.user!.id;
       const updated = await deps.workoutRepository.updateWorkoutSection(userId, request.params.id, request.body);
+      if (updated.timerChanged) {
+        request.log.info(
+          {
+            workout_id: updated.workoutId,
+            section_id: updated.id,
+            user_id: userId,
+            format: updated.timer?.format ?? null,
+            cleared: updated.resultCleared,
+          },
+          "workout_section_timer_set",
+        );
+      }
       if (updated.nameChanged || updated.notesChanged) {
         request.log.info(
           {
@@ -68,7 +85,8 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
           "workout_section_updated",
         );
       }
-      logFinishedEdit(request.log, userId, "section_changed", updated.finishedEdit);
+      // One finished-edit line per request: a timer change outranks a name / note change (Spec 09.5 D21).
+      logFinishedEdit(request.log, userId, updated.timerChanged ? "section_timer_changed" : "section_changed", updated.finishedEdit);
       return toWorkoutSectionDto(updated);
     },
   );

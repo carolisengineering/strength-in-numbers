@@ -7,7 +7,7 @@
  * does with `isExerciseId`.
  */
 import type { FinishedEdit } from "./write-mode.js";
-import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SetType, WeightUnit } from "@sin/core";
+import type { DistanceUnit, PlannedSet, RoundTime, SectionResult, SectionTimer, SectionTimerInput, SetType, WeightUnit } from "@sin/core";
 import type { PersonalRecordRecord } from "./personal-record.js";
 
 export interface WorkoutRecord {
@@ -375,7 +375,7 @@ export interface WorkoutRepository {
   addWorkoutSection(
     actingUserId: string,
     workoutId: string,
-    fields: { name: string; notes: string | null },
+    fields: { name: string; notes: string | null; timer?: SectionTimerInput | null },
   ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }>;
 
   /** Spec 09.4 §6.4 — changes exactly the keys present; a body equal to the stored values writes nothing
@@ -383,8 +383,18 @@ export interface WorkoutRepository {
   updateWorkoutSection(
     actingUserId: string,
     sectionId: string,
-    patch: { name?: string; notes?: string | null },
-  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }>;
+    patch: { name?: string; notes?: string | null; timer?: SectionTimerInput | null; discardResult?: true },
+  ): Promise<
+    WithFinishedEdit<WorkoutSectionRecord> & {
+      workoutId: string;
+      nameChanged: boolean;
+      notesChanged: boolean;
+      /** Spec 09.5 AC13 — the stored timer changed (after normalizing a cap-less time cap). */
+      timerChanged: boolean;
+      /** Spec 09.5 AC13 — `discardResult` cleared the round times and result. */
+      resultCleared: boolean;
+    }
+  >;
 
   /** Spec 09.4 §6.4 — deletes the section (its exercises stay where they are, loose) and renumbers the later
    * sections densely. `exerciseCount` is how many exercises were in it. Throws `NotFoundError`. */

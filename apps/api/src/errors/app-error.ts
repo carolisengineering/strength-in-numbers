@@ -348,6 +348,30 @@ export class WorkoutSectionLimitError extends AppError {
   }
 }
 
+/** Spec 09.5 AC14 / AC16 — the section has no timer that takes this write (untimed, or a Set Timer's result). */
+export class SectionTimerMismatchError extends AppError {
+  readonly status = 409;
+  readonly slug = "section-timer-mismatch";
+  readonly title = "Section timer mismatch";
+  readonly publicDetail = "This section's timer doesn't take that.";
+
+  constructor(internal = "section timer does not take this write") {
+    super(internal);
+  }
+}
+
+/** Spec 09.5 AC13 — a timer change would clear recorded round times or a result, and `discardResult` was not sent. */
+export class SectionResultExistsError extends AppError {
+  readonly status = 409;
+  readonly slug = "section-result-exists";
+  readonly title = "Section result exists";
+  readonly publicDetail = "Changing the timer would clear the recorded times and result. Send discardResult to confirm.";
+
+  constructor(internal = "timer change over recorded data without discardResult") {
+    super(internal);
+  }
+}
+
 export type RateLimitLayer = "ip" | "ip-docs" | "user-rate" | "user-inflight" | "user-export";
 
 /** Spec 05.2 §5 — which limit fired. Internal only: logged, never rendered. */

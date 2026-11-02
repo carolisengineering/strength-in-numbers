@@ -10822,6 +10822,29 @@
               }
             }
           },
+          "409": {
+            "description": "Section result exists",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "https://strengthinnumbers.app/problems/section-result-exists"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
           "413": {
             "description": "Payload too large",
             "content": {

@@ -1,8 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isWorkoutId, isWorkoutSectionId, ROUTINE_SECTIONS_MAX } from "@sin/core";
+import { isWorkoutId, isWorkoutSectionId, ROUTINE_SECTIONS_MAX, timerFitsRecorded, type SectionTimer } from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, WorkoutSectionLimitError } from "../errors/app-error.js";
-import { roundTimesJson } from "./section-timer-columns.js";
+import { NotFoundError, SectionResultExistsError, WorkoutSectionLimitError } from "../errors/app-error.js";
+import { roundTimesJson, timerFromColumns, timerToColumns } from "./section-timer-columns.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { WorkoutRepository } from "./workout.js";
 import { toWorkoutSectionRecord, type WorkoutSectionDbRow } from "./workout.prisma.js";
@@ -69,6 +69,9 @@ const SECTION_COLUMNS = Prisma.raw(
    result_rounds, result_reps, result_finish_s, result_capped, ${roundTimesJson('"workout_section".id').sql} AS round_times`,
 );
 
+/** Two timers as `timerFromColumns` builds them (fixed key order), so a string compare is a deep compare. */
+const sameTimer = (a: SectionTimer | null, b: SectionTimer | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+
 type SectionMethods = Pick<WorkoutRepository, "addWorkoutSection" | "updateWorkoutSection" | "removeWorkoutSection">;
 
 /** Spec 09.4 §6.4 — create / update / remove a workout's own section, live or finished (07.4 `withWriteMode`). */
@@ -97,9 +100,13 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
         `;
         const n = countRows[0]!.n;
         if (n >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
+        // Spec 09.5 AC12 — the timer plan through the one column mapping; nothing is recorded yet.
+        const t = timerToColumns(fields.timer);
         const inserted = await tx.$queryRaw<WorkoutSectionDbRow[]>`
-          INSERT INTO "workout_section" (id, workout_id, position, name, notes, added_in_workout)
-          VALUES (${uuidv7()}::uuid, ${workoutId}::uuid, ${n}, ${fields.name}, ${fields.notes}, true)
+          INSERT INTO "workout_section" (id, workout_id, position, name, notes, added_in_workout,
+                                         timer_format, timer_round_s, timer_rounds, timer_cap_s)
+          VALUES (${uuidv7()}::uuid, ${workoutId}::uuid, ${n}, ${fields.name}, ${fields.notes}, true,
+                  ${t.timer_format}::text, ${t.timer_round_s}::int, ${t.timer_rounds}::smallint, ${t.timer_cap_s}::int)
           RETURNING ${SECTION_COLUMNS}
         `;
         return {
@@ -124,11 +131,40 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
         const notes = "notes" in patch && patch.notes !== undefined ? patch.notes : current.notes;
         const nameChanged = name !== current.name;
         const notesChanged = notes !== current.notes;
-        if (!nameChanged && !notesChanged) {
-          return { ...toWorkoutSectionRecord(current), workoutId: pre.workout_id, nameChanged, notesChanged, finishedEdit: null };
+        const stored = toWorkoutSectionRecord(current);
+        // Spec 09.5 AC13 — normalize first, so `{ format: "time_cap" }` equals a stored For Time (Review Focus 4).
+        const timer = patch.timer === undefined ? stored.timer : timerFromColumns(timerToColumns(patch.timer));
+        const timerChanged = !sameTimer(timer, stored.timer);
+        const recorded = stored.roundTimes.length > 0 || stored.result !== null;
+        let resultCleared = false;
+        if (timerChanged && recorded) {
+          const keeps =
+            timer !== null &&
+            stored.timer !== null &&
+            timer.format === stored.timer.format &&
+            timerFitsRecorded(timer, stored.roundTimes, stored.result).length === 0;
+          // Before any write, so a refused timer change takes the rename with it (Review Focus 3).
+          if (!keeps && patch.discardResult !== true) throw new SectionResultExistsError();
+          resultCleared = !keeps;
         }
+        if (!nameChanged && !notesChanged && !timerChanged) {
+          // An equal body writes nothing; `discardResult` is ignored (Review Focus 2).
+          return { ...stored, workoutId: pre.workout_id, nameChanged, notesChanged, timerChanged, resultCleared, finishedEdit: null };
+        }
+        if (resultCleared) {
+          await tx.$executeRaw`DELETE FROM "workout_section_round" WHERE workout_section_id = ${sectionId}::uuid`;
+        }
+        const t = timerToColumns(timer);
+        // One UPDATE: the result is cleared in the same statement that changes the timer, so the shape CHECK never sees a mix.
         const updated = await tx.$queryRaw<WorkoutSectionDbRow[]>`
-          UPDATE "workout_section" SET name = ${name}, notes = ${notes}, updated_at = now()
+          UPDATE "workout_section" SET name = ${name}, notes = ${notes},
+                 timer_format = ${t.timer_format}::text, timer_round_s = ${t.timer_round_s}::int,
+                 timer_rounds = ${t.timer_rounds}::smallint, timer_cap_s = ${t.timer_cap_s}::int,
+                 result_rounds = CASE WHEN ${resultCleared}::boolean THEN NULL ELSE result_rounds END,
+                 result_reps = CASE WHEN ${resultCleared}::boolean THEN NULL ELSE result_reps END,
+                 result_finish_s = CASE WHEN ${resultCleared}::boolean THEN NULL ELSE result_finish_s END,
+                 result_capped = CASE WHEN ${resultCleared}::boolean THEN false ELSE result_capped END,
+                 updated_at = now()
           WHERE id = ${sectionId}::uuid
           RETURNING ${SECTION_COLUMNS}
         `;
@@ -137,6 +173,8 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
           workoutId: pre.workout_id,
           nameChanged,
           notesChanged,
+          timerChanged,
+          resultCleared,
           finishedEdit: mode === "finished" ? noRecompute(pre.workout_id) : null,
         };
       });

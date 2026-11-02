@@ -23,7 +23,9 @@ import {
   toCanonicalKg,
   toCanonicalMeters,
   WORKOUT_SUMMARY_NAMES_MAX,
+  timerFitsRecorded,
   type Modality,
+  type SectionTimerInput,
 } from "@sin/core";
 import { timerFromColumns, timerToColumns } from "../../src/repositories/section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
@@ -57,6 +59,7 @@ import {
   NotFoundError,
   RoutineLimitError,
   RoutineNameTakenError,
+  SectionResultExistsError,
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
@@ -1051,14 +1054,14 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   async addWorkoutSection(
     actingUserId: string,
     workoutId: string,
-    fields: { name: string; notes: string | null },
+    fields: { name: string; notes: string | null; timer?: SectionTimerInput | null },
   ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; sectionCount: number }> {
     const workout = this.ownedWorkoutOrThrow(actingUserId, workoutId);
     const snap = this.sectionSnapshot(workoutId);
     if (snap.sections.length >= ROUTINE_SECTIONS_MAX) throw new WorkoutSectionLimitError();
     const section: WorkoutSectionRecord = {
       id: uuidv7(), position: snap.sections.length, name: fields.name, notes: fields.notes, addedInWorkout: true,
-      timer: null, result: null, roundTimes: [],
+      timer: timerFromColumns(timerToColumns(fields.timer)), result: null, roundTimes: [],
     };
     snap.sections = [...snap.sections, section];
     return { ...section, workoutId, sectionCount: snap.sections.length, finishedEdit: FakeWorkoutRepository.edit(workout) };
@@ -1067,16 +1070,38 @@ export class FakeWorkoutRepository implements WorkoutRepository {
   async updateWorkoutSection(
     actingUserId: string,
     sectionId: string,
-    patch: { name?: string; notes?: string | null },
-  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean }> {
+    patch: { name?: string; notes?: string | null; timer?: SectionTimerInput | null; discardResult?: true },
+  ): Promise<
+    WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; nameChanged: boolean; notesChanged: boolean; timerChanged: boolean; resultCleared: boolean }
+  > {
     const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
     const current = list[index]!;
-    const next = { ...current, name: patch.name ?? current.name, notes: patch.notes === undefined ? current.notes : patch.notes };
+    // Spec 09.5 AC13, as the repository decides it.
+    const timer = patch.timer === undefined ? current.timer : timerFromColumns(timerToColumns(patch.timer));
+    const timerChanged = JSON.stringify(timer) !== JSON.stringify(current.timer);
+    let resultCleared = false;
+    if (timerChanged && (current.roundTimes.length > 0 || current.result !== null)) {
+      const keeps =
+        timer !== null && current.timer !== null && timer.format === current.timer.format &&
+        timerFitsRecorded(timer, current.roundTimes, current.result).length === 0;
+      if (!keeps && patch.discardResult !== true) throw new SectionResultExistsError();
+      resultCleared = !keeps;
+    }
+    const next: WorkoutSectionRecord = {
+      ...current,
+      name: patch.name ?? current.name,
+      notes: patch.notes === undefined ? current.notes : patch.notes,
+      timer,
+      ...(resultCleared ? { result: null, roundTimes: [] } : {}),
+    };
     const nameChanged = next.name !== current.name;
     const notesChanged = next.notes !== current.notes;
     list[index] = next;
-    const changed = nameChanged || notesChanged;
-    return { ...next, workoutId: workout.id, nameChanged, notesChanged, finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null };
+    const changed = nameChanged || notesChanged || timerChanged;
+    return {
+      ...next, workoutId: workout.id, nameChanged, notesChanged, timerChanged, resultCleared,
+      finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null,
+    };
   }
 
   async removeWorkoutSection(

@@ -125,7 +125,9 @@ import {
   type UserId,
   type WeightUnit,
 } from "../../src/index.js";
-import type { PreparedCatalog } from "../../src/index.js";
+import type { PreparedCatalog ,
+  SectionScoreSchema,
+  TimedSectionSummarySchema} from "../../src/index.js";
 import {
   describeTimer,
   formatClock,
@@ -134,8 +136,6 @@ import {
   scoreText,
   sectionScore,
   timerFitsRecorded,
-  SectionScoreSchema,
-  TimedSectionSummarySchema,
   type TimedSectionSummary,
   TIMER_FORMAT_VALUES,
   TIMER_ISSUE_CODES,
