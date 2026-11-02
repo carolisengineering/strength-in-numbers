@@ -324,6 +324,11 @@ model RoutineSection {
   position  Int           @db.SmallInt
   name      String
   notes     String?
+  /// Spec 09.5 — the timer plan (all NULL = untimed). The shape CHECK `routine_section_timer_check` lives in the SQL (0018).
+  timerFormat String?       @map("timer_format")
+  timerRoundS Int?          @map("timer_round_s")
+  timerRounds Int?          @map("timer_rounds") @db.SmallInt
+  timerCapS   Int?          @map("timer_cap_s")
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
   items     RoutineItem[]
@@ -341,12 +346,38 @@ model WorkoutSection {
   notes     String?
   /// Spec 09.4 — origin: true iff created by POST /v1/workouts/{id}/sections (copied from the routine = false).
   addedInWorkout Boolean    @default(false) @map("added_in_workout")
+  /// Spec 09.5 — the timer plan and the recorded result. The CHECKs (`workout_section_timer_check`,
+  /// `workout_section_result_range_check`, `workout_section_result_shape_check`) live in the SQL (0018).
+  timerFormat   String?     @map("timer_format")
+  timerRoundS   Int?        @map("timer_round_s")
+  timerRounds   Int?        @map("timer_rounds") @db.SmallInt
+  timerCapS     Int?        @map("timer_cap_s")
+  resultRounds  Int?        @map("result_rounds") @db.SmallInt
+  resultReps    Int?        @map("result_reps") @db.SmallInt
+  resultFinishS Int?        @map("result_finish_s")
+  resultCapped  Boolean     @default(false) @map("result_capped")
   createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
   exercises WorkoutExercise[]
+  rounds    WorkoutSectionRound[]
 
   @@unique([workoutId, position], map: "workout_section_workout_position_key")
   @@map("workout_section")
+}
+
+/// Spec 09.5 — one recorded round of a timed workout section: a Set Timer's duration or an AMRAP /
+/// Time Cap clock reading. Keyed (section, round), so a round write is replay-safe. The range CHECKs
+/// (`workout_section_round_no_check`, `workout_section_round_seconds_check`) live in the SQL (0018).
+model WorkoutSectionRound {
+  workoutSectionId String         @map("workout_section_id") @db.Uuid
+  section          WorkoutSection @relation(fields: [workoutSectionId], references: [id], onDelete: Cascade, map: "workout_section_round_section_fkey")
+  roundNo          Int            @map("round_no") @db.SmallInt
+  seconds          Int
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([workoutSectionId, roundNo], map: "workout_section_round_pkey")
+  @@map("workout_section_round")
 }
 
 // Spec 19.0 §4 (0016): the Hevy mapping and links. The migration SQL is hand-authored and the source of truth: the
