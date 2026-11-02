@@ -7,8 +7,8 @@ export const HEVY_FINGERPRINT_VERSION = "v1";
 /**
  * Spec 19.0 AC13, §6.5: a canonical string over exactly the fields the export reads, in a fixed order, so a stored
  * fingerprint says whether the workout changed since it was sent. Arrays are sorted by position (sets by
- * `setNumber`, round times by round), so the input order does not matter. Ids, timestamps other than start and end, planned sets,
- * completion and routine details are left out. The API hashes it (`node:crypto`); `@sin/core` stays pure.
+ * `setNumber`, round times by round), so the input order does not matter. Ids, timestamps other than start and
+ * end, planned sets, completion and routine details are left out. The API hashes it (`node:crypto`); `@sin/core` stays pure.
  * Spec 09.5 AC29 / D18: only a timed section's entry gains its plan, result and round times, so an untimed
  * workout's source (and every fingerprint stored before 0018) is unchanged and the tag stays `v1`.
  */
