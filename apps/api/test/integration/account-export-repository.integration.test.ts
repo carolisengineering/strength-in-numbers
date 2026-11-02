@@ -111,7 +111,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     expect(s.workouts.flatMap((w) => w.exercises.flatMap((e) => e.sets)).every((x) => weIds.has(x.workoutExerciseId))).toBe(true);
   });
 
-  it("AC8 — a fixed statement count: 5 workouts and 60 workouts issue the same number, ≤ 8", async () => {
+  it("AC8 / 09.5 AC11 — a fixed statement count: 5 workouts and 60 workouts (timed sections with round times) issue the same number, ≤ 8", async () => {
     const count = async (user: string) => {
       const seen = await startCapture(db);
       await createAccountExportRepository(db.prisma).snapshot(user);
@@ -124,7 +124,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     await nWorkouts(big, 60);
     for (const user of [small, big]) {
       await db.prisma.$executeRawUnsafe(
-        `INSERT INTO "workout_section" (id, workout_id, position, name) SELECT gen_random_uuid(), id, 0, 'S' FROM "workout" WHERE user_id = $1::uuid`, user);
+        `INSERT INTO "workout_section" (id, workout_id, position, name, timer_format, timer_cap_s)
+         SELECT gen_random_uuid(), id, 0, 'S', 'amrap', 720 FROM "workout" WHERE user_id = $1::uuid`, user);
+      // Spec 09.5 AC11 — round rows ride the same aggregate: no extra statement per section.
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds)
+         SELECT s.id, r, r * 100 FROM "workout_section" s JOIN "workout" w ON w.id = s.workout_id, generate_series(1, 3) r
+         WHERE w.user_id = $1::uuid`, user);
     }
     const nSmall = await count(small);
     const nBig = await count(big);
