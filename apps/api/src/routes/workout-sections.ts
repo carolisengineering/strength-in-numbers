@@ -1,8 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { CreateWorkoutSectionSchema, UpdateWorkoutSectionSchema, WorkoutSectionSchema } from "@sin/core";
-import { NotFoundError, SectionResultExistsError, WorkoutSectionLimitError } from "../errors/app-error.js";
+import {
+  CreateWorkoutSectionSchema,
+  SectionRoundParamsSchema,
+  SetRoundTimeSchema,
+  UpdateWorkoutSectionSchema,
+  WorkoutSectionSchema,
+} from "@sin/core";
+import { NotFoundError, SectionResultExistsError, SectionTimerMismatchError, WorkoutSectionLimitError } from "../errors/app-error.js";
 import type { WorkoutRepository } from "../repositories/workout.js";
 import { logFinishedEdit } from "./finished-edit-log.js";
 import { toWorkoutSectionDto } from "./mappers.js";
@@ -109,4 +115,45 @@ export function registerWorkoutSectionRoutes(app: FastifyInstance, deps: Workout
       return reply;
     },
   );
+
+  // Spec 09.5 §6.2 — keyed, replay-safe round writes; the high-rate writes the outbox replays (`sets` group, D11).
+  r.put(
+    "/workout-sections/:id/round-times/:round",
+    {
+      schema: { params: SectionRoundParamsSchema, body: SetRoundTimeSchema, response: { 200: WorkoutSectionSchema } },
+      config: { published: true, problems: [NotFoundError, SectionTimerMismatchError], writeGroup: "sets" },
+    },
+    async (request) => {
+      const userId = request.user!.id;
+      const { id, round } = request.params;
+      const saved = await deps.workoutRepository.setSectionRoundTime(userId, id, round, request.body.seconds);
+      request.log.info(
+        { workout_id: saved.workoutId, section_id: saved.id, user_id: userId, round, changed: saved.changed },
+        "workout_section_round_set",
+      );
+      logFinishedEdit(request.log, userId, "section_result_changed", saved.finishedEdit);
+      return toWorkoutSectionDto(saved);
+    },
+  );
+
+  r.delete(
+    "/workout-sections/:id/round-times/:round",
+    {
+      schema: { params: SectionRoundParamsSchema, response: { 204: z.undefined() } },
+      config: { published: true, problems: [NotFoundError], writeGroup: "sets" },
+    },
+    async (request, reply) => {
+      const userId = request.user!.id;
+      const { id, round } = request.params;
+      const cleared = await deps.workoutRepository.clearSectionRoundTime(userId, id, round);
+      request.log.info(
+        { workout_id: cleared.workoutId, section_id: id, user_id: userId, round, removed: cleared.removed },
+        "workout_section_round_cleared",
+      );
+      logFinishedEdit(request.log, userId, "section_result_changed", cleared.finishedEdit);
+      reply.code(204).send();
+      return reply;
+    },
+  );
+
 }

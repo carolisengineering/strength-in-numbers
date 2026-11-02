@@ -24,6 +24,7 @@ import {
   toCanonicalMeters,
   WORKOUT_SUMMARY_NAMES_MAX,
   timerFitsRecorded,
+  roundTimeIssues,
   type Modality,
   type SectionTimerInput,
 } from "@sin/core";
@@ -60,6 +61,7 @@ import {
   RoutineLimitError,
   RoutineNameTakenError,
   SectionResultExistsError,
+  SectionTimerMismatchError,
   ValidationError,
   WorkoutFinishedError,
   WorkoutInProgressExistsError,
@@ -1102,6 +1104,39 @@ export class FakeWorkoutRepository implements WorkoutRepository {
       ...next, workoutId: workout.id, nameChanged, notesChanged, timerChanged, resultCleared,
       finishedEdit: changed ? FakeWorkoutRepository.edit(workout) : null,
     };
+  }
+
+  /** Spec 09.5 §6.2, over the in-memory section. */
+  async setSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+    seconds: number,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    if (current.timer === null) throw new SectionTimerMismatchError();
+    const issues = roundTimeIssues(current.timer, current.roundTimes, round, seconds);
+    if (issues.length > 0) throw new ValidationError(issues.map(({ path, message }) => ({ path, message })));
+    if (current.roundTimes.some((r) => r.round === round && r.seconds === seconds)) {
+      return { ...current, workoutId: workout.id, changed: false, finishedEdit: null };
+    }
+    const roundTimes = [...current.roundTimes.filter((r) => r.round !== round), { round, seconds }].sort((a, b) => a.round - b.round);
+    const next = { ...current, roundTimes };
+    list[index] = next;
+    return { ...next, workoutId: workout.id, changed: true, finishedEdit: FakeWorkoutRepository.edit(workout) };
+  }
+
+  async clearSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }> {
+    const { workout, list, index } = this.ownedSectionOrThrow(actingUserId, sectionId);
+    const current = list[index]!;
+    const removed = current.roundTimes.some((r) => r.round === round);
+    list[index] = { ...current, roundTimes: current.roundTimes.filter((r) => r.round !== round) };
+    return { workoutId: workout.id, removed, finishedEdit: removed ? FakeWorkoutRepository.edit(workout) : null };
   }
 
   async removeWorkoutSection(

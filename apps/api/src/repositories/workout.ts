@@ -396,6 +396,23 @@ export interface WorkoutRepository {
     }
   >;
 
+  /** Spec 09.5 §6.2 — sets one round's time, keyed (section, round); a repeat of the stored value writes nothing
+   * (`changed: false`, `finishedEdit: null`). Throws `NotFoundError`, `SectionTimerMismatchError` (untimed) or
+   * `ValidationError` (the §6.3 rules). */
+  setSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+    seconds: number,
+  ): Promise<WithFinishedEdit<WorkoutSectionRecord> & { workoutId: string; changed: boolean }>;
+
+  /** Spec 09.5 AC15 — clears one round; `removed: false` when there was none (an untimed section included). Throws `NotFoundError`. */
+  clearSectionRoundTime(
+    actingUserId: string,
+    sectionId: string,
+    round: number,
+  ): Promise<{ workoutId: string; removed: boolean; finishedEdit: FinishedEdit | null }>;
+
   /** Spec 09.4 §6.4 — deletes the section (its exercises stay where they are, loose) and renumbers the later
    * sections densely. `exerciseCount` is how many exercises were in it. Throws `NotFoundError`. */
   removeWorkoutSection(

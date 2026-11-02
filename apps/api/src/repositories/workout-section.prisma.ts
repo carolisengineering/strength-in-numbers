@@ -1,7 +1,21 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { isWorkoutId, isWorkoutSectionId, ROUTINE_SECTIONS_MAX, timerFitsRecorded, type SectionTimer } from "@sin/core";
+import {
+  isWorkoutId,
+  isWorkoutSectionId,
+  ROUTINE_SECTIONS_MAX,
+  roundTimeIssues,
+  timerFitsRecorded,
+  type SectionTimer,
+  type TimerIssue,
+} from "@sin/core";
 import { uuidv7 } from "uuidv7";
-import { NotFoundError, SectionResultExistsError, WorkoutSectionLimitError } from "../errors/app-error.js";
+import {
+  NotFoundError,
+  SectionResultExistsError,
+  SectionTimerMismatchError,
+  ValidationError,
+  WorkoutSectionLimitError,
+} from "../errors/app-error.js";
 import { roundTimesJson, timerFromColumns, timerToColumns } from "./section-timer-columns.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { WorkoutRepository } from "./workout.js";
@@ -72,7 +86,34 @@ const SECTION_COLUMNS = Prisma.raw(
 /** Two timers as `timerFromColumns` builds them (fixed key order), so a string compare is a deep compare. */
 const sameTimer = (a: SectionTimer | null, b: SectionTimer | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-type SectionMethods = Pick<WorkoutRepository, "addWorkoutSection" | "updateWorkoutSection" | "removeWorkoutSection">;
+type SectionMethods = Pick<
+  WorkoutRepository,
+  "addWorkoutSection" | "updateWorkoutSection" | "removeWorkoutSection" | "setSectionRoundTime" | "clearSectionRoundTime"
+>;
+
+/** A handler-raised 422 from the `@sin/core` rules: `{ path, message }` only — the `code` never reaches the wire (AC3). */
+const timerValidationError = (issues: readonly TimerIssue[]) => new ValidationError(issues.map(({ path, message }) => ({ path, message })));
+
+/**
+ * Spec 09.5 §6.1 / D19 — the envelope of the round-time and result writes. They change no position or membership,
+ * so they skip the structure advisory lock and `SET CONSTRAINTS`: [finished: the PR lock, from `withWriteMode`]
+ * → workout `FOR SHARE` (`assertStillLive`) → section `FOR UPDATE`. The section row lock serializes round, result
+ * and timer writes on one section, which the cross-row rules need. A vanished workout or section is `404`.
+ */
+export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<WorkoutSectionDbRow> {
+  const workouts = await tx.$queryRaw<{ ended_at: Date | null }[]>`
+    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+  `;
+  const locked = workouts[0];
+  if (!locked) throw sectionNotFound();
+  assertStillLive(mode, locked.ended_at);
+  const sections = await tx.$queryRaw<WorkoutSectionDbRow[]>`
+    SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
+  `;
+  const section = sections[0];
+  if (!section) throw sectionNotFound();
+  return section;
+}
 
 /** Spec 09.4 §6.4 — create / update / remove a workout's own section, live or finished (07.4 `withWriteMode`). */
 export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
@@ -207,6 +248,48 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
           workoutId: pre.workout_id,
           exerciseCount: counted[0]!.n,
           finishedEdit: mode === "finished" ? noRecompute(pre.workout_id) : null,
+        };
+      });
+    },
+
+    async setSectionRoundTime(actingUserId, sectionId, round, seconds) {
+      const pre = await sectionPreflight(actingUserId, sectionId);
+      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, mode, pre.workout_id, sectionId));
+        if (current.timer === null) throw new SectionTimerMismatchError();
+        const issues = roundTimeIssues(current.timer, current.roundTimes, round, seconds);
+        if (issues.length > 0) throw timerValidationError(issues);
+        if (current.roundTimes.some((r) => r.round === round && r.seconds === seconds)) {
+          // A replay of the stored value writes nothing (AC18).
+          return { ...current, workoutId: pre.workout_id, changed: false, finishedEdit: null };
+        }
+        await tx.$executeRaw`
+          INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds)
+          VALUES (${sectionId}::uuid, ${round}, ${seconds})
+          ON CONFLICT (workout_section_id, round_no) DO UPDATE SET seconds = EXCLUDED.seconds, updated_at = now()
+        `;
+        const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid`;
+        return {
+          ...toWorkoutSectionRecord(rows[0]!),
+          workoutId: pre.workout_id,
+          changed: true,
+          finishedEdit: mode === "finished" ? noRecompute(pre.workout_id) : null,
+        };
+      });
+    },
+
+    async clearSectionRoundTime(actingUserId, sectionId, round) {
+      const pre = await sectionPreflight(actingUserId, sectionId);
+      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+        await lockSectionForRecord(tx, mode, pre.workout_id, sectionId);
+        // No timer check and no rule: a clear always succeeds (AC15), and an untimed section has nothing to remove.
+        const removed = await tx.$executeRaw`
+          DELETE FROM "workout_section_round" WHERE workout_section_id = ${sectionId}::uuid AND round_no = ${round}
+        `;
+        return {
+          workoutId: pre.workout_id,
+          removed: removed > 0,
+          finishedEdit: mode === "finished" && removed > 0 ? noRecompute(pre.workout_id) : null,
         };
       });
     },
