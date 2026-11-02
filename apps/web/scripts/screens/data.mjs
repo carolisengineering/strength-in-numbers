@@ -262,6 +262,32 @@ export const CLASS = {
   oneOffUntil: iso(NOW - 5 * MIN + 14 * DAY),
 };
 
+/**
+ * Spec 10.7 AC63: a routine with two timed sections — "Main" a Set Timer of 5 × 5:00 holding two grouped
+ * exercises, "Finisher" an AMRAP of 12:00 holding three. Served only while `showTimed` is on.
+ */
+const SEC_TIMED_MAIN = uuid("b2000000", 9);
+const SEC_TIMED_FIN = uuid("b2000000", 10);
+export const TIMED = {
+  id: uuid("b0000000", 10),
+  name: "Conditioning",
+  notes: null,
+  sections: [
+    { id: SEC_TIMED_MAIN, position: 0, name: "Main", notes: "Rest what's left of each round.", timer: { format: "set_timer", roundSeconds: 300, rounds: 5 } },
+    { id: SEC_TIMED_FIN, position: 1, name: "Finisher", notes: null, timer: { format: "amrap", capSeconds: 720 } },
+  ],
+  items: [
+    item("back_squat", 0, { sectionId: SEC_TIMED_MAIN, supersetGroup: 1, sets: rep(5, ps("working", 5, 5, null)) }),
+    item("barbell_row", 1, { sectionId: SEC_TIMED_MAIN, supersetGroup: 1, sets: rep(5, ps("working", 8, 8, null)) }),
+    item("lateral_raise", 2, { sectionId: SEC_TIMED_FIN, supersetGroup: 2, sets: [ps("working", 12, 12, null)] }),
+    item("romanian_deadlift", 3, { sectionId: SEC_TIMED_FIN, supersetGroup: 2, sets: [ps("working", 10, 10, null)] }),
+    item("plank", 4, { sectionId: SEC_TIMED_FIN, supersetGroup: 2, targetSets: 1, sets: [ps("working", null, null, null)] }),
+  ],
+  createdAt: iso(NOW - 2 * DAY),
+  updatedAt: iso(NOW - 2 * DAY),
+  oneOffUntil: null,
+};
+
 // ---------------------------------------------------------------- workouts
 let weN = 0;
 let setN = 0;
@@ -712,6 +738,7 @@ export function payloadChecks() {
     ["equipment", "EquipmentResponse", { equipment }],
     ["routines", "RoutineListResponseSchema", { routines }],
     ["routines with the one-off", "RoutineListResponseSchema", { routines: [CLASS, ...routines] }],
+    ["routines with the timed one", "RoutineListResponseSchema", { routines: [TIMED, ...routines] }],
     ["history", "WorkoutHistoryResponseSchema", history],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ["exercise usage", "ExerciseUsageResponseSchema", usage()],
