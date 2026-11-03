@@ -191,3 +191,17 @@ describe("06.5 AC24 — counting", () => {
     expect(guard.getState().unsaved).toEqual({ sets: 3, notes: 1 });
   });
 });
+
+describe("10.7 AC39 — the guard counts timer entries apart", () => {
+  it("a round op is a timer entry, never a set", () => {
+    const { guard } = make({ ops: [op("round", "queued")] });
+    guard.request();
+    expect(guard.getState().unsaved).toEqual({ sets: 0, notes: 0, timerEntries: 1 });
+  });
+
+  it("round and result ops count beside sets and notes", () => {
+    const { guard } = make({ ops: [op("create"), op("round", "failed"), op("result"), op("note")] });
+    guard.request();
+    expect(guard.getState().unsaved).toEqual({ sets: 1, notes: 1, timerEntries: 2 });
+  });
+});

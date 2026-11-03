@@ -12,11 +12,16 @@ export const MESSAGES = {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function unsavedMessage({ sets, notes }: Unsaved): string {
-  if (sets === 0 && notes === 0) return "Some changes haven't saved. If you sign out now they'll be lost.";
-  const subject =
-    notes === 0 ? plural(sets, "set", "sets") : sets === 0 ? plural(notes, "note", "notes") : `${plural(sets, "set", "sets")} and ${plural(notes, "note", "notes")}`;
-  const single = sets + notes === 1;
+export function unsavedMessage({ sets, notes, timerEntries = 0 }: Unsaved): string {
+  if (sets === 0 && notes === 0 && timerEntries === 0) return "Some changes haven't saved. If you sign out now they'll be lost.";
+  // "A", "A and B", or "A, B and C", in the order sets, notes, timer entries (Spec 10.7 AC39).
+  const parts = [
+    ...(sets > 0 ? [plural(sets, "set", "sets")] : []),
+    ...(notes > 0 ? [plural(notes, "note", "notes")] : []),
+    ...(timerEntries > 0 ? [plural(timerEntries, "timer entry", "timer entries")] : []),
+  ];
+  const subject = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)!}`;
+  const single = sets + notes + timerEntries === 1;
   return single
     ? `${subject} hasn't saved. If you sign out now it'll be lost.`
     : `${subject} haven't saved. If you sign out now they'll be lost.`;

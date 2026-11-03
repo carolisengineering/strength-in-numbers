@@ -19,7 +19,7 @@ import { EditWorkoutClientContext, WORKOUT_KEYS, WorkoutClientContext } from "./
 import { reportUnexpected } from "./reportUnexpected";
 import { createWorkoutClient } from "./workoutClient";
 
-const REPORT_OP = { create: "create-set", update: "update-set", delete: "delete-set", note: "update-note" } as const;
+const REPORT_OP = { create: "create-set", update: "update-set", delete: "delete-set", note: "update-note", round: "log-result", result: "log-result" } as const;
 
 /**
  * Swap a synced op's local row for the server's, then re-overlay what is still queued (AC12). A read

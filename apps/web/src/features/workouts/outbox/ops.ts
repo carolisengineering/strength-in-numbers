@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { CreateSetSchema, UpdateSetSchema, type CreateSet, type UpdateSet } from "@sin/core";
+import {
+  CreateSetSchema,
+  SetSectionResultSchema,
+  TIMER_ROUNDS_MAX,
+  UpdateSetSchema,
+  type CreateSet,
+  type SetSectionResult,
+  type UpdateSet,
+} from "@sin/core";
 
 /**
  * One queued set write (Spec 06.2 §6.1). A set the server has not acknowledged yet is named by its
@@ -13,10 +21,10 @@ export interface OpFailure {
   requestId: string | null;
 }
 
-export interface OpBase {
+/** The fields every op carries (Spec 10.7 AC34 split `OpBase` so set and note ops stay byte-identical on disk). */
+export interface CommonOpBase {
   id: string;
   workoutId: string;
-  workoutExerciseId: string;
   userId: string;
   status: "queued" | "sending" | "failed";
   /** Sent at least once: the server may already have applied it, so nothing is merged into it (D3). */
@@ -25,6 +33,16 @@ export interface OpBase {
   nextAttemptAt: number;
   enqueuedAt: number;
   failure?: OpFailure;
+}
+
+/** A set or note op: on one exercise of the workout. */
+export interface OpBase extends CommonOpBase {
+  workoutExerciseId: string;
+}
+
+/** Spec 10.7 AC34: a timed section's entry — on the section, with no exercise. */
+export interface SectionOpBase extends CommonOpBase {
+  sectionId: string;
 }
 
 export type CreateOp = OpBase & {
@@ -37,8 +55,17 @@ export type DeleteOp = OpBase & { kind: "delete"; target: OpTarget; body: null }
 /** Spec 10.3: one exercise's note (a replacement of one string); needs no id mapping and emits no set_* event. */
 export type NoteOp = OpBase & { kind: "note"; body: { notes: string | null } };
 export type SetOp = CreateOp | UpdateOp | DeleteOp;
-export type OutboxOp = SetOp | NoteOp;
-export const isSetOp = (op: OutboxOp): op is SetOp => op.kind !== "note";
+/** Spec 10.7 AC34: one round's final time (`null` clears it), keyed by section + round. */
+export type RoundOp = SectionOpBase & { kind: "round"; round: number; body: { seconds: number | null } };
+/** Spec 10.7 AC34: the section's result (`null` clears it), keyed by section. */
+export type ResultOp = SectionOpBase & { kind: "result"; body: SetSectionResult | null };
+export type SectionOp = RoundOp | ResultOp;
+export type OutboxOp = SetOp | NoteOp | SectionOp;
+/** The three set kinds — never a note or a timer entry (Spec 10.7 AC39). */
+export const isSetOp = (op: OutboxOp): op is SetOp => op.kind === "create" || op.kind === "update" || op.kind === "delete";
+export const isSectionOp = (op: OutboxOp): op is SectionOp => op.kind === "round" || op.kind === "result";
+/** One key per timer entry: a round of a section, or the section's result. */
+export const sectionKey = (op: SectionOp): string => `${op.sectionId}:${op.kind === "round" ? op.round : "result"}`;
 
 export interface IdMapEntry {
   setId: string;
@@ -48,10 +75,9 @@ export interface IdMapEntry {
 export type IdMap = Readonly<Record<string, IdMapEntry>>;
 
 const TargetSchema = z.union([z.object({ clientGeneratedId: z.string() }), z.object({ setId: z.string() })]);
-const BaseShape = {
+const CommonShape = {
   id: z.string(),
   workoutId: z.string(),
-  workoutExerciseId: z.string(),
   userId: z.string(),
   status: z.enum(["queued", "sending", "failed"]),
   attempted: z.boolean(),
@@ -60,6 +86,7 @@ const BaseShape = {
   enqueuedAt: z.number(),
   failure: z.object({ status: z.number(), type: z.string(), requestId: z.string().nullable() }).optional(),
 };
+const BaseShape = { ...CommonShape, workoutExerciseId: z.string() };
 
 /** One queued op. A later spec adds its kinds here (Spec 10.7 Phase C's `round` / `result`), never to the file schema. */
 export const OutboxOpSchema = z.discriminatedUnion("kind", [
@@ -72,6 +99,15 @@ export const OutboxOpSchema = z.discriminatedUnion("kind", [
   z.object({ ...BaseShape, kind: z.literal("update"), target: TargetSchema, body: UpdateSetSchema }),
   z.object({ ...BaseShape, kind: z.literal("delete"), target: TargetSchema, body: z.null() }),
   z.object({ ...BaseShape, kind: z.literal("note"), body: z.object({ notes: z.string().nullable() }) }),
+  // Spec 10.7 AC34: timer entries, on a section (no workoutExerciseId).
+  z.object({
+    ...CommonShape,
+    kind: z.literal("round"),
+    sectionId: z.string(),
+    round: z.number().int().min(1).max(TIMER_ROUNDS_MAX),
+    body: z.object({ seconds: z.number().int().min(1).nullable() }),
+  }),
+  z.object({ ...CommonShape, kind: z.literal("result"), sectionId: z.string(), body: SetSectionResultSchema.nullable() }),
 ]);
 
 /** The shape of `sin:workout:outbox`; `v` lets a later spec migrate it. */
@@ -154,8 +190,52 @@ export function unsavedNotes(ops: readonly OutboxOp[], workoutId: string): { pen
   return { pending: all.size - failed.size, failed: failed.size };
 }
 
+/**
+ * Spec 10.7 AC39 — how many *timer entries* (a round of a section, or its result) of `workoutId` are not saved yet:
+ * one per `sectionKey`, failed when any of its ops failed (the `unsavedSets` pattern).
+ */
+export function unsavedTimerEntries(ops: readonly OutboxOp[], workoutId: string): { pending: number; failed: number } {
+  const all = new Set<string>();
+  const failed = new Set<string>();
+  for (const op of ops) {
+    if (op.workoutId !== workoutId || !isSectionOp(op)) continue;
+    const key = sectionKey(op);
+    all.add(key);
+    if (op.status === "failed") failed.add(key);
+  }
+  return { pending: all.size - failed.size, failed: failed.size };
+}
+
+/** Spec 10.7 AC40 — the section has an entry in the outbox, whatever its status (its Timer group is locked). */
+export const sectionHasOps = (ops: readonly OutboxOp[], sectionId: string): boolean =>
+  ops.some((op) => isSectionOp(op) && op.sectionId === sectionId);
+
 const replaceAt = (ops: readonly OutboxOp[], index: number, op: OutboxOp): OutboxOp[] =>
   ops.map((o, i) => (i === index ? op : o));
+
+/**
+ * Spec 10.7 AC35, D7 — a timer entry replaces the body of the existing op only when that op is the **last op of the
+ * same section**, has the same key, and was never sent (or failed with a `422`, reset like a note). Anything else is
+ * appended, so every prefix of the queue is a state the lifter passed through and each write stays valid in turn.
+ */
+function combineSection(ops: readonly OutboxOp[], incoming: SectionOp): OutboxOp[] {
+  let index = -1;
+  for (let i = ops.length - 1; i >= 0; i -= 1) {
+    const o = ops[i]!;
+    if (isSectionOp(o) && o.sectionId === incoming.sectionId) {
+      index = i;
+      break;
+    }
+  }
+  const last = index >= 0 ? (ops[index] as SectionOp) : undefined;
+  if (!last || sectionKey(last) !== sectionKey(incoming)) return [...ops, incoming];
+  if (last.status === "failed" && last.failure?.status === 422) {
+    const reset = { status: "queued" as const, attempted: false, attempts: 0, nextAttemptAt: incoming.enqueuedAt, failure: undefined };
+    return replaceAt(ops, index, { ...last, ...reset, body: incoming.body } as OutboxOp);
+  }
+  if (last.status === "queued" && !last.attempted) return replaceAt(ops, index, { ...last, body: incoming.body } as OutboxOp);
+  return [...ops, incoming];
+}
 
 /**
  * A delete of a set whose create failed permanently: the server never stored it, so there is nothing
@@ -226,6 +306,7 @@ function combineNote(ops: readonly OutboxOp[], incoming: NoteOp): OutboxOp[] {
  * replaces it with a fresh op (AC14).
  */
 export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[] {
+  if (isSectionOp(incoming)) return combineSection(ops, incoming);
   if (incoming.kind === "note") return combineNote(ops, incoming);
   if (incoming.kind === "create") return [...ops, incoming];
   const dropped = dropNeverStoredSet(ops, incoming);

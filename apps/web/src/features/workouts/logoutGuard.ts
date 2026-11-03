@@ -5,6 +5,8 @@ export type GuardPhase = "idle" | "syncing" | "warning";
 export interface Unsaved {
   sets: number;
   notes: number;
+  /** Spec 10.7 AC39: round and result entries; present only when there are any. */
+  timerEntries?: number;
 }
 export interface GuardState {
   phase: GuardPhase;
@@ -53,9 +55,12 @@ export function createLogoutGuard(deps: { outbox: GuardOutbox; proceed: () => vo
   function count(): Unsaved {
     const ops = outbox.getState().ops;
     const notes = ops.filter((o) => o.kind === "note").length;
-    return { sets: ops.length - notes, notes };
+    // Spec 10.7 AC39: a timer entry is never a set.
+    const timerEntries = ops.filter((o) => o.kind === "round" || o.kind === "result").length;
+    const sets = ops.length - notes - timerEntries;
+    return timerEntries > 0 ? { sets, notes, timerEntries } : { sets, notes };
   }
-  const total = (u: Unsaved) => u.sets + u.notes;
+  const total = (u: Unsaved) => u.sets + u.notes + (u.timerEntries ?? 0);
 
   function canSync(): boolean {
     const s = outbox.getState();

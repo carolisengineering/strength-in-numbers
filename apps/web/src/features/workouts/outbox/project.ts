@@ -1,5 +1,5 @@
 import { parseSetEntryId, toCanonicalMeters, type SetEntry, type WorkoutDetail } from "@sin/core";
-import type { CreateOp, IdMap, OpTarget, OutboxOp } from "./ops";
+import { isSectionOp, type CreateOp, type IdMap, type OpTarget, type OutboxOp } from "./ops";
 
 export type RowSync = { state: "pending" } | { state: "failed"; opId: string; status: number };
 
@@ -94,6 +94,7 @@ export function project(
   let exercises = workout.exercises;
   for (const op of ops) {
     if (op.workoutId !== workout.id) continue;
+    if (isSectionOp(op)) continue;
     const index = exercises.findIndex((e) => e.id === op.workoutExerciseId);
     if (index < 0) continue;
     const exercise = exercises[index]!;

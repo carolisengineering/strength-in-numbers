@@ -211,6 +211,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   async function call(op: OutboxOp): Promise<SetEntry | WorkoutExercise | null> {
     if (op.kind === "note") return rest.setExerciseNote(op.workoutExerciseId, op.body.notes);
     if (op.kind === "create") return rest.createSet(op.workoutExerciseId, op.body);
+    // Timer entries are sent from Task 4 of Spec 10.7 Phase C; nothing enqueues one before then.
+    if (!isSetOp(op)) throw new UnresolvedTarget();
     const id = resolveSetId(op.target);
     if (id === null) throw new UnresolvedTarget();
     if (op.kind === "update") return rest.updateSet(id, op.body);
@@ -346,7 +348,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       if (!op) return;
       // A follow-up of a create that failed too: discarding it means discarding that set — the create
       // and every follow-up (final review I2), or the row would stay with one "Couldn't save" left.
-      const target = op.kind === "note" ? null : op.target;
+      // Only a set op has a target: a note or a timer entry has none (Spec 10.7 AC39).
+      const target = isSetOp(op) ? op.target : null;
       const root = target ? state.ops.find((o) => o.kind === "create" && o.status === "failed" && sameTarget(o.target, target)) : undefined;
       if (op.status === "failed" && root) op = root;
       const chosen = op;
