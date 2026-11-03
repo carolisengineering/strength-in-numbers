@@ -55,6 +55,11 @@ import {
   type SetEntry,
   type WorkoutDetail,
   type WorkoutExerciseDetail,
+  sectionScore,
+  timerChangeKeepsRecorded,
+  timersEqual,
+  type SectionTimer,
+  type SectionTimerInput,
 } from "@sin/core";
 import { API_BASE_URL, USER_ID } from "./catalogHarness";
 
@@ -148,6 +153,8 @@ export interface WorkoutFakeOptions {
    * where the server has not swept yet.
    */
   sweepExpired?: boolean;
+  /** Spec 10.7: the next `times` `PATCH /workout-exercises/:id` bodies that carry `supersetGroup` answer `503` (recorded, not applied). */
+  failRegroup?: { times: number };
 }
 
 export function problemResponse(
@@ -206,10 +213,19 @@ function summaryOf(detail: WorkoutDetail, records: readonly PersonalRecord[]) {
     totalVolume: qualifying ? volume : null,
     // Spec 07.3: the served count does not include set-volume records, so a History row matches the finish summary.
     recordCount: records.filter((r) => r.workoutId === detail.id && r.recordType !== "best_set_volume").length,
-    // Spec 09.5 AC25: a History row's timed sections; the web shows them from Spec 10.7, so the fake sends none yet.
-    timedSections: [],
+    // Spec 09.5 AC25: a History row's timed sections, in position order, each scored by `sectionScore`.
+    timedSections: [...detail.sections]
+      .filter((s) => s.timer !== null)
+      .sort((a, b) => a.position - b.position)
+      .map((s) => ({ id: s.id, position: s.position, name: s.name, timer: s.timer, score: sectionScore(s) })),
   };
 }
+
+/** Spec 09.5: the timer as the server stores it — a Time Cap sent with no cap reads `capSeconds: null`. */
+const storedTimer = (input: SectionTimerInput | null | undefined): SectionTimer | null => {
+  if (input === undefined || input === null) return null;
+  return input.format === "time_cap" ? { format: "time_cap", capSeconds: input.capSeconds ?? null } : input;
+};
 
 /** The fake's own history cursor: opaque to the app, read only here. */
 const FAKE_CURSOR = /^fake\.(\d+)$/;
@@ -248,6 +264,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
   const failures: { match: FailMatch; response: () => Response; remaining: number; skip: number }[] = [];
   const losses: FailMatch[] = [];
   let offline = false;
+  let regroupFailures = options.failRegroup?.times ?? 0;
 
   type Located =
     | { kind: "active"; detail: WorkoutDetail }
@@ -856,6 +873,10 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       return HttpResponse.json(WorkoutExerciseSchema.parse(stored.exercises.find((e) => e.id === row.id)), { status: 201 });
     }),
     handle("patch", "/workout-exercises/:id", ({ params, body }) => {
+      if (regroupFailures > 0 && typeof body === "object" && body !== null && "supersetGroup" in body) {
+        regroupFailures -= 1;
+        return problemResponse(503, "about:blank");
+      }
       const found = locateExercise(params["id"]!);
       if (!found) return notFound();
       const parsed = parseBody(UpdateWorkoutExerciseSchema, body);
@@ -919,7 +940,7 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         name: parsed.data.name,
         notes: parsed.data.notes ?? null,
         addedInWorkout: true,
-        timer: null,
+        timer: storedTimer(parsed.data.timer),
         result: null,
         roundTimes: [],
       });
@@ -931,10 +952,23 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
       if (!found) return notFound();
       const parsed = parseBody(UpdateWorkoutSectionSchema, body);
       if (!parsed.ok) return parsed.response;
+      const stored = found.section;
+      // Spec 09.5 AC13: a changed timer that would not keep what is recorded needs `discardResult`, which clears it;
+      // an unchanged timer writes nothing and ignores the flag.
+      let timerPatch = {};
+      if (parsed.data.timer !== undefined) {
+        const nextTimer = storedTimer(parsed.data.timer);
+        if (!timersEqual(stored.timer, nextTimer)) {
+          const keeps = timerChangeKeepsRecorded(stored.timer, nextTimer, stored.roundTimes, stored.result);
+          if (!keeps && parsed.data.discardResult !== true) return problemResponse(409, "section-result-exists");
+          timerPatch = keeps ? { timer: nextTimer } : { timer: nextTimer, roundTimes: [], result: null };
+        }
+      }
       const next = WorkoutSectionSchema.parse({
-        ...found.section,
+        ...stored,
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+        ...timerPatch,
       });
       store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
       return HttpResponse.json(next);
