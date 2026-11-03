@@ -40,6 +40,21 @@ describe("10.7 AC56 — Phase A copy is pinned", () => {
   });
 });
 
+describe("10.7 AC56 — Phase B copy is pinned (sectionTimer)", () => {
+  it.each<[keyof typeof copy, string]>([
+    ["TIMES_ROUNDS_PREFIX", "Rounds "],
+    ["TIMES_READINGS_PREFIX", "Round ends "],
+    ["TIMES_SEPARATOR", " · "],
+    ["TIMES_GAP", "–"],
+  ])("%s", (name, text) => {
+    expect(copy[name]).toBe(text);
+  });
+
+  it("timedMore", () => {
+    expect(copy.timedMore(2)).toBe("+2 more");
+  });
+});
+
 describe("10.7 AC5 — the bounds come from @sin/core", () => {
   it("no literal 3600, 10800 or 100 bound in the folder", () => {
     for (const [path, src] of Object.entries(folder)) {

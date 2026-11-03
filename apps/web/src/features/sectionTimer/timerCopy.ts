@@ -30,3 +30,10 @@ export const CAP_MAX_ERROR = `Keep it to ${clock(TIMER_CAP_SECONDS_MAX)} or less
 export const TIMER_CHECK_ERROR = "Check the timer and try again.";
 
 export const GROUP_CAP_LINE = `Only the first ${SUPERSET_GROUP_MEMBERS_MAX} exercises are grouped.`;
+
+// Phase B: the times line (AC20) and History's "+n more" (AC21).
+export const TIMES_ROUNDS_PREFIX = "Rounds ";
+export const TIMES_READINGS_PREFIX = "Round ends ";
+export const TIMES_SEPARATOR = " · ";
+export const TIMES_GAP = "–";
+export const timedMore = (n: number): string => `+${n} more`;
