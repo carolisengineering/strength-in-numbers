@@ -54,9 +54,10 @@ export function useEditSectionMutations(workoutId: string): SectionMutations {
     ...base,
     ...guarded,
     mutationFn: ({ id, body }: { id: string; body: UpdateWorkoutSection }) => client.updateSection(id, body),
-    onSuccess: (section: WorkoutSection) => {
+    onSuccess: (section: WorkoutSection, { body }) => {
       writeDetail(queryClient, workoutId, (d) => withSection(d, section));
-      editSucceeded(queryClient, "section_changed");
+      // Spec 10.7 AC26: the server's enum (09.5 D21) — a body that changes the timer is a timer change.
+      editSucceeded(queryClient, body.timer !== undefined ? "section_timer_changed" : "section_changed");
     },
   });
   const remove = useMutation({

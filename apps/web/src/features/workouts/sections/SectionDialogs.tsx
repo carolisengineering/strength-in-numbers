@@ -6,7 +6,8 @@ import type { SectionActions } from "./useSectionActions";
 
 /**
  * Spec 10.6 §6.3 — the New / Edit section sheet and the remove confirm, drawn from `useSectionActions`'
- * state. The sheet is keyed per opening, so its text starts fresh each time and is dropped on close.
+ * state; Spec 10.7 AC16 adds the timer confirm. The sheet is keyed per opening, so its text starts fresh each
+ * time and is dropped on close.
  */
 export function SectionDialogs({ actions, sections }: { actions: SectionActions; sections: readonly WorkoutSection[] }) {
   const view = actions.sheetView;
@@ -23,6 +24,7 @@ export function SectionDialogs({ actions, sections }: { actions: SectionActions;
         errors={actions.errors}
         onSubmit={(values) => void actions.submitSheet(values)}
         onClose={actions.closeSheet}
+        saveRef={actions.saveRef}
         {...(view.mode === "edit" ? { onRemove: actions.requestRemove, removeRef: actions.removeRef } : {})}
       />
       {view.mode === "edit" && section ? (
@@ -37,6 +39,21 @@ export function SectionDialogs({ actions, sections }: { actions: SectionActions;
           onCancel={actions.cancelRemove}
         >
           <p>{SECTION_COPY.removeLine}</p>
+        </ConfirmDialog>
+      ) : null}
+      {actions.timerConfirm ? (
+        <ConfirmDialog
+          open
+          title={actions.timerConfirm.title}
+          confirmLabel={SECTION_COPY.changeAndClear}
+          cancelLabel={SECTION_COPY.cancel}
+          variant="danger"
+          busy={actions.busy}
+          dismissible={!actions.busy}
+          onConfirm={() => void actions.confirmTimerChange()}
+          onCancel={actions.cancelTimerChange}
+        >
+          <p>{SECTION_COPY.changeTimerBody}</p>
         </ConfirmDialog>
       ) : null}
     </>

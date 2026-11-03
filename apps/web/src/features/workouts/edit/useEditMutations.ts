@@ -39,7 +39,9 @@ export type EditKind =
   | "section_added"
   | "section_changed"
   | "section_removed"
-  | "exercise_sectioned";
+  | "exercise_sectioned"
+  // Spec 10.7 AC26 (the server's name, Spec 09.5 D21)
+  | "section_timer_changed";
 
 /** One successful edit: one scalar event, then the History / Progress / records refresh (AC22, AC27). */
 export function editSucceeded(queryClient: QueryClient, edit: EditKind): void {

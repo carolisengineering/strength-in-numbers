@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { ROUTINE_SECTIONS_MAX, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 import { reportUnexpected } from "../reportUnexpected";
-import { SECTION_COPY, movedOut, movedTo, sectionAdded } from "./sectionCopy";
+import { SECTION_COPY, changeTimerTitle, movedOut, movedTo, sectionAdded } from "./sectionCopy";
 import { sectionPickerId } from "./SectionPicker";
-import { checkSectionFields, sectionBody, type SectionValues } from "./sectionFields";
+import { checkSectionFields, sectionBody, type SectionValues, type UpdateSectionBody } from "./sectionFields";
+import { decideTimerSave } from "./timerSave";
 import type { SectionMutations } from "./sectionMutations";
 import type { SectionSheetErrors } from "./SectionSheet";
 import { resolveSectionFailure, type SectionOp } from "./resolveSectionFailure";
@@ -60,6 +61,12 @@ export interface SectionActions {
   addSectionRef: RefObject<HTMLButtonElement | null>;
   editRefFor(sectionId: string): (node: HTMLButtonElement | null) => void;
   removeRef(node: HTMLButtonElement | null): void;
+  /** Spec 10.7 AC16: the "Change {name}'s timer?" confirm, open while a timer change that clears recorded data waits. */
+  timerConfirm: { title: string } | null;
+  confirmTimerChange(): Promise<void>;
+  cancelTimerChange(): void;
+  /** The sheet's Save button, where Cancel on the timer confirm returns focus. */
+  saveRef(node: HTMLButtonElement | null): void;
 }
 
 type FocusTarget =
@@ -69,6 +76,8 @@ type FocusTarget =
   | { kind: "remove" }
   /** After a failed move: the card's Section select (the browser moved focus off it while it was disabled). */
   | { kind: "select"; exerciseId: string }
+  /** Spec 10.7 AC16: Cancel on the timer confirm returns to the sheet's Save. */
+  | { kind: "save" }
   | null;
 
 const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null, timer: null };
@@ -98,6 +107,10 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const editNodes = useRef(new Map<string, HTMLButtonElement>());
   const editCallbacks = useRef(new Map<string, (node: HTMLButtonElement | null) => void>());
   const removeNode = useRef<HTMLButtonElement | null>(null);
+  const saveNode = useRef<HTMLButtonElement | null>(null);
+  // Spec 10.7 AC16: the body a confirmed "Change and clear" sends, and the confirm's title.
+  const heldTimerChange = useRef<{ sectionId: string; body: UpdateSectionBody } | null>(null);
+  const [timerConfirm, setTimerConfirm] = useState<{ title: string } | null>(null);
 
   // jsdom's dialog shim does not restore focus, and after a remove the opener is gone: focus is explicit,
   // after the commit that closed the dialogs. A target that is still disabled (the write's busy state) waits.
@@ -110,6 +123,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
         ? addSectionRef.current
         : target.kind === "remove"
           ? removeNode.current
+          : target.kind === "save"
+            ? saveNode.current
           : target.kind === "select"
             ? (document.getElementById(sectionPickerId(target.exerciseId)) as HTMLSelectElement | null)
             : (editNodes.current.get(target.sectionId) ?? (target.wait ? null : addSectionRef.current));
@@ -132,6 +147,9 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const removeRef = useCallback((node: HTMLButtonElement | null) => {
     removeNode.current = node;
   }, []);
+  const saveRef = useCallback((node: HTMLButtonElement | null) => {
+    saveNode.current = node;
+  }, []);
 
   const sheet = view !== null && view.open ? { session: view.session, mode: view.mode, sectionId: view.sectionId } : null;
 
@@ -146,6 +164,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     closedSessionRef.current = sessionRef.current;
     setView((v) => (v === null ? v : { ...v, open: false }));
     setRemoveOpen(false);
+    setTimerConfirm(null);
+    heldTimerChange.current = null;
     setErrors(NO_ERRORS);
     pendingFocus.current = focus;
   }
@@ -203,10 +223,17 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
         formOrBanner(failure.text);
         await refetch(); // AC13: the row's count refreshes, so Add section shows the cap
         return;
+      case "result-exists":
+        // Spec 10.7 AC18: another device logged times. Re-read, keep the sheet and what was typed; the next Save
+        // decides again from the fresh section, so it asks first.
+        await refetch();
+        setErrors({ ...NO_ERRORS, form: failure.text });
+        return;
       case "fields":
         if (ui.inSheet) {
-          const unmatched = failure.name === null && failure.notes === null;
-          setErrors({ name: failure.name, notes: failure.notes, form: unmatched ? SECTION_COPY.fieldsGeneric : null });
+          const timer = failure.timer ?? null;
+          const unmatched = failure.name === null && failure.notes === null && timer === null;
+          setErrors({ name: failure.name, notes: failure.notes, form: unmatched ? SECTION_COPY.fieldsGeneric : null, timer });
         } else {
           setBanner({ tone: "error", text: SECTION_COPY.fieldsGeneric });
         }
@@ -273,24 +300,59 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       closeAll(openerOf(sheet)); // nothing changed: no request
       return;
     }
-    if (!begin()) return;
-    try {
-      if (sheet.mode === "add") {
+    if (sheet.mode === "add") {
+      if (!begin()) return;
+      try {
         const created = await mutations.add(sectionBody("add", values));
         // At the cap Add section is disabled and cannot take focus: the new section's Edit does.
         const atCap = workout.sections.length + 1 >= ROUTINE_SECTIONS_MAX;
         closeAll(atCap ? { kind: "edit", sectionId: created.id, wait: true } : { kind: "add" });
         announce(sectionAdded(created.name));
-      } else {
-        await mutations.update(stored!.id, body);
-        closeAll(openerOf(sheet));
-        announce(SECTION_COPY.saved);
+      } catch (error) {
+        await fail("add-section", error, { inSheet: true, focus: openerOf(sheet) });
+      } finally {
+        end();
       }
+      return;
+    }
+    const update = body as UpdateSectionBody;
+    // Spec 10.7 AC16–AC17: a timer change that would clear what is recorded asks first and sends nothing yet.
+    if (values.timer !== undefined && decideTimerSave(stored!, values.timer).kind === "confirm") {
+      heldTimerChange.current = { sectionId: stored!.id, body: update };
+      setTimerConfirm({ title: changeTimerTitle(stored!.name) });
+      return;
+    }
+    await saveSection(stored!.id, update);
+  }
+
+  /** The edit sheet's write. `Timer saved` when the body changes the timer (AC15), `Section saved` otherwise. */
+  async function saveSection(sectionId: string, body: UpdateSectionBody) {
+    const view = sheet;
+    if (!begin()) return;
+    try {
+      await mutations.update(sectionId, body);
+      closeAll(openerOf(view));
+      announce("timer" in body ? SECTION_COPY.timerSaved : SECTION_COPY.saved);
     } catch (error) {
-      await fail(sheet.mode === "add" ? "add-section" : "update-section", error, { inSheet: true, focus: openerOf(sheet) });
+      await fail("update-section", error, { inSheet: true, focus: openerOf(view) });
     } finally {
+      setTimerConfirm(null);
+      heldTimerChange.current = null;
       end();
     }
+  }
+
+  async function confirmTimerChange() {
+    const held = heldTimerChange.current;
+    if (held === null || sheet === null || sheet.session <= closedSessionRef.current) return;
+    await saveSection(held.sectionId, { ...held.body, discardResult: true });
+  }
+
+  function cancelTimerChange() {
+    if (submittingRef.current) return;
+    heldTimerChange.current = null;
+    setTimerConfirm(null);
+    pendingFocus.current = { kind: "save" };
   }
 
   async function removeSection(sectionId: string) {
@@ -358,5 +420,9 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     addSectionRef,
     editRefFor,
     removeRef,
+    timerConfirm,
+    confirmTimerChange,
+    cancelTimerChange,
+    saveRef,
   };
 }
