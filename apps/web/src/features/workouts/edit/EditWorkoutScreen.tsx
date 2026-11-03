@@ -47,6 +47,11 @@ import { LastSetDialog } from "./LastSetDialog";
 import styles from "./EditWorkoutScreen.module.css";
 import { editSucceeded, useEditAddExercise, useEditRemoveExercise, useIsEditWritePending } from "./useEditMutations";
 import { useEditSectionMutations } from "./useEditSectionMutations";
+import { useEditResultMutations } from "./useEditResultMutations";
+import { RESULT_COPY } from "../result/resultCopy";
+import { ResultSheet } from "../result/ResultSheet";
+import { useResultActions } from "../result/useResultActions";
+import { resolveSectionFailure } from "../sections/resolveSectionFailure";
 import { useRevealMoved } from "../useRevealMoved";
 
 type StructureOp = Extract<EditOperation, "add-exercise" | "move-exercise" | "regroup" | "remove-exercise">;
@@ -283,6 +288,25 @@ function EditBody({
     structureLock,
   });
 
+  // Spec 10.7 AC42: Log result over REST. A failure on the first write is the AC25 table; after one landed, the
+  // partial line (the detail was re-read); a 404 means the section is gone.
+  const resultWriter = useEditResultMutations(workoutId);
+  const resultActions = useResultActions({
+    workout,
+    writer: resultWriter,
+    announce: setAnnouncement,
+    failureText: ({ failedAt, error }) => {
+      if (failedAt > 0) return RESULT_COPY.partial;
+      const failure = resolveSectionFailure("update-section", error, { offlineText: EDIT_COPY.offline });
+      if (failure.type === "missing") {
+        setAnnouncement(RESULT_COPY.sectionGone);
+        void refetchDetail();
+        return null;
+      }
+      return failure.type === "offline" || failure.type === "rate-limited" || failure.type === "retry" ? failure.text : RESULT_COPY.partial;
+    },
+  });
+
   // Spec 10.6 AC17: the shared section controls, on this screen's lock, banner, status line and vanished view.
   const sectionActions = useSectionActions({
     workout,
@@ -517,6 +541,9 @@ function EditBody({
                 {...(segment.editable && segment.sectionId !== null
                   ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                   : {})}
+                {...(segment.timing !== null && segment.sectionId !== null
+                  ? { onLogResult: () => resultActions.open(segment.sectionId!), logResultRef: resultActions.logResultRefFor(segment.sectionId) }
+                  : {})}
               >
                 {body}
               </SessionSection>
@@ -581,6 +608,17 @@ function EditBody({
           <p>{removing ? `${plural(removing.sets.length, "set", "sets")} will be deleted.` : null}</p>
         </ConfirmDialog>
         <SectionDialogs actions={sectionActions} sections={workout.sections} />
+        {resultActions.sheet ? (
+          <ResultSheet
+            key={resultActions.sheet.openCount}
+            open
+            section={resultActions.sheet.section}
+            busy={resultActions.busy}
+            formError={resultActions.formError}
+            onCancel={resultActions.close}
+            onSave={(draft) => void resultActions.save(draft)}
+          />
+        ) : null}
         <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} workoutId={workoutId} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
 
         <ActionBar data-testid="edit-bar">

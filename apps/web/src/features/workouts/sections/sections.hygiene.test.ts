@@ -57,7 +57,8 @@ describe("10.6 AC27 — boundaries with the edit screen", () => {
   const editDir = join(here, "..", "edit");
   const EDIT_SOURCES = readdirSync(editDir).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
   // Spec 10.7 Phase B: useTimedGrouping is shared by both screens (each passes its own regroup), like useSectionActions.
-  const ALLOWED = new Set(["useSectionActions", "SectionDialogs", "NewExercisesLine", "sectionCopy", "sectionMutations", "SectionPicker", "useTimedGrouping"]);
+  // Spec 10.7 Phase C: the edit screen's Log result failures go through the shared failure table.
+  const ALLOWED = new Set(["useSectionActions", "SectionDialogs", "NewExercisesLine", "sectionCopy", "sectionMutations", "SectionPicker", "useTimedGrouping", "resolveSectionFailure"]);
 
   it("sections/ imports nothing from edit/", () => {
     const hits = SOURCES.flatMap((f) => imports(read(f)).filter((i) => /(^|\/)edit\//.test(i)).map((i) => `${f}: ${i}`));
