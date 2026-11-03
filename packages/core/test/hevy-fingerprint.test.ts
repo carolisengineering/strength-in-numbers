@@ -203,7 +203,9 @@ describe("09.5 AC29 — a timed workout's source is unchanged by the #238 / #241
 
   it("a section with no timer key reads as untimed and does not throw (#238)", () => {
     const d = timed();
-    const keyless = { ...d, sections: d.sections.map((s, i) => (i === 2 ? (({ timer: _t, ...rest }) => rest)(s) : s)) } as unknown as WorkoutDetail;
+    const cooldown: Partial<WorkoutDetail["sections"][number]> = { ...d.sections[2]! };
+    delete cooldown.timer;
+    const keyless = { ...d, sections: [d.sections[0]!, d.sections[1]!, cooldown] } as unknown as WorkoutDetail;
     expect(hevyFingerprintSource(keyless)).toBe(GOLDEN_TIMED);
   });
 });

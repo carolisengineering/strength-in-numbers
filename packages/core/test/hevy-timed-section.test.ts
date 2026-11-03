@@ -59,6 +59,16 @@ describe("09.5 §6.7 — the marker's duration", () => {
   });
 });
 
+describe("09.5 §6.7 — a capped result on a For Time section sends no duration (#243)", () => {
+  // The result rules make "capped with no cap" impossible; if it ever arrives, no duration set is sent.
+  const capped = result({ capped: true, rounds: 3, reps: 4 });
+
+  it("For Time (no cap) + capped → null; Time Cap 15:00 + capped → the cap", () => {
+    expect(hevyTimerDurationSeconds(timed({ format: "time_cap", capSeconds: null }, { result: capped }))).toBeNull();
+    expect(hevyTimerDurationSeconds(timed(TIME_CAP, { result: capped }))).toBe(900);
+  });
+});
+
 describe("09.5 AC29 / §6.7 — timedSectionData, the one timed check (#238)", () => {
   type Sectionish = Pick<WorkoutSection, "timer" | "result" | "roundTimes">;
   const roundTimes = rounds(221, 218);

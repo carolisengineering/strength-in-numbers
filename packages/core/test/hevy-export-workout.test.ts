@@ -280,6 +280,36 @@ describe("09.5 AC26 — a timed section is the workout placeholder", () => {
   });
 });
 
+describe("09.5 AC26 / §6.7 — a split timed section's body is unchanged by the #240 refactor", () => {
+  // Computed from buildHevyWorkout on main 1983850, before the per-section line and duration.
+  const GOLDEN_SPLIT = String.raw`{"title":"Push","description":null,"start_time":"2026-10-01T15:00:00.000Z","end_time":"2026-10-01T16:00:00.000Z","is_private":true,"exercises":[{"exercise_template_id":"WORK","superset_id":null,"notes":"Main\nSet Timer 5 × 5:00 · 3:41, 3:38, 3:30 · total 10:49\nRx","sets":[{"type":"normal","duration_seconds":649}]},{"exercise_template_id":"T0","superset_id":null,"notes":null,"sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"T1","superset_id":null,"notes":null,"sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"WORK","superset_id":null,"notes":"Main\nSet Timer 5 × 5:00 · 3:41, 3:38, 3:30 · total 10:49\nRx","sets":[]},{"exercise_template_id":"T2","superset_id":null,"notes":null,"sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"WORK","superset_id":null,"notes":"Finisher\nAMRAP 12:00 · 5 rounds + 7 reps","sets":[{"type":"normal","duration_seconds":720}]},{"exercise_template_id":"T3","superset_id":null,"notes":null,"sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]}]}`;
+  const GOLDEN_MARKERLESS = String.raw`{"title":"Push","description":null,"start_time":"2026-10-01T15:00:00.000Z","end_time":"2026-10-01T16:00:00.000Z","is_private":true,"exercises":[{"exercise_template_id":"T0","superset_id":null,"notes":"Main\nSet Timer 5 × 5:00 · 3:41, 3:38, 3:30 · total 10:49\nRx","sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"T1","superset_id":null,"notes":null,"sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"T2","superset_id":null,"notes":"Main\nSet Timer 5 × 5:00 · 3:41, 3:38, 3:30 · total 10:49\nRx","sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]},{"exercise_template_id":"T3","superset_id":null,"notes":"Finisher\nAMRAP 12:00 · 5 rounds + 7 reps","sets":[{"type":"normal","weight_kg":60,"reps":5,"rpe":null}]}]}`;
+  const main = () => timed(0, "Main", SET_TIMER_5, { notes: "Rx", roundTimes: [FIVE_ROUNDS[2]!, FIVE_ROUNDS[0]!, FIVE_ROUNDS[1]!] });
+  const fin = () => timed(1, "Finisher", { format: "amrap", capSeconds: 720 }, { result: { ...noResult, rounds: 5, reps: 7 } });
+  const split = () =>
+    detail({
+      sections: [main(), fin()],
+      exercises: [exercise(0, { sectionId: main().id }), exercise(1), exercise(2, { sectionId: main().id }), exercise(3, { sectionId: fin().id })],
+    });
+
+  it("matches the pre-change golden: both Main markers carry the line, only the first its duration", () => {
+    expect(JSON.stringify(tbody(split()))).toBe(GOLDEN_SPLIT);
+  });
+
+  it("the same body without a marker pair is unchanged too", () => {
+    expect(JSON.stringify(body(split(), mappingFor(6, { placeholders: false })))).toBe(GOLDEN_MARKERLESS);
+  });
+
+  it("a section with no timer key exports like one with timer: null (#238)", () => {
+    const plain = section(2, "Cooldown", { notes: "easy" });
+    const keyless: Partial<WorkoutSection> = { ...plain };
+    delete keyless.timer;
+    const withKeyless = detail({ sections: [keyless as unknown as WorkoutSection], exercises: [exercise(0, { sectionId: plain.id })] });
+    const withNull = detail({ sections: [plain], exercises: [exercise(0, { sectionId: plain.id })] });
+    expect(tbody(withKeyless)).toEqual(tbody(withNull));
+  });
+});
+
 describe("09.5 AC26 / D16 — an empty timed section emits nothing", () => {
   it("a Time Cap section with a result and no exercises leaves the body as without it", () => {
     const tc = timed(1, "Finisher", { format: "time_cap", capSeconds: 900 }, { result: { ...noResult, finishSeconds: 860 } });

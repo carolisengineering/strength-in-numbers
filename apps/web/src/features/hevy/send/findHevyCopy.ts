@@ -8,7 +8,11 @@ const SAME_INSTANT_MS = 1000;
 
 export type FindResult = { kind: "found"; hevyWorkoutId: string } | { kind: "notFound" } | { kind: "inconclusive" };
 
-/** Exercises holding at least one set: section markers and exercises whose sets were dropped don't count (minor 262). */
+/**
+ * Exercises holding at least one set (minor 262). An untimed section marker and an exercise whose sets were all
+ * dropped don't count; a timed marker that carries its duration set (Spec 09.5 §6.7) does, on both the built body
+ * and Hevy's copy, so the comparison still agrees.
+ */
 export const withSets = (exercises: readonly { sets: readonly unknown[] }[]): number => exercises.filter((e) => e.sets.length > 0).length;
 
 /**
