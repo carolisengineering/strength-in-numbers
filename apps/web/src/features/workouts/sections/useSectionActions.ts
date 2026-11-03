@@ -71,7 +71,7 @@ type FocusTarget =
   | { kind: "select"; exerciseId: string }
   | null;
 
-const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null };
+const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null, timer: null };
 
 /**
  * Spec 10.6 §6.3 — the section controls' behavior, shared by the live and the edit screen. It owns the
@@ -276,7 +276,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     if (!begin()) return;
     try {
       if (sheet.mode === "add") {
-        const created = await mutations.add(body as { name: string; notes?: string });
+        const created = await mutations.add(sectionBody("add", values));
         // At the cap Add section is disabled and cannot take focus: the new section's Edit does.
         const atCap = workout.sections.length + 1 >= ROUTINE_SECTIONS_MAX;
         closeAll(atCap ? { kind: "edit", sectionId: created.id, wait: true } : { kind: "add" });

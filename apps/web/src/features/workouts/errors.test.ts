@@ -76,6 +76,13 @@ describe("10.6 AC13 — classifyWorkoutError knows the section cap", () => {
   });
 });
 
+describe("10.7 AC18 — classifyWorkoutError knows section-result-exists", () => {
+  it("409 section-result-exists → section-result-exists; section-timer-mismatch stays unknown (AC25)", () => {
+    expect(classifyWorkoutError(problem(409, "section-result-exists")).kind).toBe("section-result-exists");
+    expect(classifyWorkoutError(problem(409, "section-timer-mismatch")).kind).toBe("unknown");
+  });
+});
+
 describe("Minor 67 — isWorkoutGone", () => {
   it("a 404 means gone", () => expect(isWorkoutGone(problem(404, "not-found"))).toBe(true));
   it.each([

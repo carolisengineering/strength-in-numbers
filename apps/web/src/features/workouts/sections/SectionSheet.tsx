@@ -5,6 +5,7 @@ import { Field } from "../../../ui/Field";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
 import { SECTION_COPY } from "./sectionCopy";
+import type { TimerFieldErrors } from "../../sectionTimer/timerFields";
 import type { SectionValues } from "./sectionFields";
 import styles from "./SectionSheet.module.css";
 
@@ -12,6 +13,8 @@ export interface SectionSheetErrors {
   readonly name: string | null;
   readonly notes: string | null;
   readonly form: string | null;
+  /** Spec 10.7 AC25: the server's timer field errors (absent = none). */
+  readonly timer?: TimerFieldErrors | null;
 }
 
 export interface SectionSheetProps {

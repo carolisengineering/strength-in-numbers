@@ -26,6 +26,8 @@ describe("10.6 AC27 — boundaries", () => {
         "sectionCopy.ts",
         "sectionFields.ts",
         "sectionMutations.ts",
+        // Spec 10.7 Phase B.
+        "timerSave.ts",
         "useSectionActions.ts",
         "useSectionMutations.ts",
       ].sort(),

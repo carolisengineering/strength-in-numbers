@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CreateWorkoutSection, UpdateWorkoutSection } from "@sin/core";
 import { track } from "../../../observability/track";
 import { WORKOUT_KEYS, useWorkoutClient } from "../queries";
 import { rereadUntilLanded } from "../readGuard";
@@ -19,7 +20,7 @@ export function useSectionMutations(workoutId: string): SectionMutations {
 
   const add = useMutation({
     ...base,
-    mutationFn: (body: { name: string; notes?: string }) => client.addSection(workoutId, body),
+    mutationFn: (body: CreateWorkoutSection) => client.addSection(workoutId, body),
     onSuccess: () => {
       track("section_added");
       return refresh();
@@ -27,7 +28,7 @@ export function useSectionMutations(workoutId: string): SectionMutations {
   });
   const update = useMutation({
     ...base,
-    mutationFn: ({ id, body }: { id: string; body: { name?: string; notes?: string | null } }) => client.updateSection(id, body),
+    mutationFn: ({ id, body }: { id: string; body: UpdateWorkoutSection }) => client.updateSection(id, body),
     onSuccess: () => {
       track("section_edited");
       return refresh();
