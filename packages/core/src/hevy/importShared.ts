@@ -1,7 +1,7 @@
 import { ROUTINE_SECTIONS_MAX, SECTION_NAME_MAX } from "../dto/routine-section.js";
 import type { Modality, UnitPreference } from "../enums.js";
-import { cleanLine, cleanNotes } from "./importText.js";
 import { formatClock } from "../timer.js";
+import { cleanLine, cleanNotes } from "./importText.js";
 import { sectionFromPlaceholder } from "./sections.js";
 import type { HevyPair } from "./types.js";
 
@@ -60,7 +60,8 @@ export function placeholderSection(
 ): { name: string; notes: string | null; nameCut: boolean; notesCut: boolean } {
   // A lone CR splits a line like LF (minors 150, 211): `sectionFromPlaceholder` splits on CRLF, CR and LF.
   const notes = cleanNotes(rawNotes, Number.MAX_SAFE_INTEGER).value;
-  const seconds = durationSeconds === null ? 0 : Math.round(durationSeconds);
+  // #237: each Hevy duration is finite, but their sum can overflow to Infinity; that adds no Time line.
+  const seconds = durationSeconds === null || !Number.isFinite(durationSeconds) ? 0 : Math.round(durationSeconds);
   const section = sectionFromPlaceholder(role, notes, seconds > 0 ? `Time ${formatClock(seconds)}` : null);
   return {
     name: cleanLine(section.name, SECTION_NAME_MAX).value ?? "Workout",
