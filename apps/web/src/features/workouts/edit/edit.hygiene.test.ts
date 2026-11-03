@@ -12,6 +12,11 @@ const changeTimeSources = import.meta.glob(["../changeTime/**/*.ts", "../changeT
   import: "default",
   eager: true,
 }) as Record<string, string>;
+// Spec 10.7 AC42: the shared Log result modules the edit screen renders (everything but the live writer).
+const sharedResultSources = import.meta.glob(
+  ["../result/**/*.ts", "../result/**/*.tsx", "!../result/**/*.test.ts", "!../result/**/*.test.tsx", "!../result/useResultMutations.ts"],
+  { query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
 // Spec 10.6 AC18: the shared section modules the edit screen renders (everything but the live hook file).
 const sharedSectionSources = import.meta.glob(
   ["../sections/**/*.ts", "../sections/**/*.tsx", "!../sections/**/*.test.ts", "!../sections/**/*.test.tsx", "!../sections/useSectionMutations.ts"],
@@ -70,6 +75,16 @@ describe("18.0 AC46 — edit modules stay off the live machinery", () => {
     const editScreen = Object.entries(editSources).find(([p]) => p === "./EditWorkoutScreen.tsx")![1];
     expect(editScreen).toMatch(/sections\/useTimedGrouping/);
     expect(Object.values(activeSession)[0]!).toMatch(/sections\/useTimedGrouping/);
+  });
+
+  it("10.7 AC42 — the shared Log result modules name none of the live machinery, and no edit module imports the live writer", () => {
+    expect(Object.keys(sharedResultSources).length).toBeGreaterThanOrEqual(5);
+    const offenders = Object.entries(sharedResultSources)
+      .filter(([, source]) => LIVE_MACHINERY.test(stripComments(source)) || /\buseWorkoutClient\b|outbox\//.test(stripComments(source)))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+    expect(Object.keys(editSources)).toContain("./useEditResultMutations.ts");
+    expect(Object.entries(editSources).filter(([, s]) => /result\/useResultMutations/.test(stripComments(s))).map(([p]) => p)).toEqual([]);
   });
 
   it("ActiveSession gains no edit-mode branch", () => {

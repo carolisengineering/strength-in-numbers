@@ -1,4 +1,4 @@
-import type { SetEntry, WorkoutDetail, WorkoutExercise } from "@sin/core";
+import type { SetEntry, WorkoutDetail, WorkoutExercise, WorkoutSection } from "@sin/core";
 
 const bySetNumber = (a: SetEntry, b: SetEntry): number => a.setNumber - b.setNumber;
 
@@ -27,6 +27,27 @@ export function withSetRemoved(detail: WorkoutDetail, setId: string): WorkoutDet
     ...detail,
     exercises: detail.exercises.map((e) => (e.sets.some(named) ? { ...e, sets: e.sets.filter((s) => !named(s)) } : e)),
   };
+}
+
+/** Spec 10.7 AC37 / AC42: a section response is the whole truth for its row — replace it by id, keeping position order. Pure. */
+export function withSection(detail: WorkoutDetail, section: WorkoutSection): WorkoutDetail {
+  if (!detail.sections.some((s) => s.id === section.id)) return detail;
+  return { ...detail, sections: detail.sections.map((s) => (s.id === section.id ? section : s)).sort((a, b) => a.position - b.position) };
+}
+
+/** Spec 10.7 AC37 / AC42: a `204` clear — drop one round, or null the result, of the cached section. Pure. */
+export function withSectionCleared(detail: WorkoutDetail, sectionId: string, what: { round: number } | "result"): WorkoutDetail {
+  const section = detail.sections.find((s) => s.id === sectionId);
+  if (!section) return detail;
+  const next =
+    what === "result"
+      ? section.result === null
+        ? section
+        : { ...section, result: null }
+      : section.roundTimes.some((t) => t.round === what.round)
+        ? { ...section, roundTimes: section.roundTimes.filter((t) => t.round !== what.round) }
+        : section;
+  return next === section ? detail : { ...detail, sections: detail.sections.map((s) => (s.id === sectionId ? next : s)) };
 }
 
 /** Write a note edit's result into the cached workout: only `notes` and `updatedAt` change (Spec 10.3 AC28). Pure. */

@@ -9,10 +9,20 @@ import type { SectionActions } from "./useSectionActions";
  * state; Spec 10.7 AC16 adds the timer confirm. The sheet is keyed per opening, so its text starts fresh each
  * time and is dropped on close.
  */
-export function SectionDialogs({ actions, sections }: { actions: SectionActions; sections: readonly WorkoutSection[] }) {
+export function SectionDialogs({
+  actions,
+  sections,
+  timerLockFor,
+}: {
+  actions: SectionActions;
+  sections: readonly WorkoutSection[];
+  /** Spec 10.7 AC40: the lock line for a section with unsent timer entries, else `undefined` (the live screen passes it). */
+  timerLockFor?: (sectionId: string) => string | undefined;
+}) {
   const view = actions.sheetView;
   if (view === null) return null;
   const section = view.sectionId === null ? undefined : sections.find((s) => s.id === view.sectionId);
+  const timerLocked = section && timerLockFor ? timerLockFor(section.id) : undefined;
   return (
     <>
       <SectionSheet
@@ -25,6 +35,7 @@ export function SectionDialogs({ actions, sections }: { actions: SectionActions;
         onSubmit={(values) => void actions.submitSheet(values)}
         onClose={actions.closeSheet}
         saveRef={actions.saveRef}
+        {...(timerLocked !== undefined ? { timerLocked } : {})}
         {...(view.mode === "edit" ? { onRemove: actions.requestRemove, removeRef: actions.removeRef } : {})}
       />
       {view.mode === "edit" && section ? (

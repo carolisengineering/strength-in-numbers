@@ -42,7 +42,8 @@ function todaysOps(): { createOp: OutboxOp; noteOp: OutboxOp } {
   return { createOp: createOp!, noteOp: noteOp! };
 }
 /** A later bundle's op (Phase C's `round`), which this bundle does not know. */
-const roundOp = (base: OutboxOp) => ({ ...base, id: "op-round", kind: "round", sectionId: "s1", round: 2, body: { seconds: 515 } });
+/** A later bundle's op kind ("lap"); round and result became known kinds in Spec 10.7 Phase C. */
+const roundOp = (base: OutboxOp) => ({ ...base, id: "op-round", kind: "lap", sectionId: "s1", round: 2, body: { seconds: 515 } });
 
 function fileWithUnknown() {
   const { createOp, noteOp } = todaysOps();
@@ -107,7 +108,7 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
     const calls = JSON.stringify(observability.reportError.mock.calls, (_k, v: unknown) => (v instanceof Error ? { message: v.message } : v));
     expect(calls).not.toContain("s1");
     expect(calls).not.toContain("515");
-    expect(calls).not.toContain("round");
+    expect(calls).not.toContain("lap");
   });
 
   it("a reload before anything is written skips again, reports again, and never throws (Review Focus 6)", () => {
@@ -116,7 +117,7 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
     expect(() => make({ storage })).not.toThrow();
     expect(make({ storage }).getState().ops.map((o) => o.kind)).toEqual(["create", "note"]);
     expect(observability.reportError).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(storage.get(OUTBOX_KEY)!).ops.map((o: { kind: string }) => o.kind)).toEqual(["create", "round", "note"]);
+    expect(JSON.parse(storage.get(OUTBOX_KEY)!).ops.map((o: { kind: string }) => o.kind)).toEqual(["create", "lap", "note"]);
   });
 
   describe("still unreadable as today", () => {

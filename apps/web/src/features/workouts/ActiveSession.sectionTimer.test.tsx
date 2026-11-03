@@ -329,8 +329,8 @@ describe("10.7 AC19 — the timed heading on the live screen", () => {
     const main = screen.getByRole("region", { name: "Main" });
     expect(within(main).getByText("Set Timer 5 × 5:00 · total 7:19")).toBeInTheDocument();
     expect(within(main).getByText("Rounds 3:41 · 3:38")).toBeInTheDocument();
-    // Phase B passes no onLogResult (its sheet is Phase C).
-    expect(within(main).queryByRole("button", { name: /Log result/ })).toBeNull();
+    // Phase C wires Log result on the live screen (Phase B showed none).
+    expect(within(main).getByRole("button", { name: "Log result for Main" })).toBeInTheDocument();
     const other = screen.getByRole("region", { name: "Other exercises" });
     expect(within(other).queryByText(/Set Timer|^Rounds /)).toBeNull();
   });

@@ -12,7 +12,8 @@ export function classify(kind: OutboxOp["kind"], error: unknown): Verdict {
   if (!(error instanceof ApiError)) return "fail";
   if (error.isNetworkError) return "retry";
   const { status } = error;
-  if (status === 404 && (kind === "delete" || kind === "note")) return "done";
+  // A 404 means the target is gone: for a delete, a note, or a timer entry (Spec 10.7 AC36), nothing is left to do.
+  if (status === 404 && (kind === "delete" || kind === "note" || kind === "round" || kind === "result")) return "done";
   if (status >= 500 || status === 408 || status === 429) return "retry";
   return "fail";
 }

@@ -103,12 +103,12 @@ describe("10.7 AC16 — confirm before clearing (edit)", () => {
 });
 
 describe("10.7 AC19 — the timed heading on the edit screen", () => {
-  it("shows the plan, score and times line, with no Log result button in Phase B", async () => {
+  it("shows the plan, score and times line, and (since Phase C) Log result", async () => {
     await openEdit({ sections: [{ name: "Main", timer: SET5, roundTimes: TWO_ROUNDS }], exercises: [ex("Thruster", 0)] });
     const main = screen.getByRole("region", { name: "Main" });
     expect(within(main).getByText("Set Timer 5 × 5:00 · total 7:19")).toBeInTheDocument();
     expect(within(main).getByText("Rounds 3:41 · 3:38")).toBeInTheDocument();
-    expect(within(main).queryByRole("button", { name: /Log result/ })).toBeNull();
+    expect(within(main).getByRole("button", { name: "Log result for Main" })).toBeInTheDocument();
   });
 });
 

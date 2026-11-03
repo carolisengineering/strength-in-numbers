@@ -96,7 +96,8 @@ describe("10.7 AC58 — Phase B privacy and text as text", () => {
         </MemoryRouter>
       </>,
     );
-    expect(screen.getByRole("button", { name: `Log result for ${MARKUP}` })).toBeInTheDocument();
+    // The component-level heading and (since Phase C) the live screen's both name the button after the section.
+    expect(screen.getAllByRole("button", { name: `Log result for ${MARKUP}` }).length).toBeGreaterThan(0);
     expect(screen.getByText(`${MARKUP} · Set Timer 5 × 5:00 · total 7:19`)).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
   });

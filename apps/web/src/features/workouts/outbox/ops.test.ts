@@ -171,7 +171,8 @@ describe("06.2 AC7 — the persisted file schema", () => {
 
 describe("10.7 AC66 — parseOutboxFile", () => {
   const note = (): OutboxOp => ({ ...base(), kind: "note", body: { notes: "Pause" } });
-  const round = () => ({ ...base(), kind: "round", sectionId: "s1", round: 2, body: { seconds: 515 } });
+  // A kind a later bundle might add ("lap"); round and result became known in Spec 10.7 Phase C.
+  const round = () => ({ ...base(), kind: "lap", sectionId: "s1", round: 2, body: { seconds: 515 } });
   const file = (ops: unknown[]) => ({ v: 1, userId: "u", ops, idMap: { [KEY9]: { setId: SET, workoutId: "w" } } });
 
   it("skips an unknown kind and keeps the rest in order, with the id map", () => {
@@ -200,7 +201,7 @@ describe("10.7 AC66 — parseOutboxFile", () => {
     expect(parseOutboxFile(value)).toBeNull();
   });
 
-  it("the known kinds are exactly create, update, delete and note", () => {
-    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "note", "update"]);
+  it("the known kinds are exactly the set, note and timer-entry kinds", () => {
+    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "note", "result", "round", "update"]);
   });
 });
