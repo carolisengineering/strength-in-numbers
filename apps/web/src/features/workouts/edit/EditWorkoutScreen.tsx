@@ -27,7 +27,7 @@ import { WORKOUT_KEYS, useEditWorkoutClient, useEditableWorkout } from "../queri
 import { reportUnexpected } from "../reportUnexpected";
 import { ScreenModeContext, type EditOutcome, type EditScreenMode } from "../screenMode";
 import { sectionSegments } from "../sectionSegments";
-import { SessionSection } from "../SessionSectionHeading";
+import { SessionSection, segmentCapLine } from "../SessionSectionHeading";
 import { NewExercisesLine } from "../sections/NewExercisesLine";
 import { SECTION_COPY } from "../sections/sectionCopy";
 import { SectionDialogs } from "../sections/SectionDialogs";
@@ -499,6 +499,8 @@ function EditBody({
                 notes={segment.notes}
                 emptyText={SECTION_COPY.empty}
                 empty={segment.rows.length === 0}
+                timing={segment.timing}
+                capLine={segmentCapLine(segment)}
                 {...(segment.editable && segment.sectionId !== null
                   ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                   : {})}

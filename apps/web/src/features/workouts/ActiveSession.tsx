@@ -49,7 +49,7 @@ import { useSectionActions } from "./sections/useSectionActions";
 import { useSectionMutations } from "./sections/useSectionMutations";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
 import { SessionClock } from "./SessionClock";
-import { SessionSection } from "./SessionSectionHeading";
+import { SessionSection, segmentCapLine } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
@@ -809,6 +809,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               notes={segment.notes}
               emptyText={SECTION_COPY.empty}
               empty={segment.rows.length === 0}
+              timing={segment.timing}
+              capLine={segmentCapLine(segment)}
               {...(segment.editable && segment.sectionId !== null
                 ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                 : {})}

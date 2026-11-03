@@ -323,6 +323,39 @@ describe("10.7 AC24 — online-only timer writes", () => {
   });
 });
 
+describe("10.7 AC19 — the timed heading on the live screen", () => {
+  it("shows the plan with its score and the times line; Other exercises shows neither", async () => {
+    await setup({ sections: [{ name: "Main", timer: SET5, roundTimes: TWO_ROUNDS }], exercises: [ex("Thruster", 0), ex("Row Erg")] });
+    const main = screen.getByRole("region", { name: "Main" });
+    expect(within(main).getByText("Set Timer 5 × 5:00 · total 7:19")).toBeInTheDocument();
+    expect(within(main).getByText("Rounds 3:41 · 3:38")).toBeInTheDocument();
+    // Phase B passes no onLogResult (its sheet is Phase C).
+    expect(within(main).queryByRole("button", { name: /Log result/ })).toBeNull();
+    const other = screen.getByRole("region", { name: "Other exercises" });
+    expect(within(other).queryByText(/Set Timer|^Rounds /)).toBeNull();
+  });
+
+  it("Change and clear: the times line is gone after the re-read", async () => {
+    const { user } = await setup(timed());
+    const dialog = await openEdit(user);
+    await chooseAmrap(user, dialog);
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Change Main's timer?" })).getByRole("button", { name: "Change and clear" }));
+    const main = screen.getByRole("region", { name: "Main" });
+    expect(await within(main).findByText("AMRAP 12:00")).toBeInTheDocument();
+    expect(within(main).queryByText(/^Rounds /)).toBeNull();
+  });
+});
+
+describe("10.7 AC23 — the cap line on a workout", () => {
+  it("a timed section of 9 rows with the first 8 grouped shows the line; ten loose rows don't", async () => {
+    const nine = Array.from({ length: 9 }, (_, i) => ex(`E${i + 1}`, 0, { supersetGroup: i < 8 ? 1 : null }));
+    await setup({ sections: [{ name: "Main", timer: SET5 }, { name: "Loose", timer: SET5 }], exercises: [...nine, ...Array.from({ length: 10 }, (_, i) => ex(`L${i + 1}`, 1))] });
+    expect(within(screen.getByRole("region", { name: "Main" })).getByText("Only the first 8 exercises are grouped.")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Loose" })).queryByText("Only the first 8 exercises are grouped.")).toBeNull();
+  });
+});
+
 describe("10.7 AC25 — timer field errors in the sheet", () => {
   it("a 422 on timer.rounds shows the Rounds text under Rounds", async () => {
     const { user, fake } = await setup(untimedRecorded());

@@ -1,7 +1,14 @@
-import { groupBySection, type WorkoutSection } from "@sin/core";
+import { groupBySection, type RoundTime, type SectionResult, type SectionTimer, type WorkoutSection } from "@sin/core";
 import type { SupersetRow } from "./supersetRows";
 
 export const OTHER_EXERCISES_HEADING = "Other exercises";
+
+/** Spec 10.7 AC19: what a timed section's heading draws — its plan, its result and its round times. */
+export interface SectionTiming {
+  readonly timer: SectionTimer;
+  readonly result: SectionResult | null;
+  readonly roundTimes: readonly RoundTime[];
+}
 
 export interface SectionSegment {
   /** Stable React key within one render. */
@@ -17,6 +24,8 @@ export interface SectionSegment {
   readonly editable: boolean;
   /** Index in the position-ordered rows of this segment's first row — the offset of its absolute positions (AC26). */
   readonly start: number;
+  /** Spec 10.7 AC19: only on a timed real section's FIRST segment (`editable`); `null` everywhere else. */
+  readonly timing: SectionTiming | null;
 }
 
 interface Draft {
@@ -32,7 +41,7 @@ interface Draft {
  * or is a trailing loose segment (else last). Pure.
  */
 export function sectionSegments(rows: readonly SupersetRow[], sections: readonly WorkoutSection[]): SectionSegment[] {
-  if (sections.length === 0) return [{ key: "loose-start-0", heading: null, notes: null, rows, start: 0, sectionId: null, editable: false }];
+  if (sections.length === 0) return [{ key: "loose-start-0", heading: null, notes: null, rows, start: 0, sectionId: null, editable: false, timing: null }];
   const known = new Map(sections.map((s) => [s.id as string, s]));
   const sectionOf = (row: SupersetRow): string | null => (row.sectionId !== null && known.has(row.sectionId) ? row.sectionId : null);
 
@@ -65,7 +74,7 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
     if (d.section === null) {
       const key = lastSectionId === null ? `loose-start-${looseRuns}` : `loose-from-${d.rows[0]!.exercise.id}`;
       looseRuns += 1;
-      return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start, sectionId: null, editable: false };
+      return { key, heading: lastSectionId === null ? null : OTHER_EXERCISES_HEADING, notes: null, rows: d.rows, start: d.start, sectionId: null, editable: false, timing: null };
     }
     looseRuns = 0;
     const occurrence = noted.get(d.section.id) ?? 0;
@@ -79,6 +88,10 @@ export function sectionSegments(rows: readonly SupersetRow[], sections: readonly
       start: d.start,
       sectionId: d.section.id,
       editable: occurrence === 0,
+      timing:
+        occurrence === 0 && d.section.timer !== null
+          ? { timer: d.section.timer, result: d.section.result, roundTimes: d.section.roundTimes }
+          : null,
     };
   });
 }

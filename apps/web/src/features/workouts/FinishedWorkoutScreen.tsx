@@ -150,7 +150,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
           return segment.heading === null ? (
             <Fragment key={segment.key}>{body}</Fragment>
           ) : (
-            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes}>
+            <SessionSection key={segment.key} heading={segment.heading} notes={segment.notes} timing={segment.timing}>
               {body}
             </SessionSection>
           );

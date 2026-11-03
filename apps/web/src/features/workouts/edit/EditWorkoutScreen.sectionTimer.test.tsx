@@ -102,6 +102,16 @@ describe("10.7 AC16 — confirm before clearing (edit)", () => {
   });
 });
 
+describe("10.7 AC19 — the timed heading on the edit screen", () => {
+  it("shows the plan, score and times line, with no Log result button in Phase B", async () => {
+    await openEdit({ sections: [{ name: "Main", timer: SET5, roundTimes: TWO_ROUNDS }], exercises: [ex("Thruster", 0)] });
+    const main = screen.getByRole("region", { name: "Main" });
+    expect(within(main).getByText("Set Timer 5 × 5:00 · total 7:19")).toBeInTheDocument();
+    expect(within(main).getByText("Rounds 3:41 · 3:38")).toBeInTheDocument();
+    expect(within(main).queryByRole("button", { name: /Log result/ })).toBeNull();
+  });
+});
+
 describe("10.7 AC26 — the edit screen's timer writes", () => {
   it("the returned section lands in the detail at its position; workout_edit section_timer_changed; editSucceeded once", async () => {
     const { user, workout, queryClient } = await openEdit({ sections: [{ name: "Warm-up" }, { name: "Main", timer: SET5 }], exercises: [ex("Thruster", 1)] });
