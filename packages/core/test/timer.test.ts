@@ -9,6 +9,7 @@ import {
   roundTimeIssues,
   scoreText,
   sectionScore,
+  sortedRoundTimes,
   timerChangeKeepsRecorded,
   timerFitsRecorded,
   timersEqual,
@@ -228,6 +229,22 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+describe("09.5 AC28 / AC29 — sortedRoundTimes (#241)", () => {
+  it("returns a new array in round order and leaves the input as it was", () => {
+    const input = [
+      { round: 3, seconds: 210 },
+      { round: 1, seconds: 221 },
+      { round: 2, seconds: 218 },
+    ];
+    const copy = structuredClone(input);
+    const out = sortedRoundTimes(input);
+    expect(out.map((r) => r.round)).toEqual([1, 2, 3]);
+    expect(out).not.toBe(input);
+    expect(input).toEqual(copy);
+    expect(sortedRoundTimes([])).toEqual([]);
+  });
+});
+
 describe("09.5 AC3 — single implementation", () => {
   const files = [...sourceFiles(join(ROOT, "apps/api/src")), ...sourceFiles(join(ROOT, "apps/web/src")), ...sourceFiles(join(ROOT, "packages/core/src"))];
   const own = join(ROOT, "packages/core/src/timer.ts");
@@ -240,6 +257,14 @@ describe("09.5 AC3 — single implementation", () => {
   it.each([/function formatClock\b/, /function sectionScore\b/, /function scoreText\b/, /["'`]Set Timer /])("only timer.ts matches %s", (pattern) => {
     const hits = files.filter((f) => !/\.test\.tsx?$/.test(f) && pattern.test(readFileSync(f, "utf8")));
     expect(hits.map((f) => f.slice(ROOT.length + 1))).toEqual(["packages/core/src/timer.ts"]);
+  });
+
+  // #241: the Hevy fingerprint and the timer line sort round times through `sortedRoundTimes` only.
+  it("no Hevy module sorts round times itself", () => {
+    const hevy = sourceFiles(join(ROOT, "packages/core/src/hevy")).filter((f) => !/\.test\.tsx?$/.test(f));
+    expect(hevy.length).toBeGreaterThan(5);
+    const hits = hevy.filter((f) => readFileSync(f, "utf8").includes("a.round - b.round"));
+    expect(hits.map((f) => f.slice(ROOT.length + 1))).toEqual([]);
   });
 
   // Deferred minor 297: the web's `formatDuration` was a byte-for-byte copy of `formatClock`; it stays deleted.

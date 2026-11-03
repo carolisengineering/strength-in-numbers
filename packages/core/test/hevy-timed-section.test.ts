@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hevyTimerDurationSeconds, hevyTimerLine, type SectionResult, type TimedSectionData } from "../src/index.js";
+import { hevyTimerDurationSeconds, hevyTimerLine, timedSectionData, type SectionResult, type TimedSectionData, type WorkoutSection } from "../src/index.js";
 
 const SET_TIMER = { format: "set_timer", roundSeconds: 300, rounds: 5 } as const;
 const AMRAP = { format: "amrap", capSeconds: 720 } as const;
@@ -56,5 +56,20 @@ describe("09.5 §6.7 — the marker's duration", () => {
     ["Time Cap with readings only", timed(TIME_CAP, { roundTimes: rounds(250, 515) }), null],
   ])("%s", (_label, s, expected) => {
     expect(hevyTimerDurationSeconds(s)).toBe(expected);
+  });
+});
+
+describe("09.5 AC29 / §6.7 — timedSectionData, the one timed check (#238)", () => {
+  type Sectionish = Pick<WorkoutSection, "timer" | "result" | "roundTimes">;
+  const roundTimes = rounds(221, 218);
+
+  it("is null for an untimed section, and for one whose timer key is missing", () => {
+    expect(timedSectionData({ timer: null, result: null, roundTimes })).toBeNull();
+    expect(timedSectionData({ result: null, roundTimes } as unknown as Sectionish)).toBeNull();
+  });
+
+  it("is the timer, result and round times otherwise", () => {
+    const r = result({ rounds: 5, reps: 7 });
+    expect(timedSectionData({ timer: AMRAP, result: r, roundTimes })).toEqual({ timer: AMRAP, result: r, roundTimes });
   });
 });

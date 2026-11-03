@@ -178,3 +178,32 @@ describe("09.5 AC29 — timed data in the fingerprint", () => {
     expect(src(timedEmpty)).not.toBe(src(untimed));
   });
 });
+
+describe("09.5 AC29 — a timed workout's source is unchanged by the #238 / #241 refactor", () => {
+  // Computed from hevyFingerprintSource on main 1983850, before the shared helpers.
+  const GOLDEN_TIMED =
+    'v1["Timed",null,"2026-10-01T10:00:00.000-05:00","2026-10-01T11:00:00.000-05:00",null,[["Main",null,0,["set_timer",300,5,null],null,[[1,221],[2,218],[3,210]]],["Finisher","go",1,["amrap",null,null,720],[5,7,null,false],[]],["Cooldown",null,2]],[[0,"00000000-0000-4000-8000-000000001000",null,null,0,[["working",5,60,null,null,null,null]]],[1,"00000000-0000-4000-8000-000000001001",null,null,1,[["working",5,60,null,null,null,null]]]]]';
+  const main = () =>
+    section(0, "Main", {
+      timer: { format: "set_timer", roundSeconds: 300, rounds: 5 },
+      roundTimes: [
+        { round: 3, seconds: 210 },
+        { round: 1, seconds: 221 },
+        { round: 2, seconds: 218 },
+      ],
+    });
+  const amrap = () =>
+    section(1, "Finisher", { notes: "go", timer: { format: "amrap", capSeconds: 720 }, result: { rounds: 5, reps: 7, finishSeconds: null, capped: false } });
+  const timed = (): WorkoutDetail =>
+    detail({ title: "Timed", sections: [main(), amrap(), section(2, "Cooldown")], exercises: [exercise(0, { sectionId: main().id }), exercise(1, { sectionId: amrap().id })] });
+
+  it("matches the pre-change golden", () => {
+    expect(hevyFingerprintSource(timed())).toBe(GOLDEN_TIMED);
+  });
+
+  it("a section with no timer key reads as untimed and does not throw (#238)", () => {
+    const d = timed();
+    const keyless = { ...d, sections: d.sections.map((s, i) => (i === 2 ? (({ timer: _t, ...rest }) => rest)(s) : s)) } as unknown as WorkoutDetail;
+    expect(hevyFingerprintSource(keyless)).toBe(GOLDEN_TIMED);
+  });
+});

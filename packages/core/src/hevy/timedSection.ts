@@ -1,8 +1,17 @@
 import type { RoundTime, SectionResult, SectionTimer } from "../dto/section-timer.js";
-import { describeTimer, formatClock, scoreText, sectionScore } from "../timer.js";
+import type { WorkoutSection } from "../dto/workout.js";
+import { describeTimer, formatClock, scoreText, sectionScore, sortedRoundTimes } from "../timer.js";
 
 /** A timed section as the Hevy export reads it (Spec 09.5 §6.7): the DTO fields, with the timer set. */
 export type TimedSectionData = { timer: SectionTimer; result: SectionResult | null; roundTimes: readonly RoundTime[] };
+
+/**
+ * The one "is this section timed" check for the Hevy fingerprint and export (#238): `null` when it has no timer
+ * (`null`, or a missing key the DTO forbids but old data could hold), else its timer, result and round times.
+ */
+export function timedSectionData(s: Pick<WorkoutSection, "timer" | "result" | "roundTimes">): TimedSectionData | null {
+  return s.timer == null ? null : { timer: s.timer, result: s.result, roundTimes: s.roundTimes };
+}
 
 /**
  * Spec 09.5 AC28: the line a timed section carries in its Hevy notes. Segments joined by " · ": the timer
@@ -12,7 +21,7 @@ export type TimedSectionData = { timer: SectionTimer; result: SectionResult | nu
 export function hevyTimerLine(s: TimedSectionData): string {
   const segments = [describeTimer(s.timer)];
   if (s.roundTimes.length > 0) {
-    segments.push([...s.roundTimes].sort((a, b) => a.round - b.round).map((r) => formatClock(r.seconds)).join(", "));
+    segments.push(sortedRoundTimes(s.roundTimes).map((r) => formatClock(r.seconds)).join(", "));
   }
   const score = sectionScore(s);
   if (score !== null) segments.push(scoreText(score));
