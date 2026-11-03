@@ -15,6 +15,14 @@
   color: var(--color-danger);
 }
 
+/* Spec 10.7 AC40: the locked group's fieldset draws nothing of its own. */
+.locked {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
 .line {
   margin: 0;
   font-size: var(--font-size-sm);

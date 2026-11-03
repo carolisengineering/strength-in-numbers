@@ -35,7 +35,11 @@ import { emitWorkoutFinished } from "./finishEvents";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { unsavedNotes, unsavedSets } from "./outbox/ops";
+import { sectionHasOps, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { RESULT_COPY } from "./result/resultCopy";
+import { ResultSheet } from "./result/ResultSheet";
+import { useResultActions } from "./result/useResultActions";
+import { useResultMutations } from "./result/useResultMutations";
 import { project } from "./outbox/project";
 import { SyncStatus } from "./outbox/SyncStatus";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
@@ -97,6 +101,8 @@ const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const SECTION_LIMIT_ID = "session-section-limit";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+/** Spec 10.7 AC39: a timed section's heading tag. */
+const SYNC_TAG = { pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFailed } as const;
 
 type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
 
@@ -310,6 +316,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const { pending: pendingCount, failed: failedCount } = unsavedSets(outboxState.ops, workout.id, outboxState.idMap);
   const { pending: notePending, failed: noteFailed } = unsavedNotes(outboxState.ops, workout.id);
   const unsavedNoteCount = notePending + noteFailed;
+  // Spec 10.7 AC39: a timed section's round / result entries, counted apart from sets and notes.
+  const { pending: timerPending, failed: timerFailed } = unsavedTimerEntries(outboxState.ops, workout.id);
+  const timerUnsaved = timerPending + timerFailed;
   const firstFailed = useMemo(() => {
     for (const exercise of exercises) {
       if (sync.get(exercise.id)?.state === "failed") return { rowId: exercise.id, exerciseId: exercise.id }; // a failed note sits above its exercise's sets
@@ -373,6 +382,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   });
 
   // Spec 10.6: the section controls take this screen's lock, banner, status line and gone path.
+  // Spec 10.7 AC27–AC31: Log result, queued through the outbox.
+  const resultWriter = useResultMutations();
+  const resultActions = useResultActions({ workout, writer: resultWriter, announce: setAnnouncement });
+
   const sectionActions = useSectionActions({
     workout,
     mutations: sectionMutations,
@@ -722,7 +735,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const unsaved = pendingCount + failedCount;
   // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
   // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0;
+  // Spec 10.7 AC39: … and every timer entry.
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0 || timerUnsaved > 0;
   // Spec 17.1 §6.6: the bar's mode and the planned sets End early would skip.
   const unlogged = useMemo(() => unloggedPlanned(rows), [rows]);
   const mode = barMode(rows, current.currentId);
@@ -734,7 +748,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         ? { kind: "finish", disabled: finishDisabled, onClick: openFinish }
         : { kind: "log" };
   const endReason =
-    totalSets === 0 ? "Log a set first" : unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null;
+    totalSets === 0
+      ? "Log a set first"
+      : unsaved > 0
+        ? `${plural(unsaved, "set", "sets")} not saved yet`
+        : unsavedNoteCount > 0
+          ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet`
+          : timerUnsaved > 0
+            ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet`
+            : null;
   // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
   const oneOff: FinishOneOff | undefined =
     workout.routineIsOneOff && workout.routineName !== null
@@ -826,6 +848,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               {...(segment.editable && segment.sectionId !== null
                 ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                 : {})}
+              {...(segment.timing !== null && segment.sectionId !== null
+                ? {
+                    onLogResult: () => resultActions.open(segment.sectionId!),
+                    logResultRef: resultActions.logResultRefFor(segment.sectionId),
+                    sync: sync.get(segment.sectionId),
+                    syncText: SYNC_TAG,
+                  }
+                : {})}
             >
               {body}
             </SessionSection>
@@ -875,6 +905,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         failed={failedCount}
         pendingNotes={notePending}
         failedNotes={noteFailed}
+        pendingTimer={timerPending}
+        failedTimer={timerFailed}
         online={outboxState.online}
         onRetry={() => outbox?.retryNow()}
         onDiscardFailed={() => outbox?.discardFailed(workout.id)}
@@ -886,9 +918,25 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
         {unsaved > 0 ? <ActionBarHint>{plural(unsaved, "set", "sets")} not saved yet</ActionBarHint> : null}
         {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}
+        {timerUnsaved > 0 ? <ActionBarHint>{RESULT_COPY.timerEntries(timerUnsaved)} not saved yet</ActionBarHint> : null}
       </ActionBar>
 
-      <SectionDialogs actions={sectionActions} sections={workout.sections} />
+      <SectionDialogs
+        actions={sectionActions}
+        sections={workout.sections}
+        timerLockFor={(sectionId) => (sectionHasOps(outboxState.ops, sectionId) ? RESULT_COPY.timerLocked : undefined)}
+      />
+      {resultActions.sheet ? (
+        <ResultSheet
+          key={resultActions.sheet.openCount}
+          open
+          section={resultActions.sheet.section}
+          busy={resultActions.busy}
+          formError={resultActions.formError}
+          onCancel={resultActions.close}
+          onSave={(draft) => void resultActions.save(draft)}
+        />
+      ) : null}
       <ExercisePicker open={pickerOpen} onPick={(exercise) => void addExercise(exercise)} onClose={() => setPickerOpen(false)} />
       <ChangeTimeSheet
         key={changeTimeKey}

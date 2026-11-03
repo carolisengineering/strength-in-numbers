@@ -31,6 +31,11 @@ export interface SectionSheetProps {
   removeRef?: (node: HTMLButtonElement | null) => void;
   /** Spec 10.7 AC16: the Save / Add section button, so Cancel on the timer confirm can return focus to it. */
   saveRef?: (node: HTMLButtonElement | null) => void;
+  /**
+   * Spec 10.7 AC40: the section has unsent timer entries, so its Timer group can't change (name and note can). The
+   * line to show under it, from the caller (`sections/` doesn't import `result/`); absent = not locked.
+   */
+  timerLocked?: string;
 }
 
 /**
@@ -39,7 +44,7 @@ export interface SectionSheetProps {
  * and is never stored. No field is autofocused (the `Sheet` rule: no phone keyboard on open). Submit parses the
  * timer here: a field that doesn't parse shows its error and nothing is submitted.
  */
-export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onClose, onRemove, removeRef, saveRef }: SectionSheetProps) {
+export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onClose, onRemove, removeRef, saveRef, timerLocked }: SectionSheetProps) {
   const [name, setName] = useState(() => section?.name ?? "");
   const [notes, setNotes] = useState(() => section?.notes ?? "");
   const [timer, setTimer] = useState(() => fieldsFromTimer(section?.timer ?? null));
@@ -74,12 +79,14 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
           idPrefix="section-timer"
           value={timer}
           errors={ownTimerErrors ?? errors.timer ?? {}}
+          disabled={timerLocked !== undefined}
           onChange={(next) => {
             // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.
             if (next.format !== timer.format) setOwnTimerErrors({});
             setTimer(next);
           }}
         />
+        {timerLocked !== undefined ? <p className={styles.timerLocked}>{timerLocked}</p> : null}
         {errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
         <div className={styles.actions}>
           <Button variant="secondary" disabled={busy} onClick={onClose}>

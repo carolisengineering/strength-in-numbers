@@ -5,6 +5,7 @@ import { capLineShown } from "../sectionTimer/groupCap";
 import { GROUP_CAP_LINE } from "../sectionTimer/timerCopy";
 import { TimerLine } from "../sectionTimer/TimerLine";
 import { timesLine } from "../sectionTimer/timesLine";
+import type { RowSync } from "./outbox/project";
 import type { SectionSegment, SectionTiming } from "./sectionSegments";
 import { SECTION_COPY, editLabel, logResultLabel } from "./sections/sectionCopy";
 import styles from "./SessionSectionHeading.module.css";
@@ -26,16 +27,23 @@ export interface SessionSectionHeadingProps {
   editRef?: (node: HTMLButtonElement | null) => void;
   /** Spec 10.7 AC19 / AC20: a timed section's plan, score and round times (its first segment only). */
   timing?: SectionTiming | null;
-  /** Spec 10.7 AC19: renders the Log result button (the sheet is Phase C, so Phase B's screens pass none). */
+  /** Spec 10.7 AC19: renders the Log result button (passed only for a timed section's first segment). */
   onLogResult?: () => void;
+  /** Spec 10.7 AC27: focus returns here when the Log result sheet closes. */
+  logResultRef?: (node: HTMLButtonElement | null) => void;
+  /** Spec 10.7 AC39: the section's unsent or failed timer entries, shown after the plan line. */
+  sync?: RowSync;
+  /** The sync tag's words, from the caller (`Not saved yet` / `Couldn't be saved`). */
+  syncText?: { pending: string; failed: string };
 }
 
 /**
  * The heading and, beneath it, a timed section's plan line, its times line and Log result (Spec 10.7 AC19), then
  * the section's note — full text, wrapped (Spec 10.3 AC24). Without `timing` the markup is the untimed heading's.
  */
-export function SessionSectionHeading({ id, heading, notes, onEdit, editRef, timing, onLogResult }: SessionSectionHeadingProps) {
+export function SessionSectionHeading({ id, heading, notes, onEdit, editRef, timing, onLogResult, logResultRef, sync, syncText }: SessionSectionHeadingProps) {
   const times = timing ? timesLine(timing.timer, timing.roundTimes) : null;
+  const tag = timing && sync && syncText ? (sync.state === "failed" ? syncText.failed : syncText.pending) : null;
   return (
     <div className={styles.heading}>
       {onEdit ? (
@@ -52,11 +60,20 @@ export function SessionSectionHeading({ id, heading, notes, onEdit, editRef, tim
           {heading}
         </h2>
       )}
-      {timing ? <TimerLine timer={timing.timer} score={sectionScore(timing)} className={styles.plan} /> : null}
+      {timing ? (
+        tag !== null ? (
+          <div className={styles.planRow}>
+            <TimerLine timer={timing.timer} score={sectionScore(timing)} className={styles.plan} />
+            <span className={sync?.state === "failed" ? styles.failedTag : styles.pendingTag}>{tag}</span>
+          </div>
+        ) : (
+          <TimerLine timer={timing.timer} score={sectionScore(timing)} className={styles.plan} />
+        )
+      ) : null}
       {times !== null ? <p className={styles.times}>{times}</p> : null}
       {timing && onLogResult ? (
         <div className={styles.logResult}>
-          <Button variant="secondary" aria-label={logResultLabel(heading)} onClick={onLogResult}>
+          <Button variant="secondary" aria-label={logResultLabel(heading)} onClick={onLogResult} ref={logResultRef}>
             {SECTION_COPY.logResult}
           </Button>
         </div>
@@ -78,17 +95,45 @@ export interface SessionSectionProps {
   empty?: boolean;
   timing?: SectionTiming | null;
   onLogResult?: () => void;
+  logResultRef?: (node: HTMLButtonElement | null) => void;
+  sync?: RowSync;
+  syncText?: { pending: string; failed: string };
   /** Spec 10.7 AC23: the muted "Only the first 8 exercises are grouped." line under the cards. */
   capLine?: boolean;
 }
 
 /** A labeled region: heading → note → cards, which is also the DOM (and so the reading) order (D10). */
-export function SessionSection({ heading, notes, children, onEdit, editRef, emptyText, empty = false, timing, onLogResult, capLine = false }: SessionSectionProps) {
+export function SessionSection({
+  heading,
+  notes,
+  children,
+  onEdit,
+  editRef,
+  emptyText,
+  empty = false,
+  timing,
+  onLogResult,
+  logResultRef,
+  sync,
+  syncText,
+  capLine = false,
+}: SessionSectionProps) {
   const id = useId();
   const showEmpty = empty && emptyText !== undefined;
   return (
     <section className={styles.section} aria-labelledby={id}>
-      <SessionSectionHeading id={id} heading={heading} notes={notes} onEdit={onEdit} editRef={editRef} timing={timing} onLogResult={onLogResult} />
+      <SessionSectionHeading
+        id={id}
+        heading={heading}
+        notes={notes}
+        onEdit={onEdit}
+        editRef={editRef}
+        timing={timing}
+        onLogResult={onLogResult}
+        logResultRef={logResultRef}
+        sync={sync}
+        syncText={syncText}
+      />
       {showEmpty ? <p className={styles.empty}>{emptyText}</p> : children}
       {capLine ? <p className={styles.capLine}>{GROUP_CAP_LINE}</p> : null}
     </section>

@@ -22,6 +22,8 @@ export interface TimerFieldsProps {
   /** Errors from Done or from the server; the seconds error also shows once its field has been left. */
   errors?: TimerFieldErrors;
   onChange(value: TimerFieldsValue): void;
+  /** Spec 10.7 AC40: every control disabled (the section has unsent timer entries). */
+  disabled?: boolean;
 }
 
 const CHOICES: readonly TimerFormatChoice[] = ["none", ...TIMER_FORMAT_VALUES];
@@ -33,7 +35,7 @@ const secondsOver59 = (digits: string) => digits !== "" && digitsToSeconds(digit
  * format's fields. `Seconds go up to 59.` never flashes mid-entry: it shows once the field is left (or after Done),
  * and only while the digits still say it.
  */
-export function TimerFields({ idPrefix, value, errors = {}, onChange }: TimerFieldsProps) {
+export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled = false }: TimerFieldsProps) {
   const [left, setLeft] = useState<Partial<Record<"roundDigits" | "capDigits", boolean>>>({});
   const clockError = (key: "roundDigits" | "capDigits", name: "roundSeconds" | "capSeconds"): string | undefined => {
     if (secondsOver59(value[key]) && (left[key] || errors[name] === SECONDS_MAX_ERROR)) return SECONDS_MAX_ERROR;
@@ -51,7 +53,7 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange }: TimerFie
     />
   );
 
-  return (
+  const group = (
     <div className={styles.group}>
       <Field id={`${idPrefix}-format`} label={TIMER_LABEL}>
         {(control) => (
@@ -98,5 +100,13 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange }: TimerFie
         </p>
       ) : null}
     </div>
+  );
+  // Spec 10.7 AC40: a native disabled fieldset disables every control in the group at once.
+  return disabled ? (
+    <fieldset className={styles.locked} disabled>
+      {group}
+    </fieldset>
+  ) : (
+    group
   );
 }

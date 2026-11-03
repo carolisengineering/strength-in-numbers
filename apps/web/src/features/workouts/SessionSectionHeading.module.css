@@ -37,6 +37,27 @@
   overflow-wrap: anywhere;
 }
 
+/* Spec 10.7 AC39: the plan line with its sync tag beside it (the ExerciseCard tags' look, same tokens). */
+.planRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.pendingTag {
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.failedTag {
+  margin-left: auto;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
 .times {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-sm);

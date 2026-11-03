@@ -2,9 +2,18 @@ import { Button } from "../../../ui/Button";
 import styles from "./SyncStatus.module.css";
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-/** "2 sets", "1 note" or "2 sets and 1 note" — sets-only reads exactly as in Spec 06.2. */
-const what = (sets: number, notes: number) =>
-  [sets > 0 ? count(sets, "set", "sets") : null, notes > 0 ? count(notes, "note", "notes") : null].filter(Boolean).join(" and ");
+/**
+ * "2 sets", "2 sets and 1 note", or "2 sets, 1 note and 3 timer entries" (Spec 10.7 AC39) — sets-only reads exactly as
+ * in Spec 06.2, and every one- or two-part line as in 10.3.
+ */
+const what = (sets: number, notes: number, timer = 0) => {
+  const parts = [
+    sets > 0 ? count(sets, "set", "sets") : null,
+    notes > 0 ? count(notes, "note", "notes") : null,
+    timer > 0 ? count(timer, "timer entry", "timer entries") : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length <= 2 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)!}`;
+};
 
 export interface SyncStatusProps {
   pending: number;
@@ -12,6 +21,9 @@ export interface SyncStatusProps {
   /** Spec 10.3: exercises whose note is queued / failed. Optional: absent = 0 and the output is today's. */
   pendingNotes?: number;
   failedNotes?: number;
+  /** Spec 10.7 AC39: a timed section's round / result entries queued / failed. Optional: absent = 0. */
+  pendingTimer?: number;
+  failedTimer?: number;
   online: boolean;
   onRetry: () => void;
   onDiscardFailed: () => void;
@@ -20,34 +32,47 @@ export interface SyncStatusProps {
 }
 
 /** What is not saved yet (Spec 06.2 AC15; notes: Spec 10.3 AC29). A polite live region: it announces changes of state. */
-export function SyncStatus({ pending, failed, pendingNotes = 0, failedNotes = 0, online, onRetry, onDiscardFailed, onShowFailed }: SyncStatusProps) {
-  if (pending === 0 && failed === 0 && pendingNotes === 0 && failedNotes === 0) return null;
+export function SyncStatus({
+  pending,
+  failed,
+  pendingNotes = 0,
+  failedNotes = 0,
+  pendingTimer = 0,
+  failedTimer = 0,
+  online,
+  onRetry,
+  onDiscardFailed,
+  onShowFailed,
+}: SyncStatusProps) {
+  const failedWhat = what(failed, failedNotes, failedTimer);
+  const pendingWhat = what(pending, pendingNotes, pendingTimer);
+  if (failedWhat === "" && pendingWhat === "") return null;
   return (
     <div className={styles.status} data-testid="sync-status" role="status" aria-live="polite">
-      {failed > 0 || failedNotes > 0 ? (
+      {failedWhat !== "" ? (
         <p className={styles.line}>
-          <span className={styles.failed}>{what(failed, failedNotes)} couldn't be saved</span>
+          <span className={styles.failed}>{failedWhat} couldn't be saved</span>
           {onShowFailed ? (
             <Button variant="secondary" onClick={onShowFailed}>
               Show
             </Button>
           ) : null}
           {/* Spec 17.1 AC38: no bare "Discard" on the session screen; the visible word comes first (WCAG 2.5.3). */}
-          <Button variant="secondary" aria-label={`Discard ${what(failed, failedNotes)} that couldn't be saved`} onClick={onDiscardFailed}>
+          <Button variant="secondary" aria-label={`Discard ${failedWhat} that couldn't be saved`} onClick={onDiscardFailed}>
             Discard
           </Button>
         </p>
       ) : null}
-      {pending > 0 || pendingNotes > 0 ? (
+      {pendingWhat !== "" ? (
         online ? (
           <p className={styles.line}>
-            <span>Saving {what(pending, pendingNotes)}…</span>
+            <span>Saving {pendingWhat}…</span>
             <Button variant="secondary" onClick={onRetry}>
               Retry now
             </Button>
           </p>
         ) : (
-          <p className={styles.line}>Offline — {what(pending, pendingNotes)} will save when you're back online</p>
+          <p className={styles.line}>Offline — {pendingWhat} will save when you're back online</p>
         )
       ) : null}
     </div>
