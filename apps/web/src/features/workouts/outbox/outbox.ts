@@ -5,7 +5,7 @@ import { track } from "../../../observability/track";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
-import { combine, isSetOp, OutboxFileSchema, sameTarget, type CreateOp, type IdMap, type NoteOp, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
+import { combine, isSetOp, parseOutboxFile, sameTarget, type CreateOp, type IdMap, type NoteOp, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
 
 export const OUTBOX_KEY = "sin:workout:outbox";
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
@@ -113,13 +113,13 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       return EMPTY;
     }
     if (raw === null) return EMPTY;
-    let parsed: ReturnType<typeof OutboxFileSchema.safeParse> | null;
+    let parsed: ReturnType<typeof parseOutboxFile>;
     try {
-      parsed = OutboxFileSchema.safeParse(JSON.parse(raw));
+      parsed = parseOutboxFile(JSON.parse(raw));
     } catch {
       parsed = null;
     }
-    if (!parsed?.success) {
+    if (parsed === null) {
       reportError(new Error("unreadable outbox"), { source: "workout-storage" });
       try {
         storage.remove(OUTBOX_KEY);
@@ -128,11 +128,14 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
       return EMPTY;
     }
-    if (parsed.data.userId !== userId) return EMPTY;
-    const ops = (parsed.data.ops as OutboxOp[])
+    // Spec 10.7 AC66: ops of a kind this bundle doesn't know are left out (the next persist drops them); said once,
+    // statically — never their contents or how many.
+    if (parsed.skipped > 0) reportError(new Error("outbox ops of an unknown kind skipped"), { source: "workout-storage" });
+    if (parsed.userId !== userId) return EMPTY;
+    const ops = parsed.ops
       .filter((op) => op.userId === userId)
       .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : op));
-    return { ops, idMap: parsed.data.idMap };
+    return { ops, idMap: parsed.idMap };
   }
 
   let state: OutboxState = { ...load(), online: isOnline(), conflict: false };

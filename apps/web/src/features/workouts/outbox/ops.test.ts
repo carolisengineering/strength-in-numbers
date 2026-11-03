@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { combine, OutboxFileSchema, unsavedSets, type CreateOp, type DeleteOp, type OutboxOp, type UpdateOp } from "./ops";
+import { combine, OUTBOX_OP_KINDS, OutboxFileSchema, parseOutboxFile, unsavedSets, type CreateOp, type DeleteOp, type OutboxOp, type UpdateOp } from "./ops";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY9 = "30000000-0000-4000-8000-000000000009";
@@ -166,5 +166,41 @@ describe("06.2 AC7 — the persisted file schema", () => {
     expect(OutboxFileSchema.parse(JSON.parse(JSON.stringify(file)))).toEqual(file);
     expect(OutboxFileSchema.safeParse({ v: 1, userId: "u", ops: [{ kind: "create" }], idMap: {} }).success).toBe(false);
     expect(OutboxFileSchema.safeParse({ v: 2, userId: "u", ops: [], idMap: {} }).success).toBe(false);
+  });
+});
+
+describe("10.7 AC66 — parseOutboxFile", () => {
+  const note = (): OutboxOp => ({ ...base(), kind: "note", body: { notes: "Pause" } });
+  const round = () => ({ ...base(), kind: "round", sectionId: "s1", round: 2, body: { seconds: 515 } });
+  const file = (ops: unknown[]) => ({ v: 1, userId: "u", ops, idMap: { [KEY9]: { setId: SET, workoutId: "w" } } });
+
+  it("skips an unknown kind and keeps the rest in order, with the id map", () => {
+    const [c, n1] = [create(), note()];
+    expect(parseOutboxFile(file([c, round(), n1]))).toEqual({ userId: "u", ops: [c, n1], idMap: { [KEY9]: { setId: SET, workoutId: "w" } }, skipped: 1 });
+  });
+
+  it("today's file: skipped 0", () => {
+    const ops = [create(), update({ reps: 9 }), del(), note()];
+    expect(parseOutboxFile(file(ops))).toMatchObject({ ops, skipped: 0 });
+    expect(OutboxFileSchema.safeParse(file(ops)).success).toBe(true);
+  });
+
+  it("an empty ops array: skipped 0", () => {
+    expect(parseOutboxFile(file([]))).toMatchObject({ ops: [], skipped: 0 });
+  });
+
+  it.each<[string, unknown]>([
+    ["a known kind failing its schema", file([{ ...create(), body: { reps: "x" } }, round()])],
+    ["an op without a kind", file([create(), { status: "queued" }])],
+    ["a kind that is not a string", file([{ ...create(), kind: 7 }])],
+    ["a non-object op", file([create(), "create"])],
+    ["a bad envelope", { v: 2, userId: "u", ops: [], idMap: {} }],
+    ["no idMap", { v: 1, userId: "u", ops: [] }],
+  ])("%s → null", (_name, value) => {
+    expect(parseOutboxFile(value)).toBeNull();
+  });
+
+  it("the known kinds are exactly create, update, delete and note", () => {
+    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "note", "update"]);
   });
 });
