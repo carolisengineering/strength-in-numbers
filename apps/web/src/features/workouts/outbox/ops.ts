@@ -61,25 +61,57 @@ const BaseShape = {
   failure: z.object({ status: z.number(), type: z.string(), requestId: z.string().nullable() }).optional(),
 };
 
+/** One queued op. A later spec adds its kinds here (Spec 10.7 Phase C's `round` / `result`), never to the file schema. */
+export const OutboxOpSchema = z.discriminatedUnion("kind", [
+  z.object({
+    ...BaseShape,
+    kind: z.literal("create"),
+    target: z.object({ clientGeneratedId: z.string() }),
+    body: CreateSetSchema.extend({ clientGeneratedId: z.string() }),
+  }),
+  z.object({ ...BaseShape, kind: z.literal("update"), target: TargetSchema, body: UpdateSetSchema }),
+  z.object({ ...BaseShape, kind: z.literal("delete"), target: TargetSchema, body: z.null() }),
+  z.object({ ...BaseShape, kind: z.literal("note"), body: z.object({ notes: z.string().nullable() }) }),
+]);
+
 /** The shape of `sin:workout:outbox`; `v` lets a later spec migrate it. */
 export const OutboxFileSchema = z.object({
   v: z.literal(1),
   userId: z.string(),
-  ops: z.array(
-    z.discriminatedUnion("kind", [
-      z.object({
-        ...BaseShape,
-        kind: z.literal("create"),
-        target: z.object({ clientGeneratedId: z.string() }),
-        body: CreateSetSchema.extend({ clientGeneratedId: z.string() }),
-      }),
-      z.object({ ...BaseShape, kind: z.literal("update"), target: TargetSchema, body: UpdateSetSchema }),
-      z.object({ ...BaseShape, kind: z.literal("delete"), target: TargetSchema, body: z.null() }),
-      z.object({ ...BaseShape, kind: z.literal("note"), body: z.object({ notes: z.string().nullable() }) }),
-    ]),
-  ),
+  ops: z.array(OutboxOpSchema),
   idMap: z.record(z.string(), z.object({ setId: z.string(), workoutId: z.string() })),
 });
+
+/** The op kinds this bundle knows, read from `OutboxOpSchema`'s members (so a kind added there is known here). */
+export const OUTBOX_OP_KINDS: ReadonlySet<string> = new Set(OutboxOpSchema.options.map((member) => member.shape.kind.value));
+
+const EnvelopeSchema = OutboxFileSchema.extend({ ops: z.array(z.unknown()) });
+
+/**
+ * Spec 10.7 AC66 — `sin:workout:outbox` read one op at a time, so a file written by a later bundle (one that knows
+ * more op kinds) still loads after a revert. The envelope is checked first (`null` if it fails); then an op whose
+ * `kind` is a string this bundle doesn't know is skipped and counted, while an op with no string `kind`, or a known
+ * kind that fails its schema, makes the whole file unreadable (a damaged create could strand its follow-ups). The
+ * kept ops stay in their saved order.
+ */
+export function parseOutboxFile(value: unknown): { userId: string; ops: OutboxOp[]; idMap: IdMap; skipped: number } | null {
+  const envelope = EnvelopeSchema.safeParse(value);
+  if (!envelope.success) return null;
+  const ops: OutboxOp[] = [];
+  let skipped = 0;
+  for (const raw of envelope.data.ops) {
+    const kind = typeof raw === "object" && raw !== null && "kind" in raw ? (raw as { kind: unknown }).kind : undefined;
+    if (typeof kind !== "string") return null;
+    if (!OUTBOX_OP_KINDS.has(kind)) {
+      skipped += 1;
+      continue;
+    }
+    const op = OutboxOpSchema.safeParse(raw);
+    if (!op.success) return null;
+    ops.push(op.data as OutboxOp);
+  }
+  return { userId: envelope.data.userId, ops, idMap: envelope.data.idMap, skipped };
+}
 
 export function sameTarget(a: OpTarget, b: OpTarget): boolean {
   if ("setId" in a) return "setId" in b && a.setId === b.setId;

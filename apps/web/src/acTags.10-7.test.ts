@@ -4,8 +4,11 @@ const web = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.10
 // AC12's grouping rules are pure @sin/core (supersets.ts); their tests live there.
 const core = import.meta.glob(["../../../packages/core/test/supersets*.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
-/** Phase A: AC1–AC14 and the Phase A parts of AC56, AC58, AC59, AC61. Phases B–D extend this list. */
-const CRITERIA = [...Array.from({ length: 14 }, (_, i) => i + 1), 56, 58, 59, 61];
+/**
+ * Phase A: AC1–AC14 and the Phase A parts of AC56, AC58, AC59, AC61. Phase B: AC15–AC26 and AC57 (its parts of
+ * AC56–AC61 share the numbers above). Phases C–D extend this list.
+ */
+const CRITERIA = [...Array.from({ length: 26 }, (_, i) => i + 1), 56, 57, 58, 59, 61, 66];
 
 describe("10.7 AC65 — every behavioral criterion has a committed, tagged test", () => {
   // AC63 is the screenshot harness, AC64 the owner's phone check in the PR description, AC65 this scan plus review.

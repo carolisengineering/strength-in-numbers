@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { WorkoutDetail, WorkoutSection } from "@sin/core";
+import type { CreateWorkoutSection, UpdateWorkoutSection, WorkoutDetail, WorkoutSection } from "@sin/core";
 import { ignoreNotFound } from "../../../api";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
 import { rereadUntilLanded, type ReadGuard } from "../readGuard";
@@ -44,7 +44,7 @@ export function useEditSectionMutations(workoutId: string): SectionMutations {
   const add = useMutation({
     ...base,
     ...guarded,
-    mutationFn: (body: { name: string; notes?: string }) => client.addSection(workoutId, body),
+    mutationFn: (body: CreateWorkoutSection) => client.addSection(workoutId, body),
     onSuccess: (section: WorkoutSection) => {
       writeDetail(queryClient, workoutId, (d) => withSection(d, section));
       editSucceeded(queryClient, "section_added");
@@ -53,10 +53,11 @@ export function useEditSectionMutations(workoutId: string): SectionMutations {
   const update = useMutation({
     ...base,
     ...guarded,
-    mutationFn: ({ id, body }: { id: string; body: { name?: string; notes?: string | null } }) => client.updateSection(id, body),
-    onSuccess: (section: WorkoutSection) => {
+    mutationFn: ({ id, body }: { id: string; body: UpdateWorkoutSection }) => client.updateSection(id, body),
+    onSuccess: (section: WorkoutSection, { body }) => {
       writeDetail(queryClient, workoutId, (d) => withSection(d, section));
-      editSucceeded(queryClient, "section_changed");
+      // Spec 10.7 AC26: the server's enum (09.5 D21) — a body that changes the timer is a timer change.
+      editSucceeded(queryClient, body.timer !== undefined ? "section_timer_changed" : "section_changed");
     },
   });
   const remove = useMutation({

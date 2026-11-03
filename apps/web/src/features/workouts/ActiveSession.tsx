@@ -49,7 +49,7 @@ import { useSectionActions } from "./sections/useSectionActions";
 import { useSectionMutations } from "./sections/useSectionMutations";
 import { sectionSegments, type SectionSegment } from "./sectionSegments";
 import { SessionClock } from "./SessionClock";
-import { SessionSection } from "./SessionSectionHeading";
+import { SessionSection, segmentCapLine } from "./SessionSectionHeading";
 import { collapsedSummary } from "./summaryLine";
 import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
@@ -57,6 +57,7 @@ import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
@@ -363,6 +364,14 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     onGone(options);
   };
 
+  // Spec 10.7 AC22: a timed section's grouping, through this screen's regroup, banner and lock.
+  const timedGrouping = useTimedGrouping({
+    regroup,
+    readDetail: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
+    setBanner,
+    structureLock,
+  });
+
   // Spec 10.6: the section controls take this screen's lock, banner, status line and gone path.
   const sectionActions = useSectionActions({
     workout,
@@ -377,6 +386,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     onGone: () => gone("gone"),
     offlineText: OFFLINE_MESSAGE,
     onMoved: revealMoved,
+    couple: timedGrouping.couple,
   });
 
   /** Resolve a failed exercise-structure write per §5.8. */
@@ -435,6 +445,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       const added = await add.mutateAsync({ workoutId: workout.id, exerciseId: exercise.id, modality: exercise.modality });
       reveal.current = { id: added.id, focus: false };
       current.selectWhenAdded(added.id);
+      // Spec 10.7 AC22: placed in a timed section (10.6's C4 line), it may join that section's superset.
+      if (added.sectionId !== null) await timedGrouping.couple(added.sectionId, { join: added.id }, "added");
     } catch (error) {
       await handleFailure("add-exercise", error);
     } finally {
@@ -809,6 +821,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               notes={segment.notes}
               emptyText={SECTION_COPY.empty}
               empty={segment.rows.length === 0}
+              timing={segment.timing}
+              capLine={segmentCapLine(segment)}
               {...(segment.editable && segment.sectionId !== null
                 ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                 : {})}

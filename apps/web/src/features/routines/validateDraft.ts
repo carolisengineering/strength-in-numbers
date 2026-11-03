@@ -17,8 +17,8 @@ import type { Draft, DraftItem, DraftSet } from "./routineDraft";
 import { SECTION_NAME_INVALID, SECTION_NOTES_INVALID } from "./messages";
 import { parseSectionName, parseSectionNotes } from "./sectionText";
 import { WEIGHT_MESSAGE } from "./targetFormat";
-import { CAP_MAX_ERROR, ROUND_LENGTH_MAX_ERROR, ROUNDS_RANGE_ERROR, TIMER_CHECK_ERROR } from "../sectionTimer/timerCopy";
 import { toTimerInput, type TimerFieldName } from "../sectionTimer/timerFields";
+import { timerErrorForPath } from "../sectionTimer/timerServerErrors";
 
 /** The POST/PUT body (Spec 09 §5) before Zod's transforms. */
 export type RoutineWriteInput = z.input<typeof RoutineWriteSchema>;
@@ -170,10 +170,10 @@ export function issueForPath(
     if (sectionKey === undefined) return null;
     if (field === "timer") {
       // Spec 10.7 AC10: the app's words for the field the server names; anything else sits under the group.
-      const sub = path.length === 4 ? path[3] : undefined;
-      const known = sub === "rounds" || sub === "roundSeconds" || sub === "capSeconds" ? sub : null;
-      const message = known === null ? TIMER_CHECK_ERROR : TIMER_FIELD_MESSAGES[known];
-      return { scope: "section", sectionKey, field: "timer", timerField: known ?? "group", message };
+      const prefix = `sections.${String(index)}.timer`;
+      const hit = timerErrorForPath(path.map(String).join("."), prefix);
+      if (hit === null) return null;
+      return { scope: "section", sectionKey, field: "timer", timerField: hit.field, message: hit.message };
     }
     if (path.length !== 3) return null;
     if (field === "name") return { scope: "section", sectionKey, field: "name", message: SECTION_NAME_INVALID };
@@ -205,12 +205,6 @@ export function issueForPath(
   if (typeof field === "string" && ITEM_FIELDS.has(field) && path.length === 3) return item(field as ItemField);
   return null;
 }
-
-const TIMER_FIELD_MESSAGES: Readonly<Record<TimerFieldName, string>> = {
-  rounds: ROUNDS_RANGE_ERROR,
-  roundSeconds: ROUND_LENGTH_MAX_ERROR,
-  capSeconds: CAP_MAX_ERROR,
-};
 
 /** Plan-mode row keys per item (`null` for a quick-mode item), so a `sets.<j>` path can find its row. */
 export type PlanKeys = readonly (readonly string[] | null)[];

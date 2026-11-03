@@ -27,7 +27,7 @@ import { WORKOUT_KEYS, useEditWorkoutClient, useEditableWorkout } from "../queri
 import { reportUnexpected } from "../reportUnexpected";
 import { ScreenModeContext, type EditOutcome, type EditScreenMode } from "../screenMode";
 import { sectionSegments } from "../sectionSegments";
-import { SessionSection } from "../SessionSectionHeading";
+import { SessionSection, segmentCapLine } from "../SessionSectionHeading";
 import { NewExercisesLine } from "../sections/NewExercisesLine";
 import { SECTION_COPY } from "../sections/sectionCopy";
 import { SectionDialogs } from "../sections/SectionDialogs";
@@ -35,6 +35,7 @@ import { useSectionActions } from "../sections/useSectionActions";
 import { supersetRows, type SupersetRow } from "../supersetRows";
 import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
+import { useTimedGrouping } from "../sections/useTimedGrouping";
 import { useDeleteWorkout } from "../useWorkoutMutations";
 import { WorkoutText } from "../WorkoutText";
 import { ChangeTimeSheet } from "../changeTime/ChangeTimeSheet";
@@ -273,6 +274,15 @@ function EditBody({
 
   const refetchDetail = () => queryClient.refetchQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
 
+  // Spec 10.7 AC22, AC26: a timed section's grouping, through this screen's edit-option regroup (re-reads the detail,
+  // emits exercise_regrouped), banner and lock.
+  const timedGrouping = useTimedGrouping({
+    regroup,
+    readDetail: () => queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId)),
+    setBanner,
+    structureLock,
+  });
+
   // Spec 10.6 AC17: the shared section controls, on this screen's lock, banner, status line and vanished view.
   const sectionActions = useSectionActions({
     workout,
@@ -291,6 +301,7 @@ function EditBody({
     onGone: onVanished,
     offlineText: EDIT_COPY.offline,
     onMoved: revealMoved,
+    couple: timedGrouping.couple,
   });
 
   /** §5.4's structure rows; the screen's banner is where they show. */
@@ -346,6 +357,8 @@ function EditBody({
       const added = await add.mutateAsync({ workoutId, exerciseId: exercise.id });
       reveal.current = added.id;
       setAnnouncement(EDIT_COPY.exerciseAdded(exercise.name));
+      // Spec 10.7 AC22: placed in a timed section, it may join that section's superset.
+      if (added.sectionId !== null) await timedGrouping.couple(added.sectionId, { join: added.id }, "added");
     } catch (error) {
       await handleFailure("add-exercise", error);
     } finally {
@@ -499,6 +512,8 @@ function EditBody({
                 notes={segment.notes}
                 emptyText={SECTION_COPY.empty}
                 empty={segment.rows.length === 0}
+                timing={segment.timing}
+                capLine={segmentCapLine(segment)}
                 {...(segment.editable && segment.sectionId !== null
                   ? { onEdit: () => sectionActions.openEdit(segment.sectionId!), editRef: sectionActions.editRefFor(segment.sectionId) }
                   : {})}

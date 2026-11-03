@@ -35,6 +35,15 @@
   color: var(--color-muted);
 }
 
+/* Spec 10.7 AC21: one line per scored timed section; wraps, never truncates. */
+.timed {
+  overflow-wrap: anywhere;
+}
+
+.timedMore {
+  color: var(--color-muted);
+}
+
 .more {
   display: flex;
   justify-content: center;

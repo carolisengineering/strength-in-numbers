@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CreateWorkoutSection, UpdateWorkoutSection } from "@sin/core";
 import { track } from "../../../observability/track";
 import { WORKOUT_KEYS, useWorkoutClient } from "../queries";
 import { rereadUntilLanded } from "../readGuard";
@@ -11,6 +12,12 @@ import type { SectionMutations } from "./sectionMutations";
  * tracks its event, then returns the active workout's re-read, so `mutateAsync` resolves only once an
  * answer has landed (asked again if a set write canceled it, #158) and the screen changes only from the server's answer.
  */
+/** Spec 10.7 AC24: once per timer change, the format's enum value only (`none` for a removal). */
+function trackTimerSet(body: CreateWorkoutSection | UpdateWorkoutSection) {
+  if (body.timer === undefined) return;
+  track("section_timer_set", { format: body.timer === null ? "none" : body.timer.format });
+}
+
 export function useSectionMutations(workoutId: string): SectionMutations {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
@@ -19,17 +26,19 @@ export function useSectionMutations(workoutId: string): SectionMutations {
 
   const add = useMutation({
     ...base,
-    mutationFn: (body: { name: string; notes?: string }) => client.addSection(workoutId, body),
-    onSuccess: () => {
+    mutationFn: (body: CreateWorkoutSection) => client.addSection(workoutId, body),
+    onSuccess: (_section, body) => {
       track("section_added");
+      trackTimerSet(body);
       return refresh();
     },
   });
   const update = useMutation({
     ...base,
-    mutationFn: ({ id, body }: { id: string; body: { name?: string; notes?: string | null } }) => client.updateSection(id, body),
-    onSuccess: () => {
+    mutationFn: ({ id, body }: { id: string; body: UpdateWorkoutSection }) => client.updateSection(id, body),
+    onSuccess: (_section, { body }) => {
       track("section_edited");
+      trackTimerSet(body);
       return refresh();
     },
   });

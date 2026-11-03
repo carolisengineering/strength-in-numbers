@@ -1,5 +1,7 @@
 import { ApiError } from "../../../api";
 import { classifyWorkoutError } from "../errors";
+import type { TimerFieldErrors } from "../../sectionTimer/timerFields";
+import { timerErrorsFromServer } from "../../sectionTimer/timerServerErrors";
 import { SECTION_COPY, rateLimited } from "./sectionCopy";
 
 export type SectionOp = "add-section" | "update-section" | "remove-section" | "set-section";
@@ -7,7 +9,10 @@ export type SectionOp = "add-section" | "update-section" | "remove-section" | "s
 export type SectionFailure =
   | { type: "offline"; text: string }
   | { type: "rate-limited"; text: string }
-  | { type: "fields"; name: string | null; notes: string | null }
+  /** `timer` is present only when a `timer.*` path came back (Spec 10.7 AC25), so 10.6's rows read as before. */
+  | { type: "fields"; name: string | null; notes: string | null; timer?: TimerFieldErrors }
+  /** Spec 10.7 AC18: `409 section-result-exists` on an update — times were logged since this screen loaded. */
+  | { type: "result-exists"; text: string }
   | { type: "limit"; text: string }
   /** A 404 on update or move: the caller refetches to tell a missing section from a missing workout. */
   | { type: "missing" }
@@ -41,13 +46,18 @@ export function resolveSectionFailure(
     const retryAfterMs = error instanceof ApiError ? (error.retryAfterMs ?? null) : null;
     return { type: "rate-limited", text: rateLimited(retryAfterMs), report: false };
   }
+  if (kind === "section-result-exists" && op === "update-section") {
+    return { type: "result-exists", text: SECTION_COPY.resultExists, report: false };
+  }
   // A move or a remove has no fields the lifter typed: its 422 is the op's generic failure.
   if (kind === "validation" && (op === "add-section" || op === "update-section")) {
     const has = (path: string) => fieldErrors.some((e) => e.path === path);
+    const timer = timerErrorsFromServer(fieldErrors, "timer");
     return {
       type: "fields",
       name: has("name") ? SECTION_COPY.fieldsGeneric : null,
       notes: has("notes") ? SECTION_COPY.fieldsGeneric : null,
+      ...(timer === null ? {} : { timer }),
       report: false,
     };
   }

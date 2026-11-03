@@ -10,6 +10,8 @@ export type WorkoutErrorKind =
   | "exercise-retired"
   /** Spec 09.4 / 10.6 AC13: a ninth section on a workout. */
   | "workout-section-limit"
+  /** Spec 09.5 AC13 / 10.7 AC18: a timer change over round times the screen didn't know about (no `discardResult`). */
+  | "section-result-exists"
   | "validation"
   | "unauthenticated"
   | "network"
@@ -58,6 +60,7 @@ export function classifyWorkoutError(error: unknown, context?: { op: string }): 
         case "incomplete-working-sets":
         case "exercise-retired":
         case "workout-section-limit":
+        case "section-result-exists":
           return classified(error.type, op, error);
         default:
           return classified("unknown", op, error);

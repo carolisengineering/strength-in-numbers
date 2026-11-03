@@ -1,5 +1,7 @@
 // Fake API data for the screenshot harness. Every payload is validated against the real
 // @sin/core response schemas in the browser before capture (payloadChecks), so the SPA's strict local-env parse accepts it.
+import { sectionScore } from "@sin/core";
+
 const TZ = "America/Chicago";
 
 const uuid = (prefix, n) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -554,6 +556,42 @@ export const activeSections = makeWorkout(51, sectionsStart, 0, [
   ],
 });
 
+// Spec 10.7 AC63 (Phase B): workouts with timed sections, from the Conditioning routine. Kept out of `finished` and
+// `active` so every earlier capture is unchanged; captures 96–98 serve them on their own.
+const TIMED_ROUNDS = [221, 218, 210, 205, 208].map((seconds, i) => ({ round: i + 1, seconds }));
+const timedSections = (ids, main, finisher) => [
+  { id: ids[0], position: 0, name: "Main", notes: "Rest what's left of each round.", addedInWorkout: false, timer: TIMED.sections[0].timer, ...main },
+  { id: ids[1], position: 1, name: "Finisher", notes: null, addedInWorkout: false, timer: TIMED.sections[1].timer, ...finisher },
+];
+const FT_MAIN = uuid("f2000000", 5);
+const FT_FIN = uuid("f2000000", 6);
+/** A finished Conditioning day: Main with all five round times, Finisher with a result and two readings. */
+export const finishedTimed = makeWorkout(16, at(1), 40, [
+  { key: "back_squat", sectionId: FT_MAIN, superset: 1, sets: [W(5, 80), W(5, 80), W(5, 80), W(5, 80), W(5, 80)] },
+  { key: "barbell_row", sectionId: FT_MAIN, superset: 1, sets: [W(8, 50), W(8, 50), W(8, 50), W(8, 50), W(8, 50)] },
+  { key: "lateral_raise", sectionId: FT_FIN, superset: 2, sets: [W(12, 8), W(12, 8)] },
+  { key: "romanian_deadlift", sectionId: FT_FIN, superset: 2, sets: [W(10, 60), W(10, 60)] },
+], {
+  routine: TIMED,
+  sections: timedSections([FT_MAIN, FT_FIN], { result: null, roundTimes: TIMED_ROUNDS }, {
+    result: { rounds: 5, reps: 7, capped: false, finishSeconds: null },
+    roundTimes: [{ round: 1, seconds: 140 }, { round: 2, seconds: 305 }],
+  }),
+});
+const AT_MAIN = uuid("f2000000", 7);
+const AT_FIN = uuid("f2000000", 8);
+/** A live Conditioning workout: Main has three round times logged (so changing its format asks first). */
+export const activeTimed = makeWorkout(53, NOW - 20 * MIN, 0, [
+  { key: "back_squat", sectionId: AT_MAIN, superset: 1, sets: [W(5, 80), W(5, 80), W(5, 80)] },
+  { key: "barbell_row", sectionId: AT_MAIN, superset: 1, sets: [W(8, 50), W(8, 50), W(8, 50)] },
+  { key: "lateral_raise", sectionId: AT_FIN, superset: 2, sets: [] },
+  { key: "romanian_deadlift", sectionId: AT_FIN, superset: 2, sets: [] },
+], {
+  active: true,
+  routine: TIMED,
+  sections: timedSections([AT_MAIN, AT_FIN], { result: null, roundTimes: TIMED_ROUNDS.slice(0, 3) }, { result: null, roundTimes: [] }),
+});
+
 // ---------------------------------------------------------------- records + progress
 const epley = (w, r) => (r === 1 ? w : r >= 1 && r <= 12 ? w * (1 + r / 30) : null);
 const round = (x, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -658,13 +696,22 @@ export function summaryOf(w) {
     totalVolume: vol > 0 ? round(vol) : null,
     // Spec 07.3: the served count excludes set-volume records.
     recordCount: records.filter((r) => r.workoutId === w.id && r.recordType !== "best_set_volume").length,
-    // Spec 09.5 AC25: the fake data has no timed sections.
-    timedSections: [],
+    // Spec 09.5 AC25: the timed sections in position order, each scored by @sin/core's `sectionScore`.
+    timedSections: sections
+      .filter((s) => s.timer !== null)
+      .sort((a, b) => a.position - b.position)
+      .map((s) => ({ id: s.id, position: s.position, name: s.name, timer: s.timer, score: sectionScore(s) })),
   };
 }
 
 export const history = {
   items: [...finished].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map(summaryOf),
+  next: null,
+};
+
+/** Spec 10.7 capture 98: History with the finished Conditioning day among the rows. */
+export const historyTimed = {
+  items: [...finished, finishedTimed].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map(summaryOf),
   next: null,
 };
 
@@ -740,6 +787,9 @@ export function payloadChecks() {
     ["routines with the one-off", "RoutineListResponseSchema", { routines: [CLASS, ...routines] }],
     ["routines with the timed one", "RoutineListResponseSchema", { routines: [TIMED, ...routines] }],
     ["history", "WorkoutHistoryResponseSchema", history],
+    ["history with the timed day", "WorkoutHistoryResponseSchema", historyTimed],
+    ["finished, timed sections", "WorkoutDetailSchema", finishedTimed],
+    ["active, timed sections", "WorkoutDetailSchema", activeTimed],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ["exercise usage", "ExerciseUsageResponseSchema", usage()],
     ["600 exercises", "ExercisesResponse", { exercises: manyExercises(600), syncToken: "1.100" }],

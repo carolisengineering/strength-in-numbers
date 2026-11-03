@@ -37,6 +37,15 @@ export const SECTION_COPY = Object.freeze({
   saveFailed: "Couldn't save the section — try again",
   removeFailed: "Couldn't remove the section — try again",
   moveFailed: "Couldn't move that exercise — try again",
+  // Spec 10.7 Phase B (AC15–AC23).
+  timerSaved: "Timer saved",
+  changeTimerBody: "This clears the times and result you logged for this section.",
+  changeAndClear: "Change and clear",
+  resultExists: "Times were logged for this section. Check them and try again.",
+  logResult: "Log result",
+  groupFailedTimer: "Timer saved, but the exercises couldn't be grouped — try again",
+  groupFailedAdded: "Exercise added, but it couldn't be grouped — try again",
+  groupFailedMoved: "Exercise moved, but it couldn't be grouped — try again",
 });
 
 export const editLabel = (name: string): string => `Edit section ${name}`;
@@ -44,6 +53,8 @@ export const removeTitle = (name: string): string => `Remove ${name}?`;
 export const sectionAdded = (name: string): string => `Section added: ${name}`;
 export const movedTo = (exercise: string, section: string): string => `Moved ${exercise} to ${section}`;
 export const movedOut = (exercise: string): string => `Moved ${exercise} out of its section`;
+export const changeTimerTitle = (name: string): string => `Change ${name}'s timer?`;
+export const logResultLabel = (name: string): string => `Log result for ${name}`;
 
 /**
  * The routines' rate-limit sentence (`routines/messages.ts` `RATE_LIMITED`, which `workouts/` may not

@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { insertIndexForSection, sectionForNewExercise } from "@sin/core";
+import { insertIndexForSection, sectionForNewExercise, timerChangeKeepsRecorded, timersEqual } from "@sin/core";
 
 import * as D from "./data.mjs";
 
@@ -199,10 +199,10 @@ function makeHandler(state) {
       state.finishedOneOff = { ...D.activeOneOff, endedAt: new Date().toISOString(), plannedDurationSeconds: null, routineIsOneOff: false };
       state.classGone = true;
       res = json({ ...state.finishedOneOff, newRecords: [] });
-    } else if (m === "GET" && p === "/v1/workouts") res = json(D.history);
+    } else if (m === "GET" && p === "/v1/workouts") res = json(state.historyTimed ? D.historyTimed : D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const id = decodeURIComponent(seg[1]);
-      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : D.allWorkouts.find((x) => x.id === id);
+      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed].find((x) => x.id === id);
       res = w ? json(w) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/personal-records") {
       const ex = url.searchParams.get("exerciseId");
@@ -249,6 +249,9 @@ function makeHandler(state) {
  * Spec 10.6 AC28: the harness's section writes, mutating `w` (the sectioned live workout) in place. Placement and
  * C4 come from @sin/core's own helpers, as the API's do (Spec 09.4 §6.2, §6.5). Returns null for any other request.
  */
+/** Spec 09.5: a timer as the server stores it — absent is untimed, a Time Cap sent with no cap reads `capSeconds: null`. */
+const storedTimer = (t) => (t === undefined || t === null ? null : t.format === "time_cap" ? { format: "time_cap", capSeconds: t.capSeconds ?? null } : t);
+
 function sectionRoute(w, m, p, raw) {
   const body = JSON.parse(raw ?? "{}");
   const rank = (e) => (e.sectionId === null ? -1 : (w.sections.find((s) => s.id === e.sectionId)?.position ?? -1));
@@ -260,7 +263,7 @@ function sectionRoute(w, m, p, raw) {
   let seg;
   if (m === "POST" && p === `/v1/workouts/${w.id}/sections`) {
     if (w.sections.length >= 8) return problem(409, "workout-section-limit", "Section limit");
-    const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true, timer: null, result: null, roundTimes: [] };
+    const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true, timer: storedTimer(body.timer), result: null, roundTimes: [] };
     w.sections = [...w.sections, section];
     return json(section, 201);
   }
@@ -269,7 +272,17 @@ function sectionRoute(w, m, p, raw) {
     const section = w.sections.find((s) => s.id === id);
     if (!section) return problem(404, "not-found", "Not found");
     if (m === "PATCH") {
-      Object.assign(section, "name" in body ? { name: String(body.name).trim() } : {}, "notes" in body ? { notes: body.notes } : {});
+      // Spec 09.5 AC13, through @sin/core's own rule: a change that drops recorded data needs discardResult.
+      let timerPatch = {};
+      if ("timer" in body) {
+        const next = storedTimer(body.timer);
+        if (!timersEqual(section.timer, next)) {
+          const keeps = timerChangeKeepsRecorded(section.timer, next, section.roundTimes, section.result);
+          if (!keeps && body.discardResult !== true) return problem(409, "section-result-exists", "Section result exists");
+          timerPatch = keeps ? { timer: next } : { timer: next, roundTimes: [], result: null };
+        }
+      }
+      Object.assign(section, "name" in body ? { name: String(body.name).trim() } : {}, "notes" in body ? { notes: body.notes } : {}, timerPatch);
       return json(section);
     }
     if (m === "DELETE") {
@@ -784,6 +797,34 @@ try {
       await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "58-summary-sections", "History summary: each section's name and note above its cards, no Edit (Spec 10.6 AC16)");
     });
+
+    // Spec 10.7 AC63 (Phase B): the clear-times confirm on a live timed workout, the summary's timed headings, and
+    // History's score lines. The timed workouts are served only here, so every earlier capture is unchanged.
+    await tryStep("timer change confirm", async () => {
+      state.sectioned = structuredClone(D.activeTimed);
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
+      const sheet = page.locator("dialog[open]");
+      await sheet.getByLabel("Timer").selectOption("amrap");
+      await sheet.getByLabel("Time limit", { exact: true }).pressSequentially("1200");
+      await sheet.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("dialog", { name: "Change Main's timer?" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "96-timer-change-confirm", "Change Main's timer? confirm over the Edit section sheet: Cancel focused, the danger Change and clear (Spec 10.7 AC16)");
+      await page.keyboard.press("Escape");
+    });
+    state.sectioned = null;
+    await tryStep("summary timed", async () => {
+      await go(`/app/history/${D.finishedTimed.id}`);
+      await page.getByRole("region", { name: "Main" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "97-summary-timed", "History summary of a timed workout: each timed section's plan and score, its round times muted, no Log result (Spec 10.7 AC20)");
+    });
+    await tryStep("history timed", async () => {
+      state.historyTimed = true;
+      await go("/app/history");
+      await page.getByRole("link", { name: /Conditioning/ }).first().scrollIntoViewIfNeeded();
+      await shoot(page, device, "98-history-timed", "History with a timed workout: one line per scored timed section under the meta line, wrapping (Spec 10.7 AC21)");
+    });
+    state.historyTimed = false;
 
     // No active workout: start screen + routines.
     state.active = false;

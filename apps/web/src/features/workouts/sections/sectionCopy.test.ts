@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECTION_COPY, editLabel, movedOut, movedTo, rateLimited, removeTitle, sectionAdded } from "./sectionCopy";
+import { SECTION_COPY, changeTimerTitle, editLabel, logResultLabel, movedOut, movedTo, rateLimited, removeTitle, sectionAdded } from "./sectionCopy";
 
 describe("10.6 AC22 — copy is pinned", () => {
   it("every constant is the exact text", () => {
@@ -36,6 +36,15 @@ describe("10.6 AC22 — copy is pinned", () => {
       saveFailed: "Couldn't save the section — try again",
       removeFailed: "Couldn't remove the section — try again",
       moveFailed: "Couldn't move that exercise — try again",
+      // Spec 10.7 Phase B (pinned again below under AC56).
+      timerSaved: "Timer saved",
+      changeTimerBody: "This clears the times and result you logged for this section.",
+      changeAndClear: "Change and clear",
+      resultExists: "Times were logged for this section. Check them and try again.",
+      logResult: "Log result",
+      groupFailedTimer: "Timer saved, but the exercises couldn't be grouped — try again",
+      groupFailedAdded: "Exercise added, but it couldn't be grouped — try again",
+      groupFailedMoved: "Exercise moved, but it couldn't be grouped — try again",
     });
     expect(Object.isFrozen(SECTION_COPY)).toBe(true);
   });
@@ -50,5 +59,25 @@ describe("10.6 AC22 — copy is pinned", () => {
     expect(rateLimited(1000)).toBe("Too many changes in a short time — try again in 1 second");
     expect(rateLimited(200)).toBe("Too many changes in a short time — try again in 1 second");
     expect(rateLimited(12_001)).toBe("Too many changes in a short time — try again in 13 seconds");
+  });
+});
+
+describe("10.7 AC56 — Phase B copy is pinned (sections)", () => {
+  it.each<[keyof typeof SECTION_COPY, string]>([
+    ["timerSaved", "Timer saved"],
+    ["changeTimerBody", "This clears the times and result you logged for this section."],
+    ["changeAndClear", "Change and clear"],
+    ["resultExists", "Times were logged for this section. Check them and try again."],
+    ["logResult", "Log result"],
+    ["groupFailedTimer", "Timer saved, but the exercises couldn't be grouped — try again"],
+    ["groupFailedAdded", "Exercise added, but it couldn't be grouped — try again"],
+    ["groupFailedMoved", "Exercise moved, but it couldn't be grouped — try again"],
+  ])("%s", (key, text) => {
+    expect(SECTION_COPY[key]).toBe(text);
+  });
+
+  it("the templates", () => {
+    expect(changeTimerTitle("Main")).toBe("Change Main's timer?");
+    expect(logResultLabel("Main")).toBe("Log result for Main");
   });
 });

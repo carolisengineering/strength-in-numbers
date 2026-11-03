@@ -14,6 +14,8 @@ import {
   type WorkoutDetail,
   type WorkoutExercise,
   type WorkoutSection,
+  type CreateWorkoutSection,
+  type UpdateWorkoutSection,
 } from "@sin/core";
 import { ApiError, type ApiClient } from "../../api";
 
@@ -61,10 +63,10 @@ export interface WorkoutClient {
   setExerciseNote(id: string, notes: string | null): Promise<WorkoutExercise>;
   /** Spec 18.0 AC54: `PATCH /v1/workouts/{id}` with exactly the keys given. Online-only: the queued client passes it through. */
   updateWorkout(id: string, body: WorkoutUpdate): Promise<UpdatedWorkout>;
-  /** Spec 10.6 AC6: `POST /v1/workouts/{id}/sections` with `{ name }` or `{ name, notes }`. Online-only (passed through). */
-  addSection(workoutId: string, body: { name: string; notes?: string }): Promise<WorkoutSection>;
-  /** Spec 10.6 AC7: exactly the keys given; an emptied note is `notes: null`. */
-  updateSection(id: string, body: { name?: string; notes?: string | null }): Promise<WorkoutSection>;
+  /** Spec 10.6 AC6 / 10.7 AC15: `POST /v1/workouts/{id}/sections` with `{ name, notes?, timer? }`. Online-only (passed through). */
+  addSection(workoutId: string, body: CreateWorkoutSection): Promise<WorkoutSection>;
+  /** Spec 10.6 AC7 / 10.7 AC15–AC16: exactly the keys given; an emptied note is `notes: null`, a removed timer `timer: null`. */
+  updateSection(id: string, body: UpdateWorkoutSection): Promise<WorkoutSection>;
   removeSection(id: string): Promise<void>;
   /**
    * Spec 10.6 AC9: exactly `{ sectionId }` on the wire; the server places the exercise. A separate
@@ -122,14 +124,17 @@ export function createWorkoutClient(
       return api.patch(`/v1/workouts/${seg(id)}`, wire, UpdatedWorkoutSchema);
     },
     addSection: (workoutId, body) => {
-      const wire: { name: string; notes?: string } = { name: body.name };
+      const wire: CreateWorkoutSection = { name: body.name };
       if (body.notes !== undefined) wire.notes = body.notes;
+      if (body.timer !== undefined) wire.timer = body.timer;
       return api.post(`/v1/workouts/${seg(workoutId)}/sections`, wire, WorkoutSectionSchema);
     },
     updateSection: (id, body) => {
-      const wire: { name?: string; notes?: string | null } = {};
+      const wire: UpdateWorkoutSection = {};
       if (body.name !== undefined) wire.name = body.name;
       if (body.notes !== undefined) wire.notes = body.notes;
+      if (body.timer !== undefined) wire.timer = body.timer;
+      if (body.discardResult !== undefined) wire.discardResult = body.discardResult;
       return api.patch(`/v1/workout-sections/${seg(id)}`, wire, WorkoutSectionSchema);
     },
     removeSection: async (id) => {

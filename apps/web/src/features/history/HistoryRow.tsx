@@ -2,6 +2,8 @@ import { Link } from "react-router";
 import type { UnitPreference, WorkoutSummary } from "@sin/core";
 import { TrophyIcon } from "../../ui/icons";
 import { formatVolumeKg } from "../units/format";
+import { historyTimedLines } from "../sectionTimer/timedSectionLine";
+import { timedMore } from "../sectionTimer/timerCopy";
 import { formatLocalDate } from "../workouts/format";
 import styles from "./HistoryScreen.module.css";
 
@@ -13,6 +15,8 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
   const more = workout.exerciseCount - workout.exerciseNames.length;
   const label = workout.title ?? workout.routineName;
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
+  // Spec 10.7 AC21: scored timed sections only, so a row with none (or only unscored ones) is unchanged.
+  const timed = historyTimedLines(workout.timedSections);
 
   return (
     <Link className={styles.row} to={`/app/history/${encodeURIComponent(workout.id)}`}>
@@ -38,6 +42,12 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
         {plural(workout.workingSetCount, "set", "sets")}
         {volume}
       </span>
+      {timed.lines.map((line, i) => (
+        <span key={i} className={styles.timed}>
+          {line}
+        </span>
+      ))}
+      {timed.more > 0 ? <span className={styles.timedMore}>{timedMore(timed.more)}</span> : null}
     </Link>
   );
 }

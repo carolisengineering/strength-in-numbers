@@ -24,6 +24,32 @@ describe("10.1 AC28 — workouts/ ↔ routines/ module boundary", () => {
   });
 });
 
+describe("10.7 AC61 — workouts/ and history/ may import sectionTimer/, which imports neither", () => {
+  // Glob keys are relative to this file: workouts/** reads as "./…", its siblings as "../history/…" and so on.
+  const all = raw(import.meta.glob(["../**/*.ts", "../**/*.tsx", "!../**/*.test.ts", "!../**/*.test.tsx"], { query: "?raw", import: "default", eager: true }));
+  it("workouts/** reaches sectionTimer/ only by a relative path to it", () => {
+    const hits = Object.entries(all)
+      .filter(([path]) => path.startsWith("./"))
+      .flatMap(([path, src]) => imports(src).filter((i) => i.includes("sectionTimer/")).map((i) => [path, i] as const));
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.filter(([, i]) => !/^(\.\.\/)+sectionTimer\//.test(i))).toEqual([]);
+  });
+
+  it("history/ imports, among the new paths, only sectionTimer/", () => {
+    const history = Object.entries(all).filter(([path]) => path.startsWith("../history/"));
+    const fromHistory = history.flatMap(([path, src]) => imports(src).filter((i) => /sectionTimer\/|workouts\/sections\//.test(i)).map((i) => `${path} → ${i}`));
+    expect(fromHistory.filter((s) => !/→ \.\.\/sectionTimer\//.test(s))).toEqual([]);
+    expect(fromHistory.some((s) => s.startsWith("../history/HistoryRow.tsx"))).toBe(true);
+  });
+
+  it("sectionTimer/ imports nothing from routines/, workouts/ or history/", () => {
+    const offenders = Object.entries(all)
+      .filter(([path]) => path.startsWith("../sectionTimer/"))
+      .flatMap(([path, src]) => imports(src).filter((i) => /(^|\/)(routines|workouts|history)\//.test(i)).map((i) => `${path} → ${i}`));
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("10.1 AC24 — both session screens share supersetRows and compute no runs themselves", () => {
   it.each(["./ActiveSession.tsx", "./FinishedWorkoutScreen.tsx"])("%s", (path) => {
     const src = stripComments(workouts[path]!);

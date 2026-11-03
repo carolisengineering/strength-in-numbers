@@ -41,7 +41,7 @@ describe("10.6 AC5 — the sheet", () => {
     await user.type(d.getByLabelText("Name"), "Strength");
     await user.type(d.getByLabelText("Note"), "EMOM");
     await user.click(d.getByRole("button", { name: "Add section" }));
-    expect(onSubmit).toHaveBeenCalledWith({ name: "Strength", notes: "EMOM" });
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Strength", notes: "EMOM", timer: null });
     await user.click(d.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -81,6 +81,6 @@ describe("10.6 AC7 / AC8 — edit mode", () => {
     await user.click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
     await user.click(d.getByRole("button", { name: "Save" }));
-    expect(onSubmit).toHaveBeenCalledWith({ name: "Warm-up", notes: "5 min" });
+    expect(onSubmit).toHaveBeenCalledWith({ name: "Warm-up", notes: "5 min", timer: null });
   });
 });

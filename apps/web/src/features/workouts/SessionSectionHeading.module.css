@@ -29,6 +29,33 @@
   overflow-wrap: anywhere;
 }
 
+/* Spec 10.7 AC19 / AC20: a timed section's plan line, then its round times (muted, wrapped). */
+.plan {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.times {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Spec 10.7 AC19, AC60: Log result is a secondary Button; the shared Button holds the tap-target minimum. */
+.logResult {
+  margin-top: var(--space-2);
+}
+
+/* Spec 10.7 AC23: under the cards, muted. */
+.capLine {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
 /* Spec 10.6 AC2: an empty section's line, in place of cards. */
 .empty {
   margin: 0;

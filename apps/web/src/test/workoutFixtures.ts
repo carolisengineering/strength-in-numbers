@@ -5,9 +5,17 @@ import {
   RoutineSchema,
   RoutineSectionSchema,
   SetEntrySchema,
+  TimedSectionSummarySchema,
   WorkoutDetailSchema,
+  WorkoutSectionSchema,
   WorkoutSummarySchema,
+  sectionScore,
   type Modality,
+  type RoundTime,
+  type SectionResult,
+  type SectionTimer,
+  type TimedSectionSummary,
+  type WorkoutSection,
   type PersonalRecord,
   type PlannedSet,
   type ProgressPoint,
@@ -80,7 +88,7 @@ export interface WorkoutDetailOptions {
   exercises?: ExerciseSpec[];
   routineName?: string | null;
   /** Spec 10.3: the workout's snapshotted sections (ids minted) and the routine note. */
-  sections?: { name: string; notes?: string | null; addedInWorkout?: boolean }[];
+  sections?: { name: string; notes?: string | null; addedInWorkout?: boolean; timer?: SectionTimer | null; result?: SectionResult | null; roundTimes?: RoundTime[] }[];
   routineNotes?: string | null;
   /** Spec 18.0: the workout's own title and notes. */
   title?: string | null;
@@ -95,7 +103,16 @@ export interface WorkoutDetailOptions {
 /** A `WorkoutDetail` parsed through the core schema; each set is re-parented to its exercise. */
 export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetail {
   const id = opts.id ?? nextId();
-  const sections = (opts.sections ?? []).map((s, position) => ({ id: nextId(), position, name: s.name, notes: s.notes ?? null, addedInWorkout: s.addedInWorkout ?? false, timer: null, result: null, roundTimes: [] }));
+  const sections = (opts.sections ?? []).map((s, position) => ({
+    id: nextId(),
+    position,
+    name: s.name,
+    notes: s.notes ?? null,
+    addedInWorkout: s.addedInWorkout ?? false,
+    timer: s.timer ?? null,
+    result: s.result ?? null,
+    roundTimes: s.roundTimes ?? [],
+  }));
   return WorkoutDetailSchema.parse({
     id,
     title: opts.title ?? null,
@@ -136,6 +153,35 @@ export function makeWorkoutDetail(opts: WorkoutDetailOptions = {}): WorkoutDetai
         sets: (spec.sets ?? []).map((s) => ({ ...s, workoutExerciseId: weId })),
       };
     }),
+  });
+}
+
+/** Spec 10.7: a timed `WorkoutSection` (Set Timer 5 × 5:00, nothing recorded) unless overridden. */
+export function makeTimedSection(overrides: Record<string, unknown> = {}): WorkoutSection {
+  return WorkoutSectionSchema.parse({
+    id: nextId(),
+    position: 0,
+    name: "Main",
+    notes: null,
+    addedInWorkout: false,
+    timer: { format: "set_timer", roundSeconds: 300, rounds: 5 },
+    result: null,
+    roundTimes: [],
+    ...overrides,
+  });
+}
+
+/** Spec 10.7: one History `timedSections` entry; the score is `sectionScore` of `result` / `roundTimes` (never written by hand). */
+export function makeTimedSectionSummary(
+  overrides: { id?: string; position?: number; name?: string; timer?: SectionTimer; result?: SectionResult | null; roundTimes?: RoundTime[] } = {},
+): TimedSectionSummary {
+  const timer = overrides.timer ?? { format: "set_timer", roundSeconds: 300, rounds: 5 };
+  return TimedSectionSummarySchema.parse({
+    id: overrides.id ?? nextId(),
+    position: overrides.position ?? 0,
+    name: overrides.name ?? "Main",
+    timer,
+    score: sectionScore({ timer, result: overrides.result ?? null, roundTimes: overrides.roundTimes ?? [] }),
   });
 }
 
