@@ -1,5 +1,5 @@
+import { formatClock } from "@sin/core";
 import { VisuallyHidden } from "../../ui/VisuallyHidden";
-import { formatDuration } from "./format";
 import styles from "./SessionClock.module.css";
 import { useNow } from "./useNow";
 
@@ -13,7 +13,7 @@ export function SessionClock({ startedAt, now = Date.now }: { startedAt: string;
   return (
     <p className={styles.clock}>
       <VisuallyHidden>Elapsed </VisuallyHidden>
-      {formatDuration(seconds)}
+      {formatClock(seconds)}
     </p>
   );
 }

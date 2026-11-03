@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Modality } from "@sin/core";
 import { makeSet } from "../../test/workoutFixtures";
-import { formatDuration, formatLocalDate, formatSet, formatSetParts, formatStartedAt } from "./format";
+import { formatLocalDate, formatSet, formatSetParts, formatStartedAt } from "./format";
 
-describe("AC8 — formatSet and formatDuration", () => {
+describe("AC8 — formatSet and its durations", () => {
   const none = { reps: null, weight: null, weightUnit: null, durationS: null, distance: null, distanceUnit: null };
 
   it.each<[Modality, Record<string, unknown>, string]>([
@@ -35,8 +35,8 @@ describe("AC8 — formatSet and formatDuration", () => {
     [60, "1:00"],
     [3600, "1:00:00"],
     [3725, "1:02:05"],
-  ])("formatDuration(%i) → %s", (seconds, text) => {
-    expect(formatDuration(seconds)).toBe(text);
+  ])("a duration of %i s reads %s (through @sin/core formatClock, deferred minor 297)", (seconds, text) => {
+    expect(formatSet(makeSet({ ...none, durationS: seconds }), "duration")).toBe(text);
   });
 });
 

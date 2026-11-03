@@ -1,4 +1,4 @@
-import { formatDuration } from "./format";
+import { formatClock } from "@sin/core";
 import { remainingSeconds } from "./restTimer";
 import styles from "./RestReadout.module.css";
 import { useNow } from "./useNow";
@@ -15,7 +15,7 @@ export function RestReadout({ workoutId }: { workoutId: string }) {
   const left = remainingSeconds(timer, t);
   return (
     <p className={styles.readout} role="timer">
-      {left > 0 ? `Rest ${formatDuration(left)}` : "Ready"}
+      {left > 0 ? `Rest ${formatClock(left)}` : "Ready"}
     </p>
   );
 }

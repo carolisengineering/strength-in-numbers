@@ -31,28 +31,20 @@ const AmrapSchema = z.strictObject({
   capSeconds: wholeNumber(1, TIMER_CAP_SECONDS_MAX),
 });
 
+const CapSecondsSchema = wholeNumber(1, TIMER_CAP_SECONDS_MAX).nullable();
+
+/** Both timer unions differ only in the Time Cap's `capSeconds` (deferred minor 299): one builder keeps them in step. */
+const timerUnion = <Cap extends z.ZodType>(capSeconds: Cap) =>
+  z.discriminatedUnion("format", [SetTimerSchema, AmrapSchema, z.strictObject({ format: z.literal("time_cap"), capSeconds })], {
+    message: UNKNOWN_TIMER_FORMAT,
+  });
+
 /** The timer as returned: a `time_cap` always carries `capSeconds` (`null` = "For Time", no cap). */
-export const SectionTimerSchema = z.discriminatedUnion(
-  "format",
-  [
-    SetTimerSchema,
-    AmrapSchema,
-    z.strictObject({ format: z.literal("time_cap"), capSeconds: wholeNumber(1, TIMER_CAP_SECONDS_MAX).nullable() }),
-  ],
-  { message: UNKNOWN_TIMER_FORMAT },
-);
+export const SectionTimerSchema = timerUnion(CapSecondsSchema);
 export type SectionTimer = z.infer<typeof SectionTimerSchema>;
 
 /** The timer as sent: a `time_cap` may omit `capSeconds`, stored and echoed as `null` (AC2). */
-export const SectionTimerInputSchema = z.discriminatedUnion(
-  "format",
-  [
-    SetTimerSchema,
-    AmrapSchema,
-    z.strictObject({ format: z.literal("time_cap"), capSeconds: wholeNumber(1, TIMER_CAP_SECONDS_MAX).nullable().optional() }),
-  ],
-  { message: UNKNOWN_TIMER_FORMAT },
-);
+export const SectionTimerInputSchema = timerUnion(CapSecondsSchema.optional());
 export type SectionTimerInput = z.infer<typeof SectionTimerInputSchema>;
 
 /** A workout section's result as returned; `null` on the section when nothing is recorded (AC10). */
