@@ -1,6 +1,7 @@
 import {
   RESULT_REPS_MAX,
   RESULT_ROUNDS_MAX,
+  TIMER_CAP_SECONDS_MAX,
   TIMER_ROUNDS_MAX,
   resultIssues,
   roundTimeIssues,
@@ -13,7 +14,7 @@ import {
   type WorkoutSection,
 } from "@sin/core";
 import { digitsToSeconds, secondsToDigits } from "../../sectionTimer/clockDigits";
-import { SECONDS_MAX_ERROR } from "../../sectionTimer/timerCopy";
+import { CAP_MAX_ERROR, SECONDS_MAX_ERROR } from "../../sectionTimer/timerCopy";
 import { timerIssueCopy } from "../../sectionTimer/timerIssueCopy";
 import { orderRoundWrites } from "./orderRoundWrites";
 
@@ -80,11 +81,23 @@ export function firstEmptyRow(draft: ResultDraft): number | null {
   return draft.rows.find((r) => r.digits === "")?.round ?? null;
 }
 
-/** A clock field's seconds: `null` for empty or 0:00 (nothing recorded), `undefined` for seconds of 60 or more. */
-function clockValue(digits: string): number | null | undefined {
+/**
+ * A clock field's error: seconds of 60 or more, or a time past `TIMER_CAP_SECONDS_MAX`. A For Time section has no
+ * cap for `@sin/core` to check against, and the outbox file's schema refuses a body past that bound, so the bound is
+ * checked here or a queued op could make the whole file unreadable.
+ */
+function clockError(digits: string): string | null {
   if (digits === "") return null;
   const s = digitsToSeconds(digits);
-  if (s === null) return undefined;
+  if (s === null) return SECONDS_MAX_ERROR;
+  return s > TIMER_CAP_SECONDS_MAX ? CAP_MAX_ERROR : null;
+}
+
+/** A clock field's seconds: `null` for empty or 0:00 (nothing recorded), `undefined` when `clockError` has one. */
+function clockValue(digits: string): number | null | undefined {
+  if (digits === "") return null;
+  if (clockError(digits) !== null) return undefined;
+  const s = digitsToSeconds(digits)!;
   return s === 0 ? null : s;
 }
 
@@ -128,7 +141,7 @@ export function validateDraft(timer: SectionTimer, draft: ResultDraft): DraftErr
   for (const row of draft.rows) {
     const s = clockValue(row.digits);
     if (s === undefined) {
-      errors[`row:${row.round}`] = SECONDS_MAX_ERROR;
+      errors[`row:${row.round}`] = clockError(row.digits)!;
       continue;
     }
     if (s === null) continue;
@@ -137,7 +150,7 @@ export function validateDraft(timer: SectionTimer, draft: ResultDraft): DraftErr
   }
   if (timer.format === "set_timer") return errors;
   if (draft.mode === "finished" && clockValue(draft.finishDigits) === undefined) {
-    errors["finish"] = SECONDS_MAX_ERROR;
+    errors["finish"] = clockError(draft.finishDigits)!;
     return errors;
   }
   const body = resultBody(draft);

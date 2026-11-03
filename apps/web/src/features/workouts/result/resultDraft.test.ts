@@ -1,4 +1,4 @@
-import type { RoundTime, SectionResult, SectionTimer, WorkoutSection } from "@sin/core";
+import { SetSectionResultSchema, type RoundTime, type SectionResult, type SectionTimer, type WorkoutSection } from "@sin/core";
 import { describe, expect, it } from "vitest";
 import { makeTimedSection } from "../../../test/workoutFixtures";
 import {
@@ -117,6 +117,20 @@ describe("10.7 AC30 — Time Cap draft", () => {
     expect(capped).toMatchObject({ mode: "capped", finishDigits: "" });
     const back = withMode({ ...capped, rounds: "4", reps: "7" }, "finished");
     expect(back).toMatchObject({ mode: "finished", rounds: "", reps: "" });
+  });
+
+  it("For Time (no cap): a finish time or round end past 180:00 is a field error, so no outbox op can fail its schema (final review)", () => {
+    const forTime = draftFromSection(section(FOR_TIME));
+    // 215:00 — one extra 0 typed for 21:50.
+    const over = { ...forTime, finishDigits: "21500" };
+    expect(validateDraft(FOR_TIME, over)).toEqual({ finish: "Keep it to 180:00 or less." });
+    expect(resultBody(over)).toBeNull();
+    const atMax = { ...forTime, finishDigits: "18000" };
+    expect(validateDraft(FOR_TIME, atMax)).toEqual({});
+    expect(SetSectionResultSchema.safeParse(resultBody(atMax)).success).toBe(true);
+    const reading = addRoundRow(forTime);
+    expect(validateDraft(FOR_TIME, setRow(reading, 1, "18001"))).toEqual({ "row:1": "Keep it to 180:00 or less." });
+    expect(validateDraft(FOR_TIME, setRow(reading, 1, "18000"))).toEqual({});
   });
 
   it("a saved capped result seeds capped; a For Time section seeds finished", () => {
