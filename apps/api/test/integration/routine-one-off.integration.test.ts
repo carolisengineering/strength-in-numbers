@@ -100,8 +100,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real P
       const ex = await insertExercise(db, { ownerUserId: u });
       const z = (await routines().create(u, routineFixture([ex], { name: "zed", oneOff: true }))).routine;
       const y = (await routines().create(u, routineFixture([ex], { name: "Yak", oneOff: true }))).routine;
+      // One instant for both, relative to the database clock: a fixed date here expires and the list's sweep removes them.
       await x(
-        `UPDATE "routine" SET created_at = '2026-10-20T10:00:00Z', one_off_until = '2026-11-03T10:00:00Z' WHERE id = ANY($1::uuid[])`,
+        `UPDATE "routine" SET created_at = date_trunc('second', now()) - interval '1 day', one_off_until = date_trunc('second', now()) + interval '13 days' WHERE id = ANY($1::uuid[])`,
         [z.id, y.id]);
       expect(((await routines().list(u)).routines).map((r) => r.name)).toEqual(["Yak", "zed"]);
     });
