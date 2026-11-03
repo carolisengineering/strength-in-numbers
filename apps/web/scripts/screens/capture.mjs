@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { insertIndexForSection, sectionForNewExercise, timerChangeKeepsRecorded, timersEqual } from "@sin/core";
+import { insertIndexForSection, resultIssues, roundTimeIssues, sectionForNewExercise, timerChangeKeepsRecorded, timersEqual } from "@sin/core";
 
 import * as D from "./data.mjs";
 
@@ -266,6 +266,33 @@ function sectionRoute(w, m, p, raw) {
     const section = { id: crypto.randomUUID(), position: w.sections.length, name: String(body.name).trim(), notes: body.notes ?? null, addedInWorkout: true, timer: storedTimer(body.timer), result: null, roundTimes: [] };
     w.sections = [...w.sections, section];
     return json(section, 201);
+  }
+  // Spec 10.7 Phase C: round times and the result, keyed sets and clears through @sin/core's own rules (as the API's).
+  if ((seg = /^\/v1\/workout-sections\/([^/]+)\/round-times\/(\d+)$/.exec(p))) {
+    const section = w.sections.find((s) => s.id === decodeURIComponent(seg[1]));
+    if (!section) return problem(404, "not-found", "Not found");
+    const round = Number(seg[2]);
+    if (m === "DELETE") {
+      section.roundTimes = section.roundTimes.filter((t) => t.round !== round);
+      return { status: 204, body: "" };
+    }
+    if (section.timer === null) return problem(409, "section-timer-mismatch", "Section timer mismatch");
+    const issues = roundTimeIssues(section.timer, section.roundTimes, round, body.seconds);
+    if (issues.length > 0) return problem(422, "validation-error", "Validation error");
+    section.roundTimes = [...section.roundTimes.filter((t) => t.round !== round), { round, seconds: body.seconds }].sort((a, b) => a.round - b.round);
+    return json(section);
+  }
+  if ((seg = /^\/v1\/workout-sections\/([^/]+)\/result$/.exec(p))) {
+    const section = w.sections.find((s) => s.id === decodeURIComponent(seg[1]));
+    if (!section) return problem(404, "not-found", "Not found");
+    if (m === "DELETE") {
+      section.result = null;
+      return { status: 204, body: "" };
+    }
+    if (section.timer === null || section.timer.format === "set_timer") return problem(409, "section-timer-mismatch", "Section timer mismatch");
+    if (resultIssues(section.timer, body).length > 0) return problem(422, "validation-error", "Validation error");
+    section.result = { rounds: body.rounds ?? null, reps: body.reps ?? null, finishSeconds: body.finishSeconds ?? null, capped: body.capped ?? false };
+    return json(section);
   }
   if ((seg = /^\/v1\/workout-sections\/([^/]+)$/.exec(p))) {
     const id = decodeURIComponent(seg[1]);
@@ -797,6 +824,54 @@ try {
       await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "58-summary-sections", "History summary: each section's name and note above its cards, no Edit (Spec 10.6 AC16)");
     });
+
+    // Spec 10.7 AC63 (Phase C): the timed heading with Log result and a queued entry's tag, and the sheet in each format.
+    await tryStep("log result heading", async () => {
+      state.sectioned = structuredClone(D.activeTimed);
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Log result for Main" }).click({ timeout: 4000 });
+      await page.getByRole("dialog", { name: "Log result" }).waitFor({ timeout: 4000 });
+      await page.locator("dialog[open]").getByLabel("Round 4", { exact: true }).pressSequentially("354");
+      state.hangWrites = true; // the PUT stays in flight, so the heading shows the queued entry's tag
+      await page.locator("dialog[open]").getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("region", { name: "Main" }).getByText("Not saved yet").waitFor({ timeout: 4000 });
+      await page.getByRole("region", { name: "Main" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "92-session-timed-heading", "Live timed section: the plan with its total, the round times, Log result, and Not saved yet for a queued entry (Spec 10.7 AC19, AC39)");
+      // Drop the held entry so no later page sends it to a workout the harness no longer serves.
+      await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:outbox"); } catch { /* storage blocked */ } });
+    });
+    state.hangWrites = false;
+    await tryStep("log result sheets", async () => {
+      state.sectioned = structuredClone(D.activeTimed);
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Log result for Main" }).click({ timeout: 4000 });
+      await page.getByRole("dialog", { name: "Log result" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "93-log-result-set-timer", "Log result, Set Timer: one field per round, Next on the first empty one, the live Total (Spec 10.7 AC27, AC28)");
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Log result for Finisher" }).click({ timeout: 4000 });
+      const amrap = page.locator("dialog[open]");
+      await amrap.getByRole("button", { name: "Increase rounds" }).click();
+      await amrap.getByRole("button", { name: "Increase reps" }).click();
+      await amrap.getByRole("button", { name: "Add round time" }).click();
+      await amrap.getByLabel("Round 1", { exact: true }).pressSequentially("410");
+      await shoot(page, device, "94-log-result-amrap", "Log result, AMRAP: Rounds and Reps steppers, the optional round ends with their hint and Add round time (Spec 10.7 AC29)");
+      await page.keyboard.press("Escape");
+    });
+    await tryStep("log result time cap", async () => {
+      const w = structuredClone(D.activeTimed);
+      w.sections = w.sections.map((s) => (s.name === "Finisher" ? { ...s, timer: { format: "time_cap", capSeconds: 900 } } : s));
+      state.sectioned = w;
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Log result for Finisher" }).click({ timeout: 4000 });
+      const cap = page.locator("dialog[open]");
+      await cap.getByLabel("Finish time", { exact: true }).pressSequentially("1420");
+      await shoot(page, device, "95-log-result-time-cap", "Log result, Time Cap: Finished with a finish time (Spec 10.7 AC30)");
+      await cap.getByRole("radio", { name: "Hit the cap" }).check();
+      await cap.getByRole("button", { name: "Increase rounds" }).click();
+      await shoot(page, device, "95-log-result-time-cap-hit", "Log result, Time Cap: Hit the cap, with Rounds and Reps (Spec 10.7 AC30)");
+      await page.keyboard.press("Escape");
+    });
+    state.sectioned = null;
 
     // Spec 10.7 AC63 (Phase B): the clear-times confirm on a live timed workout, the summary's timed headings, and
     // History's score lines. The timed workouts are served only here, so every earlier capture is unchanged.

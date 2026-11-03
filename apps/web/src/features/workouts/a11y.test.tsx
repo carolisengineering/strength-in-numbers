@@ -29,6 +29,13 @@ import { expectNoAxeViolations } from "../../test/axe";
 import { makeTimedSectionSummary, makeWorkoutSummary } from "../../test/workoutFixtures";
 import { HistoryRow } from "../history/HistoryRow";
 import { SessionSection } from "./SessionSectionHeading";
+import { makeTimedSection } from "../../test/workoutFixtures";
+import { fieldsFromTimer } from "../sectionTimer/timerFields";
+import { TimerFields } from "../sectionTimer/TimerFieldGroup";
+import { SyncStatus } from "./outbox/SyncStatus";
+import { RESULT_COPY } from "./result/resultCopy";
+import type { TimedSection } from "./result/resultDraft";
+import { ResultSheet } from "./result/ResultSheet";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -913,5 +920,60 @@ describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
     await waitFor(() => expect(screen.getByTestId("session-announcement")).toHaveTextContent("Timer saved"));
     expect(screen.getByTestId("session-announcement")).toHaveAttribute("role", "status");
     expect(screen.queryAllByRole("alert").filter((a) => /Timer saved/.test(a.textContent ?? ""))).toEqual([]);
+  });
+});
+
+describe("10.7 AC59 — Log result accessibly (Phase C)", () => {
+  afterEach(() => document.documentElement.removeAttribute("data-theme"));
+  const timers = {
+    set_timer: { format: "set_timer", roundSeconds: 300, rounds: 3 },
+    amrap: { format: "amrap", capSeconds: 720 },
+    time_cap: { format: "time_cap", capSeconds: 900 },
+  } as const;
+
+  it.each(["light", "dark"].flatMap((theme) => (Object.keys(timers) as (keyof typeof timers)[]).map((format) => [theme, format] as const)))(
+    "the sheet in each format (%s, %s): a labeled dialog, rows named Round n, grouped radios, named stepper buttons",
+    async (theme, format) => {
+      document.documentElement.setAttribute("data-theme", theme);
+      const section = makeTimedSection({ name: "Main", timer: timers[format], roundTimes: [{ round: 1, seconds: 200 }] }) as TimedSection;
+      render(<ResultSheet open section={section} busy={false} formError={null} onCancel={() => {}} onSave={() => {}} />);
+      const dialog = screen.getByRole("dialog", { name: "Log result" });
+      expect(within(dialog).getByLabelText("Round 1")).toBeInTheDocument();
+      if (format === "time_cap") expect(within(dialog).getAllByRole("radio")).toHaveLength(2);
+      // A Time Cap opens on Finished (no steppers until Hit the cap).
+      if (format === "amrap") expect(within(dialog).getByRole("button", { name: "Increase rounds" })).toBeInTheDocument();
+      for (const control of dialog.querySelectorAll("input, select")) expect(control).toHaveAccessibleName();
+      await expectNoAxeViolations(dialog);
+    },
+  );
+
+  it.each(["light", "dark"])("the heading with its sync tag, SyncStatus with timer entries, and the locked Timer group (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { container } = render(
+      <>
+        <SessionSection
+          heading="Main"
+          notes={null}
+          timing={{ timer: timers.set_timer, result: null, roundTimes: [{ round: 1, seconds: 200 }] }}
+          onLogResult={() => {}}
+          sync={{ state: "pending" }}
+          syncText={{ pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFailed }}
+        >
+          {[]}
+        </SessionSection>
+        <SyncStatus pending={0} failed={0} pendingTimer={2} failedTimer={1} online onRetry={() => {}} onDiscardFailed={() => {}} onShowFailed={null} />
+        <TimerFields idPrefix="locked" value={fieldsFromTimer(timers.amrap)} onChange={() => {}} disabled />
+      </>,
+    );
+    expect(screen.getByText("Not saved yet")).toBeInTheDocument();
+    await expectNoAxeViolations(container);
+  });
+
+  it.each([
+    ["./result/ResultSheet.module.css", ".addRound"],
+    ["./result/ResultSheet.module.css", ".clear"],
+    ["./result/ResultSheet.module.css", ".radio"],
+  ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
+    expect(hasTapTarget(file, selector)).toBe(true);
   });
 });
