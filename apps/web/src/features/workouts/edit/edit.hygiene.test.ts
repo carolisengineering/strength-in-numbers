@@ -63,6 +63,15 @@ describe("18.0 AC46 — edit modules stay off the live machinery", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("10.7 AC61 — timerSave, timedGrouping and useTimedGrouping are shared: scanned with the shared section modules, imported by both screens", () => {
+    for (const file of ["../sections/timerSave.ts", "../sections/timedGrouping.ts", "../sections/useTimedGrouping.ts"]) {
+      expect(Object.keys(sharedSectionSources), file).toContain(file);
+    }
+    const editScreen = Object.entries(editSources).find(([p]) => p === "./EditWorkoutScreen.tsx")![1];
+    expect(editScreen).toMatch(/sections\/useTimedGrouping/);
+    expect(Object.values(activeSession)[0]!).toMatch(/sections\/useTimedGrouping/);
+  });
+
   it("ActiveSession gains no edit-mode branch", () => {
     const source = Object.values(activeSession)[0]!;
     expect(source).not.toMatch(/ScreenModeContext|useScreenMode/);

@@ -199,7 +199,7 @@ function makeHandler(state) {
       state.finishedOneOff = { ...D.activeOneOff, endedAt: new Date().toISOString(), plannedDurationSeconds: null, routineIsOneOff: false };
       state.classGone = true;
       res = json({ ...state.finishedOneOff, newRecords: [] });
-    } else if (m === "GET" && p === "/v1/workouts") res = json(D.history);
+    } else if (m === "GET" && p === "/v1/workouts") res = json(state.historyTimed ? D.historyTimed : D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const id = decodeURIComponent(seg[1]);
       const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed].find((x) => x.id === id);
@@ -797,6 +797,34 @@ try {
       await page.getByRole("region", { name: "Main lifts" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "58-summary-sections", "History summary: each section's name and note above its cards, no Edit (Spec 10.6 AC16)");
     });
+
+    // Spec 10.7 AC63 (Phase B): the clear-times confirm on a live timed workout, the summary's timed headings, and
+    // History's score lines. The timed workouts are served only here, so every earlier capture is unchanged.
+    await tryStep("timer change confirm", async () => {
+      state.sectioned = structuredClone(D.activeTimed);
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
+      const sheet = page.locator("dialog[open]");
+      await sheet.getByLabel("Timer").selectOption("amrap");
+      await sheet.getByLabel("Time limit", { exact: true }).pressSequentially("1200");
+      await sheet.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("dialog", { name: "Change Main's timer?" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "96-timer-change-confirm", "Change Main's timer? confirm over the Edit section sheet: Cancel focused, the danger Change and clear (Spec 10.7 AC16)");
+      await page.keyboard.press("Escape");
+    });
+    state.sectioned = null;
+    await tryStep("summary timed", async () => {
+      await go(`/app/history/${D.finishedTimed.id}`);
+      await page.getByRole("region", { name: "Main" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "97-summary-timed", "History summary of a timed workout: each timed section's plan and score, its round times muted, no Log result (Spec 10.7 AC20)");
+    });
+    await tryStep("history timed", async () => {
+      state.historyTimed = true;
+      await go("/app/history");
+      await page.getByRole("link", { name: /Conditioning/ }).first().scrollIntoViewIfNeeded();
+      await shoot(page, device, "98-history-timed", "History with a timed workout: one line per scored timed section under the meta line, wrapping (Spec 10.7 AC21)");
+    });
+    state.historyTimed = false;
 
     // No active workout: start screen + routines.
     state.active = false;

@@ -87,7 +87,7 @@ function bootTimed(options: Partial<WorkoutFakeOptions> = {}) {
   return { fake, active, sectionId: active.sections[0]!.id };
 }
 
-describe("10.7 AC57 — the fake speaks 09.5's section timer", () => {
+describe("10.7 AC57 — the fake speaks the 09.5 section timer", () => {
   it("POST stores the timer, a Time Cap with no cap as capSeconds: null", async () => {
     const { fake, active } = bootTimed();
     const res = await call("POST", `/workouts/${active.id}/sections`, { name: "Finisher", timer: { format: "time_cap" } });

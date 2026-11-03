@@ -112,7 +112,7 @@ describe("10.7 AC19 — the timed heading on the edit screen", () => {
   });
 });
 
-describe("10.7 AC26 — the edit screen's timer writes", () => {
+describe("10.7 AC26 — timer writes on the edit screen", () => {
   it("the returned section lands in the detail at its position; workout_edit section_timer_changed; editSucceeded once", async () => {
     const { user, workout, queryClient } = await openEdit({ sections: [{ name: "Warm-up" }, { name: "Main", timer: SET5 }], exercises: [ex("Thruster", 1)] });
     const reset = vi.spyOn(queryClient, "resetQueries");

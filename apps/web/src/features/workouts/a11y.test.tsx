@@ -23,6 +23,12 @@ import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
+import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { expectNoAxeViolations } from "../../test/axe";
+import { makeTimedSectionSummary, makeWorkoutSummary } from "../../test/workoutFixtures";
+import { HistoryRow } from "../history/HistoryRow";
+import { SessionSection } from "./SessionSectionHeading";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -807,5 +813,105 @@ describe("10.6 AC25 — the edit screen's section controls, accessibly", () => {
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "edit/EditWorkoutScreen.module.css"), "utf8");
     expect(css).toMatch(/\.listEnd \{[^}]*flex-wrap: wrap/);
     expect(css).toMatch(/\.limit \{[^}]*color: var\(--color-muted\)/);
+  });
+});
+
+describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
+  afterEach(() => document.documentElement.removeAttribute("data-theme"));
+  const SET5 = { format: "set_timer", roundSeconds: 300, rounds: 5 } as const;
+  const ROUNDS = [
+    { round: 1, seconds: 221 },
+    { round: 2, seconds: 218 },
+  ];
+  async function liveTimed() {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        sections: [{ name: "Main", notes: "Sprints", timer: SET5, roundTimes: ROUNDS }],
+        exercises: [
+          { modality: "weight_reps", name: "Thruster", sectionIndex: 0, supersetGroup: 1 },
+          { modality: "weight_reps", name: "Pull-up", sectionIndex: 0, supersetGroup: 1 },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    return app;
+  }
+
+  it.each(["light", "dark"].flatMap((theme) => (["none", "set_timer", "amrap", "time_cap"] as const).map((format) => [theme, format] as const)))(
+    "the workout section sheet's Timer group (%s, %s)",
+    async (theme, format) => {
+      document.documentElement.setAttribute("data-theme", theme);
+      const { user } = await liveTimed();
+      await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+      const dialog = screen.getByRole("dialog", { name: "Edit section" });
+      await user.selectOptions(within(dialog).getByLabelText("Timer"), format);
+      for (const control of dialog.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
+      await expectNoAxeViolations(dialog);
+    },
+  );
+
+  it.each(["light", "dark"])("the timer confirm focuses Cancel and is axe-clean (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { user } = await liveTimed();
+    await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit section" });
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await user.type(within(dialog).getByLabelText("Time limit"), "1200");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    const confirm = await screen.findByRole("dialog", { name: "Change Main's timer?" });
+    await waitFor(() => expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus());
+    await expectNoAxeViolations(confirm);
+  });
+
+  it.each(["light", "dark"])("the timed heading with its plan, times line, Log result and cap line (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { container } = render(
+      <SessionSection heading="Main" notes="Sprints" timing={{ timer: SET5, result: null, roundTimes: ROUNDS }} onLogResult={() => {}} capLine>
+        <p>card</p>
+      </SessionSection>,
+    );
+    expect(screen.getByRole("button", { name: "Log result for Main" })).toBeInTheDocument();
+    await expectNoAxeViolations(container);
+  });
+
+  it.each(["light", "dark"])("the summary's timed heading (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const d = makeWorkoutDetail({
+      endedAt: "2026-10-02T11:00:00.000Z",
+      sections: [{ name: "Main", timer: SET5, roundTimes: ROUNDS }],
+      exercises: [{ modality: "weight_reps", name: "Thruster", sectionIndex: 0, sets: [makeSet({ setNumber: 1 })] }],
+    });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [d] }) });
+    renderApp(`/app/history/${d.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    await expectNoAxeViolations(screen.getByRole("region", { name: "Main" }));
+  });
+
+  it.each(["light", "dark"])("a History row with timed lines (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const workout = makeWorkoutSummary({
+      timedSections: [0, 1, 2].map((position) => makeTimedSectionSummary({ position, name: `S${position}`, roundTimes: ROUNDS })),
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <HistoryRow workout={workout} unitPreference="kg" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("+1 more")).toBeInTheDocument();
+    await expectNoAxeViolations(container);
+  });
+
+  it("status messages go to the polite status line, never an alert", async () => {
+    const { user } = await liveTimed();
+    await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit section" });
+    await user.clear(within(dialog).getByLabelText("Rounds"));
+    await user.type(within(dialog).getByLabelText("Rounds"), "6");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByTestId("session-announcement")).toHaveTextContent("Timer saved"));
+    expect(screen.getByTestId("session-announcement")).toHaveAttribute("role", "status");
+    expect(screen.queryAllByRole("alert").filter((a) => /Timer saved/.test(a.textContent ?? ""))).toEqual([]);
   });
 });
