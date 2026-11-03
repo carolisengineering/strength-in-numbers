@@ -4,7 +4,9 @@ import { reportUnexpected } from "../reportUnexpected";
 import { SECTION_COPY, changeTimerTitle, movedOut, movedTo, sectionAdded } from "./sectionCopy";
 import { sectionPickerId } from "./SectionPicker";
 import { checkSectionFields, sectionBody, type SectionValues, type UpdateSectionBody } from "./sectionFields";
+import type { GroupTrigger } from "./timedGrouping";
 import { decideTimerSave } from "./timerSave";
+import type { GroupCause } from "./useTimedGrouping";
 import type { SectionMutations } from "./sectionMutations";
 import type { SectionSheetErrors } from "./SectionSheet";
 import { resolveSectionFailure, type SectionOp } from "./resolveSectionFailure";
@@ -34,6 +36,11 @@ export interface SectionActionDeps {
    * `sectionId`, never on a later unrelated change if the re-read failed (#157).
    */
   onMoved(exerciseId: string, sectionId: string | null): void;
+  /**
+   * Spec 10.7 AC22: the screen's `useTimedGrouping().couple`, run while this write still holds the lock — a fill
+   * after a timer save that makes the section timed or changes its format, a join after a move into a section.
+   */
+  couple?(sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void>;
 }
 
 export interface SheetView {
@@ -88,7 +95,7 @@ const NO_ERRORS: SectionSheetErrors = { name: null, notes: null, form: null, tim
  * announcements and the focus rule of AC6–AC8; everything screen-specific is injected.
  */
 export function useSectionActions(deps: SectionActionDeps): SectionActions {
-  const { workout, mutations, structureLock, setBanner, announce, refetch, onGone, offlineText, onMoved } = deps;
+  const { workout, mutations, structureLock, setBanner, announce, refetch, onGone, offlineText, onMoved, couple } = deps;
   const [view, setView] = useState<(SheetView & { open: boolean }) | null>(null);
   const [errors, setErrors] = useState<SectionSheetErrors>(NO_ERRORS);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -108,8 +115,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   const editCallbacks = useRef(new Map<string, (node: HTMLButtonElement | null) => void>());
   const removeNode = useRef<HTMLButtonElement | null>(null);
   const saveNode = useRef<HTMLButtonElement | null>(null);
-  // Spec 10.7 AC16: the body a confirmed "Change and clear" sends, and the confirm's title.
-  const heldTimerChange = useRef<{ sectionId: string; body: UpdateSectionBody } | null>(null);
+  // Spec 10.7 AC16: the body a confirmed "Change and clear" sends (and whether it then fills a group), and the confirm's title.
+  const heldTimerChange = useRef<{ sectionId: string; body: UpdateSectionBody; fill: boolean } | null>(null);
   const [timerConfirm, setTimerConfirm] = useState<{ title: string } | null>(null);
 
   // jsdom's dialog shim does not restore focus, and after a remove the opener is gone: focus is explicit,
@@ -316,23 +323,28 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       return;
     }
     const update = body as UpdateSectionBody;
+    // Spec 10.7 AC22: becoming timed, or another format, fills in a group; a number change or a removal never does.
+    const next = values.timer;
+    const fill = next !== undefined && next !== null && (stored!.timer === null || stored!.timer.format !== next.format);
     // Spec 10.7 AC16–AC17: a timer change that would clear what is recorded asks first and sends nothing yet.
-    if (values.timer !== undefined && decideTimerSave(stored!, values.timer).kind === "confirm") {
-      heldTimerChange.current = { sectionId: stored!.id, body: update };
+    if (next !== undefined && decideTimerSave(stored!, next).kind === "confirm") {
+      heldTimerChange.current = { sectionId: stored!.id, body: update, fill };
       setTimerConfirm({ title: changeTimerTitle(stored!.name) });
       return;
     }
-    await saveSection(stored!.id, update);
+    await saveSection(stored!.id, update, fill);
   }
 
   /** The edit sheet's write. `Timer saved` when the body changes the timer (AC15), `Section saved` otherwise. */
-  async function saveSection(sectionId: string, body: UpdateSectionBody) {
+  async function saveSection(sectionId: string, body: UpdateSectionBody, fill: boolean) {
     const view = sheet;
     if (!begin()) return;
     try {
       await mutations.update(sectionId, body);
       closeAll(openerOf(view));
       announce("timer" in body ? SECTION_COPY.timerSaved : SECTION_COPY.saved);
+      // The group is a second step on the re-read detail, still under this write's lock; its failure is its own banner.
+      if (fill && couple) await couple(sectionId, "fill", "timer");
     } catch (error) {
       await fail("update-section", error, { inSheet: true, focus: openerOf(view) });
     } finally {
@@ -345,7 +357,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
   async function confirmTimerChange() {
     const held = heldTimerChange.current;
     if (held === null || sheet === null || sheet.session <= closedSessionRef.current) return;
-    await saveSection(held.sectionId, { ...held.body, discardResult: true });
+    await saveSection(held.sectionId, { ...held.body, discardResult: true }, held.fill);
   }
 
   function cancelTimerChange() {
@@ -389,6 +401,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
       const section = sectionId === null ? undefined : latest.current.sections.find((s) => s.id === sectionId);
       announce(section ? movedTo(exercise.exerciseNameSnapshot, section.name) : movedOut(exercise.exerciseNameSnapshot));
       onMoved(exercise.id, sectionId);
+      // Spec 10.7 AC22: moved into a timed section, it may join (couple reads the timer from the re-read detail).
+      if (sectionId !== null && couple) await couple(sectionId, { join: exercise.id }, "moved");
     } catch (error) {
       await fail("set-section", error, { inSheet: false, focus: null, exerciseId, retry: () => void moveExercise(exerciseId, sectionId) });
       if (pendingFocus.current === null) pendingFocus.current = { kind: "select", exerciseId };

@@ -27,7 +27,9 @@ describe("10.6 AC27 — boundaries", () => {
         "sectionFields.ts",
         "sectionMutations.ts",
         // Spec 10.7 Phase B.
+        "timedGrouping.ts",
         "timerSave.ts",
+        "useTimedGrouping.ts",
         "useSectionActions.ts",
         "useSectionMutations.ts",
       ].sort(),
@@ -54,7 +56,8 @@ describe("10.6 AC27 — boundaries", () => {
 describe("10.6 AC27 — boundaries with the edit screen", () => {
   const editDir = join(here, "..", "edit");
   const EDIT_SOURCES = readdirSync(editDir).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
-  const ALLOWED = new Set(["useSectionActions", "SectionDialogs", "NewExercisesLine", "sectionCopy", "sectionMutations", "SectionPicker"]);
+  // Spec 10.7 Phase B: useTimedGrouping is shared by both screens (each passes its own regroup), like useSectionActions.
+  const ALLOWED = new Set(["useSectionActions", "SectionDialogs", "NewExercisesLine", "sectionCopy", "sectionMutations", "SectionPicker", "useTimedGrouping"]);
 
   it("sections/ imports nothing from edit/", () => {
     const hits = SOURCES.flatMap((f) => imports(read(f)).filter((i) => /(^|\/)edit\//.test(i)).map((i) => `${f}: ${i}`));
