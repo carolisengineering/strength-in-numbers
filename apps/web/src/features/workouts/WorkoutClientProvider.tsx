@@ -1,18 +1,18 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { SetEntry, WorkoutDetail, WorkoutExercise } from "@sin/core";
+import type { SetEntry, WorkoutDetail, WorkoutExercise, WorkoutSection } from "@sin/core";
 import { ApiError } from "../../api";
 import { useApi } from "../../auth/useApi";
 import { localStorageAdapter, type StorageAdapter } from "../../storage/storage";
 import { applyEditedCaches } from "../records/cache";
-import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
+import { withExerciseNotes, withSection, withSectionCleared, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { createRestStores } from "./restStore";
 import { RestStoresContext } from "./useRestTimer";
 import { createOutbox, type Outbox } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/OutboxContext";
-import type { NoteOp, OutboxOp } from "./outbox/ops";
+import type { NoteOp, OutboxOp, SectionOp } from "./outbox/ops";
 import { project } from "./outbox/project";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
 import { EditWorkoutClientContext, WORKOUT_KEYS, WorkoutClientContext } from "./queries";
@@ -49,6 +49,26 @@ function applyNoteSynced(queryClient: QueryClient, outbox: Outbox, op: NoteOp, e
       return project(exercise ? withExerciseNotes(d, exercise) : d, outbox.getState()).workout;
     });
     if (interrupted || exercise === null) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+  });
+}
+
+/**
+ * Spec 10.7 AC37: a synced timer entry — write the server's section (a `PUT`) or drop the cleared entry (a `204`),
+ * then re-overlay what is still queued. A `404` "done" (the section or workout is gone) re-reads `active`.
+ */
+function applySectionSynced(queryClient: QueryClient, outbox: Outbox, op: SectionOp, section: WorkoutSection | null, gone: boolean): void {
+  const interrupted = queryClient.isFetching({ queryKey: WORKOUT_KEYS.active }) > 0;
+  void queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active }).then(() => {
+    queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => {
+      if (!d || d.id !== op.workoutId) return d;
+      const written = section
+        ? withSection(d, section)
+        : gone
+          ? d
+          : withSectionCleared(d, op.sectionId, op.kind === "round" ? { round: op.round } : "result");
+      return project(written, outbox.getState()).workout;
+    });
+    if (interrupted || gone) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
   });
 }
 
@@ -109,6 +129,10 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       },
       onNoteSynced: (op, exercise) => {
         applyNoteSynced(queryClient, outbox, op, exercise);
+        refreshFinishedElsewhere(queryClient, op.workoutId);
+      },
+      onSectionSynced: (op, section, gone) => {
+        applySectionSynced(queryClient, outbox, op, section, gone);
         refreshFinishedElsewhere(queryClient, op.workoutId);
       },
       onFailed: (op, error) => {

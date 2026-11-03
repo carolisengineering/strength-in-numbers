@@ -1,11 +1,24 @@
-import type { CreateSet, SetEntry, UpdateSet, WorkoutExercise } from "@sin/core";
+import type { CreateSet, SetEntry, SetSectionResult, UpdateSet, WorkoutExercise, WorkoutSection } from "@sin/core";
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
-import { combine, isSetOp, parseOutboxFile, sameTarget, type CreateOp, type IdMap, type NoteOp, type OpFailure, type OpTarget, type OutboxOp } from "./ops";
+import {
+  combine,
+  isSectionOp,
+  isSetOp,
+  parseOutboxFile,
+  sameTarget,
+  type CreateOp,
+  type IdMap,
+  type NoteOp,
+  type OpFailure,
+  type OpTarget,
+  type OutboxOp,
+  type SectionOp,
+} from "./ops";
 
 export const OUTBOX_KEY = "sin:workout:outbox";
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
@@ -13,6 +26,12 @@ const DELAYED_MS = 2000;
 
 /** An update / delete whose set's create never synced: there is no server id to send it to. */
 class UnresolvedTarget extends Error {}
+
+/** A REST method a timer entry needs; a client without it is a wiring mistake (a set-only test stub). */
+function need<F>(method: F | undefined): F {
+  if (method === undefined) throw new Error("outbox: the REST client has no timer-entry methods");
+  return method;
+}
 
 export interface OutboxState {
   readonly ops: readonly OutboxOp[];
@@ -24,7 +43,9 @@ export interface OutboxState {
 
 export interface OutboxDeps {
   storage: StorageAdapter;
-  rest: Pick<WorkoutClient, "createSet" | "updateSet" | "deleteSet" | "setExerciseNote">;
+  /** The timer-entry methods (Spec 10.7) are optional so a set-only stub still types; the provider passes them all. */
+  rest: Pick<WorkoutClient, "createSet" | "updateSet" | "deleteSet" | "setExerciseNote"> &
+    Partial<Pick<WorkoutClient, "putRoundTime" | "deleteRoundTime" | "putResult" | "deleteResult">>;
   userId: string;
   isOnline?: () => boolean;
   random?: () => number;
@@ -38,6 +59,11 @@ export interface OutboxDeps {
   onSynced?: (op: OutboxOp, row: SetEntry | null) => void;
   /** A note op reached the server: `exercise` is the server's row, `null` for the 404 "done" path (Spec 10.3 AC12). A note never calls `onSynced`. */
   onNoteSynced?: (op: NoteOp, exercise: WorkoutExercise | null) => void;
+  /**
+   * Spec 10.7 AC37: a timer entry reached the server. `section` is the server's section for a `PUT`; `null` with
+   * `gone: false` for a `204` clear, `null` with `gone: true` for the `404` "done" path. It never calls `onSynced`.
+   */
+  onSectionSynced?: (op: SectionOp, section: WorkoutSection | null, gone: boolean) => void;
   /** An op became `failed` (called once, for the op the server answered; dependents fail with it). */
   onFailed?: (op: OutboxOp, error: unknown) => void;
   /** Ops removed by the lifter (Discard), so the screen can drop what it showed for them. */
@@ -49,6 +75,11 @@ interface SetWriteTarget {
   workoutExerciseId: string;
 }
 
+interface SectionWriteTarget {
+  workoutId: string;
+  sectionId: string;
+}
+
 export interface Outbox {
   getState(): OutboxState;
   subscribe(listener: () => void): () => void;
@@ -57,6 +88,10 @@ export interface Outbox {
   enqueueDelete(input: SetWriteTarget & { target: OpTarget }): void;
   /** Spec 10.3: queue one exercise's note (`null` clears it). Newer text replaces a never-sent op for the same exercise. */
   enqueueNote(input: SetWriteTarget & { body: { notes: string | null } }): void;
+  /** Spec 10.7 AC34: queue one round's final time (`null` clears it). AC35 decides whether it replaces the last op. */
+  enqueueRound(input: SectionWriteTarget & { round: number; body: { seconds: number | null } }): void;
+  /** Spec 10.7 AC34: queue the section's result (`null` clears it). */
+  enqueueResult(input: SectionWriteTarget & { body: SetSectionResult | null }): void;
   /** How an op should name the set the screen shows as `setId` (a client key until its create syncs). */
   targetFor(setId: string): OpTarget;
   discard(opId: string): void;
@@ -171,6 +206,22 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     };
   };
 
+  /** A timer entry's common fields: on a section, with no exercise (Spec 10.7 AC34). */
+  const sectionOpBase = (input: SectionWriteTarget) => {
+    const now = Date.now();
+    return {
+      id: newId(),
+      workoutId: input.workoutId,
+      sectionId: input.sectionId,
+      userId,
+      status: "queued" as const,
+      attempted: false,
+      attempts: 0,
+      nextAttemptAt: now,
+      enqueuedAt: now,
+    };
+  };
+
   function enqueue(op: OutboxOp): void {
     set({ ops: combine(state.ops, op) });
     void drain();
@@ -208,11 +259,20 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return state.idMap[target.clientGeneratedId]?.setId ?? null;
   }
 
-  async function call(op: OutboxOp): Promise<SetEntry | WorkoutExercise | null> {
+  async function call(op: OutboxOp): Promise<SetEntry | WorkoutExercise | WorkoutSection | null> {
     if (op.kind === "note") return rest.setExerciseNote(op.workoutExerciseId, op.body.notes);
     if (op.kind === "create") return rest.createSet(op.workoutExerciseId, op.body);
-    // Timer entries are sent from Task 4 of Spec 10.7 Phase C; nothing enqueues one before then.
-    if (!isSetOp(op)) throw new UnresolvedTarget();
+    // Spec 10.7 AC37: a timer entry is a keyed set or clear on its section; a clear answers 204.
+    if (op.kind === "round") {
+      if (op.body.seconds !== null) return need(rest.putRoundTime)(op.sectionId, op.round, op.body.seconds);
+      await need(rest.deleteRoundTime)(op.sectionId, op.round);
+      return null;
+    }
+    if (op.kind === "result") {
+      if (op.body !== null) return need(rest.putResult)(op.sectionId, op.body);
+      await need(rest.deleteResult)(op.sectionId);
+      return null;
+    }
     const id = resolveSetId(op.target);
     if (id === null) throw new UnresolvedTarget();
     if (op.kind === "update") return rest.updateSet(id, op.body);
@@ -220,7 +280,13 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return null;
   }
 
-  function succeed(op: OutboxOp, result: SetEntry | WorkoutExercise | null): void {
+  function succeed(op: OutboxOp, result: SetEntry | WorkoutExercise | WorkoutSection | null, gone = false): void {
+    if (isSectionOp(op)) {
+      // A timer entry needs no id mapping and emits no set_* event; the provider writes the section into the cache.
+      set({ ops: state.ops.filter((o) => o.id !== op.id) });
+      deps.onSectionSynced?.(op, result as WorkoutSection | null, gone);
+      return;
+    }
     if (op.kind === "note") {
       // A note needs no id mapping and emits no set_* event (D13); the provider writes the server's copy into the cache.
       set({ ops: state.ops.filter((o) => o.id !== op.id) });
@@ -270,7 +336,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
         return;
       }
       const verdict = classify(op.kind, error);
-      if (verdict === "done") succeed(op, null);
+      if (verdict === "done") succeed(op, null, true);
       else if (verdict === "retry") {
         // Spec 05.2 AC14: never retry sooner than the server's Retry-After.
         const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
@@ -335,6 +401,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     enqueueUpdate: (input) => enqueue({ ...opBase(input), kind: "update", target: input.target, body: input.body }),
     enqueueDelete: (input) => enqueue({ ...opBase(input), kind: "delete", target: input.target, body: null }),
     enqueueNote: (input) => enqueue({ ...opBase(input), kind: "note", body: input.body }),
+    enqueueRound: (input) => enqueue({ ...sectionOpBase(input), kind: "round", round: input.round, body: input.body }),
+    enqueueResult: (input) => enqueue({ ...sectionOpBase(input), kind: "result", body: input.body }),
     targetFor: (setId) => {
       const mapped = state.idMap[setId];
       if (mapped) return { setId: mapped.setId };

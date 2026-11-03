@@ -1,4 +1,4 @@
-import type { SetEntry, WorkoutDetail } from "@sin/core";
+import type { SetEntry, WorkoutDetail, WorkoutSection } from "@sin/core";
 import type { WorkoutClient } from "../workoutClient";
 import type { Outbox } from "./outbox";
 import { matches, project } from "./project";
@@ -76,5 +76,42 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       if (!workout || !exercise) return rest.deleteSet(id);
       outbox.enqueueDelete({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id) });
     },
+
+    // Spec 10.7 AC34: a timer entry on a section of the cached workout is queued and resolves at once with the
+    // projected section; one on any other section goes over REST.
+    async putRoundTime(sectionId, round, seconds) {
+      const workout = workoutWithSection(sectionId);
+      if (!workout) return rest.putRoundTime(sectionId, round, seconds);
+      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds } });
+      return projectedSection(workout, sectionId);
+    },
+
+    async deleteRoundTime(sectionId, round) {
+      const workout = workoutWithSection(sectionId);
+      if (!workout) return rest.deleteRoundTime(sectionId, round);
+      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds: null } });
+    },
+
+    async putResult(sectionId, body) {
+      const workout = workoutWithSection(sectionId);
+      if (!workout) return rest.putResult(sectionId, body);
+      outbox.enqueueResult({ workoutId: workout.id, sectionId, body });
+      return projectedSection(workout, sectionId);
+    },
+
+    async deleteResult(sectionId) {
+      const workout = workoutWithSection(sectionId);
+      if (!workout) return rest.deleteResult(sectionId);
+      outbox.enqueueResult({ workoutId: workout.id, sectionId, body: null });
+    },
   };
+
+  function workoutWithSection(sectionId: string): WorkoutDetail | null {
+    const workout = cached();
+    return workout && workout.sections.some((s) => s.id === sectionId) ? workout : null;
+  }
+
+  function projectedSection(workout: WorkoutDetail, sectionId: string): WorkoutSection {
+    return view(workout).sections.find((s) => s.id === sectionId)!;
+  }
 }
