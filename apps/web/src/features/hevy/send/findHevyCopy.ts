@@ -9,9 +9,11 @@ const SAME_INSTANT_MS = 1000;
 export type FindResult = { kind: "found"; hevyWorkoutId: string } | { kind: "notFound" } | { kind: "inconclusive" };
 
 /**
- * Exercises holding at least one set (minor 262). An untimed section marker and an exercise whose sets were all
- * dropped don't count; a timed marker that carries its duration set (Spec 09.5 §6.7) does, on both the built body
- * and Hevy's copy, so the comparison still agrees.
+ * Exercises holding at least one set (minor 262). A section marker with no sets and an exercise whose sets were all
+ * dropped don't count. A timed marker counts only where it carries its duration set (Spec 09.5 §6.7): the first
+ * marker of its section, of a Hevy type that holds a duration, when there is a duration to send (an AMRAP always; a
+ * Set Timer or Time Cap once it has a score). It counts on both the built body and Hevy's copy, so the comparison
+ * still agrees.
  */
 export const withSets = (exercises: readonly { sets: readonly unknown[] }[]): number => exercises.filter((e) => e.sets.length > 0).length;
 
