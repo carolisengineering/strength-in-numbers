@@ -1,7 +1,7 @@
 import type { SectionTimer, WorkoutDetail } from "@sin/core";
 import { describe, expect, it } from "vitest";
 import { makeWorkoutDetail, type ExerciseSpec, type WorkoutDetailOptions } from "../../../test/workoutFixtures";
-import { timedRegroupTargets } from "./timedGrouping";
+import { resumeTarget, timedRegroupTargets } from "./timedGrouping";
 
 const SET5: SectionTimer = { format: "set_timer", roundSeconds: 300, rounds: 5 };
 const ex = (name: string, sectionIndex: number | null, supersetGroup: number | null = null): ExerciseSpec => ({ modality: "weight_reps", name, sectionIndex, supersetGroup });
@@ -10,6 +10,31 @@ const build = (opts: WorkoutDetailOptions) => makeWorkoutDetail(opts);
 const idOf = (d: WorkoutDetail, name: string) => d.exercises.find((e) => e.exerciseNameSnapshot === name)!.id;
 const main = (d: WorkoutDetail, name = "Main") => d.sections.find((s) => s.name === name)!.id;
 const ranges = (targets: ReturnType<typeof timedRegroupTargets>) => targets.map((t) => ({ start: t.start, from: t.from, to: t.to, n: t.slots.length }));
+
+describe("10.7 AC23 — resuming a regroup that partly landed (final review I-1)", () => {
+  const four = (groups: (number | null)[]) =>
+    build({ sections: [{ name: "Warm-up" }, { name: "Main", timer: SET5 }], exercises: [ex("w", 0), ...["a", "b", "c", "d"].map((n, i) => ex(n, 1, groups[i] ?? null))] });
+  const ids = (d: WorkoutDetail) => ["a", "b", "c", "d"].map((n) => idOf(d, n));
+
+  it("a run made only of the failed span's ids is resumed over the whole span", () => {
+    const d = four([5, 5, null, null]);
+    const t = resumeTarget(d, main(d), ids(d));
+    expect(t).toMatchObject({ start: 1, from: 0, to: 3 });
+  });
+
+  it("the span already one run: done", () => {
+    const d = four([5, 5, 5, 5]);
+    expect(resumeTarget(d, main(d), ids(d))).toBe("done");
+  });
+
+  it("a group reaching outside the span, or ids no longer contiguous, falls back (null)", () => {
+    const outside = build({ sections: [{ name: "Main", timer: SET5 }], exercises: [ex("a", 0, 5), ex("b", 0, 5), ex("c", 0), ex("x", 0, 5)] });
+    expect(resumeTarget(outside, main(outside), ["a", "b", "c"].map((n) => idOf(outside, n)))).toBeNull();
+    const d = four([null, null, null, null]);
+    expect(resumeTarget(d, main(d), [idOf(d, "a"), idOf(d, "c")])).toBeNull();
+    expect(resumeTarget(d, main(d), [...ids(d), "00000000-0000-4000-8000-0000000000ff"])).toBeNull();
+  });
+});
 
 describe("10.7 AC22 — what a workout groups (pure)", () => {
   describe("fill", () => {

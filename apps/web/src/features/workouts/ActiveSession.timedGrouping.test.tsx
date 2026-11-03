@@ -24,7 +24,7 @@ import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { server } from "../../test/msw/server";
 import { card, makeCurrent, optionsButton } from "../../test/sessionHelpers";
 import { makeWorkoutDetail, type ExerciseSpec, type WorkoutDetailOptions } from "../../test/workoutFixtures";
-import { createWorkoutFake, type WorkoutFakeOptions } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 
 let online = true;
@@ -200,6 +200,21 @@ describe("10.7 AC23 — when grouping fails (live)", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByText(/couldn't be grouped/)).toBeNull());
     expect(groupPatches(fake).length).toBe(before);
+  });
+
+  it("Try again after a regroup that partly landed groups them all (final review I-1)", async () => {
+    const { user, fake } = await setup({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0), ex("C", 0), ex("D", 0)] });
+    // The first two group PATCHes land, the third fails: the cache re-reads as a 2-of-4 superset.
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workout-exercises\// }, () => problemResponse(503, "about:blank"), 1, 2);
+    await setTimer(user, "Main", "amrap");
+    await screen.findByText("Timer saved, but the exercises couldn't be grouped — try again");
+    const partial = groupsIn(fake, "Main");
+    expect(partial.slice(0, 2).every((g) => g !== null)).toBe(true);
+    expect(partial.slice(2)).toEqual([null, null]);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByText(/couldn't be grouped/)).toBeNull());
+    await waitFor(() => expect(new Set(groupsIn(fake, "Main")).size).toBe(1));
+    expect(groupsIn(fake, "Main")[0]).not.toBeNull();
   });
 
   it("the add path says Exercise added…", async () => {

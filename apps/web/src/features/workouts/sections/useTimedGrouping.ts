@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { WorkoutDetail } from "@sin/core";
 import type { Regroup } from "../useRegroup";
 import { SECTION_COPY } from "./sectionCopy";
-import { timedRegroupTargets, type GroupTrigger } from "./timedGrouping";
+import { resumeTarget, timedRegroupTargets, type GroupTrigger, type TimedRegroupTarget } from "./timedGrouping";
 import type { SectionBanner } from "./useSectionActions";
 
 /** What the lifter just did, for the failure banner's wording (AC23). */
@@ -28,11 +28,18 @@ export interface TimedGrouping {
   couple(sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void>;
 }
 
+interface Attempt {
+  readonly sectionId: string;
+  readonly trigger: GroupTrigger;
+  readonly cause: GroupCause;
+}
+
 /**
  * Spec 10.7 AC22–AC23 — a timed section's grouping as a second online step after a structure write. Each target
  * goes through the screen's `useRegroup.run` with the `groupRange` op (minimal PATCHes, one at a time). A failure
- * never rolls the change back: it raises a banner whose Try again recomputes from the then-current detail, so a
- * segment that is already grouped sends nothing.
+ * never rolls the change back: it raises a banner whose Try again works from the then-current detail — it finishes a
+ * span that partly landed (`resumeTarget`), and otherwise recomputes, so a segment that is already grouped sends
+ * nothing.
  */
 export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
   // The latest deps, so a Try again tapped later reads the screen as it is then.
@@ -41,37 +48,50 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
     latest.current = deps;
   });
 
-  const couple = useCallback(async (sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void> => {
-    const { regroup, readDetail, setBanner } = latest.current;
-    const detail = readDetail();
-    if (!detail) return;
-    for (const target of timedRegroupTargets(detail, sectionId, trigger)) {
-      const outcome = await regroup.run(target.slots, { type: "groupRange", from: target.from, to: target.to }, { positionOffset: target.start });
-      if (outcome.status === "refused") {
-        setBanner({ tone: "warning", text: outcome.message });
-        return;
+  // Built once: both functions read `latest` when called, so they never go stale and need no hook dependencies.
+  const api = useRef<TimedGrouping | null>(null);
+  if (api.current === null) {
+    /** Send each target; on the first failure raise the banner, remembering the span that was being grouped. */
+    const send = async (attempt: Attempt, targets: readonly TimedRegroupTarget[]): Promise<void> => {
+      const { regroup, setBanner } = latest.current;
+      for (const target of targets) {
+        const outcome = await regroup.run(target.slots, { type: "groupRange", from: target.from, to: target.to }, { positionOffset: target.start });
+        if (outcome.status === "refused") {
+          setBanner({ tone: "warning", text: outcome.message });
+          return;
+        }
+        if (outcome.status === "failed" || outcome.status === "busy") {
+          const span = target.slots.slice(target.from, target.to + 1).map((s) => s.id);
+          setBanner({ tone: "error", text: GROUP_FAILED[attempt.cause], retry: () => void retry(attempt, span) });
+          return;
+        }
       }
-      if (outcome.status === "failed" || outcome.status === "busy") {
-        setBanner({ tone: "error", text: GROUP_FAILED[cause], retry: () => void retry(sectionId, trigger, cause) });
-        return;
-      }
-    }
-  }, []);
+    };
 
-  const retry = useCallback(
-    async (sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void> => {
-      const { structureLock, setBanner } = latest.current;
+    const couple = async (sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void> => {
+      const detail = latest.current.readDetail();
+      if (!detail) return;
+      await send({ sectionId, trigger, cause }, timedRegroupTargets(detail, sectionId, trigger));
+    };
+
+    /** From the banner: takes the lock itself. */
+    const retry = async (attempt: Attempt, span: readonly string[]): Promise<void> => {
+      const { structureLock, setBanner, readDetail } = latest.current;
       if (structureLock.current) return;
       structureLock.current = true;
       setBanner(null);
       try {
-        await couple(sectionId, trigger, cause);
+        const detail = readDetail();
+        if (!detail) return;
+        const resumed = resumeTarget(detail, attempt.sectionId, span);
+        if (resumed === "done") return;
+        await send(attempt, resumed !== null ? [resumed] : timedRegroupTargets(detail, attempt.sectionId, attempt.trigger));
       } finally {
         structureLock.current = false;
       }
-    },
-    [couple],
-  );
+    };
 
-  return { couple };
+    api.current = { couple };
+  }
+  return api.current;
 }
