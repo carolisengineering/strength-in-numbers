@@ -1,8 +1,8 @@
 import { createContext, useSyncExternalStore } from "react";
-import type { Modality } from "@sin/core";
+import { formatClock, type Modality } from "@sin/core";
 
 import { formatWeight } from "../routines/targetFormat";
-import { formatCount, formatDuration } from "./format";
+import { formatCount } from "./format";
 import { parseDraft, type SetDraft } from "./setDraft";
 
 /**
@@ -16,7 +16,7 @@ export function logLabel(modality: Modality, draft: SetDraft, unitPreference: "k
   const unit = body.weightUnit !== undefined && body.weightUnit !== unitPreference ? ` ${body.weightUnit}` : "";
   const weight = body.weight === undefined || body.weight === null ? "" : `${formatWeight(body.weight)}${unit}`;
   const reps = body.reps ?? 0;
-  const duration = formatDuration(body.durationS ?? 0);
+  const duration = formatClock(body.durationS ?? 0);
   switch (modality) {
     case "weight_reps":
       return `Log ${weight} × ${reps}`;

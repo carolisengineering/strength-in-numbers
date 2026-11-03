@@ -241,6 +241,12 @@ describe("09.5 AC3 — single implementation", () => {
     const hits = files.filter((f) => !/\.test\.tsx?$/.test(f) && pattern.test(readFileSync(f, "utf8")));
     expect(hits.map((f) => f.slice(ROOT.length + 1))).toEqual(["packages/core/src/timer.ts"]);
   });
+
+  // Deferred minor 297: the web's `formatDuration` was a byte-for-byte copy of `formatClock`; it stays deleted.
+  it("no source defines formatDuration (the web calls formatClock)", () => {
+    const hits = files.filter((f) => !/\.test\.tsx?$/.test(f) && /\bformatDuration\b/.test(readFileSync(f, "utf8")));
+    expect(hits.map((f) => f.slice(ROOT.length + 1))).toEqual([]);
+  });
 });
 
 describe("09.5 AC13 — timersEqual / timerChangeKeepsRecorded (one implementation of the keep rule)", () => {

@@ -1,4 +1,4 @@
-import type { Modality, SetEntry, SetType } from "@sin/core";
+import { formatClock, type Modality, type SetEntry, type SetType } from "@sin/core";
 
 // One pinned formatter so tests and CI are locale-independent (06.0 AC6's reasoning).
 const NUMBER = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
@@ -52,13 +52,6 @@ export function formatStartedAt(iso: string, { timeZone, today }: { timeZone?: s
   return `${day}, ${formatStartedTime(iso, zone)}`;
 }
 
-export function formatDuration(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
-}
-
 /** A count grouped like every other figure ("1,200"); Spec 18.1 §6.5 uses it for calories. */
 export const formatCount = (n: number): string => NUMBER.format(n);
 
@@ -83,10 +76,10 @@ export function formatSetParts(set: SetEntry, modality: Modality): { core: strin
       core = `${set.weight === null ? "–" : `+${withUnit(set.weight, set.weightUnit)}`} × ${reps}`;
       break;
     case "duration":
-      core = orDash(set.durationS, formatDuration);
+      core = orDash(set.durationS, formatClock);
       break;
     case "distance_duration":
-      core = `${withUnit(set.distance, set.distanceUnit)} · ${orDash(set.durationS, formatDuration)}`;
+      core = `${withUnit(set.distance, set.distanceUnit)} · ${orDash(set.durationS, formatClock)}`;
       break;
     // Spec 18.1 §6.5: "·" between the measures, never "×" — a carry is not weight times distance (D8).
     case "calories":
@@ -96,7 +89,7 @@ export function formatSetParts(set: SetEntry, modality: Modality): { core: strin
       core = `${withUnit(set.weight, set.weightUnit)} · ${withUnit(set.distance, set.distanceUnit)}`;
       break;
     case "weight_duration":
-      core = `${withUnit(set.weight, set.weightUnit)} · ${orDash(set.durationS, formatDuration)}`;
+      core = `${withUnit(set.weight, set.weightUnit)} · ${orDash(set.durationS, formatClock)}`;
       break;
   }
   // Spec 17.1 Phase A: RPE is stored but never shown.
