@@ -15,6 +15,7 @@ import {
   type WorkoutExercise,
   type WorkoutSection,
   type CreateWorkoutSection,
+  type SetSectionResult,
   type UpdateWorkoutSection,
 } from "@sin/core";
 import { ApiError, type ApiClient } from "../../api";
@@ -73,13 +74,21 @@ export interface WorkoutClient {
    * method on purpose — WorkoutExercisePatch has no `sectionId`, so a regroup can never move one.
    */
   setExerciseSection(id: string, sectionId: string | null): Promise<WorkoutExercise>;
+  /** Spec 10.7 AC34 / 09.5: one round's time, a keyed set (`{ seconds }` only). The queued client turns it into a `round` op. */
+  putRoundTime(sectionId: string, round: number, seconds: number): Promise<WorkoutSection>;
+  /** Clears one round (`204`, also when it was never recorded). */
+  deleteRoundTime(sectionId: string, round: number): Promise<void>;
+  /** The section's result, a keyed set with exactly the given keys. The queued client turns it into a `result` op. */
+  putResult(sectionId: string, body: SetSectionResult): Promise<WorkoutSection>;
+  /** Clears the result (`204`). */
+  deleteResult(sectionId: string): Promise<void>;
 }
 
 /** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
 const seg = encodeURIComponent;
 
 export function createWorkoutClient(
-  api: Pick<ApiClient, "get" | "post" | "patch" | "delete">,
+  api: Pick<ApiClient, "get" | "post" | "patch" | "delete" | "request">,
 ): WorkoutClient {
   const client: WorkoutClient = {
     async getActive() {
@@ -142,6 +151,20 @@ export function createWorkoutClient(
     },
     setExerciseSection: (id, sectionId) =>
       api.patch(`/v1/workout-exercises/${seg(id)}`, { sectionId }, WorkoutExerciseSchema),
+    putRoundTime: (sectionId, round, seconds) =>
+      api.request<WorkoutSection>(`/v1/workout-sections/${seg(sectionId)}/round-times/${round}`, {
+        method: "PUT",
+        body: { seconds },
+        schema: WorkoutSectionSchema,
+      }),
+    deleteRoundTime: async (sectionId, round) => {
+      await api.delete(`/v1/workout-sections/${seg(sectionId)}/round-times/${round}`);
+    },
+    putResult: (sectionId, body) =>
+      api.request<WorkoutSection>(`/v1/workout-sections/${seg(sectionId)}/result`, { method: "PUT", body, schema: WorkoutSectionSchema }),
+    deleteResult: async (sectionId) => {
+      await api.delete(`/v1/workout-sections/${seg(sectionId)}/result`);
+    },
   };
   return client;
 }

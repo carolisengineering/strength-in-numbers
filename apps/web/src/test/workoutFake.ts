@@ -58,6 +58,12 @@ import {
   sectionScore,
   timerChangeKeepsRecorded,
   timersEqual,
+  resultIssues,
+  roundTimeIssues,
+  ROUND_PARAM_MESSAGE,
+  SectionRoundParamsSchema,
+  SetRoundTimeSchema,
+  SetSectionResultSchema,
   type SectionTimer,
   type SectionTimerInput,
 } from "@sin/core";
@@ -985,6 +991,56 @@ export function createWorkoutFake(options: WorkoutFakeOptions = {}): WorkoutFake
         // The FK nulls section_id; positions are untouched.
         exercises: found.detail.exercises.map((e) => (e.sectionId === removed.id ? { ...e, sectionId: null } : e)),
       });
+      return new HttpResponse(null, { status: 204 });
+    }),
+
+    // Spec 09.5 Phase B / 10.7 AC57: a section's round times and result, keyed sets and clears, through core's rules.
+    handle("put", "/workout-sections/:id/round-times/:round", ({ params, body }) => {
+      const route = SectionRoundParamsSchema.safeParse({ id: params["id"], round: params["round"] });
+      if (!route.success) return validation([{ path: "round", message: ROUND_PARAM_MESSAGE }]);
+      const parsed = parseBody(SetRoundTimeSchema, body);
+      if (!parsed.ok) return parsed.response;
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const { section } = found;
+      if (section.timer === null) return problemResponse(409, "section-timer-mismatch");
+      const round = route.data.round;
+      const issues = roundTimeIssues(section.timer, section.roundTimes, round, parsed.data.seconds);
+      if (issues.length > 0) return validation(issues.map(({ path, message }) => ({ path, message })));
+      const roundTimes = [...section.roundTimes.filter((t) => t.round !== round), { round, seconds: parsed.data.seconds }].sort((a, b) => a.round - b.round);
+      const next = WorkoutSectionSchema.parse({ ...section, roundTimes });
+      store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
+      return HttpResponse.json(next);
+    }),
+    handle("delete", "/workout-sections/:id/round-times/:round", ({ params }) => {
+      const route = SectionRoundParamsSchema.safeParse({ id: params["id"], round: params["round"] });
+      if (!route.success) return validation([{ path: "round", message: ROUND_PARAM_MESSAGE }]);
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const next = { ...found.section, roundTimes: found.section.roundTimes.filter((t) => t.round !== route.data.round) };
+      store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
+      return new HttpResponse(null, { status: 204 });
+    }),
+    handle("put", "/workout-sections/:id/result", ({ params, body }) => {
+      const parsed = parseBody(SetSectionResultSchema, body);
+      if (!parsed.ok) return parsed.response;
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const { timer } = found.section;
+      if (timer === null || timer.format === "set_timer") return problemResponse(409, "section-timer-mismatch");
+      const issues = resultIssues(timer, parsed.data);
+      if (issues.length > 0) return validation(issues.map(({ path, message }) => ({ path, message })));
+      const b = parsed.data;
+      const result = { rounds: b.rounds ?? null, reps: b.reps ?? null, finishSeconds: b.finishSeconds ?? null, capped: b.capped ?? false };
+      const next = WorkoutSectionSchema.parse({ ...found.section, result });
+      store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
+      return HttpResponse.json(next);
+    }),
+    handle("delete", "/workout-sections/:id/result", ({ params }) => {
+      const found = locateSection(params["id"]!);
+      if (!found) return notFound();
+      const next = { ...found.section, result: null };
+      store({ ...found.detail, sections: found.detail.sections.map((x) => (x.id === next.id ? next : x)) });
       return new HttpResponse(null, { status: 204 });
     }),
 

@@ -1,5 +1,13 @@
-import { parseSetEntryId, toCanonicalMeters, type SetEntry, type WorkoutDetail } from "@sin/core";
-import { isSectionOp, type CreateOp, type IdMap, type OpTarget, type OutboxOp } from "./ops";
+import {
+  parseSetEntryId,
+  toCanonicalMeters,
+  type SectionResult,
+  type SetEntry,
+  type SetSectionResult,
+  type WorkoutDetail,
+  type WorkoutSection,
+} from "@sin/core";
+import { isSectionOp, type CreateOp, type IdMap, type OpTarget, type OutboxOp, type SectionOp } from "./ops";
 
 export type RowSync = { state: "pending" } | { state: "failed"; opId: string; status: number };
 
@@ -74,6 +82,28 @@ function newRow(op: CreateOp, exercise: WorkoutExerciseDetail, setNumber: number
   return withFields(blank, op.body, op.enqueuedAt);
 }
 
+/** Spec 10.7 AC38: a result body as the server stores it — every key present, `capped` false by default. */
+export function resultFromBody(body: SetSectionResult): SectionResult {
+  return { rounds: body.rounds ?? null, reps: body.reps ?? null, finishSeconds: body.finishSeconds ?? null, capped: body.capped ?? false };
+}
+
+const sameResult = (a: SectionResult | null, b: SectionResult | null): boolean =>
+  a === null || b === null ? a === b : a.rounds === b.rounds && a.reps === b.reps && a.finishSeconds === b.finishSeconds && a.capped === b.capped;
+
+/** One timer entry applied to its section; the same object back when nothing changes (so projection is reference-stable). */
+function withSectionOp(section: WorkoutSection, op: SectionOp): WorkoutSection {
+  if (op.kind === "result") {
+    const result = op.body === null ? null : resultFromBody(op.body);
+    return sameResult(section.result, result) ? section : { ...section, result };
+  }
+  const current = section.roundTimes.find((t) => t.round === op.round);
+  const { seconds } = op.body;
+  if (seconds === null) return current === undefined ? section : { ...section, roundTimes: section.roundTimes.filter((t) => t.round !== op.round) };
+  if (current?.seconds === seconds) return section;
+  const roundTimes = [...section.roundTimes.filter((t) => t.round !== op.round), { round: op.round, seconds }].sort((a, b) => a.round - b.round);
+  return { ...section, roundTimes };
+}
+
 function mark(sync: Map<string, RowSync>, rowId: string, op: OutboxOp): void {
   if (op.status === "failed") {
     sync.set(rowId, { state: "failed", opId: op.id, status: op.failure?.status ?? 0 });
@@ -92,9 +122,19 @@ export function project(
 ): Projection {
   const sync = new Map<string, RowSync>();
   let exercises = workout.exercises;
+  let sections = workout.sections;
   for (const op of ops) {
     if (op.workoutId !== workout.id) continue;
-    if (isSectionOp(op)) continue;
+    if (isSectionOp(op)) {
+      // Spec 10.7 AC38: a timer entry overlays the section (queued, sending and failed alike, like a note).
+      const index = sections.findIndex((s) => s.id === op.sectionId);
+      if (index < 0) continue;
+      const section = sections[index]!;
+      const next = withSectionOp(section, op);
+      if (next !== section) sections = sections.map((s, i) => (i === index ? next : s));
+      mark(sync, section.id, op);
+      continue;
+    }
     const index = exercises.findIndex((e) => e.id === op.workoutExerciseId);
     if (index < 0) continue;
     const exercise = exercises[index]!;
@@ -127,5 +167,6 @@ export function project(
       if (row) mark(sync, row.id, op);
     }
   }
-  return { workout: exercises === workout.exercises ? workout : { ...workout, exercises }, sync };
+  const changed = exercises !== workout.exercises || sections !== workout.sections;
+  return { workout: changed ? { ...workout, exercises, sections } : workout, sync };
 }
