@@ -544,7 +544,7 @@ eligible sets.
    No backfill, no `records:rebuild`. (Phase B adds the write checks of spec §11 step 4.)
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0018` by hand the same way before approving the release.
 5. Rollback: revert the code; the columns and table stay, inert, and old code ignores them (timed sections read as ordinary sections). If Spec 10.7 is merged, revert it first. A routine `PUT` from old code writes sections without a timer, which clears a plan: that matters only after timers were set.
-6. **Phase B (no migration, Spec 09.5 §11 step 4).** After it deploys, on a scratch workout on staging (the token set-up of `apps/api/scripts/smoke.ts`):
+6. **Phase B (no migration, Spec 09.5 §11 step 4).** After it deploys, on a scratch workout on staging, with a **user** access token: `auth0 test token -a https://api.strengthinnumbers.app -s "openid profile email"`, logged in as the test user, as in B5's "Verify it landed". Not `apps/api/scripts/smoke.ts`'s token: that is an M2M token with no email claim, so every user route refuses it (`401 invalid-token`). `TOKEN='<access_token>' bash docs/runbooks/scripts/check-0018-phase-b.sh` runs 6.1–6.4 end to end (it creates the scratch workout, prints one `ok` / `FAIL` line per check, deletes the workout, and prints 6.5's SQL):
    1. `PATCH $BASE/v1/workout-sections/{id}` with `{"timer":{"format":"amrap","capSeconds":720}}` → `200`, the section carries the timer;
    2. `PUT …/round-times/1` `{"seconds":250}` and `PUT …/result` `{"rounds":5,"reps":7}` → `200` each; `GET $BASE/v1/workouts/{id}` shows them;
    3. `PATCH` `{"timer":{"format":"time_cap","capSeconds":900}}` → `409 section-result-exists`; the same with `"discardResult":true` → `200`, `result: null`, `roundTimes: []`;

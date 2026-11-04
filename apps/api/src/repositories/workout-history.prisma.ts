@@ -1,7 +1,7 @@
 // apps/api/src/repositories/workout-history.prisma.ts
 import { Prisma } from "@prisma/client";
-import { parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX, type RecordType, type RoundTime } from "@sin/core";
-import { resultFromColumns, roundTimesJson, timerFromColumns, type ResultColumns, type TimerColumns } from "./section-timer-columns.js";
+import { parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX, type RecordType } from "@sin/core";
+import { timedFieldsFromColumns, timedFieldsJson, type TimedColumns } from "./section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "./workout-cursor.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { ListFinishedWorkoutsOptions, WorkoutHistoryPage, WorkoutSummaryRecord } from "./workout.js";
@@ -41,11 +41,10 @@ interface PageRow {
   timed_sections: TimedSectionDbRow[];
 }
 
-interface TimedSectionDbRow extends TimerColumns, ResultColumns {
+interface TimedSectionDbRow extends TimedColumns {
   id: string;
   position: number;
   name: string;
-  round_times: RoundTime[];
 }
 
 interface VolumeRow {
@@ -84,13 +83,7 @@ export async function listFinishedWorkouts(
            (SELECT count(*)::int FROM "personal_record" pr
              WHERE pr.workout_id = w.id AND pr.record_type <> ${HISTORY_COUNT_EXCLUDES}) AS record_count,
            COALESCE((
-             SELECT json_agg(json_build_object(
-                      'id', s.id, 'position', s.position, 'name', s.name,
-                      'timer_format', s.timer_format, 'timer_round_s', s.timer_round_s,
-                      'timer_rounds', s.timer_rounds, 'timer_cap_s', s.timer_cap_s,
-                      'result_rounds', s.result_rounds, 'result_reps', s.result_reps,
-                      'result_finish_s', s.result_finish_s, 'result_capped', s.result_capped,
-                      'round_times', ${roundTimesJson("s.id")})
+             SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, ${timedFieldsJson("s")})
                     ORDER BY s.position)
              FROM "workout_section" s WHERE s.workout_id = w.id AND s.timer_format IS NOT NULL
            ), '[]'::json) AS timed_sections
@@ -151,14 +144,10 @@ export async function listFinishedWorkouts(
     workingSetCount: r.working_set_count,
     totalVolumeMilli: volumes.get(r.id) ?? null,
     recordCount: r.record_count,
-    timedSections: r.timed_sections.map((s) => ({
-      id: s.id,
-      position: s.position,
-      name: s.name,
-      timer: timerFromColumns(s)!, // the subquery keeps timed sections only
-      result: resultFromColumns(s),
-      roundTimes: s.round_times,
-    })),
+    timedSections: r.timed_sections.map((s) => {
+      const { timer, result, roundTimes } = timedFieldsFromColumns(s);
+      return { id: s.id, position: s.position, name: s.name, timer: timer!, result, roundTimes }; // the subquery keeps timed sections only
+    }),
   }));
   const last = page[page.length - 1];
   return {

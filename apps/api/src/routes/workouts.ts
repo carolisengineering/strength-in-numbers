@@ -13,7 +13,6 @@ import {
   WorkoutHistoryQuerySchema,
   WorkoutHistoryResponseSchema,
   milliToDecimalString,
-  sectionScore,
   type WorkoutSummary,
   UpdatedWorkoutSchema,
   type UpdatedWorkout,
@@ -26,7 +25,7 @@ import {
   WorkoutWouldBeEmptyError,
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
-import { toWorkoutDetailDto, toWorkoutDto, toWorkoutExerciseDto } from "./mappers.js";
+import { toTimedSectionSummaryDto, toWorkoutDetailDto, toWorkoutDto, toWorkoutExerciseDto } from "./mappers.js";
 import { toPersonalRecordDto } from "./personal-records.js";
 import { assertStartedAtInBounds } from "../repositories/workout-writes.js";
 import { recordWorkoutFinished, recordWorkoutStarted } from "../telemetry/metrics.js";
@@ -58,8 +57,7 @@ function toWorkoutSummaryDto(r: WorkoutSummaryRecord): WorkoutSummary {
     workingSetCount: r.workingSetCount,
     totalVolume: r.totalVolumeMilli === null ? null : Number(milliToDecimalString(r.totalVolumeMilli)),
     recordCount: r.recordCount,
-    // Spec 09.5 AC25 — the score is derived here by the one implementation, never stored.
-    timedSections: r.timedSections.map((s) => ({ id: s.id as WorkoutSummary["timedSections"][number]["id"], position: s.position, name: s.name, timer: s.timer, score: sectionScore(s) })),
+    timedSections: r.timedSections.map(toTimedSectionSummaryDto),
   };
 }
 

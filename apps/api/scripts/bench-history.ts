@@ -65,9 +65,9 @@ try {
      WHERE w.user_id = $1::uuid`,
     user,
   );
-  const timedDeep = (await repo.listFinishedWorkouts(user, { limit: 150 })).next!;
+  // The cursor encodes the 150th workout's (startedAt, id); adding sections changes neither, so it is reused (#248).
   process.stdout.write(
-    `with two timed sections × 20 rounds per workout — first page: ${await time()}; deep page: ${await time(timedDeep)}\n`,
+    `with two timed sections × 20 rounds per workout — first page: ${await time()}; deep page: ${await time(deepCursor)}\n`,
   );
 } finally {
   await db.stop();
