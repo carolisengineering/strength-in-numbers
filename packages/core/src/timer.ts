@@ -17,6 +17,11 @@ const issue = (path: string, code: TimerIssueCode): TimerIssue => ({ path, code,
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
+/** Round times in round order, as a new array (the input is left as it was). The Hevy line and fingerprint share it (#241). */
+export function sortedRoundTimes(roundTimes: readonly RoundTime[]): RoundTime[] {
+  return [...roundTimes].sort((a, b) => a.round - b.round);
+}
+
 /** Whole seconds as `m:ss`, or `h:mm:ss` from one hour: `0:05`, `3:41`, `1:02:05`. */
 export function formatClock(seconds: number): string {
   const hours = Math.floor(seconds / 3600);

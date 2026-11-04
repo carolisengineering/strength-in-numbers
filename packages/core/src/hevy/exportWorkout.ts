@@ -4,7 +4,7 @@ import type { Modality } from "../enums.js";
 import { hevyPairingProblem } from "./pairing.js";
 import { sectionTreatment } from "./sections.js";
 import { HEVY_EXPORT_NOTICES, hevyTypeHoldsDuration, sinSetToHevy, type ExportNotice, type ExportNoticeCode } from "./sets.js";
-import { hevyTimerDurationSeconds, hevyTimerLine } from "./timedSection.js";
+import { hevyTimerDurationSeconds, hevyTimerLine, timedSectionData } from "./timedSection.js";
 import type { HevyMapping, HevyPair } from "./types.js";
 import type { HevyType } from "./vocabulary.js";
 
@@ -44,9 +44,12 @@ export function exportPairFor(
 }
 
 const joinNotes = (prefix: string, notes: string | null): string => (notes ? `${prefix}\n\n${notes}` : prefix);
+/** A timed section's timer line and marker duration, computed once per section (#240). */
+type TimedView = { line: string; durationSeconds: number | null };
+
 /** The section name, then (a timed section, Spec 09.5 AC26) its timer line, then its note when it has one. */
-const nameAndNote = (s: WorkoutSection): string => {
-  const head = s.timer ? `${s.name}\n${hevyTimerLine({ timer: s.timer, result: s.result, roundTimes: s.roundTimes })}` : s.name;
+const nameAndNote = (s: WorkoutSection, timed: TimedView | undefined): string => {
+  const head = timed ? `${s.name}\n${timed.line}` : s.name;
   return s.notes ? `${head}\n${s.notes}` : head;
 };
 
@@ -54,10 +57,9 @@ const nameAndNote = (s: WorkoutSection): string => {
  * Spec 09.5 §6.7: a timed section's single duration set, on the first marker that sends it; `[]` otherwise. Only a
  * placeholder whose Hevy type holds a duration gets it (19.0 AC8: a set carries only the fields its type holds).
  */
-function markerSets(sec: WorkoutSection, marker: HevyPair, durationSent: Set<string>): HevyPostExercise["sets"] {
-  if (!sec.timer || durationSent.has(sec.id) || !hevyTypeHoldsDuration(marker.hevyType)) return [];
-  const d = hevyTimerDurationSeconds({ timer: sec.timer, result: sec.result, roundTimes: sec.roundTimes });
-  if (d === null) return [];
+function markerSets(sec: WorkoutSection, marker: HevyPair, durationSent: Set<string>, timed: TimedView | undefined): HevyPostExercise["sets"] {
+  const d = timed?.durationSeconds ?? null;
+  if (d === null || durationSent.has(sec.id) || !hevyTypeHoldsDuration(marker.hevyType)) return [];
   durationSent.add(sec.id);
   return [{ type: "normal", duration_seconds: d }];
 }
@@ -100,6 +102,12 @@ export function buildHevyWorkout(
   };
 
   const sections = new Map(detail.sections.map((s) => [s.id, s]));
+  // Each timed section's line and duration, once, however many runs it has (#240).
+  const timedViews = new Map<string, TimedView>();
+  for (const s of detail.sections) {
+    const t = timedSectionData(s);
+    if (t !== null) timedViews.set(s.id, { line: hevyTimerLine(t), durationSeconds: hevyTimerDurationSeconds(t) });
+  }
   const markerPair = (role: "warmup_placeholder" | "workout_placeholder") => mapping.pairs.find((p) => p.role === role) ?? null;
 
   const out: HevyPostExercise[] = [];
@@ -113,7 +121,8 @@ export function buildHevyWorkout(
     const sec = ex.sectionId === null ? undefined : sections.get(ex.sectionId);
     // A section's treatment applies where a run of its exercises starts (a workout's list may be non-contiguous).
     if (sec && ex.sectionId !== previousSection) {
-      const treatment = sec.timer ? "workout_placeholder" : sectionTreatment(sec.name, mapping.sectionRules);
+      const timed = timedViews.get(sec.id);
+      const treatment = timed ? "workout_placeholder" : sectionTreatment(sec.name, mapping.sectionRules);
       if (treatment === "notes_on_first") {
         if (sec.notes) notes = joinNotes(sec.notes, notes);
       } else {
@@ -122,11 +131,11 @@ export function buildHevyWorkout(
           out.push({
             exercise_template_id: marker.hevyTemplateId,
             superset_id: null,
-            notes: treatment === "warmup_placeholder" ? sec.notes : nameAndNote(sec),
-            sets: markerSets(sec, marker, durationSent),
+            notes: treatment === "warmup_placeholder" ? sec.notes : nameAndNote(sec, timed),
+            sets: markerSets(sec, marker, durationSent, timed),
           });
         } else {
-          notes = joinNotes(nameAndNote(sec), notes);
+          notes = joinNotes(nameAndNote(sec, timed), notes);
           if (!markerlessIds.has(sec.id)) {
             markerlessIds.add(sec.id);
             count("section_no_placeholder");

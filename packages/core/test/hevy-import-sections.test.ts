@@ -174,3 +174,19 @@ describe("09.5 AC30 — a placeholder's duration on import", () => {
     expect(JSON.stringify(translate(timedMarker([1062])))).not.toContain('"timer"');
   });
 });
+
+describe("09.5 AC30 — a non-finite duration sum adds no Time line (#237)", () => {
+  const timedMarker = (durations: (number | null)[]) => hex("WORKOUT", durations.map((durationSeconds) => hset({ durationSeconds })), { notes: "Main\nEasy pace" });
+  const notesOf = (durations: (number | null)[]) => created(translateHevyWorkout(hworkout([timedMarker(durations), lift()]), ctx)).workout.sections[0]!.notes;
+
+  it("two durations near 1e308 sum to Infinity: the note is today's, with no Time, Infinity or NaN", () => {
+    const notes = notesOf([1e308, 1e308]);
+    expect(notes).toBe(notesOf([null]));
+    expect(notes).toBe("Easy pace");
+    expect(notes).not.toMatch(/Time|Infinity|NaN/);
+  });
+
+  it("an ordinary fractional sum still gives its Time line", () => {
+    expect(notesOf([1799.6, 0.5])).toBe("Time 30:00\nEasy pace");
+  });
+});

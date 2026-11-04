@@ -1,5 +1,7 @@
 import type { SectionTimer } from "../dto/section-timer.js";
 import type { WorkoutDetail, WorkoutSection } from "../dto/workout.js";
+import { sortedRoundTimes } from "../timer.js";
+import { timedSectionData } from "./timedSection.js";
 
 /** The fingerprint's version tag; a stored fingerprint with another tag reads `sent` (spec AC26). */
 export const HEVY_FINGERPRINT_VERSION = "v1";
@@ -52,13 +54,14 @@ function planEntry(timer: SectionTimer): [string, number | null, number | null, 
 
 /** Spec 19.0 §6.5's `[name, notes, position]`; Spec 09.5 §6.7 appends timed data for a timed section only. */
 function sectionEntry(s: WorkoutSection): unknown[] {
-  if (s.timer === null) return [s.name, s.notes, s.position];
+  const t = timedSectionData(s);
+  if (t === null) return [s.name, s.notes, s.position];
   return [
     s.name,
     s.notes,
     s.position,
-    planEntry(s.timer),
-    s.result ? [s.result.rounds, s.result.reps, s.result.finishSeconds, s.result.capped] : null,
-    [...s.roundTimes].sort((a, b) => a.round - b.round).map((r) => [r.round, r.seconds]),
+    planEntry(t.timer),
+    t.result ? [t.result.rounds, t.result.reps, t.result.finishSeconds, t.result.capped] : null,
+    sortedRoundTimes(t.roundTimes).map((r) => [r.round, r.seconds]),
   ];
 }
