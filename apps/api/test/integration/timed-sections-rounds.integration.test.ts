@@ -9,6 +9,7 @@ import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./
 import { insertUser, logWorkout } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { addTimedSection, assertSectionsConsistent, insertWorkoutSection, recordRounds } from "./section-helpers.js";
+import { countingPrisma } from "./statement-counter.js";
 
 const SET_TIMER: SectionTimer = { format: "set_timer", roundSeconds: 300, rounds: 5 };
 const AMRAP: SectionTimer = { format: "amrap", capSeconds: 720 };
@@ -117,6 +118,44 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.5 — round-time writes (real 
       await expect(workouts().clearSectionRoundTime(other, id, 1)).rejects.toBeInstanceOf(NotFoundError);
       await expect(workouts().clearSectionRoundTime(other, uuidv7(), 1)).rejects.toBeInstanceOf(NotFoundError);
       await expect(workouts().setSectionRoundTime(other, id, 1, 60)).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  describe("09.5 AC15 / AC17 — a clear locks the section without reading it (#245)", () => {
+    const counted = () => {
+      const counter = countingPrisma(db.prisma);
+      return { counter, repo: createWorkoutRepository(counter.client, createExerciseRepository(counter.client)) };
+    };
+    async function finishedSection(timer: SectionTimer) {
+      const u = await insertUser(db);
+      const { workoutId } = await logWorkout(db, u, { startedAt: new Date(Date.now() - 7_200_000), exercises: [] });
+      return { u, id: await addTimedSection(db, workoutId, 0, "Main", timer) };
+    }
+
+    it("live: a round clear and a result clear each run 3 statements (workout FOR SHARE, section FOR UPDATE, the write)", async () => {
+      const { u, id } = await section(AMRAP, [{ round: 1, seconds: 250 }]);
+      await workouts().setSectionResult(u, id, { rounds: 5, reps: 7 });
+      const { counter, repo } = counted();
+      expect(await repo.clearSectionRoundTime(u, id, 1)).toMatchObject({ removed: true, finishedEdit: null });
+      expect(counter.statements()).toBe(3);
+      counter.reset();
+      expect(await repo.clearSectionResult(u, id)).toMatchObject({ removed: true, finishedEdit: null });
+      expect(counter.statements()).toBe(3);
+      counter.reset();
+      expect(await repo.clearSectionRoundTime(u, id, 1)).toMatchObject({ removed: false });
+      expect(counter.statements()).toBe(3);
+    });
+
+    it("finished: each runs 4, the records lock first", async () => {
+      const { u, id } = await finishedSection(AMRAP);
+      await workouts().setSectionRoundTime(u, id, 1, 250);
+      await workouts().setSectionResult(u, id, { rounds: 5, reps: 7 });
+      const { counter, repo } = counted();
+      expect(await repo.clearSectionRoundTime(u, id, 1)).toMatchObject({ removed: true });
+      expect(counter.statements()).toBe(4);
+      counter.reset();
+      expect(await repo.clearSectionResult(u, id)).toMatchObject({ removed: true });
+      expect(counter.statements()).toBe(4);
     });
   });
 });

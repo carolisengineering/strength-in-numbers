@@ -105,13 +105,34 @@ const timerValidationError = (issues: readonly TimerIssue[]) => new ValidationEr
  * and timer writes on one section, which the cross-row rules need. A vanished workout or section is `404`.
  */
 export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<WorkoutSectionDbRow> {
+  await lockWorkoutForRecord(tx, mode, workoutId);
+  return lockSectionThenRead(tx, sectionId);
+}
+
+/**
+ * The same envelope for a clear, which checks no rule and so reads nothing (#245): the workout `FOR SHARE` and the
+ * section `FOR UPDATE` only. The section lock still comes before the write, so a concurrent set waits for it.
+ */
+async function lockSectionForClear(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<void> {
+  await lockWorkoutForRecord(tx, mode, workoutId);
+  await lockSectionRow(tx, sectionId);
+}
+
+async function lockWorkoutForRecord(tx: RawClient, mode: WriteMode, workoutId: string): Promise<void> {
   const workouts = await tx.$queryRaw<{ ended_at: Date | null }[]>`
     SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
   `;
   const locked = workouts[0];
   if (!locked) throw sectionNotFound();
   assertStillLive(mode, locked.ended_at);
-  return lockSectionThenRead(tx, sectionId);
+}
+
+/** The section row's `FOR UPDATE` alone; `404` when the section is gone. */
+async function lockSectionRow(tx: RawClient, sectionId: string): Promise<void> {
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id::text FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
+  `;
+  if (locked.length === 0) throw sectionNotFound();
 }
 
 /**
@@ -121,10 +142,7 @@ export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, worko
  * just committed — and a rule checked against it would pass when it must not (AC22 (a), found by the race test).
  */
 async function lockSectionThenRead(tx: RawClient, sectionId: string): Promise<WorkoutSectionDbRow> {
-  const locked = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id::text FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
-  `;
-  if (locked.length === 0) throw sectionNotFound();
+  await lockSectionRow(tx, sectionId);
   const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid`;
   return rows[0]!;
 }
@@ -286,7 +304,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async clearSectionRoundTime(actingUserId, sectionId, round) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockSectionForRecord(tx, mode, pre.workout_id, sectionId);
+        await lockSectionForClear(tx, mode, pre.workout_id, sectionId);
         // No timer check and no rule: a clear always succeeds (AC15), and an untimed section has nothing to remove.
         const removed = await tx.$executeRaw`
           DELETE FROM "workout_section_round" WHERE workout_section_id = ${sectionId}::uuid AND round_no = ${round}
@@ -335,7 +353,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async clearSectionResult(actingUserId, sectionId) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockSectionForRecord(tx, mode, pre.workout_id, sectionId);
+        await lockSectionForClear(tx, mode, pre.workout_id, sectionId);
         // No timer check: a clear always succeeds (AC17); the round times stay.
         const removed = await tx.$executeRaw`
           UPDATE "workout_section"
