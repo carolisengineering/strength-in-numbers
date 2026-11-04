@@ -4,7 +4,7 @@
  * migration 0018 guarantee every stored combination is one of the union's variants.
  */
 import { Prisma } from "@prisma/client";
-import type { SectionResult, SectionTimer, SectionTimerInput } from "@sin/core";
+import type { RoundTime, SectionResult, SectionTimer, SectionTimerInput } from "@sin/core";
 import { InternalError } from "../errors/app-error.js";
 
 export interface TimerColumns {
@@ -53,6 +53,28 @@ export function timerToColumns(t: SectionTimerInput | null | undefined): TimerCo
 export function resultFromColumns(c: ResultColumns): SectionResult | null {
   if (c.result_rounds === null && c.result_reps === null && c.result_finish_s === null && !c.result_capped) return null;
   return { rounds: c.result_rounds, reps: c.result_reps, finishSeconds: c.result_finish_s, capped: c.result_capped };
+}
+
+/** A workout section's timer, result and round-time columns, as `timedFieldsJson` returns them (#247). */
+export type TimedColumns = TimerColumns & ResultColumns & { round_times: RoundTime[] };
+
+/** The one mapping of those columns to the section's `timer`, `result` and `roundTimes`, for the detail and History. */
+export function timedFieldsFromColumns(c: TimedColumns): { timer: SectionTimer | null; result: SectionResult | null; roundTimes: RoundTime[] } {
+  return { timer: timerFromColumns(c), result: resultFromColumns(c), roundTimes: c.round_times };
+}
+
+/**
+ * The `json_build_object` pairs for a workout section's timer, result and round-time columns (#247): spliced into the
+ * detail's and History's section aggregates, so both read the same columns under the same keys. `sectionAlias` is a
+ * literal union, so a typo fails to compile rather than at run time.
+ */
+export function timedFieldsJson(sectionAlias: "s"): Prisma.Sql {
+  const a = sectionAlias;
+  return Prisma.raw(
+    `'timer_format', ${a}.timer_format, 'timer_round_s', ${a}.timer_round_s, 'timer_rounds', ${a}.timer_rounds, 'timer_cap_s', ${a}.timer_cap_s,
+     'result_rounds', ${a}.result_rounds, 'result_reps', ${a}.result_reps, 'result_finish_s', ${a}.result_finish_s, 'result_capped', ${a}.result_capped,
+     'round_times', ${roundTimesJson(`${a}.id`).sql}`,
+  );
 }
 
 /**

@@ -137,4 +137,20 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.5 — timed reads (real Postgr
     expect(list[0]!.sections.map((s) => s.timer)).toEqual(expected);
     expect((await routines().getById(u, r)).sections.map((s) => s.timer)).toEqual(expected);
   });
+
+  describe("09.5 AC25 — History's timed sections agree with the detail (#247)", () => {
+    it("each History entry is the detail's section (timed only, by position): id, position, name, timer, result, round times", async () => {
+      const { u, workoutId, untimed } = await timedWorkout();
+      await db.prisma.$executeRawUnsafe(`UPDATE "workout" SET ended_at = started_at + interval '1 hour' WHERE id = $1::uuid`, workoutId);
+      const detail = await workouts().getWorkoutById(u, workoutId);
+      const page = await workouts().listFinishedWorkouts(u, { limit: 10 });
+      const row = page.items.find((w) => w.id === workoutId)!;
+      const expected = detail.sections
+        .filter((s) => s.timer !== null)
+        .map((s) => ({ id: s.id, position: s.position, name: s.name, timer: s.timer, result: s.result, roundTimes: s.roundTimes }));
+      expect(expected).toHaveLength(2);
+      expect(row.timedSections).toEqual(expected);
+      expect(row.timedSections.map((s) => s.id)).not.toContain(untimed);
+    });
+  });
 });

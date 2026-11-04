@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   resultFromColumns,
   roundTimesJson,
+  timedFieldsFromColumns,
+  timedFieldsJson,
   timerFromColumns,
   timerToColumns,
   type ResultColumns,
@@ -62,6 +64,37 @@ describe("09.5 AC10 — column mapping", () => {
     expect(sql.sql).toContain("ORDER BY r.round_no");
     expect(sql.sql).toContain("r.workout_section_id = s.id");
     expect(sql.sql).toContain("'[]'::json");
+    expect(sql.values).toEqual([]);
+  });
+});
+
+describe("09.5 AC25 — timedFieldsFromColumns, the one mapping History and the detail share (#247)", () => {
+  const NO_RESULT = { result_rounds: null, result_reps: null, result_finish_s: null, result_capped: false };
+  const rounds = [{ round: 1, seconds: 221 }, { round: 2, seconds: 218 }];
+
+  it("a Set Timer row: its timer, no result, its round times", () => {
+    expect(timedFieldsFromColumns({ timer_format: "set_timer", timer_round_s: 300, timer_rounds: 5, timer_cap_s: null, ...NO_RESULT, round_times: rounds })).toEqual({
+      timer: { format: "set_timer", roundSeconds: 300, rounds: 5 },
+      result: null,
+      roundTimes: rounds,
+    });
+  });
+
+  it("an AMRAP row with a result", () => {
+    const row = { timer_format: "amrap", timer_round_s: null, timer_rounds: null, timer_cap_s: 720, ...NO_RESULT, result_rounds: 5, result_reps: 7, round_times: [] };
+    expect(timedFieldsFromColumns(row)).toEqual({ timer: { format: "amrap", capSeconds: 720 }, result: { rounds: 5, reps: 7, finishSeconds: null, capped: false }, roundTimes: [] });
+  });
+
+  it("an all-null row: untimed, no result, no rounds", () => {
+    expect(timedFieldsFromColumns({ ...NONE, ...NO_RESULT, round_times: [] })).toEqual({ timer: null, result: null, roundTimes: [] });
+  });
+
+  it("timedFieldsJson('s') names every timer and result column, then the round times, with no bound values", () => {
+    const sql = timedFieldsJson("s");
+    for (const col of ["timer_format", "timer_round_s", "timer_rounds", "timer_cap_s", "result_rounds", "result_reps", "result_finish_s", "result_capped"]) {
+      expect(sql.sql).toContain(`'${col}', s.${col}`);
+    }
+    expect(sql.sql).toContain("'round_times', COALESCE(");
     expect(sql.values).toEqual([]);
   });
 });

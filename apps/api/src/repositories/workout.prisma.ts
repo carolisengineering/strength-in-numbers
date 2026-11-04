@@ -8,7 +8,6 @@ import {
   localDateFor,
   offsetMinutesForZone,
   sectionForNewExercise,
-  type RoundTime,
 } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import {
@@ -21,7 +20,7 @@ import {
 import type { ExerciseRepository } from "./exercise.js";
 import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
 import { plannedSetsJson, toPlannedSet, type PlannedSetDbRow } from "./planned-sets.js";
-import { resultFromColumns, roundTimesJson, timerFromColumns, type ResultColumns, type TimerColumns } from "./section-timer-columns.js";
+import { timedFieldsFromColumns, timedFieldsJson, type TimedColumns } from "./section-timer-columns.js";
 import type {
   AddWorkoutExerciseFields,
   CreateWorkoutFields,
@@ -136,14 +135,13 @@ export interface WorkoutExerciseDbRow {
   section_id: string | null;
 }
 
-export interface WorkoutSectionDbRow extends TimerColumns, ResultColumns {
+/** Spec 09.5 — `TimedColumns` carries the timer, result and `round_times` (`roundTimesJson`, ordered by round). */
+export interface WorkoutSectionDbRow extends TimedColumns {
   id: string;
   position: number;
   name: string;
   notes: string | null;
   added_in_workout: boolean;
-  /** Spec 09.5 — `roundTimesJson`, ordered by round, `[]` when none. */
-  round_times: RoundTime[];
 }
 
 export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRecord {
@@ -153,9 +151,7 @@ export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRe
     name: r.name,
     notes: r.notes,
     addedInWorkout: r.added_in_workout,
-    timer: timerFromColumns(r),
-    result: resultFromColumns(r),
-    roundTimes: r.round_times,
+    ...timedFieldsFromColumns(r),
   };
 }
 
@@ -165,12 +161,7 @@ export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRe
 export function workoutSectionsJson(parentRef: string): Prisma.Sql {
   return Prisma.raw(`COALESCE((
     SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes,
-                                      'added_in_workout', s.added_in_workout,
-                                      'timer_format', s.timer_format, 'timer_round_s', s.timer_round_s,
-                                      'timer_rounds', s.timer_rounds, 'timer_cap_s', s.timer_cap_s,
-                                      'result_rounds', s.result_rounds, 'result_reps', s.result_reps,
-                                      'result_finish_s', s.result_finish_s, 'result_capped', s.result_capped,
-                                      'round_times', ${roundTimesJson("s.id").sql})
+                                      'added_in_workout', s.added_in_workout, ${timedFieldsJson("s").sql})
                     ORDER BY s.position)
     FROM "workout_section" s WHERE s.workout_id = ${parentRef}
   ), '[]'::json)`);

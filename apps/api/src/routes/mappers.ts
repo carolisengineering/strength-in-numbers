@@ -7,6 +7,7 @@
 import type { HevyExportLink, HevyPair, HevySectionRule } from "@sin/core";
 import type { HevyExportLinkRecord } from "../repositories/account-export.js";
 import {
+  sectionScore,
   tenthsToRpe,
   type Exercise,
   type Me,
@@ -19,12 +20,14 @@ import {
   type WorkoutExercise,
   type WorkoutExerciseDetail,
   type WorkoutSection,
+  type WorkoutSummary,
 } from "@sin/core";
 import type { ExerciseRecord } from "../repositories/exercise.js";
 import type { RoutineItemRecord, RoutineRecord, RoutineSectionRecord } from "../repositories/routine.js";
 import type { UserRecord } from "../repositories/user.js";
 import type {
   SetEntryRecord,
+  TimedSectionRecord,
   WorkoutDetailRecord,
   WorkoutExerciseRecord,
   WorkoutRecord,
@@ -161,6 +164,15 @@ export function toWorkoutSectionDto(r: WorkoutSectionRecord): WorkoutSection {
     result: r.result,
     roundTimes: r.roundTimes,
   };
+}
+
+/**
+ * Spec 09.5 AC25 — a History row's timed section. The id's brand is asserted, as for every id in this module (#249);
+ * the response serializer still checks it against `WorkoutHistoryResponseSchema`. The score is derived here by the one
+ * implementation, never stored.
+ */
+export function toTimedSectionSummaryDto(s: TimedSectionRecord): WorkoutSummary["timedSections"][number] {
+  return { id: s.id as WorkoutSummary["timedSections"][number]["id"], position: s.position, name: s.name, timer: s.timer, score: sectionScore(s) };
 }
 
 /** DB record -> wire DTO, keys in `SetEntrySchema` field order. */
