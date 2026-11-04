@@ -164,6 +164,12 @@ const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+amrap${LINE_END}`, "i")
 /** #264, #265: a note line as the timer rules read it: collapsed, with one leading bullet off. The note keeps its text (D10). */
 const timerLine = (line: string) => collapseLine(line).replace(BULLET, "");
 
+/** #262: a Time Cap or AMRAP line (no score or range check), so the reader keeps it in the note inside a run. */
+function isCapOrAmrapLine(line: string): boolean {
+  const l = timerLine(line);
+  return TIME_CAP_LEAD.test(l) || TIME_CAP_TAIL.test(l) || AMRAP_LEAD.test(l) || AMRAP_TAIL.test(l);
+}
+
 const inRange = (n: number, max: number) => n >= 1 && n <= max;
 
 /** A lead match's seconds: groups 1–2 are `M:SS`, group 3 a bare number of minutes. */
@@ -834,6 +840,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const bare = line.replace(BULLET, "").trim();
     const runId = s.run.id;
     if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || !s.items.some((it) => it.run === runId))) return "note";
+    // #262: 10.4's "20 Minute Cap stays a note" also holds inside a run; the run stays open.
+    if (isCapOrAmrapLine(bare)) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));

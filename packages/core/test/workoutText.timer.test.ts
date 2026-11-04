@@ -228,3 +228,33 @@ describe("#264 — the exported functions normalize their input", () => {
     expect(performance.now() - start).toBeLessThan(50);
   });
 });
+
+describe("#262 — a cap or AMRAP line after the movements is a note", () => {
+  const read = (lines: string[]) => readWorkoutText(lines.join("\n"));
+
+  it("For Time: / 21-15-9 / Thrusters / Pull-ups / 15 Minute Cap → Time Cap 15:00, two exercises", () => {
+    const r = read(["Main", "TIME", "For Time:", "21-15-9", "Thrusters", "Pull-ups", "15 Minute Cap"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.timer).toEqual(timeCap(900));
+    expect(r.sections[0]!.notes).toContain("15 Minute Cap");
+  });
+
+  it("3 Rounds / 10 Burpees / AMRAP 15 → AMRAP 15:00, one exercise", () => {
+    const r = read(["Main", "ROUNDS/REPS", "3 Rounds", "10 Burpees", "AMRAP 15"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Burpees"]);
+    expect(r.sections[0]!.timer).toEqual(amrap(900));
+  });
+
+  it("Review Focus 2: the run stays open after the cap line", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Thrusters", "15 Minute Cap", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+  });
+
+  it("Review Focus 3: in a weight-scored section the line is a note and there is no timer", () => {
+    const r = read(["Main", "REPS", "3 Rounds", "10 Squats", "20 Minute Cap"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats"]);
+    expect(r.sections[0]!.timer).toBeUndefined();
+    expect(r.sections[0]!.notes).toContain("20 Minute Cap");
+  });
+});
