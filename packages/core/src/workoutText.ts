@@ -245,6 +245,8 @@ export interface CleanResult {
   readonly overlap: number;
   /** AC45: parallel to `lines`; true for a line directly above a header badge in its own screenshot. */
   readonly tagged: readonly boolean[];
+  /** Spec 10.7 AC44: parallel to `lines`; a tagged header's badge (`badgeText`), or null (untagged, or no badge seen). */
+  readonly badges: readonly (string | null)[];
 }
 
 const wordCount = (s: string) => s.split(" ").length;
@@ -292,6 +294,8 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
 interface CleanLine {
   readonly text: string;
   tagged: boolean;
+  /** Spec 10.7 AC44: the first badge seen beside this header. */
+  badge: string | null;
 }
 
 export function cleanWorkoutText(raw: string): CleanResult {
@@ -338,7 +342,10 @@ export function cleanWorkoutText(raw: string): CleanResult {
       // A badge that opens a screenshot belongs to the header that ended the one before.
       const before = chunk.length > 0 ? chunk : [...chunks].reverse().find((c) => c.length > 0);
       const above = before?.[before.length - 1];
-      if (above) above.tagged = true;
+      if (above) {
+        above.tagged = true;
+        above.badge ??= badgeText(line);
+      }
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
     // The trophy reads with a mark (`Y'`, `只'`); a plain short word there (`Run`, `Rx`) is the card's text.
@@ -351,7 +358,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       furniture++;
       continue;
     }
-    chunk.push({ text: line, tagged: false });
+    chunk.push({ text: line, tagged: false, badge: null });
     textSinceClock++;
     textSinceNav++;
   }
@@ -373,17 +380,32 @@ export function cleanWorkoutText(raw: string): CleanResult {
       b.map((l) => ocrKey(l.text)),
     );
     if (cut === null) continue;
-    // A removed twin hands its header tag to the copy that stays (a header whose badge was cut off).
+    // A removed twin hands its header tag, and its badge (10.7 AC44), to the copy that stays (a header whose badge was cut off).
     const off = a.length - cut.dropA - cut.dropB;
-    for (let j = 0; j < cut.dropB; j++) if (b[j]!.tagged) a[off + j]!.tagged = true;
+    for (let j = 0; j < cut.dropB; j++) {
+      if (!b[j]!.tagged) continue;
+      a[off + j]!.tagged = true;
+      a[off + j]!.badge ??= b[j]!.badge;
+    }
     // A cut-off last line of A gives way to B's full line, which stays (item 75).
-    if (cut.dropA === 1 && a[a.length - 1]!.tagged) b[cut.dropB]!.tagged = true;
+    if (cut.dropA === 1 && a[a.length - 1]!.tagged) {
+      b[cut.dropB]!.tagged = true;
+      b[cut.dropB]!.badge ??= a[a.length - 1]!.badge;
+    }
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
     overlap += cut.dropA + cut.dropB;
   }
   const flat = kept.flat();
-  return { lines: flat.map((l) => l.text), tagged: flat.map((l) => l.tagged), chunks: kept.length, input, furniture, overlap };
+  return {
+    lines: flat.map((l) => l.text),
+    tagged: flat.map((l) => l.tagged),
+    badges: flat.map((l) => (l.tagged ? l.badge : null)),
+    chunks: kept.length,
+    input,
+    furniture,
+    overlap,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -399,6 +421,8 @@ export interface ReadSection {
   readonly name: string;
   readonly notes: string;
   readonly warmup: boolean;
+  /** Spec 10.7 AC46–AC48: present only when the section is timed (`sectionTimerOf`). */
+  readonly timer?: SectionTimer;
 }
 export interface ReadRow {
   readonly repsLow: number | null;
@@ -469,6 +493,8 @@ interface MutableSection {
   fresh: boolean;
   /** AC52: a variant label was seen; the rest of the section is note. */
   notesOnly: boolean;
+  /** Spec 10.7 AC44: the header's badge, from the first copy of the header that showed one. */
+  badge: string | null;
 }
 interface MutableItem {
   name: string;
@@ -981,13 +1007,15 @@ export function readWorkoutText(raw: string): ReadResult {
     // AC46: the same header again (the next screenshot, overlap not removed) continues its section.
     if (heading && open && headerKey(heading.name) === headerKey(open.name)) {
       s.run = null;
+      // Review Focus 2: the badge may show only on the repeated header.
+      open.badge ??= clean.badges[i] ?? null;
       placed.push({ text: line, as: "heading" });
       return;
     }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badge: clean.badges[i] ?? null });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -1054,7 +1082,11 @@ export function readWorkoutText(raw: string): ReadResult {
   return {
     name,
     notes: s.routineNotes.join("\n"),
-    sections: s.sections.map(({ name: n, notes, warmup }) => ({ name: n, notes: notes.join("\n"), warmup })),
+    sections: s.sections.map(({ name: n, notes, warmup, badge }) => {
+      // Spec 10.7 AC46–AC48: one post-pass per section; the timing lines stay in the note (D10).
+      const timer = sectionTimerOf(badge, notes);
+      return { name: n, notes: notes.join("\n"), warmup, ...(timer ? { timer } : {}) };
+    }),
     items: s.items.map((it) => ({ ...it })),
     names,
     chunks: clean.chunks,

@@ -277,3 +277,77 @@ describe("10.4 AC59 — the overlap ignores apostrophes", () => {
   });
   it("ocrKey drops ' ’ ‘ `", () => expect(ocrKey("We’re ‘it’ `x` 'y'")).toBe(ocrKey("Were it x y")));
 });
+
+/** FNV-1a over the JSON: a short, stable fingerprint of a large value for an inline snapshot. */
+const digest = (value: unknown): string => {
+  let h = 0x811c9dc5;
+  for (const ch of JSON.stringify(value)) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, "0");
+};
+
+describe("10.7 AC44 — the badge survives cleaning", () => {
+  const fixture = (path: string) => cleanWorkoutText(readFileSync(path, "utf8"));
+  it.each([
+    [FIXTURE, ["NO SCORE", "WEIGHT", "TIME", "NO SCORE"]],
+    [FIXTURE_24, ["NO SCORE", "REPS", "NO SCORE"]],
+    [FIXTURE_26, ["NO SCORE", "WEIGHT", "ROUNDS/REPS", "NO SCORE"]],
+  ])("%s: badges run parallel to lines and sit only on tagged headers", (path, expected) => {
+    const r = fixture(path);
+    expect(r.badges).toHaveLength(r.lines.length);
+    r.badges.forEach((b, i) => {
+      if (b !== null) expect(r.tagged[i], r.lines[i]).toBe(true);
+    });
+    expect(r.badges.filter((_, i) => r.tagged[i])).toEqual(expected);
+  });
+  it("an overlap twin hands its badge to the copy that stays", () => {
+    expect(cleanWorkoutText("11:08\nIntro line\nAccessory\n11:09 →\nAccessory\nNO SCORE\n3 Sets:").badges).toEqual([null, "NO SCORE", null]);
+  });
+  it("item 75: a cut-off line's badge goes to the full line", () => {
+    const r = cleanWorkoutText("11:08\nIntro\nFront Rack\nREPS\n11:09\nFront Rack Carry\n3 Sets:");
+    expect(r.lines).toEqual(["Intro", "Front Rack Carry", "3 Sets:"]);
+    expect(r.badges).toEqual([null, "REPS", null]);
+  });
+  it("a strict heading cut off at a screenshot's bottom edge is tagged with no badge", () => {
+    const r = cleanWorkoutText("11:08\nIntro\nConditioning\n11:09\nNext line");
+    expect(r.tagged).toEqual([false, true, false]);
+    expect(r.badges).toEqual([null, null, null]);
+  });
+  it("combined badges are one key; Log result is never a badge", () => {
+    expect(cleanWorkoutText("Main\nrounds / reps").badges).toEqual(["ROUNDS/REPS"]);
+    expect(cleanWorkoutText("Intro\nLog result").badges).toEqual([null]);
+  });
+  it("no count moves: lines, tagged and every count are today's for the three fixtures", () => {
+    const shape = (path: string) => {
+      const { lines, tagged, chunks, input, furniture, overlap } = fixture(path);
+      return { lines: lines.length, chunks, input, furniture, overlap, digest: digest({ lines, tagged }) };
+    };
+    expect([FIXTURE, FIXTURE_24, FIXTURE_26].map(shape)).toMatchInlineSnapshot(`
+      [
+        {
+          "chunks": 5,
+          "digest": "8ffe630c",
+          "furniture": 40,
+          "input": 98,
+          "lines": 54,
+          "overlap": 4,
+        },
+        {
+          "chunks": 4,
+          "digest": "4454f566",
+          "furniture": 31,
+          "input": 93,
+          "lines": 45,
+          "overlap": 17,
+        },
+        {
+          "chunks": 5,
+          "digest": "ff4d9874",
+          "furniture": 44,
+          "input": 106,
+          "lines": 55,
+          "overlap": 7,
+        },
+      ]
+    `);
+  });
+});

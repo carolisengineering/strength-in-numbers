@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { SectionTimer } from "../src/dto/section-timer.js";
 import { readWorkoutText, type ReadItem } from "../src/workoutText.js";
+import { TIMER_PASTES } from "./fixtures/timerPastes.js";
 
 const read = (lines: string[]) => readWorkoutText(lines.join("\n"));
 const rowsOf = (i: ReadItem) => i.rows?.map((r) => [r.repsLow, r.repsHigh]);
@@ -673,5 +676,32 @@ describe("10.4 AC68 / minor 284 — a scheme keeps the lead-in it replaces in th
   it("Review Focus 4: under Warmup the line is already a note, and appears once", () => {
     const r = read(["Warmup", "3 Rounds", "21-15-9", "Thrusters"]);
     expect(r.sections[0]!.notes.split("\n").filter((l) => l === "3 Rounds")).toHaveLength(1);
+  });
+});
+
+describe("10.7 AC49–AC50 — section timers from the fixtures", () => {
+  const fixture = (name: string) => readWorkoutText(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
+  it.each<[string, (SectionTimer | null)[]]>([
+    ["hiraya-2026-10-19.txt", [null, null, { format: "time_cap", capSeconds: 1200 }, null]],
+    ["hiraya-2026-10-24.txt", [null, null, null]],
+    ["hiraya-2026-10-26.txt", [null, null, { format: "amrap", capSeconds: 900 }, null]],
+  ])("%s", (name, expected) => {
+    const r = fixture(name);
+    expect(r.sections.map((s) => s.timer ?? null)).toEqual(expected);
+    r.sections.forEach((s, i) => expect("timer" in s, s.name).toBe(expected[i] !== null));
+  });
+  it.each(Object.entries(TIMER_PASTES))("%s", (_, paste) => {
+    const section = readWorkoutText(paste.raw).sections.find((s) => s.name === paste.section)!;
+    if (paste.timer === null) expect("timer" in section).toBe(false);
+    else expect(section.timer).toEqual(paste.timer);
+  });
+});
+
+describe("Review Focus 2 — the badge on the repeated header", () => {
+  it("a header whose badge shows only on the next screenshot still gets its timer", () => {
+    const r = readWorkoutText("11:08\nConditioning\nFor Time:\n21-15-9\nThrusters\nPull-ups\n11:09\nConditioning\nTIME\n- 50 Burpees");
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0]).toEqual({ name: "Conditioning", notes: "For Time:", warmup: false, timer: { format: "time_cap", capSeconds: null } });
+    expect(r.items.map((i) => [i.name, i.run])).toEqual([["Thrusters", 1], ["Pull-ups", 1], ["Burpees", null]]);
   });
 });
