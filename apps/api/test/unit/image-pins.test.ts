@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { POSTGRES_IMAGE } from "../integration/postgres-image.js";
+import { POSTGRES_IMAGE, dbImageFromCompose } from "../integration/postgres-image.js";
 
 /**
  * Issue #9 — container images are pinned to a patch tag + sha256 digest, and
- * Dependabot keeps the Dockerfile / docker-compose.yml references current. It
- * cannot see the Testcontainers string, so this tripwire fails CI whenever a
- * compose bump lands without the matching one-line edit in
- * test/integration/postgres-image.ts.
+ * Dependabot keeps the Dockerfile / docker-compose.yml references current.
+ * Testcontainers reads its Postgres image from compose
+ * (test/integration/postgres-image.ts), so a compose bump needs no other edit.
  */
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const read = (rel: string) => readFileSync(new URL(rel, `file://${repoRoot}`), "utf8");
@@ -49,6 +48,32 @@ describe("#9 — container images are digest-pinned", () => {
 
   it("Testcontainers uses the same Postgres image as docker-compose", () => {
     expect(POSTGRES_IMAGE).toBe(composeDbImage());
+  });
+
+  it("the Testcontainers image is read from docker-compose's db service, not a second copy", () => {
+    expect(read("apps/api/test/integration/postgres-image.ts")).not.toMatch(/sha256:[0-9a-f]{64}/);
+  });
+
+  it("dbImageFromCompose takes the db service's image only", () => {
+    const yaml = [
+      "services:",
+      "  cache:",
+      "    image: redis:7.4.1-alpine@sha256:" + "a".repeat(64),
+      "  db:",
+      "    # a comment",
+      '    image: "postgres:16.15-alpine@sha256:' + "b".repeat(64) + '"',
+      "    environment:",
+      "      image: not-this-one",
+      "  api:",
+      "    build: .",
+    ].join("\n");
+    expect(dbImageFromCompose(yaml)).toBe("postgres:16.15-alpine@sha256:" + "b".repeat(64));
+  });
+
+  it("dbImageFromCompose throws when the db service has no image", () => {
+    expect(() => dbImageFromCompose("services:\n  db:\n    build: .\n  api:\n    image: x:1\n")).toThrow(
+      /docker-compose\.yml has no services\.db\.image/,
+    );
   });
 });
 
