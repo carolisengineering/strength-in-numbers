@@ -116,7 +116,7 @@ export function isFurnitureLine(line: string): boolean {
   return furnitureLine(l, isBadgeLine(l));
 }
 /** Spec 10.7 AC44: a badge line as one key, its parts trimmed, uppercased and joined by `/` (`rounds / reps` → `ROUNDS/REPS`). */
-export function badgeText(line: string): string {
+function badgeText(line: string): string {
   return line
     .split("/")
     .map((p) => p.trim().toUpperCase())

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SectionTimerSchema, type SectionTimer } from "../src/dto/section-timer.js";
-import { badgeText, readWorkoutText, scoreKindOf, sectionTimerOf, type ScoreKind } from "../src/workoutText.js";
+import { cleanWorkoutText, readWorkoutText, scoreKindOf, sectionTimerOf, type ScoreKind } from "../src/workoutText.js";
 import { prng } from "./helpers/history-generator.js";
 
 const setTimer = (rounds: number, roundSeconds: number): SectionTimer => ({ format: "set_timer", rounds, roundSeconds });
@@ -161,13 +161,19 @@ describe("Review Focus 1 — OCR spacing and case", () => {
   });
 });
 
-describe("10.7 AC44 — badgeText", () => {
+describe("10.7 AC44 — a badge line's text", () => {
   it.each([
     ["rounds / reps", "ROUNDS/REPS"],
     ["TIME", "TIME"],
     ["No Score", "NO SCORE"],
   ])("%j → %j", (line, expected) => {
-    expect(badgeText(line)).toBe(expected);
+    expect(cleanWorkoutText(`Main\n${line}\n10 Squats`).badges).toContain(expected);
+  });
+});
+
+describe("#266 — badgeText is not part of @sin/core", () => {
+  it("the barrel has no badgeText", async () => {
+    expect(Object.keys(await import("../src/index.js"))).not.toContain("badgeText");
   });
 });
 
