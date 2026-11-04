@@ -23,7 +23,7 @@ const EXPECTED: ImportPlan = {
   name: "Second Shift", notes: null, notices: [],
   sections: [
     { name: "Warmup", notes: between("400m easy Run or 2:00 Machine Choice", "5 Minutes to build to first strict press weight (build by 3-5 reps)").join("\n") },
-    { name: "Strict Press", notes: STRICT_NOTE }, { name: "Second Shift", notes: SECOND_SHIFT_NOTE }, { name: "Accessory", notes: null },
+    { name: "Strict Press", notes: STRICT_NOTE }, { name: "Second Shift", notes: SECOND_SHIFT_NOTE, timer: { format: "time_cap", capSeconds: 1200 } }, { name: "Accessory", notes: null },
   ],
   items: [
     item("Strict Press", 1, null, "Set 1 @ 45–50%\nSet 2 @ 55–60%\nSet 3 @ 60–65%\nSet 4 @ 65–70%\nSet 5 @ 70–75%\nSet 6 @ Build If Able", planRows(6, 6, 4, 4, 10, 10)),

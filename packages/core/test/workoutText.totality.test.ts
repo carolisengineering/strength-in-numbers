@@ -9,6 +9,7 @@ import { buildImportPlan } from "../src/importPlan.js";
 import { readWorkoutText } from "../src/workoutText.js";
 import { prng } from "./helpers/history-generator.js";
 import { toWrite } from "./helpers/importPlan.js";
+import { TIMER_PASTES } from "./fixtures/timerPastes.js";
 
 const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-19.txt");
 const FIXTURE_24 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-24.txt");
@@ -128,5 +129,114 @@ describe("Minor 22 — the reader emits items section-ordered and runs whole", (
       const words = ["Strength", "3 Sets:", "21-15-9", "- 10 Curl", "10 Row", "Max Cal Bike", "Engine", "then", "Set 1: 5 reps", "into:", "x."];
       assertReaderOrder(Array.from({ length: 30 }, () => words[Math.floor(rnd() * words.length)]!).join("\n"));
     }
+  });
+});
+
+/** FNV-1a over the JSON: a short, stable fingerprint of a large value for an inline snapshot. */
+const digest = (value: unknown): string => {
+  let h = 0x811c9dc5;
+  for (const ch of JSON.stringify(value)) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, "0");
+};
+
+describe("10.7 AC53 — notes and placements are unchanged", () => {
+  const FIXTURE_26 = join(dirname(fileURLToPath(import.meta.url)), "fixtures/hiraya-2026-10-26.txt");
+  const raws: [string, string][] = [
+    ["fixture 19", readFileSync(FIXTURE, "utf8")],
+    ["fixture 24", readFileSync(FIXTURE_24, "utf8")],
+    ["fixture 26", readFileSync(FIXTURE_26, "utf8")],
+    ...Object.entries(TIMER_PASTES).map(([k, p]): [string, string] => [k, p.raw]),
+  ];
+  it("every read but its timers digests as it did before Phase D", () => {
+    const digests = raws.map(([label, raw]) => {
+      const r = readWorkoutText(raw);
+      const notes = r.sections.map((s) => s.notes);
+      return [label, digest({ name: r.name, routineNotes: r.notes, notes, items: r.items, names: r.names, lines: r.lines, chunks: r.chunks })];
+    });
+    expect(digests).toMatchInlineSnapshot(`
+      [
+        [
+          "fixture 19",
+          "ea821ffa",
+        ],
+        [
+          "fixture 24",
+          "31e895f5",
+        ],
+        [
+          "fixture 26",
+          "5f3a0216",
+        ],
+        [
+          "setTimerAccessory",
+          "b2dcb764",
+        ],
+        [
+          "timeCapColon",
+          "961cf675",
+        ],
+        [
+          "twelveMinAmrap",
+          "bdc2a879",
+        ],
+        [
+          "amrapClock",
+          "5ffe0557",
+        ],
+        [
+          "bareForTime",
+          "b017c7c3",
+        ],
+        [
+          "scoreLineTime",
+          "c5ae18a7",
+        ],
+        [
+          "scoreLineRounds",
+          "24335645",
+        ],
+        [
+          "badgeBeatsScoreLine",
+          "881eff93",
+        ],
+        [
+          "amrapBullets",
+          "5f1a6201",
+        ],
+        [
+          "timeCapBulletSingle",
+          "2ba3f6ea",
+        ],
+      ]
+    `);
+  });
+  it("every recognized timing line stays in its section's note", () => {
+    for (const [label, raw] of raws) {
+      for (const s of readWorkoutText(raw).sections) if (s.timer) expect(s.notes, label).not.toBe("");
+    }
+  });
+});
+
+describe("10.7 AC53 — still linear with timing lines", () => {
+  const paste = (k: number) =>
+    Array.from({ length: k }, (_, i) => `S${i}\nTIME\n20 Minute Cap\nFor Time:\n3 Sets, 1 Set Every 4:00\n21-15-9\nThrusters\nPull-ups`).join("\n");
+  const time = (raw: string) => {
+    readWorkoutText(raw);
+    const runs = [0, 1, 2].map(() => {
+      const t0 = performance.now();
+      readWorkoutText(raw);
+      return performance.now() - t0;
+    });
+    return runs.sort((a, b) => a - b)[1]!;
+  };
+  it("1000 timed sections cost about 4× 250", () => {
+    const small = paste(250);
+    const large = paste(1000);
+    expect(readWorkoutText(large).sections.every((s) => s.timer?.format === "set_timer")).toBe(true);
+    const t250 = time(small);
+    const t1000 = time(large);
+    expect(t250).toBeLessThan(1000);
+    expect(t1000).toBeLessThan(1000);
+    expect(t1000 / t250).toBeLessThan(8);
   });
 });

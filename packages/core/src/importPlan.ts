@@ -7,7 +7,9 @@ import { forbiddenMeasuresFor } from "./dto/set-entry.js";
 import { PLANNED_SETS_PER_ITEM_MAX } from "./dto/planned-set.js";
 import { ROUTINE_SECTIONS_MAX, SECTION_NAME_MAX, SECTION_NOTES_MAX } from "./dto/routine-section.js";
 import { ROUTINE_ITEM_NOTES_MAX, ROUTINE_ITEMS_MAX, ROUTINE_NAME_MAX, ROUTINE_NOTES_MAX, SUPERSET_GROUP_MEMBERS_MAX } from "./dto/routine.js";
+import type { SectionTimer } from "./dto/section-timer.js";
 import type { Modality } from "./enums.js";
+import { timedGroupRange } from "./supersets.js";
 import type { ReadItem, ReadResult, ReadRow } from "./workoutText.js";
 
 export type ImportNotice =
@@ -36,6 +38,8 @@ export const IMPORT_NOTICE_ORDER: readonly ImportNoticeCode[] = [
 export interface ImportPlanSection {
   readonly name: string;
   readonly notes: string | null;
+  /** Spec 10.7 AC54: present only when the reader timed the section. */
+  readonly timer?: SectionTimer;
 }
 export interface ImportPlanRow {
   readonly repsLow: number | null;
@@ -187,6 +191,20 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
       if (chunk.length >= 2) chunks.push(chunk);
     }
   }
+  // Spec 10.7 AC54: a timed kept section the text left with no superset gets one over its kept items (the first 8; the
+  // rest ungrouped). A section with any run keeps the text's structure. `timedGroupRange(…, "fill")` is the editor's rule.
+  const runGroup = new Array<number | null>(shaped.length).fill(null);
+  chunks.forEach((chunk, g) => chunk.forEach((i) => (runGroup[i] = g + 1)));
+  read.sections.slice(0, ROUTINE_SECTIONS_MAX).forEach((section, j) => {
+    if (section.timer === undefined) return;
+    const idx = shaped.flatMap(({ it }, i) => (it.section === j ? [i] : []));
+    if (timedGroupRange(idx.map((i) => ({ id: String(i), group: runGroup[i]! })), "fill") === null) return;
+    if (idx.length > SUPERSET_GROUP_MEMBERS_MAX) count("superset-split");
+    chunks.push(idx.slice(0, SUPERSET_GROUP_MEMBERS_MAX));
+  });
+  // Numbered by first appearance. For an untimed read the chunks are already in item order (runs are consecutive and
+  // section-ordered), so the stable sort leaves today's numbers alone.
+  chunks.sort((a, b) => a[0]! - b[0]!);
   chunks.forEach((chunk, g) => chunk.forEach((i) => (groupOf[i] = g + 1)));
 
   // (6) Names and notes of the routine and its sections.
@@ -195,7 +213,7 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     if (name !== s.name) count("section-name-cut");
     const notes = cutNote(s.notes, SECTION_NOTES_MAX);
     if (notes !== s.notes) count("section-note-cut");
-    return { name, notes: notes === "" ? null : notes };
+    return { name, notes: notes === "" ? null : notes, ...(s.timer ? { timer: s.timer } : {}) };
   });
   const name = cutName(read.name ?? "", ROUTINE_NAME_MAX);
   if (name !== (read.name ?? "")) found.set("name-cut", { code: "name-cut" });

@@ -1,4 +1,8 @@
-import type { RoutineWrite } from "@sin/core";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { buildImportPlan, readWorkoutText, type RoutineWrite } from "@sin/core";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -32,6 +36,8 @@ import { OFFLINE_SAVE, SAVE_FAILED } from "../messages";
 import { IMPORT_PATH } from "../paths";
 import { EXERCISE_LIMIT_MESSAGE } from "../../catalog/fieldErrors";
 import { createFailed } from "./messages";
+import { USER_DATA_KEY_PREFIXES } from "../../../storage/clearUserData";
+import { TIMER_PASTES } from "../../../../../../packages/core/test/fixtures/timerPastes";
 
 const EXERCISES = /^\/v1\/exercises$/;
 
@@ -183,5 +189,50 @@ describe("10.4 AC31 — Save works under React StrictMode (the app's root)", () 
     await user.click(save());
     expect(await screen.findByRole("heading", { level: 1, name: "Second Shift" })).toBeInTheDocument();
     expect(fake.requests.filter((r) => r.method === "POST").map((r) => r.path)).toEqual(["/v1/exercises", "/v1/exercises", "/v1/exercises", "/v1/routines"]);
+  });
+});
+
+describe("10.7 AC55 — Save sends the timer", () => {
+  const FIXTURE_26 = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../../../../packages/core/test/fixtures/hiraya-2026-10-26.txt"), "utf8");
+  const routineBody = (fake: ReturnType<typeof start>["fake"]) =>
+    fake.requests.find((r) => r.path === "/v1/routines" && r.method === "POST")!.body as RoutineWrite;
+
+  it("fixture 19: only s3 carries a timer, Time Cap 20:00", async () => {
+    const { user, fake } = start();
+    await toEditor(user);
+    await user.click(save());
+    await screen.findByRole("heading", { level: 1, name: "Second Shift" });
+    const sections = routineBody(fake).sections!;
+    expect(sections.map((s) => s.key)).toEqual(["s1", "s2", "s3", "s4"]);
+    expect(sections.filter((s) => "timer" in s).map((s) => s.key)).toEqual(["s3"]);
+    expect(sections[2]!.timer).toEqual({ format: "time_cap", capSeconds: 1200 });
+  });
+
+  it("Review Focus 5: a For Time section saves as { format: \"time_cap\" } with no capSeconds key", async () => {
+    const { user, fake } = start();
+    await toEditor(user, TIMER_PASTES.timeCapBulletSingle.raw);
+    await user.click(save());
+    await screen.findByRole("heading", { level: 1, name: "Main" });
+    const timer = routineBody(fake).sections![0]!.timer!;
+    expect(Object.keys(timer)).toEqual(["format"]);
+    expect(timer).toEqual({ format: "time_cap" });
+  });
+
+  it("fixture 26: MORRO BAY keeps the plan's groups and saves AMRAP 15:00; nothing new is stored", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const { user, fake } = start();
+    await toEditor(user, FIXTURE_26);
+    await user.click(save());
+    await screen.findByRole("heading", { level: 1, name: "MORRO BAY" });
+    const body = routineBody(fake);
+    const plan = buildImportPlan(readWorkoutText(FIXTURE_26), () => "weight_reps");
+    expect(body.sections![2]!.timer).toEqual({ format: "amrap", capSeconds: 900 });
+    expect(body.sections!.filter((s) => "timer" in s)).toHaveLength(1);
+    expect(body.items.filter((i) => i.sectionKey === "s3").map((i) => i.supersetGroup ?? null)).toEqual(
+      plan.items.filter((i) => i.section === 2).map((i) => i.supersetGroup),
+    );
+    // Only the existing user-data keys: the catalog cache and recents hold the created exercises (10.4 AC31).
+    expect(setItem.mock.calls.map(([key]) => String(key)).filter((key) => !/^sin:(catalog|recents):/.test(key))).toEqual([]);
+    expect(USER_DATA_KEY_PREFIXES).toEqual(["sin:catalog:", "sin:recents:", "sin:workout:", "sin:hevy:"]);
   });
 });

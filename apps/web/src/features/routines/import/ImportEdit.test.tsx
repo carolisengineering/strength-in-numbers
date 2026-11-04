@@ -118,3 +118,24 @@ describe("10.4 AC34 — overflow is visible in the editor", () => {
     expect(screen.getAllByRole("alert").map((a) => a.textContent)).toContain(importNoticeText({ code: "items-left-out", count: 1 }));
   });
 });
+
+describe("10.7 AC55 — the editor shows the imported timer", () => {
+  const TIMER_TEXT = /Set Timer|AMRAP|Time Cap|For Time$/;
+  it("Second Shift reads Time Cap 20:00; the other headers show no plan line; the sheet can remove it", async () => {
+    const { user } = start();
+    await readHiraya(user);
+    await continueFromNames(user);
+    const second = screen.getByRole("region", { name: "Second Shift" });
+    expect(within(second).getByText("Time Cap 20:00")).toBeInTheDocument();
+    expect(within(second).getByText(/20 Minute Cap/)).toBeInTheDocument();
+    expect(within(second).getByText(/For Time:/)).toBeInTheDocument();
+    for (const name of ["Warmup", "Strict Press", "Accessory"]) {
+      expect(within(screen.getByRole("region", { name })).queryByText(TIMER_TEXT)).toBeNull();
+    }
+    await user.click(screen.getByRole("button", { name: "Edit section Second Shift" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit section" });
+    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Second Shift" })).queryByText("Time Cap 20:00")).toBeNull());
+  });
+});
