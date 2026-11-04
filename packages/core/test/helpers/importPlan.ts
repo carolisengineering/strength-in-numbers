@@ -23,7 +23,7 @@ export function toWrite(plan: ImportPlan): Record<string, unknown> {
     ...(plan.notes === null ? {} : { notes: plan.notes }),
     ...(plan.sections.length === 0
       ? {}
-      : { sections: plan.sections.map((s, j) => ({ key: `s${j + 1}`, name: s.name, ...(s.notes === null ? {} : { notes: s.notes }) })) }),
+      : { sections: plan.sections.map((s, j) => ({ key: `s${j + 1}`, name: s.name, ...(s.notes === null ? {} : { notes: s.notes }), ...(s.timer ? { timer: s.timer } : {}) })) }),
     items: items.length === 0 ? [{ exerciseId: STUB_ID }] : items,
   };
 }
