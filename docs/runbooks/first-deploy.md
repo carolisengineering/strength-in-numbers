@@ -272,6 +272,30 @@ that hasn't run this repo before, expect to hit these, roughly in this order:
 
 Once these pass, B4/B5 behave as documented below.
 
+### B3.6. Get a user access token (Auth0 CLI)
+
+B5's seed check and the 0018 step 6 check call user routes, so they need a
+**user** access token for the test user. Get one with the Auth0 CLI
+(`brew install auth0/auth0-cli/auth0`):
+
+1. `auth0 login`, signed in to tenant `dev-gncuqvfir0wv0t4l`.
+2. `auth0 test token <spa-client-id> -a https://api.strengthinnumbers.app -s "openid profile email"`.
+   `<spa-client-id>` is the web app's Auth0 application (Render →
+   si-web-staging → `VITE_AUTH0_CLIENT_ID`); leave it out to pick the app
+   from a list.
+3. The first time, the CLI warns that the app doesn't allow callbacks to
+   localhost and asks "Do you wish to proceed?". Answer yes: it adds
+   `http://localhost:8484` to the app's allowed callback URLs for the login
+   and removes it when done.
+4. A browser window opens on the tenant's login page. Log in as the **test
+   user**, go back to the terminal, and copy `access_token`.
+
+(confirm) A one-time Auth0 dashboard step to authorize the CLI client may
+also be needed. The steps above are what the CLI's own source shows.
+
+Don't use `apps/api/scripts/smoke.ts`'s token: it's an M2M token with no
+email claim, so every user route refuses it (`401 invalid-token`).
+
 ### B4. Run the migration against Neon (by hand) — **required, easy to miss**
 
 Free Render has no pre-deploy step, so apply `0001_create_user` yourself. **The
@@ -375,11 +399,8 @@ is allowed (append-only), but check it was intentional.
 
 **Verify it landed** through the running service (this is the check that proves
 the seed hit the *same* database Render reads). `/v1/exercises` needs a bearer;
-get one with the Auth0 CLI exactly as in
-[`manual-staging-test-contract-pipeline.md` §3](manual-staging-test-contract-pipeline.md#3-get-a-token)
-(`auth0 login`, then `auth0 test token -a https://api.strengthinnumbers.app
--s "openid profile email"`, log in as the **test user**; the one-time
-"authorize the CLI client" dashboard step is described there). Then:
+get one for the **test user** as in
+[B3.6](#b36-get-a-user-access-token-auth0-cli). Then:
 
 ```bash
 TOKEN='<access_token printed by auth0 test token>'
@@ -544,7 +565,7 @@ eligible sets.
    No backfill, no `records:rebuild`. (Phase B adds the write checks of spec §11 step 4.)
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0018` by hand the same way before approving the release.
 5. Rollback: revert the code; the columns and table stay, inert, and old code ignores them (timed sections read as ordinary sections). If Spec 10.7 is merged, revert it first. A routine `PUT` from old code writes sections without a timer, which clears a plan: that matters only after timers were set.
-6. **Phase B (no migration, Spec 09.5 §11 step 4).** After it deploys, on a scratch workout on staging, with a **user** access token: `auth0 test token -a https://api.strengthinnumbers.app -s "openid profile email"`, logged in as the test user, as in B5's "Verify it landed". Not `apps/api/scripts/smoke.ts`'s token: that is an M2M token with no email claim, so every user route refuses it (`401 invalid-token`). `TOKEN='<access_token>' bash docs/runbooks/scripts/check-0018-phase-b.sh` runs 6.1–6.4 end to end (it creates the scratch workout, prints one `ok` / `FAIL` line per check, deletes the workout, and prints 6.5's SQL):
+6. **Phase B (no migration, Spec 09.5 §11 step 4).** After it deploys, on a scratch workout on staging, with a **user** access token for the test user, as in [B3.6](#b36-get-a-user-access-token-auth0-cli) (not `smoke.ts`'s M2M token). `TOKEN='<access_token>' bash docs/runbooks/scripts/check-0018-phase-b.sh` runs 6.1–6.4 end to end (it creates the scratch workout, prints one `ok` / `FAIL` line per check, deletes the workout, and prints 6.5's SQL):
    1. `PATCH $BASE/v1/workout-sections/{id}` with `{"timer":{"format":"amrap","capSeconds":720}}` → `200`, the section carries the timer;
    2. `PUT …/round-times/1` `{"seconds":250}` and `PUT …/result` `{"rounds":5,"reps":7}` → `200` each; `GET $BASE/v1/workouts/{id}` shows them;
    3. `PATCH` `{"timer":{"format":"time_cap","capSeconds":900}}` → `409 section-result-exists`; the same with `"discardResult":true` → `200`, `result: null`, `roundTimes: []`;
