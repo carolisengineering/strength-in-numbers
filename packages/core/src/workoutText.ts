@@ -135,27 +135,34 @@ const TIME_WORD = /\btime\b/i;
  * badge the first `Score:` note line decides (`rounds` before `time`); neither → null.
  */
 export function scoreKindOf(badge: string | null, noteLines: readonly string[]): ScoreKind | null {
+  // #264: any case or spacing reads as the reader's own form (`badgeText`, collapsed lines).
   if (badge !== null) {
-    const parts = badge.split("/");
+    const parts = badgeText(collapseLine(badge)).split("/");
     const time = parts.includes("TIME");
     const rounds = parts.includes("ROUNDS");
     if (time && rounds) return null;
     return time ? "time" : rounds ? "rounds-reps" : "other";
   }
-  const score = noteLines.find((l) => SCORE_LINE.test(l));
+  const score = noteLines.map(collapseLine).find((l) => SCORE_LINE.test(l));
   if (score === undefined) return null;
   return ROUNDS_WORD.test(score) ? "rounds-reps" : TIME_WORD.test(score) ? "time" : "other";
 }
 
-// Spec 10.7 §6.8: whole-line timer patterns. `\s*` wherever Live Text may drop a space; a trailing period is allowed.
-// Anchored, no nested quantifiers, so matching stays linear.
-const MINUTE_WORD = String.raw`(?:min|mins|minute|minutes)`;
+// Spec 10.7 §6.8: whole-line timer patterns. `\s*` wherever Live Text may drop a space; a trailing period or colon is
+// allowed (#261: `AMRAP 12:` is safe, `CLOCK` needs two digits after the colon), as are `N-Minute` and `Min.`, and
+// `Time Cap - 15:00`. Anchored, no nested quantifiers, and run on collapsed lines (#264), so matching stays linear.
+const MINUTE_WORD = String.raw`(?:min|mins|minute|minutes)\.?`;
+const N_MINUTES = String.raw`(\d{1,3})\s*-?\s*${MINUTE_WORD}`;
 const CLOCK = String.raw`(\d{1,3}):([0-5]\d)`;
+const LINE_END = String.raw`[.:]?$`;
 const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}\.?$`, "i");
-const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)\.?$`, "i");
-const TIME_CAP_TAIL = new RegExp(String.raw`^(\d{1,3})\s*${MINUTE_WORD}\s+(?:time\s+)?cap\.?$`, "i");
-const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)\.?$`, "i");
-const AMRAP_TAIL = new RegExp(String.raw`^(\d{1,3})\s*${MINUTE_WORD}\s+amrap\.?$`, "i");
+const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*[:\-–]?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
+const TIME_CAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+(?:time\s+)?cap${LINE_END}`, "i");
+const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
+const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+amrap${LINE_END}`, "i");
+
+/** #264, #265: a note line as the timer rules read it: collapsed, with one leading bullet off. The note keeps its text (D10). */
+const timerLine = (line: string) => collapseLine(line).replace(BULLET, "");
 
 const inRange = (n: number, max: number) => n >= 1 && n <= max;
 
@@ -189,7 +196,8 @@ function setTimerOf(noteLines: readonly string[]): SectionTimer | null {
  * Set Timer, then a capped Time Cap, then a bare For Time; a rounds-reps score reads AMRAP; nothing else is timed. A
  * line out of range is not a match. The lines stay in the note (D10).
  */
-export function sectionTimerOf(badge: string | null, noteLines: readonly string[]): SectionTimer | null {
+export function sectionTimerOf(badge: string | null, rawLines: readonly string[]): SectionTimer | null {
+  const noteLines = rawLines.map(timerLine);
   const kind = scoreKindOf(badge, noteLines);
   if (kind === "time") {
     const set = setTimerOf(noteLines);

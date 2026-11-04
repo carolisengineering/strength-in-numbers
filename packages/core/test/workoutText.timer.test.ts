@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SectionTimerSchema, type SectionTimer } from "../src/dto/section-timer.js";
-import { badgeText, scoreKindOf, sectionTimerOf, type ScoreKind } from "../src/workoutText.js";
+import { badgeText, readWorkoutText, scoreKindOf, sectionTimerOf, type ScoreKind } from "../src/workoutText.js";
 import { prng } from "./helpers/history-generator.js";
 
 const setTimer = (rounds: number, roundSeconds: number): SectionTimer => ({ format: "set_timer", rounds, roundSeconds });
@@ -168,5 +168,63 @@ describe("10.7 AC44 — badgeText", () => {
     ["No Score", "NO SCORE"],
   ])("%j → %j", (line, expected) => {
     expect(badgeText(line)).toBe(expected);
+  });
+});
+
+describe("#261 — gym phrasings (owner ruling 2026-11-04)", () => {
+  it.each<[string, string[], SectionTimer]>([
+    ["ROUNDS/REPS", ["12 Min AMRAP:"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP 12:"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP 12 Min:"], amrap(720)],
+    ["ROUNDS/REPS", ["12-Minute AMRAP"], amrap(720)],
+    ["ROUNDS/REPS", ["12 Min. AMRAP"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP 12:30"], amrap(750)],
+    ["TIME", ["15-Minute Cap"], timeCap(900)],
+    ["TIME", ["15 Min. Cap"], timeCap(900)],
+    ["TIME", ["15 Min Cap:"], timeCap(900)],
+    ["TIME", ["Time Cap - 15:00"], timeCap(900)],
+    ["TIME", ["Time Cap – 15"], timeCap(900)],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(sectionTimerOf(badge, notes)).toEqual(expected);
+  });
+
+  it.each<[string, string[]]>([
+    ["ROUNDS/REPS", ["12 Min AMRAP: 10 Burpees"]], // Review Focus 1: whole-line only
+    ["ROUNDS/REPS", ["AMRAP 12:3"]], // Review Focus 5: never half a clock
+    ["TIME", ["Time Cap -"]],
+    ["TIME", ["15--Minute Cap"]],
+  ])("%j %j → no timer", (badge, notes) => {
+    expect(sectionTimerOf(badge, notes)).toBeNull();
+  });
+});
+
+describe("#265 — a bulleted timer line", () => {
+  it.each<[string, string[], SectionTimer]>([
+    ["TIME", ["- For Time"], timeCap(null)],
+    ["TIME", ["• For Time:"], timeCap(null)],
+    ["TIME", ["- 15 Minute Cap"], timeCap(900)],
+    ["ROUNDS/REPS", ["* AMRAP 15"], amrap(900)],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(sectionTimerOf(badge, notes)).toEqual(expected);
+  });
+
+  it("reads end to end: Main / TIME / - For Time / - 50 Burpees / - 20 Pull-ups", () => {
+    const read = readWorkoutText(["Main", "TIME", "- For Time", "- 50 Burpees", "- 20 Pull-ups"].join("\n"));
+    expect(read.sections[0]!.timer).toEqual(timeCap(null));
+    expect(read.sections[0]!.notes).toContain("- For Time"); // D10: the line stays in the note
+  });
+});
+
+describe("#264 — the exported functions normalize their input", () => {
+  it("a lowercase or spaced badge scores like the reader's form", () => {
+    expect(scoreKindOf("time", [])).toBe("time");
+    expect(scoreKindOf("rounds / reps", [])).toBe("rounds-reps");
+    expect(sectionTimerOf("rounds/reps", ["AMRAP   15"])).toEqual(amrap(900));
+  });
+
+  it("a long uncollapsed whitespace run stays fast", () => {
+    const start = performance.now();
+    expect(sectionTimerOf("TIME", [`Time cap${" ".repeat(50_000)}x`])).toBeNull();
+    expect(performance.now() - start).toBeLessThan(50);
   });
 });
