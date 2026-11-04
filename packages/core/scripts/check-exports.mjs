@@ -260,6 +260,9 @@ const EXPECTED = [
   "isFurnitureLine",
   "cleanWorkoutText",
   "readWorkoutText",
+  // Spec 10.7 AC45–AC48: the reader's timer rules
+  "scoreKindOf",
+  "sectionTimerOf",
   "SIMILAR_THRESHOLD",
   "HEAD_NOUN_BONUS",
   "normalizeExerciseName",

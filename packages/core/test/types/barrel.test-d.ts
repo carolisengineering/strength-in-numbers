@@ -129,6 +129,9 @@ import type { PreparedCatalog ,
   SectionScoreSchema,
   TimedSectionSummarySchema} from "../../src/index.js";
 import {
+  scoreKindOf,
+  sectionTimerOf,
+  type ScoreKind,
   describeTimer,
   formatClock,
   hevyTimerDurationSeconds,
@@ -194,6 +197,10 @@ describe("09.5 — timed-section exports", () => {
     expectTypeOf(hevyTimerLine).toEqualTypeOf<(s: TimedSectionData) => string>();
     expectTypeOf(hevyTimerDurationSeconds).toEqualTypeOf<(s: TimedSectionData) => number | null>();
     expectTypeOf<TimedSectionData["timer"]>().toEqualTypeOf<SectionTimer>();
+    // Spec 10.7 Phase D — the reader's score kind and timer rules.
+    expectTypeOf<ScoreKind>().toEqualTypeOf<"time" | "rounds-reps" | "other">();
+    expectTypeOf(scoreKindOf).returns.toEqualTypeOf<ScoreKind | null>();
+    expectTypeOf(sectionTimerOf).returns.toEqualTypeOf<SectionTimer | null>();
   });
 });
 

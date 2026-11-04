@@ -4,6 +4,8 @@
  * between consecutive screenshots. Every function is total and linear: anchored patterns, no
  * nested quantifiers. No I/O, no DOM, no Node APIs.
  */
+import type { SectionTimer } from "./dto/section-timer.js";
+import { TIMER_CAP_SECONDS_MAX, TIMER_ROUND_SECONDS_MAX, TIMER_ROUNDS_MAX } from "./dto/section-timer.js";
 import { normalizeExerciseName } from "./exerciseMatch.js";
 
 /** The paste box's limit (Phase B); the reader itself accepts any length. */
@@ -113,6 +115,96 @@ export function isFurnitureLine(line: string): boolean {
   const l = collapseLine(line);
   return furnitureLine(l, isBadgeLine(l));
 }
+/** Spec 10.7 AC44: a badge line as one key, its parts trimmed, uppercased and joined by `/` (`rounds / reps` → `ROUNDS/REPS`). */
+export function badgeText(line: string): string {
+  return line
+    .split("/")
+    .map((p) => p.trim().toUpperCase())
+    .join("/");
+}
+
+/** Spec 10.7 AC45: how a section is scored, which decides which timer lines count. */
+export type ScoreKind = "time" | "rounds-reps" | "other";
+
+const SCORE_LINE = /^score\s*:/i;
+const ROUNDS_WORD = /\brounds\b/i;
+const TIME_WORD = /\btime\b/i;
+
+/**
+ * Spec 10.7 AC45: the badge wins (`TIME` → time, any `ROUNDS` part → rounds-reps, both → null, else other); with no
+ * badge the first `Score:` note line decides (`rounds` before `time`); neither → null.
+ */
+export function scoreKindOf(badge: string | null, noteLines: readonly string[]): ScoreKind | null {
+  if (badge !== null) {
+    const parts = badge.split("/");
+    const time = parts.includes("TIME");
+    const rounds = parts.includes("ROUNDS");
+    if (time && rounds) return null;
+    return time ? "time" : rounds ? "rounds-reps" : "other";
+  }
+  const score = noteLines.find((l) => SCORE_LINE.test(l));
+  if (score === undefined) return null;
+  return ROUNDS_WORD.test(score) ? "rounds-reps" : TIME_WORD.test(score) ? "time" : "other";
+}
+
+// Spec 10.7 §6.8: whole-line timer patterns. `\s*` wherever Live Text may drop a space; a trailing period is allowed.
+// Anchored, no nested quantifiers, so matching stays linear.
+const MINUTE_WORD = String.raw`(?:min|mins|minute|minutes)`;
+const CLOCK = String.raw`(\d{1,3}):([0-5]\d)`;
+const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}\.?$`, "i");
+const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)\.?$`, "i");
+const TIME_CAP_TAIL = new RegExp(String.raw`^(\d{1,3})\s*${MINUTE_WORD}\s+(?:time\s+)?cap\.?$`, "i");
+const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)\.?$`, "i");
+const AMRAP_TAIL = new RegExp(String.raw`^(\d{1,3})\s*${MINUTE_WORD}\s+amrap\.?$`, "i");
+
+const inRange = (n: number, max: number) => n >= 1 && n <= max;
+
+/** A lead match's seconds: groups 1–2 are `M:SS`, group 3 a bare number of minutes. */
+const leadSeconds = (m: RegExpExecArray) => (m[3] !== undefined ? Number(m[3]) * 60 : Number(m[1]) * 60 + Number(m[2]));
+
+/** The seconds of the first line matching a lead or tail pattern within 1..`TIMER_CAP_SECONDS_MAX`, or null. */
+function firstCap(noteLines: readonly string[], lead: RegExp, tail: RegExp): number | null {
+  for (const line of noteLines) {
+    const l = lead.exec(line);
+    const t = l ? null : tail.exec(line);
+    const seconds = l ? leadSeconds(l) : t ? Number(t[1]) * 60 : null;
+    if (seconds !== null && inRange(seconds, TIMER_CAP_SECONDS_MAX)) return seconds;
+  }
+  return null;
+}
+
+function setTimerOf(noteLines: readonly string[]): SectionTimer | null {
+  for (const line of noteLines) {
+    const m = SET_TIMER_LINE.exec(line);
+    if (!m) continue;
+    const rounds = Number(m[1]);
+    const roundSeconds = Number(m[2]) * 60 + Number(m[3]);
+    if (inRange(rounds, TIMER_ROUNDS_MAX) && inRange(roundSeconds, TIMER_ROUND_SECONDS_MAX)) return { format: "set_timer", rounds, roundSeconds };
+  }
+  return null;
+}
+
+/**
+ * Spec 10.7 AC46–AC48, AC51, AC52: the section's timer from its badge and note lines, or null. A time score reads a
+ * Set Timer, then a capped Time Cap, then a bare For Time; a rounds-reps score reads AMRAP; nothing else is timed. A
+ * line out of range is not a match. The lines stay in the note (D10).
+ */
+export function sectionTimerOf(badge: string | null, noteLines: readonly string[]): SectionTimer | null {
+  const kind = scoreKindOf(badge, noteLines);
+  if (kind === "time") {
+    const set = setTimerOf(noteLines);
+    if (set) return set;
+    const cap = firstCap(noteLines, TIME_CAP_LEAD, TIME_CAP_TAIL);
+    if (cap !== null) return { format: "time_cap", capSeconds: cap };
+    return noteLines.some((l) => BARE_FOR_TIME.test(l)) ? { format: "time_cap", capSeconds: null } : null;
+  }
+  if (kind === "rounds-reps") {
+    const cap = firstCap(noteLines, AMRAP_LEAD, AMRAP_TAIL);
+    return cap === null ? null : { format: "amrap", capSeconds: cap };
+  }
+  return null;
+}
+
 /** `badge` is `isBadgeLine(l)`, which the cleaning loop computes once per line. */
 function furnitureLine(l: string, badge: boolean): boolean {
   return CLOCK_LINE.test(l) || RESULTS_LINE.test(l) || FURNITURE.has(l.toLowerCase()) || isIconLine(l) || isStatusBarLine(l) || badge;
