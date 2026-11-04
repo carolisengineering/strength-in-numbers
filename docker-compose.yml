@@ -2,8 +2,8 @@
 
 services:
   db:
-    # Issue #9 — digest-pinned; keep apps/api/test/integration/postgres-image.ts
-    # identical (the image-pins unit test enforces it).
+    # Issue #9 — digest-pinned. Testcontainers reads this line
+    # (apps/api/test/integration/postgres-image.ts), so it is the one pin.
     image: postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     environment:
       POSTGRES_USER: sin
