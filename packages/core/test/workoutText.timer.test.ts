@@ -286,3 +286,37 @@ describe("#267 — a repeated header's different badge (owner ruling 2026-11-04)
     expect(r.sections[0]!.timer).toEqual(timeCap(900));
   });
 });
+
+describe("#262 final review — only a line that would have been an exercise becomes a note", () => {
+  const read = (lines: string[]) => readWorkoutText(lines.join("\n"));
+
+  it("untimed: `Time cap: 12:00` still closes the run, so the next title heads its own section", () => {
+    const r = read(["Metcon", "3 Rounds", "10 Squats", "10 Lunges", "Time cap: 12:00", "Core Finisher", "3 Rounds", "20 Sit-ups"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Metcon", "Core Finisher"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats", "Lunges", "Sit-ups"]);
+  });
+
+  it("`Time Cap: 10:00` after a scheme leaves `Accessory Work` a title, not an exercise", () => {
+    const r = read(["21-15-9", "Thrusters", "Pull-ups", "Time Cap: 10:00", "Accessory Work", "3 Sets", "10 Curls"]);
+    expect(r.items.map((i) => i.name)).not.toContain("Accessory Work");
+  });
+
+  it("weight-scored: the line after `Time cap: 12:00` is not folded into the run", () => {
+    const r = read(["Main", "REPS", "3 Rounds", "10 Squats", "Time cap: 12:00", "50 Double Unders"]);
+    const [squats, du] = r.items;
+    expect(du!.name).toBe("Double Unders");
+    expect(du!.run).not.toBe(squats!.run);
+  });
+
+  it.each(["AMRAP 12:", "12 Min AMRAP:"])("`%s` after the movements starts a new block, as `For Time:` does (minor 280)", (line) => {
+    const r = read(["Main", "ROUNDS/REPS", "2 Rounds", "10 Squats", "10 Lunges", line, "5 Pull-ups", "10 Push-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats", "Lunges", "Pull-ups", "Push-ups"]);
+    expect(r.items[2]!.run).not.toBe(r.items[0]!.run);
+  });
+
+  it("`12 Min AMRAP:` after a For Time scheme: the movements after it keep their reps", () => {
+    const r = read(["Main", "TIME", "For Time:", "21-15-9", "Thrusters", "Pull-ups", "12 Min AMRAP:", "10 Burpees", "10 Squats"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups", "Burpees", "Squats"]);
+    expect(r.items[2]!.run).not.toBe(r.items[0]!.run);
+  });
+});

@@ -840,8 +840,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const bare = line.replace(BULLET, "").trim();
     const runId = s.run.id;
     if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || !s.items.some((it) => it.run === runId))) return "note";
-    // #262: 10.4's "20 Minute Cap stays a note" also holds inside a run; the run stays open.
-    if (isCapOrAmrapLine(bare)) return "note";
+    // #262: 10.4's "20 Minute Cap stays a note" also holds inside a run, for a line that would otherwise be read as an
+    // exercise ("15 Minute Cap", "AMRAP 15"); the run stays open. A line the movement test already refuses
+    // ("Time cap: 12:00", "AMRAP 12:") closes the run as before, as "For Time:" does after the movements (final review).
+    if (isCapOrAmrapLine(bare) && isMovementText(bare)) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
