@@ -5,6 +5,7 @@ import {
   ROUTINE_SECTIONS_MAX,
   resultIssues,
   roundTimeIssues,
+  sortedRoundTimes,
   timerChangeKeepsRecorded,
   timersEqual,
   type TimerIssue,
@@ -291,9 +292,11 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
           VALUES (${sectionId}::uuid, ${round}, ${seconds})
           ON CONFLICT (workout_section_id, round_no) DO UPDATE SET seconds = EXCLUDED.seconds, updated_at = now()
         `;
-        const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid`;
+        // The section row is locked FOR UPDATE until commit, so no other writer can change its rounds: the response is
+        // the row already read plus the one round written, with no re-read (#246).
         return {
-          ...toWorkoutSectionRecord(rows[0]!),
+          ...current,
+          roundTimes: sortedRoundTimes([...current.roundTimes.filter((r) => r.round !== round), { round, seconds }]),
           workoutId: pre.workout_id,
           changed: true,
           finishedEdit: mode === "finished" ? noRecompute(pre.workout_id) : null,
