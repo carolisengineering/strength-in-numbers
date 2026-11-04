@@ -103,7 +103,8 @@ const timerValidationError = (issues: readonly TimerIssue[]) => new ValidationEr
  * Spec 09.5 §6.1 / D19 — the envelope of the round-time and result writes. They change no position or membership,
  * so they skip the structure advisory lock and `SET CONSTRAINTS`: [finished: the PR lock, from `withWriteMode`]
  * → workout `FOR SHARE` (`assertStillLive`) → section `FOR UPDATE`. The section row lock serializes round, result
- * and timer writes on one section, which the cross-row rules need. A vanished workout or section is `404`.
+ * and timer writes on one section, which the cross-row rules need. A vanished workout or section is `404`. The sets
+ * use this (lock, then read); the clears use `lockSectionForClear`, the same locks with no read (#245).
  */
 export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<WorkoutSectionDbRow> {
   await lockWorkoutForRecord(tx, mode, workoutId);
