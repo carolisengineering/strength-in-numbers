@@ -1,5 +1,11 @@
-import { ExerciseIdSchema, readWorkoutText } from "@sin/core";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { buildImportPlan, ExerciseIdSchema, readWorkoutText } from "@sin/core";
 import { describe, expect, it } from "vitest";
+
+import { TIMER_PASTES } from "../../../../../../packages/core/test/fixtures/timerPastes";
 
 import { exerciseId } from "../../../test/catalogFixtures";
 import { HIRAYA_TEXT, importCatalog, randomPlan } from "../../../test/importFixtures";
@@ -56,5 +62,25 @@ describe("10.4 AC29 — the draft from an import", () => {
     const added = reduce(d, actions.addSection("Probe"));
     const back = reduce(added, actions.deleteSection(added.sections.at(-1)!.key));
     expect(back.items).toEqual(d.items); // deleteSection runs settle over every item
+  });
+});
+
+describe("10.7 AC55 — the draft carries the import's timers", () => {
+  const FIXTURE_26 = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../../../../packages/core/test/fixtures/hiraya-2026-10-26.txt"), "utf8");
+  const planOf = (raw: string) => buildImportPlan(readWorkoutText(raw), () => "weight_reps");
+
+  it("fixture 19: only Second Shift is timed, and the text's two supersets are kept", () => {
+    const d = draftFromImport(handoff.plan, idOf);
+    expect(d.sections.map((s) => s.timer)).toEqual([null, null, { format: "time_cap", capSeconds: 1200 }, null]);
+    expect(d.items.map((i) => i.supersetGroup)).toEqual([null, 1, 1, 2, 2, 3, 3, 3]);
+  });
+  it.each([
+    ["amrapBullets", TIMER_PASTES.amrapBullets.raw],
+    ["fixture 26", FIXTURE_26],
+  ])("Review Focus 5 — %s: the draft copies the plan's groups and never regroups", (_, raw) => {
+    const plan = planOf(raw);
+    const d = draftFromImport(plan, () => exerciseId(1));
+    expect(d.items.map((i) => i.supersetGroup)).toEqual(plan.items.map((i) => i.supersetGroup));
+    expect(d.sections.map((s) => s.timer)).toEqual(plan.sections.map((s) => s.timer ?? null));
   });
 });

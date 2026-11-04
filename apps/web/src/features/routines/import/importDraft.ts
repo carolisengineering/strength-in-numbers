@@ -8,7 +8,7 @@ import type { Draft, DraftItem, DraftSection } from "../routineDraft";
  * that name). Weights, RPE and rest stay empty; the draft starts dirty so the leave guard is armed.
  */
 export function draftFromImport(plan: ImportPlan, idOf: (nameKey: string) => string): Draft {
-  const sections: DraftSection[] = plan.sections.map((section) => ({ key: crypto.randomUUID(), name: section.name, notes: section.notes ?? "", timer: null }));
+  const sections: DraftSection[] = plan.sections.map((section) => ({ key: crypto.randomUUID(), name: section.name, notes: section.notes ?? "", timer: section.timer ?? null }));
   const items: DraftItem[] = plan.items.map((item) => {
     const base = {
       key: crypto.randomUUID(),

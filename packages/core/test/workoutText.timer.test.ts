@@ -34,7 +34,7 @@ describe("10.7 AC45 — scoreKindOf", () => {
   });
 });
 
-describe("10.7 AC46–AC48 — timer lines", () => {
+describe("10.7 AC46, AC47, AC48 — timer lines", () => {
   it.each<[string | null, string[], SectionTimer | null]>([
     // Set Timer (time score)
     ["TIME", ["3 Sets, 1 Set Every 4:00"], setTimer(3, 240)],

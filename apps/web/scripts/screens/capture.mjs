@@ -993,6 +993,23 @@ try {
       await page.getByRole("button", { name: "Continue" }).click();
       await page.getByRole("heading", { level: 1, name: "New routine" }).waitFor({ timeout: 4000 });
       await shoot(page, device, "47-import-editor", "The editor after import: the info notice and New tags (Spec 10.4 AC30)");
+      // The header (its plan line sits under the name), centered below the sticky app bar.
+      await page.getByRole("button", { name: "Edit section Second Shift" }).evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await shoot(page, device, "99-import-timed-preview-19", "The editor after import: Second Shift reads Time Cap 20:00 (Spec 10.7 AC55, AC63)");
+    });
+    // Spec 10.7 AC63: the second fixture, MORRO BAY, with the default name choices.
+    await tryStep("routine from text, fixture 26", async () => {
+      const text = fs.readFileSync(path.join(repoRoot, "packages/core/test/fixtures/hiraya-2026-10-26.txt"), "utf8");
+      await go("/app/workouts/routines/import");
+      await page.getByLabel("Workout text").fill(text);
+      await page.getByRole("button", { name: "Read workout" }).click();
+      await page.getByRole("heading", { level: 1, name: "Check exercise names" }).waitFor({ timeout: 4000 });
+      await page.locator("fieldset[data-card]").first().waitFor({ timeout: 4000 });
+      await page.getByRole("button", { name: "Continue" }).click();
+      await page.getByRole("heading", { level: 1, name: "New routine" }).waitFor({ timeout: 4000 });
+      // The header (its plan line sits under the name), centered below the sticky app bar.
+      await page.getByRole("button", { name: "Edit section MORRO BAY" }).evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await shoot(page, device, "99-import-timed-preview-26", "The editor after import: MORRO BAY reads AMRAP 15:00 (Spec 10.7 AC55, AC63)");
     });
 
     await go(`/app/workouts/${D.ids.latestPush}`);
