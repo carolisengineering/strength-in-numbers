@@ -258,3 +258,25 @@ describe("#262 — a cap or AMRAP line after the movements is a note", () => {
     expect(r.sections[0]!.notes).toContain("20 Minute Cap");
   });
 });
+
+describe("#267 — a repeated header's different badge (owner ruling 2026-11-04)", () => {
+  const shots = (...screens: string[][]) => readWorkoutText(screens.map((lines, i) => [`11:0${i + 1}`, ...lines].join("\n")).join("\n"));
+
+  it("REPS on the first copies, TIME on a later one, with a cap line → Time Cap", () => {
+    const r = shots(["Main", "REPS", "21-15-9", "Thrusters"], ["Main", "REPS", "Pull-ups"], ["Main", "TIME", "15 Minute Cap"]);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0]!.timer).toEqual(timeCap(900));
+  });
+
+  it("Review Focus 4: badges that time nothing keep the first (today's)", () => {
+    const r = shots(["Main", "REPS", "3 Rounds", "10 Squats"], ["Main", "NO SCORE", "10 Lunges"]);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0]!.timer).toBeUndefined();
+  });
+
+  it("a TIME first copy and a later REPS copy still time the section", () => {
+    const r = shots(["Main", "TIME", "21-15-9", "Thrusters"], ["Main", "REPS", "15 Minute Cap"]);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0]!.timer).toEqual(timeCap(900));
+  });
+});

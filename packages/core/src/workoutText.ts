@@ -507,8 +507,8 @@ interface MutableSection {
   fresh: boolean;
   /** AC52: a variant label was seen; the rest of the section is note. */
   notesOnly: boolean;
-  /** Spec 10.7 AC44: the header's badge, from the first copy of the header that showed one. */
-  badge: string | null;
+  /** Spec 10.7 AC44: every badge the header's copies showed, first seen first, no repeats; #267 picks among them. */
+  badges: string[];
 }
 interface MutableItem {
   name: string;
@@ -1024,14 +1024,15 @@ export function readWorkoutText(raw: string): ReadResult {
     if (heading && open && headerKey(heading.name) === headerKey(open.name)) {
       s.run = null;
       // Review Focus 2: the badge may show only on the repeated header.
-      open.badge ??= clean.badges[i] ?? null;
+      const badge = clean.badges[i] ?? null;
+      if (badge !== null && !open.badges.includes(badge)) open.badges.push(badge);
       placed.push({ text: line, as: "heading" });
       return;
     }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badge: clean.badges[i] ?? null });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badges: clean.badges[i] ? [clean.badges[i]!] : [] });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -1098,9 +1099,10 @@ export function readWorkoutText(raw: string): ReadResult {
   return {
     name,
     notes: s.routineNotes.join("\n"),
-    sections: s.sections.map(({ name: n, notes, warmup, badge }) => {
+    sections: s.sections.map(({ name: n, notes, warmup, badges }) => {
       // Spec 10.7 AC46–AC48: one post-pass per section; the timing lines stay in the note (D10).
-      const timer = sectionTimerOf(badge, notes);
+      // #267 (owner ruling 2026-11-04): when the copies disagree, the first badge that times the section wins, else the first.
+      const timer = badges.map((b) => sectionTimerOf(b, notes)).find((t) => t !== null) ?? sectionTimerOf(badges[0] ?? null, notes);
       return { name: n, notes: notes.join("\n"), warmup, ...(timer ? { timer } : {}) };
     }),
     items: s.items.map((it) => ({ ...it })),
