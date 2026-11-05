@@ -328,6 +328,11 @@ interface CleanLine {
   badges: string[];
 }
 
+/** Two badges stacked under one header as one key, their distinct parts joined by `/` (`REPS` + `TIME` → `REPS/TIME`). */
+function joinBadges(a: string, b: string): string {
+  return [...new Set([...a.split("/"), ...b.split("/")])].join("/");
+}
+
 /** Appends each of `from` that `into` lacks, in order. */
 function addBadges(into: string[], from: readonly string[]): void {
   for (const b of from) if (!into.includes(b)) into.push(b);
@@ -353,6 +358,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
   // between two labels (`Home`, `口`, `凸`, `Workouts`).
   const tabBar = nav.map((_, i) => navNear(i, 3));
   const badge = all.map(isBadgeLine);
+  // The header the last badge went to, until a line of text or a clock line: a badge right under it stacks (code review).
+  let stackOn: CleanLine | null = null;
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
@@ -370,6 +377,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a
       // clock at the top opens the status-bar window, so a short non-Latin name after a mid-text time is kept.
       textSinceClock = textSinceNav === 0 ? 0 : Infinity;
+      stackOn = null;
       chunks.push([]);
       continue;
     }
@@ -379,7 +387,11 @@ export function cleanWorkoutText(raw: string): CleanResult {
       const above = before?.[before.length - 1];
       if (above) {
         above.tagged = true;
-        addBadges(above.badges, [badgeText(line)]);
+        // Badge lines stacked in one screenshot are one badge the OCR split (`TIME` + `ROUNDS` reads as `TIME/ROUNDS`, AC45).
+        const text = badgeText(line);
+        const last = stackOn === above ? above.badges.pop() : undefined;
+        addBadges(above.badges, [last === undefined ? text : joinBadges(last, text)]);
+        stackOn = above;
       }
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
@@ -394,6 +406,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       continue;
     }
     chunk.push({ text: line, tagged: false, badges: [] });
+    stackOn = null;
     textSinceClock++;
     textSinceNav++;
   }

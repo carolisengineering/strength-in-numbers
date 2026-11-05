@@ -193,10 +193,20 @@ describe("#270 — an overlap twin's badge reaches #267's choice", () => {
     expect(c.badges[c.lines.indexOf("Part B Strength")]).toEqual(["REPS", "TIME"]);
   });
 
-  it("final review: two badges stacked under one header in one screenshot both count (AC44: every distinct badge)", () => {
+  it("code review: badges stacked under one header in one screenshot are one badge, parts joined (REPS + TIME → REPS/TIME)", () => {
     const raw = ["Main", "REPS", "TIME", "15 Minute Cap", "10 Squats"].join("\n");
-    expect(cleanWorkoutText(raw).badges).toEqual([["REPS", "TIME"], [], []]);
+    expect(cleanWorkoutText(raw).badges).toEqual([["REPS/TIME"], [], []]);
     expect(readWorkoutText(raw).sections[0]!.timer).toEqual(timeCap(900));
+  });
+
+  it("code review: stacked TIME + ROUNDS reads like TIME/ROUNDS, so no timer (AC45)", () => {
+    const raw = ["Main", "TIME", "ROUNDS", "AMRAP 12", "15 Minute Cap"].join("\n");
+    expect(cleanWorkoutText(raw).badges[0]).toEqual(["TIME/ROUNDS"]);
+    expect(readWorkoutText(raw).sections[0]!.timer).toBeUndefined();
+  });
+
+  it("code review: a badge in the next screenshot is still a separate badge, not stacked", () => {
+    expect(cleanWorkoutText(shots(["Intro", "Main", "REPS"], ["TIME", "15 Minute Cap"])).badges[1]).toEqual(["REPS", "TIME"]);
   });
 
   it("Review Focus 5: the same badge on both copies is listed once", () => {
