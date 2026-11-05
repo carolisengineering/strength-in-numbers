@@ -135,7 +135,12 @@ const TIME_WORD = /\btime\b/i;
  * badge the first `Score:` note line decides (`rounds` before `time`); neither → null.
  */
 export function scoreKindOf(badge: string | null, noteLines: readonly string[]): ScoreKind | null {
-  // #264: any case or spacing reads as the reader's own form (`badgeText`, collapsed lines).
+  // #264, #272: any case, spacing or leading bullets read as the timer rules read them.
+  return scoreKindOfLines(badge, noteLines.map(timerLine));
+}
+
+/** `scoreKindOf` over lines already passed through `timerLine`, so `sectionTimerOf` doesn't normalize them twice. */
+function scoreKindOfLines(badge: string | null, lines: readonly string[]): ScoreKind | null {
   if (badge !== null) {
     const parts = badgeText(collapseLine(badge)).split("/");
     const time = parts.includes("TIME");
@@ -143,7 +148,7 @@ export function scoreKindOf(badge: string | null, noteLines: readonly string[]):
     if (time && rounds) return null;
     return time ? "time" : rounds ? "rounds-reps" : "other";
   }
-  const score = noteLines.map(collapseLine).find((l) => SCORE_LINE.test(l));
+  const score = lines.find((l) => SCORE_LINE.test(l));
   if (score === undefined) return null;
   return ROUNDS_WORD.test(score) ? "rounds-reps" : TIME_WORD.test(score) ? "time" : "other";
 }
@@ -212,7 +217,7 @@ function setTimerOf(noteLines: readonly string[]): SectionTimer | null {
  */
 export function sectionTimerOf(badge: string | null, rawLines: readonly string[]): SectionTimer | null {
   const noteLines = rawLines.map(timerLine);
-  const kind = scoreKindOf(badge, noteLines);
+  const kind = scoreKindOfLines(badge, noteLines);
   if (kind === "time") {
     const set = setTimerOf(noteLines);
     if (set) return set;

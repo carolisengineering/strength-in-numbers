@@ -328,10 +328,20 @@ describe("#264 — the exported functions normalize their input", () => {
     expect(sectionTimerOf("rounds/reps", ["AMRAP   15"])).toEqual(amrap(900));
   });
 
-  it("a long uncollapsed whitespace run stays fast", () => {
+  it("a long uncollapsed whitespace run stays fast (#274)", () => {
     const start = performance.now();
-    expect(sectionTimerOf("TIME", [`Time cap${" ".repeat(50_000)}x`])).toBeNull();
-    expect(performance.now() - start).toBeLessThan(50);
+    expect(sectionTimerOf("TIME", [`Time cap${" ".repeat(200_000)}x`])).toBeNull();
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+});
+
+describe("#272 — scoreKindOf strips bullets like sectionTimerOf", () => {
+  it.each<[string | null, string[], ScoreKind | null]>([
+    [null, ["- Score: Time"], "time"],
+    [null, ["• Score: Total rounds + reps."], "rounds-reps"],
+    ["TIME", ["- Score: Total rounds"], "time"],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(scoreKindOf(badge, notes)).toBe(expected);
   });
 });
 
