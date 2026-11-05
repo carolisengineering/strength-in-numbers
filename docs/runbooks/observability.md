@@ -157,6 +157,9 @@ Set `OTEL_METRICS_EXPORTER=otlp` and `OTEL_TRACES_EXPORTER=otlp` on **si-api**:
 - a Render dashboard edit (the service restarts), followed by the same `render.yaml` PR so the
   blueprint matches.
 
+Set `OTEL_EXPORTER_OTLP_HEADERS` (§2 step 4) **before** that change reaches the service. Without
+it the API still starts, but every export is refused (401) until the header is set.
+
 After the restart, the API log has no `ConfigError`. Any later export failure shows as one
 `warn` line per signal per 5 minutes: `telemetry export problem: …` with `signal`. Other SDK
 warnings have their own line, at most one per 5 minutes: `telemetry SDK warning: …` with
