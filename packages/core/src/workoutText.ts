@@ -135,7 +135,12 @@ const TIME_WORD = /\btime\b/i;
  * badge the first `Score:` note line decides (`rounds` before `time`); neither → null.
  */
 export function scoreKindOf(badge: string | null, noteLines: readonly string[]): ScoreKind | null {
-  // #264: any case or spacing reads as the reader's own form (`badgeText`, collapsed lines).
+  // #264, #272: any case, spacing or leading bullets read as the timer rules read them.
+  return scoreKindOfLines(badge, noteLines.map(timerLine));
+}
+
+/** `scoreKindOf` over lines already passed through `timerLine`, so `sectionTimerOf` doesn't normalize them twice. */
+function scoreKindOfLines(badge: string | null, lines: readonly string[]): ScoreKind | null {
   if (badge !== null) {
     const parts = badgeText(collapseLine(badge)).split("/");
     const time = parts.includes("TIME");
@@ -143,26 +148,34 @@ export function scoreKindOf(badge: string | null, noteLines: readonly string[]):
     if (time && rounds) return null;
     return time ? "time" : rounds ? "rounds-reps" : "other";
   }
-  const score = noteLines.map(collapseLine).find((l) => SCORE_LINE.test(l));
+  const score = lines.find((l) => SCORE_LINE.test(l));
   if (score === undefined) return null;
   return ROUNDS_WORD.test(score) ? "rounds-reps" : TIME_WORD.test(score) ? "time" : "other";
 }
 
 // Spec 10.7 §6.8: whole-line timer patterns. `\s*` wherever Live Text may drop a space; a trailing period or colon is
-// allowed (#261: `AMRAP 12:` is safe, `CLOCK` needs two digits after the colon), as are `N-Minute` and `Min.`, and
-// `Time Cap - 15:00`. Anchored, no nested quantifiers, and run on collapsed lines (#264), so matching stays linear.
+// allowed on every pattern (#261, #275: `AMRAP 12:` is safe, `CLOCK` needs two digits after the colon), as are
+// `N-Minute` and `Min.`, a hyphen or an en dash wherever a dash may stand, and `Min.Cap` with no space (#271).
+// Anchored, no nested quantifiers, and run on collapsed lines (#264), so matching stays linear.
 const MINUTE_WORD = String.raw`(?:min|mins|minute|minutes)\.?`;
-const N_MINUTES = String.raw`(\d{1,3})\s*-?\s*${MINUTE_WORD}`;
+const DASH = "[-–]";
+const N_MINUTES = String.raw`(\d{1,3})\s*${DASH}?\s*${MINUTE_WORD}`;
+/** A lead pattern's bare number, with its minute word optional (`AMRAP 12`, `AMRAP 12-Minute`). */
+const LEAD_MINUTES = String.raw`(\d{1,3})(?:\s*${DASH}?\s*${MINUTE_WORD})?`;
+/** Between a tail's minute word and `cap` / `amrap`: a space, optional only right after `Min.` (#271). */
+const TAIL_GAP = String.raw`(?:\s+|(?<=\.)\s*)`;
 const CLOCK = String.raw`(\d{1,3}):([0-5]\d)`;
 const LINE_END = String.raw`[.:]?$`;
-const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}\.?$`, "i");
-const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*[:\-–]?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
-const TIME_CAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+(?:time\s+)?cap${LINE_END}`, "i");
-const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
-const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+amrap${LINE_END}`, "i");
+const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}${LINE_END}`, "i");
+const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*[:\-–]?\s*(?:${CLOCK}|${LEAD_MINUTES})${LINE_END}`, "i");
+const TIME_CAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}(?:time\s+)?cap${LINE_END}`, "i");
+const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*[:\-–]?\s*(?:${CLOCK}|${LEAD_MINUTES})${LINE_END}`, "i");
+const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}amrap${LINE_END}`, "i");
 
-/** #264, #265: a note line as the timer rules read it: collapsed, with one leading bullet off. The note keeps its text (D10). */
-const timerLine = (line: string) => collapseLine(line).replace(BULLET, "");
+/** #276: every leading bullet (a bullet, then any mix of bullets and spaces), so `- - 15 Minute Cap` reads as a cap. */
+const LEADING_BULLETS = /^[-•*][-•*\s]*/;
+/** #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off. The note keeps its text (D10). */
+const timerLine = (line: string) => collapseLine(line).replace(LEADING_BULLETS, "");
 
 /** #262: a Time Cap or AMRAP line (no score or range check), so the reader keeps it in the note inside a run. */
 function isCapOrAmrapLine(line: string): boolean {
@@ -204,7 +217,7 @@ function setTimerOf(noteLines: readonly string[]): SectionTimer | null {
  */
 export function sectionTimerOf(badge: string | null, rawLines: readonly string[]): SectionTimer | null {
   const noteLines = rawLines.map(timerLine);
-  const kind = scoreKindOf(badge, noteLines);
+  const kind = scoreKindOfLines(badge, noteLines);
   if (kind === "time") {
     const set = setTimerOf(noteLines);
     if (set) return set;
@@ -259,8 +272,11 @@ export interface CleanResult {
   readonly overlap: number;
   /** AC45: parallel to `lines`; true for a line directly above a header badge in its own screenshot. */
   readonly tagged: readonly boolean[];
-  /** Spec 10.7 AC44: parallel to `lines`; a tagged header's badge (`badgeText`), or null (untagged, or no badge seen). */
-  readonly badges: readonly (string | null)[];
+  /**
+   * Spec 10.7 AC44: parallel to `lines`; every distinct badge (`badgeText`) seen beside a tagged header, overlap twins
+   * included (#270), in reading order; `[]` for an untagged line.
+   */
+  readonly badges: readonly (readonly string[])[];
 }
 
 const wordCount = (s: string) => s.split(" ").length;
@@ -308,8 +324,18 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
 interface CleanLine {
   readonly text: string;
   tagged: boolean;
-  /** Spec 10.7 AC44: the first badge seen beside this header. */
-  badge: string | null;
+  /** Spec 10.7 AC44: every distinct badge seen beside this header, in reading order. */
+  badges: string[];
+}
+
+/** Two badges stacked under one header as one key, their distinct parts joined by `/` (`REPS` + `TIME` → `REPS/TIME`). */
+function joinBadges(a: string, b: string): string {
+  return [...new Set([...a.split("/"), ...b.split("/")])].join("/");
+}
+
+/** Appends each of `from` that `into` lacks, in order. */
+function addBadges(into: string[], from: readonly string[]): void {
+  for (const b of from) if (!into.includes(b)) into.push(b);
 }
 
 export function cleanWorkoutText(raw: string): CleanResult {
@@ -332,6 +358,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
   // between two labels (`Home`, `口`, `凸`, `Workouts`).
   const tabBar = nav.map((_, i) => navNear(i, 3));
   const badge = all.map(isBadgeLine);
+  // The header the last badge went to, until a line of text or a clock line: a badge right under it stacks (code review).
+  let stackOn: CleanLine | null = null;
   // Lines of text kept since the last clock line; icons and other furniture don't count.
   let textSinceClock = Infinity;
   // Lines of text kept since the last tab-bar line (or the paste's start): a status bar sits at a screenshot's top.
@@ -349,6 +377,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       // #168: a bare time inside the workout text ("4:00" under a time cap) still splits screenshots (AC42), but only a
       // clock at the top opens the status-bar window, so a short non-Latin name after a mid-text time is kept.
       textSinceClock = textSinceNav === 0 ? 0 : Infinity;
+      stackOn = null;
       chunks.push([]);
       continue;
     }
@@ -358,7 +387,11 @@ export function cleanWorkoutText(raw: string): CleanResult {
       const above = before?.[before.length - 1];
       if (above) {
         above.tagged = true;
-        above.badge ??= badgeText(line);
+        // Badge lines stacked in one screenshot are one badge the OCR split (`TIME` + `ROUNDS` reads as `TIME/ROUNDS`, AC45).
+        const text = badgeText(line);
+        const last = stackOn === above ? above.badges.pop() : undefined;
+        addBadges(above.badges, [last === undefined ? text : joinBadges(last, text)]);
+        stackOn = above;
       }
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
@@ -372,7 +405,8 @@ export function cleanWorkoutText(raw: string): CleanResult {
       furniture++;
       continue;
     }
-    chunk.push({ text: line, tagged: false, badge: null });
+    chunk.push({ text: line, tagged: false, badges: [] });
+    stackOn = null;
     textSinceClock++;
     textSinceNav++;
   }
@@ -394,17 +428,22 @@ export function cleanWorkoutText(raw: string): CleanResult {
       b.map((l) => ocrKey(l.text)),
     );
     if (cut === null) continue;
-    // A removed twin hands its header tag, and its badge (10.7 AC44), to the copy that stays (a header whose badge was cut off).
+    // A removed twin hands its header tag, and its badges (10.7 AC44, #270), to the copy that stays (a header whose badge
+    // was cut off, or one whose copies show different badges).
     const off = a.length - cut.dropA - cut.dropB;
     for (let j = 0; j < cut.dropB; j++) {
       if (!b[j]!.tagged) continue;
       a[off + j]!.tagged = true;
-      a[off + j]!.badge ??= b[j]!.badge;
+      addBadges(a[off + j]!.badges, b[j]!.badges);
     }
     // A cut-off last line of A gives way to B's full line, which stays (item 75).
     if (cut.dropA === 1 && a[a.length - 1]!.tagged) {
       b[cut.dropB]!.tagged = true;
-      b[cut.dropB]!.badge ??= a[a.length - 1]!.badge;
+      const kept = b[cut.dropB]!;
+      // The cut-off copy came first, so its badges go first.
+      const badges = [...a[a.length - 1]!.badges];
+      addBadges(badges, kept.badges);
+      kept.badges = badges;
     }
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
@@ -414,7 +453,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
   return {
     lines: flat.map((l) => l.text),
     tagged: flat.map((l) => l.tagged),
-    badges: flat.map((l) => (l.tagged ? l.badge : null)),
+    badges: flat.map((l) => (l.tagged ? l.badges : [])),
     chunks: kept.length,
     input,
     furniture,
@@ -1002,6 +1041,19 @@ function isVariantLabel(line: string): boolean {
   return word !== undefined && VARIANT_WORDS.has(word) && (line.endsWith(":") || !line.includes(" "));
 }
 
+/**
+ * #267 (owner ruling 2026-11-04): when a header's copies show different badges, the first that times the section wins;
+ * with no badge the note's `Score:` line decides (AC45). A badge that times nothing is never overruled by it (#273).
+ */
+function timerOfBadges(badges: readonly string[], notes: readonly string[]): SectionTimer | null {
+  if (badges.length === 0) return sectionTimerOf(null, notes);
+  for (const b of badges) {
+    const timer = sectionTimerOf(b, notes);
+    if (timer) return timer;
+  }
+  return null;
+}
+
 export function readWorkoutText(raw: string): ReadResult {
   const clean = cleanWorkoutText(raw);
   const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0, replacedLeadIn: null };
@@ -1026,15 +1078,14 @@ export function readWorkoutText(raw: string): ReadResult {
     if (heading && open && headerKey(heading.name) === headerKey(open.name)) {
       s.run = null;
       // Review Focus 2: the badge may show only on the repeated header.
-      const badge = clean.badges[i] ?? null;
-      if (badge !== null && !open.badges.includes(badge)) open.badges.push(badge);
+      addBadges(open.badges, clean.badges[i] ?? []);
       placed.push({ text: line, as: "heading" });
       return;
     }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badges: clean.badges[i] ? [clean.badges[i]!] : [] });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badges: [...(clean.badges[i] ?? [])] });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -1103,8 +1154,7 @@ export function readWorkoutText(raw: string): ReadResult {
     notes: s.routineNotes.join("\n"),
     sections: s.sections.map(({ name: n, notes, warmup, badges }) => {
       // Spec 10.7 AC46–AC48: one post-pass per section; the timing lines stay in the note (D10).
-      // #267 (owner ruling 2026-11-04): when the copies disagree, the first badge that times the section wins, else the first.
-      const timer = badges.map((b) => sectionTimerOf(b, notes)).find((t) => t !== null) ?? sectionTimerOf(badges[0] ?? null, notes);
+      const timer = timerOfBadges(badges, notes);
       return { name: n, notes: notes.join("\n"), warmup, ...(timer ? { timer } : {}) };
     }),
     items: s.items.map((it) => ({ ...it })),

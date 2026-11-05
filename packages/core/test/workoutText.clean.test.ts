@@ -295,26 +295,27 @@ describe("10.7 AC44 — the badge survives cleaning", () => {
     const r = fixture(path);
     expect(r.badges).toHaveLength(r.lines.length);
     r.badges.forEach((b, i) => {
-      if (b !== null) expect(r.tagged[i], r.lines[i]).toBe(true);
+      if (b.length > 0) expect(r.tagged[i], r.lines[i]).toBe(true);
     });
-    expect(r.badges.filter((_, i) => r.tagged[i])).toEqual(expected);
+    // #270: a list per line; each fixture header shows one badge.
+    expect(r.badges.filter((_, i) => r.tagged[i])).toEqual(expected.map((b) => [b]));
   });
   it("an overlap twin hands its badge to the copy that stays", () => {
-    expect(cleanWorkoutText("11:08\nIntro line\nAccessory\n11:09 →\nAccessory\nNO SCORE\n3 Sets:").badges).toEqual([null, "NO SCORE", null]);
+    expect(cleanWorkoutText("11:08\nIntro line\nAccessory\n11:09 →\nAccessory\nNO SCORE\n3 Sets:").badges).toEqual([[], ["NO SCORE"], []]);
   });
   it("item 75: a cut-off line's badge goes to the full line", () => {
     const r = cleanWorkoutText("11:08\nIntro\nFront Rack\nREPS\n11:09\nFront Rack Carry\n3 Sets:");
     expect(r.lines).toEqual(["Intro", "Front Rack Carry", "3 Sets:"]);
-    expect(r.badges).toEqual([null, "REPS", null]);
+    expect(r.badges).toEqual([[], ["REPS"], []]);
   });
   it("a strict heading cut off at a screenshot's bottom edge is tagged with no badge", () => {
     const r = cleanWorkoutText("11:08\nIntro\nConditioning\n11:09\nNext line");
     expect(r.tagged).toEqual([false, true, false]);
-    expect(r.badges).toEqual([null, null, null]);
+    expect(r.badges).toEqual([[], [], []]);
   });
   it("combined badges are one key; Log result is never a badge", () => {
-    expect(cleanWorkoutText("Main\nrounds / reps").badges).toEqual(["ROUNDS/REPS"]);
-    expect(cleanWorkoutText("Intro\nLog result").badges).toEqual([null]);
+    expect(cleanWorkoutText("Main\nrounds / reps").badges).toEqual([["ROUNDS/REPS"]]);
+    expect(cleanWorkoutText("Intro\nLog result").badges).toEqual([[]]);
   });
   it("no count moves: lines, tagged and every count are today's for the three fixtures", () => {
     const shape = (path: string) => {

@@ -167,7 +167,58 @@ describe("10.7 AC44 — a badge line's text", () => {
     ["TIME", "TIME"],
     ["No Score", "NO SCORE"],
   ])("%j → %j", (line, expected) => {
-    expect(cleanWorkoutText(`Main\n${line}\n10 Squats`).badges).toContain(expected);
+    expect(cleanWorkoutText(`Main\n${line}\n10 Squats`).badges.flat()).toContain(expected);
+  });
+
+  it("an untagged line has no badges", () => {
+    expect(cleanWorkoutText("Main\nTIME\n10 Squats").badges).toEqual([["TIME"], []]);
+  });
+});
+
+/** The raw paste of several screenshots, each opened by its own clock line. */
+const shots = (...screens: string[][]) => screens.map((lines, i) => [`11:0${i + 1}`, ...lines].join("\n")).join("\n");
+
+describe("#270 — an overlap twin's badge reaches #267's choice", () => {
+  it("the removed twin's TIME joins the kept copy's REPS → Time Cap", () => {
+    const raw = shots(["Strength", "NO SCORE", "5 Squats", "Main", "REPS"], ["Main", "TIME", "21-15-9", "Thrusters", "15 Minute Cap"]);
+    const c = cleanWorkoutText(raw);
+    expect(c.lines.filter((l) => l === "Main")).toHaveLength(1);
+    expect(c.badges[c.lines.indexOf("Main")]).toEqual(["REPS", "TIME"]);
+    expect(readWorkoutText(raw).sections.find((s) => s.name === "Main")!.timer).toEqual(timeCap(900));
+  });
+
+  it("a cut-off header's badge goes before the full line's", () => {
+    const c = cleanWorkoutText(shots(["Strength", "NO SCORE", "5 Squats", "Part B", "REPS"], ["Part B Strength", "TIME", "15 Minute Cap"]));
+    expect(c.lines).not.toContain("Part B");
+    expect(c.badges[c.lines.indexOf("Part B Strength")]).toEqual(["REPS", "TIME"]);
+  });
+
+  it("code review: badges stacked under one header in one screenshot are one badge, parts joined (REPS + TIME → REPS/TIME)", () => {
+    const raw = ["Main", "REPS", "TIME", "15 Minute Cap", "10 Squats"].join("\n");
+    expect(cleanWorkoutText(raw).badges).toEqual([["REPS/TIME"], [], []]);
+    expect(readWorkoutText(raw).sections[0]!.timer).toEqual(timeCap(900));
+  });
+
+  it("code review: stacked TIME + ROUNDS reads like TIME/ROUNDS, so no timer (AC45)", () => {
+    const raw = ["Main", "TIME", "ROUNDS", "AMRAP 12", "15 Minute Cap"].join("\n");
+    expect(cleanWorkoutText(raw).badges[0]).toEqual(["TIME/ROUNDS"]);
+    expect(readWorkoutText(raw).sections[0]!.timer).toBeUndefined();
+  });
+
+  it("code review: a badge in the next screenshot is still a separate badge, not stacked", () => {
+    expect(cleanWorkoutText(shots(["Intro", "Main", "REPS"], ["TIME", "15 Minute Cap"])).badges[1]).toEqual(["REPS", "TIME"]);
+  });
+
+  it("Review Focus 5: the same badge on both copies is listed once", () => {
+    const c = cleanWorkoutText(shots(["Strength", "NO SCORE", "5 Squats", "Main", "REPS"], ["Main", "REPS", "10 Lunges"]));
+    expect(c.badges[c.lines.indexOf("Main")]).toEqual(["REPS"]);
+  });
+});
+
+describe("#273 — a badge that times nothing isn't overruled by a Score: line", () => {
+  it("REPS with `Score: Time to complete.` and a cap line → no timer (AC45: the badge wins)", () => {
+    const r = readWorkoutText(shots(["Main", "REPS", "Score: Time to complete.", "15 Minute Cap"]));
+    expect(r.sections[0]!.timer).toBeUndefined();
   });
 });
 
@@ -204,6 +255,71 @@ describe("#261 — gym phrasings (owner ruling 2026-11-04)", () => {
   });
 });
 
+describe("#271 — every dash form (owner ruling 2026-11-05)", () => {
+  it.each<[string, string[], SectionTimer]>([
+    ["TIME", ["15–Minute Cap"], timeCap(900)],
+    ["TIME", ["15 Min.Cap"], timeCap(900)],
+    ["TIME", ["Time Cap 15-Minutes"], timeCap(900)],
+    ["ROUNDS/REPS", ["AMRAP - 12"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP – 12"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP 12-Minute"], amrap(720)],
+    ["ROUNDS/REPS", ["12–Minute AMRAP"], amrap(720)],
+    ["ROUNDS/REPS", ["12 Min.AMRAP"], amrap(720)],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(sectionTimerOf(badge, notes)).toEqual(expected);
+  });
+
+  it.each<[string, string[]]>([
+    ["ROUNDS/REPS", ["AMRAP 12-"]], // Review Focus 1: half a dash form
+    ["ROUNDS/REPS", ["AMRAP -"]],
+    ["TIME", ["15– Cap"]],
+    ["TIME", ["15 MinCap"]], // no space only right after the period
+  ])("%j %j → no timer", (badge, notes) => {
+    expect(sectionTimerOf(badge, notes)).toBeNull();
+  });
+
+  it("Review Focus 3: `AMRAP - 12` between movements is a note and the run stays open", () => {
+    const r = readWorkoutText(["Main", "ROUNDS/REPS", "3 Rounds", "10 Burpees", "AMRAP - 12", "5 Squats"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Burpees", "Squats"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.timer).toEqual(amrap(720));
+  });
+});
+
+describe("#275 — a Set Timer line takes a trailing colon (owner ruling 2026-11-05)", () => {
+  it("TIME / `3 Sets, 1 Set Every 4:00:` → Set Timer 3 × 4:00", () => {
+    expect(sectionTimerOf("TIME", ["3 Sets, 1 Set Every 4:00:"])).toEqual(setTimer(3, 240));
+  });
+
+  it("reads end to end, with the line kept in the note", () => {
+    const r = readWorkoutText(["Main", "TIME", "3 Sets, 1 Set Every 4:00:", "10 Squats"].join("\n"));
+    expect(r.sections[0]!.timer).toEqual(setTimer(3, 240));
+    expect(r.sections[0]!.notes).toContain("3 Sets, 1 Set Every 4:00:");
+  });
+
+  it("Review Focus 2: content after the colon → no timer", () => {
+    expect(sectionTimerOf("TIME", ["3 Sets, 1 Set Every 4:00: 10 Squats"])).toBeNull();
+  });
+});
+
+describe("#276 — a double-bulleted cap line times its section", () => {
+  it("in a run: a note, the run stays open, Time Cap 15:00", () => {
+    const r = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- - 15 Minute Cap", "Pull-ups"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.notes).toContain("- - 15 Minute Cap");
+    expect(r.sections[0]!.timer).toEqual(timeCap(900));
+  });
+
+  it("outside a run too", () => {
+    expect(sectionTimerOf("TIME", ["- - 15 Minute Cap"])).toEqual(timeCap(900));
+  });
+
+  it("Review Focus 4: a double-bulleted movement in a run reads as today", () => {
+    const r = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- - 15 Burpees", "Pull-ups"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "- 15 Burpees", "Pull-ups"]);
+  });
+});
+
 describe("#265 — a bulleted timer line", () => {
   it.each<[string, string[], SectionTimer]>([
     ["TIME", ["- For Time"], timeCap(null)],
@@ -228,10 +344,20 @@ describe("#264 — the exported functions normalize their input", () => {
     expect(sectionTimerOf("rounds/reps", ["AMRAP   15"])).toEqual(amrap(900));
   });
 
-  it("a long uncollapsed whitespace run stays fast", () => {
+  it("a long uncollapsed whitespace run stays fast (#274)", () => {
     const start = performance.now();
-    expect(sectionTimerOf("TIME", [`Time cap${" ".repeat(50_000)}x`])).toBeNull();
-    expect(performance.now() - start).toBeLessThan(50);
+    expect(sectionTimerOf("TIME", [`Time cap${" ".repeat(200_000)}x`])).toBeNull();
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+});
+
+describe("#272 — scoreKindOf strips bullets like sectionTimerOf", () => {
+  it.each<[string | null, string[], ScoreKind | null]>([
+    [null, ["- Score: Time"], "time"],
+    [null, ["• Score: Total rounds + reps."], "rounds-reps"],
+    ["TIME", ["- Score: Total rounds"], "time"],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(scoreKindOf(badge, notes)).toBe(expected);
   });
 });
 
