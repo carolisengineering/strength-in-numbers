@@ -149,20 +149,28 @@ export function scoreKindOf(badge: string | null, noteLines: readonly string[]):
 }
 
 // Spec 10.7 §6.8: whole-line timer patterns. `\s*` wherever Live Text may drop a space; a trailing period or colon is
-// allowed (#261: `AMRAP 12:` is safe, `CLOCK` needs two digits after the colon), as are `N-Minute` and `Min.`, and
-// `Time Cap - 15:00`. Anchored, no nested quantifiers, and run on collapsed lines (#264), so matching stays linear.
+// allowed on every pattern (#261, #275: `AMRAP 12:` is safe, `CLOCK` needs two digits after the colon), as are
+// `N-Minute` and `Min.`, a hyphen or an en dash wherever a dash may stand, and `Min.Cap` with no space (#271).
+// Anchored, no nested quantifiers, and run on collapsed lines (#264), so matching stays linear.
 const MINUTE_WORD = String.raw`(?:min|mins|minute|minutes)\.?`;
-const N_MINUTES = String.raw`(\d{1,3})\s*-?\s*${MINUTE_WORD}`;
+const DASH = "[-–]";
+const N_MINUTES = String.raw`(\d{1,3})\s*${DASH}?\s*${MINUTE_WORD}`;
+/** A lead pattern's bare number, with its minute word optional (`AMRAP 12`, `AMRAP 12-Minute`). */
+const LEAD_MINUTES = String.raw`(\d{1,3})(?:\s*${DASH}?\s*${MINUTE_WORD})?`;
+/** Between a tail's minute word and `cap` / `amrap`: a space, optional only right after `Min.` (#271). */
+const TAIL_GAP = String.raw`(?:\s+|(?<=\.)\s*)`;
 const CLOCK = String.raw`(\d{1,3}):([0-5]\d)`;
 const LINE_END = String.raw`[.:]?$`;
-const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}\.?$`, "i");
-const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*[:\-–]?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
-const TIME_CAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+(?:time\s+)?cap${LINE_END}`, "i");
-const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*:?\s*(?:${CLOCK}|(\d{1,3})(?:\s*${MINUTE_WORD})?)${LINE_END}`, "i");
-const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}\s+amrap${LINE_END}`, "i");
+const SET_TIMER_LINE = new RegExp(String.raw`^(\d{1,3})\s*sets?\s*,\s*1\s*set\s+every\s+${CLOCK}${LINE_END}`, "i");
+const TIME_CAP_LEAD = new RegExp(String.raw`^time\s*cap\s*[:\-–]?\s*(?:${CLOCK}|${LEAD_MINUTES})${LINE_END}`, "i");
+const TIME_CAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}(?:time\s+)?cap${LINE_END}`, "i");
+const AMRAP_LEAD = new RegExp(String.raw`^amrap\s*[:\-–]?\s*(?:${CLOCK}|${LEAD_MINUTES})${LINE_END}`, "i");
+const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}amrap${LINE_END}`, "i");
 
-/** #264, #265: a note line as the timer rules read it: collapsed, with one leading bullet off. The note keeps its text (D10). */
-const timerLine = (line: string) => collapseLine(line).replace(BULLET, "");
+/** #276: every leading bullet (a bullet, then any mix of bullets and spaces), so `- - 15 Minute Cap` reads as a cap. */
+const LEADING_BULLETS = /^[-•*][-•*\s]*/;
+/** #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off. The note keeps its text (D10). */
+const timerLine = (line: string) => collapseLine(line).replace(LEADING_BULLETS, "");
 
 /** #262: a Time Cap or AMRAP line (no score or range check), so the reader keeps it in the note inside a run. */
 function isCapOrAmrapLine(line: string): boolean {

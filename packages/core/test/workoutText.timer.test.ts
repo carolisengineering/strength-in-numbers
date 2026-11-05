@@ -239,6 +239,71 @@ describe("#261 — gym phrasings (owner ruling 2026-11-04)", () => {
   });
 });
 
+describe("#271 — every dash form (owner ruling 2026-11-05)", () => {
+  it.each<[string, string[], SectionTimer]>([
+    ["TIME", ["15–Minute Cap"], timeCap(900)],
+    ["TIME", ["15 Min.Cap"], timeCap(900)],
+    ["TIME", ["Time Cap 15-Minutes"], timeCap(900)],
+    ["ROUNDS/REPS", ["AMRAP - 12"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP – 12"], amrap(720)],
+    ["ROUNDS/REPS", ["AMRAP 12-Minute"], amrap(720)],
+    ["ROUNDS/REPS", ["12–Minute AMRAP"], amrap(720)],
+    ["ROUNDS/REPS", ["12 Min.AMRAP"], amrap(720)],
+  ])("%j %j → %j", (badge, notes, expected) => {
+    expect(sectionTimerOf(badge, notes)).toEqual(expected);
+  });
+
+  it.each<[string, string[]]>([
+    ["ROUNDS/REPS", ["AMRAP 12-"]], // Review Focus 1: half a dash form
+    ["ROUNDS/REPS", ["AMRAP -"]],
+    ["TIME", ["15– Cap"]],
+    ["TIME", ["15 MinCap"]], // no space only right after the period
+  ])("%j %j → no timer", (badge, notes) => {
+    expect(sectionTimerOf(badge, notes)).toBeNull();
+  });
+
+  it("Review Focus 3: `AMRAP - 12` between movements is a note and the run stays open", () => {
+    const r = readWorkoutText(["Main", "ROUNDS/REPS", "3 Rounds", "10 Burpees", "AMRAP - 12", "5 Squats"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Burpees", "Squats"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.timer).toEqual(amrap(720));
+  });
+});
+
+describe("#275 — a Set Timer line takes a trailing colon (owner ruling 2026-11-05)", () => {
+  it("TIME / `3 Sets, 1 Set Every 4:00:` → Set Timer 3 × 4:00", () => {
+    expect(sectionTimerOf("TIME", ["3 Sets, 1 Set Every 4:00:"])).toEqual(setTimer(3, 240));
+  });
+
+  it("reads end to end, with the line kept in the note", () => {
+    const r = readWorkoutText(["Main", "TIME", "3 Sets, 1 Set Every 4:00:", "10 Squats"].join("\n"));
+    expect(r.sections[0]!.timer).toEqual(setTimer(3, 240));
+    expect(r.sections[0]!.notes).toContain("3 Sets, 1 Set Every 4:00:");
+  });
+
+  it("Review Focus 2: content after the colon → no timer", () => {
+    expect(sectionTimerOf("TIME", ["3 Sets, 1 Set Every 4:00: 10 Squats"])).toBeNull();
+  });
+});
+
+describe("#276 — a double-bulleted cap line times its section", () => {
+  it("in a run: a note, the run stays open, Time Cap 15:00", () => {
+    const r = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- - 15 Minute Cap", "Pull-ups"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.notes).toContain("- - 15 Minute Cap");
+    expect(r.sections[0]!.timer).toEqual(timeCap(900));
+  });
+
+  it("outside a run too", () => {
+    expect(sectionTimerOf("TIME", ["- - 15 Minute Cap"])).toEqual(timeCap(900));
+  });
+
+  it("Review Focus 4: a double-bulleted movement in a run reads as today", () => {
+    const r = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- - 15 Burpees", "Pull-ups"].join("\n"));
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "- 15 Burpees", "Pull-ups"]);
+  });
+});
+
 describe("#265 — a bulleted timer line", () => {
   it.each<[string, string[], SectionTimer]>([
     ["TIME", ["- For Time"], timeCap(null)],
