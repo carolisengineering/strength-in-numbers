@@ -183,6 +183,12 @@ function isCapOrAmrapLine(line: string): boolean {
   return TIME_CAP_LEAD.test(l) || TIME_CAP_TAIL.test(l) || AMRAP_LEAD.test(l) || AMRAP_TAIL.test(l);
 }
 
+/** #279 (owner ruling 2026-11-05): a colon after Time Cap / AMRAP or at the end heads a new block. */
+const CAP_OR_AMRAP_LABEL = /^(?:time\s*cap|amrap)\s*:|:$/i;
+function isCapOrAmrapLabel(line: string): boolean {
+  return CAP_OR_AMRAP_LABEL.test(timerLine(line));
+}
+
 const inRange = (n: number, max: number) => n >= 1 && n <= max;
 
 /** A lead match's seconds: groups 1–2 are `M:SS`, group 3 a bare number of minutes. */
@@ -879,10 +885,10 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     const bare = line.replace(BULLET, "").trim();
     const runId = s.run.id;
     if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || !s.items.some((it) => it.run === runId))) return "note";
-    // #262: 10.4's "20 Minute Cap stays a note" also holds inside a run, for a line that would otherwise be read as an
-    // exercise ("15 Minute Cap", "AMRAP 15"); the run stays open. A line the movement test already refuses
-    // ("Time cap: 12:00", "AMRAP 12:") closes the run as before, as "For Time:" does after the movements (final review).
-    if (isCapOrAmrapLine(bare) && isMovementText(bare)) return "note";
+    // #262, #279: 10.4's "20 Minute Cap stays a note" also holds inside a run: every recognized Time Cap or AMRAP line
+    // ("15 Minute Cap", "15 Min.Cap", "Time Cap 12:00") is the section's note and the run stays open. A label
+    // ("Time cap: 12:00", "AMRAP 12:") closes the run, as "For Time:" does after the movements (owner ruling 2026-11-05).
+    if (isCapOrAmrapLine(bare) && !isCapOrAmrapLabel(bare)) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
     const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));

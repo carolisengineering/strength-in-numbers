@@ -446,3 +446,61 @@ describe("#262 final review — only a line that would have been an exercise bec
     expect(r.items[2]!.run).not.toBe(r.items[0]!.run);
   });
 });
+
+describe("#279 — only a label colon ends the run (owner ruling 2026-11-05)", () => {
+  const read = (lines: string[]) => readWorkoutText(lines.join("\n"));
+
+  it.each<[string, string, SectionTimer]>([
+    ["TIME", "15 Min. Cap", timeCap(900)],
+    ["TIME", "15 Min.Cap", timeCap(900)],
+    ["TIME", "15 Minute Cap.", timeCap(900)],
+    ["TIME", "Time Cap 15-Min.", timeCap(900)],
+    ["TIME", "Time Cap 12:00", timeCap(720)],
+    ["TIME", "Time Cap - 12:00", timeCap(720)],
+    ["ROUNDS/REPS", "12 Min.AMRAP", amrap(720)],
+    ["ROUNDS/REPS", "AMRAP 12:00", amrap(720)],
+  ])("%s / 21-15-9 / Thrusters / %s / Pull-ups → one run, the line in the note", (badge, line, timer) => {
+    const r = read(["Main", badge, "21-15-9", "Thrusters", line, "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.notes).toBe(line);
+    expect(r.sections[0]!.timer).toEqual(timer);
+  });
+
+  it.each<[string, string]>([
+    ["TIME", "Time cap: 12:00"],
+    ["TIME", "Time Cap: 15"],
+    ["TIME", "15 Minute Cap:"],
+    ["ROUNDS/REPS", "AMRAP: 12"],
+    ["ROUNDS/REPS", "AMRAP 12:"],
+  ])("%s: `%s` is a label and still ends the run (#262)", (badge, line) => {
+    const r = read(["Main", badge, "21-15-9", "Thrusters", line, "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters"]);
+    expect(r.sections[0]!.notes).toContain("Pull-ups");
+  });
+
+  it("Review Focus 1: with badges, a title after the cap line still heads its section", () => {
+    const r = read(["Metcon", "TIME", "3 Rounds", "10 Squats", "Time Cap 12:00", "Core Finisher", "NO SCORE", "3 Rounds", "20 Sit-ups"]);
+    expect(r.sections.map((s) => s.name)).toEqual(["Metcon", "Core Finisher"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats", "Sit-ups"]);
+  });
+
+  it("Review Focus 2: a cap line before the first movement keeps the run", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Time Cap 12:00", "Thrusters", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+  });
+
+  it("Review Focus 3: an out-of-range cap keeps the run and times nothing", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Thrusters", "Time Cap 200:00", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(r.sections[0]!.timer).toBeUndefined();
+  });
+
+  it("Review Focus 4: in a weight-scored section the run stays open and there is no timer", () => {
+    const r = read(["Main", "REPS", "3 Rounds", "10 Squats", "Time Cap 12:00", "10 Lunges"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats", "Lunges"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.timer).toBeUndefined();
+  });
+});
