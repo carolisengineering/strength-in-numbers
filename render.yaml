@@ -19,7 +19,8 @@ services:
         sync: false # set in the Render dashboard = the Neon connection string
       # Spec 13.0 §8 — telemetry, on: both exporters push OTLP to the Grafana
       # Cloud stack (docs/runbooks/observability.md §2–3). Needs
-      # OTEL_EXPORTER_OTLP_HEADERS set in the dashboard; set both to none to stop.
+      # OTEL_EXPORTER_OTLP_HEADERS set in the dashboard. To stop: runbook §6
+      # (both none here too, or the next sync turns export back on).
       - key: OTEL_METRICS_EXPORTER
         value: otlp
       - key: OTEL_TRACES_EXPORTER
