@@ -120,12 +120,17 @@ are fixed in `docker-compose.observability.yml`.
 
 ## 2. Grafana Cloud setup (once)
 
-1. Create a free Grafana Cloud account and a stack (grafana.com → *My Account* → *Add stack*).
-   Pick the region nearest Render's `oregon` (a US zone).
-2. In the stack: **Connections → Add new connection → OpenTelemetry (OTLP)**. Note:
-   - the **OTLP endpoint**, for example `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`
+1. Create a free Grafana Cloud account and a stack (grafana.com → *My Account* → *Add stack*), in
+   a US region. The staging stack is in `prod-us-east-2` (2026-11-05).
+2. On the grafana.com portal's **Manage Stack** page, the **OpenTelemetry** card → **Configure**.
+   Note (skip its offer to generate a token, whose scopes may be broader than step 3's):
+   - the **OTLP endpoint**, for example `https://otlp-gateway-prod-us-east-2.grafana.net/otlp`
    - the **instance ID** (a number)
-3. **Administration → Users and access → Cloud access policies → Create access policy**:
+
+   Inside the Grafana app (*Launch*), the same page is **Connections → Add new connection →
+   OpenTelemetry (OTLP)**.
+3. Portal sidebar → **Security → Access Policies → Create access policy** (inside the Grafana
+   app: **Administration → Users and access → Cloud access policies**):
    - name `si-api-staging-write`, realm = this stack
    - scopes: **`metrics:write` and `traces:write` only** (no read, no logs). A leaked token
      can then write junk but read nothing.
@@ -141,8 +146,8 @@ are fixed in `docker-compose.observability.yml`.
    value is URL-decoded, and a literal space would also work, but the encoded form survives
    copy-paste. The header is a secret: it lives only in the Render dashboard (`sync: false`
    in `render.yaml`).
-5. If the endpoint's zone is not `prod-us-east-0`, update `OTEL_EXPORTER_OTLP_ENDPOINT` in
-   `render.yaml` (PR).
+5. `OTEL_EXPORTER_OTLP_ENDPOINT` in `render.yaml` must be the endpoint from step 2. For a new
+   stack in another zone, change it there (PR).
 
 ## 3. Turn it on
 
