@@ -98,6 +98,31 @@ describe("10.7 AC54 — untimed is untouched", () => {
   });
 });
 
+const ORDER_RAW = ["Strength", "3 Rounds", "10 Squats", "10 Burpees", "Conditioning", "2 Rounds", "5 Rows", "5 Pushups"].join("\n");
+
+// #263: digests captured on c433eab8 (the parent of #258), where no section had a timer, so a change to untimed
+// numbering or grouping fails here even when the with/without-timers comparison above still agrees.
+describe("10.7 AC54 / #263 — untimed numbering matches the pre-10.7 D base", () => {
+  it.each<[string, string, string]>([
+    ["hiraya-2026-10-19", fixture("hiraya-2026-10-19.txt"), "d1ad59fd"],
+    ["hiraya-2026-10-24", fixture("hiraya-2026-10-24.txt"), "bda5cd71"],
+    ["hiraya-2026-10-26", fixture("hiraya-2026-10-26.txt"), "e82804b9"],
+    ["order", ORDER_RAW, "2de4886c"],
+    ["setTimerAccessory", TIMER_PASTES.setTimerAccessory.raw, "163a1473"],
+    ["timeCapColon", TIMER_PASTES.timeCapColon.raw, "7e7e8b6d"],
+    ["twelveMinAmrap", TIMER_PASTES.twelveMinAmrap.raw, "7310d9f5"],
+    ["amrapClock", TIMER_PASTES.amrapClock.raw, "0b3eae77"],
+    ["bareForTime", TIMER_PASTES.bareForTime.raw, "e1747512"],
+    ["scoreLineTime", TIMER_PASTES.scoreLineTime.raw, "b4e79c65"],
+    ["scoreLineRounds", TIMER_PASTES.scoreLineRounds.raw, "3e71bd4c"],
+    ["badgeBeatsScoreLine", TIMER_PASTES.badgeBeatsScoreLine.raw, "91702881"],
+    ["amrapBullets", TIMER_PASTES.amrapBullets.raw, "9fa182a9"],
+    ["timeCapBulletSingle", TIMER_PASTES.timeCapBulletSingle.raw, "fae4bb53"],
+  ])("%s", (_, raw, base) => {
+    expect(digest(buildImportPlan(withoutTimers(readWorkoutText(raw)), () => "weight_reps"))).toBe(base);
+  });
+});
+
 describe("10.7 AC54 — toWrite with timers parses", () => {
   const raws = [
     ...Object.entries(TIMER_PASTES).map(([k, p]) => [k, p.raw]),

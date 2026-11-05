@@ -192,13 +192,14 @@ export function buildImportPlan(read: ReadResult, modalityOf: (nameKey: string) 
     }
   }
   // Spec 10.7 AC54: a timed kept section the text left with no superset gets one over its kept items (the first 8; the
-  // rest ungrouped). A section with any run keeps the text's structure. `timedGroupRange(…, "fill")` is the editor's rule.
-  const runGroup = new Array<number | null>(shaped.length).fill(null);
-  chunks.forEach((chunk, g) => chunk.forEach((i) => (runGroup[i] = g + 1)));
+  // rest ungrouped). A section with any run keeps the text's structure. `timedGroupRange(…, "fill")` is the editor's rule;
+  // it is fed each item's chunk (its identity only): the groups are numbered once, below (#268).
+  const chunkOf = new Map<number, number>();
+  chunks.forEach((chunk, c) => chunk.forEach((i) => chunkOf.set(i, c)));
   read.sections.slice(0, ROUTINE_SECTIONS_MAX).forEach((section, j) => {
     if (section.timer === undefined) return;
     const idx = shaped.flatMap(({ it }, i) => (it.section === j ? [i] : []));
-    if (timedGroupRange(idx.map((i) => ({ id: String(i), group: runGroup[i]! })), "fill") === null) return;
+    if (timedGroupRange(idx.map((i) => ({ id: String(i), group: chunkOf.get(i) ?? null })), "fill") === null) return;
     if (idx.length > SUPERSET_GROUP_MEMBERS_MAX) count("superset-split");
     chunks.push(idx.slice(0, SUPERSET_GROUP_MEMBERS_MAX));
   });
