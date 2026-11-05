@@ -17,15 +17,16 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false # set in the Render dashboard = the Neon connection string
-      # Spec 13.0 §8 — telemetry. Ships OFF (§11 step 1); the runbook
-      # (docs/runbooks/observability.md) flips both exporters to otlp after
-      # OTEL_EXPORTER_OTLP_HEADERS is set in the dashboard.
+      # Spec 13.0 §8 — telemetry, on: both exporters push OTLP to the Grafana
+      # Cloud stack (docs/runbooks/observability.md §2–3). Needs
+      # OTEL_EXPORTER_OTLP_HEADERS set in the dashboard. To stop: runbook §6
+      # (both none here too, or the next sync turns export back on).
       - key: OTEL_METRICS_EXPORTER
-        value: none
+        value: otlp
       - key: OTEL_TRACES_EXPORTER
-        value: none
+        value: otlp
       - key: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: https://otlp-gateway-prod-us-east-0.grafana.net/otlp # replace the zone per the runbook
+        value: https://otlp-gateway-prod-us-east-2.grafana.net/otlp # the stack's zone (#124)
       - key: OTEL_EXPORTER_OTLP_HEADERS
         sync: false # secret: Authorization=Basic%20<base64(instanceId:token)>, write-only token
       - key: OTEL_METRIC_EXPORT_INTERVAL

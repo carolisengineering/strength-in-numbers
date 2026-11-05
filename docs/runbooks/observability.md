@@ -120,12 +120,17 @@ are fixed in `docker-compose.observability.yml`.
 
 ## 2. Grafana Cloud setup (once)
 
-1. Create a free Grafana Cloud account and a stack (grafana.com → *My Account* → *Add stack*).
-   Pick the region nearest Render's `oregon` (a US zone).
-2. In the stack: **Connections → Add new connection → OpenTelemetry (OTLP)**. Note:
-   - the **OTLP endpoint**, for example `https://otlp-gateway-prod-us-east-0.grafana.net/otlp`
+1. Create a free Grafana Cloud account and a stack (grafana.com → *My Account* → *Add stack*), in
+   a US region. `render.yaml`'s `OTEL_EXPORTER_OTLP_ENDPOINT` records the current stack's zone.
+2. On the grafana.com portal's **Manage Stack** page, the **OpenTelemetry** card → **Configure**.
+   Note (skip its offer to generate a token, whose scopes may be broader than step 3's):
+   - the **OTLP endpoint**, `https://otlp-gateway-<zone>.grafana.net/otlp`
    - the **instance ID** (a number)
-3. **Administration → Users and access → Cloud access policies → Create access policy**:
+
+   Inside the Grafana app (*Launch*), the same page is **Connections → Add new connection →
+   OpenTelemetry (OTLP)**.
+3. Portal sidebar → **Security → Access Policies → Create access policy** (inside the Grafana
+   app: **Administration → Users and access → Cloud access policies**):
    - name `si-api-staging-write`, realm = this stack
    - scopes: **`metrics:write` and `traces:write` only** (no read, no logs). A leaked token
      can then write junk but read nothing.
@@ -133,24 +138,28 @@ are fixed in `docker-compose.observability.yml`.
 4. Build the header value:
 
    ```bash
-   printf '%s' '<instanceId>:<token>' | base64
+   printf '%s' '<instanceId>:<token>' | base64 | tr -d '\n'
    ```
+
+   Run it in your own terminal, never through an assistant's shell. The `tr` matters on Linux:
+   GNU `base64` wraps long output, and a newline inside the header makes every export fail.
 
    In the Render dashboard → **si-api** → **Environment**, set
    `OTEL_EXPORTER_OTLP_HEADERS` = `Authorization=Basic%20<base64 output>`. Keep the `%20`: the
    value is URL-decoded, and a literal space would also work, but the encoded form survives
    copy-paste. The header is a secret: it lives only in the Render dashboard (`sync: false`
    in `render.yaml`).
-5. If the endpoint's zone is not `prod-us-east-0`, update `OTEL_EXPORTER_OTLP_ENDPOINT` in
-   `render.yaml` (PR).
+5. `OTEL_EXPORTER_OTLP_ENDPOINT` in `render.yaml` must be the endpoint from step 2. For a new
+   stack in another zone, change it there (PR).
 
 ## 3. Turn it on
 
-Set `OTEL_METRICS_EXPORTER=otlp` and `OTEL_TRACES_EXPORTER=otlp` on **si-api**:
+`render.yaml` already sets `OTEL_METRICS_EXPORTER=otlp` and `OTEL_TRACES_EXPORTER=otlp` on
+**si-api** (since 2026-11-05, #124), so every deploy exports. The only step left for a new stack
+is the header secret (§2 step 4), plus the endpoint if the zone changed (§2 step 5).
 
-- preferably a `render.yaml` PR (both values `otlp`), merged to `main`; or
-- a Render dashboard edit (the service restarts), followed by the same `render.yaml` PR so the
-  blueprint matches.
+Set `OTEL_EXPORTER_OTLP_HEADERS` **before** the exporters reach the service. Without it the API
+still starts, but every export is refused (401) until the header is set.
 
 After the restart, the API log has no `ConfigError`. Any later export failure shows as one
 `warn` line per signal per 5 minutes: `telemetry export problem: …` with `signal`. Other SDK
@@ -195,8 +204,12 @@ down" alert on staging (Spec 13.0 D7).
 ## 6. Rollback
 
 - **Stop sending:** set `OTEL_METRICS_EXPORTER=none` and `OTEL_TRACES_EXPORTER=none` in the
-  Render dashboard. The service restarts; no deploy is needed. Follow up with a `render.yaml`
-  PR.
+  Render dashboard. The service restarts; no deploy is needed. This is **temporary**:
+  `render.yaml` says `otlp`, so the next merge to `main` turns export back on. Merge a
+  `render.yaml` PR with both set to `none` before any other merge.
+- **A leaked token:** delete it in Grafana Cloud (Security → Access Policies →
+  `si-api-staging-write`). That cuts it off at once, whatever Render says; exports then fail
+  with 401 until a new header is set.
 - **Remove exported data:** delete the Grafana Cloud stack.
 - **Code rollback:** revert the PR. Nothing persistent to undo (no migration).
 
