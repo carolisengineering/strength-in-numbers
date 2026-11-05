@@ -259,8 +259,11 @@ export interface CleanResult {
   readonly overlap: number;
   /** AC45: parallel to `lines`; true for a line directly above a header badge in its own screenshot. */
   readonly tagged: readonly boolean[];
-  /** Spec 10.7 AC44: parallel to `lines`; a tagged header's badge (`badgeText`), or null (untagged, or no badge seen). */
-  readonly badges: readonly (string | null)[];
+  /**
+   * Spec 10.7 AC44: parallel to `lines`; every distinct badge (`badgeText`) seen beside a tagged header, overlap twins
+   * included (#270), in reading order; `[]` for an untagged line.
+   */
+  readonly badges: readonly (readonly string[])[];
 }
 
 const wordCount = (s: string) => s.split(" ").length;
@@ -308,8 +311,13 @@ function overlapAt(a: readonly string[], b: readonly string[]): { dropA: number;
 interface CleanLine {
   readonly text: string;
   tagged: boolean;
-  /** Spec 10.7 AC44: the first badge seen beside this header. */
-  badge: string | null;
+  /** Spec 10.7 AC44: every distinct badge seen beside this header, in reading order. */
+  badges: string[];
+}
+
+/** Appends each of `from` that `into` lacks, in order. */
+function addBadges(into: string[], from: readonly string[]): void {
+  for (const b of from) if (!into.includes(b)) into.push(b);
 }
 
 export function cleanWorkoutText(raw: string): CleanResult {
@@ -358,7 +366,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       const above = before?.[before.length - 1];
       if (above) {
         above.tagged = true;
-        above.badge ??= badgeText(line);
+        addBadges(above.badges, [badgeText(line)]);
       }
     }
     // AC57: the trophy just above "RESULTS (n)" and the card's score just below it ("49", "3 + 0", "5 @ 130 Lbs").
@@ -372,7 +380,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
       furniture++;
       continue;
     }
-    chunk.push({ text: line, tagged: false, badge: null });
+    chunk.push({ text: line, tagged: false, badges: [] });
     textSinceClock++;
     textSinceNav++;
   }
@@ -394,17 +402,22 @@ export function cleanWorkoutText(raw: string): CleanResult {
       b.map((l) => ocrKey(l.text)),
     );
     if (cut === null) continue;
-    // A removed twin hands its header tag, and its badge (10.7 AC44), to the copy that stays (a header whose badge was cut off).
+    // A removed twin hands its header tag, and its badges (10.7 AC44, #270), to the copy that stays (a header whose badge
+    // was cut off, or one whose copies show different badges).
     const off = a.length - cut.dropA - cut.dropB;
     for (let j = 0; j < cut.dropB; j++) {
       if (!b[j]!.tagged) continue;
       a[off + j]!.tagged = true;
-      a[off + j]!.badge ??= b[j]!.badge;
+      addBadges(a[off + j]!.badges, b[j]!.badges);
     }
     // A cut-off last line of A gives way to B's full line, which stays (item 75).
     if (cut.dropA === 1 && a[a.length - 1]!.tagged) {
       b[cut.dropB]!.tagged = true;
-      b[cut.dropB]!.badge ??= a[a.length - 1]!.badge;
+      const kept = b[cut.dropB]!;
+      // The cut-off copy came first, so its badges go first.
+      const badges = [...a[a.length - 1]!.badges];
+      addBadges(badges, kept.badges);
+      kept.badges = badges;
     }
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
@@ -414,7 +427,7 @@ export function cleanWorkoutText(raw: string): CleanResult {
   return {
     lines: flat.map((l) => l.text),
     tagged: flat.map((l) => l.tagged),
-    badges: flat.map((l) => (l.tagged ? l.badge : null)),
+    badges: flat.map((l) => (l.tagged ? l.badges : [])),
     chunks: kept.length,
     input,
     furniture,
@@ -1002,6 +1015,19 @@ function isVariantLabel(line: string): boolean {
   return word !== undefined && VARIANT_WORDS.has(word) && (line.endsWith(":") || !line.includes(" "));
 }
 
+/**
+ * #267 (owner ruling 2026-11-04): when a header's copies show different badges, the first that times the section wins;
+ * with no badge the note's `Score:` line decides (AC45). A badge that times nothing is never overruled by it (#273).
+ */
+function timerOfBadges(badges: readonly string[], notes: readonly string[]): SectionTimer | null {
+  if (badges.length === 0) return sectionTimerOf(null, notes);
+  for (const b of badges) {
+    const timer = sectionTimerOf(b, notes);
+    if (timer) return timer;
+  }
+  return null;
+}
+
 export function readWorkoutText(raw: string): ReadResult {
   const clean = cleanWorkoutText(raw);
   const s: ReadState = { sections: [], items: [], routineNotes: [], section: null, run: null, runs: 0, replacedLeadIn: null };
@@ -1026,15 +1052,14 @@ export function readWorkoutText(raw: string): ReadResult {
     if (heading && open && headerKey(heading.name) === headerKey(open.name)) {
       s.run = null;
       // Review Focus 2: the badge may show only on the repeated header.
-      const badge = clean.badges[i] ?? null;
-      if (badge !== null && !open.badges.includes(badge)) open.badges.push(badge);
+      addBadges(open.badges, clean.badges[i] ?? []);
       placed.push({ text: line, as: "heading" });
       return;
     }
     if (heading) {
       s.run = null;
       const warmup = WARMUP.test(heading.name);
-      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badges: clean.badges[i] ? [clean.badges[i]!] : [] });
+      s.sections.push({ name: heading.name, notes: [], warmup, strength: null, fresh: true, notesOnly: false, badges: [...(clean.badges[i] ?? [])] });
       s.section = s.sections.length - 1;
       if (heading.workout && !nameFromWorkout) {
         name = heading.name;
@@ -1103,8 +1128,7 @@ export function readWorkoutText(raw: string): ReadResult {
     notes: s.routineNotes.join("\n"),
     sections: s.sections.map(({ name: n, notes, warmup, badges }) => {
       // Spec 10.7 AC46–AC48: one post-pass per section; the timing lines stay in the note (D10).
-      // #267 (owner ruling 2026-11-04): when the copies disagree, the first badge that times the section wins, else the first.
-      const timer = badges.map((b) => sectionTimerOf(b, notes)).find((t) => t !== null) ?? sectionTimerOf(badges[0] ?? null, notes);
+      const timer = timerOfBadges(badges, notes);
       return { name: n, notes: notes.join("\n"), warmup, ...(timer ? { timer } : {}) };
     }),
     items: s.items.map((it) => ({ ...it })),

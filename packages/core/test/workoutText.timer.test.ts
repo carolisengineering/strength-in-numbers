@@ -167,7 +167,42 @@ describe("10.7 AC44 — a badge line's text", () => {
     ["TIME", "TIME"],
     ["No Score", "NO SCORE"],
   ])("%j → %j", (line, expected) => {
-    expect(cleanWorkoutText(`Main\n${line}\n10 Squats`).badges).toContain(expected);
+    expect(cleanWorkoutText(`Main\n${line}\n10 Squats`).badges.flat()).toContain(expected);
+  });
+
+  it("an untagged line has no badges", () => {
+    expect(cleanWorkoutText("Main\nTIME\n10 Squats").badges).toEqual([["TIME"], []]);
+  });
+});
+
+/** The raw paste of several screenshots, each opened by its own clock line. */
+const shots = (...screens: string[][]) => screens.map((lines, i) => [`11:0${i + 1}`, ...lines].join("\n")).join("\n");
+
+describe("#270 — an overlap twin's badge reaches #267's choice", () => {
+  it("the removed twin's TIME joins the kept copy's REPS → Time Cap", () => {
+    const raw = shots(["Strength", "NO SCORE", "5 Squats", "Main", "REPS"], ["Main", "TIME", "21-15-9", "Thrusters", "15 Minute Cap"]);
+    const c = cleanWorkoutText(raw);
+    expect(c.lines.filter((l) => l === "Main")).toHaveLength(1);
+    expect(c.badges[c.lines.indexOf("Main")]).toEqual(["REPS", "TIME"]);
+    expect(readWorkoutText(raw).sections.find((s) => s.name === "Main")!.timer).toEqual(timeCap(900));
+  });
+
+  it("a cut-off header's badge goes before the full line's", () => {
+    const c = cleanWorkoutText(shots(["Strength", "NO SCORE", "5 Squats", "Part B", "REPS"], ["Part B Strength", "TIME", "15 Minute Cap"]));
+    expect(c.lines).not.toContain("Part B");
+    expect(c.badges[c.lines.indexOf("Part B Strength")]).toEqual(["REPS", "TIME"]);
+  });
+
+  it("Review Focus 5: the same badge on both copies is listed once", () => {
+    const c = cleanWorkoutText(shots(["Strength", "NO SCORE", "5 Squats", "Main", "REPS"], ["Main", "REPS", "10 Lunges"]));
+    expect(c.badges[c.lines.indexOf("Main")]).toEqual(["REPS"]);
+  });
+});
+
+describe("#273 — a badge that times nothing isn't overruled by a Score: line", () => {
+  it("REPS with `Score: Time to complete.` and a cap line → no timer (AC45: the badge wins)", () => {
+    const r = readWorkoutText(shots(["Main", "REPS", "Score: Time to complete.", "15 Minute Cap"]));
+    expect(r.sections[0]!.timer).toBeUndefined();
   });
 });
 
