@@ -314,9 +314,11 @@ describe("#276 — a double-bulleted cap line times its section", () => {
     expect(sectionTimerOf("TIME", ["- - 15 Minute Cap"])).toEqual(timeCap(900));
   });
 
-  it("Review Focus 4: a double-bulleted movement in a run reads as today", () => {
+  it("Review Focus 4: a double-bulleted movement in a run is still an item in the run", () => {
     const r = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- - 15 Burpees", "Pull-ups"].join("\n"));
-    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "- 15 Burpees", "Pull-ups"]);
+    expect(r.items).toHaveLength(3);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.notes).not.toContain("15 Burpees");
   });
 });
 

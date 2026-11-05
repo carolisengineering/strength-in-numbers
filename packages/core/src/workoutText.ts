@@ -222,7 +222,11 @@ function setTimerOf(noteLines: readonly string[]): SectionTimer | null {
  * line out of range is not a match. The lines stay in the note (D10).
  */
 export function sectionTimerOf(badge: string | null, rawLines: readonly string[]): SectionTimer | null {
-  const noteLines = rawLines.map(timerLine);
+  return sectionTimerOfLines(badge, rawLines.map(timerLine));
+}
+
+/** `sectionTimerOf` over lines already passed through `timerLine`, so `timerOfBadges` normalizes them once (#281). */
+function sectionTimerOfLines(badge: string | null, noteLines: readonly string[]): SectionTimer | null {
   const kind = scoreKindOfLines(badge, noteLines);
   if (kind === "time") {
     const set = setTimerOf(noteLines);
@@ -444,12 +448,12 @@ export function cleanWorkoutText(raw: string): CleanResult {
     }
     // A cut-off last line of A gives way to B's full line, which stays (item 75).
     if (cut.dropA === 1 && a[a.length - 1]!.tagged) {
-      b[cut.dropB]!.tagged = true;
-      const kept = b[cut.dropB]!;
+      const stays = b[cut.dropB]!;
+      stays.tagged = true;
       // The cut-off copy came first, so its badges go first.
       const badges = [...a[a.length - 1]!.badges];
-      addBadges(badges, kept.badges);
-      kept.badges = badges;
+      addBadges(badges, stays.badges);
+      stays.badges = badges;
     }
     a.splice(a.length - cut.dropA, cut.dropA);
     b.splice(0, cut.dropB);
@@ -1052,9 +1056,10 @@ function isVariantLabel(line: string): boolean {
  * with no badge the note's `Score:` line decides (AC45). A badge that times nothing is never overruled by it (#273).
  */
 function timerOfBadges(badges: readonly string[], notes: readonly string[]): SectionTimer | null {
-  if (badges.length === 0) return sectionTimerOf(null, notes);
+  const lines = notes.map(timerLine);
+  if (badges.length === 0) return sectionTimerOfLines(null, lines);
   for (const b of badges) {
-    const timer = sectionTimerOf(b, notes);
+    const timer = sectionTimerOfLines(b, lines);
     if (timer) return timer;
   }
   return null;
