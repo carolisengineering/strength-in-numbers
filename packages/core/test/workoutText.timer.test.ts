@@ -193,6 +193,12 @@ describe("#270 — an overlap twin's badge reaches #267's choice", () => {
     expect(c.badges[c.lines.indexOf("Part B Strength")]).toEqual(["REPS", "TIME"]);
   });
 
+  it("final review: two badges stacked under one header in one screenshot both count (AC44: every distinct badge)", () => {
+    const raw = ["Main", "REPS", "TIME", "15 Minute Cap", "10 Squats"].join("\n");
+    expect(cleanWorkoutText(raw).badges).toEqual([["REPS", "TIME"], [], []]);
+    expect(readWorkoutText(raw).sections[0]!.timer).toEqual(timeCap(900));
+  });
+
   it("Review Focus 5: the same badge on both copies is listed once", () => {
     const c = cleanWorkoutText(shots(["Strength", "NO SCORE", "5 Squats", "Main", "REPS"], ["Main", "REPS", "10 Lunges"]));
     expect(c.badges[c.lines.indexOf("Main")]).toEqual(["REPS"]);
