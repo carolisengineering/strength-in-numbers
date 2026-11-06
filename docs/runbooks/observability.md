@@ -201,6 +201,24 @@ Render free sleeps after about 15 minutes idle. While asleep the API pushes noth
 in the graphs mean idle, not down. Every rule treats no data as OK, and there is no "API is
 down" alert on staging (Spec 13.0 D7).
 
+## 5a. Spec 13.3: CPU and DB-pool panels (after the 13.3 merge)
+
+1. Dashboards → `si-api — overview` → **⋮ → Import** again with the new
+   `ops/grafana/dashboards/api-overview.json` (keep the same UID, overwrite). Pick the same
+   Prometheus data source.
+2. Set the **CPU limit (cores)** variable to `0.1` (Render free) and save the dashboard. For the
+   production Cloud Run it is `1`.
+3. After the next post-deploy smoke, check (Spec 13.3 AC16):
+   - [ ] **CPU cores in use** has data and reads plausibly against the 0.1 line.
+   - [ ] **DB connections in use vs limit** shows a flat limit of 8 and an in-use line.
+   - [ ] **DB queries waiting** and **Mean pool wait per query** have data (often 0 at rest).
+   - [ ] **CPU throttled:** record whether it has data on Render (present / absent) in the PR
+         and in Spec 13.3 §12 D4. "No data" is a valid answer: the host doesn't report it.
+   - [ ] The names match local (no `_seconds_seconds` or missing `_total`); if a panel is empty
+         in Cloud but not locally, it's the Spec 13.0 §6.11 name translation (option 2).
+
+Spec 16's first staging load run waits for this checklist.
+
 ## 6. Rollback
 
 - **Stop sending:** set `OTEL_METRICS_EXPORTER=none` and `OTEL_TRACES_EXPORTER=none` in the

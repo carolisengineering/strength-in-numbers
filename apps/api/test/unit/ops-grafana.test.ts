@@ -42,3 +42,35 @@ describe("AC14 — ops/ config parses", () => {
     for (const r of rules) expect(r.noDataState, r.uid).toBe("OK");
   });
 });
+
+describe("Spec 13.3 AC12 — api-overview shows CPU and the DB pool", () => {
+  const text = readFileSync(join(root, "grafana/dashboards/api-overview.json"), "utf8");
+  const dashboard = JSON.parse(text) as { templating: { list: { name: string; type: string; query?: string }[] } };
+
+  it("queries every Spec 13.3 metric", () => {
+    const used = new Set(metricNamesIn(text).map(base));
+    for (const name of [
+      METRIC_NAMES.processCpu,
+      METRIC_NAMES.cpuThrottled,
+      METRIC_NAMES.dbPoolConnections,
+      METRIC_NAMES.dbPoolWaiting,
+      METRIC_NAMES.dbPoolLimit,
+      METRIC_NAMES.dbPoolWaitSeconds,
+      METRIC_NAMES.dbPoolWaits,
+    ]) {
+      expect(used, name).toContain(name);
+    }
+  });
+
+  // Final review: staging pushes OTLP every 60 s, so a fixed [1m] window holds one sample and rate() shows no data;
+  // $__rate_interval scales with the data source's interval, as every older panel here does.
+  it("every rate() window is $__rate_interval", () => {
+    const windows = [...text.matchAll(/rate\([^[]*\[([^\]]+)\]/g)].map((m) => m[1]);
+    expect(windows.length).toBeGreaterThan(0);
+    for (const w of windows) expect(w).toBe("$__rate_interval");
+  });
+
+  it("has a cpu_limit textbox defaulting to Render free's 0.1", () => {
+    expect(dashboard.templating.list.find((v) => v.name === "cpu_limit")).toMatchObject({ type: "textbox", query: "0.1" });
+  });
+});

@@ -33,6 +33,8 @@ import type { TelemetryConfig } from "./config.js";
 import { AllowlistSpanProcessor } from "./allowlist.js";
 import { buildViews } from "./views.js";
 import { registerProcessStartTime } from "./metrics.js";
+import { registerRuntimePressureMetrics } from "./runtime-pressure.js";
+import { registerDbPoolMetrics, type PoolMetricsSource } from "./db-pool.js";
 import { createThrottledReporter, exportErrorText, type WarnSink } from "./diag.js";
 
 /**
@@ -42,6 +44,8 @@ import { createThrottledReporter, exportErrorText, type WarnSink } from "./diag.
 export interface TelemetryHandle {
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
+  /** Spec 13.3 — registers the DB pool instruments on this SDK's meter, reporting through its throttled reporter. */
+  registerDbPool(source: PoolMetricsSource, limit: number | undefined): void;
 }
 
 export interface StartTelemetryDeps {
@@ -235,6 +239,9 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const meterProvider = new MeterProvider({ resource, readers: reader ? [reader] : [], views: buildViews() });
   metrics.setGlobalMeterProvider(meterProvider);
   registerProcessStartTime(meterProvider.getMeter("sin-api"));
+  registerRuntimePressureMetrics(meterProvider.getMeter("sin-api"), {
+    report: (message, err) => reporter.report(message, err, "metrics"),
+  });
 
   const unload = registerInstrumentations({
     tracerProvider,
@@ -257,6 +264,10 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   });
 
   return {
+    registerDbPool: (source, limit) =>
+      registerDbPoolMetrics(meterProvider.getMeter("sin-api"), source, limit, (message, err) =>
+        reporter.report(message, err, "metrics"),
+      ),
     forceFlush: async () => {
       await Promise.all([tracerProvider.forceFlush(), meterProvider.forceFlush()]);
     },

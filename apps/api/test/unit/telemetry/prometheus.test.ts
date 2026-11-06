@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { createServer, type AddressInfo, type Server } from "node:net";
+import { readFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { context, diag, metrics, propagation, trace } from "@opentelemetry/api";
 import { parseTelemetryEnv } from "../../../src/telemetry/config.js";
@@ -86,5 +87,26 @@ describe("AC13 — Prometheus endpoint is local-only and off the API port", () =
     const res = await fetch(`${apiBase}/metrics`);
     expect(res.status).toBe(404);
     expect(res.headers.get("content-type")).toContain("application/problem+json");
+  });
+});
+
+describe("Spec 13.3 AC11 — new metrics on the local scrape", () => {
+  it("serves the CPU and DB pool series under their Prometheus names", async () => {
+    const fixture = JSON.parse(
+      readFileSync(new URL("./fixtures/prisma-metrics-6.19.3.json", import.meta.url), "utf8"),
+    ) as unknown;
+    handle.registerDbPool({ engineStarted: () => true, json: async () => fixture }, 8);
+    // The throttling counter is not asserted: it exists only where /sys/fs/cgroup/cpu.stat does (Review Focus 3).
+    const text = await (await fetch(`http://127.0.0.1:${promPort}/metrics`)).text();
+    // The exporter adds `otel_scope_name`, so match a series by name plus the label it must carry.
+    const series = (name: string, label = "") => new RegExp(`^${name}\\{[^}]*${label}[^}]*\\} (\\S+)$`, "m");
+    expect(text).toMatch(series("sin_process_cpu_seconds_total", 'cpu_mode="user"'));
+    expect(text).toMatch(series("sin_process_cpu_seconds_total", 'cpu_mode="system"'));
+    expect(text).toMatch(series("sin_db_pool_connections", 'state="busy"'));
+    expect(text).toMatch(series("sin_db_pool_connections", 'state="idle"'));
+    expect(text).toMatch(series("sin_db_pool_waiting"));
+    expect(text.match(series("sin_db_pool_limit"))?.[1]).toBe("8");
+    expect(text).toMatch(series("sin_db_pool_wait_seconds_total"));
+    expect(text).toMatch(series("sin_db_pool_waits_total"));
   });
 });

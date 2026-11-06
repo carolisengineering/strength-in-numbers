@@ -21,6 +21,14 @@ export const METRIC_NAMES = {
   workoutsStarted: "sin_workouts_started",
   workoutsFinished: "sin_workouts_finished",
   setsLogged: "sin_sets_logged",
+  // Spec 13.3 — API CPU and DB connection pool (the exporter adds `_total` to the counters).
+  processCpu: "sin_process_cpu_seconds",
+  cpuThrottled: "sin_container_cpu_throttled_seconds",
+  dbPoolConnections: "sin_db_pool_connections",
+  dbPoolWaiting: "sin_db_pool_waiting",
+  dbPoolLimit: "sin_db_pool_limit",
+  dbPoolWaitSeconds: "sin_db_pool_wait_seconds",
+  dbPoolWaits: "sin_db_pool_waits",
 } as const;
 
 const keep = (instrumentName: string, name: string, attrs: string[]): ViewOptions => ({
@@ -44,6 +52,13 @@ export function buildViews(): ViewOptions[] {
     keep("sin.workouts.started", METRIC_NAMES.workoutsStarted, []),
     keep("sin.workouts.finished", METRIC_NAMES.workoutsFinished, []),
     keep("sin.sets.logged", METRIC_NAMES.setsLogged, ["modality"]),
+    keep("sin.process.cpu.time", METRIC_NAMES.processCpu, ["cpu.mode"]),
+    keep("sin.container.cpu.throttled", METRIC_NAMES.cpuThrottled, []),
+    keep("sin.db.pool.connections", METRIC_NAMES.dbPoolConnections, ["state"]),
+    keep("sin.db.pool.waiting", METRIC_NAMES.dbPoolWaiting, []),
+    keep("sin.db.pool.limit", METRIC_NAMES.dbPoolLimit, []),
+    keep("sin.db.pool.wait", METRIC_NAMES.dbPoolWaitSeconds, []),
+    keep("sin.db.pool.waits", METRIC_NAMES.dbPoolWaits, []),
     // Catch-all: every instrument also gets this stream, which is dropped. An
     // instrument with no `keep` View above therefore exports nothing (AC8).
     { instrumentName: "*", aggregation: { type: AggregationType.DROP } },
