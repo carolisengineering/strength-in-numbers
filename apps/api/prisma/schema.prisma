@@ -5,6 +5,9 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Spec 13.3 AC13: `$metrics.json()` feeds the DB pool metrics. Deprecated by Prisma and removed in 7.0
+  // (BL-25); `prisma-metrics-guard.test.ts` fails if an upgrade drops it.
+  previewFeatures = ["metrics"]
 }
 
 datasource db {
