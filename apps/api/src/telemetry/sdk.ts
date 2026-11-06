@@ -33,6 +33,7 @@ import type { TelemetryConfig } from "./config.js";
 import { AllowlistSpanProcessor } from "./allowlist.js";
 import { buildViews } from "./views.js";
 import { registerProcessStartTime } from "./metrics.js";
+import { registerRuntimePressureMetrics } from "./runtime-pressure.js";
 import { createThrottledReporter, exportErrorText, type WarnSink } from "./diag.js";
 
 /**
@@ -235,6 +236,9 @@ export function startTelemetry(config: TelemetryConfig, deps: StartTelemetryDeps
   const meterProvider = new MeterProvider({ resource, readers: reader ? [reader] : [], views: buildViews() });
   metrics.setGlobalMeterProvider(meterProvider);
   registerProcessStartTime(meterProvider.getMeter("sin-api"));
+  registerRuntimePressureMetrics(meterProvider.getMeter("sin-api"), {
+    report: (message, err) => reporter.report(message, err, "metrics"),
+  });
 
   const unload = registerInstrumentations({
     tracerProvider,

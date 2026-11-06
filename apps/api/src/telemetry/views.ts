@@ -21,6 +21,9 @@ export const METRIC_NAMES = {
   workoutsStarted: "sin_workouts_started",
   workoutsFinished: "sin_workouts_finished",
   setsLogged: "sin_sets_logged",
+  // Spec 13.3 — API CPU and DB connection pool (the exporter adds `_total` to the counters).
+  processCpu: "sin_process_cpu_seconds",
+  cpuThrottled: "sin_container_cpu_throttled_seconds",
 } as const;
 
 const keep = (instrumentName: string, name: string, attrs: string[]): ViewOptions => ({
@@ -44,6 +47,8 @@ export function buildViews(): ViewOptions[] {
     keep("sin.workouts.started", METRIC_NAMES.workoutsStarted, []),
     keep("sin.workouts.finished", METRIC_NAMES.workoutsFinished, []),
     keep("sin.sets.logged", METRIC_NAMES.setsLogged, ["modality"]),
+    keep("sin.process.cpu.time", METRIC_NAMES.processCpu, ["cpu.mode"]),
+    keep("sin.container.cpu.throttled", METRIC_NAMES.cpuThrottled, []),
     // Catch-all: every instrument also gets this stream, which is dropped. An
     // instrument with no `keep` View above therefore exports nothing (AC8).
     { instrumentName: "*", aggregation: { type: AggregationType.DROP } },
