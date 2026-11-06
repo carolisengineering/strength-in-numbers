@@ -13,6 +13,8 @@ never `npx` — `npx prisma` fetches the latest Prisma instead of the repo's pin
   React / DOM / Node-only imports
 - `apps/web` — Vite + React SPA (`@sin/web`): Auth0 PKCE, React-free API client, CSS-Modules
   design tokens (`src/ui/tokens.css` is the only place design values are written)
+- `tools/loadtest` — Spec 16 load-test tool (`@sin/loadtest`): a Node CLI plus a k6 script; `src/plan/` and `k6/`
+  import only relative `.ts` paths because k6 loads them itself (the purity test enforces it). Needs k6 locally, never in CI
 - `docs/` — see below
 
 ## Commands
@@ -42,6 +44,9 @@ pnpm --filter @sin/web run test:coverage        # web unit tests + the src/api /
 pnpm --filter @sin/web run e2e                  # Spec 06.3 browser smoke vs staging; needs E2E_BASE_URL + E2E_AUTH0_* (docs/runbooks/m1-browser-smoke.md)
 pnpm --filter @sin/web run assert:css-tokens    # AC1 tripwire: only tokens.css may hard-code colours / px
 docker compose -f docker-compose.observability.yml up -d   # local Prometheus :9090, Tempo :4318, Grafana :3001 (Spec 13.0; runbook docs/runbooks/observability.md)
+pnpm --filter @sin/loadtest run loadtest run <gym|push|burst> --target local [--lifters N] [--push F] [--dry-run]   # Spec 16; needs k6 (`brew install k6`), dev-idp and the local API; cleanup always runs after; results in tools/loadtest/results/ (gitignored)
+pnpm --filter @sin/loadtest run loadtest cleanup --target local [--lifters N]   # Spec 16: empty the load-test accounts (loadtest|NNN); `seed` gives them the routine
+pnpm --filter @sin/loadtest run test:unit           # Spec 16 pure logic (no k6, no network); runs in CI with the rest
 terraform -chdir=infra fmt -recursive && terraform -chdir=infra validate   # Spec 15; Terraform 1.17.0 exactly (CI's infra job); apply only by hand (runbook Part F)
 pnpm --filter @sin/api exec tsx scripts/check-prod-ids.ts --strict   # Spec 15 go-live: refuses REPLACE_ME placeholders in infra/prod.tfvars
 ```

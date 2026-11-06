@@ -243,6 +243,28 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@30.0.1)(msw@2.15.0(@types/node@22.20.1)(typescript@5.9.3))
 
+  tools/loadtest:
+    dependencies:
+      '@sin/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@types/k6':
+        specifier: ^2.3.1
+        version: 2.3.1
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@30.0.1)(msw@2.15.0(@types/node@22.20.1)(typescript@5.9.3))
+
 packages:
 
   '@adobe/css-tools@4.5.0':
@@ -1557,6 +1579,9 @@ packages:
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
+
+  '@types/k6@2.3.1':
+    resolution: {integrity: sha512-3zbIAfQXvSDsA3ZaKC7+eczsvx1hGtL8o68iYEssOmTEmg0MuoCwZ45aAI3jDm0JtlhJZaQAszrie+M1xaqK7g==}
 
   '@types/node@18.19.130':
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
@@ -6045,6 +6070,8 @@ snapshots:
   '@types/estree@1.0.9': {}
 
   '@types/json-schema@7.0.15': {}
+
+  '@types/k6@2.3.1': {}
 
   '@types/node@18.19.130':
     dependencies:

@@ -1,6 +1,6 @@
 # Spec 16 — Load testing (k6, simulated lifters against local, staging and prod)
 
-**Status:** Draft v0.1 (2026-11-05). Owner-approved design: `docs/superpowers/specs/2026-11-05-load-testing-design.md` (approved by Carol 2026-11-05; a gitignored working file, so this spec carries everything a builder needs). Every "(my call)" item in that design was accepted by the owner and is recorded as a ✅ decision in §12. Replaces the 2026-09-26 draft of this number ("Dev scenario tooling"), which is dropped (§1).
+**Status:** Phase A implemented on `feat/spec-16a-load-test-tool` (2026-11-06; build notes at the end of §12). Phase B not started. Draft v0.1 (2026-11-05). Owner-approved design: `docs/superpowers/specs/2026-11-05-load-testing-design.md` (approved by Carol 2026-11-05; a gitignored working file, so this spec carries everything a builder needs). Every "(my call)" item in that design was accepted by the owner and is recorded as a ✅ decision in §12. Replaces the 2026-09-26 draft of this number ("Dev scenario tooling"), which is dropped (§1).
 **Last updated:** 2026-11-05
 **Kind:** dev tooling + ops (a workspace package, a dashboard, a runbook; no API change and no migration)
 **Depends on:** **Spec 13.3** (CPU and DB-connection metrics, deployed to staging first; a hard dependency, §3), Spec 13.0 (the telemetry layer, `ops/grafana/`, the local stack, the Grafana Cloud stack), Spec 15 (the production target, its limits and its Auth0 sharing), Spec 05.2 (rate limits that the run must respect), Spec 02 (`@sin/core` Zod schemas the payload tests check against), Spec 01 (`dev-idp` for the local target).
@@ -106,7 +106,7 @@ Too large for one: it ships in **two phases / two PRs** (the repo's usual patter
 
 - **Spec 13.3 deployed to staging** before AC29 and before any run whose "what broke" view matters. Phase A does not need it (the local stack can show the new panels once 13.3 is merged, but the local runs only prove the tool).
 - Specs 13.0 (stack, `ops/grafana/`), 15 (prod), 05.2 (limits), 02 (schemas), 01 (`dev-idp`, `/v1/me`).
-- **Installed locally by the owner:** k6 1.x via Homebrew (`brew install k6`); it runs TypeScript scripts natively. Not installed in CI. New `devDependencies` in `tools/loadtest`: `@types/k6` (types only), `zod` (already used by `@sin/core`), `vitest`; `@sin/core` as a workspace dependency (types and schemas only; the k6 runtime cannot import Node-only code, so the k6 entry scripts bundle through k6's own TS support and import only pure modules).
+- **Installed locally by the owner:** k6 via Homebrew (`brew install k6`; Phase A was built and run with k6 2.3.0); it runs TypeScript scripts natively. Not installed in CI. New `devDependencies` in `tools/loadtest`: `@types/k6` (types only), `zod` (already used by `@sin/core`), `vitest`; `@sin/core` as a workspace dependency (types and schemas only; the k6 runtime cannot import Node-only code, so the k6 entry scripts bundle through k6's own TS support and import only pure modules).
 - A Grafana Cloud stack (exists since 2026-11-05, region `prod-us-east-2`), a **metrics-write token** for k6 and a **service-account token with annotation-write** (D12), both created by the owner.
 - An Auth0 Management API machine-to-machine application (setup only) and the load-test application (D5).
 
@@ -323,3 +323,21 @@ D1–D8, D10, D11, D13 and D14 are from the owner-approved design of 2026-11-05;
 - **O2** Whether Auth0's attack-protection settings on the shared tenant react to the paced token fetch (design §9). Found out in Phase B's first run; the runbook records the settings to check and any change made.
 - **O3** The Render CPU allowance and whether cgroup throttling is exposed there are Spec 13.3's open items; they change how to read the first staging result, not how to run it.
 - **O4** The scale assumptions in the design (100 lifters, 15–30 at peak, ~1–3 requests a minute each, 3–5× headroom target) are the design author's estimates, not measured; the first gym run's step range (10 → 150) comes from them. Revisit the range after the first results.
+
+### Phase A build notes (2026-11-06)
+
+Calls made while building Phase A; none changes an acceptance criterion.
+
+- **Cleanup runs in the CLI's `finally`**, after the k6 child exits for any reason (Ctrl-C is forwarded to k6 and awaited), not in k6's teardown. Tokens and routine ids reach k6 through one child environment variable, `LOADTEST_LIFTERS`, never argv or disk.
+- **Phase A refuses `staging` and `prod`** ("… is not wired yet (Spec 16 Phase B)"); both need Auth0 tokens.
+- **A burst is judged on 5xx and 429 only.** It sends no set saves, so the set-save threshold cannot apply; its sentence reads "handles K lifters opening the app within a minute".
+- **The executor reads `GET /v1/workouts/active` after a start**, as the web app does: the start response has no exercises. A `409` on start adopts the live workout.
+- **Module imports use `.ts` paths** (`allowImportingTsExtensions`): k6 resolves import paths literally.
+- **Dev-only flags `--steps a,b,c` and `--hold-scale s`** (local only) make short checks possible; `--no-metrics-output` turns off the default remote write to local Prometheus.
+- **Run length.** With `MIN_SAVES_PER_STEP` 200 and every hold at least one mean session (about 56 minutes at real pace), the default gym run (10 → 150 lifters) takes about 344 minutes (`--dry-run`: 12,785 requests). AC12 allows more than 30 minutes; this is far more, so Phase B's staging runs should plan for it.
+- **Local end-to-end (AC15, AC17), 2026-11-06:** a gym run (3 lifters, steps 1–3, holds × 0.01), a burst (3 lifters) and a push run (×2) each completed against the local API and dev-idp, wrote a result file and printed the sentence (set-save p95 17–36 ms, no 5xx, no 429). Afterward every account had zero workouts and kept its routine, and a standalone `cleanup` removed nothing. Not covered: the local observability stack (ports 9090 and 3000 were held by another project's containers, so `--no-metrics-output` was used), so D18's remote write is still unverified.
+- **Fixes from the final review (2026-11-06):**
+  - k6 lists every threshold submetric even with zero samples (`p(95): 0`, `passes: 0, fails: 0`). A step now counts as measured only when its `server_errors` rate has samples, and its p95 only when the set-save trend has a `count` (added to `summaryTrendStats`). A run is `complete` only when every step was measured; a run stopped part-way keeps an honest N but is `incomplete`.
+  - `server_errors` also counts k6's status 0 (refused, reset or timed out). §6.1's "5xx" means "5xx or no answer".
+  - The CLI's own requests (seed and cleanup) share one 200 ms spacing across all accounts (300 a minute, half the per-IP limit), and a `429` waits for `Retry-After` and retries. A failed cleanup no longer loses the result: the result file says `cleanup: "failed"` and the CLI prints the `cleanup` command to finish it.
+  - A live Ctrl-C during the warm-up (SIGINT sent to the CLI only) was forwarded to k6; cleanup ran; the result read "no measured step", `status: "incomplete"`, exit 1; every account ended empty.

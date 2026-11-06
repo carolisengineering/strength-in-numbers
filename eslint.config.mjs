@@ -66,6 +66,12 @@ export default tseslint.config(
     languageOptions: { globals: nodeGlobals },
     rules: { "no-console": "off" },
   },
+  // Spec 16 load test: k6's runtime globals in the script k6 loads (tools/loadtest/k6). The Node CLI keeps the
+  // Node globals above.
+  {
+    files: ["tools/loadtest/k6/**/*.ts"],
+    languageOptions: { globals: { __ENV: "readonly", __VU: "readonly", __ITER: "readonly" } },
+  },
   // Spec 17.0 screenshot harness: Node scripts whose page.evaluate callbacks run in the browser, and a fake
   // Auth0 module that the harness bundles into the page.
   {
