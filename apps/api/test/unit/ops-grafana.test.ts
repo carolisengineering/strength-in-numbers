@@ -65,7 +65,7 @@ describe("Spec 13.3 AC12 — api-overview shows CPU and the DB pool", () => {
   // Final review: staging pushes OTLP every 60 s, so a fixed [1m] window holds one sample and rate() shows no data;
   // $__rate_interval scales with the data source's interval, as every older panel here does.
   it("every rate() window is $__rate_interval", () => {
-    const windows = [...text.matchAll(/rate\([^\[]*\[([^\]]+)\]/g)].map((m) => m[1]);
+    const windows = [...text.matchAll(/rate\([^[]*\[([^\]]+)\]/g)].map((m) => m[1]);
     expect(windows.length).toBeGreaterThan(0);
     for (const w of windows) expect(w).toBe("$__rate_interval");
   });
