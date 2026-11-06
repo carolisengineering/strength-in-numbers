@@ -11,6 +11,8 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=2d
+      # Spec 16 D18: k6 pushes its load-test metrics here (`-o experimental-prometheus-rw`).
+      - --web.enable-remote-write-receiver
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
