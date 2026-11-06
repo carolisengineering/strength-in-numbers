@@ -16,6 +16,15 @@ export function buildThresholds(stepCount: number, type: RunType = "gym"): Recor
   return out;
 }
 
+/**
+ * What feeds the `server_errors` rate: a 5xx, or k6's status 0 (connection refused or reset, or a timeout), since a
+ * request that never got an answer has gone wrong too (final review). On Render and Cloud Run the proxy turns a dead
+ * process into a 5xx; locally and for client timeouts only status 0 shows it.
+ */
+export function countsAsServerError(status: number): boolean {
+  return status === 0 || status >= 500;
+}
+
 /** The threshold keys a sample of `metric` with these tags counts toward (k6's tag-filter rule: every filter matches). */
 export function thresholdsMatching(
   thresholds: Record<string, string[]>,

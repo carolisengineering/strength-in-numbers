@@ -13,16 +13,26 @@ import { accountIds } from "./node/accounts.ts";
 import { apiFor } from "./node/api.ts";
 import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
+import { politeApis } from "./node/polite.ts";
 import { runLoad, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { localTokens } from "./node/tokens-local.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
 const IDP_URL = process.env.LOADTEST_IDP_URL ?? "http://localhost:9999";
-/** Cleanup and seed stay well under the API's per-IP budget: a short pause between accounts. */
-const ACCOUNT_PACE_MS = 150;
+/**
+ * The CLI's own requests (seed and cleanup) share one spacing across every account: 200 ms apart is 300 a minute,
+ * half the API's per-IP budget, and a 429 waits for Retry-After (final review).
+ */
+const POLITE = { minIntervalMs: 200, maxRetries: 5 };
 
 const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const politeFor = (baseUrl: string, tokens: string[]) =>
+  politeApis(
+    tokens.map((t) => apiFor(baseUrl, t)),
+    { ...POLITE, sleep: pause, now: Date.now },
+  );
+const noPace = () => Promise.resolve();
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
 function realDeps(baseUrl: string): RunDeps {
@@ -38,8 +48,8 @@ function realDeps(baseUrl: string): RunDeps {
       };
     },
     tokens: (ids, expiresInS) => localTokens(ids, { idpUrl: IDP_URL, expiresInS }),
-    apisFor: (tokens) => tokens.map((t) => apiFor(baseUrl, t)),
-    cleanupAll: (apis) => cleanupAll(apis, { pace: (i) => (i === 0 ? Promise.resolve() : pause(ACCOUNT_PACE_MS)) }),
+    apisFor: (tokens) => politeFor(baseUrl, tokens),
+    cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
       writeFileSync(join(RESULTS_DIR, name), `${JSON.stringify(body, null, 2)}\n`);
       log(`result: tools/loadtest/results/${name}`);
@@ -88,16 +98,13 @@ async function main(argv: string[]): Promise<number> {
 
   const ids = accountIds(cmd.lifters ?? Math.max(...GYM_STEPS));
   const tokens = await localTokens(ids, { idpUrl: IDP_URL, expiresInS: 3600 });
-  const apis = tokens.map((t) => apiFor(baseUrl, t));
+  const apis = politeFor(baseUrl, tokens);
   if (cmd.cmd === "cleanup") {
-    const { removed } = await cleanupAll(apis, { pace: (i) => (i === 0 ? Promise.resolve() : pause(ACCOUNT_PACE_MS)) });
+    const { removed } = await cleanupAll(apis, { pace: noPace });
     log(`cleanup removed ${removed} workouts from ${apis.length} accounts`);
     return 0;
   }
-  for (const [i, api] of apis.entries()) {
-    if (i > 0) await pause(ACCOUNT_PACE_MS);
-    await ensureSeeded(api);
-  }
+  for (const api of apis) await ensureSeeded(api);
   log(`seeded ${apis.length} accounts`);
   return 0;
 }

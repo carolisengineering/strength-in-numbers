@@ -18,7 +18,7 @@ import { createRng } from "../src/plan/rng.ts";
 import { SEEDED_ITEMS } from "../src/plan/routine.ts";
 import { burstOffset, stepAt, toK6Scenario, type RunType, type Schedule } from "../src/plan/schedule.ts";
 import { OPEN_APP_READS, buildSession, joinAt, joinedActions, type Action } from "../src/plan/session.ts";
-import { buildThresholds } from "../src/plan/thresholds.ts";
+import { buildThresholds, countsAsServerError } from "../src/plan/thresholds.ts";
 import type { TagKey } from "../src/plan/tags.ts";
 
 interface Lifter {
@@ -38,7 +38,8 @@ const SUMMARY_PATH = __ENV.LOADTEST_SUMMARY_PATH ?? "summary.json";
 export const options = {
   scenarios: toK6Scenario(SCHEDULE, TYPE),
   thresholds: buildThresholds(SCHEDULE.stages.length, TYPE),
-  summaryTrendStats: ["avg", "p(95)", "max"],
+  // "count" lets the reporter tell a step with no set saves from one with p95 0 (k6 lists zero-sample submetrics).
+  summaryTrendStats: ["avg", "p(95)", "max", "count"],
   setupTimeout: `${WARMUP_MAX_S + 60}s`,
   // Every request is tagged by its template (AC11); never let k6 add the raw URL as a tag value.
   systemTags: ["status", "method", "name", "group", "check", "error_code", "scenario"],
@@ -69,7 +70,7 @@ function makeIo(token: string, t0: number): ExecutorIo {
         },
         tags,
       });
-      serverErrors.add(res.status >= 500, tags);
+      serverErrors.add(countsAsServerError(res.status), tags);
       rateLimited.add(res.status === 429 ? 1 : 0, tags);
       return { status: res.status, json: () => res.json() };
     },
@@ -88,7 +89,7 @@ export function setup(): { t0: number } {
   for (let i = 0; i < WARMUP_REQUESTS; i += 1) {
     const tags = { name: "warmup_healthz", step: "warmup", phase: "warmup", target: TARGET };
     const res = http.get(`${BASE_URL}/healthz`, { tags });
-    serverErrors.add(res.status >= 500, tags);
+    serverErrors.add(countsAsServerError(res.status), tags);
   }
   return { t0: Date.now() };
 }

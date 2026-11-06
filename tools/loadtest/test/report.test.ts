@@ -1,26 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { report, stepResults, type StepResult } from "../src/plan/report.ts";
-
-/** A k6 `handleSummary` data object with the per-step submetrics the thresholds create (hand-written fixture). */
-function summary(steps: { p95?: number; errorRate?: number; limited?: number }[]): unknown {
-  const metrics: Record<string, unknown> = {};
-  steps.forEach((s, i) => {
-    const k = i + 1;
-    if (s.p95 !== undefined) {
-      metrics[`http_req_duration{name:set_save,phase:measure,step:${k}}`] = {
-        type: "trend",
-        contains: "time",
-        values: { avg: s.p95 / 2, "p(95)": s.p95, max: s.p95 * 1.5 },
-        thresholds: { "p(95)<2000": { ok: s.p95 < 2000 } },
-      };
-    }
-    if (s.errorRate !== undefined) {
-      metrics[`server_errors{phase:measure,step:${k}}`] = { type: "rate", contains: "default", values: { rate: s.errorRate } };
-      metrics[`rate_limited{phase:measure,step:${k}}`] = { type: "counter", contains: "default", values: { count: s.limited ?? 0, rate: 0 } };
-    }
-  });
-  return { metrics, state: { testRunDurationMs: 1 } };
-}
+import { summary } from "./k6-summary.ts";
 
 const LIFTERS = [25, 50, 75, 100];
 
@@ -33,9 +13,25 @@ describe("stepResults", () => {
     ]);
   });
 
-  it("a step whose submetrics are missing is not measured and does not pass", () => {
+  it("final review — a step k6 reports with zero samples is not measured and does not pass", () => {
     const [s] = stepResults(summary([{}]), [10], "gym");
+    expect(s).toMatchObject({ measured: false, pass: false, p95Ms: null, errorRate: null });
+  });
+
+  it("a step whose submetrics are missing altogether is not measured either", () => {
+    const [s] = stepResults({ metrics: {} }, [10], "gym");
     expect(s).toMatchObject({ measured: false, pass: false });
+  });
+
+  it("final review — a measured gym step with zero set saves fails on 'no set saves', not p95 0", () => {
+    const [s] = stepResults(summary([{ errorRate: 0 }]), [10], "gym");
+    expect(s).toMatchObject({ measured: true, p95Ms: null, pass: false, failedOn: "no set saves measured" });
+  });
+
+  it("final review — interrupted after step 1: later steps are unmeasured, so N is step 1, not the top step", () => {
+    const steps = stepResults(summary([{ p95: 300, errorRate: 0 }, {}, {}]), [10, 25, 50], "gym");
+    expect(steps.map((s) => s.measured)).toEqual([true, false, false]);
+    expect(report({ target: "local", type: "gym", pushFactor: 1, steps }).n).toBe(10);
   });
 
   it("a burst step is judged on 5xx and 429 only (it has no set saves)", () => {
@@ -104,7 +100,7 @@ describe("AC8 — N is reported as the owner's sentence", () => {
   });
 
   it("Review Focus 3/4 — an empty summary is 'no measured step', not N = 0", () => {
-    for (const s of [undefined, {}, summary([])]) {
+    for (const s of [undefined, {}, summary([]), summary([{}, {}])]) {
       const r = report({ target: "local", type: "gym", pushFactor: 1, steps: stepResults(s, [10, 25], "gym") });
       expect(r.n).toBeNull();
       expect(r.x).toBe("no measured step");

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildThresholds, thresholdsMatching } from "../src/plan/thresholds.ts";
+import { buildThresholds, countsAsServerError, thresholdsMatching } from "../src/plan/thresholds.ts";
+
+describe("final review — a request that never got an answer is going wrong", () => {
+  it("5xx and k6's status 0 (refused, reset, timed out) count; everything else doesn't", () => {
+    expect(countsAsServerError(0)).toBe(true);
+    expect(countsAsServerError(500)).toBe(true);
+    expect(countsAsServerError(503)).toBe(true);
+    for (const s of [200, 201, 204, 404, 409, 422, 429]) expect(countsAsServerError(s), String(s)).toBe(false);
+  });
+});
 
 describe("AC7 — thresholds express X directly, per step", () => {
   it("gym: exact k6 threshold strings for two steps", () => {

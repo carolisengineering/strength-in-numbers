@@ -2,19 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { RunCommand } from "../src/node/args.ts";
 import { runLoad, type RunDeps } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
+import { summary } from "./k6-summary.ts";
 
 const TOKEN = "eyJ-secret-token";
 
-/** A k6 summary in which every step passed. */
-function passingSummary(steps: number): unknown {
-  const metrics: Record<string, unknown> = {};
-  for (let k = 1; k <= steps; k += 1) {
-    metrics[`http_req_duration{name:set_save,phase:measure,step:${k}}`] = { values: { "p(95)": 300 } };
-    metrics[`server_errors{phase:measure,step:${k}}`] = { values: { rate: 0 } };
-    metrics[`rate_limited{phase:measure,step:${k}}`] = { values: { count: 0 } };
-  }
-  return { metrics };
-}
+/** A k6 summary (real 2.3.0 shape) in which every step passed. */
+const passingSummary = (steps: number): unknown => summary(Array.from({ length: steps }, () => ({ p95: 300, errorRate: 0 })));
 
 function deps(overrides: Partial<RunDeps> = {}) {
   const lines: string[] = [];
@@ -101,6 +94,23 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
   });
 });
 
+describe("final review — a failed cleanup never loses the run's result", () => {
+  it("still reads the summary, writes the result with cleanup: failed, and says so", async () => {
+    const { d, results, lines } = deps({ cleanupAll: vi.fn(async () => Promise.reject(new Error("DELETE /v1/workouts/{id} answered 429"))) });
+    expect(await runLoad(gym, d)).toBe(1);
+    expect(d.readSummary).toHaveBeenCalled();
+    expect(results[0]!.body).toMatchObject({ status: "complete", cleanup: "failed", n: 3 });
+    expect(lines.join("\n")).toContain("cleanup failed: DELETE /v1/workouts/{id} answered 429");
+    expect(lines.join("\n")).toContain("loadtest cleanup --target local");
+  });
+
+  it("a clean run records cleanup: done", async () => {
+    const { d, results } = deps();
+    await runLoad(gym, d);
+    expect(results[0]!.body).toMatchObject({ cleanup: "done" });
+  });
+});
+
 describe("AC8 / Review Focus 3–4 — an empty summary", () => {
   it("writes an incomplete result and reports no measured step, after cleanup", async () => {
     const { d, results, lines } = deps({ readSummary: vi.fn(() => undefined) });
@@ -108,6 +118,24 @@ describe("AC8 / Review Focus 3–4 — an empty summary", () => {
     expect(d.cleanupAll).toHaveBeenCalledTimes(1);
     expect(results[0]!.body).toMatchObject({ status: "incomplete", n: null, x: "no measured step" });
     expect(lines.join("\n")).toContain("no measured step");
+  });
+});
+
+describe("final review — Ctrl-C before the first measured step (Review Focus 3)", () => {
+  it("k6's zero-filled summary is an incomplete run with no measured step, never 'handles N'", async () => {
+    const { d, results, lines } = deps({ readSummary: vi.fn(() => summary([{}, {}, {}])) });
+    expect(await runLoad(gym, d)).toBe(1);
+    expect(d.cleanupAll).toHaveBeenCalledTimes(1);
+    expect(results[0]!.body).toMatchObject({ status: "incomplete", n: null, x: "no measured step" });
+    expect(lines.join("\n")).not.toContain("handles");
+  });
+});
+
+describe("final review — interrupted after step 1", () => {
+  it("keeps step 1's honest N but marks the run incomplete", async () => {
+    const { d, results } = deps({ readSummary: vi.fn(() => summary([{ p95: 300, errorRate: 0 }, {}, {}])) });
+    expect(await runLoad(gym, d)).toBe(1);
+    expect(results[0]!.body).toMatchObject({ status: "incomplete", n: 1 });
   });
 });
 

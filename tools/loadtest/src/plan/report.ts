@@ -30,19 +30,27 @@ function metricValue(summary: unknown, key: string, field: string): number | nul
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-/** `lifters[k-1]` is step k's lifter count. Tolerates an undefined, empty or partial summary. */
+/**
+ * `lifters[k-1]` is step k's lifter count. Tolerates an undefined, empty or partial summary. k6 lists every threshold
+ * submetric even when it saw no samples (zeros: `p(95): 0`, `passes: 0, fails: 0`), so a step counts as measured only
+ * when its `server_errors` rate has samples, and its p95 only when the set-save trend has a count (final review).
+ */
 export function stepResults(summary: unknown, lifters: number[], type: RunType): StepResult[] {
   return lifters.map((count, i) => {
     const k = i + 1;
-    const p95Ms = metricValue(summary, `http_req_duration{name:set_save,phase:measure,step:${k}}`, "p(95)");
-    const errorRate = metricValue(summary, `server_errors{phase:measure,step:${k}}`, "rate");
+    const saveKey = `http_req_duration{name:set_save,phase:measure,step:${k}}`;
+    const errorKey = `server_errors{phase:measure,step:${k}}`;
+    const samples = (metricValue(summary, errorKey, "passes") ?? 0) + (metricValue(summary, errorKey, "fails") ?? 0);
+    const measured = samples > 0;
+    const saves = metricValue(summary, saveKey, "count") ?? 0;
+    const p95Ms = measured && saves > 0 ? metricValue(summary, saveKey, "p(95)") : null;
+    const errorRate = measured ? metricValue(summary, errorKey, "rate") : null;
     const rateLimited = metricValue(summary, `rate_limited{phase:measure,step:${k}}`, "count") ?? 0;
-    const measured = errorRate !== null;
     let failedOn: string | null = null;
     if (!measured) failedOn = X_NO_STEP;
     else if (type !== "burst" && p95Ms === null) failedOn = X_NO_SET_SAVES;
     else if (type !== "burst" && p95Ms! >= SET_SAVE_P95_MS) failedOn = X_SET_SAVE;
-    else if (errorRate >= SERVER_ERROR_RATE_MAX) failedOn = X_SERVER_ERRORS;
+    else if (errorRate === null || errorRate >= SERVER_ERROR_RATE_MAX) failedOn = X_SERVER_ERRORS;
     else if (rateLimited >= 1) failedOn = X_RATE_LIMITED;
     return { step: k, lifters: count, measured, p95Ms, errorRate, rateLimited, pass: failedOn === null, failedOn };
   });

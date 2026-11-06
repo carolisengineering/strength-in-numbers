@@ -113,6 +113,7 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   args.push(K6_SCRIPT);
 
   let summary: unknown;
+  let cleanup: "done" | "failed" = "done";
   try {
     const child = deps.spawnK6(args, env);
     const release = deps.onSigint(() => child.kill("SIGINT"));
@@ -124,14 +125,22 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     }
   } finally {
     deps.log("cleaning up the load-test accounts…");
-    const { removed } = await deps.cleanupAll(apis);
-    deps.log(`cleanup removed ${removed} workouts`);
+    try {
+      const { removed } = await deps.cleanupAll(apis);
+      deps.log(`cleanup removed ${removed} workouts`);
+    } catch (err) {
+      // Never lose the run's result to a cleanup problem; say how to finish it by hand.
+      cleanup = "failed";
+      deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+      deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
+    }
     summary = deps.readSummary(summaryPath);
   }
 
   const steps = stepResults(summary, schedule.stages.map((s) => s.lifters), cmd.type);
   const r: Report = report({ target: target.name, type: cmd.type, pushFactor: cmd.push, steps });
-  const complete = summary !== undefined && steps.some((s) => s.measured);
+  // Complete only when every step was measured: a run stopped part-way keeps an honest N but is marked incomplete.
+  const complete = summary !== undefined && steps.length > 0 && steps.every((s) => s.measured);
   deps.writeResult(`${stamp}-${target.name}-${cmd.type}.json`, {
     target: target.name,
     commit: await deps.commit(baseUrl),
@@ -143,8 +152,9 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     nonMonotonic: r.nonMonotonic,
     window: { start: start.toISOString(), end: deps.now().toISOString() },
     status: complete ? "complete" : "incomplete",
+    cleanup,
   });
   for (const line of table(steps)) deps.log(line);
   deps.log(r.sentence);
-  return complete ? 0 : 1;
+  return complete && cleanup === "done" ? 0 : 1;
 }
