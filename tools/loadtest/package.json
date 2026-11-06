@@ -1,0 +1,25 @@
+{
+  "name": "@sin/loadtest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spec 16 load-test tool: k6 lifters at real gym pace against local / staging / prod",
+  "scripts": {
+    "build": "true",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run test:unit",
+    "test:unit": "vitest run",
+    "test:integration": "true",
+    "loadtest": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@sin/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/k6": "^2.3.1",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

@@ -13,6 +13,8 @@ never `npx` — `npx prisma` fetches the latest Prisma instead of the repo's pin
   React / DOM / Node-only imports
 - `apps/web` — Vite + React SPA (`@sin/web`): Auth0 PKCE, React-free API client, CSS-Modules
   design tokens (`src/ui/tokens.css` is the only place design values are written)
+- `tools/loadtest` — Spec 16 load-test tool (`@sin/loadtest`): a Node CLI plus a k6 script; `src/plan/` and `k6/`
+  import only relative `.ts` paths because k6 loads them itself (the purity test enforces it). Needs k6 locally, never in CI
 - `docs/` — see below
 
 ## Commands

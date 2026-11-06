@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    // k6 loads the TypeScript sources itself and resolves import paths literally, so every relative import names
+    // the real `.ts` file (Spec 16 AC1). tsx and Vitest accept the same paths.
+    "allowImportingTsExtensions": true,
+    "types": ["node", "k6"]
+  },
+  "include": ["src", "k6", "test", "vitest.config.ts"]
+}
