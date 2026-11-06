@@ -1,7 +1,7 @@
 import { loadConfig } from "./config.js";
 import { buildApp } from "./app.js";
 import { createLogger } from "./logging.js";
-import { createPrisma, checkDatabaseReady } from "./db.js";
+import { createPrisma, checkDatabaseReady, wirePoolMetrics } from "./db.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
 import { createExerciseRepository } from "./repositories/exercise.prisma.js";
@@ -25,6 +25,7 @@ async function main(): Promise<void> {
   const logger = createLogger(config);
 
   const prisma = createPrisma(config);
+  wirePoolMetrics(getTelemetryHandle(), prisma, config.databaseUrl); // Spec 13.3: only when telemetry is on
   const exerciseRepository = createExerciseRepository(prisma);
 
   const app = await buildApp({
