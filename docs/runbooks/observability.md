@@ -174,7 +174,9 @@ pick the stack's Prometheus data source (usually `grafanacloud-<stack>-prom`) fo
 
 **Alert rules:** Alerting → Alert rules → **New alert rule**, one per rule in
 `ops/grafana/alerts/api.yaml`. Copy each query `expr`, threshold, `for: 5m`, and set
-**No data → OK**, **Error → Error**. Or use *More → Import* if the stack offers it, replacing
+**No data → OK**, **Error → Error**. Under the query's **Options**, check that **Type** is
+**Instant** (the file's `instant: true`). The threshold then applies straight to query A, with
+no Reduce step. Or use *More → Import* if the stack offers it, replacing
 `datasourceUid: prometheus` with the stack's Prometheus data-source UID first. Put them in a
 folder `strength-in-numbers`, evaluation group `si-api`, interval 1m.
 
