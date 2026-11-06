@@ -90,7 +90,7 @@
         ]
       },
       "targets": [
-        { "refId": "A", "expr": "sum by (cpu_mode) (rate(sin_process_cpu_seconds_total[1m]))", "legendFormat": "{{cpu_mode}}" },
+        { "refId": "A", "expr": "sum by (cpu_mode) (rate(sin_process_cpu_seconds_total[$__rate_interval]))", "legendFormat": "{{cpu_mode}}" },
         { "refId": "B", "expr": "vector($cpu_limit)", "legendFormat": "limit" }
       ]
     },
@@ -99,7 +99,7 @@
       "description": "Fraction of each second the container was held back by its CPU quota (cgroup v2). No data = this host does not report throttling.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
-      "targets": [{ "refId": "A", "expr": "rate(sin_container_cpu_throttled_seconds_total[1m])", "legendFormat": "throttled" }]
+      "targets": [{ "refId": "A", "expr": "rate(sin_container_cpu_throttled_seconds_total[$__rate_interval])", "legendFormat": "throttled" }]
     },
     {
       "type": "timeseries", "title": "DB connections in use vs limit", "gridPos": { "x": 0, "y": 32, "w": 8, "h": 8 },
@@ -120,10 +120,10 @@
     },
     {
       "type": "timeseries", "title": "Mean pool wait per query", "gridPos": { "x": 16, "y": 32, "w": 8, "h": 8 },
-      "description": "Average time a query waited for a free database connection, over 2 minutes.",
+      "description": "Average time a query waited for a free database connection, over the rate interval.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "targets": [{ "refId": "A", "expr": "rate(sin_db_pool_wait_seconds_total[2m]) / clamp_min(rate(sin_db_pool_waits_total[2m]), 1e-9)", "legendFormat": "mean wait" }]
+      "targets": [{ "refId": "A", "expr": "rate(sin_db_pool_wait_seconds_total[$__rate_interval]) / clamp_min(rate(sin_db_pool_waits_total[$__rate_interval]), 1e-9)", "legendFormat": "mean wait" }]
     }
   ]
 }
