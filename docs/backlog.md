@@ -629,16 +629,17 @@ Spec 15; the production half of this item is BL-29.)*
 
 ## BL-25
 
-**No DB connection-pool gauge.**
+**DB connection-pool metrics rest on a deprecated Prisma preview.**
 
-**Status: Open.** Deferred by Spec 13.0 (D11, 2026-10-20). Prisma's `$metrics` preview was
-deprecated in 6.14 and removed in 7.0, so building on it is a dead end. The supported route is
-observable gauges over a `pg.Pool`, which needs a Prisma driver adapter the API does not use.
-Interim proxy: `prisma:engine:connection` span durations in traces.
+**Status: Open (bridged).** Deferred by Spec 13.0 (D11, 2026-10-20). Since Spec 13.3 (2026-11-06)
+the pool gauges and wait counters (`sin_db_pool_*`) come from Prisma's deprecated `metrics`
+preview (`$metrics.json()`, still in 6.19.3, removed in 7.0), gated so a read never starts the
+engine. `prisma-metrics-guard.test.ts` fails on an upgrade that drops it.
 
-**Done looks like:** once the API uses a Prisma driver adapter (or Prisma 7), `pg.Pool`
-observable gauges for busy (`totalCount − idleCount`) and waiting (`waitingCount`)
-connections, with a View allowlist entry and a dashboard panel.
+**Done looks like:** before or with the move to Prisma 7, the pool source moves to `pg.Pool`
+observable gauges through a Prisma driver adapter (busy `totalCount − idleCount`, waiting
+`waitingCount`; wait time from the pool's own timing), keeping the `sin_db_pool_*` names, Views
+and dashboard panels unchanged.
 
 ## BL-26
 

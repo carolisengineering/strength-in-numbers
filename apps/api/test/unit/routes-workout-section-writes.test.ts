@@ -156,8 +156,11 @@ describe("09.4 AC21 / 09.5 AC33 — no new telemetry surface", () => {
       "db.query.text", "db.statement", "db.system", "error.type", "http.request.method", "http.response.status_code",
       "http.route", "method", "model", "server.address", "server.port", "sin.request_id", "url.scheme",
     ]);
+    // Spec 13.3 added the CPU and DB-pool names on purpose (sin_container_*, sin_db_pool_*, sin_process_cpu_*).
     expect(Object.values(METRIC_NAMES).sort()).toEqual([
-      "http_server_request_duration_seconds", "nodejs_eventloop_delay_p99_seconds", "sin_process_start_time_seconds",
+      "http_server_request_duration_seconds", "nodejs_eventloop_delay_p99_seconds", "sin_container_cpu_throttled_seconds",
+      "sin_db_pool_connections", "sin_db_pool_limit", "sin_db_pool_wait_seconds", "sin_db_pool_waiting", "sin_db_pool_waits",
+      "sin_process_cpu_seconds", "sin_process_start_time_seconds",
       "sin_sets_logged", "sin_workouts_finished", "sin_workouts_started", "v8js_gc_duration_seconds", "v8js_memory_heap_used_bytes",
     ]);
   });
