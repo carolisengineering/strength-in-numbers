@@ -13,7 +13,7 @@ describe("AC1 — off by default", () => {
   });
 
   it("starts and publishes the handle when an exporter is configured", async () => {
-    const handle = { forceFlush: vi.fn(), shutdown: vi.fn() };
+    const handle = { forceFlush: vi.fn(), shutdown: vi.fn(), registerDbPool: vi.fn() };
     const start = vi.fn(() => handle);
     const env = { ...TEST_ENV, OTEL_TRACES_EXPORTER: "otlp", OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://localhost:4318/v1/traces" };
     expect(await bootstrapTelemetry(env, start)).toBe(handle);
