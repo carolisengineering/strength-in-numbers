@@ -3,13 +3,13 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  MODEL_DELEGATES,
   UNSAFE_ALLOWLIST,
   checkAudit,
   extractStatements,
   fingerprint,
   parseAudit,
-  hasUserPredicate,
-  touchesOnlySharedData,
+  sanityIssues,
   writeAudit,
   type Source,
 } from "../../scripts/lib/query-extract.js";
@@ -117,6 +117,40 @@ describe("AC19 — statements are extracted from the TypeScript syntax tree", ()
     ]);
   });
 
+  it("a call of a fragment-building function outside any template is a fragment row whose arguments are fingerprinted", () => {
+    const builder = (parent: string) =>
+      src(
+        "src/repositories/b.ts",
+        `export function plannedJson(table: "a_set", parentRef: string) { return Prisma.raw(\`(SELECT json_agg(x) FROM "\${table}" x WHERE x.p = \${parentRef})\`); }
+         const WE_PLANNED = plannedJson("a_set", '${parent}');
+         export async function read(db: unknown, u: string) { return db.$queryRaw\`SELECT \${WE_PLANNED} FROM "w" WHERE user_id = \${u}::uuid\`; }`,
+      );
+    const rows = extractStatements([builder('"w".id')]);
+    expect(rows.map((r) => [r.key, r.kind])).toEqual([
+      ["src/repositories/b.ts#plannedJson#1", "fragment"],
+      ["src/repositories/b.ts#WE_PLANNED#1", "fragment"],
+      ["src/repositories/b.ts#read#1", "query"],
+    ]);
+    expect(rows[1]!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+    expect(rows[0]!.callers).toContain("src/repositories/b.ts#WE_PLANNED#1");
+    // Decorrelating the subquery (the parent ref) must change the fingerprint (final review #2).
+    const decorrelated = extractStatements([builder("x.p")]);
+    expect(decorrelated[1]!.fingerprint).not.toBe(rows[1]!.fingerprint);
+  });
+
+  it("a Prisma model-delegate call is a query row too (final review #3)", () => {
+    const model = src(
+      "src/repositories/u.ts",
+      `export function repo(prisma: unknown) { return {
+        async touch(id: string) { return prisma.workout.update({ where: { id }, data: { title: null } }); },
+        async other(m: Map<string, string>) { return m.get("x"); },
+      }; }`,
+    );
+    expect(extractStatements([model]).map((r) => [r.key, r.kind, r.text])).toEqual([
+      ["src/repositories/u.ts#touch#1", "query", "prisma.workout.update({ where: { id }, data: { title: null } })"],
+    ]);
+  });
+
   it("a Prisma.sql nested inside another statement is part of that statement, not a row of its own", () => {
     const nested = src(
       "src/repositories/n.ts",
@@ -194,6 +228,11 @@ describe("AC20 — the fingerprint and the staleness check", () => {
     expect(checkAudit(edited, rewritten, {}).some((f) => f.includes("needs review"))).toBe(true);
   });
 
+  it("fails on a category outside the five (a typo is effectively uncategorized, AC21)", () => {
+    const typo = classified().map((r, i) => (i === 0 ? { ...r, category: "user filtered" } : r));
+    expect(checkAudit(rows, typo, {}).some((f) => f.includes("user filtered") && f.includes("not a category"))).toBe(true);
+  });
+
   it("--write adds a new statement as uncategorized and needs review", () => {
     const rewritten = parseAudit(writeAudit([], rows));
     expect(rewritten.every((r) => r.status === "needs review" && r.category === "uncategorized")).toBe(true);
@@ -210,6 +249,42 @@ describe("AC20 — the fingerprint and the staleness check", () => {
   it("the audit document round-trips through parse and write", () => {
     const doc = writeAudit(classified(), rows);
     expect(writeAudit(parseAudit(doc), rows)).toBe(doc);
+  });
+});
+
+describe("AC21 — category sanity over fixtures (final review #4)", () => {
+  const FRAG = src(
+    "src/repositories/f.ts",
+    `export const ROUTINES = (where: unknown) => Prisma.sql\`SELECT r.id FROM "routine" r WHERE \${where}\`;
+     export async function all(db: unknown) { return db.$queryRaw(ROUTINES(Prisma.sql\`TRUE\`)); }
+     export async function own(db: unknown, u: string) { return db.$queryRaw(ROUTINES(Prisma.sql\`r.user_id = \${u}::uuid\`)); }
+     export async function me(prisma: unknown, id: string) { return prisma.user.findUnique({ where: { id } }); }`,
+  );
+  const rows = extractStatements([FRAG]);
+  const audit = (cats: Record<string, string>) =>
+    parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: cats[r.key.split("#")[1]!] ?? "fragment" }));
+
+  it("refuses a user-filtered claim with no user predicate, and an anchored claim with no anchor", () => {
+    expect(sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows)).toEqual([
+      // `all` names no user: its user-filtered claim is refused.
+      expect.stringContaining("src/repositories/f.ts#all#1"),
+    ]);
+    expect(sanityIssues(audit({ own: "user-filtered", me: "user-filtered", all: "anchored" }), rows).some((s) => s.includes("all#1"))).toBe(true);
+  });
+
+  it("a shared-on-purpose row whose tables come from a fragment it calls is refused", () => {
+    const issues = sanityIssues(audit({ all: "shared on purpose", own: "user-filtered", me: "user-filtered" }), rows);
+    expect(issues.some((s) => s.includes("all#1") && s.includes("shared"))).toBe(true);
+  });
+
+  it("a model-delegate call on an owned table is not shared on purpose", () => {
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows);
+    expect(issues.some((s) => s.includes("me#1") && s.includes("shared"))).toBe(true);
+  });
+
+  it("a user model call keyed by id is user-filtered (self)", () => {
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows);
+    expect(issues.some((s) => s.includes("me#1"))).toBe(false);
   });
 });
 
@@ -240,65 +315,27 @@ describe("UNSAFE_ALLOWLIST", () => {
 describe("the real audit — docs/security/query-audit.md against apps/api/src", () => {
   const extracted = extractStatements(readSources());
   const rows = parseAudit(readFileSync(AUDIT_PATH, "utf8"));
-  const byKey = new Map(rows.map((r) => [r.key, r]));
-  const textOf = new Map(extracted.map((s) => [s.key, s.text]));
 
   it("AC18, AC20 — every statement has exactly one current, classified row (the staleness check)", () => {
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(checkAudit(extracted, rows, UNSAFE_ALLOWLIST)).toEqual([]);
   });
 
-  describe("AC21 — category sanity", () => {
-    it("a user-filtered row carries a user predicate in its own text", () => {
-      const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map((s) => s.fn);
-      const bad = rows.filter((r) => r.category === "user-filtered" && !hasUserPredicate(textOf.get(r.key) ?? "", userFragments));
-      expect(bad.map((r) => r.key)).toEqual([]);
-    });
-
-    it("a shared-on-purpose row touches only reference data, the catalog's shared rows, or no table", () => {
-      const bad = rows.filter((r) => r.category === "shared on purpose" && !touchesOnlySharedData(textOf.get(r.key) ?? ""));
-      expect(bad.map((r) => r.key)).toEqual([]);
-    });
-
-    it("a cross-user maintenance row is in one of the three operator scripts", () => {
-      const allowed = ["src/account/purge.ts", "src/records/rebuild.ts", "src/seed/catalog.ts"];
-      const bad = rows.filter((r) => r.category === "cross-user maintenance" && !allowed.some((f) => r.key.startsWith(`${f}#`)));
-      expect(bad.map((r) => r.key)).toEqual([]);
-    });
-
-    it("an anchored row names an anchor that exists, is user-filtered and locks or inserts the root row", () => {
-      const bad = rows.filter((r) => {
-        if (r.category !== "anchored") return false;
-        const anchor = byKey.get(r.anchor.replace(/`/g, ""));
-        const text = anchor ? (textOf.get(anchor.key) ?? "") : "";
-        return !anchor || anchor.category !== "user-filtered" || !/FOR (UPDATE|SHARE)\b|^INSERT\b/i.test(text);
-      });
-      expect(bad.map((r) => `${r.key} → ${r.anchor}`)).toEqual([]);
-    });
-
-    it("a fragment lists its callers, and every caller is itself classified with a user predicate or an anchor (§6.7 #17)", () => {
-      const bad: string[] = [];
-      for (const r of rows.filter((x) => x.category === "fragment")) {
-        const callers = r.anchor.replace(/^callers: /, "").split(", ").filter((k) => k !== "none" && k !== "");
-        // The ownership.ts helpers are user predicates themselves; one with no caller yet is waiting for Spec 21.1.
-        if (callers.length === 0 && !r.key.startsWith("src/repositories/ownership.ts#")) bad.push(`${r.key}: no callers`);
-        for (const c of callers) {
-          const row = byKey.get(c);
-          if (!row || row.category === "uncategorized") bad.push(`${r.key}: caller ${c} is not classified`);
-        }
-      }
-      expect(bad).toEqual([]);
-    });
-
-    it("every row is a fragment iff it was extracted as one", () => {
-      const bad = rows.filter((r) => (r.category === "fragment") !== (r.kind === "fragment"));
-      expect(bad.map((r) => `${r.key} (${r.kind}, ${r.category})`)).toEqual([]);
-    });
+  it("AC21 — every row passes the category sanity checks (sanityIssues)", () => {
+    expect(sanityIssues(rows, extracted)).toEqual([]);
   });
 
   it("AC31 — the header counts every category and lists every anchored statement with its anchor", () => {
     const md = readFileSync(AUDIT_PATH, "utf8");
     expect(md).toMatch(/^\d+ statements: /m);
     for (const r of rows.filter((x) => x.category === "anchored")) expect(md).toContain(`- \`${r.key}\` relies on \`${r.anchor.replace(/`/g, "")}\``);
+  });
+});
+
+describe("MODEL_DELEGATES", () => {
+  it("names exactly the Prisma schema's models, camel-cased", () => {
+    const schema = readFileSync(fileURLToPath(new URL("../../prisma/schema.prisma", import.meta.url)), "utf8");
+    const models = [...schema.matchAll(/^model (\w+)/gm)].map((m) => m[1]![0]!.toLowerCase() + m[1]!.slice(1));
+    expect([...MODEL_DELEGATES].sort()).toEqual(models.sort());
   });
 });

@@ -38,6 +38,8 @@ export interface Extracted {
   callers: string[];
   /** Unsafe calls in this statement (`Prisma.raw`, `$queryRawUnsafe`, `$executeRawUnsafe`). */
   unsafe: string[];
+  /** Fragments only: the name callers refer to it by (its variable, else its function). */
+  label?: string;
 }
 
 export type Category =
@@ -47,6 +49,9 @@ export type Category =
   | "cross-user maintenance"
   | "fragment"
   | "uncategorized";
+
+/** The five categories a classified row may have (§6.6). */
+export const CATEGORIES: ReadonlySet<string> = new Set(["user-filtered", "anchored", "shared on purpose", "cross-user maintenance", "fragment"]);
 
 export interface AuditRow {
   key: string;
@@ -91,6 +96,23 @@ function calleeName(expr: ts.Expression): string | undefined {
 
 const isPrismaMember = (expr: ts.Expression, member: string) =>
   ts.isPropertyAccessExpression(expr) && expr.name.text === member && ts.isIdentifier(expr.expression) && expr.expression.text === "Prisma";
+
+/** Prisma's model-delegate operations: `prisma.user.findUnique(…)` runs SQL too (final review #3). */
+const MODEL_OPS = new Set([
+  "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany", "create", "createMany",
+  "createManyAndReturn", "update", "updateMany", "upsert", "delete", "deleteMany", "count", "aggregate", "groupBy",
+]);
+
+/** The Prisma client's model delegates (`prisma/schema.prisma`'s models, camel-cased); a test keeps the list in sync. */
+export const MODEL_DELEGATES = new Set(["user", "exercise", "muscleGroup", "equipment", "workout", "workoutExercise", "routine", "routineItem", "routineItemSet", "workoutPlannedSet", "setEntry", "personalRecord", "routineSection", "workoutSection", "workoutSectionRound", "hevyExercisePair", "hevySectionRule", "hevyLink", "hevyAccount"]);
+
+/** `<client>.<model>.<op>(…)` on a model delegate (`prisma.user.update`, `tx.workout.findMany`). */
+function isModelCall(node: ts.CallExpression): boolean {
+  const callee = node.expression;
+  if (!ts.isPropertyAccessExpression(callee) || !MODEL_OPS.has(callee.name.text)) return false;
+  const model = callee.expression;
+  return ts.isPropertyAccessExpression(model) && MODEL_DELEGATES.has(model.name.text);
+}
 
 /** A template's text with each `${…}` kept as its source. */
 function templateText(t: ts.TemplateLiteral, sf: ts.SourceFile): string {
@@ -160,12 +182,16 @@ function unsafeIn(node: ts.Node): string[] {
 
 interface Pending extends Omit<Extracted, "key" | "ordinal" | "fingerprint" | "callers"> {
   name: { name: string; local: boolean } | null;
+  pos: number;
+  fileIndex: number;
 }
 
 export function extractStatements(sources: readonly Source[]): Extracted[] {
   const pending: Pending[] = [];
-  for (const { file, text } of sources) {
-    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const parsed = sources.map(({ file, text }) => ({ file, sf: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS) }));
+  const covered: { file: string; pos: number; end: number }[] = [];
+
+  parsed.forEach(({ file, sf }, fileIndex) => {
     const visit = (node: ts.Node): void => {
       let found: { kind: "query" | "fragment"; text: string } | null = null;
       if (ts.isTaggedTemplateExpression(node)) {
@@ -178,6 +204,8 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
           found = { kind: "query", text: node.arguments.map((a) => argText(a, sf)).join(", ") };
         } else if (isPrismaMember(node.expression, "raw")) {
           found = { kind: "fragment", text: argText(node.arguments[0], sf) };
+        } else if (isModelCall(node)) {
+          found = { kind: "query", text: collapse(node.getText(sf)) };
         }
       }
       if (found) {
@@ -188,20 +216,60 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
           text: found.text,
           unsafe: unsafeIn(node),
           name: found.kind === "fragment" ? fragmentName(node) : null,
+          pos: node.getStart(sf),
+          fileIndex,
         });
+        covered.push({ file, pos: node.getStart(sf), end: node.getEnd() });
         return; // A template nested inside a statement is part of its text.
       }
       ts.forEachChild(node, visit);
     };
     visit(sf);
-  }
+  });
+
+  // Second pass: a call of a fragment-building function (`plannedSetsJson(…)`) outside every statement composes SQL
+  // that would otherwise reach a query only as a name; it is a fragment row of its own, so its arguments are
+  // fingerprinted (final review #2: decorrelating `WE_PLANNED_SETS` must fail the check).
+  const builders = new Set(pending.filter((p) => p.name && !p.name.local).map((p) => p.name!.name));
+  const inside = (file: string, pos: number) => covered.some((c) => c.file === file && pos >= c.pos && pos < c.end);
+  parsed.forEach(({ file, sf }, fileIndex) => {
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && builders.has(node.expression.text) && !inside(file, node.getStart(sf))) {
+        pending.push({
+          file,
+          fn: enclosingName(node),
+          kind: "fragment",
+          text: "${" + collapse(node.getText(sf)) + "}",
+          unsafe: [],
+          name: fragmentName(node),
+          pos: node.getStart(sf),
+          fileIndex,
+        });
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  });
+  pending.sort((a, b) => a.fileIndex - b.fileIndex || a.pos - b.pos);
 
   const ordinals = new Map<string, number>();
   const rows: Extracted[] = pending.map((p) => {
     const at = `${p.file}#${p.fn}`;
     const ordinal = (ordinals.get(at) ?? 0) + 1;
     ordinals.set(at, ordinal);
-    return { ...p, key: `${at}#${ordinal}`, ordinal, fingerprint: fingerprint(p.text), callers: [] };
+    return {
+      file: p.file,
+      fn: p.fn,
+      kind: p.kind,
+      text: p.text,
+      unsafe: p.unsafe,
+      key: `${at}#${ordinal}`,
+      ordinal,
+      fingerprint: fingerprint(p.text),
+      callers: [],
+      ...(p.name ? { label: p.name.name } : {}),
+    };
   });
   // Fragment callers: every other statement whose text names the fragment (a local one only within its function).
   pending.forEach((p, i) => {
@@ -211,10 +279,7 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
       .filter((r, j) => j !== i && re.test(r.text) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
       .map((r) => r.key);
   });
-  return rows.map(({ ...r }) => {
-    delete (r as Partial<Pending>).name;
-    return r;
-  });
+  return rows;
 }
 
 /** A `${…}` that composes SQL (a call, a nested template, a constant fragment) rather than binding a value. */
@@ -358,6 +423,7 @@ export function checkAudit(extracted: readonly Extracted[], rows: readonly Audit
   for (const r of rows) {
     if (!keys.has(r.key)) failures.push(`${r.key}: the audit has a row with no statement in code. Run \`${WRITE_COMMAND}\`.`);
     else if (r.status !== "ok" || r.category === "uncategorized") failures.push(`${r.key}: needs review — set its category and mark it ok.`);
+    else if (!CATEGORIES.has(r.category)) failures.push(`${r.key}: "${r.category}" is not a category (${[...CATEGORIES].join(", ")}).`);
   }
   return failures;
 }
@@ -374,6 +440,8 @@ export function hasUserPredicate(text: string, userFragments: readonly string[] 
   if (/\b(owner_)?user_id\b|\$\{owned[A-Z]\w*\(/.test(text)) return true;
   // Provisioning inserts the caller's own row; a `"user"` statement keyed by id is the caller's (§6.7 #23).
   if (/^INSERT INTO "user"/.test(text) || (/"user"/.test(text) && /\bid\s*=\s*\$\{/.test(text))) return true;
+  // The same through the Prisma `user` delegate: keyed by the caller's id or the token's subject (§6.7 #23).
+  if (/\.user\.\w+\(\{\s*where:\s*\{\s*(id|authSub)\b/.test(text)) return true;
   // A call of a fragment that is itself user-filtered (`lineageHasSetsSql(…)`).
   return userFragments.some((name) => text.includes(`\${${name}(`));
 }
@@ -382,6 +450,92 @@ const SHARED_TABLES = new Set(["muscle_group", "equipment"]);
 
 /** Only reference data, the catalog's shared rows (`owner_user_id IS NULL`), or no table at all. */
 export function touchesOnlySharedData(text: string): boolean {
-  const tables = [...text.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([a-z_]+)"?/gi)].map((m) => m[1]!.toLowerCase());
-  return tables.every((t) => SHARED_TABLES.has(t) || (t === "exercise" && /owner_user_id IS NULL/i.test(text)));
+  const { tables, delegates } = tablesOf(text);
+  return (
+    tables.every((t) => SHARED_TABLES.has(t) || (t === "exercise" && /owner_user_id IS NULL/i.test(text))) &&
+    delegates.every((d) => SHARED_DELEGATES.has(d))
+  );
+}
+
+const MODEL_CALL_RE = /\.(\w+)\.(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany|count|aggregate|groupBy)\(/g;
+const SHARED_DELEGATES = new Set(["muscleGroup", "equipment"]);
+
+/** The statement's text with the text of every fragment it names appended (to a small depth), for table detection. */
+export function expandFragments(text: string, fragments: ReadonlyMap<string, string>, depth = 3): string {
+  let out = text;
+  for (const [name, body] of fragments) {
+    if (new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(text)) {
+      out += " " + (depth > 0 ? expandFragments(body, fragments, depth - 1) : body);
+    }
+  }
+  return out;
+}
+
+/** Tables a statement touches, its fragments' included: SQL table names and Prisma model delegates. */
+function tablesOf(text: string): { tables: string[]; delegates: string[] } {
+  return {
+    tables: [...text.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([a-z_]+)"?/gi)].map((m) => m[1]!.toLowerCase()),
+    delegates: [...text.matchAll(MODEL_CALL_RE)].map((m) => m[1]!).filter((d) => MODEL_DELEGATES.has(d)),
+  };
+}
+
+/**
+ * AC21 — every check behind the human classification, over the whole audit. An empty list passes.
+ * - user-filtered: a user predicate in the statement's own text (or a call of a user-filtered fragment);
+ * - shared on purpose: only reference data or the catalog's shared rows, its fragments' tables included;
+ * - cross-user maintenance: only in the three operator scripts;
+ * - anchored: the anchor exists, is user-filtered, and locks or inserts the root row;
+ * - fragment: lists its callers, each classified, and a fragment over owned tables only has callers that are
+ *   user-filtered, anchored, maintenance or fragments themselves (§6.7 #17).
+ */
+export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extracted[]): string[] {
+  const issues: string[] = [];
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const textOf = new Map(extracted.map((s) => [s.key, s.text]));
+  const fragments = new Map(extracted.filter((s) => s.kind === "fragment").map((s) => [fragmentLabel(s), s.text]));
+  const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map((s) => s.fn);
+  const ownsData = (text: string) => {
+    const { tables, delegates } = tablesOf(expandFragments(text, fragments));
+    return tables.some((t) => !SHARED_TABLES.has(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
+  };
+  for (const r of rows) {
+    const text = textOf.get(r.key) ?? "";
+    if ((r.category === "fragment") !== (r.kind === "fragment")) issues.push(`${r.key}: a ${r.kind} classified "${r.category}"`);
+    switch (r.category) {
+      case "user-filtered":
+        if (!hasUserPredicate(text, userFragments)) issues.push(`${r.key}: user-filtered, but its text has no user predicate`);
+        break;
+      case "shared on purpose":
+        if (ownsData(text)) issues.push(`${r.key}: shared on purpose, but it (or a fragment it uses) touches user data`);
+        break;
+      case "cross-user maintenance":
+        if (!/^src\/(account\/purge|records\/rebuild|seed\/catalog)\.ts#/.test(r.key)) issues.push(`${r.key}: cross-user maintenance outside the operator scripts`);
+        break;
+      case "anchored": {
+        const anchor = byKey.get(r.anchor.replace(/`/g, ""));
+        const anchorText = anchor ? (textOf.get(anchor.key) ?? "") : "";
+        if (!anchor || anchor.category !== "user-filtered" || !/FOR (UPDATE|SHARE)\b|^INSERT\b/i.test(anchorText)) {
+          issues.push(`${r.key}: its anchor ${r.anchor} is missing, not user-filtered, or neither locks nor inserts`);
+        }
+        break;
+      }
+      case "fragment": {
+        const callers = r.anchor.replace(/^callers: /, "").split(", ").filter((k) => k !== "none" && k !== "");
+        if (callers.length === 0 && !r.key.startsWith("src/repositories/ownership.ts#")) issues.push(`${r.key}: a fragment with no callers`);
+        const owned = ownsData(text);
+        for (const c of callers) {
+          const row = byKey.get(c);
+          if (!row || !CATEGORIES.has(row.category)) issues.push(`${r.key}: caller ${c} is not classified`);
+          else if (owned && row.category === "shared on purpose") issues.push(`${r.key}: caller ${c} is shared on purpose, but the fragment reads user data`);
+        }
+        break;
+      }
+    }
+  }
+  return issues;
+}
+
+/** The name a fragment is referred to by in its callers' text (the label `extractStatements` searched for). */
+function fragmentLabel(s: Extracted): string {
+  return s.label ?? s.fn;
 }

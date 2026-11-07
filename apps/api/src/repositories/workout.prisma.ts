@@ -317,9 +317,14 @@ export async function loadSectionSnapshot(db: DetailClient, actingUserId: string
   };
 }
 
-async function toDetailWith(db: DetailClient, w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
-  const exercises = await loadExercises(db, w.user_id, w.id);
-  const sets = await loadSetsForWorkout(db, w.user_id, w.id);
+/**
+ * Assembles a workout's detail from its header row. Each loader filters on the ACTING user (Spec 21.0 §6.7 #5), not on
+ * the row's owner: a header row handed over by a broken first statement must not bring another user's data with it.
+ * Exported for the weak-spot test.
+ */
+export async function toDetailWith(db: DetailClient, actingUserId: string, w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
+  const exercises = await loadExercises(db, actingUserId, w.id);
+  const sets = await loadSetsForWorkout(db, actingUserId, w.id);
   const byExercise = new Map<string, SetEntryRecord[]>();
   for (const s of sets) {
     const list = byExercise.get(s.workoutExerciseId) ?? [];
@@ -330,7 +335,7 @@ async function toDetailWith(db: DetailClient, w: WorkoutDbRow): Promise<WorkoutD
     ...e,
     sets: byExercise.get(e.id) ?? [],
   }));
-  const snapshot = await loadSectionSnapshot(db, w.user_id, w.id);
+  const snapshot = await loadSectionSnapshot(db, actingUserId, w.id);
   return { ...toRecord(w), exercises: withSets, ...snapshot };
 }
 
@@ -346,7 +351,7 @@ export async function readWorkoutDetail(db: DetailClient, userId: string, id: st
     FROM "workout"
     WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
   `;
-  return rows[0] ? toDetailWith(db, rows[0]) : null;
+  return rows[0] ? toDetailWith(db, userId, rows[0]) : null;
 }
 
 /** The workout's exercise count (minor 226). */
@@ -523,7 +528,7 @@ export function createWorkoutRepository(
     }
   }
 
-  const toDetail = (w: WorkoutDbRow): Promise<WorkoutDetailRecord> => toDetailWith(prisma, w);
+  const toDetail = (actingUserId: string, w: WorkoutDbRow): Promise<WorkoutDetailRecord> => toDetailWith(prisma, actingUserId, w);
 
   async function findByClientGeneratedId(
     actingUserId: string,
@@ -629,7 +634,7 @@ export function createWorkoutRepository(
       `;
       const activeRow = rows[0];
       if (!activeRow) throw new NotFoundError("caller has no in-progress workout");
-      return toDetail(activeRow);
+      return toDetail(actingUserId, activeRow);
     },
 
     async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { findSetByClientGeneratedId, loadSetsForWorkout, lockedWorkoutSpan } from "../../src/repositories/set-entry.prisma.js";
 import { lockSectionForRecord, lockWorkoutStructure } from "../../src/repositories/workout-section.prisma.js";
-import { createWorkoutRepository, loadExercises, loadSectionSnapshot } from "../../src/repositories/workout.prisma.js";
+import { createWorkoutRepository, loadExercises, loadSectionSnapshot, toDetailWith } from "../../src/repositories/workout.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
@@ -101,6 +101,21 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 Phase B — weak-spot predic
     it("the History volume read (found by the B4 audit, beyond §6.7) reads no set of B's workout for A", async () => {
       expect(await loadWorkingSetRows(db.prisma, w.a.userId, [w.b.finishedWorkout])).toEqual([]);
       expect((await loadWorkingSetRows(db.prisma, w.b.userId, [w.b.finishedWorkout])).length).toBeGreaterThan(0);
+    });
+
+    it("§6.7 #5: the detail assembly filters its loaders on the acting user, not on the row's owner", async () => {
+      // B's workout header row, as a first statement whose own filter had failed would hand it over.
+      const [bRow] = await db.prisma.$queryRawUnsafe<Parameters<typeof toDetailWith>[2][]>(
+        `SELECT id, user_id, title, notes, started_at, ended_at, local_date, tz_offset_minutes, client_generated_id, source,
+                created_at, updated_at, routine_name_snapshot, planned_duration_s FROM "workout" WHERE id = $1::uuid`,
+        w.b.finishedWorkout,
+      );
+      const asA = await toDetailWith(db.prisma, w.a.userId, bRow!);
+      expect(asA.exercises).toEqual([]);
+      expect(asA.sections).toEqual([]);
+      const asB = await toDetailWith(db.prisma, w.b.userId, bRow!);
+      expect(asB.exercises.length).toBeGreaterThan(0);
+      expect(asB.exercises.some((e) => e.sets.length > 0)).toBe(true);
     });
 
     // The repository methods: a mismatched call is a 404 and leaves B's rows as they were (§6.7 #3, #4, #8, #10, #13, #15, #18).
