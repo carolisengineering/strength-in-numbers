@@ -6,6 +6,7 @@ import { createWorkoutRepository, loadExercises, loadSectionSnapshot } from "../
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { loadWorkingSetRows } from "../../src/repositories/workout-history.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { buildWorld, type World } from "./cross-user/world.js";
 import { snapshot } from "./cross-user/snapshot.js";
@@ -95,6 +96,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 Phase B — weak-spot predic
       expect((await loadSetsForWorkout(db.prisma, w.b.userId, w.b.finishedWorkout)).length).toBeGreaterThan(0);
       expect((await loadExercises(db.prisma, w.b.userId, w.b.finishedWorkout)).length).toBeGreaterThan(0);
       expect((await loadSectionSnapshot(db.prisma, w.b.userId, w.b.finishedWorkout)).sections.length).toBeGreaterThan(0);
+    });
+
+    it("the History volume read (found by the B4 audit, beyond §6.7) reads no set of B's workout for A", async () => {
+      expect(await loadWorkingSetRows(db.prisma, w.a.userId, [w.b.finishedWorkout])).toEqual([]);
+      expect((await loadWorkingSetRows(db.prisma, w.b.userId, [w.b.finishedWorkout])).length).toBeGreaterThan(0);
     });
 
     // The repository methods: a mismatched call is a 404 and leaves B's rows as they were (§6.7 #3, #4, #8, #10, #13, #15, #18).

@@ -361,3 +361,27 @@ export function checkAudit(extracted: readonly Extracted[], rows: readonly Audit
   }
   return failures;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Category sanity (AC21): coarse machine checks behind the human classification
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * A user predicate in the statement's own text: `user_id`, `owner_user_id`, an `ownership.ts` helper, `"user"` keyed by
+ * id or inserted, or a call of one of `userFragments` (fragments whose own text is user-filtered).
+ */
+export function hasUserPredicate(text: string, userFragments: readonly string[] = []): boolean {
+  if (/\b(owner_)?user_id\b|\$\{owned[A-Z]\w*\(/.test(text)) return true;
+  // Provisioning inserts the caller's own row; a `"user"` statement keyed by id is the caller's (§6.7 #23).
+  if (/^INSERT INTO "user"/.test(text) || (/"user"/.test(text) && /\bid\s*=\s*\$\{/.test(text))) return true;
+  // A call of a fragment that is itself user-filtered (`lineageHasSetsSql(…)`).
+  return userFragments.some((name) => text.includes(`\${${name}(`));
+}
+
+const SHARED_TABLES = new Set(["muscle_group", "equipment"]);
+
+/** Only reference data, the catalog's shared rows (`owner_user_id IS NULL`), or no table at all. */
+export function touchesOnlySharedData(text: string): boolean {
+  const tables = [...text.matchAll(/\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([a-z_]+)"?/gi)].map((m) => m[1]!.toLowerCase());
+  return tables.every((t) => SHARED_TABLES.has(t) || (t === "exercise" && /owner_user_id IS NULL/i.test(text)));
+}
