@@ -318,6 +318,22 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
     it("a set inserted after the triggers and before the backfill is filled by the trigger", async () => {
       expect(await ownerOf("set_entry", "id = $1::uuid", midMigrationSet)).toBe(a.user);
     });
+    it("the first statements take every lock up front, in the API's order (routine, workout, then parents before children), with a lock timeout", () => {
+      // `prisma migrate deploy` runs the file as one transaction, so each lock is held to the commit. Taking them in
+      // the API's order means a request waits instead of deadlocking the migration (final review, Minor 1).
+      const text = readFileSync(fileURLToPath(new URL(`../../prisma/migrations/${OWNER_MIGRATION}/migration.sql`, import.meta.url)), "utf8");
+      const statements = text
+        .split("\n")
+        .filter((l) => l.trim() !== "" && !l.trim().startsWith("--"))
+        .join("\n")
+        .split(";")
+        .map((s) => s.replace(/\s+/g, " ").trim());
+      expect(statements[0]).toBe("SET lock_timeout = '5s'");
+      expect(statements[1]).toBe(
+        'LOCK TABLE "routine", "workout", "routine_item", "routine_section", "routine_item_set", "workout_exercise", "workout_section", "set_entry", "workout_planned_set", "workout_section_round" IN ACCESS EXCLUSIVE MODE',
+      );
+      expect(statements.filter((s) => s !== "").at(-1)).toBe("RESET lock_timeout");
+    });
     it("every root owner was already NOT NULL before 0019, so a trigger can never fill NULL", () => {
       expect(rootNullable).toEqual({ workout: "NO", routine: "NO" });
     });

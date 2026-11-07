@@ -17,6 +17,14 @@
 -- schema.prisma declares the plain `userId` fields and the parents' `(id, user_id)` keys; the composite
 -- foreign keys live only here (Prisma can't express them without a relation on `userId`).
 
+-- 0. Every lock up front. `prisma migrate deploy` runs this file as one transaction, so each lock is held to the
+--    commit. Taking them all first, in the API's order (routine before workout, each parent before its children),
+--    means a request waits for the migration instead of deadlocking it. If they can't be had within 5 s the
+--    migration fails and changes nothing (runbook: `migrate resolve --rolled-back`, then retry).
+SET lock_timeout = '5s';
+LOCK TABLE "routine", "workout", "routine_item", "routine_section", "routine_item_set", "workout_exercise",
+  "workout_section", "set_entry", "workout_planned_set", "workout_section_round" IN ACCESS EXCLUSIVE MODE;
+
 -- 1. The columns. Nullable for now: adding one is metadata-only.
 ALTER TABLE "workout_exercise" ADD COLUMN "user_id" UUID;
 ALTER TABLE "workout_section" ADD COLUMN "user_id" UUID;
@@ -29,8 +37,8 @@ ALTER TABLE "routine_item_set" ADD COLUMN "user_id" UUID;
 
 -- 2. The fill triggers: one small static function per child, its parent fixed when written. A row
 --    that leaves user_id NULL gets its parent's owner; a row that names one keeps it, and the composite
---    foreign key (step 5) refuses it if it differs from the parent's. They exist before the backfill, so
---    a row the running API inserts during this migration is filled too.
+--    foreign key (step 5) refuses it if it differs from the parent's. They exist before the backfill, so a
+--    row inserted while the file is applied in parts (by hand, or the migration test) is filled too.
 CREATE FUNCTION workout_exercise_fill_user() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.user_id IS NULL THEN
@@ -122,8 +130,8 @@ ALTER TABLE "workout_exercise" ADD CONSTRAINT "workout_exercise_id_user_key" UNI
 ALTER TABLE "workout_section" ADD CONSTRAINT "workout_section_id_user_key" UNIQUE ("id", "user_id");
 ALTER TABLE "routine_item" ADD CONSTRAINT "routine_item_id_user_key" UNIQUE ("id", "user_id");
 
--- 5. The composite foreign keys, with the old keys' actions: added NOT VALID (no long lock), validated,
---    then the superseded single-column key dropped.
+-- 5. The composite foreign keys, with the old keys' actions: added NOT VALID, validated, then the superseded
+--    single-column key dropped. (In one transaction the split saves no lock time; it keeps each step separable.)
 ALTER TABLE "workout_exercise" ADD CONSTRAINT "workout_exercise_workout_owner_fkey"
   FOREIGN KEY ("workout_id", "user_id") REFERENCES "workout" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
 ALTER TABLE "workout_exercise" VALIDATE CONSTRAINT "workout_exercise_workout_owner_fkey";
@@ -164,7 +172,7 @@ ALTER TABLE "routine_item_set" ADD CONSTRAINT "routine_item_set_routine_item_own
 ALTER TABLE "routine_item_set" VALIDATE CONSTRAINT "routine_item_set_routine_item_owner_fkey";
 ALTER TABLE "routine_item_set" DROP CONSTRAINT "routine_item_set_item_fkey";
 
--- 6. NOT NULL without a second long scan: a validated CHECK first (Postgres then skips the scan).
+-- 6. NOT NULL through a validated CHECK first (Postgres then skips its own scan).
 ALTER TABLE "workout_exercise" ADD CONSTRAINT "we_user_id_nn" CHECK ("user_id" IS NOT NULL) NOT VALID;
 ALTER TABLE "workout_exercise" VALIDATE CONSTRAINT "we_user_id_nn";
 ALTER TABLE "workout_exercise" ALTER COLUMN "user_id" SET NOT NULL;
@@ -204,3 +212,5 @@ ALTER TABLE "routine_item_set" ADD CONSTRAINT "ris_user_id_nn" CHECK ("user_id" 
 ALTER TABLE "routine_item_set" VALIDATE CONSTRAINT "ris_user_id_nn";
 ALTER TABLE "routine_item_set" ALTER COLUMN "user_id" SET NOT NULL;
 ALTER TABLE "routine_item_set" DROP CONSTRAINT "ris_user_id_nn";
+
+RESET lock_timeout;

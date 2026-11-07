@@ -222,6 +222,7 @@ Core entities. `id` is UUID v7 (time-sortable) everywhere; every table carries
 - **Numeric precision:** `weight NUMERIC(7,3)`, `distance NUMERIC(9,3)`,
   `reps SMALLINT`, `duration_s INT`, `rpe NUMERIC(3,1)`.
 - **Deletion:** see §4.9 for the per-entity hard/soft matrix.
+- **Every user-owned row names its owner** (Spec 21.1 Phase A, migration `0019`). The eight child tables (`workout_exercise`, `workout_section`, `set_entry`, `workout_planned_set`, `workout_section_round`, `routine_item`, `routine_section`, `routine_item_set`) carry `user_id NOT NULL`, filled from the parent by a `BEFORE INSERT` trigger (no writer names it), and tied to the parent's owner by a composite foreign key `(parent_id, user_id)` → parent `(id, user_id)` (`ON DELETE CASCADE`). The database refuses a child whose owner differs from its parent's. Ownership predicates (`repositories/ownership.ts`) and the Spec 21.1 row-level-security policies read this column directly. The section links (`section_id`, `ON DELETE SET NULL`), `workout.routine_id`, `hevy_link.workout_id` and every `exercise_id` stay single-column (Spec 21.1 D8).
 
 ### 4.1 Identity & body metrics
 
