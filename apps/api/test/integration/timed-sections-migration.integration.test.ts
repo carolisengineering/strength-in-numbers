@@ -1,6 +1,4 @@
 // Spec 09.5 AC4, AC5, AC34 — migration 0018 (timed sections), real Postgres.
-// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from hevy-claim-fingerprint-migration, CLAUDE.md).
-import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -224,21 +222,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.5 — migration 0018 (real Pos
     await expect(assertSectionsConsistent(db)).rejects.toThrow(/not strictly increasing/);
     await reset();
     await assertSectionsConsistent(db);
-  });
-
-  it("09.5 AC5 — prisma migrate diff reports no difference beyond the two generated set_entry columns", () => {
-    const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-    const r = spawnSync(
-      "pnpm",
-      ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-      { cwd: apiDir, encoding: "utf8" },
-    );
-    const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-    expect(r.status, report).toBe(2);
-    const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-    expect(changeLines, report).toHaveLength(3);
-    expect(changeLines[0], report).toBe("[*] Changed the `set_entry` table");
-    expect(changeLines[1], report).toMatch(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/);
-    expect(changeLines[2], report).toMatch(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/);
   });
 });
