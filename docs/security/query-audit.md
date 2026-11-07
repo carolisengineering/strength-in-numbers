@@ -271,7 +271,7 @@ Categories:
 | `src/repositories/set-entry.prisma.ts#resolveOwnedSet#1` | query | user-filtered | ok | — | `663edaad30df` | Reads set_entry, workout_exercise, workout |
 | `src/repositories/set-entry.prisma.ts#findSetByClientGeneratedId#1` | query | user-filtered | ok | — | `7be5ed766acd` | Reads set_entry, workout_exercise, workout |
 | `src/repositories/set-entry.prisma.ts#lockedWorkoutSpan#1` | query | user-filtered | ok | — | `b80def5989fc` | Reads workout (FOR SHARE) |
-| `src/repositories/set-entry.prisma.ts#loadSetsForWorkout#1` | query | user-filtered | ok | — | `922b08cc977b` | Reads set_entry, workout_exercise; filtered on the set's own user_id (Spec 21.1) |
+| `src/repositories/set-entry.prisma.ts#loadSetsForWorkout#1` | query | user-filtered | ok | — | `f32515c98d08` | Reads set_entry, workout_exercise; filtered on the workout exercise's own user_id (Spec 21.1) |
 | `src/repositories/set-entry.prisma.ts#assertWouldNotEmpty#1` | query | anchored | ok | src/repositories/set-entry.prisma.ts#lockedWorkoutSpan#1 | `1411207183fa` | counts the workout's sets, keyed by the workout locked for the user (the structure lock on an exercise delete) (§6.7 #6) |
 | `src/repositories/set-entry.prisma.ts#assertWorkingSetsComplete#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `aa02fe6c38b1` | the finish's working-set check, keyed by the workout locked FOR UPDATE … user_id (§6.7 #6) |
 | `src/repositories/set-entry.prisma.ts#createSet#1` | query | user-filtered | ok | — | `103195613685` | Reads workout_exercise, workout |
@@ -300,7 +300,7 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/workout-history.prisma.ts#loadWorkingSetRows#1` | query | user-filtered | ok | — | `91e5a4e034a4` | Reads set_entry, workout_exercise; filtered on the set's own user_id (Spec 21.1) |
+| `src/repositories/workout-history.prisma.ts#loadWorkingSetRows#1` | query | user-filtered | ok | — | `b7c9327626ed` | Reads set_entry, workout_exercise; filtered on the workout exercise's own user_id (Spec 21.1) |
 | `src/repositories/workout-history.prisma.ts#listFinishedWorkouts#1` | fragment | fragment | ok | callers: src/repositories/workout-history.prisma.ts#listFinishedWorkouts#2 | `0d1812a17fd9` | SQL piece composed into the callers listed |
 | `src/repositories/workout-history.prisma.ts#listFinishedWorkouts#2` | query | user-filtered | ok | — | `e4d973a15972` | Reads workout_exercise, set_entry, personal_record, workout_section, workout, workout_section_round |
 

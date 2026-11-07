@@ -56,15 +56,15 @@ export interface VolumeRow {
 
 /**
  * The working sets of a page of workouts, for the volume column. User-filtered itself (Spec 21.0 Phase B audit):
- * the ids come from a page read on another, unlocked statement, so this read carries its own user filter (the set's
- * own `user_id`, Spec 21.1 Phase A).
+ * the ids come from a page read on another, unlocked statement, so this read carries its own user filter (the workout
+ * exercise's own `user_id`, Spec 21.1 Phase A; the composite key makes each set's owner its exercise's).
  */
 export async function loadWorkingSetRows(client: RawClient, actingUserId: string, ids: readonly string[]): Promise<VolumeRow[]> {
   return client.$queryRaw<VolumeRow[]>`
     SELECT we.workout_id::text AS workout_id, we.modality_snapshot, se.reps, se.weight_kg::text AS weight_kg
     FROM "set_entry" se
     JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
-    WHERE we.workout_id = ANY(${[...ids]}::uuid[]) AND se.user_id = ${actingUserId}::uuid AND se.set_type = 'working'
+    WHERE we.workout_id = ANY(${[...ids]}::uuid[]) AND we.user_id = ${actingUserId}::uuid AND se.set_type = 'working'
   `;
 }
 
