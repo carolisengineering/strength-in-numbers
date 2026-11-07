@@ -292,8 +292,7 @@ export async function loadExercises(db: DetailClient, actingUserId: string, work
            modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
            ${WE_PLANNED_SETS} AS planned_sets
     FROM "workout_exercise"
-    WHERE workout_id = ${workoutId}::uuid
-      AND workout_id IN (SELECT id FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid)
+    WHERE workout_id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid
     ORDER BY position ASC
   `;
   return rows.map(toExerciseRecord);

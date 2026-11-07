@@ -168,9 +168,8 @@ function completedSpan(mode: WriteMode, span: { started_at: Date; ended_at: Date
 export async function loadSetsForWorkout(client: RawClient, actingUserId: string, workoutId: string): Promise<SetEntryRecord[]> {
   const rows = await client.$queryRaw<SetEntryDbRow[]>`
     SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry"
-    WHERE workout_exercise_id IN (
-      SELECT we.id FROM "workout_exercise" we JOIN "workout" w ON w.id = we.workout_id
-      WHERE we.workout_id = ${workoutId}::uuid AND w.user_id = ${actingUserId}::uuid)
+    WHERE user_id = ${actingUserId}::uuid
+      AND workout_exercise_id IN (SELECT id FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid)
     ORDER BY workout_exercise_id, set_number
   `;
   return rows.map(toSetRecord);
