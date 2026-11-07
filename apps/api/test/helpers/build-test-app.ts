@@ -1,4 +1,4 @@
-import type { FastifyBaseLogger, FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance, RouteOptions } from "fastify";
 import { buildApp, type BuildAppDeps } from "../../src/app.js";
 import { loadConfig, type Config } from "../../src/config.js";
 import type { TokenVerifier } from "../../src/auth/verify.js";
@@ -61,6 +61,8 @@ export interface TestAppOptions<
   readinessTtlMs?: number;
   /** Spec 05.2 — defaults to the production `RATE_LIMITS`. */
   rateLimits?: RateLimitConfig;
+  /** Spec 21.0 — passed through to `buildApp` (the cross-user route registry). */
+  onRoute?: (route: RouteOptions) => void;
 }
 
 /** Spec 05.2 — for tests that legitimately send more requests than production allows. */
@@ -115,6 +117,7 @@ export async function buildTestApp<
     hevyRepository: opts.hevyRepository ?? new FakeHevyRepository(),
     hevyImportRepository: opts.hevyImportRepository ?? new FakeHevyImportRepository(),
     rateLimits: opts.rateLimits,
+    ...(opts.onRoute ? { onRoute: opts.onRoute } : {}),
   };
   const app = await buildApp(deps);
   return { app, repo, exerciseRepo, workoutRepo, routineRepo };
