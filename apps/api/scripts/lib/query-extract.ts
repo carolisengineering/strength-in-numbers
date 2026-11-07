@@ -282,34 +282,14 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
   return rows;
 }
 
-/** A `${…}` that composes SQL (a call, a nested template, a constant fragment) rather than binding a value. */
-const COMPOSES = /\(|`|\bPrisma\.|\b[A-Z][A-Z0-9_]{2,}\b/;
-
 /**
- * Whitespace collapsed; each value `${…}` becomes `?`, so renaming a bound variable changes nothing. A `${…}`
- * that composes SQL keeps its source: swapping `${ownedSet(…)}` for `${Prisma.empty}` must change the fingerprint.
+ * The statement's text with whitespace collapsed, every `${…}` kept as its source (Spec 21.0 §12 "as built", code
+ * review #2): which id a predicate binds (`${actingUserId}` against `${body.userId}`) and which fragment is spliced
+ * in (`${ownedSet(…)}` against `${Prisma.empty}`) are exactly the edits the audit exists to catch. Renaming a bound
+ * variable re-flags the row; that friction is the review.
  */
 export function fingerprint(text: string): string {
-  let out = "";
-  let i = 0;
-  while (i < text.length) {
-    if (text[i] === "$" && text[i + 1] === "{") {
-      let depth = 1;
-      let j = i + 2;
-      while (j < text.length && depth > 0) {
-        if (text[j] === "{") depth += 1;
-        else if (text[j] === "}") depth -= 1;
-        j += 1;
-      }
-      const expr = text.slice(i + 2, j - 1);
-      out += COMPOSES.test(expr) ? "${" + collapse(expr) + "}" : "?";
-      i = j;
-    } else {
-      out += text[i];
-      i += 1;
-    }
-  }
-  return createHash("sha256").update(collapse(out)).digest("hex").slice(0, 12);
+  return createHash("sha256").update(collapse(text)).digest("hex").slice(0, 12);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -339,22 +319,41 @@ export function parseAudit(md: string): AuditRow[] {
 const fileOf = (key: string) => key.slice(0, key.indexOf("#"));
 const fnOf = (key: string) => key.slice(key.indexOf("#") + 1, key.lastIndexOf("#"));
 
-/** The rows `--write` produces: classifications kept, moved statements matched by fingerprint, changed ones `needs review`. */
+/**
+ * The rows `--write` produces: classifications kept, moved statements matched by fingerprint, changed ones `needs
+ * review`. Three passes over all statements (code review #1): every exact match and every moved match is settled
+ * before any statement falls back to its key, so a statement inserted mid-function can't push the classifications
+ * below it one row down.
+ */
 export function reconcile(existing: readonly AuditRow[], extracted: readonly Extracted[]): AuditRow[] {
   const unused = new Set(existing);
-  const take = (r: AuditRow | undefined) => {
-    if (r) unused.delete(r);
-    return r;
+  const assigned = new Map<Extracted, { row: AuditRow; changed: boolean }>();
+  const claim = (s: Extracted, row: AuditRow | undefined, changed: boolean) => {
+    if (!row || assigned.has(s)) return;
+    unused.delete(row);
+    assigned.set(s, { row, changed });
   };
+  for (const s of extracted) claim(s, existing.find((r) => unused.has(r) && r.key === s.key && r.fingerprint === s.fingerprint), false);
+  for (const s of extracted) {
+    if (assigned.has(s)) continue;
+    claim(s, existing.find((r) => unused.has(r) && r.fingerprint === s.fingerprint && fileOf(r.key) === s.file && fnOf(r.key) === s.fn), false);
+  }
+  for (const s of extracted) {
+    if (assigned.has(s)) continue;
+    claim(s, existing.find((r) => unused.has(r) && r.key === s.key), true);
+  }
   return extracted.map((s) => {
-    const sameKey = existing.find((r) => r.key === s.key && unused.has(r));
-    const exact = sameKey?.fingerprint === s.fingerprint ? take(sameKey) : undefined;
-    const moved = exact ?? take(existing.find((r) => unused.has(r) && r.fingerprint === s.fingerprint && fileOf(r.key) === s.file && fnOf(r.key) === s.fn));
     const anchor = s.kind === "fragment" ? (s.callers.length > 0 ? `callers: ${s.callers.join(", ")}` : "callers: none") : undefined;
-    if (moved) return { ...moved, key: s.key, kind: s.kind, fingerprint: s.fingerprint, anchor: anchor ?? moved.anchor };
-    const changed = sameKey && unused.has(sameKey) ? take(sameKey) : undefined;
-    if (changed) return { ...changed, kind: s.kind, fingerprint: s.fingerprint, status: "needs review", anchor: anchor ?? changed.anchor };
-    return { key: s.key, kind: s.kind, category: "uncategorized", status: "needs review", anchor: anchor ?? "—", fingerprint: s.fingerprint, description: "" };
+    const hit = assigned.get(s);
+    if (!hit) return { key: s.key, kind: s.kind, category: "uncategorized", status: "needs review", anchor: anchor ?? "—", fingerprint: s.fingerprint, description: "" };
+    return {
+      ...hit.row,
+      key: s.key,
+      kind: s.kind,
+      fingerprint: s.fingerprint,
+      anchor: anchor ?? hit.row.anchor,
+      ...(hit.changed ? { status: "needs review" } : {}),
+    };
   });
 }
 
@@ -433,17 +432,21 @@ export function checkAudit(extracted: readonly Extracted[], rows: readonly Audit
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * A user predicate in the statement's own text: `user_id`, `owner_user_id`, an `ownership.ts` helper, `"user"` keyed by
- * id or inserted, or a call of one of `userFragments` (fragments whose own text is user-filtered).
+ * A user predicate in the statement's own text (code review #3: a predicate, not a mention of the column):
+ * - `user_id = ${…}` / `owner_user_id = ${…}` (a filter or a join condition binding a value), or an `ownership.ts`
+ *   helper call;
+ * - an `INSERT` whose column list writes `user_id` / `owner_user_id` (it inserts the acting user's row);
+ * - the `"user"` table itself keyed by id, or inserted (provisioning, §6.7 #23), and the same through the Prisma `user`
+ *   delegate keyed by id or the token's subject;
+ * - a reference to one of `userFragments`: the names callers use for fragments whose own text is user-filtered.
  */
 export function hasUserPredicate(text: string, userFragments: readonly string[] = []): boolean {
-  if (/\b(owner_)?user_id\b|\$\{owned[A-Z]\w*\(/.test(text)) return true;
-  // Provisioning inserts the caller's own row; a `"user"` statement keyed by id is the caller's (§6.7 #23).
-  if (/^INSERT INTO "user"/.test(text) || (/"user"/.test(text) && /\bid\s*=\s*\$\{/.test(text))) return true;
-  // The same through the Prisma `user` delegate: keyed by the caller's id or the token's subject (§6.7 #23).
+  if (/(?:^|[^\w])(?:owner_)?user_id\s*=\s*\$\{/.test(text) || /\$\{owned[A-Z]\w*\(/.test(text)) return true;
+  if (/^INSERT INTO "\w+"\s*\([^)]*\b(?:owner_)?user_id\b/.test(text)) return true;
+  if (/^INSERT INTO "user"/.test(text)) return true;
+  if (/\b(?:FROM|UPDATE)\s+"user"/.test(text) && /(?<![\w.])id\s*=\s*\$\{/.test(text)) return true;
   if (/\.user\.\w+\(\{\s*where:\s*\{\s*(id|authSub)\b/.test(text)) return true;
-  // A call of a fragment that is itself user-filtered (`lineageHasSetsSql(…)`).
-  return userFragments.some((name) => text.includes(`\${${name}(`));
+  return userFragments.some((name) => new RegExp(`\\$\\{${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(text));
 }
 
 const SHARED_TABLES = new Set(["muscle_group", "equipment"]);
@@ -493,7 +496,7 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const textOf = new Map(extracted.map((s) => [s.key, s.text]));
   const fragments = new Map(extracted.filter((s) => s.kind === "fragment").map((s) => [fragmentLabel(s), s.text]));
-  const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map((s) => s.fn);
+  const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map(fragmentLabel);
   const ownsData = (text: string) => {
     const { tables, delegates } = tablesOf(expandFragments(text, fragments));
     return tables.some((t) => !SHARED_TABLES.has(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));

@@ -9,6 +9,7 @@ import {
   extractStatements,
   fingerprint,
   parseAudit,
+  hasUserPredicate,
   sanityIssues,
   writeAudit,
   type Source,
@@ -181,14 +182,36 @@ describe("AC19 — statements are extracted from the TypeScript syntax tree", ()
 });
 
 describe("AC20 — the fingerprint and the staleness check", () => {
-  it("collapses whitespace and turns a value ${…} into ?", () => {
-    expect(fingerprint("SELECT  id\n FROM t WHERE id = ${id}::uuid")).toBe(fingerprint("SELECT id FROM t WHERE id = ${other}::uuid"));
+  it("collapses whitespace, and keeps every ${…} (a renamed binding re-flags its row)", () => {
+    expect(fingerprint("SELECT  id\n FROM t WHERE id = ${id}::uuid")).toBe(fingerprint("SELECT id FROM t WHERE id = ${id}::uuid"));
+    expect(fingerprint("SELECT id FROM t WHERE id = ${id}::uuid")).not.toBe(fingerprint("SELECT id FROM t WHERE id = ${other}::uuid"));
   });
 
   it("keeps a ${…} that composes SQL, so swapping a predicate fragment changes it", () => {
     expect(fingerprint("DELETE FROM t WHERE id = ${id}::uuid AND ${ownedSet(u, Prisma.sql`t.id`)}")).not.toBe(
       fingerprint("DELETE FROM t WHERE id = ${id}::uuid AND ${Prisma.empty}"),
     );
+  });
+
+  it("binding a different id to the user predicate changes it (code review #2)", () => {
+    expect(fingerprint("SELECT 1 FROM t WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid")).not.toBe(
+      fingerprint("SELECT 1 FROM t WHERE id = ${id}::uuid AND user_id = ${body.userId}::uuid"),
+    );
+  });
+
+  it("--write keeps each classification on its own statement when one is inserted before it (code review #1)", () => {
+    const three = (body: string) => src("src/repositories/k.ts", `export async function f(db: unknown, u: string) { ${body} }`);
+    const X = 'await db.$queryRaw`SELECT 1 FROM "x" WHERE user_id = ${u}::uuid`;';
+    const Y = 'await db.$queryRaw`SELECT 2 FROM "y" WHERE user_id = ${u}::uuid`;';
+    const N = 'await db.$queryRaw`SELECT 3 FROM "n" WHERE user_id = ${u}::uuid`;';
+    const before = extractStatements([three(X + Y)]);
+    const classifiedBefore = parseAudit(writeAudit([], before)).map((r, i) => ({ ...r, status: "ok", category: "user-filtered", description: i === 0 ? "the X read" : "the Y read" }));
+    const after = parseAudit(writeAudit(classifiedBefore, extractStatements([three(N + X + Y)]))).map((r) => [r.key, r.status, r.description]);
+    expect(after).toEqual([
+      ["src/repositories/k.ts#f#1", "needs review", ""],
+      ["src/repositories/k.ts#f#2", "ok", "the X read"],
+      ["src/repositories/k.ts#f#3", "ok", "the Y read"],
+    ]);
   });
 
   it("is 12 hex characters", () => {
@@ -249,6 +272,39 @@ describe("AC20 — the fingerprint and the staleness check", () => {
   it("the audit document round-trips through parse and write", () => {
     const doc = writeAudit(classified(), rows);
     expect(writeAudit(parseAudit(doc), rows)).toBe(doc);
+  });
+});
+
+describe("AC21 — hasUserPredicate wants a predicate, not a mention (code review #3, #4)", () => {
+  it("a user_id that is only selected or returned is no user predicate", () => {
+    expect(hasUserPredicate('SELECT user_id, ended_at FROM "workout" WHERE id = ${id}::uuid')).toBe(false);
+    expect(hasUserPredicate('UPDATE "workout" SET title = ${t} WHERE id = ${id}::uuid RETURNING id, user_id')).toBe(false);
+    expect(hasUserPredicate('SELECT id FROM "exercise" WHERE owner_user_id IS NULL')).toBe(false);
+    expect(hasUserPredicate('SELECT w.id FROM "workout" w JOIN "user" u ON u.id = w.user_id WHERE w.id = ${id}::uuid')).toBe(false);
+  });
+
+  it("a filter, a join condition or an inserted owner column is", () => {
+    expect(hasUserPredicate('SELECT 1 FROM "workout" WHERE id = ${id}::uuid AND user_id = ${u}::uuid')).toBe(true);
+    expect(hasUserPredicate('SELECT 1 FROM "exercise" WHERE (owner_user_id IS NULL OR owner_user_id = ${u}::uuid)')).toBe(true);
+    expect(hasUserPredicate('SELECT 1 FROM "set_entry" se JOIN "workout" w ON w.id = se.wid AND w.user_id = ${u}::uuid')).toBe(true);
+    expect(hasUserPredicate('INSERT INTO "routine" (id, user_id, name) VALUES (${id}::uuid, ${u}::uuid, ${n})')).toBe(true);
+    expect(hasUserPredicate('UPDATE "user" SET deleted_at = now() WHERE id = ${id}::uuid')).toBe(true);
+  });
+
+  it("a user-filtered fragment counts by the name its callers use, not its enclosing function", () => {
+    const local = src(
+      "src/repositories/lf.ts",
+      `export async function foo(db: unknown, u: string) {
+         const ownerFilter = Prisma.sql\`user_id = \${u}::uuid\`;
+         return db.$queryRaw\`SELECT 1 FROM "routine" WHERE \${ownerFilter}\`;
+       }
+       export async function bar(db: unknown, u: string) { return db.$queryRaw\`SELECT 1 FROM "routine" WHERE \${foo(db, u)} IS NOT NULL\`; }`,
+    );
+    const rows = extractStatements([local]);
+    const audit = parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "user-filtered" }));
+    const issues = sanityIssues(audit, rows);
+    expect(issues.some((s) => s.includes("foo#2"))).toBe(false);
+    expect(issues.some((s) => s.includes("bar#1"))).toBe(true);
   });
 });
 
@@ -316,7 +372,7 @@ describe("the real audit — docs/security/query-audit.md against apps/api/src",
   const extracted = extractStatements(readSources());
   const rows = parseAudit(readFileSync(AUDIT_PATH, "utf8"));
 
-  it("AC18, AC20 — every statement has exactly one current, classified row (the staleness check)", () => {
+  it("AC18, AC20, AC28 — every statement has exactly one current, classified row (the staleness check, run by the unit job)", () => {
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(checkAudit(extracted, rows, UNSAFE_ALLOWLIST)).toEqual([]);
   });
