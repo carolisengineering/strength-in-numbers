@@ -49,6 +49,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
       if (res.status !== status) throw new Error(`${actor} ${req.method} ${req.url} answered ${res.status}, expected ${status}: ${res.body}`);
       return (res.body === "" ? {} : JSON.parse(res.body)) as { id: string };
     },
+    rows: (sql, ...params) => db.prisma.$queryRawUnsafe(sql, ...params),
   };
 
   const userOf = (actor: WorldActor) => (actor === "A" ? world.a.userId : actor === "B" ? world.b.userId : world.c.userId);
@@ -89,7 +90,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
   /** The control: the same request on the actor's own data succeeds (AC11). */
   async function runControl(c: CrossUserCase, scratch: string | undefined) {
     const ctl = c.control(world, scratch);
-    const res = await call(c.actor, ctl, `control ${ctl.method} ${ctl.url}`);
+    const res = await call(c.controlActor ?? c.actor, ctl, `control ${ctl.method} ${ctl.url}`);
     expect(res.status, `control ${c.route} — ${c.name}: ${res.body}`).toBe(ctl.expectStatus);
     if (ctl.expectId) expect(res.body, "control body holds the actor's own id").toContain(ctl.expectId);
   }
@@ -130,6 +131,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
         const scratch = c.disposable ? await c.disposable(world, api) : undefined;
         await runControl(c, scratch);
         expect(await snapshot(db, world.b.userId), "B's rows changed by the control").toBe(b0);
+        await c.cleanup?.(world, api);
       });
     }
   });
@@ -137,14 +139,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
   describe("AC9, AC13, AC14 — collections, key collisions and writes with no foreign id", () => {
     for (const c of CASES.filter((x) => x.kind !== "foreign-id")) {
       it(`${c.kind}: ${c.route} — ${c.name}`, async () => {
-        const b0 = await snapshot(db, world.b.userId);
+        // Setup first (it may act as B, e.g. for an exercise-list delta), then B's snapshot.
         const scratch = c.disposable ? await c.disposable(world, api) : undefined;
+        const b0 = await snapshot(db, world.b.userId);
+        // When C acts, A is a bystander too and must not change either.
+        const a0 = c.actor === "A" ? undefined : await snapshot(db, world.a.userId);
         const res = await call(c.actor, c.call(world, scratch), `${c.route} (${c.name})`);
         expect(res.status, res.body).toBe(c.expect.status);
         await c.check?.(world, res, api);
         expect(await snapshot(db, world.b.userId), "B's rows changed").toBe(b0);
+        if (a0 !== undefined) expect(await snapshot(db, world.a.userId), "A's rows changed").toBe(a0);
         await runControl(c, scratch);
         expect(await snapshot(db, world.b.userId), "B's rows changed by the control").toBe(b0);
+        await c.cleanup?.(world, api);
       });
     }
   });

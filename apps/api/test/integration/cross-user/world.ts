@@ -63,6 +63,16 @@ export const SHARED_HEVY_TEMPLATE = "T-CROSS-SHARED";
 export const SHARED_HEVY_WORKOUT = "hevy-cross-shared-1";
 export const IMPORT_DAY = { startTime: "2026-09-10T10:00:00Z", endTime: "2026-09-10T11:00:00Z", title: "Imported push" } as const;
 
+/**
+ * Names and a Hevy template only B holds, for the AC14 collision cases. They
+ * carry no marker on purpose: A sends them and the app echoes them back to A.
+ */
+export const B_ONLY = {
+  exerciseName: "Cross-user name only B used",
+  routineName: "Cross-user routine name only B used",
+  hevyTemplateId: "T-CROSS-B-ONLY",
+} as const;
+
 /** The fields of a response body this file reads. */
 interface Json {
   id: string;
@@ -176,6 +186,26 @@ async function buildOwned(
     ],
     sectionRules: [{ name: mark("hevy-section-rule"), treatment: "notes_on_first" }],
   });
+  if (globals.onlyB) {
+    await must(api, 200, actor, "PATCH", "/v1/hevy/mapping", {
+      upsert: [
+        {
+          hevyTemplateId: B_ONLY.hevyTemplateId,
+          hevyTitle: mark("hevy-title"),
+          hevyType: "weight_reps",
+          role: "exercise",
+          exerciseId: globals.onlyB,
+          measureRule: null,
+          exportAs: true,
+        },
+      ],
+    });
+    await must(api, 201, actor, "POST", "/v1/exercises", { name: B_ONLY.exerciseName, modality: "weight_reps" });
+    await must(api, 201, actor, "POST", "/v1/routines", {
+      name: B_ONLY.routineName,
+      items: [{ exerciseId: custom.id, targetSets: 1, targetRepsLow: 5, targetRepsHigh: 5 }],
+    });
+  }
   const begin = await must(api, 200, actor, "POST", `/v1/workouts/${started.id}/hevy-link`);
   await must(api, 200, actor, "PUT", `/v1/workouts/${started.id}/hevy-link`, {
     hevyWorkoutId: `hevy-sent-${actor}`,
