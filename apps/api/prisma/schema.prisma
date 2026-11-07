@@ -154,10 +154,10 @@ model Workout {
 model WorkoutExercise {
   id                   String   @id @db.Uuid
   workoutId            String   @map("workout_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId               String   @map("user_id") @db.Uuid
-  workout              Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  workout              Workout  @relation(fields: [workoutId, userId], references: [id, userId], onDelete: Cascade, map: "workout_exercise_workout_owner_fkey")
   position             Int      @db.SmallInt
   exerciseId           String   @map("exercise_id") @db.Uuid
   exercise             Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
@@ -208,10 +208,10 @@ model Routine {
 model RoutineItem {
   id             String   @id @db.Uuid
   routineId      String   @map("routine_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId         String   @map("user_id") @db.Uuid
-  routine        Routine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  routine        Routine  @relation(fields: [routineId, userId], references: [id, userId], onDelete: Cascade, map: "routine_item_routine_owner_fkey")
   position       Int      @db.SmallInt
   exerciseId     String   @map("exercise_id") @db.Uuid
   exercise       Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
@@ -238,10 +238,10 @@ model RoutineItem {
 model RoutineItemSet {
   id            String      @id @db.Uuid
   routineItemId String      @map("routine_item_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId        String      @map("user_id") @db.Uuid
-  routineItem   RoutineItem @relation(fields: [routineItemId], references: [id], onDelete: Cascade, map: "routine_item_set_item_fkey")
+  routineItem   RoutineItem @relation(fields: [routineItemId, userId], references: [id, userId], onDelete: Cascade, map: "routine_item_set_routine_item_owner_fkey")
   position      Int         @db.SmallInt
   setType       String      @default("working") @map("set_type")
   repsLow       Int?        @map("reps_low") @db.SmallInt
@@ -258,10 +258,10 @@ model RoutineItemSet {
 model WorkoutPlannedSet {
   id                String          @id @db.Uuid
   workoutExerciseId String          @map("workout_exercise_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId            String          @map("user_id") @db.Uuid
-  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade, map: "workout_planned_set_exercise_fkey")
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId, userId], references: [id, userId], onDelete: Cascade, map: "workout_planned_set_workout_exercise_owner_fkey")
   position          Int             @db.SmallInt
   setType           String          @default("working") @map("set_type")
   repsLow           Int?            @map("reps_low") @db.SmallInt
@@ -278,10 +278,10 @@ model WorkoutPlannedSet {
 model SetEntry {
   id                String          @id @db.Uuid
   workoutExerciseId String          @map("workout_exercise_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId            String          @map("user_id") @db.Uuid
-  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId, userId], references: [id, userId], onDelete: Cascade, map: "set_entry_workout_exercise_owner_fkey")
   setNumber         Int             @map("set_number") @db.SmallInt
   setType           String          @default("working") @map("set_type")
   reps              Int?            @db.SmallInt
@@ -342,10 +342,10 @@ model PersonalRecord {
 model RoutineSection {
   id        String        @id @db.Uuid
   routineId String        @map("routine_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId    String        @map("user_id") @db.Uuid
-  routine   Routine       @relation(fields: [routineId], references: [id], onDelete: Cascade, map: "routine_section_routine_fkey")
+  routine   Routine       @relation(fields: [routineId, userId], references: [id, userId], onDelete: Cascade, map: "routine_section_routine_owner_fkey")
   position  Int           @db.SmallInt
   name      String
   notes     String?
@@ -365,10 +365,10 @@ model RoutineSection {
 model WorkoutSection {
   id        String            @id @db.Uuid
   workoutId String            @map("workout_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId    String            @map("user_id") @db.Uuid
-  workout   Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade, map: "workout_section_workout_fkey")
+  workout   Workout           @relation(fields: [workoutId, userId], references: [id, userId], onDelete: Cascade, map: "workout_section_workout_owner_fkey")
   position  Int               @db.SmallInt
   name      String
   notes     String?
@@ -399,10 +399,10 @@ model WorkoutSection {
 /// (`workout_section_round_no_check`, `workout_section_round_seconds_check`) live in the SQL (0018).
 model WorkoutSectionRound {
   workoutSectionId String         @map("workout_section_id") @db.Uuid
-  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger and tied to it by a composite foreign key
-  /// that lives only in migration 0019's SQL (no relation here, so Prisma can't express it).
+  /// Spec 21.1 Phase A: the owner, filled from the parent by a trigger (migration 0019) and tied to the parent's
+  /// owner by the composite relation below: a child can't have another owner than its parent.
   userId           String         @map("user_id") @db.Uuid
-  section          WorkoutSection @relation(fields: [workoutSectionId], references: [id], onDelete: Cascade, map: "workout_section_round_section_fkey")
+  section          WorkoutSection @relation(fields: [workoutSectionId, userId], references: [id, userId], onDelete: Cascade, map: "workout_section_round_workout_section_owner_fkey")
   roundNo          Int            @map("round_no") @db.SmallInt
   seconds          Int
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)

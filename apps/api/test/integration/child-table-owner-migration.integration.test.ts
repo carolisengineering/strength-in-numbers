@@ -160,7 +160,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
     });
   });
 
-  describe("AC2 — inserts that do not mention user_id still work", () => {
+  describe("AC2, AC5 — inserts that do not mention user_id (every writer and fixture before 0019) still work", () => {
     it("a new row of each child table gets its parent's owner from the fill trigger", async () => {
       const t = await insertTree(b.user);
       expect(await ownerOf("workout_exercise", "id = $1::uuid", t.workoutExercise)).toBe(b.user);
@@ -211,6 +211,35 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
 
     it.each(CHILD_LINKS.map((l) => l.child))("a %s row naming another owner than its parent's fails 23503", async (child) => {
       await expect(insertUnderAAsB[child]()).rejects.toThrow(/23503/);
+    });
+
+    /** Inserts one row of `child` under a parent id that exists nowhere, leaving `user_id` to the trigger. */
+    const insertUnderMissingParent: Record<ChildTable, () => Promise<unknown>> = {
+      workout_exercise: () =>
+        sql(
+          `INSERT INTO "workout_exercise" (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot)
+           VALUES ($1::uuid, $2::uuid, 0, $3::uuid, 'Bench', 'weight_reps')`,
+          uuidv7(),
+          uuidv7(),
+          exercise,
+        ),
+      workout_section: () => sql(`INSERT INTO "workout_section" (id, workout_id, position, name) VALUES ($1::uuid, $2::uuid, 0, 'X')`, uuidv7(), uuidv7()),
+      set_entry: () =>
+        sql(`INSERT INTO "set_entry" (id, workout_exercise_id, set_number, client_generated_id) VALUES ($1::uuid, $2::uuid, 1, $3::uuid)`, uuidv7(), uuidv7(), uuidv7()),
+      workout_planned_set: () =>
+        sql(`INSERT INTO "workout_planned_set" (id, workout_exercise_id, position) VALUES ($1::uuid, $2::uuid, 0)`, uuidv7(), uuidv7()),
+      workout_section_round: () =>
+        sql(`INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds) VALUES ($1::uuid, 1, 60)`, uuidv7()),
+      routine_item: () =>
+        sql(`INSERT INTO "routine_item" (id, routine_id, position, exercise_id) VALUES ($1::uuid, $2::uuid, 0, $3::uuid)`, uuidv7(), uuidv7(), exercise),
+      routine_section: () => sql(`INSERT INTO "routine_section" (id, routine_id, position, name) VALUES ($1::uuid, $2::uuid, 0, 'X')`, uuidv7(), uuidv7()),
+      routine_item_set: () => sql(`INSERT INTO "routine_item_set" (id, routine_item_id, position) VALUES ($1::uuid, $2::uuid, 0)`, uuidv7(), uuidv7()),
+    };
+
+    it.each(CHILD_LINKS.map((l) => l.child))("a %s row under a parent that exists nowhere still fails 23503, not 23502", async (child) => {
+      // The fill trigger finds no parent; it raises the foreign-key violation itself rather than leaving user_id
+      // NULL for NOT NULL to refuse first (code review). Callers that read the SQLSTATE see what they saw before 0019.
+      await expect(insertUnderMissingParent[child]()).rejects.toThrow(/23503/);
     });
 
     it("moving A's set (number 2; B's exercise has only 1) under B's workout exercise fails 23503", async () => {
@@ -284,7 +313,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
   });
 
   describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {
-    it("prisma migrate diff reports only the known differences: the generated set_entry columns and the composite owner keys", () => {
+    it("prisma migrate diff reports only the generated set_entry columns: the composite owner keys are in schema.prisma too", () => {
       const apiDir = fileURLToPath(new URL("../../", import.meta.url));
       const r = spawnSync(
         "pnpm",
@@ -294,22 +323,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
       const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
       expect(r.status, report).toBe(2);
       const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-      // Prisma models each parent link as a single-column relation; 0019 replaced those keys with the composite
-      // (parent id, user_id) ones, which Prisma can't express without a relation on userId (spec AC6). The two
-      // generated set_entry columns are the long-standing difference (Specs 05.1, 05.3).
-      const expected = [...CHILD_LINKS]
-        .sort((x, y) => x.child.localeCompare(y.child))
-        .flatMap(({ child, column }) => [
-          `[*] Changed the \`${child}\` table`,
-          `[-] Removed foreign key on columns (${column}, user_id)`,
-          ...(child === "set_entry"
-            ? [
-                expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
-                expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
-              ]
-            : []),
-          `[+] Added foreign key on columns (${column})`,
-        ]);
+      // schema.prisma declares each parent link as the composite owner relation 0019 created, so the only difference
+      // left is the long-standing one: the two generated set_entry columns (Specs 05.1, 05.3).
+      const expected = [
+        "[*] Changed the `set_entry` table",
+        expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
+        expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
+      ];
       expect(changeLines, report).toEqual(expected);
     });
   });
@@ -318,9 +338,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
     it("a set inserted after the triggers and before the backfill is filled by the trigger", async () => {
       expect(await ownerOf("set_entry", "id = $1::uuid", midMigrationSet)).toBe(a.user);
     });
-    it("the first statements take every lock up front, in the API's order (routine, workout, then parents before children), with a lock timeout", () => {
-      // `prisma migrate deploy` runs the file as one transaction, so each lock is held to the commit. Taking them in
-      // the API's order means a request waits instead of deadlocking the migration (final review, Minor 1).
+    it("the first statements take every lock up front, in the API's write order (routine, workout, then parents before children), with a lock timeout", () => {
+      // `prisma migrate deploy` runs the file as one transaction, so each lock is held to the commit. Taking them all in
+      // one statement, before the long work, in the order the API's locking writes use, keeps the conflict window to
+      // that statement (a read naming a child first can still deadlock with it; the runbook covers the retry).
       const text = readFileSync(fileURLToPath(new URL(`../../prisma/migrations/${OWNER_MIGRATION}/migration.sql`, import.meta.url)), "utf8");
       const statements = text
         .split("\n")

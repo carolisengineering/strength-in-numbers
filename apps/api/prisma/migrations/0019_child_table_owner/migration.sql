@@ -14,13 +14,15 @@
 --
 -- Left alone (D8): the ON DELETE SET NULL section links (`workout_exercise.section_id`,
 -- `routine_item.section_id`), `workout.routine_id`, `hevy_link.workout_id`, every `exercise_id`.
--- schema.prisma declares the plain `userId` fields and the parents' `(id, user_id)` keys; the composite
--- foreign keys live only here (Prisma can't express them without a relation on `userId`).
+-- schema.prisma declares the same shape (`userId`, the parents' `(id, user_id)` keys, and each parent link
+-- as a composite relation with these key names), so a generated migration never undoes it.
 
 -- 0. Every lock up front. `prisma migrate deploy` runs this file as one transaction, so each lock is held to the
---    commit. Taking them all first, in the API's order (routine before workout, each parent before its children),
---    means a request waits for the migration instead of deadlocking it. If they can't be had within 5 s the
---    migration fails and changes nothing (runbook: `migrate resolve --rolled-back`, then retry).
+--    commit. Taking them all in one statement, before any long work, in the order the API's locking writes use
+--    (routine before workout, each parent before its children), keeps the window for a conflict to this statement.
+--    It can't remove it: a read that names a child before its parent locks in its own order, and Postgres then
+--    aborts one side (one request fails, or the migration does). If the migration fails, for that or the 5 s
+--    lock timeout, it changes nothing (runbook: `migrate resolve --rolled-back`, then retry).
 SET lock_timeout = '5s';
 LOCK TABLE "routine", "workout", "routine_item", "routine_section", "routine_item_set", "workout_exercise",
   "workout_section", "set_entry", "workout_planned_set", "workout_section_round" IN ACCESS EXCLUSIVE MODE;
@@ -37,12 +39,16 @@ ALTER TABLE "routine_item_set" ADD COLUMN "user_id" UUID;
 
 -- 2. The fill triggers: one small static function per child, its parent fixed when written. A row
 --    that leaves user_id NULL gets its parent's owner; a row that names one keeps it, and the composite
---    foreign key (step 5) refuses it if it differs from the parent's. They exist before the backfill, so a
+--    foreign key (step 5) refuses it if it differs from the parent's. A parent that doesn't exist raises
+--    23503 here, as the foreign key did before (left NULL, NOT NULL would refuse it first with 23502). They exist before the backfill, so a
 --    row inserted while the file is applied in parts (by hand, or the migration test) is filled too.
 CREATE FUNCTION workout_exercise_fill_user() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "workout" p WHERE p.id = NEW.workout_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into workout_exercise names a workout that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -52,6 +58,9 @@ CREATE FUNCTION workout_section_fill_user() RETURNS trigger LANGUAGE plpgsql AS 
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "workout" p WHERE p.id = NEW.workout_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into workout_section names a workout that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -61,6 +70,9 @@ CREATE FUNCTION set_entry_fill_user() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "workout_exercise" p WHERE p.id = NEW.workout_exercise_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into set_entry names a workout_exercise that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -70,6 +82,9 @@ CREATE FUNCTION workout_planned_set_fill_user() RETURNS trigger LANGUAGE plpgsql
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "workout_exercise" p WHERE p.id = NEW.workout_exercise_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into workout_planned_set names a workout_exercise that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -79,6 +94,9 @@ CREATE FUNCTION workout_section_round_fill_user() RETURNS trigger LANGUAGE plpgs
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "workout_section" p WHERE p.id = NEW.workout_section_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into workout_section_round names a workout_section that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -88,6 +106,9 @@ CREATE FUNCTION routine_item_fill_user() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "routine" p WHERE p.id = NEW.routine_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into routine_item names a routine that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -97,6 +118,9 @@ CREATE FUNCTION routine_section_fill_user() RETURNS trigger LANGUAGE plpgsql AS 
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "routine" p WHERE p.id = NEW.routine_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into routine_section names a routine that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -106,6 +130,9 @@ CREATE FUNCTION routine_item_set_fill_user() RETURNS trigger LANGUAGE plpgsql AS
 BEGIN
   IF NEW.user_id IS NULL THEN
     SELECT p.user_id INTO NEW.user_id FROM "routine_item" p WHERE p.id = NEW.routine_item_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'insert into routine_item_set names a routine_item that does not exist' USING ERRCODE = 'foreign_key_violation';
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
