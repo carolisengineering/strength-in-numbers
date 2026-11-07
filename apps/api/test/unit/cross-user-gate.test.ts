@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { RegisteredRoute, RouteKey } from "../integration/cross-user/registry.js";
 import { EXEMPTIONS } from "../integration/cross-user/exemptions.js";
@@ -64,6 +64,12 @@ describe("AC3 — the coverage gate", () => {
     const slots = () => ["params.id"];
     const failures = checkCoverage(["GET /v1/x/:id"], [caseFor("GET /v1/x/:id", ["params.id", "body.nope"], "B's x")], {}, slots);
     expect(failures).toEqual(['GET /v1/x/:id case "B\'s x" covers body.nope, which the route does not have']);
+  });
+
+  it("names an exempt route that takes an id (an exemption covers no id slot)", () => {
+    const slots = (k: RouteKey) => (k === "PATCH /v1/me" ? ["body.favoriteRoutineId"] : []);
+    const failures = checkCoverage(["PATCH /v1/me"], [], { "PATCH /v1/me": "own row only" }, slots);
+    expect(failures).toEqual(["PATCH /v1/me is exempt but takes body.favoriteRoutineId; an id slot needs a case"]);
   });
 
   it("passes when every route and slot is accounted for", () => {
@@ -165,5 +171,25 @@ describe("AC6 — the walker reads every real /v1 route", () => {
     expect(required["PATCH /v1/exercises/:id"]).toEqual(["params.id"]);
     expect(required["POST /v1/hevy/import/workouts"]).toEqual([]);
     expect(required["PUT /v1/hevy/mapping"]).toEqual(["body.pairs[].exerciseId"]);
+  });
+});
+
+describe("the case table stays valid as the calendar moves", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("every workout start a case sends is within the API's 7-day past limit, on any run date", async () => {
+    vi.useFakeTimers({ now: new Date("2027-03-15T12:00:00Z") });
+    const { CASES } = await import("../integration/cross-user/cases.js");
+    const ids = new Proxy({}, { get: () => "0192a1b2-0000-7000-8000-00000000c001" });
+    const world = { a: ids, b: ids, c: ids, globalExercise: "g", globalOnlyB: "g2" } as never;
+    const starts: string[] = [];
+    for (const c of CASES) {
+      for (const req of [c.call(world, "0192a1b2-0000-7000-8000-00000000c002"), c.control(world, "x y")]) {
+        const startedAt = (req.body as { startedAt?: unknown } | undefined)?.startedAt;
+        if (req.url === "/v1/workouts" && typeof startedAt === "string") starts.push(startedAt);
+      }
+    }
+    expect(starts.length).toBeGreaterThan(0);
+    for (const s of starts) expect(Date.now() - Date.parse(s), s).toBeLessThan(7 * 24 * 3_600_000);
   });
 });

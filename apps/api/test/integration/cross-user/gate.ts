@@ -30,6 +30,12 @@ export function checkCoverage(
     if (!registeredSet.has(key)) failures.push(`stale entry: exemption for ${key} names a route the app does not register`);
   }
 
+  // An exemption says "this route reads no other row"; a route that takes an id can't claim that.
+  for (const key of registered) {
+    if (!exempt.has(key)) continue;
+    for (const slot of slotsOf(key)) failures.push(`${key} is exempt but takes ${slot}; an id slot needs a case`);
+  }
+
   for (const key of registered) {
     if (!covered.has(key)) continue;
     const slots = new Set(slotsOf(key));

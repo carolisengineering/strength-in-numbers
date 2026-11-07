@@ -360,7 +360,7 @@ const PATH_ID_CASES: CrossUserCase[] = [
     route: "DELETE /v1/workout-sections/:id/round-times/:round",
     name: "B's timed section",
     foreign: (w) => w.b.finishedSection,
-    // Round 1 of A's timed section is cleared and put back by the PUT case's control (a keyed set, AC11).
+    // Clears round 1 of A's timed section for the rest of the suite (the PUT case ran first); no later case reads it.
     own: (w) => w.a.finishedSection,
     controlStatus: 204,
   }),
@@ -483,6 +483,9 @@ function slotCase(s: SlotCaseSpec): CrossUserCase {
   };
 }
 
+/** A start an hour back: the API refuses one more than 7 days in the past, so case times are relative. */
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
 /** One key for both calls of the row 15 case: the rejected start is rolled back, so it never replays. */
 const C_START_KEY = uuidv7();
 
@@ -517,12 +520,12 @@ const BODY_ID_CASES: CrossUserCase[] = [
     slot: "body.routineId",
     actor: "C",
     foreign: (w) => w.b.routine,
-    req: (_w, id) => ({ method: "POST", url: "/v1/workouts", body: { clientGeneratedId: C_START_KEY, startedAt: "2026-11-01T10:00:00Z", routineId: id } }),
+    req: (_w, id) => ({ method: "POST", url: "/v1/workouts", body: { clientGeneratedId: C_START_KEY, startedAt: hoursAgo(1), routineId: id } }),
     expect: 404,
     control: (w) => ({
       method: "POST",
       url: "/v1/workouts",
-      body: { clientGeneratedId: uuidv7(), startedAt: "2026-11-01T10:00:00Z", routineId: w.c.routineId },
+      body: { clientGeneratedId: uuidv7(), startedAt: hoursAgo(1), routineId: w.c.routineId },
       expectStatus: 201,
     }),
     cleanup: deleteCsLiveWorkout,
@@ -920,7 +923,7 @@ const WRITE_CASES: CrossUserCase[] = [
     name: "C starts a workout with B's clientGeneratedId and gets a new workout",
     kind: "collision",
     actor: "C",
-    req: (w) => ({ method: "POST", url: "/v1/workouts", body: { clientGeneratedId: w.b.finishedWorkoutClientId, startedAt: "2026-11-01T10:00:00Z" } }),
+    req: (w) => ({ method: "POST", url: "/v1/workouts", body: { clientGeneratedId: w.b.finishedWorkoutClientId, startedAt: hoursAgo(1) } }),
     expect: 201,
     check: (w, res) => newRowIsActors(w, res, "the start"),
     control: () => ({ method: "GET", url: "/v1/workouts/active", expectStatus: 200 }),
