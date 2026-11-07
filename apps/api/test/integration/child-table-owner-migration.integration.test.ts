@@ -1,5 +1,6 @@
 // Spec 21.1 Phase A, AC1–AC6 — migration 0019 (an owner column on the eight child tables), real Postgres.
-import { execFileSync } from "node:child_process";
+// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from timed-sections-migration, apps/api CLAUDE.md).
+import { execFileSync, spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -279,6 +280,37 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
           valid: true,
         });
       }
+    });
+  });
+
+  describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {
+    it("prisma migrate diff reports only the known differences: the generated set_entry columns and the composite owner keys", () => {
+      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
+      const r = spawnSync(
+        "pnpm",
+        ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
+        { cwd: apiDir, encoding: "utf8" },
+      );
+      const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
+      expect(r.status, report).toBe(2);
+      const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
+      // Prisma models each parent link as a single-column relation; 0019 replaced those keys with the composite
+      // (parent id, user_id) ones, which Prisma can't express without a relation on userId (spec AC6). The two
+      // generated set_entry columns are the long-standing difference (Specs 05.1, 05.3).
+      const expected = [...CHILD_LINKS]
+        .sort((x, y) => x.child.localeCompare(y.child))
+        .flatMap(({ child, column }) => [
+          `[*] Changed the \`${child}\` table`,
+          `[-] Removed foreign key on columns (${column}, user_id)`,
+          ...(child === "set_entry"
+            ? [
+                expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
+                expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
+              ]
+            : []),
+          `[+] Added foreign key on columns (${column})`,
+        ]);
+      expect(changeLines, report).toEqual(expected);
     });
   });
 

@@ -574,6 +574,29 @@ eligible sets.
 
    Discard the scratch workout afterwards. The History screen's parse of the new required `timedSections` fails for the deploy minutes (accepted on staging, as for 09.1 / 09.2 / 09.4).
 
+### 0019 — Owner column on the child tables (Spec 21.1 Phase A, 2026-11-07)
+
+1. **Before merging** Phase A. Merging auto-deploys staging, and the new code's ownership predicates (`repositories/ownership.ts`) and three detail / History loaders read `user_id` on the child tables, so without the column every set edit, workout detail and History page answers `500`. Spec 21.1 §6.9 S1 was corrected to this order.
+   - Count first: `SELECT count(*) FROM set_entry;`. Over about 500,000 rows, stop: split the backfill by id range by hand (spec §4.2). Not expected on staging (thousands of rows).
+   - Pick a quiet minute. Each table takes `ACCESS EXCLUSIVE` briefly for its new column, and the backfill rewrites every child row once (seconds at staging's size).
+2. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`, then `db:migrate:status` again (do not assume). It adds `user_id` to `workout_exercise`, `workout_section`, `set_entry`, `workout_planned_set`, `workout_section_round`, `routine_item`, `routine_section` and `routine_item_set`; a `BEFORE INSERT` fill trigger on each; the backfill; `(id, user_id)` keys on five parents; composite foreign keys in place of the eight single-column ones; and `NOT NULL`. `\d set_entry` shows `user_id uuid not null`, the trigger `set_entry_fill_user` and the key `set_entry_workout_exercise_owner_fkey`. Expand-only: the running API never names the column, and the trigger fills it on every insert.
+3. The consistency query (spec AC1). Every row must be `0`:
+
+   ```sql
+   SELECT 'workout_exercise' AS t, count(*)::int AS n FROM "workout_exercise" c JOIN "workout" p ON p.id = c.workout_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'workout_section' AS t, count(*)::int AS n FROM "workout_section" c JOIN "workout" p ON p.id = c.workout_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'set_entry' AS t, count(*)::int AS n FROM "set_entry" c JOIN "workout_exercise" p ON p.id = c.workout_exercise_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'workout_planned_set' AS t, count(*)::int AS n FROM "workout_planned_set" c JOIN "workout_exercise" p ON p.id = c.workout_exercise_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'workout_section_round' AS t, count(*)::int AS n FROM "workout_section_round" c JOIN "workout_section" p ON p.id = c.workout_section_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'routine_item' AS t, count(*)::int AS n FROM "routine_item" c JOIN "routine" p ON p.id = c.routine_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'routine_section' AS t, count(*)::int AS n FROM "routine_section" c JOIN "routine" p ON p.id = c.routine_id WHERE c.user_id IS DISTINCT FROM p.user_id
+   UNION ALL SELECT 'routine_item_set' AS t, count(*)::int AS n FROM "routine_item_set" c JOIN "routine_item" p ON p.id = c.routine_item_id WHERE c.user_id IS DISTINCT FROM p.user_id;
+   ```
+
+4. Merge Phase A (Render deploys). Run the staging API smoke, then open a finished workout and History on a phone: both should show your own data as before.
+5. Production (Spec 15): `deploy-prod` never migrates. Apply `0019` by hand the same way before approving the release (production is empty, so the backfill does nothing).
+6. Rollback: revert the code. The columns, triggers and keys stay, and old code runs on them unchanged (AC5: the whole suite passed on the migrated schema before the Phase A code existed). Nothing to undo in the data.
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**

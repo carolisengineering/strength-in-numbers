@@ -10,6 +10,7 @@ import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
 import { tableHash, TRUNCATE_ACCOUNTS } from "./account-helpers.js";
+import { CHILD_LINKS } from "./owner-consistency.js";
 
 const silent = pino({ level: "silent" });
 const GRACE_S = ACCOUNT_PURGE_GRACE_DAYS * 86_400;
@@ -95,13 +96,16 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
   /** A row's identity: its id, or (Spec 19.0's id-less hevy tables) its whole content. */
   const ROW_KEY = "COALESCE(to_jsonb(t)->>'id', to_jsonb(t)::text)";
 
+  /** Every foreign key whose first column points at its parent's `id`. Spec 21.1's composite owner keys
+   * (`(parent_id, user_id)` → parent `(id, user_id)`) are followed through that first column. */
   async function fkEdges(): Promise<Edge[]> {
     return db.prisma.$queryRawUnsafe<Edge[]>(`
       SELECT c.conrelid::regclass::text AS child, a.attname AS col, c.confrelid::regclass::text AS parent,
              c.confdeltype::text AS rule
       FROM pg_constraint c
       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
-      WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace AND array_length(c.conkey, 1) = 1`);
+      JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
+      WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace AND pa.attname = 'id'`);
   }
 
   /** Victim row ids per table, by following FK edges from "user" to a fixpoint. */
@@ -143,6 +147,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
     for (const [table, set] of before) expect(set.size, `fixture has no ${table} rows (vacuous)`).toBeGreaterThan(0);
     // Spec 09.5 AC11 — discovery reaches the round table through the workout_section cascade; no allowlist entry.
     expect(reached.has("workout_section_round")).toBe(true);
+    // Spec 21.1 AC4 — discovery follows the composite owner keys to every child table.
+    for (const { child } of CHILD_LINKS) expect(reached.has(child), child).toBe(true);
 
     const summary = await runPurge(db.prisma, silent, { confirm: true, skipGrace: false });
     expect(summary).toMatchObject({ purged: 1, skipped: 0, failed: 0 });
