@@ -124,6 +124,11 @@ describe("AC6 — id slots are derived from the route's schemas", () => {
     expect(idSlots(route("GET /v1/personal-records", { querystring }))).toEqual(["query.exerciseId", "query.workoutId"]);
   });
 
+  it("a plural key (`ids`, `workoutIds`) holding an array of ids is a slot", () => {
+    const body = z.object({ ids: z.array(z.string()), workoutIds: z.array(z.string()).optional(), idsCount: z.number() });
+    expect(idSlots(route("POST /v1/bulk", { body }))).toEqual(["body.ids", "body.workoutIds"]);
+  });
+
   it("an `id` key counts, a key merely containing `id` does not", () => {
     const body = z.object({ id: z.string(), idempotent: z.boolean(), valid: z.boolean() });
     expect(idSlots(route("POST /v1/x", { body }))).toEqual(["body.id"]);
@@ -155,6 +160,7 @@ describe("AC6 — the walker reads every real /v1 route", () => {
     expect(all["POST /v1/workouts"]).toEqual(["body.clientGeneratedId", "body.routineId"]);
     const required = Object.fromEntries(v1.map((r) => [r.key, requiredSlots(r)]));
     // Spec §5 rows 9 and 50: shared reference ids and Hevy's own ids are not slots.
+    expect(all["POST /v1/exercises"]).toContain("body.secondaryMuscleIds");
     expect(required["POST /v1/exercises"]).toEqual([]);
     expect(required["PATCH /v1/exercises/:id"]).toEqual(["params.id"]);
     expect(required["POST /v1/hevy/import/workouts"]).toEqual([]);

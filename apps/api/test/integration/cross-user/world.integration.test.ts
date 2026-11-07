@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { PrismaClient } from "@prisma/client";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "../helpers.js";
+import { settleCapture, startCapture } from "../one-off-helpers.js";
 import { makeCrossUserApp } from "./app.js";
 import { buildWorld, type World } from "./world.js";
 import { OWNERSHIP_MAP, snapshot, userReachableTables } from "./snapshot.js";
@@ -72,6 +74,24 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — cross-user world (real P
     const reachable = await userReachableTables(db);
     expect(reachable.length).toBeGreaterThan(10);
     expect(Object.keys(OWNERSHIP_MAP).sort()).toEqual(reachable.sort());
+  });
+
+  it("AC17 — the app runs its queries on the handle it is given", async () => {
+    // A second client on the same database stands in for Spec 21.1's restricted login.
+    const other = { prisma: new PrismaClient({ datasourceUrl: db.url, log: [{ emit: "event", level: "query" }] }) } as IntegrationDb;
+    const built = await makeCrossUserApp(other);
+    try {
+      const seen = await startCapture(other);
+      const res = await built.app.inject({ method: "GET", url: `/v1/routines/${world.a.routine}`, headers: built.as("A") });
+      await settleCapture(other, seen);
+      expect(res.statusCode).toBe(200);
+      // Both the token's user lookup and the routine read went through the handle passed in.
+      expect(seen.some((q) => q.includes('"user"')), seen.join("\n")).toBe(true);
+      expect(seen.some((q) => q.includes('"routine"')), seen.join("\n")).toBe(true);
+    } finally {
+      await built.app.close();
+      await other.prisma.$disconnect();
+    }
   });
 
   it("a snapshot is stable when nothing changed", async () => {

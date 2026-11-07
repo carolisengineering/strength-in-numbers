@@ -1,6 +1,8 @@
 import { uuidv7 } from "uuidv7";
 import type { RouteKey } from "./registry.js";
-import type { World } from "./world.js";
+import { B_ONLY, type World } from "./world.js";
+
+const B_ONLY_DAY = B_ONLY.day;
 
 /**
  * Spec 21.0 §5 — the cross-user case table. One or more cases per non-exempt
@@ -301,10 +303,13 @@ const PATH_ID_CASES: CrossUserCase[] = [
   }),
   pathCase({
     route: "POST /v1/workout-exercises/:id/sets",
-    name: "B's workout exercise",
-    foreign: (w) => w.b.liveWorkoutExercise,
-    body: () => ({ reps: 5 }),
+    // B's key with B's workout exercise: were the replay lookup (§6.7 #1) ever reached before the
+    // ownership check, B's stored set would come back. The fresh-id call sends the same key.
+    name: "B's workout exercise with B's own set key",
+    foreign: (w) => w.b.finishedWorkoutExercise,
+    body: (w) => ({ clientGeneratedId: w.b.finishedSetClientId, reps: 5 }),
     own: (w) => w.a.liveWorkoutExercise,
+    controlBody: () => ({ reps: 5 }),
     controlStatus: 201,
   }),
   pathCase({
@@ -397,7 +402,9 @@ const PATH_ID_CASES: CrossUserCase[] = [
     route: "POST /v1/routines/:id/keep",
     name: "B's one-off routine",
     foreign: (w) => w.b.oneOffRoutine,
-    own: (w) => w.a.oneOffRoutine,
+    // Keep turns the one-off into an ordinary routine, so the control keeps a disposable one (AC11).
+    disposable: async (w, api) =>
+      (await api.must("A", { method: "POST", url: "/v1/routines", body: { ...routineBody(w.a.customExercise, `A-OWN-disposable-${uuidv7()}`), oneOff: true } }, 201)).id,
     controlStatus: 204,
   }),
   pathCase({
@@ -680,11 +687,19 @@ const COLLECTION_CASES: CrossUserCase[] = [
       await api.must("B", { method: "DELETE", url: `/v1/exercises/${created.id}` }, 204);
       w.b.markers.push(name);
       w.b.allIds.push(created.id);
-      return String(full.syncToken);
+      // A does the same, so the control proves the delta does carry the caller's own retired row.
+      const own = await api.must("A", { method: "POST", url: "/v1/exercises", body: { name: `A-OWN-delta-${uuidv7()}`, modality: "weight_reps" } }, 201);
+      await api.must("A", { method: "DELETE", url: `/v1/exercises/${own.id}` }, 204);
+      return `${String(full.syncToken)} ${own.id}`;
     },
-    url: (_w, token) => `/v1/exercises?since=${encodeURIComponent(token!)}`,
+    url: (_w, scratch) => `/v1/exercises?since=${encodeURIComponent(scratch!.split(" ")[0]!)}`,
     check: (w, res) => holdsNone(res.body, w.b.allIds, "the exercise delta"),
-    control: (w, token) => ({ method: "GET", url: `/v1/exercises?since=${encodeURIComponent(token!)}`, expectStatus: 200 }),
+    control: (_w, scratch) => ({
+      method: "GET",
+      url: `/v1/exercises?since=${encodeURIComponent(scratch!.split(" ")[0]!)}`,
+      expectStatus: 200,
+      expectId: scratch!.split(" ")[1]!,
+    }),
   }),
   collection({
     route: "GET /v1/exercises/usage",
@@ -754,7 +769,11 @@ const COLLECTION_CASES: CrossUserCase[] = [
     route: "GET /v1/routines",
     name: "the routine list holds only A's routines, one-offs included",
     url: () => "/v1/routines",
-    check: (w, res) => holdsNone(res.body, [w.b.routine, w.b.oneOffRoutine], "A's routines"),
+    check: (w, res) => {
+      holdsNone(res.body, [w.b.routine, w.b.oneOffRoutine], "A's routines");
+      const own = (json(res).routines as { id: string; oneOffUntil: string | null }[]).find((r) => r.id === w.a.oneOffRoutine);
+      if (own?.oneOffUntil == null) throw new Error(`A's one-off is missing or no longer a one-off: ${res.body}`);
+    },
     control: (w) => ({ method: "GET", url: "/v1/routines", expectStatus: 200, expectId: w.a.oneOffRoutine }),
   }),
   collection({
@@ -812,14 +831,21 @@ const newRowIsActors = (w: World, res: CaseResponse, what: string) => {
   if (w.b.allIds.includes(id)) throw new Error(`${what} replayed B's row ${id}`);
 };
 
-const importBody = (dryRun: boolean, hevyWorkoutIds: string[]) => ({
+interface ImportEntry {
+  hevyWorkoutId: string;
+  startTime: string;
+  endTime: string;
+  title: string;
+}
+
+const importBody = (dryRun: boolean, entries: readonly ImportEntry[]) => ({
   dryRun,
-  workouts: hevyWorkoutIds.map((hevyWorkoutId) => ({
-    hevyWorkoutId,
-    title: "Imported push",
+  workouts: entries.map((e) => ({
+    hevyWorkoutId: e.hevyWorkoutId,
+    title: e.title,
     description: null,
-    startTime: "2026-09-10T10:00:00Z",
-    endTime: "2026-09-10T11:00:00Z",
+    startTime: e.startTime,
+    endTime: e.endTime,
     tzOffsetMinutes: 0,
     exercises: [
       {
@@ -832,9 +858,26 @@ const importBody = (dryRun: boolean, hevyWorkoutIds: string[]) => ({
   })),
 });
 
-/** Every workout id an import result names is A's (or none). */
-const importNamesOnlyA = async (w: World, res: CaseResponse, api: CaseApi) => {
-  const results = json(res).results as { workoutId: string | null; matchedWorkoutId: string | null }[];
+/**
+ * Spec §5 row 50. Each entry is something B holds; for A each must read as A's own state:
+ * - the shared Hevy id: A imported it too, so it is A's `already_imported`;
+ * - the Hevy id of B's sent link: A holds no link for it, so it is a new workout (`create`), never B's link;
+ * - B's unlinked workout's day and title: A has no workout then, so `create`, never a duplicate of B's.
+ */
+const rowFiftyImport = (dryRun: boolean): { entries: ImportEntry[]; outcomes: string[] } => ({
+  entries: [
+    { hevyWorkoutId: "hevy-cross-shared-1", startTime: "2026-09-10T10:00:00Z", endTime: "2026-09-10T11:00:00Z", title: "Imported push" },
+    { hevyWorkoutId: "hevy-sent-B", startTime: "2026-08-25T09:00:00Z", endTime: "2026-08-25T10:00:00Z", title: `Cross-user sent id ${dryRun ? "dry" : "run"}` },
+    { hevyWorkoutId: `hevy-cross-new-${uuidv7()}`, ...B_ONLY_DAY },
+  ],
+  outcomes: ["already_imported", "create", "create"],
+});
+
+/** Every workout id an import result names is A's (or none), and each outcome is the one A's own state gives. */
+const importAnswersFromA = (outcomes: readonly string[]) => async (w: World, res: CaseResponse, api: CaseApi) => {
+  const results = json(res).results as { outcome: string; workoutId: string | null; matchedWorkoutId: string | null }[];
+  const got = results.map((r) => r.outcome);
+  if (JSON.stringify(got) !== JSON.stringify(outcomes)) throw new Error(`import outcomes ${JSON.stringify(got)}, expected ${JSON.stringify(outcomes)}: ${res.body}`);
   const named = results.flatMap((r) => [r.workoutId, r.matchedWorkoutId]).filter((x): x is string => x !== null);
   for (const id of named) {
     const owner = await api.rows<{ user_id: string }>(`SELECT user_id::text FROM "workout" WHERE id = $1::uuid`, id);
@@ -942,18 +985,23 @@ const WRITE_CASES: CrossUserCase[] = [
     route: "POST /v1/hevy/import/workouts",
     name: "a dry run of B's Hevy workout id and day matches only A's rows",
     kind: "write-isolation",
-    req: () => ({ method: "POST", url: "/v1/hevy/import/workouts", body: importBody(true, ["hevy-cross-shared-1", "hevy-sent-B", `hevy-cross-new-${uuidv7()}`]) }),
+    req: () => ({ method: "POST", url: "/v1/hevy/import/workouts", body: importBody(true, rowFiftyImport(true).entries) }),
     expect: 200,
-    check: importNamesOnlyA,
-    control: () => ({ method: "POST", url: "/v1/hevy/import/workouts", body: importBody(true, [`hevy-cross-new-${uuidv7()}`]), expectStatus: 200 }),
+    check: importAnswersFromA(rowFiftyImport(true).outcomes),
+    control: () => ({
+      method: "POST",
+      url: "/v1/hevy/import/workouts",
+      body: importBody(true, [{ hevyWorkoutId: `hevy-cross-new-${uuidv7()}`, startTime: "2026-08-01T09:00:00Z", endTime: "2026-08-01T10:00:00Z", title: "A-OWN-import" }]),
+      expectStatus: 200,
+    }),
   }),
   write({
     route: "POST /v1/hevy/import/workouts",
     name: "a real run of B's Hevy workout id and day links only A's rows",
     kind: "write-isolation",
-    req: () => ({ method: "POST", url: "/v1/hevy/import/workouts", body: importBody(false, ["hevy-cross-shared-1", "hevy-sent-B", `hevy-cross-new-${uuidv7()}`]) }),
+    req: () => ({ method: "POST", url: "/v1/hevy/import/workouts", body: importBody(false, rowFiftyImport(false).entries) }),
     expect: 200,
-    check: importNamesOnlyA,
+    check: importAnswersFromA(rowFiftyImport(false).outcomes),
     control: (w) => ({ method: "GET", url: `/v1/workouts/${w.a.importedWorkout}`, expectStatus: 200, expectId: w.a.importedWorkout }),
   }),
   write({

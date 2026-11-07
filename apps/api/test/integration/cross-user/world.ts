@@ -71,6 +71,17 @@ export const B_ONLY = {
   exerciseName: "Cross-user name only B used",
   routineName: "Cross-user routine name only B used",
   hevyTemplateId: "T-CROSS-B-ONLY",
+  /**
+   * A finished, unlinked workout of B's on a day A has none: a duplicate candidate only for B (§5 row 50).
+   * Five days back at 09:00 UTC (a start may be at most 7 days in the past); A's workouts are 2 days back and now.
+   */
+  day: (() => {
+    const start = new Date();
+    start.setUTCHours(9, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - 5);
+    const end = new Date(start.getTime() + 3_600_000);
+    return { startTime: start.toISOString(), endTime: end.toISOString(), title: "Cross-user B-only day" };
+  })(),
 } as const;
 
 /** The fields of a response body this file reads. */
@@ -234,6 +245,17 @@ async function buildOwned(
   });
   const importedWorkout = (imported.results as { workoutId?: string }[])[0]?.workoutId;
   if (!importedWorkout) throw new Error(`world: ${actor}'s Hevy import created no workout: ${JSON.stringify(imported)}`);
+
+  if (globals.onlyB) {
+    const day = await must(api, 201, actor, "POST", "/v1/workouts", {
+      clientGeneratedId: uuidv7(),
+      startedAt: B_ONLY.day.startTime,
+      title: B_ONLY.day.title,
+    });
+    const dayWe = await must(api, 201, actor, "POST", `/v1/workouts/${day.id}/exercises`, { exerciseId: custom.id });
+    await must(api, 201, actor, "POST", `/v1/workout-exercises/${dayWe.id}/sets`, { reps: 5, weight: 60, weightUnit: "kg", isComplete: true });
+    await must(api, 200, actor, "PATCH", `/v1/workouts/${day.id}`, { endedAt: B_ONLY.day.endTime });
+  }
 
   // The live workout: one exercise, one set, one added section.
   const live = await must(api, 201, actor, "POST", "/v1/workouts", { clientGeneratedId: uuidv7(), startedAt: hoursAgo(0.2) });

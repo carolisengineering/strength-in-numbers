@@ -3,7 +3,7 @@ import type { RegisteredRoute } from "./registry.js";
 /**
  * Spec 21.0 §6.5, AC6 — id slots. Every id a route accepts must be covered by a
  * cross-user case, so the slots are derived from the route itself: every path
- * parameter, and every body or querystring key named `id` or ending in `Id`,
+ * parameter, and every body or querystring key named `id` / `ids` or ending in `Id` / `Ids`,
  * found by walking the route's Zod schemas. A new `fooId` field fails the suite
  * until a case covers it or it is listed here with a reason.
  */
@@ -20,13 +20,15 @@ export const NOT_A_SIN_ID: Record<string, string> = {
   "* sourceExerciseId": "A response-only field; never read from a request.",
   "* primaryMuscleId": "Shared reference data (muscle_group has no user column); every user may name any row.",
   "* equipmentId": "Shared reference data (equipment has no user column); every user may name any row.",
+  "* secondaryMuscleIds": "Shared reference data (muscle_group has no user column); every user may name any row.",
   "* exerciseTemplateId": "Hevy's exercise template id (Hevy's namespace); the import resolves it through the caller's own pairs.",
   "* supersetId": "Hevy's superset number inside one imported workout, not a row id.",
   "PUT /v1/workout-sections/:id/round-times/:round params.round": "An integer round number inside the section, not a row id.",
   "DELETE /v1/workout-sections/:id/round-times/:round params.round": "An integer round number inside the section, not a row id.",
 };
 
-const isIdKey = (key: string) => key === "id" || key.endsWith("Id");
+/** `id`, `exerciseId`, and the plural forms that carry a list of ids (`ids`, `workoutIds`). */
+const isIdKey = (key: string) => key === "id" || key === "ids" || key.endsWith("Id") || key.endsWith("Ids");
 
 /** Zod 4 internals: every schema carries `_zod.def` with a `type` tag. */
 interface ZodDef {
