@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Fastify, {
   type FastifyInstance,
   type FastifyBaseLogger,
+  type RouteOptions,
 } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
@@ -94,6 +95,13 @@ export interface BuildAppDeps extends AuthPluginDeps {
   hevyImportRepository: HevyImportRepository;
   /** Spec 05.2 — tests only; production uses `RATE_LIMITS`. No env var (D7). */
   rateLimits?: RateLimitConfig;
+  /**
+   * Spec 21.0 §6.1 — tests only (the cross-user suite's route registry); unset
+   * in `server.ts`. Called once per registered route, after the assembly checks,
+   * from the same root `onRoute` hook, so it sees every child scope. It observes
+   * only: it must not change the route.
+   */
+  onRoute?: (route: RouteOptions) => void;
 }
 
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
@@ -174,6 +182,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     });
     assertPublication(routeOptions);
     assertCorsAllowsMethod(routeOptions);
+    deps.onRoute?.(routeOptions);
   });
 
   await app.register(requestContextPlugin);
