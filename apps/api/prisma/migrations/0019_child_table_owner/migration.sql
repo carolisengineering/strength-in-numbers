@@ -115,6 +115,55 @@ UPDATE "routine_item" c SET user_id = p.user_id FROM "routine" p WHERE p.id = c.
 UPDATE "routine_section" c SET user_id = p.user_id FROM "routine" p WHERE p.id = c.routine_id AND c.user_id IS NULL;
 UPDATE "routine_item_set" c SET user_id = p.user_id FROM "routine_item" p WHERE p.id = c.routine_item_id AND c.user_id IS NULL;
 
+-- 4. The five parents expose (id, user_id), so a child's foreign key can point at the pair.
+ALTER TABLE "workout" ADD CONSTRAINT "workout_id_user_key" UNIQUE ("id", "user_id");
+ALTER TABLE "routine" ADD CONSTRAINT "routine_id_user_key" UNIQUE ("id", "user_id");
+ALTER TABLE "workout_exercise" ADD CONSTRAINT "workout_exercise_id_user_key" UNIQUE ("id", "user_id");
+ALTER TABLE "workout_section" ADD CONSTRAINT "workout_section_id_user_key" UNIQUE ("id", "user_id");
+ALTER TABLE "routine_item" ADD CONSTRAINT "routine_item_id_user_key" UNIQUE ("id", "user_id");
+
+-- 5. The composite foreign keys, with the old keys' actions: added NOT VALID (no long lock), validated,
+--    then the superseded single-column key dropped.
+ALTER TABLE "workout_exercise" ADD CONSTRAINT "workout_exercise_workout_owner_fkey"
+  FOREIGN KEY ("workout_id", "user_id") REFERENCES "workout" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "workout_exercise" VALIDATE CONSTRAINT "workout_exercise_workout_owner_fkey";
+ALTER TABLE "workout_exercise" DROP CONSTRAINT "workout_exercise_workout_id_fkey";
+
+ALTER TABLE "workout_section" ADD CONSTRAINT "workout_section_workout_owner_fkey"
+  FOREIGN KEY ("workout_id", "user_id") REFERENCES "workout" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "workout_section" VALIDATE CONSTRAINT "workout_section_workout_owner_fkey";
+ALTER TABLE "workout_section" DROP CONSTRAINT "workout_section_workout_fkey";
+
+ALTER TABLE "set_entry" ADD CONSTRAINT "set_entry_workout_exercise_owner_fkey"
+  FOREIGN KEY ("workout_exercise_id", "user_id") REFERENCES "workout_exercise" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "set_entry" VALIDATE CONSTRAINT "set_entry_workout_exercise_owner_fkey";
+ALTER TABLE "set_entry" DROP CONSTRAINT "set_entry_workout_exercise_id_fkey";
+
+ALTER TABLE "workout_planned_set" ADD CONSTRAINT "workout_planned_set_workout_exercise_owner_fkey"
+  FOREIGN KEY ("workout_exercise_id", "user_id") REFERENCES "workout_exercise" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "workout_planned_set" VALIDATE CONSTRAINT "workout_planned_set_workout_exercise_owner_fkey";
+ALTER TABLE "workout_planned_set" DROP CONSTRAINT "workout_planned_set_exercise_fkey";
+
+ALTER TABLE "workout_section_round" ADD CONSTRAINT "workout_section_round_workout_section_owner_fkey"
+  FOREIGN KEY ("workout_section_id", "user_id") REFERENCES "workout_section" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "workout_section_round" VALIDATE CONSTRAINT "workout_section_round_workout_section_owner_fkey";
+ALTER TABLE "workout_section_round" DROP CONSTRAINT "workout_section_round_section_fkey";
+
+ALTER TABLE "routine_item" ADD CONSTRAINT "routine_item_routine_owner_fkey"
+  FOREIGN KEY ("routine_id", "user_id") REFERENCES "routine" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "routine_item" VALIDATE CONSTRAINT "routine_item_routine_owner_fkey";
+ALTER TABLE "routine_item" DROP CONSTRAINT "routine_item_routine_id_fkey";
+
+ALTER TABLE "routine_section" ADD CONSTRAINT "routine_section_routine_owner_fkey"
+  FOREIGN KEY ("routine_id", "user_id") REFERENCES "routine" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "routine_section" VALIDATE CONSTRAINT "routine_section_routine_owner_fkey";
+ALTER TABLE "routine_section" DROP CONSTRAINT "routine_section_routine_fkey";
+
+ALTER TABLE "routine_item_set" ADD CONSTRAINT "routine_item_set_routine_item_owner_fkey"
+  FOREIGN KEY ("routine_item_id", "user_id") REFERENCES "routine_item" ("id", "user_id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
+ALTER TABLE "routine_item_set" VALIDATE CONSTRAINT "routine_item_set_routine_item_owner_fkey";
+ALTER TABLE "routine_item_set" DROP CONSTRAINT "routine_item_set_item_fkey";
+
 -- 6. NOT NULL without a second long scan: a validated CHECK first (Postgres then skips the scan).
 ALTER TABLE "workout_exercise" ADD CONSTRAINT "we_user_id_nn" CHECK ("user_id" IS NOT NULL) NOT VALID;
 ALTER TABLE "workout_exercise" VALIDATE CONSTRAINT "we_user_id_nn";

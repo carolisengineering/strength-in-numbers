@@ -174,6 +174,114 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
     });
   });
 
+  describe("AC3 — a wrong user_id is refused by the database", () => {
+    /** Inserts one row of `child` under A's parent while naming B as its owner. */
+    const insertUnderAAsB: Record<ChildTable, () => Promise<unknown>> = {
+      workout_exercise: () =>
+        sql(
+          `INSERT INTO "workout_exercise" (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot, user_id)
+           VALUES ($1::uuid, $2::uuid, 1, $3::uuid, 'Bench', 'weight_reps', $4::uuid)`,
+          uuidv7(),
+          a.workout,
+          exercise,
+          b.user,
+        ),
+      workout_section: () =>
+        sql(`INSERT INTO "workout_section" (id, workout_id, position, name, user_id) VALUES ($1::uuid, $2::uuid, 1, 'X', $3::uuid)`, uuidv7(), a.workout, b.user),
+      set_entry: () =>
+        sql(
+          `INSERT INTO "set_entry" (id, workout_exercise_id, set_number, client_generated_id, user_id) VALUES ($1::uuid, $2::uuid, 9, $3::uuid, $4::uuid)`,
+          uuidv7(),
+          a.workoutExercise,
+          uuidv7(),
+          b.user,
+        ),
+      workout_planned_set: () =>
+        sql(`INSERT INTO "workout_planned_set" (id, workout_exercise_id, position, user_id) VALUES ($1::uuid, $2::uuid, 1, $3::uuid)`, uuidv7(), a.workoutExercise, b.user),
+      workout_section_round: () =>
+        sql(`INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds, user_id) VALUES ($1::uuid, 2, 120, $2::uuid)`, a.workoutSection, b.user),
+      routine_item: () =>
+        sql(`INSERT INTO "routine_item" (id, routine_id, position, exercise_id, user_id) VALUES ($1::uuid, $2::uuid, 1, $3::uuid, $4::uuid)`, uuidv7(), a.routine, exercise, b.user),
+      routine_section: () =>
+        sql(`INSERT INTO "routine_section" (id, routine_id, position, name, user_id) VALUES ($1::uuid, $2::uuid, 1, 'X', $3::uuid)`, uuidv7(), a.routine, b.user),
+      routine_item_set: () =>
+        sql(`INSERT INTO "routine_item_set" (id, routine_item_id, position, user_id) VALUES ($1::uuid, $2::uuid, 1, $3::uuid)`, uuidv7(), a.routineItem, b.user),
+    };
+
+    it.each(CHILD_LINKS.map((l) => l.child))("a %s row naming another owner than its parent's fails 23503", async (child) => {
+      await expect(insertUnderAAsB[child]()).rejects.toThrow(/23503/);
+    });
+
+    it("moving A's set (number 2; B's exercise has only 1) under B's workout exercise fails 23503", async () => {
+      await expect(sql(`UPDATE "set_entry" SET workout_exercise_id = $1::uuid WHERE id = $2::uuid`, b.workoutExercise, midMigrationSet)).rejects.toThrow(/23503/);
+    });
+
+    it("rewriting a child's owner fails 23503", async () => {
+      await expect(sql(`UPDATE "routine_item_set" SET user_id = $1::uuid WHERE id = $2::uuid`, b.user, a.routineItemSet)).rejects.toThrow(/23503/);
+      await expect(
+        sql(`UPDATE "workout_section_round" SET user_id = $1::uuid WHERE workout_section_id = $2::uuid`, b.user, a.workoutSection),
+      ).rejects.toThrow(/23503/);
+    });
+  });
+
+  describe("AC4 — composite foreign keys replace the single-column ones and keep ON DELETE CASCADE", () => {
+    const countWhere = async (table: ChildTable | "workout" | "routine", where: string, ...args: unknown[]) =>
+      (await one<{ n: number }>(`SELECT count(*)::int AS n FROM "${table}" WHERE ${where}`, ...args)).n;
+
+    it("deleting a workout removes its exercises, sections, rounds, sets and planned sets", async () => {
+      const t = await insertTree(await insertUser(db));
+      await sql(`DELETE FROM "workout" WHERE id = $1::uuid`, t.workout);
+      expect(await countWhere("workout_exercise", "workout_id = $1::uuid", t.workout)).toBe(0);
+      expect(await countWhere("workout_section", "workout_id = $1::uuid", t.workout)).toBe(0);
+      expect(await countWhere("workout_section_round", "workout_section_id = $1::uuid", t.workoutSection)).toBe(0);
+      expect(await countWhere("set_entry", "id = $1::uuid", t.set)).toBe(0);
+      expect(await countWhere("workout_planned_set", "id = $1::uuid", t.plannedSet)).toBe(0);
+      expect(await countWhere("routine_item_set", "id = $1::uuid", t.routineItemSet)).toBe(1);
+    });
+
+    it("deleting a routine removes its items, item sets and sections", async () => {
+      const t = await insertTree(await insertUser(db));
+      await sql(`DELETE FROM "routine" WHERE id = $1::uuid`, t.routine);
+      expect(await countWhere("routine_item", "routine_id = $1::uuid", t.routine)).toBe(0);
+      expect(await countWhere("routine_section", "routine_id = $1::uuid", t.routine)).toBe(0);
+      expect(await countWhere("routine_item_set", "id = $1::uuid", t.routineItemSet)).toBe(0);
+      expect(await countWhere("set_entry", "id = $1::uuid", t.set)).toBe(1);
+    });
+
+    it("deleting a user removes every row of theirs and leaves the other user's", async () => {
+      const user = await insertUser(db);
+      await insertTree(user);
+      await sql(`DELETE FROM "user" WHERE id = $1::uuid`, user);
+      for (const { child } of CHILD_LINKS) {
+        expect(await countWhere(child, "user_id = $1::uuid", user), child).toBe(0);
+        expect(await countWhere(child, "user_id = $1::uuid", a.user), child).toBeGreaterThan(0);
+      }
+    });
+
+    it("pg_constraint has the eight composite keys (cascading) and none of the old single-column ones", async () => {
+      const rows = await db.prisma.$queryRawUnsafe<{ conname: string; child: string; parent: string; cols: number; del: string; upd: string; valid: boolean }[]>(
+        `SELECT conname, conrelid::regclass::text AS child, confrelid::regclass::text AS parent, cardinality(conkey) AS cols,
+                confdeltype::text AS del, confupdtype::text AS upd, convalidated AS valid
+           FROM pg_constraint WHERE contype = 'f' AND conrelid::regclass::text = ANY($1::text[])`,
+        CHILD_LINKS.map((l) => l.child),
+      );
+      const names = rows.map((r) => r.conname);
+      for (const { child, parent, oldFkey } of CHILD_LINKS) {
+        expect(names, oldFkey).not.toContain(oldFkey);
+        const owner = rows.find((r) => r.conname === `${child}_${parent}_owner_fkey`);
+        expect(owner, `${child} → ${parent}`).toEqual({
+          conname: `${child}_${parent}_owner_fkey`,
+          child,
+          parent,
+          cols: 2,
+          del: "c",
+          upd: "c",
+          valid: true,
+        });
+      }
+    });
+  });
+
   describe("Review Focus — the migration window", () => {
     it("a set inserted after the triggers and before the backfill is filled by the trigger", async () => {
       expect(await ownerOf("set_entry", "id = $1::uuid", midMigrationSet)).toBe(a.user);
