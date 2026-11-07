@@ -32,14 +32,16 @@ import { assertStillLive, noRecompute, withWriteMode, type WriteMode } from "./w
  */
 export async function lockWorkoutStructure(
   tx: RawClient,
+  actingUserId: string,
   mode: WriteMode,
   workoutId: string,
   notFound: () => Error,
 ): Promise<void> {
   await tx.$executeRaw`SET CONSTRAINTS workout_exercise_position_key DEFERRED`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutId}))`;
+  // Spec 21.0 §6.7 #12: user-filtered, so it is the anchor of the structure write's later statements.
   const rows = await tx.$queryRaw<{ ended_at: Date | null }[]>`
-    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid FOR SHARE
   `;
   const locked = rows[0];
   if (!locked) throw notFound();
@@ -106,33 +108,40 @@ const timerValidationError = (issues: readonly TimerIssue[]) => new ValidationEr
  * and timer writes on one section, which the cross-row rules need. A vanished workout or section is `404`. The sets
  * use this (lock, then read); the clears use `lockSectionForClear`, the same locks with no read (#245).
  */
-export async function lockSectionForRecord(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<WorkoutSectionDbRow> {
-  await lockWorkoutForRecord(tx, mode, workoutId);
-  return lockSectionThenRead(tx, sectionId);
+export async function lockSectionForRecord(
+  tx: RawClient,
+  actingUserId: string,
+  mode: WriteMode,
+  workoutId: string,
+  sectionId: string,
+): Promise<WorkoutSectionDbRow> {
+  await lockWorkoutForRecord(tx, actingUserId, mode, workoutId);
+  return lockSectionThenRead(tx, workoutId, sectionId);
 }
 
 /**
  * The same envelope for a clear, which checks no rule and so reads nothing (#245): the workout `FOR SHARE` and the
  * section `FOR UPDATE` only. The section lock still comes before the write, so a concurrent set waits for it.
  */
-async function lockSectionForClear(tx: RawClient, mode: WriteMode, workoutId: string, sectionId: string): Promise<void> {
-  await lockWorkoutForRecord(tx, mode, workoutId);
-  await lockSectionRow(tx, sectionId);
+async function lockSectionForClear(tx: RawClient, actingUserId: string, mode: WriteMode, workoutId: string, sectionId: string): Promise<void> {
+  await lockWorkoutForRecord(tx, actingUserId, mode, workoutId);
+  await lockSectionRow(tx, workoutId, sectionId);
 }
 
-async function lockWorkoutForRecord(tx: RawClient, mode: WriteMode, workoutId: string): Promise<void> {
+async function lockWorkoutForRecord(tx: RawClient, actingUserId: string, mode: WriteMode, workoutId: string): Promise<void> {
+  // Spec 21.0 §6.7 #12: user-filtered, the anchor the section statements are tied to.
   const workouts = await tx.$queryRaw<{ ended_at: Date | null }[]>`
-    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+    SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid FOR SHARE
   `;
   const locked = workouts[0];
   if (!locked) throw sectionNotFound();
   assertStillLive(mode, locked.ended_at);
 }
 
-/** The section row's `FOR UPDATE` alone; `404` when the section is gone. */
-async function lockSectionRow(tx: RawClient, sectionId: string): Promise<void> {
+/** The section row's `FOR UPDATE` alone, tied to the locked workout (§6.7 #13); `404` when the section is gone. */
+async function lockSectionRow(tx: RawClient, workoutId: string, sectionId: string): Promise<void> {
   const locked = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id::text FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
+    SELECT id::text FROM "workout_section" WHERE id = ${sectionId}::uuid AND workout_id = ${workoutId}::uuid FOR UPDATE
   `;
   if (locked.length === 0) throw sectionNotFound();
 }
@@ -143,9 +152,10 @@ async function lockSectionRow(tx: RawClient, sectionId: string): Promise<void> {
  * snapshot taken before the wait, so a `round_times` read in the same statement could miss a round another writer
  * just committed — and a rule checked against it would pass when it must not (AC22 (a), found by the race test).
  */
-async function lockSectionThenRead(tx: RawClient, sectionId: string): Promise<WorkoutSectionDbRow> {
-  await lockSectionRow(tx, sectionId);
-  const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid`;
+async function lockSectionThenRead(tx: RawClient, workoutId: string, sectionId: string): Promise<WorkoutSectionDbRow> {
+  await lockSectionRow(tx, workoutId, sectionId);
+  const rows = await tx.$queryRaw<WorkoutSectionDbRow[]>`
+    SELECT ${SECTION_COLUMNS} FROM "workout_section" WHERE id = ${sectionId}::uuid AND workout_id = ${workoutId}::uuid`;
   return rows[0]!;
 }
 
@@ -169,7 +179,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
       if (!isWorkoutId(workoutId)) throw workoutNotFound();
       const workout = await workoutPreflight(prisma, actingUserId, workoutId, workoutNotFound);
       return withWriteMode(prisma, actingUserId, workout.ended_at, async (tx, mode) => {
-        await lockWorkoutStructure(tx, mode, workoutId, workoutNotFound);
+        await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutNotFound);
         const countRows = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "workout_section" WHERE workout_id = ${workoutId}::uuid
         `;
@@ -196,9 +206,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async updateWorkoutSection(actingUserId, sectionId, patch) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockWorkoutStructure(tx, mode, pre.workout_id, sectionNotFound);
+        await lockWorkoutStructure(tx, actingUserId, mode, pre.workout_id, sectionNotFound);
         // Lock, then read the rounds and result fresh (see lockSectionThenRead): the timer change decides on them.
-        const current = await lockSectionThenRead(tx, sectionId);
+        const current = await lockSectionThenRead(tx, pre.workout_id, sectionId);
         const name = patch.name ?? current.name;
         const notes = "notes" in patch && patch.notes !== undefined ? patch.notes : current.notes;
         const nameChanged = name !== current.name;
@@ -231,7 +241,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
                  result_finish_s = CASE WHEN ${resultCleared}::boolean THEN NULL ELSE result_finish_s END,
                  result_capped = CASE WHEN ${resultCleared}::boolean THEN false ELSE result_capped END,
                  updated_at = now()
-          WHERE id = ${sectionId}::uuid
+          WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid
           RETURNING ${SECTION_COLUMNS}
         `;
         return {
@@ -249,9 +259,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async removeWorkoutSection(actingUserId, sectionId) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockWorkoutStructure(tx, mode, pre.workout_id, sectionNotFound);
+        await lockWorkoutStructure(tx, actingUserId, mode, pre.workout_id, sectionNotFound);
         const rows = await tx.$queryRaw<{ position: number }[]>`
-          SELECT position FROM "workout_section" WHERE id = ${sectionId}::uuid FOR UPDATE
+          SELECT position FROM "workout_section" WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid FOR UPDATE
         `;
         const removed = rows[0];
         if (!removed) throw sectionNotFound();
@@ -259,7 +269,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
           SELECT count(*)::int AS n FROM "workout_exercise" WHERE section_id = ${sectionId}::uuid
         `;
         // The FK's ON DELETE SET NULL loosens the section's exercises; their positions are untouched (D13).
-        await tx.$executeRaw`DELETE FROM "workout_section" WHERE id = ${sectionId}::uuid`;
+        await tx.$executeRaw`DELETE FROM "workout_section" WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid`;
         // The position index is not deferrable, so close the gap one row at a time, ascending (D5).
         const later = await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text FROM "workout_section"
@@ -280,7 +290,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async setSectionRoundTime(actingUserId, sectionId, round, seconds) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, mode, pre.workout_id, sectionId));
+        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, actingUserId, mode, pre.workout_id, sectionId));
         if (current.timer === null) throw new SectionTimerMismatchError();
         const issues = roundTimeIssues(current.timer, current.roundTimes, round, seconds);
         if (issues.length > 0) throw timerValidationError(issues);
@@ -308,7 +318,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async clearSectionRoundTime(actingUserId, sectionId, round) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockSectionForClear(tx, mode, pre.workout_id, sectionId);
+        await lockSectionForClear(tx, actingUserId, mode, pre.workout_id, sectionId);
         // No timer check and no rule: a clear always succeeds (AC15), and an untimed section has nothing to remove.
         const removed = await tx.$executeRaw`
           DELETE FROM "workout_section_round" WHERE workout_section_id = ${sectionId}::uuid AND round_no = ${round}
@@ -324,7 +334,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async setSectionResult(actingUserId, sectionId, body) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, mode, pre.workout_id, sectionId));
+        const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, actingUserId, mode, pre.workout_id, sectionId));
         const timer = current.timer;
         // A Set Timer's score is its round times, so it takes no result (§6.4).
         if (timer === null || timer.format === "set_timer") throw new SectionTimerMismatchError();
@@ -339,7 +349,7 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
           UPDATE "workout_section"
           SET result_rounds = ${rounds}::smallint, result_reps = ${reps}::smallint,
               result_finish_s = ${finish}::int, result_capped = ${capped}::boolean, updated_at = now()
-          WHERE id = ${sectionId}::uuid
+          WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid
             AND (result_rounds, result_reps, result_finish_s, result_capped)
                 IS DISTINCT FROM (${rounds}::smallint, ${reps}::smallint, ${finish}::int, ${capped}::boolean)
           RETURNING ${SECTION_COLUMNS}
@@ -357,12 +367,12 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     async clearSectionResult(actingUserId, sectionId) {
       const pre = await sectionPreflight(actingUserId, sectionId);
       return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
-        await lockSectionForClear(tx, mode, pre.workout_id, sectionId);
+        await lockSectionForClear(tx, actingUserId, mode, pre.workout_id, sectionId);
         // No timer check: a clear always succeeds (AC17); the round times stay.
         const removed = await tx.$executeRaw`
           UPDATE "workout_section"
           SET result_rounds = NULL, result_reps = NULL, result_finish_s = NULL, result_capped = false, updated_at = now()
-          WHERE id = ${sectionId}::uuid
+          WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid
             AND (result_rounds IS NOT NULL OR result_reps IS NOT NULL OR result_finish_s IS NOT NULL OR result_capped)
         `;
         return {

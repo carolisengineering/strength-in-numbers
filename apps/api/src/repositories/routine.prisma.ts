@@ -344,7 +344,7 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
         try {
           await tx.$executeRaw`
             UPDATE "routine" SET name = ${fields.name}, notes = ${fields.notes ?? null}, updated_at = now()
-            WHERE id = ${id}::uuid
+            WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           `;
         } catch (err) {
           if (nameTaken(err)) throw new RoutineNameTakenError();

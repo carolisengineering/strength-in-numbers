@@ -47,11 +47,25 @@ interface TimedSectionDbRow extends TimedColumns {
   name: string;
 }
 
-interface VolumeRow {
+export interface VolumeRow {
   workout_id: string;
   modality_snapshot: string;
   reps: number | null;
   weight_kg: string | null;
+}
+
+/**
+ * The working sets of a page of workouts, for the volume column. User-filtered itself (Spec 21.0 Phase B audit):
+ * the ids come from a page read on another, unlocked statement, so this read carries its own `w.user_id`.
+ */
+export async function loadWorkingSetRows(client: RawClient, actingUserId: string, ids: readonly string[]): Promise<VolumeRow[]> {
+  return client.$queryRaw<VolumeRow[]>`
+    SELECT we.workout_id::text AS workout_id, we.modality_snapshot, se.reps, se.weight_kg::text AS weight_kg
+    FROM "set_entry" se
+    JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
+    JOIN "workout" w ON w.id = we.workout_id AND w.user_id = ${actingUserId}::uuid
+    WHERE we.workout_id = ANY(${[...ids]}::uuid[]) AND se.set_type = 'working'
+  `;
 }
 
 export async function listFinishedWorkouts(
@@ -103,12 +117,7 @@ export async function listFinishedWorkouts(
   const volumes = new Map<string, number | null>();
   if (page.length > 0) {
     const ids = page.map((r) => r.id);
-    const sets = await client.$queryRaw<VolumeRow[]>`
-      SELECT we.workout_id::text AS workout_id, we.modality_snapshot, se.reps, se.weight_kg::text AS weight_kg
-      FROM "set_entry" se
-      JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
-      WHERE we.workout_id = ANY(${ids}::uuid[]) AND se.set_type = 'working'
-    `;
+    const sets = await loadWorkingSetRows(client, actingUserId, ids);
     // No modality / weight filter in SQL: eligibility has one definition, setVolumeMilli (D4).
     const byWorkout = new Map<string, { modality: string; weightKgMilli: number | null; reps: number | null }[]>();
     for (const s of sets) {

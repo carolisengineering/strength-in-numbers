@@ -26,6 +26,7 @@ pnpm run lint                                  # NEVER bare `pnpm lint` — it m
 pnpm run typecheck
 pnpm run core:purity
 pnpm --filter @sin/api run test:unit           # apps/api/test/unit
+pnpm --filter @sin/api run audit:queries [--write]   # Spec 21.0: check docs/security/query-audit.md against every SQL statement in apps/api/src; --write refreshes it
 RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers Postgres
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
@@ -66,6 +67,7 @@ Local ports: compose Postgres `5433` (native PG owns 5432), API `8080`, dev-idp 
 Repo-wide gotchas are below. Package-specific conventions load only when working in that package: `apps/web/CLAUDE.md` (web UI), `apps/api/CLAUDE.md` (API), `packages/core/CLAUDE.md` (routine-from-text reader).
 
 - **Validation messages are static** (#57): every Zod issue message in `@sin/core` is fixed text or a module constant — never the parsed value, no `params`, no `reportInput` — because a `custom` message is returned verbatim in the 422 body. `packages/core/test/static-issue-messages.test.ts` probes every exported schema's message functions and scans every `message:` in `src/`. The API `err` serializer (`apps/api/src/logging.ts`) stubs Prisma, Zod and request-validation errors and masks path segments that aren't identifiers or indexes.
+- **Query audit** (Spec 21.0): a new SQL statement needs an audit row — run `pnpm --filter @sin/api run audit:queries --write`, classify the rows it marks `needs review` in `docs/security/query-audit.md` (user-filtered, anchored with its anchor, shared on purpose, cross-user maintenance, fragment), and `needs review` fails CI. A statement keyed by a child id carries its own user predicate (`apps/api/src/repositories/ownership.ts`) or is tied to a user-filtered lock in the same transaction. `Prisma.raw` / `$queryRawUnsafe` need an `UNSAFE_ALLOWLIST` reason (`apps/api/scripts/lib/query-extract.ts`).
 - **Prisma migrations** run as a release step, never on app boot. Additive / expand-only — never drop or rename a column in the same release as the code that stops using it.
 - **Docker**: the runtime stage generates the Prisma client explicitly (`@prisma/client` postinstall can't find the schema in a pnpm monorepo); base stage installs `openssl` + `ca-certificates` (`node:22-slim` omits them). Don't remove those lines.
 - **Image + action pins** (#9): `Dockerfile` and `docker-compose.yml` pin images as `name:patch-tag@sha256:…` (multi-arch *index* digest — never a per-platform one); `ci.yml` pins actions to commit SHAs. Bump via the Dependabot PR, or `docker buildx imagetools inspect <ref>` by hand. Testcontainers reads its Postgres image from compose's `db` service (`apps/api/test/integration/postgres-image.ts`), so never put a digest back in that file (the `image-pins` unit test enforces it).
@@ -86,6 +88,7 @@ Repo-wide gotchas are below. Package-specific conventions load only when working
 - `docs/specs/` — component specs + `README.md` (roadmap, 12-section template, ownership)
 - `docs/runbooks/` — operational runbooks (`first-deploy.md`)
 - `docs/security-backlog.md` — deferred security items (SB-1..7)
+- `docs/security/query-audit.md` — every SQL statement in `apps/api/src`, classified (Spec 21.0; generated and checked by `audit:queries`)
 - `docs/backlog.md` — deferred non-security fixes / known issues (BL-1..)
 
 ## Subagents (`.claude/agents/`)
