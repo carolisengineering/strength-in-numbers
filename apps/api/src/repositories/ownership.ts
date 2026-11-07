@@ -7,9 +7,11 @@ import { Prisma } from "@prisma/client";
  * `user_id`, so a statement keyed by a child id can carry its own user filter
  * instead of relying on an earlier, separate ownership check.
  *
- * `ref` is a column reference from the calling statement (`Prisma.sql\`we.id\``),
- * never a value and never `Prisma.raw`. The helpers' own aliases are prefixed
- * `own_` so a caller's `we` / `w` can't be shadowed inside the subquery.
+ * `ref` is a column reference from the calling statement, qualified by its table
+ * or alias (`Prisma.sql\`we.id\``, `Prisma.sql\`"set_entry".id\``), never a value
+ * and never `Prisma.raw`. Qualify it: a bare `id` would bind to a table inside the
+ * subquery. The helpers' own aliases are prefixed `own_` so a caller's `we` / `w`
+ * can't be shadowed either.
  *
  * Spec 21.1 Phase A gives these tables their own `user_id`; it rewrites the
  * bodies here to a direct `… user_id = …` and no caller changes.

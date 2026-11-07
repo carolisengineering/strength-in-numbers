@@ -315,11 +315,12 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
             await tx.$executeRaw`
               UPDATE "hevy_link" SET hevy_workout_id = NULL, origin = 'sent', claimed_at = now(), claim_fingerprint = ${fingerprint},
                 updated_at = now()
-              WHERE id = ${row.id}::uuid`;
+              WHERE id = ${row.id}::uuid AND user_id = ${userId}::uuid`;
             begun = { mode: "create", hevyWorkoutId: null, staleClaim };
           } else {
             await tx.$executeRaw`
-              UPDATE "hevy_link" SET claimed_at = now(), claim_fingerprint = ${fingerprint}, updated_at = now() WHERE id = ${row.id}::uuid`;
+              UPDATE "hevy_link" SET claimed_at = now(), claim_fingerprint = ${fingerprint}, updated_at = now()
+              WHERE id = ${row.id}::uuid AND user_id = ${userId}::uuid`;
             begun = { mode: "update", hevyWorkoutId: row.hevy_workout_id, staleClaim };
           }
         }
@@ -361,7 +362,7 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
             UPDATE "hevy_link"
             SET hevy_workout_id = ${body.hevyWorkoutId}, synced_fingerprint = ${body.fingerprint}, synced_at = now(),
                 claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
-            WHERE id = ${row.id}::uuid AND claimed_at IS NOT NULL`;
+            WHERE id = ${row.id}::uuid AND user_id = ${userId}::uuid AND claimed_at IS NOT NULL`;
         } catch (err) {
           // §6.6: a racing complete that took the same Hevy id; named by its columns ($queryRaw has no constraint name).
           if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, hevy_workout_id") throw new HevyIdInUseError();

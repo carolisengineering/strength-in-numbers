@@ -285,13 +285,15 @@ async function finishedPatch(
 /** A client the detail read runs on: the repository's own, or a transaction's (Spec 19.0's begin reads in its own). */
 type DetailClient = Prisma.TransactionClient | PrismaClient;
 
-async function loadExercises(db: DetailClient, workoutId: string): Promise<WorkoutExerciseRecord[]> {
+/** The detail's exercises; user-filtered itself (Spec 21.0 §6.7 #5). Exported for the weak-spot test. */
+export async function loadExercises(db: DetailClient, actingUserId: string, workoutId: string): Promise<WorkoutExerciseRecord[]> {
   const rows = await db.$queryRaw<WorkoutExerciseDbRow[]>`
     SELECT id, workout_id, position, exercise_id, exercise_name_snapshot,
            modality_snapshot, notes, created_at, updated_at, target_sets, target_reps_low, target_reps_high, target_rpe, rest_seconds, superset_group, section_id,
            ${WE_PLANNED_SETS} AS planned_sets
     FROM "workout_exercise"
     WHERE workout_id = ${workoutId}::uuid
+      AND workout_id IN (SELECT id FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid)
     ORDER BY position ASC
   `;
   return rows.map(toExerciseRecord);
@@ -299,13 +301,13 @@ async function loadExercises(db: DetailClient, workoutId: string): Promise<Worko
 
 /** One statement: the routine's note snapshot, the workout's sections and (Spec 09.3) whether its routine is a
  * one-off. Only the detail path reads these; every other `workout` SELECT is untouched (AC1, D14). */
-async function loadSectionSnapshot(db: DetailClient, workoutId: string) {
+export async function loadSectionSnapshot(db: DetailClient, actingUserId: string, workoutId: string) {
   const rows = await db.$queryRaw<
     { routine_notes_snapshot: string | null; sections: WorkoutSectionDbRow[]; routine_is_one_off: boolean }[]
   >`
     SELECT w.routine_notes_snapshot, ${workoutSectionsJson("w.id")} AS sections,
            ${routineIsOneOffSql("w")} AS routine_is_one_off
-    FROM "workout" w WHERE w.id = ${workoutId}::uuid
+    FROM "workout" w WHERE w.id = ${workoutId}::uuid AND w.user_id = ${actingUserId}::uuid
   `;
   const row = rows[0];
   return {
@@ -316,8 +318,8 @@ async function loadSectionSnapshot(db: DetailClient, workoutId: string) {
 }
 
 async function toDetailWith(db: DetailClient, w: WorkoutDbRow): Promise<WorkoutDetailRecord> {
-  const exercises = await loadExercises(db, w.id);
-  const sets = await loadSetsForWorkout(db, w.id);
+  const exercises = await loadExercises(db, w.user_id, w.id);
+  const sets = await loadSetsForWorkout(db, w.user_id, w.id);
   const byExercise = new Map<string, SetEntryRecord[]>();
   for (const s of sets) {
     const list = byExercise.get(s.workoutExerciseId) ?? [];
@@ -328,7 +330,7 @@ async function toDetailWith(db: DetailClient, w: WorkoutDbRow): Promise<WorkoutD
     ...e,
     sets: byExercise.get(e.id) ?? [],
   }));
-  const snapshot = await loadSectionSnapshot(db, w.id);
+  const snapshot = await loadSectionSnapshot(db, w.user_id, w.id);
   return { ...toRecord(w), exercises: withSets, ...snapshot };
 }
 
@@ -778,12 +780,13 @@ export function createWorkoutRepository(
 
         // Spec 19.0 AC31: a Hevy send's claim-only row goes with the workout (the FK is SET NULL, which would leave an
         // orphan "sending" row); a linked row stays as a tombstone so the Hevy id stays taken.
-        await tx.$executeRaw`DELETE FROM "hevy_link" WHERE workout_id = ${id}::uuid AND hevy_workout_id IS NULL`;
+        await tx.$executeRaw`
+          DELETE FROM "hevy_link" WHERE workout_id = ${id}::uuid AND user_id = ${actingUserId}::uuid AND hevy_workout_id IS NULL`;
 
         // Hard delete; cascades to workout_exercise (§4, §6.5's DELETE
         // exemption — allowed on an in-progress or finished workout, no
         // state check here).
-        const affectedRows = await tx.$executeRaw`DELETE FROM "workout" WHERE id = ${id}::uuid`;
+        const affectedRows = await tx.$executeRaw`DELETE FROM "workout" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid`;
         if (affectedRows === 0) {
           throw new NotFoundError("workout not found or not owned by the acting user");
         }
@@ -821,7 +824,7 @@ export function createWorkoutRepository(
       // Phases 3-4 (§6.7/§6.8): the position transaction — in finished mode behind the PR lock (07.4).
       return withWriteMode(prisma, actingUserId, workout.ended_at ?? null, async (tx, mode) => {
         // The structure lock (§6.8; a vanished workout is §6.7's not-found).
-        await lockWorkoutStructure(tx, mode, workoutId, workoutMissing);
+        await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutMissing);
 
         // One read either way, after the structure lock (Spec 05.0 AC13). Spec 09.4 §6.5 (C4): with no `position`, the
         // add joins the last section iff it was added in the workout, so only that add reads it (minors 54, 288).
@@ -905,12 +908,13 @@ export function createWorkoutRepository(
       const workoutId = current.workout_id;
       let requestedPosition = patch.position;
       return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
-        await lockWorkoutStructure(tx, mode, workoutId, workoutExerciseMissing);
+        await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<
           { id: string; position: number; notes: string | null; superset_group: number | null; section_id: string | null }[]
         >`
-          SELECT id, position, notes, superset_group, section_id::text FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT id, position, notes, superset_group, section_id::text FROM "workout_exercise"
+          WHERE id = ${id}::uuid AND workout_id = ${workoutId}::uuid FOR UPDATE
         `;
         const target = targetRows[0];
         if (!target) {
@@ -1022,10 +1026,10 @@ export function createWorkoutRepository(
       }
 
       return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
-        await lockWorkoutStructure(tx, mode, current.workout_id, workoutExerciseMissing);
+        await lockWorkoutStructure(tx, actingUserId, mode, current.workout_id, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<{ position: number }[]>`
-          SELECT position FROM "workout_exercise" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT position FROM "workout_exercise" WHERE id = ${id}::uuid AND workout_id = ${current.workout_id}::uuid FOR UPDATE
         `;
         const target = targetRows[0];
         if (!target) {
