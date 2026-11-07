@@ -604,7 +604,16 @@ access token carries an `audience` identifying our API. The API
 validates every request's JWT against Auth0's cached JWKS (issuer + audience +
 expiry checked); no server-side session store. First request for an unknown `sub`
 provisions a `user` row. Authorization in v1 is simply "row belongs to `user_id`"
-— enforced in a repository layer, not scattered through handlers.
+— enforced in a repository layer, not scattered through handlers. The app is
+**private-only for the foreseeable future** (owner, 2026-11-05): every user sees
+only their own rows, and the only shared data is the reference catalog. That rule
+is checked in three independent layers, all in place before production's first
+real user: a route-by-route cross-user test suite and a written query audit
+(Spec 21.0), and Postgres row-level security under a restricted database login
+(Spec 21.1). Q6 stands as recorded (a social phase was the intended
+direction post-v1), but as of 2026-11-05 it is not planned: nothing here builds
+toward it, and a future social design would start from a new authorization design
+(R8), not from these layers.
 
 Auth0 config that matters: one **API** (audience) + one **SPA application**;
 email/password + Google + Apple connections; refresh-token rotation on; a login
@@ -1019,7 +1028,7 @@ Planning implications:
 | **R5** | Scope creep toward coaching/social before the logging loop is truly excellent. | High for timeline | Non-goals in §1.5 are load-bearing; revisit only once the core loop is proven in real use (post-M2, ideally post-beta). |
 | **R6** | Solo developer learning Node/TS + Prisma (and a React SPA) while building → slower delivery, and early architectural mistakes made before the platform is familiar. | High for timeline; medium for code quality | Dropping native mobile from v1 already removes the biggest piece of this. Within the milestones, land the API surface for a feature before its web screen so the language is bedded in first. Lean on Fastify + Prisma conventions rather than inventing structure. Keep `packages/core` small and pure — highest-value, most testable code, safest place to be learning. Treat M1 as throwaway-friendly: expect one refactor after it ships. Accept a longer timeline than a Go build would take — the learning is a stated goal, not an overrun. |
 | **R7** | AWS phase 2 either never happens (portfolio value lost) or is started too early and stalls app progress; or the "lean" setup drifts into a $70+/mo bill. *(Retired 2026-10-24: Spec 15 / Q31 dropped the AWS phase 2.)* | Medium — career-goal and cost. | Gate it: phase 2 does not begin until M2 is stable and the app is worth showing. Keep the app 12-factor so the option stays cheap to exercise. Enforce the cost guardrails explicitly in IaC review: no NAT Gateway, no ALB, single-AZ RDS, `db.t4g.micro`, budget alarm at $25/mo. Verify AWS free-tier terms at account creation — they changed in 2025. |
-| **R8** | The planned social phase (Q6) needs authorization that v1 does not have — replacing "row belongs to `user_id`" with per-resource visibility, a follow graph, blocking, and feed fan-out. Retrofitting authz into a codebase that assumed single-owner access is error-prone (privacy leaks). | Medium — future, but a privacy-leak class of bug. | Keep every data access going through the repository layer now (§5.1) so there is one place to add visibility checks later — never inline ad-hoc queries in handlers. Treat social as its own design doc and phase, after the app has real users. Do not half-build it earlier (R5). |
+| **R8** | The planned social phase (Q6) needs authorization that v1 does not have — replacing "row belongs to `user_id`" with per-resource visibility, a follow graph, blocking, and feed fan-out. Retrofitting authz into a codebase that assumed single-owner access is error-prone (privacy leaks). | Medium — future, but a privacy-leak class of bug. | Keep every data access going through the repository layer now (§5.1) so there is one place to add visibility checks later — never inline ad-hoc queries in handlers. Treat social as its own design doc and phase, after the app has real users. Do not half-build it earlier (R5). Until then the app is private-only ("you see your own rows"), enforced by the repository layer plus Specs 21.0 / 21.1 (route suite, query audit, row-level security); none of that is social groundwork. |
 
 ### Decisions log (formerly open questions)
 
