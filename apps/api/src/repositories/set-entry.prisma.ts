@@ -4,6 +4,7 @@ import { isSetEntryId, isWorkoutExerciseId, setChangeAffectsRecords, type Modali
 import { uuidv7 } from "uuidv7";
 import { IncompleteWorkingSetsError, NotFoundError, WorkoutWouldBeEmptyError } from "../errors/app-error.js";
 import { rootOfWorkoutExercise } from "./personal-record.prisma.js";
+import { ownedSet, ownedWorkoutExercise } from "./ownership.js";
 import {
   assertFinishedSetComplete,
   assertSetMeasuresValid,
@@ -107,16 +108,18 @@ async function resolveOwnedSet(
   return rows[0];
 }
 
-/** D15: the set a create carrying this key already stored, if any. Scoped to
- * the workout_exercise, whose ownership the caller has already resolved. */
-async function findSetByClientGeneratedId(
+/** D15: the set a create carrying this key already stored, if any. Scoped to the workout_exercise, and
+ * user-filtered itself (Spec 21.0 §6.7 #1) rather than relying on the caller's separate ownership preflight. */
+export async function findSetByClientGeneratedId(
   client: RawClient,
+  actingUserId: string,
   workoutExerciseId: string,
   clientGeneratedId: string,
 ): Promise<SetEntryRecord | undefined> {
   const rows = await client.$queryRaw<SetEntryDbRow[]>`
     SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry"
     WHERE workout_exercise_id = ${workoutExerciseId}::uuid AND client_generated_id = ${clientGeneratedId}::uuid
+      AND ${ownedWorkoutExercise(actingUserId, Prisma.sql`"set_entry".workout_exercise_id`)}
   `;
   return rows[0] ? toSetRecord(rows[0]) : undefined;
 }
@@ -125,9 +128,15 @@ async function findSetByClientGeneratedId(
  * a concurrent finish (FOR UPDATE) either commits first and we see it, or waits
  * for us. The caller turns a live-mode surprise into a restart (`assertStillLive`);
  * the span bounds a finished-mode `completed_at`. */
-async function lockedWorkoutSpan(tx: RawClient, workoutId: string, notFound: string): Promise<{ ended_at: Date | null; started_at: Date }> {
+export async function lockedWorkoutSpan(
+  tx: RawClient,
+  actingUserId: string,
+  workoutId: string,
+  notFound: string,
+): Promise<{ ended_at: Date | null; started_at: Date }> {
+  // Spec 21.0 §6.7 #2: user-filtered, so it is the anchor the rest of the transaction's statements are tied to.
   const rows = await tx.$queryRaw<{ ended_at: Date | null; started_at: Date }[]>`
-    SELECT ended_at, started_at FROM "workout" WHERE id = ${workoutId}::uuid FOR SHARE
+    SELECT ended_at, started_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${actingUserId}::uuid FOR SHARE
   `;
   if (!rows[0]) throw new NotFoundError(notFound);
   return rows[0];
@@ -155,11 +164,13 @@ function completedSpan(mode: WriteMode, span: { started_at: Date; ended_at: Date
 }
 
 /** AC12: every set of one workout, grouped by the caller. One query per detail
- * read, not one per exercise. */
-export async function loadSetsForWorkout(client: RawClient, workoutId: string): Promise<SetEntryRecord[]> {
+ * read, not one per exercise. User-filtered itself (Spec 21.0 §6.7 #5): it is the data returned to the caller. */
+export async function loadSetsForWorkout(client: RawClient, actingUserId: string, workoutId: string): Promise<SetEntryRecord[]> {
   const rows = await client.$queryRaw<SetEntryDbRow[]>`
     SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry"
-    WHERE workout_exercise_id IN (SELECT id FROM "workout_exercise" WHERE workout_id = ${workoutId}::uuid)
+    WHERE workout_exercise_id IN (
+      SELECT we.id FROM "workout_exercise" we JOIN "workout" w ON w.id = we.workout_id
+      WHERE we.workout_id = ${workoutId}::uuid AND w.user_id = ${actingUserId}::uuid)
     ORDER BY workout_exercise_id, set_number
   `;
   return rows.map(toSetRecord);
@@ -242,7 +253,7 @@ export function createSetEntryMethods(
       // it retries already happened (no lock, no recompute: 07.4 AC14).
       const key = fields.clientGeneratedId;
       if (key !== undefined) {
-        const stored = await findSetByClientGeneratedId(prisma, workoutExerciseId, key);
+        const stored = await findSetByClientGeneratedId(prisma, actingUserId, workoutExerciseId, key);
         if (stored) return { set: stored, modalitySnapshot: modality, created: false, finishedEdit: null };
       }
 
@@ -260,19 +271,19 @@ export function createSetEntryMethods(
         // a same-key create that was in flight during the lookup above has
         // committed by now. The unique index is only the backstop.
         if (key !== undefined) {
-          const stored = await findSetByClientGeneratedId(tx, workoutExerciseId, key);
+          const stored = await findSetByClientGeneratedId(tx, actingUserId, workoutExerciseId, key);
           if (stored) return { set: stored, modalitySnapshot: modality, created: false, finishedEdit: null };
         }
         // AC11: a concurrent finish holds FOR UPDATE on this row; we either
         // run before it or see its committed ended_at (07.4: and restart in finished mode).
-        const span = await lockedWorkoutSpan(tx, parent.workout_id, WE_NOT_FOUND);
+        const span = await lockedWorkoutSpan(tx, actingUserId, parent.workout_id, WE_NOT_FOUND);
         assertStillLive(mode, span.ended_at);
         if (mode === "finished") assertFinishedSetComplete(modality, next.setType, next);
         // D10: hold the workout_exercise row so a concurrent
         // DELETE /v1/workout-exercises/{id} can't remove it before our INSERT
         // (which would be an FK-violation 500, not a 404).
         const weRows = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "workout_exercise" WHERE id = ${workoutExerciseId}::uuid FOR SHARE
+          SELECT id FROM "workout_exercise" WHERE id = ${workoutExerciseId}::uuid AND workout_id = ${parent.workout_id}::uuid FOR SHARE
         `;
         if (!weRows[0]) throw new NotFoundError(WE_NOT_FOUND);
 
@@ -315,12 +326,13 @@ export function createSetEntryMethods(
       const owner = await resolveOwnedSet(prisma, actingUserId, id);
       const modality = owner.modality_snapshot as Modality;
       return withWriteMode(prisma, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
-        const span = await lockedWorkoutSpan(tx, owner.workout_id, SET_NOT_FOUND);
+        const span = await lockedWorkoutSpan(tx, actingUserId, owner.workout_id, SET_NOT_FOUND);
         assertStillLive(mode, span.ended_at);
         // FOR UPDATE: two concurrent patches of one set serialize, so each
         // merges onto what it actually overwrites.
         const storedRows = await tx.$queryRaw<SetEntryDbRow[]>`
-          SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT ${SET_ENTRY_COLUMNS} FROM "set_entry" WHERE id = ${id}::uuid
+            AND ${ownedSet(actingUserId, Prisma.sql`"set_entry".id`)} FOR UPDATE
         `;
         if (!storedRows[0]) throw new NotFoundError(SET_NOT_FOUND);
         const before = toSetRecord(storedRows[0]);
@@ -342,7 +354,7 @@ export function createSetEntryMethods(
                                   THEN COALESCE(completed_at, LEAST(GREATEST(now(), ${spanStart}::timestamptz), ${spanEnd}::timestamptz))
                                   ELSE NULL END,
               updated_at = now()
-          WHERE id = ${id}::uuid
+          WHERE id = ${id}::uuid AND ${ownedSet(actingUserId, Prisma.sql`"set_entry".id`)}
           RETURNING ${SET_ENTRY_COLUMNS}
         `;
         const set = toSetRecord(updated[0]!);
@@ -358,24 +370,26 @@ export function createSetEntryMethods(
       if (!isSetEntryId(id)) throw new NotFoundError(SET_NOT_FOUND);
       const owner = await resolveOwnedSet(prisma, actingUserId, id);
       return withWriteMode(prisma, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
-        const span = await lockedWorkoutSpan(tx, owner.workout_id, SET_NOT_FOUND);
+        const span = await lockedWorkoutSpan(tx, actingUserId, owner.workout_id, SET_NOT_FOUND);
         assertStillLive(mode, span.ended_at);
         if (mode === "live") {
           // No renumbering: set_number is a permanent ordinal (D2, AC9).
-          const affected = await tx.$executeRaw`DELETE FROM "set_entry" WHERE id = ${id}::uuid`;
+          const affected = await tx.$executeRaw`
+            DELETE FROM "set_entry" WHERE id = ${id}::uuid AND ${ownedSet(actingUserId, Prisma.sql`"set_entry".id`)}`;
           if (affected === 0) throw new NotFoundError(SET_NOT_FOUND);
           return { finishedEdit: null };
         }
         // Final review #1: the set must still exist under its lock before the guard counts — a duplicate
         // delete that lost the race is a 404 ("already done"), never a would-be-empty 409.
         const target = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "set_entry" WHERE id = ${id}::uuid FOR UPDATE
+          SELECT id FROM "set_entry" WHERE id = ${id}::uuid AND ${ownedSet(actingUserId, Prisma.sql`"set_entry".id`)} FOR UPDATE
         `;
         if (!target[0]) throw new NotFoundError(SET_NOT_FOUND);
         // 07.4 §6.3: refuse to empty a finished workout (under the PR lock: race-free, AC11).
         await assertWouldNotEmpty(tx, owner.workout_id, 1);
         const deleted = await tx.$queryRaw<{ set_type: string; workout_exercise_id: string }[]>`
-          DELETE FROM "set_entry" WHERE id = ${id}::uuid RETURNING set_type, workout_exercise_id::text
+          DELETE FROM "set_entry" WHERE id = ${id}::uuid AND ${ownedSet(actingUserId, Prisma.sql`"set_entry".id`)}
+          RETURNING set_type, workout_exercise_id::text
         `;
         const gone = deleted[0];
         if (!gone) throw new NotFoundError(SET_NOT_FOUND);

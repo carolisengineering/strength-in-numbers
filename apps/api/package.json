@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "audit:queries": "tsx scripts/query-audit.ts",
     "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "records:rebuild": "tsx --env-file-if-exists=.env scripts/rebuild-records.ts",
     "account:purge": "tsx --env-file-if-exists=.env scripts/purge-accounts.ts",
