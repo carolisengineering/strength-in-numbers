@@ -1,5 +1,6 @@
 // apps/api/src/repositories/routine.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { toScoped, type UserScopedDb } from "../db/scoped.js";
 import {
   ROUTINE_ONE_OFF_DAYS,
   ROUTINES_PER_USER_MAX,
@@ -261,7 +262,9 @@ function nameTaken(err: unknown): boolean {
   return isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, lower(name)";
 }
 
-export function createRoutineRepository(prisma: PrismaClient): RoutineRepository {
+export function createRoutineRepository(db: UserScopedDb | PrismaClient): RoutineRepository {
+  // Spec 21.1 AC14: every method's statements run on `scoped.as(actingUserId)`.
+  const scoped = toScoped(db);
   async function loadOne(client: RawClient, actingUserId: string, id: string): Promise<RoutineRecord> {
     const rows = await client.$queryRaw<RoutineDbRow[]>(
       ROUTINE_WITH_ITEMS(Prisma.sql`r.id = ${id}::uuid AND r.user_id = ${actingUserId}::uuid`, Prisma.empty),
@@ -273,22 +276,25 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
 
   return {
     async list(actingUserId) {
-      const swept = await sweepExpiredOneOffs(prisma, actingUserId);
-      const rows = await prisma.$queryRaw<RoutineDbRow[]>(
+      const c = scoped.as(actingUserId);
+      const swept = await sweepExpiredOneOffs(c, actingUserId);
+      const rows = await c.$queryRaw<RoutineDbRow[]>(
         ROUTINE_WITH_ITEMS(Prisma.sql`r.user_id = ${actingUserId}::uuid`, ROUTINE_ONE_OFF_ORDER),
       );
       return { routines: rows.map(toRoutine), swept };
     },
 
     async getById(actingUserId, id) {
+      const c = scoped.as(actingUserId);
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
-      return loadOne(prisma, actingUserId, id);
+      return loadOne(c, actingUserId, id);
     },
 
     async create(actingUserId, fields) {
+      const c = scoped.as(actingUserId);
       const id = uuidv7();
       let removed = 0;
-      const created = await prisma.$transaction(async (tx) => {
+      const created = await c.$transaction(async (tx) => {
         // The 03.2 cap idiom (insertWithCap): the lock is its own statement so
         // the count's snapshot is taken after the lock is held. The key is
         // prefixed so it never collides with the custom-exercise cap's
@@ -327,8 +333,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
     },
 
     async replace(actingUserId, id, fields) {
+      const c = scoped.as(actingUserId);
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
-      return prisma.$transaction(async (tx) => {
+      return c.$transaction(async (tx) => {
         // Row lock first: serialises concurrent PUTs on one routine (AC14, D8)
         // and doubles as the 404.
         const locked = await tx.$queryRaw<{ id: string }[]>`
@@ -363,9 +370,10 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
     },
 
     async keep(actingUserId, id) {
+      const c = scoped.as(actingUserId);
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
-      if (await keepOneOff(prisma, actingUserId, id)) return { changed: true };
-      const owned = await prisma.$queryRaw<{ one: number }[]>`
+      if (await keepOneOff(c, actingUserId, id)) return { changed: true };
+      const owned = await c.$queryRaw<{ one: number }[]>`
         SELECT 1 AS one FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
       `;
       if (!owned[0]) throw new NotFoundError(NOT_FOUND);
@@ -373,8 +381,9 @@ export function createRoutineRepository(prisma: PrismaClient): RoutineRepository
     },
 
     async delete(actingUserId, id) {
+      const c = scoped.as(actingUserId);
       if (!isRoutineId(id)) throw new NotFoundError(NOT_FOUND);
-      const rows = await prisma.$queryRaw<{ id: string }[]>`
+      const rows = await c.$queryRaw<{ id: string }[]>`
         DELETE FROM "routine" WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid RETURNING id
       `;
       if (!rows[0]) throw new NotFoundError(NOT_FOUND);

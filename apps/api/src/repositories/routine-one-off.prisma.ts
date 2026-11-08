@@ -1,5 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
-import type { RawClient } from "./set-entry.prisma.js";
+import type { RawClient, ScopedClient } from "../db/scoped.js";
 import type { OneOffOutcome } from "./workout.js";
 
 /**
@@ -13,15 +12,15 @@ import type { OneOffOutcome } from "./workout.js";
  * sweepable, so the probe skips it too: a list read during that workout takes no lock on it. The delete below
  * still re-checks under the lock. Returns how many routines it removed.
  */
-export async function sweepExpiredOneOffs(prisma: PrismaClient, userId: string): Promise<number> {
-  const probe = await prisma.$queryRaw<{ one: number }[]>`
+export async function sweepExpiredOneOffs(client: ScopedClient, userId: string): Promise<number> {
+  const probe = await client.$queryRaw<{ one: number }[]>`
     SELECT 1 AS one FROM "routine" r
     WHERE r.user_id = ${userId}::uuid AND r.one_off_until IS NOT NULL AND r.one_off_until <= now()
       AND NOT EXISTS (SELECT 1 FROM "workout" w WHERE w.routine_id = r.id AND w.ended_at IS NULL)
     LIMIT 1
   `;
   if (probe.length === 0) return 0;
-  return prisma.$transaction((tx) => deleteExpiredOneOffs(tx, userId));
+  return client.$transaction((tx) => deleteExpiredOneOffs(tx, userId));
 }
 
 /**
