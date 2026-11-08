@@ -9,7 +9,7 @@ import {
   type RecordType,
   type RecordUnit,
 } from "@sin/core";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import type {
   PersonalRecordFilter,
@@ -18,7 +18,7 @@ import type {
   ProgressRange,
   ProgressSeriesRecord,
 } from "./personal-record.js";
-import type { RawClient } from "./set-entry.prisma.js";
+import { toScoped, type RawClient, type UserScopedDb } from "../db/scoped.js";
 import { NotFoundError } from "../errors/app-error.js";
 
 /**
@@ -246,18 +246,21 @@ interface ReadRow {
 }
 
 /** Spec 07.0 §6.7 — the read half. Always `WHERE user_id = actingUserId`. */
-export function createPersonalRecordRepository(prisma: RawClient): PersonalRecordRepository {
+export function createPersonalRecordRepository(db: UserScopedDb | PrismaClient): PersonalRecordRepository {
+  // Spec 21.1 AC14: every method's statements run on `scoped.as(actingUserId)`.
+  const scoped = toScoped(db);
   return {
     async list(actingUserId: string, filter: PersonalRecordFilter): Promise<PersonalRecordRecord[]> {
+      const c = scoped.as(actingUserId);
       let root: string | null = null;
       if (filter.exerciseId !== undefined) {
         // Resolve only through exercises the caller may see (global or owned,
         // retired included) — anything else matches nothing (§7, AC20).
-        root = await resolveVisibleRoot(prisma, actingUserId, filter.exerciseId);
+        root = await resolveVisibleRoot(c, actingUserId, filter.exerciseId);
         if (root === null) return [];
       }
       const workoutId = filter.workoutId ?? null;
-      const rows = await prisma.$queryRaw<ReadRow[]>`
+      const rows = await c.$queryRaw<ReadRow[]>`
         SELECT pr.exercise_id::text AS exercise_id, we.exercise_id::text AS source_exercise_id,
                we.exercise_name_snapshot AS exercise_name, pr.record_type,
                pr.value::float8 AS value, pr.unit, pr.previous_value::float8 AS previous_value,
@@ -286,9 +289,10 @@ export function createPersonalRecordRepository(prisma: RawClient): PersonalRecor
       }));
     },
     async getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord> {
-      const root = await resolveVisibleRoot(prisma, actingUserId, exerciseId);
+      const c = scoped.as(actingUserId);
+      const root = await resolveVisibleRoot(c, actingUserId, exerciseId);
       if (root === null) throw new NotFoundError("exercise not found or not visible to the acting user");
-      const rows = (await loadLineageSets(prisma, actingUserId, [root], range)).get(root) ?? [];
+      const rows = (await loadLineageSets(c, actingUserId, [root], range)).get(root) ?? [];
       const firstRowOf = new Map<string, LineageSetRow>();
       for (const r of rows) if (!firstRowOf.has(r.workout_id)) firstRowOf.set(r.workout_id, r);
       const points = progressPoints(rows.map(toRecordSet)).map((p) => {
