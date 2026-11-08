@@ -1,6 +1,7 @@
 // apps/api/src/db/login-check.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ConfigError } from "../config.js";
+import { rawSqlState } from "../repositories/pg-errors.js";
 
 /**
  * Spec 21.1 §6.4 (D5, AC24, AC26) — the boot refusal. The API runs this on its own pool, after `createPrisma` and before
@@ -47,7 +48,11 @@ export class DatabaseLoginRejectedError extends ConfigError {
   }
 }
 
-/** Gave up after the retries. One fixed line: Prisma's own message names the host (Spec 15 §7), so only its code is kept. */
+/**
+ * Gave up after the retries. One fixed line that keeps only Prisma's code, not its message, which names the host (Spec 15
+ * §7). The client's own `log` option still prints a `prisma:error` line for each failed attempt, as it does for any
+ * database error while the API runs.
+ */
 export class DatabaseUnreachableError extends ConfigError {
   constructor(seconds: number, detail: string) {
     const message = `Refusing to start: could not reach the database within ${seconds} s (${detail}).`;
@@ -61,7 +66,9 @@ const FIRST_DELAY_MS = 250;
 const MAX_DELAY_MS = 4_000;
 const CAUSE_DEPTH = 5;
 const REJECTED_SQLSTATES = new Set(["28000", "28P01"]);
-const CONNECTIVITY_CODES = new Set(["P1001", "P1002", "P1017", "P2024"]);
+const CONNECTIVITY_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024"]);
+/** A server restarting or still starting: terminated by an administrator, crash shutdown, cannot connect now. */
+const TRANSIENT_SQLSTATES = new Set(["57P01", "57P02", "57P03"]);
 /** Prisma 6.19 gives these no error code through $queryRaw: wrong password or no password ("Authentication failed…"), and a
  * NOLOGIN role that has a password ("User was denied access…"). login-check.integration.test.ts pins both on a real server. */
 const REJECTED_LOGIN_TEXT = /Authentication failed against database server|User was denied access on the database/;
@@ -130,9 +137,10 @@ function* chain(err: unknown): Generator<unknown> {
 function isRejectedLogin(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientInitializationError && REJECTED_LOGIN_TEXT.test(err.message)) return true;
   for (const e of chain(err)) {
-    const { code, errorCode, meta } = e as { code?: unknown; errorCode?: unknown; meta?: { code?: unknown } };
+    const { code, errorCode } = e as { code?: unknown; errorCode?: unknown };
     if (code === "P1000" || errorCode === "P1000") return true;
-    for (const state of [code, meta?.code]) if (typeof state === "string" && REJECTED_SQLSTATES.has(state)) return true;
+    // A raw query's SQLSTATE through rawSqlState; a driver error in a `cause` carries it as its own `code`.
+    for (const state of [rawSqlState(e), code]) if (typeof state === "string" && REJECTED_SQLSTATES.has(state)) return true;
   }
   return false;
 }
@@ -145,8 +153,20 @@ function errorDetail(err: unknown): string {
   return (err as object).constructor.name;
 }
 
+/** Rejects when the attempt outlives the budget left, so a stalled connection cannot hang the boot past its deadline. */
+class AttemptTimedOut extends Error {}
+function withinBudget<T>(attempt: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AttemptTimedOut()), ms);
+  });
+  return Promise.race([attempt, expired]).finally(() => clearTimeout(timer));
+}
+
 function isConnectivity(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  const state = rawSqlState(err);
+  if (state !== null && TRANSIENT_SQLSTATES.has(state)) return true;
   return err instanceof Prisma.PrismaClientKnownRequestError && CONNECTIVITY_CODES.has(err.code);
 }
 
@@ -162,8 +182,9 @@ export async function assertLoginCannotBypassRls(
   for (;;) {
     let facts: LoginFacts;
     try {
-      facts = await readFacts(client);
+      facts = await withinBudget(readFacts(client), Math.max(deadlineMs - (now() - started), 1));
     } catch (err) {
+      if (err instanceof AttemptTimedOut) throw new DatabaseUnreachableError(Math.round(deadlineMs / 1000), "timed out");
       if (isRejectedLogin(err)) throw new DatabaseLoginRejectedError();
       if (!isConnectivity(err)) throw err;
       if (now() + delay - started > deadlineMs) throw new DatabaseUnreachableError(Math.round(deadlineMs / 1000), errorDetail(err));

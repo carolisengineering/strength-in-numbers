@@ -58,6 +58,20 @@ describe("Spec 21.1 AC29 — db:app-role refuses before touching a database", ()
   });
 });
 
+describe("Spec 21.1 Review Focus 3 — a failure's text never carries the owner URL (/code-review)", () => {
+  it("the whole URL goes, not just its password: no user, no host, no encoded password", async () => {
+    const url = "postgresql://owner:owner%2Fsecret@ep-x.neon.tech:5432/sin?sslmode=require&sslaccept=strict";
+    const failing = {
+      $transaction: () => Promise.reject(new Error(`connect failed for ${url} at ep-x.neon.tech:5432 with owner/secret and owner%2Fsecret`)),
+      $disconnect: () => Promise.resolve(),
+    } as unknown as PrismaClient;
+    const t = io({ isTTY: false });
+    expect(await main([], { OWNER_DATABASE_URL: url, APP_ROLE_PASSWORD: "long-enough-password" }, { io: t.io, makePrisma: () => failing })).toBe(1);
+    expect(t.lines.err).toContain("db:app-role failed");
+    expect(t.lines.err).not.toMatch(/owner%2Fsecret|owner\/secret|ep-x\.neon|postgresql:/);
+  });
+});
+
 describe("Spec 21.1 AC29 — the report and the missing role", () => {
   const clean: AppRoleReport = { rolname: "sin_app", canLogin: true, superuser: false, bypassrls: false, createRole: false, createDb: false, memberOf: [] };
 

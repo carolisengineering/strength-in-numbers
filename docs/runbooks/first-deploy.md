@@ -174,8 +174,12 @@ connection exists by default) and **Authentication → Social** for Google/Apple
    and silently downgrades to `prefer` (TLS optional); the app refuses to boot on
    it. B6 checks that strict validation actually works against Neon.
 
-**Record:** `DATABASE_URL` = that full string (it's a secret — GitHub/Render
-only, never commit it).
+**Record:** `OWNER_DATABASE_URL` = that full string (it's a secret: your password
+manager, never commit it, and never on the Render service).
+
+**On a fresh database, do B4 and "RLS rollout" step S4 now, before B2.** Since Spec 21.1
+Phase C the API refuses the owner login and won't start until the restricted login
+`sin_app` exists and has its password. B2 then uses the `sin_app` URL that S4 builds.
 
 ### B2. Create the Render service from the blueprint
 
@@ -194,11 +198,10 @@ and sets almost everything.
      `AUTH0_ISSUER`; committed in `render.yaml`).
    - **No database** — you're using Neon.
 4. It will prompt for the one **`sync: false`** var: **`DATABASE_URL`**. Paste
-   the Neon string from B1.
+   the **`sin_app` URL** from S4, not the owner string from B1.
 5. **Blueprint Name:** `strength-in-numbers`. **Apply** / **Create Resources**.
-6. Render starts the **first build**. It'll go live on `/healthz` (that endpoint
-   has no DB dependency) even before migrations exist — that's fine, B4 handles
-   the schema.
+6. Render starts the **first build**. It goes live once its boot check passes on
+   `sin_app`; a log line starting `Refusing to start` says why it didn't.
 
 ### B3. Check `api-shared` values
 
@@ -298,11 +301,11 @@ email claim, so every user route refuses it (`401 invalid-token`).
 
 ### B4. Run the migration against Neon (by hand) — **required, easy to miss**
 
-Free Render has no pre-deploy step, so apply `0001_create_user` yourself. **The
-service deploys fine, `/healthz` and `/readyz` go green, and `/v1/_authcheck`
-passes — all without the `user` table.** The first thing that needs it is
-`/v1/me`, so a skipped migration shows up only as a **`500` on `/v1/me`** (and
-the CI `smoke` failing at that exact step).
+Free Render has no pre-deploy step, so apply the migrations yourself. On a fresh
+database that comes before the first deploy: the API won't start until `0020` has
+created `sin_app` and S4 has given it a login. A later migration you forget shows up
+differently: the service stays up, and only the statements that need the new schema
+fail, as a **`500`** on those routes (and the CI `smoke` failing at that step).
 
 Use the **owner login's** connection string, `OWNER_DATABASE_URL`. Since Spec 21.1
 Phase C the `DATABASE_URL` on the Render service is the restricted `sin_app` login,
@@ -319,8 +322,8 @@ repo root:
 export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 ```
 
-The string must carry `sslaccept=strict` (B1): the Prisma CLI reads the raw URL, so the wrapper these commands go through
-refuses one without it, rather than let the owner login connect with no certificate check.
+The string must carry `sslmode=require&sslaccept=strict` (B1): the Prisma CLI reads the raw URL, so the wrapper these
+commands go through refuses one without them, rather than let the owner login connect with no certificate check.
 
 An exported variable takes precedence over `apps/api/.env.owner` (Node's and tsx's
 `--env-file` both leave already-set variables alone), so this safely overrides the
@@ -587,7 +590,7 @@ eligible sets.
 1. **Before merging** Phase A. Merging auto-deploys staging, and the new code's ownership predicates (`repositories/ownership.ts`) and three detail / History loaders read `user_id` on the child tables, so without the column every set edit, workout detail and History page answers `500`. Spec 21.1 §6.9 S1 was corrected to this order.
    - Count first: `SELECT count(*) FROM set_entry;`. Over about 500,000 rows, stop: split the backfill by id range by hand (spec §4.2). Not expected on staging (thousands of rows).
    - Pick a quiet minute (no workout in progress). `migrate deploy` runs the file as one transaction: it first locks the ten tables (`routine`, `workout` and their children) in `ACCESS EXCLUSIVE` mode and holds them until it commits. The backfill rewrites every child row once, so reads and writes on those tables wait a few seconds at staging's size, then go through. A request that arrives exactly while the locks are being taken can deadlock with it; Postgres then fails one side (that request answers `500`, or the migration fails).
-   - If the migration fails, for that reason or because it couldn't get the locks within 5 seconds (`lock_timeout`), it changes nothing, but Prisma records the attempt as failed and refuses later deploys (`P3009`). Clear that with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api exec prisma migrate resolve --rolled-back 0019_child_table_owner`, then deploy again.
+   - If the migration fails, for that reason or because it couldn't get the locks within 5 seconds (`lock_timeout`), it changes nothing, but Prisma records the attempt as failed and refuses later deploys (`P3009`). Clear that with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --rolled-back 0019_child_table_owner`, then deploy again.
 2. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then `db:migrate:deploy`, then `db:migrate:status` again (do not assume). It adds `user_id` to `workout_exercise`, `workout_section`, `set_entry`, `workout_planned_set`, `workout_section_round`, `routine_item`, `routine_section` and `routine_item_set`; a `BEFORE INSERT` fill trigger on each; the backfill; `(id, user_id)` keys on five parents; composite foreign keys in place of the eight single-column ones; and `NOT NULL`. `\d set_entry` shows `user_id uuid not null`, the trigger `set_entry_fill_user` and the key `set_entry_workout_exercise_owner_fkey`. Expand-only: the running API never names the column, and the trigger fills it on every insert.
 3. The consistency query (spec AC1). Every row must be `0`:
 
@@ -661,7 +664,7 @@ answers `500` and logs SQLSTATE `42501`. **If red: put the owner URL back in Ren
 
 **S6 — merge Phase C.** First confirm `OWNER_DATABASE_URL` is **not** set in Render: the API refuses to start with it.
 After the deploy, the log has a `db_login_checked` line with `"superuser":false`; the smoke goes green. A refused boot
-prints one line naming the reason. **If red: Render → Manual Deploy → the previous commit.** Putting the owner URL back
+ends with one line naming the reason (a rejected or unreachable database also shows Prisma's own `prisma:error` lines above it). **If red: Render → Manual Deploy → the previous commit.** Putting the owner URL back
 does not help here, because the Phase C code refuses it; the Phase B code runs on either login.
 
 ```bash
@@ -1181,8 +1184,8 @@ Cloud are in [`observability.md`](observability.md).
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |
-| B5 seed fails: `relation "X" does not exist` (`code: 42P01`) | B4 was skipped, or `DATABASE_URL` points at a different Neon branch than the one B4 was run against. Run `prisma migrate status` first to confirm, then B4. |
-| `prisma migrate status` / `migrate deploy` prints a `Datasource` host containing `-pooler` | You exported the **pooled** connection string. `migrate status` will still report correctly, but `migrate deploy` needs the **direct** host — pooled connections (PgBouncer transaction mode) don't support the advisory locks Prisma migrate uses. Drop `-pooler` from the host, or toggle pooling off in Neon's Connection Details, and re-export `DATABASE_URL`. |
+| B5 seed fails: `relation "X" does not exist` (`code: 42P01`) | B4 was skipped, or `OWNER_DATABASE_URL` points at a different Neon branch than the one B4 was run against. Run `pnpm run db:migrate:status` first to confirm, then B4. |
+| `prisma migrate status` / `migrate deploy` prints a `Datasource` host containing `-pooler` | You exported the **pooled** connection string. `migrate status` will still report correctly, but `migrate deploy` needs the **direct** host — pooled connections (PgBouncer transaction mode) don't support the advisory locks Prisma migrate uses. Drop `-pooler` from the host, or toggle pooling off in Neon's Connection Details, and re-export `OWNER_DATABASE_URL`. |
 | Boot crash: `@prisma/client did not initialize yet. Please run "prisma generate"` | The runtime image has no generated client. Fixed in `Dockerfile` — the runtime stage runs `pnpm --filter @sin/api exec prisma generate` explicitly (`@prisma/client`'s postinstall can't find the schema in a pnpm monorepo). Don't remove that line. |
 | Boot/query: `libssl`/`libquery_engine` load error, or `prisma:warn Prisma failed to detect the libssl/openssl version` | `node:22-slim` ships without `openssl`. Fixed in `Dockerfile` base stage (`apt-get install openssl ca-certificates`). |
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/main.js`) and `PORT` is being read. |

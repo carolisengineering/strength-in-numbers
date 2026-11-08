@@ -15,9 +15,10 @@ function main(): void {
     process.stderr.write(`check-migrate-status: ${owner.error}\n`);
     process.exit(1);
   }
-  const run = spawnSync("pnpm", ["--filter", "@sin/api", "exec", "prisma", "migrate", "status"], {
-    // Prisma reads env("DATABASE_URL"): the owner's, for this child only (Spec 21.1 §6.8).
-    env: { ...process.env, DATABASE_URL: owner.url },
+  // Through owner-env.mjs (Spec 21.1 §6.8): Prisma reads env("DATABASE_URL"), the owner's for this child only, and a URL
+  // that would skip the certificate check is refused, here as on every other migrate command.
+  const run = spawnSync("pnpm", ["--filter", "@sin/api", "exec", "node", "scripts/owner-env.mjs", "prisma", "migrate", "status"], {
+    env: process.env,
     encoding: "utf8",
   });
   const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;

@@ -61,8 +61,34 @@ describe("Spec 21.1 AC28 — owner-env", () => {
       expect(r.stdout).not.toContain("ran");
     });
     it("the local database's sslmode=disable is an explicit choice, and passes", () => {
-      expect(run({ OWNER_DATABASE_URL: "postgresql://sin:sin@localhost:5433/sin?sslmode=disable" }, "process.exit(0)").status).toBe(0);
+      for (const host of ["localhost:5433", "127.0.0.1:5433", "db:5432"]) {
+        expect([host, run({ OWNER_DATABASE_URL: `postgresql://sin:sin@${host}/sin?sslmode=disable` }, "process.exit(0)").status]).toEqual([host, 0]);
+      }
     });
+    // /code-review: Prisma treats anything but require / disable as "TLS optional", whatever sslaccept says (db.ts).
+    for (const query of ["sslaccept=strict", "sslmode=prefer&sslaccept=strict", "sslmode=verify-full&sslaccept=strict", "sslmode=require&sslaccept=accept_invalid_certs"]) {
+      it(`refused: ?${query}`, () => {
+        const r = run({ OWNER_DATABASE_URL: `postgresql://o:secret-pw@ep-x.neon.tech/neondb?${query}` }, "process.stdout.write('ran')");
+        expect(r.status).toBe(1);
+        expect(r.stderr).toContain("sslaccept=strict");
+        expect(r.stdout).not.toContain("ran");
+      });
+    }
+    it("sslmode=disable on a remote host is refused", () => {
+      const r = run({ OWNER_DATABASE_URL: "postgresql://o:secret-pw@ep-x.neon.tech/neondb?sslmode=disable" }, "process.stdout.write('ran')");
+      expect(r.status).toBe(1);
+      expect(r.stdout).not.toContain("ran");
+    });
+    it("check-migrate-status goes through the same guard: the deploy job cannot use an unverified owner URL (/code-review)", () => {
+      const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/check-migrate-status.ts"], {
+        cwd: fileURLToPath(new URL("../..", import.meta.url)),
+        encoding: "utf8",
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", OWNER_DATABASE_URL: "postgresql://o:secret-pw@ep-x.neon.tech/neondb?sslmode=require" },
+      });
+      expect(r.status).toBe(1);
+      expect(r.stdout + r.stderr).toContain("sslaccept=strict");
+      expect(r.stdout + r.stderr).not.toMatch(/secret-pw|ep-x\.neon/);
+    }, 60_000);
     it("a malformed URL is refused without printing it", () => {
       const r = run({ OWNER_DATABASE_URL: "postgresql://o:secret/pw@ep-x.neon.tech/neondb" }, "process.stdout.write('ran')");
       expect(r.status).toBe(1);

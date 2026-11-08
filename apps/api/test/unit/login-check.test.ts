@@ -119,6 +119,27 @@ describe("Spec 21.1 AC26 — connectivity is not a verdict", () => {
     expect(clock.sleeps).toEqual([250]);
   });
 
+  for (const [label, error] of [
+    ["P1008 (operation timed out)", new Prisma.PrismaClientKnownRequestError("Operations timed out", { code: "P1008", clientVersion: "test" })],
+    ["SQLSTATE 57P03 (Neon starting up)", new Prisma.PrismaClientKnownRequestError("x", { code: "P2010", clientVersion: "test", meta: { code: "57P03" } })],
+    ["SQLSTATE 57P01 (a backend terminated)", new Prisma.PrismaClientKnownRequestError("x", { code: "P2010", clientVersion: "test", meta: { code: "57P01" } })],
+  ] as const) {
+    it(`${label} is retried, not a verdict (/code-review)`, async () => {
+      const clock = fakeClock();
+      await expect(assertLoginCannotBypassRls(fake({ failures: [error] }).client, clock)).resolves.toMatchObject({ role: "sin_app" });
+      expect(clock.sleeps).toEqual([250]);
+    });
+  }
+
+  it("a hung attempt cannot outlive the deadline: the process exits within its budget (/code-review)", async () => {
+    const hung = { $queryRaw: () => new Promise(() => undefined) } as unknown as Pick<PrismaClient, "$queryRaw">;
+    const started = Date.now();
+    const err = await assertLoginCannotBypassRls(hung, { deadlineMs: 100 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DatabaseUnreachableError);
+    expect((err as Error).message).toContain("timed out");
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
   it("final review I5 — giving up prints one fixed line with the error code: no host, no stack", async () => {
     const clock = fakeClock();
     const failures = Array.from({ length: 50 }, () => new Prisma.PrismaClientKnownRequestError("Can't reach database server at `ep-secret-host.neon.tech:5432`", { code: "P1001", clientVersion: "test" }));

@@ -152,6 +152,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase C — migration 0020 (
     expect(order.indexOf("routine")).toBeLessThan(order.indexOf("routine_item"));
   });
 
+  it("AC28 — check-migrate-status, through owner-env.mjs, reports a migrated database as up to date and prints no URL", () => {
+    const owner = new URL(db.url);
+    owner.searchParams.set("sslmode", "disable");
+    const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/check-migrate-status.ts"], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", OWNER_DATABASE_URL: owner.toString() },
+    });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("check-migrate-status: ok (up-to-date)");
+    expect(r.stdout).not.toContain(owner.host);
+  }, 60_000);
+
   // Moved from child-table-owner-migration (Spec 21.1 Phase A AC5/AC6): the whole-schema no-drift check lives in the
   // newest migration's test.
   describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {

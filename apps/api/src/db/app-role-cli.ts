@@ -61,7 +61,8 @@ function describeReport(r: AppRoleReport): string {
 function redacted(err: unknown, secrets: readonly string[]): string {
   const name = (err as Error)?.constructor?.name ?? typeof err;
   let message = err instanceof Error ? err.message : String(err);
-  for (const s of secrets) if (s.length > 0) message = message.split(s).join("***");
+  // Longest first, so a whole URL goes before its password would break the match (scrubDatabaseUrl does the same).
+  for (const s of [...secrets].filter((x) => x.length > 0).sort((a, b) => b.length - a.length)) message = message.split(s).join("***");
   return `${name}: ${message.split("\n").filter((l) => l.trim() !== "").slice(-3).join(" ")}`;
 }
 
@@ -96,11 +97,12 @@ export async function main(
     return 1;
   }
 
-  let ownerPassword = "";
+  const secrets = [password, ownerRaw];
   let url: string;
   try {
     url = resolveDatabaseUrl(ownerRaw);
-    ownerPassword = decodeURIComponent(new URL(url).password);
+    const parsed = new URL(url);
+    secrets.push(url, parsed.password, decodeURIComponent(parsed.password), parsed.host, parsed.hostname);
   } catch (err) {
     io.err(`OWNER_DATABASE_URL rejected: ${redacted(err, [ownerRaw, password])}\n`);
     return 1;
@@ -119,7 +121,7 @@ export async function main(
     }
     return 0;
   } catch (err) {
-    io.err(`db:app-role failed: ${redacted(err, [password, ownerPassword, ownerRaw, url])}\n`);
+    io.err(`db:app-role failed: ${redacted(err, secrets)}\n`);
     return 1;
   } finally {
     if (owned) await prisma?.$disconnect();

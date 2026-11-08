@@ -17,23 +17,28 @@ export const OWNER_URL_MISSING = "set OWNER_DATABASE_URL to the owner login; DAT
 
 /** Never includes the URL: a malformed one may hold the password. */
 export const OWNER_URL_NOT_STRICT =
-  "OWNER_DATABASE_URL must carry sslaccept=strict (or sslmode=disable for a local database): the Prisma CLI reads the raw URL, and without it the owner login would connect with no certificate check (runbook B1)";
+  "OWNER_DATABASE_URL must carry sslmode=require&sslaccept=strict (sslmode=disable only on a local database): the Prisma CLI reads the raw URL, and without them the owner login would connect with no certificate check (runbook B1)";
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "db"]);
 export const OWNER_URL_MALFORMED = "OWNER_DATABASE_URL is not a valid URL (percent-encode any / : @ in the password)";
 
 /**
  * The child's environment, or the refusal. The given object (the real process's environment) is never changed. The app
- * and the maintenance CLIs backfill `sslaccept=strict` (`resolveDatabaseUrl`); the Prisma CLI does not (#8).
+ * and the maintenance CLIs backfill `sslaccept=strict` (`resolveDatabaseUrl`); the Prisma CLI does not (#8), and it treats
+ * any `sslmode` but `require` / `disable`, including libpq's `verify-full`, as TLS optional (`db.ts`).
  */
 export function resolveOwnerEnv(env) {
   const raw = env.OWNER_DATABASE_URL;
   if (raw === undefined || raw === "") return { ok: false, error: OWNER_URL_MISSING };
-  let params;
+  let url;
   try {
-    params = new URL(raw).searchParams;
+    url = new URL(raw);
   } catch {
     return { ok: false, error: OWNER_URL_MALFORMED };
   }
-  if (params.get("sslaccept") !== "strict" && params.get("sslmode") !== "disable") return { ok: false, error: OWNER_URL_NOT_STRICT };
+  const sslmode = url.searchParams.get("sslmode");
+  const verified = sslmode === "require" && url.searchParams.get("sslaccept") === "strict";
+  const local = sslmode === "disable" && LOCAL_HOSTS.has(url.hostname);
+  if (!verified && !local) return { ok: false, error: OWNER_URL_NOT_STRICT };
   return { ok: true, env: { ...env, DATABASE_URL: raw } };
 }
 
