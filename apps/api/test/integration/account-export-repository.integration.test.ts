@@ -127,10 +127,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
   });
   }
 
-  it("AC8 / 09.5 AC11 — a fixed statement count: 5 workouts and 60 workouts (timed sections with round times) issue the same number, ≤ 8", async () => {
-    const count = async (user: string) => {
+  it("AC8 / 09.5 AC11 — a fixed statement count: 5 workouts and 60 workouts (timed sections with round times) issue the same number, ≤ 8, on both the owner client and the scoped handle (Spec 21.1)", async () => {
+    const count = async (user: string, handle: "bare" | "scoped" = "bare") => {
       const seen = await startCapture(db);
-      await createAccountExportRepository(db.prisma).snapshot(user);
+      await createAccountExportRepository(handle === "scoped" ? createScopedDb(db.prisma) : db.prisma).snapshot(user);
       await settleCapture(db, seen);
       return seen.filter((q) => !/^\s*(BEGIN|COMMIT|ROLLBACK|SET TRANSACTION ISOLATION)/i.test(q)).length;
     };
@@ -153,6 +153,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     expect(nBig).toBe(nSmall);
     expect(nSmall).toBeGreaterThanOrEqual(7); // not vacuous: the listener really saw the statements
     expect(nSmall).toBeLessThanOrEqual(8);
+    // The production path (Spec 21.1 amends AC8's bound): the handle adds exactly its set_config to the same fixed count.
+    const sSmall = await count(small, "scoped");
+    const sBig = await count(big, "scoped");
+    expect(sBig).toBe(sSmall);
+    expect(sSmall).toBe(nSmall + 1);
   });
 
   // Spec 07.4 AC30: the export's workout statement is hand-written (Spec 11), so the new column needs its own pin.

@@ -62,7 +62,8 @@ export function createAccountExportRepository(
       return c.$transaction(
         async (tx) => {
           // D7: `SET TRANSACTION READ ONLY` must precede the first data statement. Spec 21.1 AC17: the handle sends it
-          // (`readOnly` below) before its `set_config`, so the snapshot is still taken by the first statement here.
+          // (`readOnly` below) before its `set_config`, which is now the statement that takes the REPEATABLE READ
+          // snapshot (spec 21.1 §6.2), one round trip before the clock statement here; every statement below sees it.
           // Spec 19.0 AC35: the Hevy block rides on the clock statement, so AC8's count is unchanged. Pairs keep the
           // mapping read's order and row shape (`toHevyPair`); links include tombstones (`workout_id` NULL).
           const [clock] = await tx.$queryRaw<

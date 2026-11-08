@@ -29,7 +29,9 @@ import { NotFoundError } from "../errors/app-error.js";
 /** Per-user PR advisory lock (D9, amended). Every PR writer takes this as its
  * FIRST statement, before any workout row lock: the recompute's INSERTs take FK
  * KEY SHARE locks on other workouts' rows, so a writer holding a row lock while
- * waiting for this one can deadlock (AC18). */
+ * waiting for this one can deadlock (AC18). Through the scoped handle (Spec 21.1) the
+ * transaction's own `set_config` comes before it; that takes no lock, so "first" still
+ * means "before any lock". */
 export async function lockUserRecords(client: RawClient, userId: string): Promise<void> {
   await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pr:${userId}`}))`;
 }

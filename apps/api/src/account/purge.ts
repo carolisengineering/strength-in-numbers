@@ -88,7 +88,7 @@ export async function purgeAccount(
 ): Promise<{ purged: boolean; workoutCount: number; setCount: number }> {
   return toScoped(db).as(userId).$transaction(
     async (tx) => {
-      await lockUserRecords(tx, userId); // FIRST statement (D13, AC22)
+      await lockUserRecords(tx, userId); // FIRST lock (D13, AC22); only a scoped handle's lock-free set_config may precede it
       const [counts] = await tx.$queryRaw<{ workouts: number; sets: number }[]>`
         SELECT (SELECT count(*) FROM "workout" WHERE user_id = ${userId}::uuid)::int AS workouts,
                (SELECT count(*) FROM "set_entry" s
