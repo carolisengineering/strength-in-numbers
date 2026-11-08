@@ -307,7 +307,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — account:purge core (real P
     const u = await insertUser(db); // email u@ex.com
     await softDelete(u, GRACE_S + 60);
     // Testcontainers Postgres has no TLS, so reuse the test client via the seam.
-    const env = { DATABASE_URL: db.url, LOG_LEVEL: "info" };
+    const env = { OWNER_DATABASE_URL: db.url, LOG_LEVEL: "info" };
     const seam = { makePrisma: () => db.prisma };
     expect(await main([], env, seam)).toBe(0); // dry run
     expect(await main(["--confirm", "--user", uuidv7()], env, seam)).toBe(1); // unknown target

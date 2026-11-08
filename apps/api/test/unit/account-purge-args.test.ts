@@ -34,7 +34,7 @@ describe("AC28 — parsePurgeArgs", () => {
 });
 
 describe("AC28 — main exits 1 before touching a database", () => {
-  it("without DATABASE_URL", async () => {
+  it("without OWNER_DATABASE_URL", async () => {
     const makePrisma = vi.fn();
     await expect(main(["--confirm"], { ...QUIET }, { makePrisma })).resolves.toBe(1);
     expect(makePrisma).not.toHaveBeenCalled();
@@ -42,18 +42,18 @@ describe("AC28 — main exits 1 before touching a database", () => {
 
   it("on a bad argument", async () => {
     const makePrisma = vi.fn();
-    await expect(main(["--skip-grace"], { ...QUIET, DATABASE_URL: URL_OK }, { makePrisma })).resolves.toBe(1);
+    await expect(main(["--skip-grace"], { ...QUIET, OWNER_DATABASE_URL: URL_OK }, { makePrisma })).resolves.toBe(1);
     expect(makePrisma).not.toHaveBeenCalled();
   });
 
-  it("never prints a malformed DATABASE_URL (its password) when rejecting it", async () => {
+  it("never prints a malformed OWNER_DATABASE_URL (its password) when rejecting it", async () => {
     const out: string[] = [];
     const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
     const makePrisma = vi.fn();
-    const env = { LOG_LEVEL: "info", DATABASE_URL: "postgresql://u:hunter2-secret@host:notaport/sin" };
+    const env = { LOG_LEVEL: "info", OWNER_DATABASE_URL: "postgresql://u:hunter2-secret@host:notaport/sin" };
     await expect(main([], env, { makePrisma })).resolves.toBe(1);
     write.mockRestore();
-    expect(out.join("")).toContain("DATABASE_URL rejected");
+    expect(out.join("")).toContain("OWNER_DATABASE_URL rejected");
     expect(out.join("")).not.toMatch(/hunter2|secret/);
     expect(makePrisma).not.toHaveBeenCalled();
   });
@@ -62,7 +62,7 @@ describe("AC28 — main exits 1 before touching a database", () => {
     const out: string[] = [];
     const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
     const failing = { $queryRaw: async () => { throw new Error("auth failed for user svc-hunter2@db.internal"); } };
-    const env = { LOG_LEVEL: "info", DATABASE_URL: URL_OK };
+    const env = { LOG_LEVEL: "info", OWNER_DATABASE_URL: URL_OK };
     await expect(main([], env, { makePrisma: () => failing as never })).resolves.toBe(1);
     write.mockRestore();
     expect(out.join("")).toContain("account purge failed");
@@ -71,7 +71,7 @@ describe("AC28 — main exits 1 before touching a database", () => {
 
   it("when resolveDatabaseUrl rejects the URL", async () => {
     const makePrisma = vi.fn();
-    const env = { ...QUIET, DATABASE_URL: `${URL_OK}?sslmode=verify-full` };
+    const env = { ...QUIET, OWNER_DATABASE_URL: `${URL_OK}?sslmode=verify-full` };
     await expect(main([], env, { makePrisma })).resolves.toBe(1);
     expect(makePrisma).not.toHaveBeenCalled();
   });

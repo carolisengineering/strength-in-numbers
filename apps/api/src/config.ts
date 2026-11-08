@@ -192,7 +192,11 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
   // reports every bad variable.
   const telemetry = parseTelemetryEnv(env as Record<string, unknown>, parsed.success ? parsed.data.SERVICE_NAME : DEFAULT_SERVICE_NAME);
 
-  if (!parsed.success || telemetry.issues.length > 0) {
+  // Spec 21.1 AC27: the API must never hold the owner credential. Empty carries no credential, so it is ignored.
+  const ownerUrl = (env as Record<string, unknown>).OWNER_DATABASE_URL;
+  const ownerIssues = ownerUrl !== undefined && ownerUrl !== "" ? ["OWNER_DATABASE_URL: must not be set in the API's environment (maintenance commands only)"] : [];
+
+  if (!parsed.success || telemetry.issues.length > 0 || ownerIssues.length > 0) {
     const env0 = env as Record<string, unknown>;
     const issues = (parsed.success ? [] : parsed.error.issues).map((issue) => {
       const varName = String(issue.path[0] ?? "(config)");
@@ -202,7 +206,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, unknown>): Co
       const absent = varName !== "(config)" && env0[varName] === undefined;
       return `${varName}: ${absent ? "is required" : issue.message}`;
     });
-    throw new ConfigError([...new Set([...issues, ...telemetry.issues])]);
+    throw new ConfigError([...new Set([...issues, ...telemetry.issues, ...ownerIssues])]);
   }
 
   const c = parsed.data;

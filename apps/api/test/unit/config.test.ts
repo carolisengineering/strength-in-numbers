@@ -178,6 +178,34 @@ describe("loadConfig — rejects invalid config, names the var (Criterion 2)", (
     },
   );
 
+  it("Spec 21.1 AC27 — refuses OWNER_DATABASE_URL in the API's environment, without printing it", () => {
+    let err: unknown;
+    try {
+      loadConfig({ ...base, OWNER_DATABASE_URL: "postgresql://o:p@h/d" });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ConfigError);
+    expect((err as ConfigError).issues).toContain("OWNER_DATABASE_URL: must not be set in the API's environment (maintenance commands only)");
+    expect((err as ConfigError).message).not.toContain("o:p@h");
+  });
+
+  it("Spec 21.1 AC27 — the refusal joins the other issues in one ConfigError", () => {
+    let err: unknown;
+    try {
+      loadConfig({ ...base, PORT: "not-a-port", OWNER_DATABASE_URL: "postgresql://o:p@h/d" });
+    } catch (e) {
+      err = e;
+    }
+    const issues = (err as ConfigError).issues;
+    expect(issues.some((i) => i.startsWith("OWNER_DATABASE_URL:"))).toBe(true);
+    expect(issues.some((i) => i.startsWith("PORT:"))).toBe(true);
+  });
+
+  it("Spec 21.1 Review Focus 5 — an empty OWNER_DATABASE_URL carries no credential and loads", () => {
+    expect(() => loadConfig({ ...base, OWNER_DATABASE_URL: "" })).not.toThrow();
+  });
+
   it("rejects a non-postgres DATABASE_URL", () => {
     expect(() =>
       loadConfig({ ...base, DATABASE_URL: "mysql://u:p@localhost/sin" }),

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { resolveDatabaseUrl } from "../db.js";
 import { APP_ROLE, appRoleProblems, setAppRoleLogin, type AppRoleReport } from "./app-role.js";
+import { ownerDatabaseUrl } from "./owner-url.js";
 
 export const MIN_PASSWORD_LENGTH = 12;
 
@@ -75,11 +76,12 @@ export async function main(
     io.err(`db:app-role takes no arguments (got ${args.length})\n`);
     return 1;
   }
-  const ownerRaw = env.OWNER_DATABASE_URL;
-  if (ownerRaw === undefined || ownerRaw === "") {
-    io.err("set OWNER_DATABASE_URL to the owner login; DATABASE_URL is the application login and cannot migrate\n");
+  const owner = ownerDatabaseUrl(env);
+  if (!owner.ok) {
+    io.err(`${owner.error}\n`);
     return 1;
   }
+  const ownerRaw = owner.url;
 
   let password = env.APP_ROLE_PASSWORD ?? "";
   if (password === "") {

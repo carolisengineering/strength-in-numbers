@@ -2,7 +2,7 @@
  * `pnpm --filter @sin/api run seed:catalog [catalog-dir]` (Spec 03.1 §6.3, §8, §11).
  *
  * Manual release step for M1: run right after `prisma migrate deploy`, against
- * the same `DATABASE_URL` (direct Neon host, see the runbook). Idempotent — a
+ * the same `OWNER_DATABASE_URL` (direct Neon host, see the runbook). Idempotent — a
  * re-run with unchanged files reports everything `unchanged`.
  *
  * Catalog directory: first CLI arg, else `CATALOG_DIR`, else the checked-in
@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
 import { prismaFor } from "../db.js";
+import { ownerDatabaseUrl } from "../db/owner-url.js";
 import { loadCatalog, seedCatalog, SeedError } from "./catalog.js";
 
 const DEFAULT_CATALOG_DIR = fileURLToPath(
@@ -27,11 +28,12 @@ const DEFAULT_CATALOG_DIR = fileURLToPath(
 export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
   const dir = argv[0] ?? env.CATALOG_DIR ?? DEFAULT_CATALOG_DIR;
-  const databaseUrl = env.DATABASE_URL;
-  if (!databaseUrl) {
-    log.error("DATABASE_URL is required");
+  const owner = ownerDatabaseUrl(env);
+  if (!owner.ok) {
+    log.error(owner.error);
     return 1;
   }
+  const databaseUrl = owner.url;
 
   let prisma: PrismaClient | undefined;
   try {
