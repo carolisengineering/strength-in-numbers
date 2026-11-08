@@ -18,6 +18,15 @@ const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 /** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "calories"]);
 
+/**
+ * What a draft was seeded from: the logged count and everything `seedDraft` reads from the last set. Spec 17.4 AC7: the
+ * draft can carry that set's values, so correcting it must re-seed an untouched draft, or one tap records the mistake.
+ */
+function seedKeyOf(count: number, last: SetEntry | undefined): string {
+  if (last === undefined) return String(count);
+  return [count, last.setType, last.weight, last.weightUnit, last.reps, last.distance, last.distanceUnit, last.durationS, last.calories].join("|");
+}
+
 export interface LoggedEvent {
   readonly exerciseId: string;
   readonly set: SetEntry;
@@ -59,16 +68,17 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
       ? { ...restored, rpe: "", attemptKey: crypto.randomUUID() } // Spec 17.1 Phase A: no hidden RPE in a new set
       : seedDraft({ plannedSets, sets: exercise.sets, defaults, attemptKey: crypto.randomUUID() }),
   );
-  // Spec 10.2 AC25. `seededFor` is the logged count the draft was last built for. If the count changes by any
-  // route other than this row's own log (a delete from the edit sheet, another device logging), an UNTOUCHED
-  // draft follows it and an edited one is never overwritten. Adjusting state while rendering is React's pattern
-  // for "state derived from a changed prop"; this row's own log sets `seededFor` ahead of the prop, so it
-  // never re-seeds itself.
-  const [seededFor, setSeededFor] = useState(count);
+  // Spec 10.2 AC25, 17.4 AC7. `seededFor` is the list the draft was last built for. If the count or the last set
+  // changes by any route other than this row's own log (a delete or correction from the edit sheet, another device
+  // logging), an UNTOUCHED draft follows it and an edited one is never overwritten. Adjusting state while rendering is
+  // React's pattern for "state derived from a changed prop"; this row's own log sets `seededFor` ahead of the prop, so
+  // it never re-seeds itself.
+  const seedKey = seedKeyOf(count, exercise.sets.at(-1));
+  const [seededFor, setSeededFor] = useState(seedKey);
   const [untouched, setUntouched] = useState(restored === undefined);
   const drafts = useDraftPersistence({ workoutId: exercise.workoutId, workoutExerciseId: exercise.id, draft, untouched });
-  if (seededFor !== count) {
-    setSeededFor(count);
+  if (seededFor !== seedKey) {
+    setSeededFor(seedKey);
     if (untouched) dispatch({ type: "seed", plannedSets, sets: exercise.sets, defaults });
   }
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
@@ -152,7 +162,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
         setUntouched(true);
         drafts.clear();
       }
-      setSeededFor(count + 1); // this row's own log: the prop will catch up, and must not re-seed
+      setSeededFor(seedKeyOf(count + 1, set)); // this row's own log: the prop will catch up, and must not re-seed
       onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra }); // last (§6.5)
     } catch (error) {
       reportUnexpected("create-set", error);

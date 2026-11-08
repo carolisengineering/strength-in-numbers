@@ -234,6 +234,10 @@ export function draftForEdit(set: SetEntry, defaults: UnitDefaults): SetDraft {
  * copy-forward value (D4). RPE is always blank: it is per set, and since Spec 17.1 Phase A nothing on screen
  * shows it, so a new set must never carry the previous set's value. Only the edit sheet (`draftFromSet`
  * directly) keeps a stored RPE, so an edit never clears it.
+ *
+ * Spec 17.4 D1, D2: the overlay leaves what the lifter just did in place where the plan holds still. The weight and
+ * its unit stay when this row plans the same weight as the row just logged; the reps stay when they are inside this
+ * row's range. Neither crosses a change of set type, so a warm-up or a drop set never sets up the next working set.
  */
 export function seedDraft(args: {
   plannedSets: readonly PlannedSet[];
@@ -245,12 +249,17 @@ export function seedDraft(args: {
   const next = nextPlanned(args.plannedSets, args.sets.length);
   if (next.kind !== "planned") return base;
   const { row } = next;
+  const last = args.sets.at(-1);
+  const lastRow = args.plannedSets[args.sets.length - 1];
+  const carried = last !== undefined && lastRow !== undefined && last.setType === row.setType && lastRow.setType === row.setType ? { last, lastRow } : null;
+  const keepWeight = carried !== null && carried.last.weight !== null && carried.lastRow.weight === row.weight && carried.lastRow.weightUnit === row.weightUnit;
+  const keepReps = carried !== null && row.repsLow !== null && carried.last.reps !== null && carried.last.reps >= row.repsLow && carried.last.reps <= (row.repsHigh ?? row.repsLow);
   return {
     ...base,
     setType: row.setType,
     rpe: "",
-    ...(row.repsLow !== null ? { reps: String(row.repsLow) } : {}),
-    ...(row.weight !== null && row.weightUnit !== null ? { weight: formatWeight(row.weight), weightUnit: row.weightUnit } : {}),
+    ...(row.repsLow !== null && !keepReps ? { reps: String(row.repsLow) } : {}),
+    ...(row.weight !== null && row.weightUnit !== null && !keepWeight ? { weight: formatWeight(row.weight), weightUnit: row.weightUnit } : {}),
   };
 }
 

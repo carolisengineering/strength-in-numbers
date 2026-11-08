@@ -10,7 +10,7 @@ import { readKeepAwake } from "../../ui/keepAwake";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { InlineNotice } from "../../ui/InlineNotice";
-import { ActionBar, ActionBarHint } from "../../ui/ActionBar";
+import { ActionBar } from "../../ui/ActionBar";
 import { Screen } from "../../ui/Screen";
 import { VisuallyHidden } from "../../ui/VisuallyHidden";
 import { ExercisePicker } from "../catalog/ExercisePicker";
@@ -216,13 +216,17 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // sit above it). Bring it into view once when the screen opens; "nearest" does nothing when it is already visible,
   // and the scroller's scroll-padding keeps it clear of the bar.
   const shownOnOpen = useRef(false);
+  const panelOf = (id: string) => headingRefs.current.get(id)?.closest("article")?.querySelector("form");
   useEffect(() => {
     if (shownOnOpen.current || current.currentId === null) return;
-    const panel = headingRefs.current.get(current.currentId)?.closest("article")?.querySelector("form");
+    const panel = panelOf(current.currentId);
     if (!panel) return;
     shownOnOpen.current = true;
     panel.scrollIntoView?.({ block: "nearest" });
   }, [current.currentId]);
+  // Spec 17.4 AC14, AC15: a log asks for the panel to be shown again, once the screen holds this many sets. See the
+  // effect below `totalSets`.
+  const [setsAwaited, setSetsAwaited] = useState<number | null>(null);
 
   const [logStore] = useState(createLogActionStore);
   const [announcement, setAnnouncement] = useState("");
@@ -245,6 +249,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     else rest?.clear();
     if (!advance || currentIdRef.current !== exerciseId) return;
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
+    setSetsAwaited(fresh.exercises.reduce((n, e) => n + e.sets.length, 0));
     if (next === exerciseId) return;
     // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
     // bar: the bar's button keeps it (AC29).
@@ -270,6 +275,19 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     plannerRef.current = next;
   }, [segments]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
+  // Spec 17.4 AC14, AC15: the new row is what pushes the panel down, and it renders after `onLogged` runs (the query
+  // cache tells its observers a moment later), so the reveal waits until the screen holds the set count the log left.
+  // Declared after the heading's reveal, so on an advance the panel goes second. Whatever has focus then goes last, so a
+  // panel taller than the room left never hides it (AC13); the bar's button is skipped, because scrolling to a sticky
+  // element drags the list to its place in the flow.
+  useEffect(() => {
+    if (setsAwaited === null || totalSets < setsAwaited) return;
+    setSetsAwaited(null);
+    if (current.currentId === null) return;
+    panelOf(current.currentId)?.scrollIntoView?.({ block: "nearest" });
+    const focused = document.activeElement;
+    if (focused?.closest("main") && !focused.closest("[data-action-bar]")) focused.scrollIntoView?.({ block: "nearest" });
+  }, [setsAwaited, totalSets, current.currentId]);
   // Spec 17.2 AC6: the dialogs read "now" once, when one opens, so the duration does not tick under the lifter's eyes.
   const dialogOpen = finishOpen || endEarlyOpen;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recomputed only when a dialog opens or closes, by design
@@ -913,12 +931,19 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onShowFailed={firstFailed ? showFailed : null}
       />
 
-      <ActionBar data-testid="session-bar">
+      <ActionBar data-testid="session-bar" data-session-bar="" className={styles.sessionBar}>
+        {/* Spec 17.4 AC10, AC11: one line, always reserved, so a message never moves the button under a thumb. */}
+        <p className={styles.sessionStatus} data-testid="session-status" data-session-status="">
+          {[
+            totalSets === 0 ? "Log at least one set to finish" : null,
+            unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : null,
+            unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null,
+            timerUnsaved > 0 ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet` : null,
+          ]
+            .filter((message) => message !== null)
+            .join(" · ")}
+        </p>
         <LogBarButton action={barAction} />
-        {totalSets === 0 ? <ActionBarHint>Log at least one set to finish</ActionBarHint> : null}
-        {unsaved > 0 ? <ActionBarHint>{plural(unsaved, "set", "sets")} not saved yet</ActionBarHint> : null}
-        {unsavedNoteCount > 0 ? <ActionBarHint>{plural(unsavedNoteCount, "note", "notes")} not saved yet</ActionBarHint> : null}
-        {timerUnsaved > 0 ? <ActionBarHint>{RESULT_COPY.timerEntries(timerUnsaved)} not saved yet</ActionBarHint> : null}
       </ActionBar>
 
       <SectionDialogs

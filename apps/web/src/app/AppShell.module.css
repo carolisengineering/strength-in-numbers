@@ -81,6 +81,16 @@
   scroll-padding-bottom: var(--action-bar-clearance);
 }
 
+/* Spec 17.4 AC13: the workout screen's bar is taller. */
+.main:has([data-session-bar]) {
+  scroll-padding-bottom: var(--session-bar-clearance);
+}
+
+/* Spec 17.4 AC12: with the keyboard up an empty status line gives its space back, so the padding does too. */
+:global(:root[data-keyboard="open"]) .main:has([data-session-status]:empty) {
+  scroll-padding-bottom: var(--session-bar-clearance-compact);
+}
+
 .nav {
   display: grid;
   grid-auto-flow: column;
