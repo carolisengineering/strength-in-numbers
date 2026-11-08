@@ -61,7 +61,6 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import finish (real
       checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier(() => authContext({ authSub: `auth0|${U}` })),
       ...appRepositories(db.app),
-      workoutRepository: workouts(),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

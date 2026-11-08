@@ -15,11 +15,26 @@ import { fileURLToPath } from "node:url";
 /** The same text as `OWNER_URL_MISSING` in `src/db/owner-url.ts`; `owner-env.test.ts` pins them equal. */
 export const OWNER_URL_MISSING = "set OWNER_DATABASE_URL to the owner login; DATABASE_URL is the application login and cannot migrate";
 
-/** The child's environment, or the refusal. The given object (the real process's environment) is never changed. */
+/** Never includes the URL: a malformed one may hold the password. */
+export const OWNER_URL_NOT_STRICT =
+  "OWNER_DATABASE_URL must carry sslaccept=strict (or sslmode=disable for a local database): the Prisma CLI reads the raw URL, and without it the owner login would connect with no certificate check (runbook B1)";
+export const OWNER_URL_MALFORMED = "OWNER_DATABASE_URL is not a valid URL (percent-encode any / : @ in the password)";
+
+/**
+ * The child's environment, or the refusal. The given object (the real process's environment) is never changed. The app
+ * and the maintenance CLIs backfill `sslaccept=strict` (`resolveDatabaseUrl`); the Prisma CLI does not (#8).
+ */
 export function resolveOwnerEnv(env) {
-  const url = env.OWNER_DATABASE_URL;
-  if (url === undefined || url === "") return { ok: false, error: OWNER_URL_MISSING };
-  return { ok: true, env: { ...env, DATABASE_URL: url } };
+  const raw = env.OWNER_DATABASE_URL;
+  if (raw === undefined || raw === "") return { ok: false, error: OWNER_URL_MISSING };
+  let params;
+  try {
+    params = new URL(raw).searchParams;
+  } catch {
+    return { ok: false, error: OWNER_URL_MALFORMED };
+  }
+  if (params.get("sslaccept") !== "strict" && params.get("sslmode") !== "disable") return { ok: false, error: OWNER_URL_NOT_STRICT };
+  return { ok: true, env: { ...env, DATABASE_URL: raw } };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {

@@ -16,6 +16,7 @@ interface OwnerEnvModule {
   resolveOwnerEnv(env: Record<string, string | undefined>): { ok: true; env: Record<string, string | undefined> } | { ok: false; error: string };
 }
 const load = async () => (await import(SCRIPT)) as OwnerEnvModule;
+const OWNER = "postgresql://o:secret-pw@ep-x.neon.tech/neondb?sslmode=require&sslaccept=strict";
 
 /** `node scripts/owner-env.mjs node -e <code>` with exactly this environment, so the child is a small probe. */
 function run(env: Record<string, string>, code: string) {
@@ -29,9 +30,9 @@ describe("Spec 21.1 AC28 — owner-env", () => {
 
   it("resolveOwnerEnv maps the owner URL to DATABASE_URL and does not change the real environment", async () => {
     const { resolveOwnerEnv } = await load();
-    const input = { OWNER_DATABASE_URL: "postgresql://owner", DATABASE_URL: "postgresql://app", OTHER: "x" };
+    const input = { OWNER_DATABASE_URL: OWNER, DATABASE_URL: "postgresql://app", OTHER: "x" };
     const r = resolveOwnerEnv(input);
-    expect(r).toEqual({ ok: true, env: { OWNER_DATABASE_URL: "postgresql://owner", DATABASE_URL: "postgresql://owner", OTHER: "x" } });
+    expect(r).toEqual({ ok: true, env: { OWNER_DATABASE_URL: OWNER, DATABASE_URL: OWNER, OTHER: "x" } });
     expect(input.DATABASE_URL).toBe("postgresql://app");
   });
 
@@ -42,13 +43,31 @@ describe("Spec 21.1 AC28 — owner-env", () => {
   });
 
   it("invoked directly: the child sees the owner URL as DATABASE_URL", () => {
-    const r = run({ OWNER_DATABASE_URL: "postgresql://owner", DATABASE_URL: "postgresql://app" }, "process.stdout.write(process.env.DATABASE_URL)");
+    const r = run({ OWNER_DATABASE_URL: OWNER, DATABASE_URL: "postgresql://app" }, "process.stdout.write(process.env.DATABASE_URL)");
     expect(r.status).toBe(0);
-    expect(r.stdout).toBe("postgresql://owner");
+    expect(r.stdout).toBe(OWNER);
   });
 
   it("invoked directly: exits with the child's status", () => {
-    expect(run({ OWNER_DATABASE_URL: "postgresql://owner" }, "process.exit(7)").status).toBe(7);
+    expect(run({ OWNER_DATABASE_URL: OWNER }, "process.exit(7)").status).toBe(7);
+  });
+
+  describe("final review I4 — prisma migrate reads the raw URL, so it must carry its own certificate check (#8)", () => {
+    it("a Neon string with no sslaccept=strict is refused, and the URL is not printed", () => {
+      const r = run({ OWNER_DATABASE_URL: "postgresql://o:secret-pw@ep-x.neon.tech/neondb?sslmode=require" }, "process.stdout.write('ran')");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("sslaccept=strict");
+      expect(r.stderr).not.toMatch(/secret-pw|ep-x\.neon/);
+      expect(r.stdout).not.toContain("ran");
+    });
+    it("the local database's sslmode=disable is an explicit choice, and passes", () => {
+      expect(run({ OWNER_DATABASE_URL: "postgresql://sin:sin@localhost:5433/sin?sslmode=disable" }, "process.exit(0)").status).toBe(0);
+    });
+    it("a malformed URL is refused without printing it", () => {
+      const r = run({ OWNER_DATABASE_URL: "postgresql://o:secret/pw@ep-x.neon.tech/neondb" }, "process.stdout.write('ran')");
+      expect(r.status).toBe(1);
+      expect(r.stderr).not.toMatch(/secret|ep-x\.neon/);
+    });
   });
 
   it("invoked directly with no owner URL: exit 1 with the message, and the command never runs", () => {

@@ -108,6 +108,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC24 — the boot check on r
       expect(Date.now() - started).toBeLessThan(2_000);
     });
 
+    it("a NOLOGIN role that HAS a password, with the right password, is rejected the same way (final review M1)", async () => {
+      await fresh.prisma.$executeRawUnsafe(`ALTER ROLE sin_app WITH NOLOGIN PASSWORD 'the-right-password'`);
+      const u = new URL(fresh.url);
+      u.username = "sin_app";
+      u.password = "the-right-password";
+      const client = new PrismaClient({ datasourceUrl: u.toString() });
+      opened.push(client);
+      const started = Date.now();
+      const err = await assertLoginCannotBypassRls(client).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(DatabaseLoginRejectedError);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    });
+
     it("a login with the wrong password is rejected the same way", async () => {
       await fresh.prisma.$executeRawUnsafe(`ALTER ROLE sin_app WITH LOGIN PASSWORD 'the-right-password'`);
       const u = new URL(fresh.url);

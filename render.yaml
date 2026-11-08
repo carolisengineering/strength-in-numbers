@@ -16,7 +16,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false # set in the Render dashboard = the Neon connection string
+        sync: false # set in the Render dashboard = the Neon URL of the restricted login sin_app (Spec 21.1; the API refuses the owner login)
       # Spec 13.0 §8 — telemetry, on: both exporters push OTLP to the Grafana
       # Cloud stack (docs/runbooks/observability.md §2–3). Needs
       # OTEL_EXPORTER_OTLP_HEADERS set in the dashboard. To stop: runbook §6

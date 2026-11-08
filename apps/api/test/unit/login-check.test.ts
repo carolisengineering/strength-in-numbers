@@ -2,7 +2,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { ConfigError } from "../../src/config.js";
-import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
+import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, DatabaseUnreachableError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
 import { startupFailureMessage } from "../../src/startup-failure.js";
 
 /** Spec 21.1 AC24, AC26 — the verdicts and the retry, with a fake client and a fake clock. */
@@ -112,13 +112,37 @@ describe("Spec 21.1 AC26 — connectivity is not a verdict", () => {
     expect(clock.sleeps).toEqual([250]);
   });
 
-  it("the backoff doubles up to 4 s; forever unreachable rejects with the last connectivity error once past 20 s", async () => {
+  it("a pool timeout while Neon wakes up (P2024) is retried, not a verdict", async () => {
+    const clock = fakeClock();
+    const { client } = fake({ failures: [new Prisma.PrismaClientKnownRequestError("Timed out fetching a new connection", { code: "P2024", clientVersion: "test" })] });
+    await expect(assertLoginCannotBypassRls(client, clock)).resolves.toMatchObject({ role: "sin_app" });
+    expect(clock.sleeps).toEqual([250]);
+  });
+
+  it("final review I5 — giving up prints one fixed line with the error code: no host, no stack", async () => {
+    const clock = fakeClock();
+    const failures = Array.from({ length: 50 }, () => new Prisma.PrismaClientKnownRequestError("Can't reach database server at `ep-secret-host.neon.tech:5432`", { code: "P1001", clientVersion: "test" }));
+    const err = await assertLoginCannotBypassRls(fake({ failures }).client, clock).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DatabaseUnreachableError);
+    expect(err).toBeInstanceOf(ConfigError);
+    const line = startupFailureMessage(err);
+    expect(line).toBe("Refusing to start: could not reach the database within 20 s (P1001).\n");
+    expect(line).not.toContain("ep-secret-host");
+  });
+
+  it("an initialization error with no code names its class instead", async () => {
+    const clock = fakeClock();
+    const failures = Array.from({ length: 50 }, () => new Prisma.PrismaClientInitializationError("Can't reach `ep-secret-host:5432`", "test"));
+    const err = await assertLoginCannotBypassRls(fake({ failures }).client, clock).catch((e: unknown) => e);
+    expect((err as Error).message).toBe("Refusing to start: could not reach the database within 20 s (PrismaClientInitializationError).");
+  });
+
+  it("the backoff doubles up to 4 s; forever unreachable gives up once past 20 s", async () => {
     const clock = fakeClock();
     const failures = Array.from({ length: 50 }, unreachable);
     const { client } = fake({ failures });
     const err = await assertLoginCannotBypassRls(client, clock).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
-    expect((err as { code: string }).code).toBe("P1001");
+    expect(err).toBeInstanceOf(DatabaseUnreachableError);
     expect(clock.sleeps.slice(0, 6)).toEqual([250, 500, 1000, 2000, 4000, 4000]);
     expect(Math.max(...clock.sleeps)).toBe(4000);
     expect(clock.sleeps.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(20_000);

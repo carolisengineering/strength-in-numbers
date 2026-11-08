@@ -17,7 +17,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
-import { prismaFor } from "../db.js";
+import { prismaFor, resolveDatabaseUrl } from "../db.js";
 import { ownerDatabaseUrl } from "../db/owner-url.js";
 import { loadCatalog, seedCatalog, SeedError } from "./catalog.js";
 
@@ -33,7 +33,15 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
     log.error(owner.error);
     return 1;
   }
-  const databaseUrl = owner.url;
+  let databaseUrl: string;
+  try {
+    databaseUrl = resolveDatabaseUrl(owner.url);
+  } catch (err) {
+    // Not `{ err }`: a malformed URL's TypeError carries the raw string (password included) in an enumerable `input`
+    // property that pino would print.
+    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "OWNER_DATABASE_URL rejected");
+    return 1;
+  }
 
   let prisma: PrismaClient | undefined;
   try {

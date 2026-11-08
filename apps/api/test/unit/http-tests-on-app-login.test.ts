@@ -44,6 +44,19 @@ function appCalls(): CallSite[] {
   return out;
 }
 
+/** The `*Repository` properties of a call's object argument, with what each is set to (a shorthand's value is its name). */
+function repositoryProperties(callText: string): { name: string; value: string }[] {
+  const sf = ts.createSourceFile("call.ts", callText, ts.ScriptTarget.Latest, true);
+  const out: { name: string; value: string }[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isPropertyAssignment(node) && /Repository$/.test(node.name.getText(sf))) out.push({ name: node.name.getText(sf), value: node.initializer.getText(sf) });
+    if (ts.isShorthandPropertyAssignment(node) && /Repository$/.test(node.name.getText(sf))) out.push({ name: node.name.getText(sf), value: node.name.getText(sf) });
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
 const isHelperCall = (text: string) => /^(makeCrossUserApp|makeAccountApp)\(/.test(text);
 
 describe("Spec 21.1 AC30 — every HTTP-level integration test builds its app on sin_app", () => {
@@ -58,6 +71,13 @@ describe("Spec 21.1 AC30 — every HTTP-level integration test builds its app on
       .filter((c) => !(c.file in ALLOWED))
       .filter((c) => c.text.includes(".prisma") || !(isHelperCall(c.text) || /\.app\b/.test(c.text)))
       .map((c) => `${c.file}:${c.line}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("no repository in a call is built outside appRepositories, unless it is a fake (final review I2)", () => {
+    const bad = calls
+      .filter((c) => !(c.file in ALLOWED))
+      .flatMap((c) => repositoryProperties(c.text).filter((p) => !/appRepositories\(|^(new\s+)?[Ff]ake/.test(p.value)).map((p) => `${c.file}:${c.line} ${p.name}`));
     expect(bad).toEqual([]);
   });
 

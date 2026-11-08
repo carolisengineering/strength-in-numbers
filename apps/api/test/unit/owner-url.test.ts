@@ -1,5 +1,6 @@
 // apps/api/test/unit/owner-url.test.ts
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
 import { main as appRoleMain } from "../../src/db/app-role-cli.js";
 import { main as purgeMain } from "../../src/account/purge-cli.js";
 import { main as recordsMain } from "../../src/records/cli.js";
@@ -27,6 +28,41 @@ describe("Spec 21.1 AC28 — ownerDatabaseUrl", () => {
 
   it("the owner URL wins when both are set; DATABASE_URL is never read", () => {
     expect(ownerDatabaseUrl({ OWNER_DATABASE_URL: "postgresql://owner", DATABASE_URL: "postgresql://app" })).toEqual({ ok: true, url: "postgresql://owner" });
+  });
+});
+
+describe("Spec 21.1 Review Focus 3 — a malformed owner URL never reaches the output (final review I1)", () => {
+  // An unencoded "/" in the password: new URL() throws, and its error carries the whole string in `input`.
+  const MALFORMED = { LOG_LEVEL: "info", OWNER_DATABASE_URL: "postgresql://neondb_owner:s3cr3t/pw@ep-example.neon.tech/neondb" };
+  async function printed(run: () => Promise<number>): Promise<{ code: number; out: string }> {
+    const out: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((s) => {
+      out.push(String(s));
+      return true;
+    });
+    try {
+      return { code: await run(), out: out.join("") };
+    } finally {
+      write.mockRestore();
+    }
+  }
+  for (const [name, run] of [
+    ["records:rebuild", () => recordsMain([], MALFORMED)],
+    ["seed:catalog", () => seedMain([], MALFORMED)],
+  ] as const) {
+    it(`${name}: exit 1, says the URL was rejected, prints no part of it`, async () => {
+      const { code, out } = await printed(run);
+      expect(code).toBe(1);
+      expect(out).toContain("OWNER_DATABASE_URL rejected");
+      expect(out).not.toMatch(/s3cr3t|neondb_owner|ep-example/);
+    });
+  }
+});
+
+describe("Spec 21.1 final review I3 — the local env file cannot set a password on another database", () => {
+  it(".env.owner.example carries no APP_ROLE_PASSWORD: with a Neon OWNER_DATABASE_URL exported, db:app-role must ask", () => {
+    const example = readFileSync(new URL("../../.env.owner.example", import.meta.url), "utf8");
+    expect(example).not.toMatch(/^\s*APP_ROLE_PASSWORD=/m);
   });
 });
 

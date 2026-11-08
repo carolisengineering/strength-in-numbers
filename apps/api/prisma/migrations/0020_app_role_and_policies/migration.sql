@@ -7,6 +7,17 @@
 -- invisible to sin_app until its own migration grants it and gives it a policy. No FORCE ROW LEVEL SECURITY (D6).
 -- No sequences: every primary key is application-generated.
 
+-- Every lock up front (as in 0019). CREATE POLICY takes ACCESS EXCLUSIVE on its table, and `prisma migrate deploy` runs
+-- this file as one transaction, so each lock is held to the commit. Taking them all in one statement, in the order the
+-- API's locking writes use (routine before workout, each parent before its children), keeps the window for a conflict to
+-- this statement. It can't remove it: if the migration fails, for that or the 5 s lock timeout, it changes nothing
+-- (runbook, "RLS rollout": `migrate resolve --rolled-back`, then retry).
+SET lock_timeout = '5s';
+LOCK TABLE "routine", "workout", "routine_item", "routine_section", "routine_item_set", "workout_exercise",
+  "workout_section", "set_entry", "workout_planned_set", "workout_section_round", "personal_record",
+  "hevy_exercise_pair", "hevy_section_rule", "hevy_link", "hevy_account", "exercise", "user", "muscle_group", "equipment"
+  IN ACCESS EXCLUSIVE MODE;
+
 DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'sin_app') THEN
     CREATE ROLE sin_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;

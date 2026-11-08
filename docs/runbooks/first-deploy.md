@@ -316,13 +316,16 @@ commands) all need the same value, so export it once for the shell session, from
 repo root:
 
 ```bash
-export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host>'
+export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 ```
+
+The string must carry `sslaccept=strict` (B1): the Prisma CLI reads the raw URL, so the wrapper these commands go through
+refuses one without it, rather than let the owner login connect with no certificate check.
 
 An exported variable takes precedence over `apps/api/.env.owner` (Node's and tsx's
 `--env-file` both leave already-set variables alone), so this safely overrides the
-local Docker URL. **`unset OWNER_DATABASE_URL` when you're done** (end of B5) so a
-later local command doesn't point at Neon by accident.
+local Docker URL. **`unset OWNER_DATABASE_URL` when you're done** (end of B5a, or of B5 if
+you skip it) so a later local command doesn't point at Neon by accident.
 
 ```bash
 pnpm run db:migrate:deploy   # the repo-pinned Prisma, with DATABASE_URL set from OWNER_DATABASE_URL for that child only
@@ -609,13 +612,21 @@ eligible sets.
 login, so staging's `DATABASE_URL` must already be the `sin_app` URL when that code arrives. Phase D adds S7 and S8.
 RLS stays off throughout these steps: the policies from `0020` do nothing until `0021`.
 
-**S3 — apply `0020`, from the Phase C branch.** The running API (still on the owner login) is unaffected.
+**S3 — apply `0020`, from the Phase C branch.** Pick a quiet minute: the file locks all 19 tables for the moment it runs.
+RLS stays off, so afterward the running API (still on the owner login) behaves as before.
 
 ```bash
-export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host>'
+export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 pnpm run db:migrate:status    # expect: only 0020 pending
 pnpm run db:migrate:deploy
 pnpm run db:migrate:status    # expect: up to date
+```
+
+If it fails, for a lock conflict or its 5-second `lock_timeout`, it changed nothing, but Prisma records the failure and
+blocks later deploys until you clear it, then retry:
+
+```bash
+pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --rolled-back 0020_app_role_and_policies
 ```
 
 **S4 — give `sin_app` its login.** Never create or edit this role in the Neon Console: Console roles are members of
@@ -626,6 +637,8 @@ your password manager.
 export APP_ROLE_PASSWORD="$(openssl rand -hex 24)"
 pnpm --filter @sin/api run db:app-role
 ```
+
+(With neither variable set in a terminal, it asks for the password instead, with echo off.)
 
 Expect exit 0 and `sin_app: login yes, superuser no, bypassrls no, createrole no, createdb no` then `memberOf: none`.
 To check by hand in the Neon SQL editor:
@@ -926,7 +939,7 @@ Testers can now download their data and request deletion themselves in the app
 
 **Monthly, or when a tester asks:**
 
-1. Export the direct-host `DATABASE_URL` (same as B4).
+1. Export the direct-host `OWNER_DATABASE_URL` (same as B4).
 2. Dry run — lists eligible accounts (user id, deleted date, workout and set counts; never email):
    `pnpm --filter @sin/api run account:purge`
 3. If the list is right: `pnpm --filter @sin/api run account:purge --confirm`
@@ -947,6 +960,10 @@ Auth0 dashboard (User Management → Users) by hand. Database backups age out on
 the host's retention window.
 
 ## Part F — Production on Google Cloud (Spec 15)
+
+> **Wait for Spec 21.1 Phase D before running this part.** Its commands below still say `DATABASE_URL` and F6 still stores
+> the owner URL as the runtime secret. Since Phase C the maintenance commands refuse that and the API refuses to start on
+> the owner login. Phase D rewrites these steps for the two logins (spec §6.9, "Production").
 
 Production is a separate Google Cloud project on the free tier: the API on **Cloud Run** (`si-api`,
 `us-central1`, scale 0 → 1), the web app on **Firebase Hosting**, its own **Neon** project, and a

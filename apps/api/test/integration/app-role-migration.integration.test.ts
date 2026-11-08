@@ -2,6 +2,7 @@
 // Spec 21.1 Phase C, AC23 — migration 0020 (role sin_app, grants, inert policies), real Postgres.
 // Owns the whole-schema `prisma migrate diff` no-drift check (moved here from child-table-owner-migration, apps/api CLAUDE.md).
 import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shouldRunIntegration, startMigratedDb, type IntegrationDb } from "./helpers.js";
@@ -130,6 +131,25 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase C — migration 0020 (
       return (await tx.$queryRaw<{ s: string | null }[]>`SELECT app_auth_sub() AS s`)[0]!.s;
     });
     expect(sub).toBeNull();
+  });
+
+  it("final review M3 — the first statements take every lock up front, in the API's write order, with a lock timeout", () => {
+    const sql = readFileSync(fileURLToPath(new URL("../../prisma/migrations/0020_app_role_and_policies/migration.sql", import.meta.url)), "utf8");
+    const statements = sql
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("--"))
+      .join("\n")
+      .split(";")
+      .map((s) => s.replace(/\s+/g, " ").trim())
+      .filter((s) => s !== "");
+    expect(statements[0]).toBe("SET lock_timeout = '5s'");
+    expect(statements[1]).toMatch(/^LOCK TABLE .* IN ACCESS EXCLUSIVE MODE$/);
+    const order = [...statements[1]!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]!);
+    expect([...order].sort()).toEqual([...ALL_TABLES].sort());
+    expect(order.indexOf("routine")).toBeLessThan(order.indexOf("workout"));
+    expect(order.indexOf("workout")).toBeLessThan(order.indexOf("workout_exercise"));
+    expect(order.indexOf("workout_exercise")).toBeLessThan(order.indexOf("set_entry"));
+    expect(order.indexOf("routine")).toBeLessThan(order.indexOf("routine_item"));
   });
 
   // Moved from child-table-owner-migration (Spec 21.1 Phase A AC5/AC6): the whole-schema no-drift check lives in the

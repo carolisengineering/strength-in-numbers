@@ -47,12 +47,24 @@ export class DatabaseLoginRejectedError extends ConfigError {
   }
 }
 
+/** Gave up after the retries. One fixed line: Prisma's own message names the host (Spec 15 §7), so only its code is kept. */
+export class DatabaseUnreachableError extends ConfigError {
+  constructor(seconds: number, detail: string) {
+    const message = `Refusing to start: could not reach the database within ${seconds} s (${detail}).`;
+    super([message]);
+    this.message = message;
+  }
+}
+
 const DEADLINE_MS = 20_000;
 const FIRST_DELAY_MS = 250;
 const MAX_DELAY_MS = 4_000;
 const CAUSE_DEPTH = 5;
 const REJECTED_SQLSTATES = new Set(["28000", "28P01"]);
-const CONNECTIVITY_CODES = new Set(["P1001", "P1002", "P1017"]);
+const CONNECTIVITY_CODES = new Set(["P1001", "P1002", "P1017", "P2024"]);
+/** Prisma 6.19 gives these no error code through $queryRaw: wrong password or no password ("Authentication failed…"), and a
+ * NOLOGIN role that has a password ("User was denied access…"). login-check.integration.test.ts pins both on a real server. */
+const REJECTED_LOGIN_TEXT = /Authentication failed against database server|User was denied access on the database/;
 
 interface RoleRow {
   rolname: string;
@@ -116,15 +128,21 @@ function* chain(err: unknown): Generator<unknown> {
 }
 
 function isRejectedLogin(err: unknown): boolean {
-  // Prisma 6.19 raises this for a NOLOGIN role and for a wrong password alike, with no error code: only the text says
-  // so (login-check.integration.test.ts pins it against a real server).
-  if (err instanceof Prisma.PrismaClientInitializationError && /Authentication failed against database server/.test(err.message)) return true;
+  if (err instanceof Prisma.PrismaClientInitializationError && REJECTED_LOGIN_TEXT.test(err.message)) return true;
   for (const e of chain(err)) {
     const { code, errorCode, meta } = e as { code?: unknown; errorCode?: unknown; meta?: { code?: unknown } };
     if (code === "P1000" || errorCode === "P1000") return true;
     for (const state of [code, meta?.code]) if (typeof state === "string" && REJECTED_SQLSTATES.has(state)) return true;
   }
   return false;
+}
+
+/** What a give-up line may say about the error: its Prisma code or class, never its message. */
+function errorDetail(err: unknown): string {
+  const { code, errorCode } = err as { code?: unknown; errorCode?: unknown };
+  if (typeof code === "string") return code;
+  if (typeof errorCode === "string") return errorCode;
+  return (err as object).constructor.name;
 }
 
 function isConnectivity(err: unknown): boolean {
@@ -148,7 +166,7 @@ export async function assertLoginCannotBypassRls(
     } catch (err) {
       if (isRejectedLogin(err)) throw new DatabaseLoginRejectedError();
       if (!isConnectivity(err)) throw err;
-      if (now() + delay - started > deadlineMs) throw err;
+      if (now() + delay - started > deadlineMs) throw new DatabaseUnreachableError(Math.round(deadlineMs / 1000), errorDetail(err));
       await sleep(delay);
       delay = Math.min(delay * 2, MAX_DELAY_MS);
       continue;
