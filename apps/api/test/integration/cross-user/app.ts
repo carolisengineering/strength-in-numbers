@@ -49,9 +49,9 @@ export async function makeCrossUserApp(
     workoutRepository: createWorkoutRepository(scoped, exerciseRepository),
     personalRecordRepository: createPersonalRecordRepository(scoped),
     routineRepository: createRoutineRepository(scoped),
-    accountExportRepository: createAccountExportRepository(db.prisma),
-    hevyRepository: createHevyRepository(db.prisma),
-    hevyImportRepository: createHevyImportRepository(db.prisma),
+    accountExportRepository: createAccountExportRepository(scoped),
+    hevyRepository: createHevyRepository(scoped),
+    hevyImportRepository: createHevyImportRepository(scoped),
     rateLimits: GENEROUS_LIMITS,
     ...(opts.onRoute ? { onRoute: opts.onRoute } : {}),
   });

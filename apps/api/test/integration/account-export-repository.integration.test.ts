@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createScopedDb } from "../../src/db/scoped.js";
+import { rawSqlState } from "../../src/repositories/pg-errors.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 import { settleCapture, startCapture } from "./one-off-helpers.js";
@@ -79,7 +81,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     expect(s.workouts.flatMap((w) => w.exercises).every((e) => s.workouts.some((w) => w.id === e.workoutId))).toBe(true);
   });
 
-  it("AC7 — REPEATABLE READ, read-only, and writes committed mid-export are invisible", async () => {
+  // Spec 21.1 AC17: the same probe passes unchanged through the scoped handle, which sends READ ONLY then set_config.
+  for (const via of ["the owner client", "the scoped handle"] as const) {
+  it(`AC7 — REPEATABLE READ, read-only, and writes committed mid-export are invisible (${via}; Spec 21.1 AC17)`, async () => {
     const u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
     const routine = (await createRoutineRepository(db.prisma).create(u, routineFixture([ex], { name: "Before" }))).routine;
@@ -88,12 +92,22 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
     const [weRow] = await db.prisma.$queryRawUnsafe<{ we_id: string }[]>(
       `SELECT id::text AS we_id FROM "workout_exercise" WHERE workout_id = $1::uuid`, kept.workoutId);
     const we_id = weRow!.we_id;
-    let probe: { iso: string; ro: string } | undefined;
+    let probe: { iso: string; ro: string; who: string | null } | undefined;
+    let writeState: string | null = null;
 
-    const repo = createAccountExportRepository(db.prisma, {
+    const repo = createAccountExportRepository(via === "the scoped handle" ? createScopedDb(db.prisma) : db.prisma, {
       afterExercises: async (tx) => {
-        [probe] = await tx.$queryRaw<{ iso: string; ro: string }[]>`
-          SELECT current_setting('transaction_isolation') AS iso, current_setting('transaction_read_only') AS ro`;
+        [probe] = await tx.$queryRaw<{ iso: string; ro: string; who: string | null }[]>`
+          SELECT current_setting('transaction_isolation') AS iso, current_setting('transaction_read_only') AS ro,
+                 NULLIF(current_setting('app.user_id', true), '') AS who`;
+        // A write inside fails 25006; the savepoint keeps the export's transaction usable.
+        await tx.$executeRaw`SAVEPOINT probe`;
+        try {
+          await tx.$executeRaw`UPDATE "user" SET timezone = timezone WHERE id = ${u}::uuid`;
+        } catch (err) {
+          writeState = rawSqlState(err);
+        }
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT probe`;
         // Committed on other connections while the export's snapshot is open.
         await db.prisma.$executeRawUnsafe(
           `INSERT INTO "set_entry" ("id","workout_exercise_id","set_number","set_type","reps","weight","weight_unit","is_complete")
@@ -103,13 +117,15 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — export snapshot repository
       },
     });
     const s = await repo.snapshot(u);
-    expect(probe).toEqual({ iso: "repeatable read", ro: "on" });
+    expect(probe).toEqual({ iso: "repeatable read", ro: "on", who: via === "the scoped handle" ? u : null });
+    expect(writeState).toBe("25006");
     expect(s.workouts.map((w) => w.id)).toEqual([kept.workoutId, doomed.workoutId]);
     expect(s.workouts[0]!.exercises[0]!.sets).toHaveLength(1);
     expect(s.routines.map((r) => r.name)).toEqual(["Before"]);
     const weIds = new Set(s.workouts.flatMap((w) => w.exercises.map((e) => e.id)));
     expect(s.workouts.flatMap((w) => w.exercises.flatMap((e) => e.sets)).every((x) => weIds.has(x.workoutExerciseId))).toBe(true);
   });
+  }
 
   it("AC8 / 09.5 AC11 — a fixed statement count: 5 workouts and 60 workouts (timed sections with round times) issue the same number, ≤ 8", async () => {
     const count = async (user: string) => {

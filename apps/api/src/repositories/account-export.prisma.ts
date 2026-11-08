@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { toScoped, type UserScopedDb } from "../db/scoped.js";
 import type { AccountExportRepository, AccountSnapshot, HevyExportLinkRecord } from "./account-export.js";
 import { toHevyPair, type HevyPairRow } from "./hevy.prisma.js";
 import type { HevySectionRule } from "@sin/core";
@@ -51,16 +52,17 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
 }
 
 export function createAccountExportRepository(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
   hooks: AccountExportHooks = {},
 ): AccountExportRepository {
+  const scoped = toScoped(db);
   return {
     snapshot(userId: string): Promise<AccountSnapshot> {
-      return prisma.$transaction(
+      const c = scoped.as(userId);
+      return c.$transaction(
         async (tx) => {
-          // D7: must precede the first data statement. If Prisma's own
-          // isolation SET makes this fail, drop it and keep the AC7 probe.
-          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+          // D7: `SET TRANSACTION READ ONLY` must precede the first data statement. Spec 21.1 AC17: the handle sends it
+          // (`readOnly` below) before its `set_config`, so the snapshot is still taken by the first statement here.
           // Spec 19.0 AC35: the Hevy block rides on the clock statement, so AC8's count is unchanged. Pairs keep the
           // mapping read's order and row shape (`toHevyPair`); links include tombstones (`workout_id` NULL).
           const [clock] = await tx.$queryRaw<
@@ -152,6 +154,7 @@ export function createAccountExportRepository(
         },
         {
           isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+          readOnly: true,
           timeout: 30_000,
           maxWait: 5_000,
         },

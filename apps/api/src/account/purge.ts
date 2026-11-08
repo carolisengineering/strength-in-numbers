@@ -10,7 +10,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
 import { ACCOUNT_PURGE_GRACE_DAYS } from "@sin/core";
 import { lockUserRecords } from "../repositories/personal-record.prisma.js";
-import type { RawClient } from "../repositories/set-entry.prisma.js";
+import { toScoped, type RawClient, type UserScopedDb } from "../db/scoped.js";
 
 export type SkipReason = "not-eligible" | "not-found" | "not-deleted" | "in-grace";
 
@@ -81,12 +81,12 @@ export async function classifyTarget(client: RawClient, userId: string, graceSec
 }
 
 export async function purgeAccount(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
   userId: string,
   graceSeconds: number,
   hooks: PurgeHooks = {},
 ): Promise<{ purged: boolean; workoutCount: number; setCount: number }> {
-  return prisma.$transaction(
+  return toScoped(db).as(userId).$transaction(
     async (tx) => {
       await lockUserRecords(tx, userId); // FIRST statement (D13, AC22)
       const [counts] = await tx.$queryRaw<{ workouts: number; sets: number }[]>`
@@ -111,13 +111,16 @@ export async function purgeAccount(
 }
 
 export async function runPurge(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
   log: Logger,
   opts: PurgeOptions,
   hooks: PurgeHooks = {},
 ): Promise<PurgeSummary> {
+  // Spec 21.1 §6.8: an operator command on the owner login. Listing the eligible accounts is cross-user, so it runs
+  // unscoped (`shared()`); everything about one account runs on `as(account)`.
+  const scoped = toScoped(db);
   const graceSeconds = graceSecondsFor(opts.skipGrace);
-  const listed = await listEligible(prisma, graceSeconds, opts.userId ?? null);
+  const listed = await listEligible(scoped.shared(), graceSeconds, opts.userId ?? null);
   const summary: PurgeSummary = { dryRun: !opts.confirm, listed, purged: 0, skipped: 0, failed: 0, targetMissed: false };
 
   for (const a of listed) {
@@ -127,7 +130,7 @@ export async function runPurge(
     );
   }
   if (opts.userId !== undefined && listed.length === 0) {
-    const reason = await classifyTarget(prisma, opts.userId, graceSeconds);
+    const reason = await classifyTarget(scoped.as(opts.userId), opts.userId, graceSeconds);
     log.info({ user_id: opts.userId, reason }, "account_purge_skipped");
     summary.skipped += 1;
     summary.targetMissed = true;
@@ -136,7 +139,7 @@ export async function runPurge(
   if (opts.confirm) {
     for (const a of listed) {
       try {
-        const r = await purgeAccount(prisma, a.userId, graceSeconds, hooks);
+        const r = await purgeAccount(scoped, a.userId, graceSeconds, hooks);
         if (r.purged) {
           summary.purged += 1;
           log.info(

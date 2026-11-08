@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { toScoped, type RawClient, type UserScopedDb } from "../db/scoped.js";
 import {
   HEVY_LINK_CLAIM_TTL_S,
   HEVY_PAIRS_MAX,
@@ -58,7 +59,7 @@ export function toHevyPair(row: HevyPairRow): HevyPair {
 }
 
 /** Spec 19.0 AC21: pairs by lowercase title then id, rules by name key. Never another user's rows. */
-export async function readHevyMapping(db: Tx | PrismaClient, userId: string): Promise<HevyMapping> {
+export async function readHevyMapping(db: RawClient, userId: string): Promise<HevyMapping> {
   const pairs = await db.$queryRaw<HevyPairRow[]>`
     SELECT p.hevy_template_id, p.hevy_title, p.hevy_type, p.role, p.exercise_id::text AS exercise_id, e.is_active,
            p.measure_rule, p.export_as
@@ -163,7 +164,7 @@ const NOT_FOUND = "workout not found or not owned by the acting user";
 const NONE: HevyLinkState = { state: "none", hevyWorkoutId: null, origin: null, syncedAt: null };
 
 /** The link row of a workout, with whether its claim is younger than the TTL (compared in SQL, against `now()`). */
-async function linkRow(db: Tx | PrismaClient, userId: string, workoutId: string, forUpdate: boolean): Promise<LinkRow | null> {
+async function linkRow(db: RawClient, userId: string, workoutId: string, forUpdate: boolean): Promise<LinkRow | null> {
   const rows = forUpdate
     ? await db.$queryRaw<LinkRow[]>`
         SELECT id::text, hevy_workout_id, origin, claimed_at, claim_fingerprint, synced_fingerprint, synced_at,
@@ -180,7 +181,7 @@ async function linkRow(db: Tx | PrismaClient, userId: string, workoutId: string,
  * Spec 19.0 AC26: `none` (no row, a live workout, or only a stale claim), `sending` (a fresh claim, no Hevy id),
  * `sent` (linked and the stored fingerprint equals the current one, or carries another version), `changed`.
  */
-async function readLinkState(db: Tx | PrismaClient, userId: string, workoutId: string): Promise<HevyLinkState> {
+async function readLinkState(db: RawClient, userId: string, workoutId: string): Promise<HevyLinkState> {
   const detail = await readWorkoutDetail(db, userId, workoutId);
   if (!detail) throw new NotFoundError(NOT_FOUND);
   if (detail.endedAt === null) return NONE;
@@ -210,10 +211,13 @@ export const HEVY_LINK_TX_TIMEOUT_MS = 30_000;
  * Spec 19.0 §6: the Hevy mapping and links over raw SQL (the CHECK lists and partial unique indexes are the
  * migration's, `0016`). No advisory lock key (D16): mapping writes lock the user row, a begin locks the workout row.
  */
-export function createHevyRepository(prisma: PrismaClient): HevyRepository {
+export function createHevyRepository(db: UserScopedDb | PrismaClient): HevyRepository {
+  // Spec 21.1 AC14: every method's statements run on `scoped.as(userId)`.
+  const scoped = toScoped(db);
   return {
     async status(userId): Promise<HevyStatusRecord> {
-      const rows = await prisma.$queryRaw<{ pairs: bigint; links: bigint; stale: boolean | null }[]>`
+      const c = scoped.as(userId);
+      const rows = await c.$queryRaw<{ pairs: bigint; links: bigint; stale: boolean | null }[]>`
         SELECT
           (SELECT count(*) FROM "hevy_exercise_pair" WHERE user_id = ${userId}::uuid) AS pairs,
           (SELECT count(*) FROM "hevy_link" WHERE user_id = ${userId}::uuid AND hevy_workout_id IS NOT NULL) AS links,
@@ -222,10 +226,11 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
       return { pairCount: Number(row.pairs), linkCount: Number(row.links), recordsStale: row.stale === true };
     },
 
-    getMapping: (userId) => readHevyMapping(prisma, userId),
+    getMapping: (userId) => readHevyMapping(scoped.as(userId), userId),
 
     async replaceMapping(userId, input: HevyMappingPut) {
-      return prisma.$transaction(async (tx) => {
+      const c = scoped.as(userId);
+      return c.$transaction(async (tx) => {
         await lockUser(tx, userId);
         const errors = validateMappingInput(input.pairs, input.sectionRules, await visibleExercises(tx, userId, input.pairs), { mode: "replace" });
         if (errors.length > 0) throw new ValidationError(errors, "hevy mapping replace refused");
@@ -249,7 +254,8 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
     },
 
     async patchMapping(userId, patch: HevyMappingPatch) {
-      return prisma.$transaction(async (tx) => {
+      const c = scoped.as(userId);
+      return c.$transaction(async (tx) => {
         await lockUser(tx, userId);
         const upserts = patch.upsert ?? [];
         const removed = new Set(patch.remove ?? []);
@@ -284,14 +290,16 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
     },
 
     async readLink(userId, workoutId) {
+      const c = scoped.as(userId);
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
-      return readLinkState(prisma, userId, workoutId);
+      return readLinkState(c, userId, workoutId);
     },
 
     // §6.6: one transaction; the workout row lock serializes two begins. No lockUserRecords (D16).
     async beginLink(userId, workoutId, opts): Promise<HevyLinkBeginRecord> {
+      const c = scoped.as(userId);
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
-      return prisma.$transaction(async (tx) => {
+      return c.$transaction(async (tx) => {
         const owned = await tx.$queryRaw<{ ended_at: Date | null }[]>`
           SELECT ended_at FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;
         if (!owned[0]) throw new NotFoundError(NOT_FOUND);
@@ -329,10 +337,11 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
     },
 
     async completeLink(userId, workoutId, body) {
+      const c = scoped.as(userId);
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
       // The answer is read inside the transaction, under the workout's share lock, so a delete right after the commit
       // can't turn it into a 404 (minor 145).
-      return prisma.$transaction(async (tx) => {
+      return c.$transaction(async (tx) => {
         // FOR SHARE, before the link row (deleteWorkout's order): a delete that lands first is a 404, not
         // hevy-no-claim (deferred minor 140).
         const owned = await tx.$queryRaw<{ id: string }[]>`
@@ -374,8 +383,9 @@ export function createHevyRepository(prisma: PrismaClient): HevyRepository {
 
     // AC30: idempotent; deletes a claim-only row, clears the claim on a linked row, never unlinks.
     async releaseLink(userId, workoutId) {
+      const c = scoped.as(userId);
       if (!isWorkoutId(workoutId)) throw new NotFoundError(NOT_FOUND);
-      await prisma.$transaction(async (tx) => {
+      await c.$transaction(async (tx) => {
         // FOR SHARE, as complete: a delete that lands first is a 404, not a 204 that touched nothing.
         const owned = await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text FROM "workout" WHERE id = ${workoutId}::uuid AND user_id = ${userId}::uuid FOR SHARE`;
