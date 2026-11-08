@@ -192,7 +192,9 @@ function makeHandler(state) {
     } else if (state.editSectioned && (res = sectionRoute(state.editSectioned, m, p, req.postData()))) {
       // Spec 10.6 AC28 (Phase B): the same writes on a finished copy of it, for the edit screen.
     } else if (m === "GET" && p === "/v1/workouts/active") {
-      const live = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
+      const base = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
+      // Spec 17.4 AC17: the logging-loop step needs logged sets to stay, as they do on the real API.
+      const live = state.trackLogged ? { ...base, exercises: base.exercises.map((e) => ({ ...e, sets: [...e.sets, ...(state.trackLogged[e.id] ?? [])] })) } : base;
       res = state.active ? json(live) : problem(404, "not-found", "No active workout");
     } else if (m === "PATCH" && state.oneOffActive && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       // The one-off finish: the server removes the routine (Spec 09.3); the detail no longer reads as one-off.
@@ -229,13 +231,16 @@ function makeHandler(state) {
       const b = JSON.parse(req.postData() ?? "{}");
       const we = D.active.exercises.find((e) => e.id === decodeURIComponent(seg[1]));
       const t = new Date().toISOString();
-      res = json({
-        id: crypto.randomUUID(), workoutExerciseId: decodeURIComponent(seg[1]), clientGeneratedId: b.clientGeneratedId ?? null,
-        setNumber: (we?.sets.length ?? 0) + 1, setType: b.setType ?? "working", reps: b.reps ?? null,
+      const weId = decodeURIComponent(seg[1]);
+      const created = {
+        id: crypto.randomUUID(), workoutExerciseId: weId, clientGeneratedId: b.clientGeneratedId ?? null,
+        setNumber: (we?.sets.length ?? 0) + (state.trackLogged?.[weId]?.length ?? 0) + 1, setType: b.setType ?? "working", reps: b.reps ?? null,
         weight: b.weight ?? null, weightUnit: b.weightUnit ?? null, weightKg: b.weightUnit === "lb" ? b.weight * 0.45359237 : b.weight ?? null,
         distance: b.distance ?? null, distanceUnit: b.distanceUnit ?? null, distanceM: null, durationS: b.durationS ?? null,
         calories: b.calories ?? null, rpe: b.rpe ?? null, isComplete: b.isComplete ?? true, completedAt: t, createdAt: t, updatedAt: t,
-      }, 201);
+      };
+      if (state.trackLogged) (state.trackLogged[weId] ??= []).push(created);
+      res = json(created, 201);
     } else {
       unmatched.add(`${m} ${p}${url.search}`);
       console.warn(`  UNMATCHED ${m} ${url.pathname}${url.search}`);
@@ -610,6 +615,35 @@ async function tryStep(label, fn) {
   try { await fn(); } catch (e) { console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`); report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` }); }
 }
 
+// Spec 17.4 AC10, AC13, AC17: the workout screen's bar, read in a real browser (jsdom has no layout).
+const loggingLoop = [];
+const measureLoggingLoop = (page) =>
+  page.evaluate(() => {
+    const bar = document.querySelector('[data-testid="session-bar"]');
+    const status = document.querySelector('[data-testid="session-status"]');
+    const scroller = bar.closest("main");
+    const barTop = bar.getBoundingClientRect().top;
+    const panel = document.querySelector('form[aria-label^="Log a set of"]');
+    const covered = panel
+      ? [...panel.querySelectorAll("button, input, select")]
+          .filter((c) => c.getClientRects().length > 0)
+          .filter((c) => c.getBoundingClientRect().bottom > barTop + 0.5)
+          .map((c) => c.getAttribute("aria-label") ?? c.textContent.trim() ?? c.tagName)
+      : [];
+    return {
+      button: bar.querySelector("button").textContent.trim(),
+      buttonTop: Math.round(bar.querySelector("button").getBoundingClientRect().top),
+      buttonHeight: Math.round(bar.querySelector("button").getBoundingClientRect().height),
+      statusHeight: Math.round(status.getBoundingClientRect().height),
+      barHeight: Math.round(bar.getBoundingClientRect().height),
+      scrollPadding: parseFloat(getComputedStyle(scroller).scrollPaddingBottom),
+      covered,
+      panelBottom: panel ? Math.round(panel.getBoundingClientRect().bottom) : null,
+      barTop: Math.round(barTop),
+      scrollTop: Math.round(scroller.scrollTop),
+    };
+  });
+
 const browser = await chromium.launch();
 try {
   {
@@ -718,6 +752,78 @@ try {
       await shoot(page, device, "03b-finish-dialog", "Finish-workout confirmation dialog");
       await page.keyboard.press("Escape");
       state.done = false;
+    });
+
+    // Spec 17.4 AC17: log four sets as a lifter would, with sets that stay. After every log the panel's controls must
+    // clear the bar, and the button must not have moved. AC10: a message must not move it either.
+    await tryStep("logging loop", async () => {
+      state.trackLogged = {};
+      const violations = [];
+      const steps = [];
+      try {
+      await go("/app/workouts");
+      // Chromium's scroll anchoring holds content still when a row appears above it, which would hide the drift this
+      // step exists to catch. Turned off here because the check must not lean on a browser feature the phone may not have.
+      await page.evaluate(() => { document.querySelector('[data-testid="session-bar"]').closest("main").style.overflowAnchor = "none"; });
+      const before = await measureLoggingLoop(page);
+      steps.push({ step: "open", ...before });
+      if (before.buttonHeight !== 56) violations.push(`button is ${before.buttonHeight}px tall (want 56)`);
+      if (before.statusHeight !== 44) violations.push(`status line is ${before.statusHeight}px tall (want 44)`);
+      if (before.scrollPadding < before.barHeight) violations.push(`scroll padding ${before.scrollPadding}px is under the ${before.barHeight}px bar`);
+      for (let i = 1; i <= 4; i += 1) {
+        const log = page.getByTestId("session-bar").getByRole("button", { name: /^Log / });
+        if ((await log.count()) === 0) {
+          violations.push(`log ${i}: the bar has no Log button, so the step logged fewer than four sets`);
+          break;
+        }
+        // A click at the button's coordinates, as a thumb does it. Playwright's locator.click() scrolls first, and on a
+        // sticky bar that moves the list to the bottom, which would hide what this step measures.
+        const box = await log.boundingBox();
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
+        const after = await measureLoggingLoop(page);
+        steps.push({ step: `log ${i}`, ...after });
+        if (after.buttonTop !== before.buttonTop) violations.push(`log ${i}: button top ${after.buttonTop}, was ${before.buttonTop}`);
+        if (after.covered.length) violations.push(`log ${i}: under the bar: ${after.covered.join(", ")}`);
+      }
+      await shoot(page, device, "26b-logging-after-four-logs", "Spec 17.4: after four logs the panel still clears the bar and the button has not moved");
+      for (const text of ["1 set not saved yet", "2 sets not saved yet · 1 note not saved yet"]) {
+        await page.evaluate((t) => { document.querySelector('[data-testid="session-status"]').textContent = t; }, text);
+        const withMessage = await measureLoggingLoop(page);
+        steps.push({ step: text, ...withMessage });
+        if (withMessage.buttonTop !== before.buttonTop) violations.push(`"${text}": button top ${withMessage.buttonTop}, was ${before.buttonTop}`);
+      }
+      await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two messages in the reserved status line; the button has not moved");
+      // AC12: with the keyboard up an empty line gives up its space, and the scroll padding follows; a message keeps its place.
+      await page.evaluate(() => {
+        document.documentElement.setAttribute("data-keyboard", "open");
+        document.querySelector('[data-testid="session-status"]').textContent = "";
+      });
+      const keyboardEmpty = await measureLoggingLoop(page);
+      steps.push({ step: "keyboard up, empty", ...keyboardEmpty });
+      if (keyboardEmpty.statusHeight !== 0) violations.push(`keyboard up: an empty status line is ${keyboardEmpty.statusHeight}px tall`);
+      if (keyboardEmpty.scrollPadding >= before.scrollPadding) violations.push(`keyboard up: scroll padding stayed ${keyboardEmpty.scrollPadding}px`);
+      if (keyboardEmpty.scrollPadding < keyboardEmpty.barHeight) violations.push(`keyboard up: scroll padding ${keyboardEmpty.scrollPadding}px is under the ${keyboardEmpty.barHeight}px bar`);
+      await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "1 set not saved yet"; });
+      const keyboardMessage = await measureLoggingLoop(page);
+      steps.push({ step: "keyboard up, message", ...keyboardMessage });
+      if (keyboardMessage.statusHeight !== 44) violations.push(`keyboard up: a message's line is ${keyboardMessage.statusHeight}px tall`);
+      await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
+      if (device === "mobile") {
+        await page.setViewportSize({ width: 320, height: 568 });
+        await page.waitForTimeout(200);
+        await shoot(page, device, "26d-logging-320", "Spec 17.4: the workout bar at 320 × 568");
+      }
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
+        await page.setViewportSize(opts.viewport);
+        await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
+        state.trackLogged = null;
+      }
+      loggingLoop.push({ theme, device, steps, violations });
+      for (const v of violations) console.error(`  LOGGING LOOP ${theme}/${device}: ${v}`);
     });
 
     // Spec 18.0 AC49 (Phase B): the live header with and without a took, the Change Time sheet and the "Ends …" line.
@@ -1608,7 +1714,13 @@ for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTar
 if (tooSmall.length) process.exitCode = 1;
 if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
 if (offCenter.length) process.exitCode = 1;
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, unmatched: [...unmatched], consoleErrors }, null, 1));
+if (loggingLoop.some((l) => l.violations.length)) process.exitCode = 1;
+// A logging-loop step that never reported must not read as a pass.
+if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
+  console.error("  LOGGING LOOP: the step did not run on every device");
+  process.exitCode = 1;
+}
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

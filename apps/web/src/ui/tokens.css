@@ -91,6 +91,12 @@
   /* the height a bottom ActionBar takes (one row of buttons plus its padding), kept clear when scrolling to focus */
   --action-bar-clearance: calc(var(--tap-target-min) + 2 * var(--space-3) + var(--space-4));
 
+  /* Spec 17.4: the workout screen's bar: a taller button, a reserved status line above it, and the height they take */
+  --bar-action-height: 3.5rem;
+  --session-status-height: var(--tap-target-min);
+  --session-bar-clearance: calc(var(--bar-action-height) + var(--session-status-height) + var(--space-1) + 2 * var(--space-3) + var(--space-4));
+  --session-bar-clearance-compact: calc(var(--bar-action-height) + 2 * var(--space-3) + var(--space-4));
+
   /* the narrowest a set-entry field column gets before the row wraps to one column (fits two at 320px) */
   --field-min-width: 7rem;
 

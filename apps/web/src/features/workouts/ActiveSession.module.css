@@ -69,6 +69,33 @@
   flex: 1;
 }
 
+/* Spec 17.4 AC9-AC12: the workout screen's bar. The button is the most-tapped control in the app, and the status line
+   above it is always reserved, so a message never moves the button. */
+.sessionBar {
+  row-gap: var(--space-1);
+}
+
+.sessionBar > button {
+  min-height: var(--bar-action-height);
+}
+
+.sessionStatus {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--session-status-height);
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* With the keyboard up room is scarcest, so an empty line gives its space back. */
+:global(:root[data-keyboard="open"]) .sessionStatus:empty {
+  display: none;
+}
+
 /* Spec 10.6 AC3: why Add section is disabled at the cap. */
 .limit {
   margin: var(--space-2) 0 0;
