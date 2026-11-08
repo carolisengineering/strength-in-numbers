@@ -87,7 +87,9 @@ export function toSetRecord(r: SetEntryDbRow): SetEntryRecord {
 
 const SET_NOT_FOUND = "set not found or not owned by the acting user";
 
-export type RawClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
+/** Moved to `db/scoped.ts` (Spec 21.1); re-exported so existing imports keep working. */
+export type { RawClient } from "../db/scoped.js";
+import type { RawClient } from "../db/scoped.js";
 
 /** Ownership through set_entry → workout_exercise → workout (a set carries
  * no user_id). No lock: workout_id and modality_snapshot never change, and the
