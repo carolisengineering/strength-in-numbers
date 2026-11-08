@@ -4,6 +4,7 @@
  *   PATH="$HOME/.docker/bin:$PATH" pnpm --filter @sin/api run bench:progress
  */
 import { createPersonalRecordRepository } from "../src/repositories/personal-record.prisma.js";
+import { createScopedDb } from "../src/db/scoped.js";
 import { startIntegrationDb } from "../test/integration/helpers.js";
 import { insertExercise, insertUser, logWorkout } from "../test/integration/records-helpers.js";
 
@@ -25,7 +26,8 @@ try {
       })),
     });
   }
-  const repo = createPersonalRecordRepository(db.prisma);
+  // Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
+  const repo = createPersonalRecordRepository(createScopedDb(db.prisma));
   const t: number[] = [];
   for (let r = 0; r < RUNS; r++) {
     const t0 = performance.now();

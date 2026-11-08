@@ -6,6 +6,7 @@
  */
 import { createExerciseRepository } from "../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../src/repositories/workout.prisma.js";
+import { createScopedDb } from "../src/db/scoped.js";
 import { startIntegrationDb } from "../test/integration/helpers.js";
 import { insertExercise, insertUser, logWorkout } from "../test/integration/records-helpers.js";
 
@@ -29,7 +30,9 @@ try {
       })),
     });
   }
-  const repo = createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma));
+  // Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
+  const scoped = createScopedDb(db.prisma);
+  const repo = createWorkoutRepository(scoped, createExerciseRepository(scoped));
   const deepCursor = (await repo.listFinishedWorkouts(user, { limit: 150 })).next!; // 150 rows down
   const time = async (cursor?: string) => {
     const t: number[] = [];
