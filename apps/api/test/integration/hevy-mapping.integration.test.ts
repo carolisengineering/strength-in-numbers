@@ -3,17 +3,9 @@ import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { TRUNCATE_ALL } from "./records-helpers.js";
 
 const A_ID = "0192a1b2-0000-7000-8000-0000000000aa";
@@ -43,7 +35,7 @@ const pair = (o: Partial<Pair> & { exerciseId: string | null }): Pair => ({
 
 /** Spec 19.0 AC21–AC25, AC37 — the mapping routes against a real Postgres. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy mapping (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   const lines: Record<string, unknown>[] = [];
   let mine: string;
@@ -57,16 +49,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy mapping (re
     app = await buildApp({
       config: { ...testConfig(), hevyEnabledUserIds: Object.freeze(new Set([A_ID, B_ID])) },
       logger,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => authContext({ authSub: `auth0|${token === "a" ? A_ID : B_ID}` })),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

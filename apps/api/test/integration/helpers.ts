@@ -6,7 +6,17 @@ import {
 } from "@testcontainers/postgresql";
 import { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
+import type { BuildAppDeps } from "../../src/app.js";
 import { setAppRoleLogin } from "../../src/db/app-role.js";
+import { createScopedDb } from "../../src/db/scoped.js";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
+import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { POSTGRES_IMAGE } from "./postgres-image.js";
 
 /**
@@ -53,6 +63,37 @@ export const TEST_APP_PASSWORD = "sin_app_test";
 export interface AppIntegrationDb extends IntegrationDb {
   app: PrismaClient;
   appUrl: string;
+}
+
+/**
+ * Spec 21.1 AC30 — every repository, wired the way `server.ts` wires them: `createScopedDb` once, over the client it is
+ * given (`db.app` in HTTP-level tests). Fixtures, truncation and assertions on stored rows stay on `db.prisma`.
+ */
+export function appRepositories(
+  client: PrismaClient,
+): Pick<
+  BuildAppDeps,
+  | "userRepository"
+  | "exerciseRepository"
+  | "workoutRepository"
+  | "personalRecordRepository"
+  | "routineRepository"
+  | "accountExportRepository"
+  | "hevyRepository"
+  | "hevyImportRepository"
+> {
+  const scoped = createScopedDb(client);
+  const exerciseRepository = createExerciseRepository(scoped);
+  return {
+    userRepository: createUserRepository(scoped),
+    exerciseRepository,
+    workoutRepository: createWorkoutRepository(scoped, exerciseRepository),
+    personalRecordRepository: createPersonalRecordRepository(scoped),
+    routineRepository: createRoutineRepository(scoped),
+    accountExportRepository: createAccountExportRepository(scoped),
+    hevyRepository: createHevyRepository(scoped),
+    hevyImportRepository: createHevyImportRepository(scoped),
+  };
 }
 
 /** Migrated, but `sin_app` is still `NOLOGIN`: the state right after `0020`, before `db:app-role` (Spec 21.1 AC23, AC31). */

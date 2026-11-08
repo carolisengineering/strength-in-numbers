@@ -6,7 +6,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { bearer, makeAccountApp } from "./account-helpers.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { ageOneOff, settleCapture, startCapture } from "./one-off-helpers.js";
 import { assertDerivedColumnsConsistent } from "./planned-set-helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
@@ -17,7 +17,7 @@ import { assertSectionsConsistent } from "./section-helpers.js";
 const LIST_BOUND_MS = 1_000;
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

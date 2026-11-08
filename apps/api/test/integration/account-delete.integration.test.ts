@@ -2,12 +2,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
 import { AccountDeletedResponseSchema } from "@sin/core";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { bearer, makeAccountApp, tableHash, TRUNCATE_ACCOUNTS, USER_TABLES } from "./account-helpers.js";
 
 describe.skipIf(!shouldRunIntegration())("Spec 11 — DELETE /v1/account (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

@@ -3,18 +3,12 @@ import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, insertUser, appRepositories, type AppIntegrationDb } from "./helpers.js";
 
 const TOKEN_A = "cross-user-a-token";
 const TOKEN_B = "cross-user-b-token";
@@ -25,7 +19,7 @@ const JSON_B = { ...BEARER_B, "content-type": "application/json" };
 const MALFORMED_ID = "not-a-uuid";
 
 describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanished-row rule (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
@@ -52,7 +46,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
     return buildApp({
       config: testConfig(),
       logger: false,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => {
         if (token === TOKEN_A) {
           return authContext({ authSub: "auth0|cross-user-a", email: "a@ex.com" });
@@ -62,14 +56,7 @@ describe.skipIf(!shouldRunIntegration())("AC15 — cross-user 404 and the vanish
         }
         throw new Error(`unexpected bearer token in test: ${token}`);
       }),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
     });
   }
 

@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { buildTestApp } from "../helpers/build-test-app.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 
 /**
  * Spec 03.3 §10 AC8 (410 half) — a `since` ahead of the current snapshot's
@@ -15,7 +10,7 @@ import {
 describe.skipIf(!shouldRunIntegration())(
   "AC8 — future token → 410 (integration, real Postgres)",
   () => {
-    let db: IntegrationDb;
+    let db: AppIntegrationDb;
 
     beforeAll(async () => {
       if (!shouldRunIntegration()) return;
@@ -41,7 +36,7 @@ describe.skipIf(!shouldRunIntegration())(
       "%s: since = xmax+1 → 410 no-store; since = xmax → 200",
       async (method) => {
         const { app } = await buildTestApp({
-          exerciseRepository: createExerciseRepository(db.prisma),
+          exerciseRepository: appRepositories(db.app).exerciseRepository,
         });
         const x = await xmax();
 

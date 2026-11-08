@@ -3,17 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 
 const A = { authorization: "Bearer a" };
@@ -26,7 +18,7 @@ const day = (d: number, h = 15) => new Date(Date.UTC(2026, 9, d, h));
  * working. If one of these fails, the delete changed; report it rather than adjusting the test.
  */
 describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase B — the delete pins (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
@@ -34,20 +26,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase B — the delete pins 
     app = await buildApp({
       config: testConfig(),
       logger: false,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => {
         if (token === "a") return authContext({ authSub: "auth0|pins-a", email: "a@ex.com" });
         if (token === "b") return authContext({ authSub: "auth0|pins-b", email: "b@ex.com" });
         throw new Error(`unexpected token ${token}`);
       }),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

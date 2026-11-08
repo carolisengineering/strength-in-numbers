@@ -10,7 +10,7 @@ import {
   ownedWorkoutExercise,
   ownedWorkoutSection,
 } from "../../src/repositories/ownership.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { buildWorld, type World } from "./cross-user/world.js";
 import { OWNERSHIP_MAP } from "./cross-user/snapshot.js";
 
@@ -33,7 +33,7 @@ const CASES: { table: string; ref: Prisma.Sql; helper: (userId: string, ref: Pri
 ];
 
 describe.skipIf(!shouldRunIntegration())("Spec 21.0 AC22 — shared ownership predicates (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let world: World;
 
   beforeAll(async () => {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
-import { insertExercise, type IntegrationDb } from "../helpers.js";
+import { insertExercise, type AppIntegrationDb } from "../helpers.js";
 import { makeCrossUserApp, type WorldActor } from "./app.js";
 import { ownedIds } from "./snapshot.js";
 
@@ -287,7 +287,7 @@ async function buildOwned(
 }
 
 /** Builds A, B and C on `db`. The building app allow-lists A and B for Hevy; the cases' app only A (AC16). */
-export async function buildWorld(db: IntegrationDb): Promise<World> {
+export async function buildWorld(db: AppIntegrationDb): Promise<World> {
   const boot = await makeCrossUserApp(db);
   const bootApi = apiFor(boot.app, boot.as);
   const userIds = {} as Record<WorldActor, string>;

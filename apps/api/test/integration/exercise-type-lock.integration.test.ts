@@ -14,17 +14,10 @@ import {
   ValidationError,
 } from "../../src/errors/app-error.js";
 import { rebuildRecords } from "../../src/records/rebuild.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL, type SetSpec } from "./records-helpers.js";
 
 const day = (d: number) => new Date(Date.UTC(2026, 9, d, 10));
@@ -34,7 +27,7 @@ const day = (d: number) => new Date(Date.UTC(2026, 9, d, 10));
  * a thin proxy over the client, so a test can say "no set query ran" without mocking the repository.
  */
 describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise type-change rule (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
@@ -321,16 +314,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise typ
       buildApp({
         config: testConfig(),
         logger: false,
-        checkReadiness: () => checkDatabaseReady(db.prisma),
+        checkReadiness: () => checkDatabaseReady(db.app),
         tokenVerifier: fakeVerifier(() => authContext({ authSub: "auth0|type-lock", email: "t@ex.com" })),
-        userRepository: createUserRepository(db.prisma),
-        exerciseRepository: createExerciseRepository(db.prisma),
-        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-        personalRecordRepository: createPersonalRecordRepository(db.prisma),
-        routineRepository: createRoutineRepository(db.prisma),
-        accountExportRepository: createAccountExportRepository(db.prisma),
-        hevyRepository: createHevyRepository(db.prisma),
-        hevyImportRepository: createHevyImportRepository(db.prisma),
+        ...appRepositories(db.app),
         rateLimits: GENEROUS_LIMITS,
       });
     it("the fork route answers 201 with a Location for a bodiless fork", async () => {

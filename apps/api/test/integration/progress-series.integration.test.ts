@@ -2,25 +2,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { createPersonalRecordRepository, lockUserRecords, recomputeRecordsForRoots } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 import { ProgressSeriesSchema } from "@sin/core";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 
 const at = (day: number, hour = 10) => new Date(Date.UTC(2026, 8, day, hour)); // Sept 2026
 
 describe.skipIf(!shouldRunIntegration())("Spec 07.2 — getProgressSeries (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
@@ -225,16 +218,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.2 — getProgressSeries (real 
       const app = await buildApp({
         config: testConfig(),
         logger: false,
-        checkReadiness: () => checkDatabaseReady(db.prisma),
+        checkReadiness: () => checkDatabaseReady(db.app),
         tokenVerifier: fakeVerifier((t) => authContext({ authSub: `auth0|${t}`, email: `${t}@ex.com` })),
-        userRepository: createUserRepository(db.prisma),
-        exerciseRepository: createExerciseRepository(db.prisma),
-        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-        personalRecordRepository: createPersonalRecordRepository(db.prisma),
-        routineRepository: createRoutineRepository(db.prisma),
-        accountExportRepository: createAccountExportRepository(db.prisma),
-        hevyRepository: createHevyRepository(db.prisma),
-        hevyImportRepository: createHevyImportRepository(db.prisma),
+        ...appRepositories(db.app),
         rateLimits: GENEROUS_LIMITS,
       });
       try {

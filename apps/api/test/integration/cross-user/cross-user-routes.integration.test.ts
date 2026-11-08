@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "../helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "../helpers.js";
 import { makeCrossUserApp, type WorldActor } from "./app.js";
 import { buildWorld, type World } from "./world.js";
 import { snapshot } from "./snapshot.js";
@@ -21,7 +21,7 @@ import { CASES, type CaseApi, type CaseResponse, type CrossUserCase, type Req } 
  * body goes to the leak scan, which runs last (AC12).
  */
 describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route suite (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   let as: (actor: WorldActor) => Record<string, string>;
   let world: World;
