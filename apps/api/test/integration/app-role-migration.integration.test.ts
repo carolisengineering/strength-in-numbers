@@ -4,7 +4,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startMigratedDb, type IntegrationDb } from "./helpers.js";
 
 const OWNED_TABLES = [
   "workout",
@@ -61,7 +61,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase C — migration 0020 (
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startMigratedDb();
   }, 180_000);
 
   afterAll(async () => {

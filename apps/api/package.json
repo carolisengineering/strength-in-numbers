@@ -19,6 +19,7 @@
     "audit:queries": "tsx scripts/query-audit.ts",
     "seed:catalog": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "records:rebuild": "tsx --env-file-if-exists=.env scripts/rebuild-records.ts",
+    "db:app-role": "tsx --env-file-if-exists=.env.owner scripts/db-app-role.ts",
     "account:purge": "tsx --env-file-if-exists=.env scripts/purge-accounts.ts",
     "bench:finish": "tsx scripts/bench-finish.ts",
     "bench:history": "tsx scripts/bench-history.ts",

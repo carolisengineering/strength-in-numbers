@@ -371,7 +371,7 @@ Categories:
 
 - **user-filtered**: the statement itself carries a user predicate (\`user_id = $acting\`, \`owner_user_id IS NULL OR owner_user_id = $acting\`, \`id = $acting\` on \`"user"\`, an \`ownership.ts\` helper, or an \`INSERT\` that writes the acting user's id).
 - **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column).
-- **shared on purpose**: reference data (\`muscle_group\`, \`equipment\`, the catalog's \`owner_user_id IS NULL\` rows) or no table at all.
+- **shared on purpose**: reference data (\`muscle_group\`, \`equipment\`, the catalog's \`owner_user_id IS NULL\` rows), Postgres's own catalogs (\`pg_*\`), or no table at all.
 - **cross-user maintenance**: the operator scripts that act on many users (\`account/purge.ts\`, \`records/rebuild.ts\`, \`seed/catalog.ts\`).
 - **fragment**: a piece composed into other statements, classified through the callers listed beside it.
 `;
@@ -450,12 +450,14 @@ export function hasUserPredicate(text: string, userFragments: readonly string[] 
 }
 
 const SHARED_TABLES = new Set(["muscle_group", "equipment"]);
+/** Reference tables, and Postgres's own catalogs (`pg_roles`, `pg_class`, …), which hold no user data (Spec 21.1). */
+const isSharedTable = (t: string) => SHARED_TABLES.has(t) || t.startsWith("pg_");
 
-/** Only reference data, the catalog's shared rows (`owner_user_id IS NULL`), or no table at all. */
+/** Only reference data, the catalog's shared rows (`owner_user_id IS NULL`), Postgres's catalogs, or no table at all. */
 export function touchesOnlySharedData(text: string): boolean {
   const { tables, delegates } = tablesOf(text);
   return (
-    tables.every((t) => SHARED_TABLES.has(t) || (t === "exercise" && /owner_user_id IS NULL/i.test(text))) &&
+    tables.every((t) => isSharedTable(t) || (t === "exercise" && /owner_user_id IS NULL/i.test(text))) &&
     delegates.every((d) => SHARED_DELEGATES.has(d))
   );
 }
@@ -499,7 +501,7 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
   const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map(fragmentLabel);
   const ownsData = (text: string) => {
     const { tables, delegates } = tablesOf(expandFragments(text, fragments));
-    return tables.some((t) => !SHARED_TABLES.has(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
+    return tables.some((t) => !isSharedTable(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
   };
   for (const r of rows) {
     const text = textOf.get(r.key) ?? "";
