@@ -46,7 +46,7 @@ export async function makeCrossUserApp(
     }),
     userRepository: createUserRepository(scoped),
     exerciseRepository,
-    workoutRepository: createWorkoutRepository(db.prisma, exerciseRepository),
+    workoutRepository: createWorkoutRepository(scoped, exerciseRepository),
     personalRecordRepository: createPersonalRecordRepository(db.prisma),
     routineRepository: createRoutineRepository(db.prisma),
     accountExportRepository: createAccountExportRepository(db.prisma),

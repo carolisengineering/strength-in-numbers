@@ -1,5 +1,5 @@
 // apps/api/src/repositories/set-entry.prisma.ts
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { isSetEntryId, isWorkoutExerciseId, setChangeAffectsRecords, type Modality, type RecordRelevantSet, type SetType } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { IncompleteWorkingSetsError, NotFoundError, WorkoutWouldBeEmptyError } from "../errors/app-error.js";
@@ -89,7 +89,7 @@ const SET_NOT_FOUND = "set not found or not owned by the acting user";
 
 /** Moved to `db/scoped.ts` (Spec 21.1); re-exported so existing imports keep working. */
 export type { RawClient } from "../db/scoped.js";
-import type { RawClient } from "../db/scoped.js";
+import type { RawClient, UserScopedDb } from "../db/scoped.js";
 
 /** Ownership through set_entry → workout_exercise → workout (a set carries
  * no user_id). No lock: workout_id and modality_snapshot never change, and the
@@ -225,7 +225,7 @@ export async function assertWorkingSetsComplete(client: RawClient, workoutId: st
 }
 
 export function createSetEntryMethods(
-  prisma: PrismaClient,
+  scoped: UserScopedDb,
 ): Pick<WorkoutRepository, "createSet" | "updateSet" | "deleteSet"> {
   return {
     async createSet(
@@ -233,12 +233,13 @@ export function createSetEntryMethods(
       workoutExerciseId: string,
       fields: CreateSetFields,
     ): Promise<CreateSetResult> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutExerciseId(workoutExerciseId)) throw new NotFoundError(WE_NOT_FOUND);
 
       // Phase 1 (§6.2 step 1): ownership through the join (a workout_exercise
       // carries no user_id), plus a cheap finished check on the root client.
       // The authoritative finished check is the FOR SHARE re-check below.
-      const parents = await prisma.$queryRaw<
+      const parents = await c.$queryRaw<
         { workout_id: string; modality_snapshot: string; ended_at: Date | null }[]
       >`
         SELECT we.workout_id, we.modality_snapshot, w.ended_at
@@ -254,7 +255,7 @@ export function createSetEntryMethods(
       // it retries already happened (no lock, no recompute: 07.4 AC14).
       const key = fields.clientGeneratedId;
       if (key !== undefined) {
-        const stored = await findSetByClientGeneratedId(prisma, actingUserId, workoutExerciseId, key);
+        const stored = await findSetByClientGeneratedId(c, actingUserId, workoutExerciseId, key);
         if (stored) return { set: stored, modalitySnapshot: modality, created: false, finishedEdit: null };
       }
 
@@ -264,7 +265,7 @@ export function createSetEntryMethods(
 
       // Spec 07.4 §6.1: a finished parent is written in finished mode (PR lock first, records
       // recomputed) instead of answering 409.
-      return withWriteMode(prisma, actingUserId, parent.ended_at ?? null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, parent.ended_at ?? null, async (tx, mode) => {
         // §6.3: the lock is its own first statement; the max read is a
         // separate, later statement (03.2 D23's snapshot trap).
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workoutExerciseId}))`;
@@ -323,10 +324,11 @@ export function createSetEntryMethods(
       id: string,
       patch: UpdateSetFields,
     ): Promise<{ set: SetEntryRecord; finishedEdit: FinishedEdit | null }> {
+      const c = scoped.as(actingUserId);
       if (!isSetEntryId(id)) throw new NotFoundError(SET_NOT_FOUND);
-      const owner = await resolveOwnedSet(prisma, actingUserId, id);
+      const owner = await resolveOwnedSet(c, actingUserId, id);
       const modality = owner.modality_snapshot as Modality;
-      return withWriteMode(prisma, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
         const span = await lockedWorkoutSpan(tx, actingUserId, owner.workout_id, SET_NOT_FOUND);
         assertStillLive(mode, span.ended_at);
         // FOR UPDATE: two concurrent patches of one set serialize, so each
@@ -368,9 +370,10 @@ export function createSetEntryMethods(
     },
 
     async deleteSet(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
+      const c = scoped.as(actingUserId);
       if (!isSetEntryId(id)) throw new NotFoundError(SET_NOT_FOUND);
-      const owner = await resolveOwnedSet(prisma, actingUserId, id);
-      return withWriteMode(prisma, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
+      const owner = await resolveOwnedSet(c, actingUserId, id);
+      return withWriteMode(c, actingUserId, owner.ended_at ?? null, async (tx, mode) => {
         const span = await lockedWorkoutSpan(tx, actingUserId, owner.workout_id, SET_NOT_FOUND);
         assertStillLive(mode, span.ended_at);
         if (mode === "live") {
