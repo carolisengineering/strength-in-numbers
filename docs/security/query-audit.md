@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-221 statements: 111 user-filtered, 54 anchored, 12 shared on purpose, 14 cross-user maintenance, 30 fragment.
+226 statements: 111 user-filtered, 54 anchored, 16 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -83,6 +83,15 @@ Categories:
 | `src/account/purge.ts#classifyTarget#1` | query | cross-user maintenance | ok | — | `14fb817c5283` | Reads user |
 | `src/account/purge.ts#purgeAccount#1` | query | cross-user maintenance | ok | — | `a236e9b5ff39` | Reads workout, set_entry, workout_exercise |
 | `src/account/purge.ts#purgeAccount#2` | query | cross-user maintenance | ok | — | `ab3e19bdc3df` | Deletes from user |
+
+## src/db/scoped.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/scoped.ts#setConfig#1` | query | shared on purpose | ok | — | `6bea005c738f` | Spec 21.1 handle: set_config('app.user_id') (no table) |
+| `src/db/scoped.ts#setConfig#2` | query | shared on purpose | ok | — | `348c70e55865` | Spec 21.1 handle: set_config('app.auth_sub') (no table) |
+| `src/db/scoped.ts#$transaction#1` | query | shared on purpose | ok | — | `6c20e5345ee8` | Spec 21.1 handle: SET TRANSACTION READ ONLY (no table) |
+| `src/db/scoped.ts#$transaction#2` | query | shared on purpose | ok | — | `6c20e5345ee8` | Spec 21.1 handle: SET TRANSACTION READ ONLY, owner pass-through (no table) |
 
 ## src/db.ts
 
@@ -289,11 +298,12 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/user.prisma.ts#findByAuthSub#1` | query | user-filtered | ok | — | `5d2499d2199b` | Prisma user.findUnique |
+| `src/repositories/user.prisma.ts#USER_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/user.prisma.ts#findByAuthSub#1, src/repositories/user.prisma.ts#provision#2, src/repositories/user.prisma.ts#syncEmail#1, src/repositories/user.prisma.ts#updateProfile#1 | `ccaa4f73c7ad` | The user row's columns |
+| `src/repositories/user.prisma.ts#findByAuthSub#1` | query | user-filtered | ok | — | `73fe79d5eac4` | Reads user by the token's auth_sub |
 | `src/repositories/user.prisma.ts#provision#1` | query | user-filtered | ok | — | `56779fd882c0` | Inserts into user |
-| `src/repositories/user.prisma.ts#provision#2` | query | user-filtered | ok | — | `da49cdd4384b` | Prisma user.findUnique |
-| `src/repositories/user.prisma.ts#syncEmail#1` | query | user-filtered | ok | — | `f6572ed731ab` | Prisma user.update |
-| `src/repositories/user.prisma.ts#updateProfile#1` | query | user-filtered | ok | — | `0093c718f96d` | Prisma user.update |
+| `src/repositories/user.prisma.ts#provision#2` | query | user-filtered | ok | — | `84cff2b3f403` | Re-reads user by the token's auth_sub |
+| `src/repositories/user.prisma.ts#syncEmail#1` | query | user-filtered | ok | — | `f93bef1a79bf` | Updates user email by id |
+| `src/repositories/user.prisma.ts#updateProfile#1` | query | user-filtered | ok | — | `85936da0da37` | Updates user profile by id |
 | `src/repositories/user.prisma.ts#markDeleted#1` | query | user-filtered | ok | — | `b95aa720c9bd` | Updates user |
 
 ## src/repositories/workout-history.prisma.ts
