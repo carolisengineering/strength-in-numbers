@@ -7,6 +7,7 @@
  */
 import { buildApp } from "../src/app.js";
 import { checkDatabaseReady } from "../src/db.js";
+import { createScopedDb } from "../src/db/scoped.js";
 import { createHevyRepository } from "../src/repositories/hevy.prisma.js";
 import { createHevyImportRepository } from "../src/repositories/hevy-import.prisma.js";
 import { createAccountExportRepository } from "../src/repositories/account-export.prisma.js";
@@ -28,19 +29,21 @@ const WARMUP = 20;
 const RUNS = 200;
 
 const db = await startIntegrationDb();
+// Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
+const scoped = createScopedDb(db.prisma);
 const app = await buildApp({
   config: testConfig(),
   logger: false,
   checkReadiness: () => checkDatabaseReady(db.prisma),
   tokenVerifier: fakeVerifier(() => authContext({ authSub: "auth0|bench-usage", email: "bench@ex.com" })),
-  userRepository: createUserRepository(db.prisma),
-  exerciseRepository: createExerciseRepository(db.prisma),
-  workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-  personalRecordRepository: createPersonalRecordRepository(db.prisma),
-  routineRepository: createRoutineRepository(db.prisma),
-  accountExportRepository: createAccountExportRepository(db.prisma),
-  hevyRepository: createHevyRepository(db.prisma),
-  hevyImportRepository: createHevyImportRepository(db.prisma),
+  userRepository: createUserRepository(scoped),
+  exerciseRepository: createExerciseRepository(scoped),
+  workoutRepository: createWorkoutRepository(scoped, createExerciseRepository(scoped)),
+  personalRecordRepository: createPersonalRecordRepository(scoped),
+  routineRepository: createRoutineRepository(scoped),
+  accountExportRepository: createAccountExportRepository(scoped),
+  hevyRepository: createHevyRepository(scoped),
+  hevyImportRepository: createHevyImportRepository(scoped),
   rateLimits: GENEROUS_LIMITS,
 });
 const headers = { authorization: "Bearer bench" };

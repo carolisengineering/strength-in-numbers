@@ -5,7 +5,7 @@
  */
 import type { PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
-import type { RawClient } from "../repositories/set-entry.prisma.js";
+import { toScoped, type RawClient, type UserScopedDb } from "../db/scoped.js";
 import { lockUserRecords, recomputeRecordsForRoots } from "../repositories/personal-record.prisma.js";
 
 export interface RebuildSummary {
@@ -34,14 +34,17 @@ export async function rebuildUserRecords(tx: RawClient, userId: string): Promise
 }
 
 export async function rebuildRecords(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
   log: Logger,
   opts: { userId?: string },
 ): Promise<RebuildSummary> {
+  // Spec 21.1 §6.8: an operator command on the owner login. The user listing is cross-user, so it runs unscoped
+  // (`shared()`); each user's rebuild runs on `as(user)`, which on the owner login sends no setting.
+  const scoped = toScoped(db);
   const userId = opts.userId ?? null;
   // Every user with a finished workout, plus every user who still has rows
   // (so a user whose last finished workout vanished gets cleaned up too).
-  const users = await prisma.$queryRaw<{ user_id: string }[]>`
+  const users = await scoped.shared().$queryRaw<{ user_id: string }[]>`
     SELECT DISTINCT u.user_id::text AS user_id FROM (
       SELECT user_id FROM "workout" WHERE ended_at IS NOT NULL
       UNION
@@ -54,7 +57,7 @@ export async function rebuildRecords(
 
   let records = 0;
   for (const { user_id } of users) {
-    records += await prisma.$transaction(
+    records += await scoped.as(user_id).$transaction(
       async (tx) => {
         await lockUserRecords(tx, user_id);
         const { rootCount, recordCount } = await rebuildUserRecords(tx, user_id);

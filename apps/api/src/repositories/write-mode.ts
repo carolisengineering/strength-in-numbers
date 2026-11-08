@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { ScopedClient } from "../db/scoped.js";
 import { lockUserRecords, recomputeRecordsForRoots } from "./personal-record.prisma.js";
 import type { RawClient } from "./set-entry.prisma.js";
 
@@ -27,13 +27,13 @@ export function assertStillLive(mode: WriteMode, endedAtUnderLock: Date | null):
 }
 
 export async function withWriteMode<T>(
-  prisma: PrismaClient,
+  client: ScopedClient,
   userId: string,
   preflightEndedAt: Date | null,
   run: (tx: RawClient, mode: WriteMode) => Promise<T>,
 ): Promise<T> {
   const attempt = (mode: WriteMode) =>
-    prisma.$transaction(async (tx) => {
+    client.$transaction(async (tx) => {
       if (mode === "finished") await lockUserRecords(tx, userId);
       return run(tx, mode);
     });

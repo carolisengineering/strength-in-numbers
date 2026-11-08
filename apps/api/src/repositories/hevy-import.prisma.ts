@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { toScoped, type RawClient, type UserScopedDb } from "../db/scoped.js";
 import {
   isDuplicateWorkout,
   parseWorkoutId,
@@ -34,7 +35,7 @@ import { assertSetMeasuresValid } from "./set-writes.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
 /** A transaction or the client itself: the reads run on either. */
-type Db = Prisma.TransactionClient | PrismaClient;
+type Db = RawClient;
 
 /**
  * Spec 19.1 §6.1: what one import request reads once — the mapping, the exercises it names, the user's unit. Every
@@ -152,19 +153,22 @@ export function importableProblem(w: ImportedWorkout): string | null {
   return null;
 }
 
-export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImportSeams = {}): HevyImportRepository {
+export function createHevyImportRepository(db: UserScopedDb | PrismaClient, seams: HevyImportSeams = {}): HevyImportRepository {
+  // Spec 21.1 AC14: every statement runs on `scoped.as(userId)`.
+  const scoped = toScoped(db);
   const step = async (s: HevyImportWriteStep) => {
     await seams.onWriteStep?.(s);
   };
 
   async function writeImportedWorkout(userId: string, hevyWorkoutId: string, w: ImportedWorkout): Promise<WriteOutcome> {
+    const c = scoped.as(userId);
     if (importableProblem(w) !== null) return { kind: "rejected" };
 
     const workoutId = uuidv7();
     const sectionIds = w.sections.map(() => uuidv7());
     const exerciseIds = w.exercises.map(() => uuidv7());
     try {
-      await prisma.$transaction(
+      await c.$transaction(
         async (tx) => {
           // An exercise retired since the context load raises no FK error; check it in the transaction (AC18). FOR
           // SHARE holds the rows to the commit, so a retire either landed first (`rejected`) or waits (minor 156).
@@ -260,8 +264,9 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
    * claimed it first (`hevy_link_workout_key`) or it vanished; `already_imported` when the Hevy id was linked first.
    */
   async function insertMatchedLink(userId: string, hevyWorkoutId: string, sinWorkoutId: string): Promise<"linked" | "taken" | "already_imported"> {
+    const c = scoped.as(userId);
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await c.$transaction(async (tx) => {
         await step("match");
         // FOR SHARE, as 19.0's link complete: a delete that lands first answers `taken`, not an FK error (a 500), and
         // a finished-workout edit waits, so the stored fingerprint is of the workout as linked.
@@ -288,9 +293,10 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
     now: Date,
     tally: HevyImportTally = emptyHevyImportTally(),
   ): Promise<HevyImportBatchRecord> {
+    const c = scoped.as(userId);
     // §6.1: loaded once per request, so the whole batch is translated against one consistent mapping.
-    const ctx = await loadContext(prisma, userId, now);
-    const links = await findLinks(prisma, userId, batch.workouts.map((w) => w.hevyWorkoutId));
+    const ctx = await loadContext(c, userId, now);
+    const links = await findLinks(c, userId, batch.workouts.map((w) => w.hevyWorkoutId));
     // What this request has already decided, so a dry run answers as the real run will (D6, Review Focus 1 and 4).
     const decided = new Map<string, HevyLinkHit["origin"]>();
     const claimed = new Set<string>();
@@ -351,7 +357,7 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
       let matched: string | null = null;
       let alreadyImported = false;
       for (let attempt = 0; attempt < 2 && matched === null && !alreadyImported; attempt++) {
-        const candidates = await findCandidates(prisma, userId, hevySide.localDate, hevySide.startedAt);
+        const candidates = await findCandidates(c, userId, hevySide.localDate, hevySide.startedAt);
         const best = nearestMatch(hevySide, candidates.filter((c) => !claimed.has(c.id) && !dropped.has(c.id)));
         if (best === null) break;
         if (batch.dryRun) {
@@ -416,7 +422,8 @@ export function createHevyImportRepository(prisma: PrismaClient, seams: HevyImpo
    * false, nothing is written; else the caller's records are rebuilt exactly as `records:rebuild --user` does.
    */
   async function finishImport(userId: string): Promise<{ recomputed: boolean; rootCount: number }> {
-    return prisma.$transaction(
+    const c = scoped.as(userId);
+    return c.$transaction(
       async (tx) => {
         await lockUserRecords(tx, userId);
         const rows = await tx.$queryRaw<{ records_stale: boolean }[]>`

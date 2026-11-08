@@ -291,6 +291,12 @@ describe("AC21 — hasUserPredicate wants a predicate, not a mention (code revie
     expect(hasUserPredicate('UPDATE "user" SET deleted_at = now() WHERE id = ${id}::uuid')).toBe(true);
   });
 
+  it("Spec 21.1 AC15 — a raw read of the user row by the token's auth_sub is one (it replaced the model lookup)", () => {
+    expect(hasUserPredicate('SELECT ${USER_COLUMNS} FROM "user" WHERE auth_sub = ${authSub}')).toBe(true);
+    // Only on "user": an auth_sub compared anywhere else is no user predicate.
+    expect(hasUserPredicate('SELECT 1 FROM "workout" WHERE auth_sub = ${authSub}')).toBe(false);
+  });
+
   it("a user-filtered fragment counts by the name its callers use, not its enclosing function", () => {
     const local = src(
       "src/repositories/lf.ts",

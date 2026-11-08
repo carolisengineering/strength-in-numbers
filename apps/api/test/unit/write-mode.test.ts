@@ -1,6 +1,6 @@
 // apps/api/test/unit/write-mode.test.ts
 import { describe, expect, it } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import type { ScopedClient } from "../../src/db/scoped.js";
 import { uuidv7 } from "uuidv7";
 import { assertStillLive, recomputeTimed, withWriteMode, WriteModeChanged, type WriteMode } from "../../src/repositories/write-mode.js";
 
@@ -27,7 +27,7 @@ const isPrLock = (sql: string) => sql.includes(PR_LOCK);
 describe("07.4 AC4 — withWriteMode lock order", () => {
   it("finished mode: the PR lock is the first statement inside the transaction", async () => {
     const stub = new ScriptedPrisma();
-    await withWriteMode(stub as unknown as PrismaClient, uuidv7(), new Date(), async (tx, mode) => {
+    await withWriteMode(stub as unknown as ScopedClient, uuidv7(), new Date(), async (tx, mode) => {
       expect(mode).toBe("finished");
       await tx.$executeRaw`SELECT 1 FROM "workout" FOR SHARE`;
     });
@@ -38,7 +38,7 @@ describe("07.4 AC4 — withWriteMode lock order", () => {
 
   it("live mode: no PR lock at all", async () => {
     const stub = new ScriptedPrisma();
-    await withWriteMode(stub as unknown as PrismaClient, uuidv7(), null, async (tx, mode) => {
+    await withWriteMode(stub as unknown as ScopedClient, uuidv7(), null, async (tx, mode) => {
       expect(mode).toBe("live");
       await tx.$executeRaw`SELECT 1 FROM "workout" FOR SHARE`;
     });
@@ -50,7 +50,7 @@ describe("07.4 AC5 — a flip restarts the request once in finished mode", () =>
   it("a live run that finds the workout finished under its lock re-runs once, starting with the PR lock", async () => {
     const stub = new ScriptedPrisma();
     const modes: WriteMode[] = [];
-    const result = await withWriteMode(stub as unknown as PrismaClient, uuidv7(), null, async (_tx, mode) => {
+    const result = await withWriteMode(stub as unknown as ScopedClient, uuidv7(), null, async (_tx, mode) => {
       modes.push(mode);
       assertStillLive(mode, mode === "live" ? new Date() : new Date()); // finished under the row lock
       return "done";
@@ -71,7 +71,7 @@ describe("07.4 AC5 — a flip restarts the request once in finished mode", () =>
   it("a flip reported from a finished run is a bug and surfaces", async () => {
     const stub = new ScriptedPrisma();
     await expect(
-      withWriteMode(stub as unknown as PrismaClient, uuidv7(), new Date(), async () => {
+      withWriteMode(stub as unknown as ScopedClient, uuidv7(), new Date(), async () => {
         throw new WriteModeChanged();
       }),
     ).rejects.toBeInstanceOf(WriteModeChanged);
@@ -81,7 +81,7 @@ describe("07.4 AC5 — a flip restarts the request once in finished mode", () =>
     const stub = new ScriptedPrisma();
     let runs = 0;
     await expect(
-      withWriteMode(stub as unknown as PrismaClient, uuidv7(), null, async () => {
+      withWriteMode(stub as unknown as ScopedClient, uuidv7(), null, async () => {
         runs += 1;
         throw new Error("boom");
       }),
@@ -93,7 +93,7 @@ describe("07.4 AC5 — a flip restarts the request once in finished mode", () =>
 describe("07.4 AC8 — recomputeTimed", () => {
   it("no roots: no query and records_recomputed false", async () => {
     const stub = new ScriptedPrisma();
-    const edit = await recomputeTimed(stub as unknown as PrismaClient, uuidv7(), "w-1", []);
+    const edit = await recomputeTimed(stub as unknown as ScopedClient, uuidv7(), "w-1", []);
     expect(edit).toEqual({ workoutId: "w-1", recordsRecomputed: false, rootCount: 0, recomputeMs: 0 });
     expect(stub.calls).toHaveLength(0);
   });

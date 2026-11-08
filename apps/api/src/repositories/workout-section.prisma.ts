@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   isWorkoutId,
   isWorkoutSectionId,
@@ -19,7 +19,7 @@ import {
   WorkoutSectionLimitError,
 } from "../errors/app-error.js";
 import { roundTimesJson, timerFromColumns, timerToColumns } from "./section-timer-columns.js";
-import type { RawClient } from "./set-entry.prisma.js";
+import type { RawClient, UserScopedDb } from "../db/scoped.js";
 import type { WorkoutRepository } from "./workout.js";
 import { toWorkoutSectionRecord, type WorkoutSectionDbRow } from "./workout.prisma.js";
 import { assertStillLive, noRecompute, withWriteMode, type WriteMode } from "./write-mode.js";
@@ -160,11 +160,11 @@ async function lockSectionThenRead(tx: RawClient, workoutId: string, sectionId: 
 }
 
 /** Spec 09.4 §6.4 — create / update / remove a workout's own section, live or finished (07.4 `withWriteMode`). */
-export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
+export function workoutSectionMethods(scoped: UserScopedDb): SectionMethods {
   /** Unlocked preflight: the section's workout, resolved through `user_id = $acting` (404, never 403). */
-  async function sectionPreflight(actingUserId: string, sectionId: string) {
+  async function sectionPreflight(c: RawClient, actingUserId: string, sectionId: string) {
     if (!isWorkoutSectionId(sectionId)) throw sectionNotFound();
-    const rows = await prisma.$queryRaw<{ workout_id: string; ended_at: Date | null }[]>`
+    const rows = await c.$queryRaw<{ workout_id: string; ended_at: Date | null }[]>`
       SELECT s.workout_id::text AS workout_id, w.ended_at
       FROM "workout_section" s JOIN "workout" w ON w.id = s.workout_id
       WHERE s.id = ${sectionId}::uuid AND w.user_id = ${actingUserId}::uuid
@@ -176,9 +176,10 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
 
   return {
     async addWorkoutSection(actingUserId, workoutId, fields) {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutId(workoutId)) throw workoutNotFound();
-      const workout = await workoutPreflight(prisma, actingUserId, workoutId, workoutNotFound);
-      return withWriteMode(prisma, actingUserId, workout.ended_at, async (tx, mode) => {
+      const workout = await workoutPreflight(c, actingUserId, workoutId, workoutNotFound);
+      return withWriteMode(c, actingUserId, workout.ended_at, async (tx, mode) => {
         await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutNotFound);
         const countRows = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "workout_section" WHERE workout_id = ${workoutId}::uuid
@@ -204,8 +205,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async updateWorkoutSection(actingUserId, sectionId, patch) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         await lockWorkoutStructure(tx, actingUserId, mode, pre.workout_id, sectionNotFound);
         // Lock, then read the rounds and result fresh (see lockSectionThenRead): the timer change decides on them.
         const current = await lockSectionThenRead(tx, pre.workout_id, sectionId);
@@ -257,8 +259,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async removeWorkoutSection(actingUserId, sectionId) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         await lockWorkoutStructure(tx, actingUserId, mode, pre.workout_id, sectionNotFound);
         const rows = await tx.$queryRaw<{ position: number }[]>`
           SELECT position FROM "workout_section" WHERE id = ${sectionId}::uuid AND workout_id = ${pre.workout_id}::uuid FOR UPDATE
@@ -288,8 +291,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async setSectionRoundTime(actingUserId, sectionId, round, seconds) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, actingUserId, mode, pre.workout_id, sectionId));
         if (current.timer === null) throw new SectionTimerMismatchError();
         const issues = roundTimeIssues(current.timer, current.roundTimes, round, seconds);
@@ -316,8 +320,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async clearSectionRoundTime(actingUserId, sectionId, round) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         await lockSectionForClear(tx, actingUserId, mode, pre.workout_id, sectionId);
         // No timer check and no rule: a clear always succeeds (AC15), and an untimed section has nothing to remove.
         const removed = await tx.$executeRaw`
@@ -332,8 +337,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async setSectionResult(actingUserId, sectionId, body) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         const current = toWorkoutSectionRecord(await lockSectionForRecord(tx, actingUserId, mode, pre.workout_id, sectionId));
         const timer = current.timer;
         // A Set Timer's score is its round times, so it takes no result (§6.4).
@@ -365,8 +371,9 @@ export function workoutSectionMethods(prisma: PrismaClient): SectionMethods {
     },
 
     async clearSectionResult(actingUserId, sectionId) {
-      const pre = await sectionPreflight(actingUserId, sectionId);
-      return withWriteMode(prisma, actingUserId, pre.ended_at, async (tx, mode) => {
+      const c = scoped.as(actingUserId);
+      const pre = await sectionPreflight(c, actingUserId, sectionId);
+      return withWriteMode(c, actingUserId, pre.ended_at, async (tx, mode) => {
         await lockSectionForClear(tx, actingUserId, mode, pre.workout_id, sectionId);
         // No timer check: a clear always succeeds (AC17); the round times stay.
         const removed = await tx.$executeRaw`

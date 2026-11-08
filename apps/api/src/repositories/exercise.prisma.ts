@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { isExerciseId, lineageRootId, MAX_CUSTOM_EXERCISES_PER_USER, modalitiesCompatible, type Modality } from "@sin/core";
 import { uuidv7 } from "uuidv7";
+import { toScoped, type RawClient, type ScopedClient, type UserScopedDb } from "../db/scoped.js";
 import {
   CustomExerciseLimitError,
   ExerciseAlreadyOwnedError,
@@ -138,16 +139,21 @@ function toCatalogPage(rows: CatalogDbRow[]): CatalogPage {
 }
 
 export function createExerciseRepository(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
 ): ExerciseRepository {
-  async function lineageHasSets(actingUserId: string, rootId: string): Promise<boolean> {
-    const rows = await prisma.$queryRaw<{ has_sets: boolean }[]>`SELECT ${lineageHasSetsSql(actingUserId, rootId)} AS has_sets`;
+  // Spec 21.1 AC14/AC16: every user statement runs on `scoped.as(actingUserId)`; only the two reference tables
+  // (`muscle_group`, `equipment`) are read on `scoped.shared()`.
+  const scoped = toScoped(db);
+
+  async function lineageHasSets(c: RawClient, actingUserId: string, rootId: string): Promise<boolean> {
+    const rows = await c.$queryRaw<{ has_sets: boolean }[]>`SELECT ${lineageHasSetsSql(actingUserId, rootId)} AS has_sets`;
     return rows[0]?.has_sets === true;
   }
 
   /** Visibility-filtered row lookup, shared by every write method that needs the
    * existing-row/404 check before branching on ownership/state (spec §6, §7). */
   async function loadVisibleRow(
+    c: RawClient,
     actingUserId: string,
     id: string,
   ): Promise<ExerciseDbRow> {
@@ -156,7 +162,7 @@ export function createExerciseRepository(
         "exercise not found or not visible to the acting user",
       );
     }
-    const rows = await prisma.$queryRaw<ExerciseDbRow[]>`
+    const rows = await c.$queryRaw<ExerciseDbRow[]>`
       SELECT ${exerciseColumns()}
       FROM "exercise"
       WHERE id = ${id}::uuid
@@ -186,13 +192,15 @@ export function createExerciseRepository(
     const uniqueMuscleIds = [...new Set(muscleIds)];
     const equipmentIds = fields.equipmentId !== null ? [fields.equipmentId] : [];
 
+    // Shared reference tables: the root client, two single-statement reads, no transaction (Spec 21.1 AC16).
+    const reference = scoped.shared();
     const [foundMuscle, foundEquipment] = await Promise.all([
       uniqueMuscleIds.length > 0
-        ? prisma.$queryRaw<{ id: string }[]>`
+        ? reference.$queryRaw<{ id: string }[]>`
             SELECT id FROM "muscle_group" WHERE id = ANY(${uniqueMuscleIds}::text[])`
         : Promise.resolve([]),
       equipmentIds.length > 0
-        ? prisma.$queryRaw<{ id: string }[]>`
+        ? reference.$queryRaw<{ id: string }[]>`
             SELECT id FROM "equipment" WHERE id = ANY(${equipmentIds}::text[])`
         : Promise.resolve([]),
     ]);
@@ -235,7 +243,7 @@ export function createExerciseRepository(
    * table's first-ever user-write path (Spec 03.2 §6).
    *
    * Lock acquisition and the count+insert are two *separate* statements inside
-   * one `prisma.$transaction`, not one CTE'd statement. In PostgreSQL READ
+   * one `$transaction`, not one CTE'd statement. In PostgreSQL READ
    * COMMITTED, a statement's MVCC snapshot is fixed at that statement's start,
    * before the executor runs — blocking mid-statement on
    * `pg_advisory_xact_lock` does NOT refresh the snapshot the rest of that same
@@ -253,12 +261,13 @@ export function createExerciseRepository(
    * this statement sees is always current as of that commit.
    */
   async function insertWithCap(
+    c: ScopedClient,
     actingUserId: string,
     fields: ExerciseWriteFields,
     forkedFromExerciseId: string | null,
   ): Promise<ExerciseDbRow | undefined> {
     const id = uuidv7();
-    return prisma.$transaction(async (tx) => {
+    return c.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${actingUserId}))`;
       const rows = await tx.$queryRaw<ExerciseDbRow[]>`
         WITH _cap AS (
@@ -285,13 +294,14 @@ export function createExerciseRepository(
       actingUserId: string,
       since?: string,
     ): Promise<CatalogPage> {
+      const c = scoped.as(actingUserId);
       // One statement per read (Spec 03.3 §6.2/§6.3): `pg_current_snapshot()` is
       // evaluated against this statement's own snapshot, so the token and the
       // rows describe the same instant — including when the row set is empty.
       // Never add a second query here; a later snapshot would reopen #23.
       const rows =
         since === undefined
-          ? await prisma.$queryRaw<CatalogDbRow[]>`
+          ? await c.$queryRaw<CatalogDbRow[]>`
               WITH snap AS (SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS token)
               SELECT snap.token, ${exerciseColumns("e")}
               FROM snap
@@ -301,7 +311,7 @@ export function createExerciseRepository(
               ORDER BY e.name COLLATE "C", e.id
             `
           : // No `is_active` filter — retired rows must arrive as tombstones.
-            await prisma.$queryRaw<CatalogDbRow[]>`
+            await c.$queryRaw<CatalogDbRow[]>`
               WITH snap AS (
                 SELECT pg_snapshot_xmin(pg_current_snapshot())::text AS token,
                        pg_snapshot_xmax(pg_current_snapshot())      AS xmax
@@ -322,15 +332,17 @@ export function createExerciseRepository(
       actingUserId: string,
       id: string,
     ): Promise<ExerciseRecord> {
-      return toRecord(await loadVisibleRow(actingUserId, id));
+      const c = scoped.as(actingUserId);
+      return toRecord(await loadVisibleRow(c, actingUserId, id));
     },
 
     async createExercise(
       actingUserId: string,
       fields: ExerciseWriteFields,
     ): Promise<ExerciseRecord> {
+      const c = scoped.as(actingUserId);
       await validateReferences(fields);
-      const row = await insertWithCap(actingUserId, fields, null);
+      const row = await insertWithCap(c, actingUserId, fields, null);
       if (!row) throw new CustomExerciseLimitError();
       return toRecord(row);
     },
@@ -340,7 +352,8 @@ export function createExerciseRepository(
       id: string,
       patch: ExerciseWritePatch,
     ): Promise<ExerciseUpdateResult> {
-      const before = toRecord(await loadVisibleRow(actingUserId, id));
+      const c = scoped.as(actingUserId);
+      const before = toRecord(await loadVisibleRow(c, actingUserId, id));
       // Retired before global (#25): a retired global row cannot be forked either, so "use fork" would be a dead end.
       if (!before.isActive) throw new ExerciseRetiredError();
       if (before.ownerUserId !== actingUserId) throw new ExerciseImmutableUseForkError();
@@ -356,7 +369,7 @@ export function createExerciseRepository(
       const guarded = modalityChanged && !modalitiesCompatible(from, to);
       const rootId = lineageRootId(before);
       const typeGuard = guarded ? Prisma.sql`AND NOT ${lineageHasSetsSql(actingUserId, rootId)}` : Prisma.empty;
-      const write = () => prisma.$queryRaw<ExerciseDbRow[]>`
+      const write = () => c.$queryRaw<ExerciseDbRow[]>`
         UPDATE "exercise"
         SET name = ${merged.name}, modality = ${merged.modality},
             primary_muscle_id = ${merged.primaryMuscleId},
@@ -373,9 +386,9 @@ export function createExerciseRepository(
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const updated = (await write())[0];
         if (updated) return { exercise: toRecord(updated), modalityChanged };
-        if (!toRecord(await loadVisibleRow(actingUserId, id)).isActive) throw new ExerciseRetiredError();
+        if (!toRecord(await loadVisibleRow(c, actingUserId, id)).isActive) throw new ExerciseRetiredError();
         if (!guarded) break;
-        if (await lineageHasSets(actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
+        if (await lineageHasSets(c, actingUserId, rootId)) throw new ExerciseTypeLockedError(from, to);
       }
       // #24: ownership cannot change under a caller, so a row that is still owned and
       // active here means an invariant broke — surface it as one, not as "use fork".
@@ -383,8 +396,9 @@ export function createExerciseRepository(
     },
 
     async listRoutinesUsing(actingUserId: string, id: string): Promise<ExerciseRoutineRecord[]> {
-      await loadVisibleRow(actingUserId, id); // 404 for invisible or malformed; no is_active gate (AC22)
-      const rows = await prisma.$queryRaw<{ id: string; name: string; one_off_until: Date | null }[]>`
+      const c = scoped.as(actingUserId);
+      await loadVisibleRow(c, actingUserId, id); // 404 for invisible or malformed; no is_active gate (AC22)
+      const rows = await c.$queryRaw<{ id: string; name: string; one_off_until: Date | null }[]>`
         SELECT r.id::text AS id, r.name, r.one_off_until
         FROM "routine" r
         WHERE r.user_id = ${actingUserId}::uuid
@@ -395,7 +409,8 @@ export function createExerciseRepository(
     },
 
     async findUsage(actingUserId: string): Promise<ExerciseUsageRecord[]> {
-      const rows = await prisma.$queryRaw<{ root_id: string; last_logged_on: string }[]>`
+      const c = scoped.as(actingUserId);
+      const rows = await c.$queryRaw<{ root_id: string; last_logged_on: string }[]>`
         SELECT COALESCE(x.forked_from_exercise_id, x.id)::text AS root_id,
                max(w.local_date)::text AS last_logged_on
         FROM "workout" w
@@ -414,7 +429,8 @@ export function createExerciseRepository(
       originId: string,
       overlay: ExerciseWritePatch,
     ): Promise<ExerciseRecord> {
-      const origin = toRecord(await loadVisibleRow(actingUserId, originId));
+      const c = scoped.as(actingUserId);
+      const origin = toRecord(await loadVisibleRow(c, actingUserId, originId));
       if (origin.ownerUserId === actingUserId) throw new ExerciseAlreadyOwnedError();
       if (!origin.isActive) throw new ExerciseRetiredError();
 
@@ -427,25 +443,26 @@ export function createExerciseRepository(
       const from = origin.modality as Modality;
       const to = overlay.modality as Modality | undefined;
       const incompatible = to !== undefined && to !== from && !modalitiesCompatible(from, to);
-      const conflicts = incompatible && (await lineageHasSets(actingUserId, lineageRootId(origin)));
+      const conflicts = incompatible && (await lineageHasSets(c, actingUserId, lineageRootId(origin)));
       if (conflicts) throw new ExerciseTypeLockedError(from, to);
 
-      const row = await insertWithCap(actingUserId, merged, origin.id);
+      const row = await insertWithCap(c, actingUserId, merged, origin.id);
       if (!row) throw new CustomExerciseLimitError();
       return toRecord(row);
     },
 
     async deleteExercise(actingUserId: string, id: string): Promise<void> {
-      const target = toRecord(await loadVisibleRow(actingUserId, id));
+      const c = scoped.as(actingUserId);
+      const target = toRecord(await loadVisibleRow(c, actingUserId, id));
       if (target.ownerUserId === null) throw new ExerciseImmutableError();
-      await prisma.$executeRaw`
+      await c.$executeRaw`
         UPDATE "exercise" SET is_active = false, updated_at = now()
         WHERE id = ${id}::uuid AND owner_user_id = ${actingUserId}::uuid AND is_active = true
       `;
     },
 
     async listMuscleGroups(): Promise<ReferenceRecord[]> {
-      const rows = await prisma.$queryRaw<ReferenceDbRow[]>`
+      const rows = await scoped.shared().$queryRaw<ReferenceDbRow[]>`
         SELECT id, name, display_order
         FROM "muscle_group"
         ORDER BY display_order, id COLLATE "C"
@@ -454,7 +471,7 @@ export function createExerciseRepository(
     },
 
     async listEquipment(): Promise<ReferenceRecord[]> {
-      const rows = await prisma.$queryRaw<ReferenceDbRow[]>`
+      const rows = await scoped.shared().$queryRaw<ReferenceDbRow[]>`
         SELECT id, name, display_order
         FROM "equipment"
         ORDER BY display_order, id COLLATE "C"

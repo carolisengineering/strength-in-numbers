@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-221 statements: 111 user-filtered, 54 anchored, 12 shared on purpose, 14 cross-user maintenance, 30 fragment.
+225 statements: 111 user-filtered, 54 anchored, 15 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -84,6 +84,15 @@ Categories:
 | `src/account/purge.ts#purgeAccount#1` | query | cross-user maintenance | ok | — | `a236e9b5ff39` | Reads workout, set_entry, workout_exercise |
 | `src/account/purge.ts#purgeAccount#2` | query | cross-user maintenance | ok | — | `ab3e19bdc3df` | Deletes from user |
 
+## src/db/scoped.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/scoped.ts#setConfig#1` | query | shared on purpose | ok | — | `6bea005c738f` | Spec 21.1 handle: set_config('app.user_id') (no table) |
+| `src/db/scoped.ts#setConfig#2` | query | shared on purpose | ok | — | `348c70e55865` | Spec 21.1 handle: set_config('app.auth_sub') (no table) |
+| `src/db/scoped.ts#$transaction#1` | query | shared on purpose | ok | — | `6c20e5345ee8` | Spec 21.1 handle: SET TRANSACTION READ ONLY (no table) |
+| `src/db/scoped.ts#$transaction#2` | query | shared on purpose | ok | — | `6c20e5345ee8` | Spec 21.1 handle: SET TRANSACTION READ ONLY, owner pass-through (no table) |
+
 ## src/db.ts
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
@@ -101,20 +110,19 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/account-export.prisma.ts#snapshot#1` | query | shared on purpose | ok | — | `6c20e5345ee8` | Transaction setting: SET TRANSACTION READ ONLY |
-| `src/repositories/account-export.prisma.ts#snapshot#2` | query | user-filtered | ok | — | `7963b119631a` | Reads hevy_exercise_pair, exercise, hevy_section_rule, hevy_link |
-| `src/repositories/account-export.prisma.ts#snapshot#3` | query | user-filtered | ok | — | `dc3b4e5ace68` | Prisma user.findUniqueOrThrow |
-| `src/repositories/account-export.prisma.ts#snapshot#4` | query | user-filtered | ok | — | `3b7cff4e4d00` | Reads exercise |
-| `src/repositories/account-export.prisma.ts#snapshot#5` | query | user-filtered | ok | — | `0245bc5106b2` | Reads routine_item, routine_section, routine |
-| `src/repositories/account-export.prisma.ts#snapshot#6` | query | user-filtered | ok | — | `ad30541bf656` | Reads workout, workout_section, workout_section_round, routine |
-| `src/repositories/account-export.prisma.ts#snapshot#7` | query | user-filtered | ok | — | `f206d7f2bd07` | Reads workout_exercise, workout |
-| `src/repositories/account-export.prisma.ts#snapshot#8` | query | user-filtered | ok | — | `fa15da9058a3` | Reads set_entry, workout_exercise, workout |
+| `src/repositories/account-export.prisma.ts#snapshot#1` | query | user-filtered | ok | — | `7963b119631a` | Reads hevy_exercise_pair, exercise, hevy_section_rule, hevy_link |
+| `src/repositories/account-export.prisma.ts#snapshot#2` | query | user-filtered | ok | — | `dc3b4e5ace68` | Prisma user.findUniqueOrThrow |
+| `src/repositories/account-export.prisma.ts#snapshot#3` | query | user-filtered | ok | — | `3b7cff4e4d00` | Reads exercise |
+| `src/repositories/account-export.prisma.ts#snapshot#4` | query | user-filtered | ok | — | `0245bc5106b2` | Reads routine_item, routine_section, routine |
+| `src/repositories/account-export.prisma.ts#snapshot#5` | query | user-filtered | ok | — | `ad30541bf656` | Reads workout, workout_section, workout_section_round, routine |
+| `src/repositories/account-export.prisma.ts#snapshot#6` | query | user-filtered | ok | — | `f206d7f2bd07` | Reads workout_exercise, workout |
+| `src/repositories/account-export.prisma.ts#snapshot#7` | query | user-filtered | ok | — | `fa15da9058a3` | Reads set_entry, workout_exercise, workout |
 
 ## src/repositories/exercise.prisma.ts
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/exercise.prisma.ts#exerciseColumns#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#4, src/repositories/exercise.prisma.ts#loadVisibleRow#1, src/repositories/exercise.prisma.ts#insertWithCap#2, src/repositories/exercise.prisma.ts#findCatalog#1, src/repositories/exercise.prisma.ts#findCatalog#2, src/repositories/exercise.prisma.ts#updateExercise#2 | `cf686597f37d` | SQL piece composed into the callers listed |
+| `src/repositories/exercise.prisma.ts#exerciseColumns#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#3, src/repositories/exercise.prisma.ts#loadVisibleRow#1, src/repositories/exercise.prisma.ts#insertWithCap#2, src/repositories/exercise.prisma.ts#findCatalog#1, src/repositories/exercise.prisma.ts#findCatalog#2, src/repositories/exercise.prisma.ts#updateExercise#2 | `cf686597f37d` | SQL piece composed into the callers listed |
 | `src/repositories/exercise.prisma.ts#lineageHasSetsSql#1` | fragment | fragment | ok | callers: src/repositories/exercise.prisma.ts#lineageHasSets#1, src/repositories/exercise.prisma.ts#updateExercise#1 | `418170a888bf` | SQL piece composed into the callers listed |
 | `src/repositories/exercise.prisma.ts#lineageHasSets#1` | query | user-filtered | ok | — | `0b89e7afcfae` | Reads workout_exercise, workout, set_entry, exercise |
 | `src/repositories/exercise.prisma.ts#loadVisibleRow#1` | query | user-filtered | ok | — | `10eaff344e9a` | Reads exercise |
@@ -235,7 +243,7 @@ Categories:
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
 | `src/repositories/routine.prisma.ts#ITEM_COLS#1` | fragment | fragment | ok | callers: src/repositories/routine.prisma.ts#insertItems#2 | `0dfc438f2335` | SQL piece composed into the callers listed |
-| `src/repositories/routine.prisma.ts#ROUTINE_WITH_ITEMS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#5, src/repositories/routine.prisma.ts#loadOne#1, src/repositories/routine.prisma.ts#list#1 | `b904b25c44c7` | SQL piece composed into the callers listed |
+| `src/repositories/routine.prisma.ts#ROUTINE_WITH_ITEMS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#4, src/repositories/routine.prisma.ts#loadOne#1, src/repositories/routine.prisma.ts#list#1 | `b904b25c44c7` | SQL piece composed into the callers listed |
 | `src/repositories/routine.prisma.ts#ROUTINE_ONE_OFF_ORDER#1` | fragment | fragment | ok | callers: src/repositories/routine.prisma.ts#list#1 | `c7a788483a58` | SQL piece composed into the callers listed |
 | `src/repositories/routine.prisma.ts#assertItemExercisesUsable#1` | query | user-filtered | ok | — | `a23e43966212` | Reads exercise |
 | `src/repositories/routine.prisma.ts#insertSections#1` | fragment | fragment | ok | callers: src/repositories/routine.prisma.ts#insertSections#2 | `5d0d957a4571` | SQL piece composed into the callers listed |
@@ -267,7 +275,7 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/set-entry.prisma.ts#SET_ENTRY_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#8, src/repositories/set-entry.prisma.ts#findSetByClientGeneratedId#1, src/repositories/set-entry.prisma.ts#loadSetsForWorkout#1, src/repositories/set-entry.prisma.ts#createSet#5, src/repositories/set-entry.prisma.ts#updateSet#1, src/repositories/set-entry.prisma.ts#updateSet#2 | `adaaabb81498` | SQL piece composed into the callers listed |
+| `src/repositories/set-entry.prisma.ts#SET_ENTRY_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#7, src/repositories/set-entry.prisma.ts#findSetByClientGeneratedId#1, src/repositories/set-entry.prisma.ts#loadSetsForWorkout#1, src/repositories/set-entry.prisma.ts#createSet#5, src/repositories/set-entry.prisma.ts#updateSet#1, src/repositories/set-entry.prisma.ts#updateSet#2 | `adaaabb81498` | SQL piece composed into the callers listed |
 | `src/repositories/set-entry.prisma.ts#resolveOwnedSet#1` | query | user-filtered | ok | — | `663edaad30df` | Reads set_entry, workout_exercise, workout |
 | `src/repositories/set-entry.prisma.ts#findSetByClientGeneratedId#1` | query | user-filtered | ok | — | `7be5ed766acd` | Reads set_entry, workout_exercise, workout |
 | `src/repositories/set-entry.prisma.ts#lockedWorkoutSpan#1` | query | user-filtered | ok | — | `b80def5989fc` | Reads workout (FOR SHARE) |
@@ -289,11 +297,12 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/user.prisma.ts#findByAuthSub#1` | query | user-filtered | ok | — | `5d2499d2199b` | Prisma user.findUnique |
+| `src/repositories/user.prisma.ts#USER_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/user.prisma.ts#findByAuthSub#1, src/repositories/user.prisma.ts#provision#2, src/repositories/user.prisma.ts#syncEmail#1, src/repositories/user.prisma.ts#updateProfile#1 | `ccaa4f73c7ad` | The user row's columns |
+| `src/repositories/user.prisma.ts#findByAuthSub#1` | query | user-filtered | ok | — | `73fe79d5eac4` | Reads user by the token's auth_sub |
 | `src/repositories/user.prisma.ts#provision#1` | query | user-filtered | ok | — | `56779fd882c0` | Inserts into user |
-| `src/repositories/user.prisma.ts#provision#2` | query | user-filtered | ok | — | `da49cdd4384b` | Prisma user.findUnique |
-| `src/repositories/user.prisma.ts#syncEmail#1` | query | user-filtered | ok | — | `f6572ed731ab` | Prisma user.update |
-| `src/repositories/user.prisma.ts#updateProfile#1` | query | user-filtered | ok | — | `0093c718f96d` | Prisma user.update |
+| `src/repositories/user.prisma.ts#provision#2` | query | user-filtered | ok | — | `84cff2b3f403` | Re-reads user by the token's auth_sub |
+| `src/repositories/user.prisma.ts#syncEmail#1` | query | user-filtered | ok | — | `f93bef1a79bf` | Updates user email by id |
+| `src/repositories/user.prisma.ts#updateProfile#1` | query | user-filtered | ok | — | `85936da0da37` | Updates user profile by id |
 | `src/repositories/user.prisma.ts#markDeleted#1` | query | user-filtered | ok | — | `b95aa720c9bd` | Updates user |
 
 ## src/repositories/workout-history.prisma.ts
@@ -344,9 +353,9 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/workout.prisma.ts#workoutSectionsJson#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#6, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `c36f43831ce5` | SQL piece composed into the callers listed |
-| `src/repositories/workout.prisma.ts#routineIsOneOffSql#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#6, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `edf8850fe9fc` | SQL piece composed into the callers listed |
-| `src/repositories/workout.prisma.ts#WE_PLANNED_SETS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#7, src/repositories/workout.prisma.ts#loadExercises#1, src/repositories/workout.prisma.ts#updateWorkoutExercise#6 | `b16fa3e38f4d` | SQL piece composed into the callers listed |
+| `src/repositories/workout.prisma.ts#workoutSectionsJson#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#5, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `c36f43831ce5` | SQL piece composed into the callers listed |
+| `src/repositories/workout.prisma.ts#routineIsOneOffSql#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#5, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `edf8850fe9fc` | SQL piece composed into the callers listed |
+| `src/repositories/workout.prisma.ts#WE_PLANNED_SETS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#6, src/repositories/workout.prisma.ts#loadExercises#1, src/repositories/workout.prisma.ts#updateWorkoutExercise#6 | `b16fa3e38f4d` | SQL piece composed into the callers listed |
 | `src/repositories/workout.prisma.ts#finishedPatch#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `e026c0834424` | updates the finished workout's details, keyed by the workout locked FOR UPDATE … user_id |
 | `src/repositories/workout.prisma.ts#loadExercises#1` | query | user-filtered | ok | — | `2b7aa90b02d4` | Reads workout_exercise; filtered on its own user_id (Spec 21.1) |
 | `src/repositories/workout.prisma.ts#loadSectionSnapshot#1` | query | user-filtered | ok | — | `548377d8a4a9` | Reads workout, workout_section, workout_section_round, routine |

@@ -1,5 +1,6 @@
 // apps/api/src/repositories/workout.prisma.ts
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { toScoped, type ScopedClient, type UserScopedDb } from "../db/scoped.js";
 import {
   insertIndexForSection,
   isWorkoutExerciseId,
@@ -282,8 +283,8 @@ async function finishedPatch(
   };
 }
 
-/** A client the detail read runs on: the repository's own, or a transaction's (Spec 19.0's begin reads in its own). */
-type DetailClient = Prisma.TransactionClient | PrismaClient;
+/** A client the detail read runs on: the acting user's scoped client, or a transaction's (Spec 19.0's begin reads in its own). */
+type DetailClient = RawClient;
 
 /** The detail's exercises; user-filtered itself (Spec 21.0 §6.7 #5). Exported for the weak-spot test. */
 export async function loadExercises(db: DetailClient, actingUserId: string, workoutId: string): Promise<WorkoutExerciseRecord[]> {
@@ -385,9 +386,12 @@ async function countAndLastSection(
 }
 
 export function createWorkoutRepository(
-  prisma: PrismaClient,
+  db: UserScopedDb | PrismaClient,
   exerciseRepository: ExerciseRepository,
 ): WorkoutRepository {
+  // Spec 21.1 AC14: every method's statements run on `scoped.as(actingUserId)`.
+  const scoped = toScoped(db);
+
   async function tryInsert(
     client: RawClient,
     id: string,
@@ -429,6 +433,7 @@ export function createWorkoutRepository(
    * `NotFoundError` / `ExerciseRetiredError` roll the workout back (AC17).
    */
   async function insertFromRoutine(
+    c: ScopedClient,
     id: string,
     actingUserId: string,
     fields: CreateWorkoutFields & { routineId: string },
@@ -436,7 +441,7 @@ export function createWorkoutRepository(
     localDate: string,
   ): Promise<InsertOutcome> {
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await c.$transaction(async (tx) => {
         const outcome = await tryInsert(tx, id, actingUserId, fields, tzOffsetMinutes, localDate);
         if (outcome.kind !== "inserted") throw new StartOutcomeSignal(outcome);
 
@@ -527,13 +532,14 @@ export function createWorkoutRepository(
     }
   }
 
-  const toDetail = (actingUserId: string, w: WorkoutDbRow): Promise<WorkoutDetailRecord> => toDetailWith(prisma, actingUserId, w);
+  const toDetail = (c: RawClient, actingUserId: string, w: WorkoutDbRow): Promise<WorkoutDetailRecord> => toDetailWith(c, actingUserId, w);
 
   async function findByClientGeneratedId(
+    c: RawClient,
     actingUserId: string,
     clientGeneratedId: string,
   ): Promise<WorkoutDbRow | undefined> {
-    const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
+    const rows = await c.$queryRaw<WorkoutDbRow[]>`
       SELECT id, user_id, title, notes, started_at, ended_at, local_date,
              tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
       FROM "workout"
@@ -543,16 +549,17 @@ export function createWorkoutRepository(
   }
 
   return {
-    ...createSetEntryMethods(prisma),
+    ...createSetEntryMethods(scoped),
     // Spec 09.4: a workout's own section writes live in their own module.
-    ...workoutSectionMethods(prisma),
+    ...workoutSectionMethods(scoped),
     // Spec 07.1 (D9): the history list's read-only queries live in their own module.
-    listFinishedWorkouts: (actingUserId, opts) => listFinishedWorkoutsQuery(prisma, actingUserId, opts),
+    listFinishedWorkouts: (actingUserId, opts) => listFinishedWorkoutsQuery(scoped.as(actingUserId), actingUserId, opts),
     async createWorkout(
       actingUserId: string,
       fields: CreateWorkoutFields,
       userTimezone: string,
     ): Promise<CreateWorkoutResult> {
+      const c = scoped.as(actingUserId);
       const startedAtIso = fields.startedAt.toISOString();
       const tzOffsetMinutes =
         fields.tzOffsetMinutes ?? offsetMinutesForZone(startedAtIso, userTimezone);
@@ -562,13 +569,14 @@ export function createWorkoutRepository(
       const attempt = (): Promise<InsertOutcome> =>
         fields.routineId !== undefined
           ? insertFromRoutine(
+              c,
               uuidv7(),
               actingUserId,
               { ...fields, routineId: fields.routineId },
               tzOffsetMinutes,
               localDate,
             )
-          : tryInsert(prisma, uuidv7(), actingUserId, fields, tzOffsetMinutes, localDate);
+          : tryInsert(c, uuidv7(), actingUserId, fields, tzOffsetMinutes, localDate);
 
       const attempt1 = await attempt();
 
@@ -584,14 +592,14 @@ export function createWorkoutRepository(
       }
 
       if (attempt1.kind === "active-conflict") {
-        const stored = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
+        const stored = await findByClientGeneratedId(c, actingUserId, fields.clientGeneratedId);
         if (stored) return { workout: toRecord(stored), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
         throw new WorkoutInProgressExistsError();
       }
 
       // attempt1.kind === "no-row": the idempotency key already existed *or*
       // its row was concurrently deleted between the insert and this re-read.
-      const stored1 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
+      const stored1 = await findByClientGeneratedId(c, actingUserId, fields.clientGeneratedId);
       if (stored1) return { workout: toRecord(stored1), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
 
       // Delete race: retry the insert exactly once (§6.2 step 3, D40).
@@ -608,7 +616,7 @@ export function createWorkoutRepository(
         };
       }
 
-      const stored2 = await findByClientGeneratedId(actingUserId, fields.clientGeneratedId);
+      const stored2 = await findByClientGeneratedId(c, actingUserId, fields.clientGeneratedId);
       if (stored2) return { workout: toRecord(stored2), created: false, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 };
 
       if (attempt2.kind === "active-conflict") {
@@ -625,7 +633,8 @@ export function createWorkoutRepository(
     },
 
     async getActiveWorkout(actingUserId: string): Promise<WorkoutDetailRecord> {
-      const rows = await prisma.$queryRaw<WorkoutDbRow[]>`
+      const c = scoped.as(actingUserId);
+      const rows = await c.$queryRaw<WorkoutDbRow[]>`
         SELECT id, user_id, title, notes, started_at, ended_at, local_date,
                tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         FROM "workout"
@@ -633,14 +642,15 @@ export function createWorkoutRepository(
       `;
       const activeRow = rows[0];
       if (!activeRow) throw new NotFoundError("caller has no in-progress workout");
-      return toDetail(actingUserId, activeRow);
+      return toDetail(c, actingUserId, activeRow);
     },
 
     async getWorkoutById(actingUserId: string, id: string): Promise<WorkoutDetailRecord> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      const detail = await readWorkoutDetail(prisma, actingUserId, id);
+      const detail = await readWorkoutDetail(c, actingUserId, id);
       if (!detail) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
@@ -652,12 +662,13 @@ export function createWorkoutRepository(
       id: string,
       patch: UpdateWorkoutFields,
     ): Promise<UpdateWorkoutResult> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
       // Spec 07.4 §6.1: no unlocked preflight here — the live attempt's row lock reveals a finished
       // workout, and a non-finish PATCH then restarts in finished mode (PR lock first).
-      return withWriteMode(prisma, actingUserId, null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, null, async (tx, mode) => {
         // Spec 07.0 D9 (amended): a finish attempt takes the per-user PR
         // advisory lock BEFORE the row lock. The recompute's INSERTs take
         // FK KEY SHARE locks on other workouts' rows, so a PR writer that held
@@ -755,10 +766,11 @@ export function createWorkoutRepository(
       });
     },
     async deleteWorkout(actingUserId: string, id: string): Promise<DeleteWorkoutResult> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutId(id)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
-      return prisma.$transaction(async (tx) => {
+      return c.$transaction(async (tx) => {
         // Spec 07.0 D9 (amended): PR advisory lock first, then the row lock —
         // the same order as the finish path (see updateWorkout). Taken even
         // for an in-progress workout: whether it is finished is only known
@@ -805,12 +817,13 @@ export function createWorkoutRepository(
       workoutId: string,
       fields: AddWorkoutExerciseFields,
     ): Promise<WithFinishedEdit<WorkoutExerciseRecord>> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutId(workoutId)) {
         throw new NotFoundError("workout not found or not owned by the acting user");
       }
       // Phase 1 (§6.6): cheap early exit on the root client. The
       // authoritative check is the in-transaction FOR SHARE re-check below.
-      const workout = await workoutPreflight(prisma, actingUserId, workoutId, workoutMissing);
+      const workout = await workoutPreflight(c, actingUserId, workoutId, workoutMissing);
 
       // Phase 2 (§6.6): resolve the exercise on the root client, before the
       // position transaction opens. findVisibleById throws NotFoundError
@@ -826,7 +839,7 @@ export function createWorkoutRepository(
       }
 
       // Phases 3-4 (§6.7/§6.8): the position transaction — in finished mode behind the PR lock (07.4).
-      return withWriteMode(prisma, actingUserId, workout.ended_at ?? null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, workout.ended_at ?? null, async (tx, mode) => {
         // The structure lock (§6.8; a vanished workout is §6.7's not-found).
         await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutMissing);
 
@@ -878,6 +891,7 @@ export function createWorkoutRepository(
       id: string,
       patch: UpdateWorkoutExerciseFields,
     ): Promise<WithFinishedEdit<WorkoutExerciseRecord> & { moved: boolean; sectioned: boolean; leftSuperset: boolean }> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutExerciseId(id)) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
@@ -885,7 +899,7 @@ export function createWorkoutRepository(
       // a workout_exercise row carries no user_id of its own (§6.7, §5's
       // 404-not-403 rule). This also doubles as §6.6-style phase 1: a cheap
       // early exit on the root client, ahead of any lock.
-      const rows = await prisma.$queryRaw<
+      const rows = await c.$queryRaw<
         {
           id: string;
           workout_id: string;
@@ -911,7 +925,7 @@ export function createWorkoutRepository(
       // finishWorkout, without ever raising WorkoutFinishedError.
       const workoutId = current.workout_id;
       let requestedPosition = patch.position;
-      return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, current.ended_at ?? null, async (tx, mode) => {
         await lockWorkoutStructure(tx, actingUserId, mode, workoutId, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<
@@ -1010,6 +1024,7 @@ export function createWorkoutRepository(
       });
     },
     async deleteWorkoutExercise(actingUserId: string, id: string): Promise<{ finishedEdit: FinishedEdit | null }> {
+      const c = scoped.as(actingUserId);
       if (!isWorkoutExerciseId(id)) {
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
@@ -1017,7 +1032,7 @@ export function createWorkoutRepository(
       // a workout_exercise row carries no user_id of its own (§6.7, §5's
       // 404-not-403 rule). This also doubles as §6.6-style phase 1: a cheap
       // early exit on the root client, ahead of any lock.
-      const rows = await prisma.$queryRaw<
+      const rows = await c.$queryRaw<
         { id: string; workout_id: string; user_id: string; ended_at: Date | null }[]
       >`
         SELECT we.id, we.workout_id, w.user_id, w.ended_at
@@ -1029,7 +1044,7 @@ export function createWorkoutRepository(
         throw new NotFoundError("workout exercise not found or not owned by the acting user");
       }
 
-      return withWriteMode(prisma, actingUserId, current.ended_at ?? null, async (tx, mode) => {
+      return withWriteMode(c, actingUserId, current.ended_at ?? null, async (tx, mode) => {
         await lockWorkoutStructure(tx, actingUserId, mode, current.workout_id, workoutExerciseMissing);
 
         const targetRows = await tx.$queryRaw<{ position: number }[]>`

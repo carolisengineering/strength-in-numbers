@@ -436,15 +436,15 @@ export function checkAudit(extracted: readonly Extracted[], rows: readonly Audit
  * - `user_id = ${…}` / `owner_user_id = ${…}` (a filter or a join condition binding a value), or an `ownership.ts`
  *   helper call;
  * - an `INSERT` whose column list writes `user_id` / `owner_user_id` (it inserts the acting user's row);
- * - the `"user"` table itself keyed by id, or inserted (provisioning, §6.7 #23), and the same through the Prisma `user`
- *   delegate keyed by id or the token's subject;
+ * - the `"user"` table itself keyed by id or by the token's subject (`auth_sub`, Spec 21.1 AC15's raw lookup), or
+ *   inserted (provisioning, §6.7 #23), and the same through the Prisma `user` delegate keyed by id or the token's subject;
  * - a reference to one of `userFragments`: the names callers use for fragments whose own text is user-filtered.
  */
 export function hasUserPredicate(text: string, userFragments: readonly string[] = []): boolean {
   if (/(?:^|[^\w])(?:owner_)?user_id\s*=\s*\$\{/.test(text) || /\$\{owned[A-Z]\w*\(/.test(text)) return true;
   if (/^INSERT INTO "\w+"\s*\([^)]*\b(?:owner_)?user_id\b/.test(text)) return true;
   if (/^INSERT INTO "user"/.test(text)) return true;
-  if (/\b(?:FROM|UPDATE)\s+"user"/.test(text) && /(?<![\w.])id\s*=\s*\$\{/.test(text)) return true;
+  if (/\b(?:FROM|UPDATE)\s+"user"/.test(text) && /(?<![\w.])(?:id|auth_sub)\s*=\s*\$\{/.test(text)) return true;
   if (/\.user\.\w+\(\{\s*where:\s*\{\s*(id|authSub)\b/.test(text)) return true;
   return userFragments.some((name) => new RegExp(`\\$\\{${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(text));
 }

@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { buildApp } from "./app.js";
 import { createLogger } from "./logging.js";
 import { createPrisma, checkDatabaseReady, wirePoolMetrics } from "./db.js";
+import { createScopedDb } from "./db/scoped.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
 import { createExerciseRepository } from "./repositories/exercise.prisma.js";
@@ -26,7 +27,9 @@ async function main(): Promise<void> {
 
   const prisma = createPrisma(config);
   wirePoolMetrics(getTelemetryHandle(), prisma, config.databaseUrl); // Spec 13.3: only when telemetry is on
-  const exerciseRepository = createExerciseRepository(prisma);
+  // Spec 21.1 AC20: every repository gets the scoped handle, never the bare client ("who is asking" on every call).
+  const db = createScopedDb(prisma);
+  const exerciseRepository = createExerciseRepository(db);
 
   const app = await buildApp({
     config,
@@ -38,14 +41,14 @@ async function main(): Promise<void> {
       claimNamespace: config.auth0.claimNamespace,
       jwksUri: config.auth0.jwksUri,
     }),
-    userRepository: createUserRepository(prisma),
+    userRepository: createUserRepository(db),
     exerciseRepository,
-    workoutRepository: createWorkoutRepository(prisma, exerciseRepository),
-    personalRecordRepository: createPersonalRecordRepository(prisma),
-    routineRepository: createRoutineRepository(prisma),
-    accountExportRepository: createAccountExportRepository(prisma),
-    hevyRepository: createHevyRepository(prisma),
-    hevyImportRepository: createHevyImportRepository(prisma),
+    workoutRepository: createWorkoutRepository(db, exerciseRepository),
+    personalRecordRepository: createPersonalRecordRepository(db),
+    routineRepository: createRoutineRepository(db),
+    accountExportRepository: createAccountExportRepository(db),
+    hevyRepository: createHevyRepository(db),
+    hevyImportRepository: createHevyImportRepository(db),
   });
 
   const shutdown = createGracefulShutdown({ app, prisma, logger, telemetry: getTelemetryHandle() });
