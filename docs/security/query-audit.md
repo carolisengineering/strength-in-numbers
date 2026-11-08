@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-231 statements: 111 user-filtered, 54 anchored, 21 shared on purpose, 14 cross-user maintenance, 31 fragment.
+234 statements: 111 user-filtered, 54 anchored, 24 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -94,6 +94,14 @@ Categories:
 | `src/db/app-role.ts#setAppRoleLogin#2` | query | shared on purpose | ok | — | `ce0b2d5921fc` | Transaction-local setting holding the password as a bound parameter (no table) |
 | `src/db/app-role.ts#setAppRoleLogin#3` | query | shared on purpose | ok | — | `bb4f4c3144c2` | ALTER ROLE sin_app LOGIN PASSWORD from the setting (no table) |
 | `src/db/app-role.ts#setAppRoleLogin#4` | query | shared on purpose | ok | — | `068abc9b2857` | Clears the transaction-local password setting (no table) |
+
+## src/db/login-check.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/login-check.ts#readFacts#1` | query | shared on purpose | ok | — | `bf5e8353f409` | Boot check: reads pg_roles / pg_class for the current login (no user data) |
+| `src/db/login-check.ts#readFacts#2` | query | shared on purpose | ok | — | `4067e45b9d91` | Boot check: reads pg_roles / pg_class for roles the login could SET ROLE into (no user data) |
+| `src/db/login-check.ts#readFacts#3` | query | shared on purpose | ok | — | `80e57d027f3e` | Boot check: reads the row_security setting (no table) |
 
 ## src/db/scoped.ts
 
