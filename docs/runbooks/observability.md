@@ -56,7 +56,7 @@ pnpm --filter @sin/api run dev:idp
 pnpm --filter @sin/api run dev
 ```
 
-If the local DB is new, run `DATABASE_URL='postgresql://sin:sin@localhost:5433/sin?sslmode=disable' pnpm run db:migrate:deploy`
+If the local DB is new, run `OWNER_DATABASE_URL='postgresql://sin:sin@localhost:5433/sin?sslmode=disable' pnpm run db:migrate:deploy`, then `db:app-role` (Spec 21.1; `apps/api/.env.owner.example`)
 and `pnpm --filter @sin/api run seed:catalog` once first.
 
 ### Generate traffic
