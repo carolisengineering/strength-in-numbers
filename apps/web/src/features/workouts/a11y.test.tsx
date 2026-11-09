@@ -754,7 +754,7 @@ describe("10.6 AC25 — section controls, accessibly", () => {
   });
 
   it.each([
-    ["./sections/SectionPicker.module.css", ".select"],
+    ["../../ui/Select.module.css", ".wrap .select"], // the Section picker is a Select (Spec 17.7)
     ["./sections/SectionSheet.module.css", ".input"],
   ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
     expect(hasTapTarget(file, selector)).toBe(true);

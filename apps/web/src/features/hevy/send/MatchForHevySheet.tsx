@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
+import { Select } from "../../../ui/Select";
 import { Sheet } from "../../../ui/Sheet";
 import { MODALITY_LABELS } from "../../catalog/labels";
 import { useCatalog } from "../../catalog/useCatalog";
@@ -273,13 +274,13 @@ export function MatchForHevySheet({
                   </label>
                   <label className={styles.field}>
                     <span>Hevy type</span>
-                    <select value={draft.hevyType} onChange={(e) => setDrafts((d) => ({ ...d, [id]: { ...draft, hevyType: e.target.value as HevyType } }))}>
+                    <Select value={draft.hevyType} onChange={(e) => setDrafts((d) => ({ ...d, [id]: { ...draft, hevyType: e.target.value as HevyType } }))}>
                       {allowedHevyTypes(exercise.modality).map((t) => (
                         <option key={t} value={t}>
                           {HEVY_TYPE_LABELS[t]}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <p className={styles.meta}>{`Primary muscle: ${sinMuscleToHevy(draft.primaryMuscle)}`}</p>
                   <p className={styles.meta}>{`Other muscles: ${[...new Set(draft.otherMuscles.map(sinMuscleToHevy))].join(", ") || "none"}`}</p>

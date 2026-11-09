@@ -22,6 +22,14 @@ describe("10.6 AC9 / AC11 — the picker", () => {
     expect(Array.from((select as HTMLSelectElement).options).map((o) => o.textContent)).toEqual(["No section", "Warm-up", "Strength"]);
   });
 
+  it("17.7 AC7 — the Section select is drawn by Select, with the same name and value", () => {
+    renderPicker({ value: SECTIONS[0]!.id });
+    const select = screen.getByRole("combobox", { name: "Section" });
+    expect(select).toHaveDisplayValue("Strength");
+    expect(select.parentElement?.tagName).toBe("SPAN");
+    expect(select.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it("shows the current value", () => {
     renderPicker({ value: SECTIONS[0]!.id });
     expect(screen.getByLabelText("Section")).toHaveDisplayValue("Strength");

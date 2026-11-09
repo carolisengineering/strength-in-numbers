@@ -226,6 +226,19 @@ describe("AC25 — picker layout", () => {
     ).toEqual(["All equipment", "Barbell", "Dumbbell"]);
   });
 
+  it("17.7 AC7 — the filters are inline Selects, still named Muscle and Equipment", async () => {
+    renderPicker();
+    for (const name of ["Muscle", "Equipment"]) {
+      const select = await screen.findByRole("combobox", { name });
+      expect(select).toHaveValue("");
+      expect(select.parentElement?.tagName).toBe("SPAN");
+      expect(select.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    }
+    const [muscle, equipment] = [screen.getByRole("combobox", { name: "Muscle" }), screen.getByRole("combobox", { name: "Equipment" })];
+    expect(muscle.parentElement!.className).toBe(equipment.parentElement!.className);
+    expect(muscle.parentElement!.className.split(" ")).toHaveLength(2);
+  });
+
   it("omits the filters, and still lists exercises, when reference data fails to load", async () => {
     server.use(
       http.get(MUSCLES_URL, () => {

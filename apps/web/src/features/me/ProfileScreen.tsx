@@ -12,6 +12,7 @@ import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Screen } from "../../ui/Screen";
 import { Segmented } from "../../ui/Segmented";
+import { Select } from "../../ui/Select";
 import { Spinner } from "../../ui/Spinner";
 import { AccountDataSection } from "../account/AccountDataSection";
 import { DeleteAccountSection } from "../account/DeleteAccountSection";
@@ -167,7 +168,7 @@ function ProfileForm({ me }: { me: Me }) {
         <Field id="timezone" label="Time zone" error={fieldErrors.timezone}>
           {(control) =>
             zoneOptions ? (
-              <select
+              <Select
                 {...control}
                 value={values.timezone}
                 onChange={(e) => set("timezone", e.target.value)}
@@ -177,7 +178,7 @@ function ProfileForm({ me }: { me: Me }) {
                     {zone}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
               <input
                 {...control}

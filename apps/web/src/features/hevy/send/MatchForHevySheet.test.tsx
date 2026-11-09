@@ -150,6 +150,18 @@ describe("20.2 AC13 — the sheet", () => {
 });
 
 describe("20.2 AC14 — Create in Hevy", () => {
+  it("17.7 AC7 — the Hevy type is drawn by Select, inside its label", async () => {
+    setup({ calories: true });
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Echo Bike" });
+    await user.click(within(card).getByRole("button", { name: "Create in Hevy" }));
+    const select = within(card).getByRole("combobox", { name: "Hevy type" });
+    expect(select).toHaveDisplayValue("Reps only");
+    expect(select.closest("label")).not.toBeNull();
+    expect(select.parentElement?.tagName).toBe("SPAN");
+    expect(select.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it("prefills the title and type, creates nothing until the confirm, then exactly one create (a double click too)", async () => {
     const s = setup({ calories: true });
     const { sheet, user } = await openSheet();

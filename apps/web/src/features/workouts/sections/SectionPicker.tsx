@@ -1,4 +1,5 @@
 import type { WorkoutSection } from "@sin/core";
+import { Select } from "../../../ui/Select";
 import { SECTION_COPY } from "./sectionCopy";
 import styles from "./SectionPicker.module.css";
 
@@ -29,9 +30,8 @@ export function SectionPicker({ exerciseId, value, sections, linked, disabled, o
       <label className={styles.label} htmlFor={id}>
         {SECTION_COPY.sectionLabel}
       </label>
-      <select
+      <Select
         id={id}
-        className={styles.select}
         value={value ?? ""}
         disabled={disabled}
         aria-describedby={linked ? hintId : undefined}
@@ -46,7 +46,7 @@ export function SectionPicker({ exerciseId, value, sections, linked, disabled, o
             {s.name}
           </option>
         ))}
-      </select>
+      </Select>
       {linked ? (
         <p id={hintId} className={styles.hint}>
           {SECTION_COPY.supersetHint}

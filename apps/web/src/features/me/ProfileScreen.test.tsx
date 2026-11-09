@@ -121,6 +121,15 @@ describe("AC5 — Profile loads current values (Spec 04.1 §2)", () => {
     expect(zone).toHaveValue("Europe/London");
   });
 
+  it("17.7 AC7 — Time zone is drawn by Select, with the same name and value", async () => {
+    renderProfile();
+    const f = await form();
+    const zone = f.getByRole("combobox", { name: "Time zone" });
+    expect(zone).toHaveValue("Europe/London");
+    expect(zone.parentElement?.tagName).toBe("SPAN");
+    expect(zone.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it("keeps a stored timezone that is not in the host list as a selected extra option", async () => {
     server.use(
       http.get(ME_URL, () =>

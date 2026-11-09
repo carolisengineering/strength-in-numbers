@@ -2,6 +2,7 @@ import { EXERCISE_NAME_MAX, MODALITY_VALUES, type Equipment, type Modality, type
 import type { ReactNode } from "react";
 
 import { Field } from "../../ui/Field";
+import { Select } from "../../ui/Select";
 import styles from "./ExerciseFields.module.css";
 import { MODALITY_HINTS, MODALITY_LABELS } from "./labels";
 
@@ -159,14 +160,14 @@ export function ExerciseFields({
           <div className={styles.detailsBody}>
             <Field id={`${idPrefix}-primary-muscle`} label="Primary muscle" error={errors.primaryMuscleId}>
               {(control) => (
-                <select {...control} value={values.primaryMuscleId} onChange={(event) => choosePrimary(event.target.value)}>
+                <Select {...control} value={values.primaryMuscleId} onChange={(event) => choosePrimary(event.target.value)}>
                   <option value="">—</option>
                   {muscleGroups.map((muscle) => (
                     <option key={muscle.id} value={muscle.id}>
                       {muscle.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
 
@@ -200,14 +201,14 @@ export function ExerciseFields({
 
             <Field id={`${idPrefix}-equipment`} label="Equipment" error={errors.equipmentId}>
               {(control) => (
-                <select {...control} value={values.equipmentId} onChange={(event) => set({ equipmentId: event.target.value })}>
+                <Select {...control} value={values.equipmentId} onChange={(event) => set({ equipmentId: event.target.value })}>
                   <option value="">—</option>
                   {equipment.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
           </div>
