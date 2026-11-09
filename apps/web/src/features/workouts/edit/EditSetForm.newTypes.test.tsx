@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import { segmentChoice } from "../../../test/controls";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -44,14 +45,14 @@ describe("18.1 AC20 — the edit screen's set sheet", () => {
     const s = sheet(/^Set 1 · Farmer Carry/);
     expect(s.getByLabelText("Weight")).toHaveValue("24");
     expect(s.getByLabelText("Distance")).toHaveValue("100");
-    expect(s.getByLabelText("Distance unit")).toHaveValue("ft");
+    expect(segmentChoice("Distance unit", s)).toBe("ft");
   });
   it("hold: Weight + unit and Minutes / Seconds", async () => {
     const { user } = open([{ modality: "weight_duration", name: "Sandbag Hold", sets: [makeSet({ reps: null, weight: 20, durationS: 90 })] }]);
     await ready();
     await user.click(within(card("Sandbag Hold")).getByRole("button", { name: /20 kg · 1:30/ }));
     const s = sheet(/^Set 1 · Sandbag Hold/);
-    expect(s.getByLabelText("Weight unit")).toHaveValue("kg");
+    expect(segmentChoice("Weight unit", s)).toBe("kg");
     expect(s.getByLabelText("Minutes")).toHaveValue("1");
     expect(s.getByLabelText("Seconds")).toHaveValue("30");
   });
@@ -60,7 +61,7 @@ describe("18.1 AC20 — the edit screen's set sheet", () => {
     await ready();
     await user.click(addSetButton("Farmer Carry"));
     const s = sheet("New set · Farmer Carry");
-    expect(s.getByLabelText("Distance unit")).toHaveValue("m");
-    expect(s.getByLabelText("Weight unit")).toHaveValue("lb");
+    expect(segmentChoice("Distance unit", s)).toBe("m");
+    expect(segmentChoice("Weight unit", s)).toBe("lb");
   });
 });

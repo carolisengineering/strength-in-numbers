@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue, segmentChoice } from "../../test/controls";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -113,7 +114,7 @@ describe("AC25 — edit and delete a logged set", () => {
     const sheet = screen.getByRole("dialog", { name: "Set 1 · X" });
     expect(within(sheet).getByLabelText("Weight")).toHaveValue("60");
     expect(within(sheet).getByLabelText("Reps")).toHaveValue("8");
-    expect(within(sheet).getByLabelText("Weight unit")).toHaveValue("kg");
+    expect(segmentChoice("Weight unit", within(sheet))).toBe("kg");
     expect(within(sheet).getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Delete set" })).toBeInTheDocument();
   });
@@ -138,7 +139,7 @@ describe("AC25 — edit and delete a logged set", () => {
     const { fake, user } = await setup();
     await user.click(setRow(/60 kg × 8/));
 
-    await user.selectOptions(within(dialog()).getByLabelText("Weight unit"), "lb");
+    await chooseSegmentValue(user, "Weight unit", "lb", within(dialog()));
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 
     await within(card()).findByText("60 lb × 8");
@@ -158,7 +159,7 @@ describe("AC25 — edit and delete a logged set", () => {
   it("#129 — an unchanged Save on a warm-up sends no request (the sheet keeps the stored set type)", async () => {
     const { fake, user } = await setup([makeSet({ setNumber: 1, setType: "warmup", weight: 40, reps: 8 })]);
     await user.click(setRow(/40 kg × 8/));
-    expect(within(dialog()).getByLabelText("Set type")).toHaveValue("warmup");
+    expect(segmentChoice("Set type", within(dialog()))).toBe("warmup");
 
     await user.click(within(dialog()).getByRole("button", { name: "Save" }));
 

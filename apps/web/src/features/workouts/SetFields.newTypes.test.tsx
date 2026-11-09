@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { DISTANCE_UNIT_VALUES, SET_CALORIES_MAX, type Modality } from "@sin/core";
 import { render, screen, within } from "@testing-library/react";
+import { chooseSegmentValue, querySegmented, segmented, segmentValues } from "../../test/controls";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -30,7 +31,8 @@ function Entry({ modality, initial, onChange }: { modality: Modality; initial: S
   );
 }
 const openOptions = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Set options" }));
-const optionLabels = () => [...document.querySelectorAll("label")].map((l) => l.textContent);
+// Labels and legends: since Spec 17.7 the unit and type controls are named by a legend.
+const optionLabels = () => [...document.querySelectorAll("label, legend")].map((l) => l.textContent);
 
 describe("18.1 AC5 — calories panel", () => {
   it("one Calories · cal stepper with a numeric text input, and no other measure", () => {
@@ -43,9 +45,9 @@ describe("18.1 AC5 — calories panel", () => {
     const user = userEvent.setup();
     render(<Entry modality="calories" initial={draftFor("calories")} />);
     await openOptions(user);
-    expect(screen.getByLabelText("Set type")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Weight unit")).toBeNull();
-    expect(screen.queryByLabelText("Distance unit")).toBeNull();
+    expect(segmented("Set type")).toBeInTheDocument();
+    expect(querySegmented("Weight unit")).toBeNull();
+    expect(querySegmented("Distance unit")).toBeNull();
   });
   it("+ dispatches an ordinary edit with 25 from 20; + is disabled at the max", async () => {
     const user = userEvent.setup();
@@ -72,9 +74,9 @@ describe("18.1 AC7 — weight + distance panel", () => {
     const user = userEvent.setup();
     render(<Entry modality="weight_distance" initial={draftFor("weight_distance")} />);
     await openOptions(user);
-    expect(screen.getByLabelText("Set type")).toBeInTheDocument();
-    expect(screen.getByLabelText("Weight unit")).toBeInTheDocument();
-    const units = [...screen.getByLabelText("Distance unit").querySelectorAll("option")].map((o) => o.value);
+    expect(segmented("Set type")).toBeInTheDocument();
+    expect(segmented("Weight unit")).toBeInTheDocument();
+    const units = segmentValues("Distance unit");
     expect(units).toEqual([...DISTANCE_UNIT_VALUES]);
   });
 });
@@ -88,8 +90,8 @@ describe("18.1 AC8 — weight + duration panel", () => {
     expect(screen.getByLabelText("Seconds")).toBeInTheDocument();
     expect(screen.queryByLabelText("Reps")).toBeNull();
     await openOptions(user);
-    expect(screen.getByLabelText("Weight unit")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Distance unit")).toBeNull();
+    expect(segmented("Weight unit")).toBeInTheDocument();
+    expect(querySegmented("Distance unit")).toBeNull();
     expect(optionLabels()).not.toContain("Distance unit");
   });
 });
@@ -99,7 +101,7 @@ describe("18.1 AC40 — feet in the panel", () => {
     const user = userEvent.setup();
     render(<Entry modality="weight_distance" initial={draftFor("weight_distance")} />);
     await openOptions(user);
-    await user.selectOptions(screen.getByLabelText("Distance unit"), "ft");
+    await chooseSegmentValue(user, "Distance unit", "ft", screen);
     expect(screen.getByLabelText("Distance (ft)")).toBeInTheDocument();
   });
   it("distance_duration keeps the plain Distance label (Spec 18.1 D5)", () => {

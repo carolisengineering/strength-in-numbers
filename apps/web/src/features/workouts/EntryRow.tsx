@@ -15,7 +15,7 @@ import styles from "./EntryRow.module.css";
 
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
-/** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
+/** The free-text inputs: only these can show a client-side message once touched (units and type are radios). */
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "calories"]);
 
 /**
@@ -145,6 +145,8 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
     if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
     event.preventDefault();
+    // Spec 17.7: units and set type are radios now, and a radio is an input too; Enter there chooses, it never logs.
+    if (event.target.type === "radio") return;
     if (parsed.ok) {
       void log();
       return;

@@ -18,6 +18,7 @@ vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import { localStorageAdapter } from "../../storage/storage";
+import { chooseSegment, segmented, segmentValue } from "../../test/controls";
 import { card, logButton, openSetOptions } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
@@ -126,13 +127,29 @@ describe("17.1 AC22 — other modalities", () => {
 describe("17.1 AC23 — set type and unit stay reachable", () => {
   it("Set options holds Set type and the unit; a unit change re-steps by the new unit", async () => {
     const { user } = await setup([X({ sets: [makeSet({ setNumber: 1, weight: 60, weightUnit: "kg", reps: 8 })] })]);
-    expect(panel().queryByLabelText("Set type")).toBeNull();
+    expect(panel().queryByRole("group", { name: "Set type" })).toBeNull();
     await openSetOptions(user, card("X"));
-    expect(panel().getByLabelText("Set type")).toBeInTheDocument();
+    expect(segmented("Set type", card("X"))).toBeInTheDocument();
     expect(panel().getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
-    await user.selectOptions(panel().getByLabelText("Weight unit"), "lb");
+    await chooseSegment(user, "Weight unit", "lb", card("X"));
     await user.click(panel().getByRole("button", { name: "Increase weight by 5 lb" }));
     expect(panel().getByLabelText("Weight")).toHaveValue("65");
+  });
+
+  it("17.7 AC6 — Enter on a unit or type radio logs nothing", async () => {
+    const { fake, user } = await setup([X({ sets: [lbSet] })]);
+    await openSetOptions(user, card("X"));
+    for (const [legend, option] of [["Weight unit", "lb"], ["Set type", "Working"]] as const) {
+      const radio = within(segmented(legend, card("X"))).getByRole("radio", { name: option });
+      act(() => radio.focus());
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      act(() => {
+        radio.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(true);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"))).toHaveLength(0);
   });
 
   it("a non-working planned set shows its type in the label and data-set-type on the panel", async () => {
@@ -141,5 +158,30 @@ describe("17.1 AC23 — set type and unit stay reachable", () => {
     const form = panel().getByRole("form", { name: "Log a set of X" });
     expect(within(form).getByText("Set 1 of 2 · Warm-up")).toBeInTheDocument();
     expect(form).toHaveAttribute("data-set-type", "warmup");
+  });
+});
+
+describe("17.7 AC9 — a unit change converts nothing", () => {
+  it("lb profile, 100 typed, kg chosen: the weight still reads 100 and Log names kg", async () => {
+    const { user } = await setup([X()], "lb");
+    await user.type(panel().getByLabelText("Weight"), "100");
+    await user.type(panel().getByLabelText("Reps"), "5");
+    await openSetOptions(user, card("X"));
+    await chooseSegment(user, "Weight unit", "kg", card("X"));
+    expect(panel().getByLabelText("Weight")).toHaveValue("100");
+    expect(segmentValue("Weight unit", card("X"))).toBe("kg");
+    await waitFor(() => expect(logButton("X")).toHaveTextContent(/^Log 100 kg/));
+  });
+
+  it("a distance of 2 stays 2 when km becomes mi, and the draft stores mi", async () => {
+    const { user } = await setup([X({ modality: "distance_duration" })], "kg");
+    await user.type(panel().getByLabelText(/^Distance/), "2");
+    await openSetOptions(user, card("X"));
+    expect(segmentValue("Distance unit", card("X"))).toBe("km");
+    await chooseSegment(user, "Distance unit", "mi", card("X"));
+    expect(panel().getByLabelText(/^Distance/)).toHaveValue("2");
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(DRAFTS_KEY) ?? "{}").byExercise).toBeTruthy());
+    const stored = JSON.parse(localStorageAdapter().get(DRAFTS_KEY)!);
+    expect(Object.values(stored.byExercise as Record<string, { distance: string; distanceUnit: string }>)[0]).toMatchObject({ distance: "2", distanceUnit: "mi" });
   });
 });

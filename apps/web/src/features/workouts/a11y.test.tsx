@@ -160,8 +160,7 @@ describe("AC33 — tap targets", () => {
   it.each([
     ["./ExerciseCard.module.css", ".set"],
     ["./SetFields.module.css", ".input"],
-    ["./SetFields.module.css", ".select"],
-    ["./SetFields.module.css", ".unit"],
+    ["../../ui/Segmented.module.css", ".option"], // units and set type (Spec 17.7)
     ["../../ui/BackLink.module.css", ".back"], // the summary's back link (#107)
     ["../../ui/Button.module.css", ".button"],
     ["../../ui/Sheet.module.css", ".close"],
