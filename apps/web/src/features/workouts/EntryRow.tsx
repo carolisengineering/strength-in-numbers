@@ -98,14 +98,15 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   // Spec 17.5 AC11: after the re-seed above, so this dispatch queues second and wins. The query cache tells observers a
   // moment after the delete resolves, so a render can hold the old list: the restore waits until the row has left.
   const [restoredToken, setRestoredToken] = useState<number | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !listed(exercise.sets, restore.set)) {
     setRestoredToken(restore.token);
+    setAnnouncement(""); // AC13: a re-log repeats "Set N logged", and a live region says nothing when its words don't change
     if (untouched) dispatch({ type: "restore", set: restore.set, defaults });
   }
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<{ text: string } | null>(null);
-  const [announcement, setAnnouncement] = useState("");
   const inFlight = useRef(false); // synchronous guard against a double tap
   // Spec 06.2: a queued log resolves at once, so the busy button no longer spans a double tap. A second
   // tap within this window with nothing typed in between is the same tap, not a second set.

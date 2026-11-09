@@ -359,6 +359,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     idMap: outboxState.idMap,
     rest,
     select: selectCurrent,
+    focusLeavesWith: (id) => {
+      const leaving = current.currentId;
+      return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
+    },
     revealPanel: () => {
       const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
       setSetsAwaited(fresh ? fresh.exercises.reduce((n, e) => n + e.sets.length, 0) : 0);

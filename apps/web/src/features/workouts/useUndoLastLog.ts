@@ -13,6 +13,8 @@ export interface UndoLastLogInput {
   idMap: IdMap;
   rest: RestStore | null;
   select: (exerciseId: string) => void;
+  /** Would making this exercise current collapse the card that holds focus? */
+  focusLeavesWith: (exerciseId: string) => boolean;
   /** Show the current panel once this commit lands (17.4's `setsAwaited`). */
   revealPanel: () => void;
   onFailure: (error: unknown) => void;
@@ -42,7 +44,7 @@ interface Undoing {
  * has been seen and then left ends it. Undo is the same delete Delete set uses (D1), so the outbox's cancel-or-delete
  * rules apply and it works offline.
  */
-export function useUndoLastLog({ exercises, ops, idMap, rest, select, revealPanel, onFailure, announce }: UndoLastLogInput): UndoLastLog {
+export function useUndoLastLog({ exercises, ops, idMap, rest, select, focusLeavesWith, revealPanel, onFailure, announce }: UndoLastLogInput): UndoLastLog {
   const del = useDeleteSet();
   const [held, setHeld] = useState<{ offer: UndoOffer; seen: boolean } | null>(null);
   const [undoing, setUndoing] = useState<Undoing | null>(null);
@@ -91,9 +93,11 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, select, revealPane
     live.current = null;
     setHeld(null);
     setUndoing({ row: target.row, settled: false });
-    // Undo unmounts, so a keyboard user's focus goes to Log. `preventScroll`: scrolling to a sticky element drags the list.
+    announce(""); // AC13: a live region says nothing when its words don't change, and "Set N undone" can repeat
+    // Undo unmounts, and so does a card it collapses, so focus in either goes to Log rather than falling to the page.
+    // `preventScroll`: scrolling to a sticky element drags the list.
     const button = event.currentTarget;
-    if (button === document.activeElement) {
+    if (button === document.activeElement || focusLeavesWith(target.offer.exerciseId)) {
       button.closest("[data-session-bar]")?.querySelector<HTMLElement>(":scope > button")?.focus({ preventScroll: true });
     }
     void run(target);

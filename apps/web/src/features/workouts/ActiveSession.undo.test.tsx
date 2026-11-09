@@ -379,6 +379,22 @@ describe("17.5 AC6 — a failed Undo", () => {
     expect(status().textContent).not.toMatch(/undone|Undoing/);
     expect(setsOf(fake)).toHaveLength(2);
   });
+
+  it("a create the server rejects once its Undo is queued: the row returns with Couldn't save too", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(503, "unavailable"));
+    await logThenOffer(user);
+    await waitFor(() => expect(posts(fake)).toHaveLength(1));
+    goOffline(fake);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(status().textContent).toBe("Undoing set 2… · 1 set not saved yet"));
+    expect(rows("A", /47\.5 kg × 6/)).toHaveLength(1);
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-failed"));
+    goOnline(fake);
+    await waitFor(() => expect(within(card("A")).getAllByText(/Couldn't save/).length).toBeGreaterThan(0), { timeout: 10_000 });
+    expect(rows("A", /47\.5 kg × 6/)).toHaveLength(2);
+    expect(status().textContent).not.toMatch(/undone|Undoing/);
+  }, 15_000);
 });
 
 describe("17.5 AC9 — the rest", () => {
@@ -424,7 +440,7 @@ describe("17.5 AC9 — the rest", () => {
     const exercise = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "A", sets: [set] }] }).exercises[0]!;
     const rest = { get: () => ({ startedAt: 2000, durationS: 60 }), start: vi.fn(), clear: vi.fn(), subscribe: vi.fn() } as unknown as RestStore;
     const { result } = renderHook(
-      () => useUndoLastLog({ exercises: [exercise], ops: [], idMap: {}, rest, select: vi.fn(), revealPanel: vi.fn(), onFailure: vi.fn(), announce: vi.fn() }),
+      () => useUndoLastLog({ exercises: [exercise], ops: [], idMap: {}, rest, select: vi.fn(), focusLeavesWith: () => false, revealPanel: vi.fn(), onFailure: vi.fn(), announce: vi.fn() }),
       { wrapper: wrapperWith(makeQueryClient(), fakeClient({ deleteSet: () => Promise.resolve() })) },
     );
     act(() => result.current.offerFrom({ exerciseId: exercise.id, set, advance: true, wasExtra: false, value: "60 × 8" }, { name: "A", modality: "weight_reps" }, 1000));
@@ -504,6 +520,45 @@ describe("17.5 AC13 — focus and announcement", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
     expect(button).toHaveFocus();
+  });
+
+  it("focus in the card Undo collapses moves to Log, so it isn't lost with the card", async () => {
+    const { user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(3) }), ex("B", { supersetGroup: 1, plannedSets: planned(3) })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(logButton("B")).toBeInTheDocument());
+    act(() => within(card(/^B,/)).getByLabelText("Reps").focus());
+    await user.click(undoButton()!);
+    await waitFor(() => expect(logButton("A")).toBeInTheDocument());
+    expect(logButton("A")).toHaveFocus();
+  });
+
+  it("focus in the card Undo keeps stays where it is", async () => {
+    const { user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    const reps = within(card("A")).getByLabelText("Reps");
+    act(() => reps.focus());
+    await user.click(undoButton()!);
+    await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
+    expect(reps).toHaveFocus();
+  });
+
+  it("an Undo, a re-log and another Undo are each announced, though the words repeat", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    goOffline(fake);
+    await logThenOffer(user);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(announced()).toHaveTextContent(/^Set 2 undone$/));
+    await restBetweenSets();
+    const panelRegion = within(card("A")).getByRole("status");
+    expect(panelRegion).toBeEmptyDOMElement();
+    await logThenOffer(user);
+    expect(panelRegion).toHaveTextContent(/^Set 2 logged$/);
+    const spoken: (string | null)[] = [];
+    const observer = new MutationObserver(() => spoken.push(announced().textContent));
+    observer.observe(announced(), { subtree: true, childList: true, characterData: true });
+    await user.click(undoButton()!);
+    await waitFor(() => expect(spoken).toContain("Set 2 undone"));
+    observer.disconnect();
   });
 
   it("offline, then online: Undoing set N, then Set N undone", async () => {

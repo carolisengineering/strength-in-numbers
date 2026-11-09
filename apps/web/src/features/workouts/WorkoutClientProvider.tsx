@@ -138,8 +138,8 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       onFailed: (op, error) => {
         reportUnexpected(REPORT_OP[op.kind], error);
         // A delete's optimistic removal took the row out of the cache, and only a read brings it back to be marked
-        // under the failed op (Spec 17.5 AC6).
-        if (op.kind === "delete" || (error instanceof ApiError && error.status === 404)) {
+        // under the failed op (Spec 17.5 AC6). A rejected create fails the delete queued behind it without naming it here.
+        if (op.kind === "delete" || op.kind === "create" || (error instanceof ApiError && error.status === 404)) {
           void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
         }
       },
