@@ -26,6 +26,32 @@ export const RLS_TABLES: readonly string[] = [
   "routine_item_set",
 ];
 
+/**
+ * The order `0020`, `0021` and `db:rls` take their table locks in: the API's locking writes (routine before workout, each
+ * parent before its children). Same tables as `RLS_TABLES`.
+ */
+export const RLS_LOCK_ORDER: readonly string[] = [
+  "routine",
+  "workout",
+  "routine_item",
+  "routine_section",
+  "routine_item_set",
+  "workout_exercise",
+  "workout_section",
+  "set_entry",
+  "workout_planned_set",
+  "workout_section_round",
+  "personal_record",
+  "hevy_exercise_pair",
+  "hevy_section_rule",
+  "hevy_link",
+  "hevy_account",
+  "exercise",
+  "user",
+  "muscle_group",
+  "equipment",
+];
+
 /** A double-quoted SQL identifier. Only ever given names from `RLS_TABLES`; embedded quotes are doubled regardless. */
 export function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;

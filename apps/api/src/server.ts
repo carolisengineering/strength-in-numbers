@@ -4,6 +4,7 @@ import { createLogger } from "./logging.js";
 import { createPrisma, checkDatabaseReady, wirePoolMetrics } from "./db.js";
 import { createScopedDb } from "./db/scoped.js";
 import { assertLoginCannotBypassRls, UnsafeDatabaseLoginError } from "./db/login-check.js";
+import { warnIfRlsDisabled } from "./db/rls.js";
 import { createTokenVerifier } from "./auth/verify.js";
 import { createUserRepository } from "./repositories/user.prisma.js";
 import { createExerciseRepository } from "./repositories/exercise.prisma.js";
@@ -35,6 +36,8 @@ async function main(): Promise<void> {
     if (err instanceof UnsafeDatabaseLoginError) logger.error(err.facts, "db_login_checked");
     throw err;
   }
+  // Spec 21.1: the boot check ignores whether RLS is on (D5), so a kill switch left off after an incident shows here.
+  await warnIfRlsDisabled(prisma, logger);
   // Spec 21.1 AC20: every repository gets the scoped handle, never the bare client ("who is asking" on every call).
   const db = createScopedDb(prisma);
   const exerciseRepository = createExerciseRepository(db);

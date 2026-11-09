@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-234 statements: 111 user-filtered, 54 anchored, 24 shared on purpose, 14 cross-user maintenance, 31 fragment.
+238 statements: 111 user-filtered, 54 anchored, 28 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -102,6 +102,15 @@ Categories:
 | `src/db/login-check.ts#readFacts#1` | query | shared on purpose | ok | — | `bf5e8353f409` | Boot check: reads pg_roles / pg_class for the current login (no user data) |
 | `src/db/login-check.ts#readFacts#2` | query | shared on purpose | ok | — | `4067e45b9d91` | Boot check: reads pg_roles / pg_class for roles the login could SET ROLE into (no user data) |
 | `src/db/login-check.ts#readFacts#3` | query | shared on purpose | ok | — | `80e57d027f3e` | Boot check: reads the row_security setting (no table) |
+
+## src/db/rls.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/rls.ts#rlsStatus#1` | query | shared on purpose | ok | — | `85f7fd656d23` | Reads pg_class for the RLS state of the 19 tables (no user data) |
+| `src/db/rls.ts#setRls#1` | query | shared on purpose | ok | — | `4554a9b04ca5` | Kill switch, owner login: sets its transaction's lock timeout (no table) |
+| `src/db/rls.ts#setRls#2` | query | shared on purpose | ok | — | `904ab873f1e2` | Kill switch, owner login: locks the 19 tables up front; reads no row |
+| `src/db/rls.ts#setRls#3` | query | shared on purpose | ok | — | `48e4c93e6614` | Kill switch, owner login: ALTER TABLE ENABLE/DISABLE ROW LEVEL SECURITY; reads no row |
 
 ## src/db/scoped.ts
 

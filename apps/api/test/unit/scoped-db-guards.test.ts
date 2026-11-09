@@ -133,7 +133,7 @@ describe("Spec 21.1 AC20 — server.ts wires every repository from createScopedD
     expect(factoryCalls.filter((c) => !scopedNames.has(c.firstArg))).toEqual([]);
   });
 
-  it("the bare client reaches only the boot check, the readiness probe, the pool metrics, the handle and the shutdown", () => {
+  it("the bare client reaches only the boot check, the RLS warning, the readiness probe, the pool metrics, the handle and the shutdown", () => {
     const uses: string[] = [];
     const find = (node: ts.Node) => {
       if (ts.isIdentifier(node) && node.text === "prisma" && !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)) {
@@ -144,6 +144,6 @@ describe("Spec 21.1 AC20 — server.ts wires every repository from createScopedD
       ts.forEachChild(node, find);
     };
     find(sf);
-    expect([...new Set(uses)].sort()).toEqual(["assertLoginCannotBypassRls", "checkDatabaseReady", "createGracefulShutdown", "createScopedDb", "wirePoolMetrics"]);
+    expect([...new Set(uses)].sort()).toEqual(["assertLoginCannotBypassRls", "checkDatabaseReady", "createGracefulShutdown", "createScopedDb", "warnIfRlsDisabled", "wirePoolMetrics"]);
   });
 });
