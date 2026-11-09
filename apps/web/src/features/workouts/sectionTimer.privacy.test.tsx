@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,7 +63,7 @@ type Live = Awaited<ReturnType<typeof live>>;
 const sheet = (name: string) => within(screen.getByRole("dialog", { name }));
 async function saveAmrap(user: Live["user"], name: string) {
   await user.click(screen.getByRole("button", { name: `Edit section ${name}` }));
-  await user.selectOptions(sheet("Edit section").getByLabelText("Timer"), "amrap");
+  await chooseSegmentValue(user, "Timer", "amrap", sheet("Edit section"));
   await user.type(sheet("Edit section").getByLabelText("Time limit"), "1200");
   await user.click(sheet("Edit section").getByRole("button", { name: "Save" }));
 }
@@ -110,7 +111,7 @@ describe("10.7 AC58 — Phase B privacy and text as text", () => {
     // A 409 section-result-exists (another device logged times).
     fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, roundTimes: ROUNDS })) };
     await user.click(screen.getByRole("button", { name: `Edit section ${SECRET}` }));
-    await user.selectOptions(sheet("Edit section").getByLabelText("Timer"), "set_timer");
+    await chooseSegmentValue(user, "Timer", "set_timer", sheet("Edit section"));
     await user.type(sheet("Edit section").getByLabelText("Rounds"), "5");
     await user.type(sheet("Edit section").getByLabelText("Round length"), "500");
     fake.failNext({ method: "PATCH", path: /^\/v1\/workout-sections\// }, () => problemResponse(409, "section-result-exists"));

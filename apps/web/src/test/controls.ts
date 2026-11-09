@@ -16,12 +16,12 @@ export const querySegmented = (legend: string, scope?: Scope): HTMLElement | nul
 
 const radios = (legend: string, scope?: Scope) => within(segmented(legend, scope)).getAllByRole<HTMLInputElement>("radio");
 
-export async function chooseSegment(user: UserEvent, legend: string, option: string, scope?: Scope): Promise<void> {
+export async function chooseSegment(user: Pick<UserEvent, "click">, legend: string, option: string, scope?: Scope): Promise<void> {
   await user.click(within(segmented(legend, scope)).getByRole("radio", { name: option }));
 }
 
 /** Choose by the option's value ("failure"), where a test spoke the select's value before. */
-export async function chooseSegmentValue(user: UserEvent, legend: string, value: string, scope?: Scope): Promise<void> {
+export async function chooseSegmentValue(user: Pick<UserEvent, "click">, legend: string, value: string, scope?: Scope): Promise<void> {
   const radio = radios(legend, scope).find((r) => r.value === value);
   if (radio === undefined) throw new Error(`${legend} has no option with the value ${value}`);
   await user.click(radio);

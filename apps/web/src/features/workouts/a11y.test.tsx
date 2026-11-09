@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../test/controls";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -852,7 +853,7 @@ describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
       const { user } = await liveTimed();
       await user.click(screen.getByRole("button", { name: "Edit section Main" }));
       const dialog = screen.getByRole("dialog", { name: "Edit section" });
-      await user.selectOptions(within(dialog).getByLabelText("Timer"), format);
+      await chooseSegmentValue(user, "Timer", format, within(dialog));
       for (const control of dialog.querySelectorAll("input, select, textarea")) expect(control).toHaveAccessibleName();
       await expectNoAxeViolations(dialog);
     },
@@ -863,7 +864,7 @@ describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
     const { user } = await liveTimed();
     await user.click(screen.getByRole("button", { name: "Edit section Main" }));
     const dialog = screen.getByRole("dialog", { name: "Edit section" });
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", within(dialog));
     await user.type(within(dialog).getByLabelText("Time limit"), "1200");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
     const confirm = await screen.findByRole("dialog", { name: "Change Main's timer?" });

@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../../test/controls";
 import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,7 +135,7 @@ describe("10.7 AC55 — the editor shows the imported timer", () => {
     }
     await user.click(screen.getByRole("button", { name: "Edit section Second Shift" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit section" });
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", within(dialog));
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(within(screen.getByRole("region", { name: "Second Shift" })).queryByText("Time Cap 20:00")).toBeNull());
   });

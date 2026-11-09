@@ -5,8 +5,7 @@
   gap: var(--space-3);
 }
 
-.input,
-.select {
+.input {
   min-height: var(--tap-target-min);
 }
 

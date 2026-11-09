@@ -1041,7 +1041,7 @@ try {
       await go("/app/workouts");
       await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
       const sheet = page.locator("dialog[open]");
-      await sheet.getByLabel("Timer").selectOption("amrap");
+      await sheet.getByRole("group", { name: "Timer" }).getByRole("radio", { name: "AMRAP" }).check(); // Spec 17.7: a Segmented
       await sheet.getByLabel("Time limit", { exact: true }).pressSequentially("1200");
       await sheet.getByRole("button", { name: "Save", exact: true }).click();
       await page.getByRole("dialog", { name: "Change Main's timer?" }).waitFor({ timeout: 4000 });
@@ -1087,7 +1087,7 @@ try {
 
     // Spec 10.7 AC63: the section sheet's Timer group in each format, and the timed editor's headers and brackets.
     state.showTimed = true;
-    for (const [format, slug, label, fill] of [
+    for (const [, slug, label, fill] of [
       ["set_timer", "set-timer", "Set Timer", [["Rounds", "5"], ["Round length", "500"]]],
       ["amrap", "amrap", "AMRAP", [["Time limit", "1200"]]],
       ["time_cap", "time-cap", "Time Cap", []],
@@ -1096,7 +1096,7 @@ try {
         await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
         await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
         const sheet = page.locator("dialog[open]");
-        await sheet.getByLabel("Timer").selectOption(format);
+        await sheet.getByRole("group", { name: "Timer" }).getByRole("radio", { name: label }).check(); // Spec 17.7: a Segmented
         for (const [field, digits] of fill) {
           await sheet.getByLabel(field, { exact: true }).fill("");
           await sheet.getByLabel(field, { exact: true }).pressSequentially(digits);

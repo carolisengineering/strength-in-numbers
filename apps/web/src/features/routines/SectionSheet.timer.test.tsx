@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { chooseSegmentValue, segmentChoice } from "../../test/controls";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ENTER_ROUND_LENGTH, ENTER_ROUNDS } from "../sectionTimer/timerCopy";
@@ -17,14 +18,15 @@ const sheet = (props: Partial<Parameters<typeof SectionSheet>[0]> = {}) => {
 describe("10.7 AC9 — the routine section sheet", () => {
   it("the Timer group sits under Note", () => {
     const { dialog } = sheet();
-    const labels = [...dialog.querySelectorAll("label")].map((l) => l.textContent);
+    // Spec 17.7: the Timer choice is a Segmented, named by its legend; its options are labels of their own.
+    const labels = [...dialog.querySelectorAll(":scope label:not(fieldset label), legend")].map((l) => l.textContent);
     expect(labels).toEqual(["Name", "Note", "Timer"]);
   });
 
   it("Done with an invalid timer shows every error, keeps name and note, and commits nothing", async () => {
     const user = userEvent.setup();
     const { dialog, onDone } = sheet();
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "set_timer");
+    await chooseSegmentValue(user, "Timer", "set_timer", within(dialog));
     await user.clear(within(dialog).getByLabelText("Name"));
     await user.type(within(dialog).getByLabelText("Name"), "Main lift");
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
@@ -37,7 +39,7 @@ describe("10.7 AC9 — the routine section sheet", () => {
   it("Done with a valid timer commits name, note and timer once", async () => {
     const user = userEvent.setup();
     const { dialog, onDone } = sheet();
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "set_timer");
+    await chooseSegmentValue(user, "Timer", "set_timer", within(dialog));
     await user.type(within(dialog).getByLabelText("Rounds"), "5");
     await user.type(within(dialog).getByLabelText("Round length"), "500");
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
@@ -48,9 +50,9 @@ describe("10.7 AC9 — the routine section sheet", () => {
   it("a timed section opens on its format and numbers; None commits null", async () => {
     const user = userEvent.setup();
     const { dialog, onDone } = sheet({ section: { ...section, timer: { format: "time_cap", capSeconds: null } } });
-    expect(within(dialog).getByLabelText("Timer")).toHaveValue("time_cap");
+    expect(segmentChoice("Timer", within(dialog))).toBe("time_cap");
     expect(within(dialog).getByLabelText("Cap")).toHaveValue("");
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", within(dialog));
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     expect(onDone).toHaveBeenCalledWith("Main", "Rx", null);
   });
@@ -63,7 +65,7 @@ describe("10.7 AC9 — the routine section sheet", () => {
   it("Close calls onClose and commits nothing", async () => {
     const user = userEvent.setup();
     const { dialog, onDone, onClose } = sheet();
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", within(dialog));
     await user.click(within(dialog).getByRole("button", { name: /close/i }));
     expect(onClose).toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
@@ -99,12 +101,12 @@ describe("10.7 AC4 — a new format starts clean", () => {
   it("after a failed Done, switching format drops the old format's errors", async () => {
     const user = userEvent.setup();
     const { dialog, onDone } = sheet();
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", within(dialog));
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Enter the time limit.");
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "time_cap");
+    await chooseSegmentValue(user, "Timer", "time_cap", within(dialog));
     expect(within(dialog).queryByRole("alert")).toBeNull();
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", within(dialog));
     expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(onDone).not.toHaveBeenCalled();
   });
@@ -113,7 +115,7 @@ describe("10.7 AC4 — a new format starts clean", () => {
     const user = userEvent.setup();
     const { dialog } = sheet({ section: { ...section, timer: { format: "amrap", capSeconds: 720 } }, messages: { timer: { group: "Check the timer and try again." } } });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Check the timer and try again.");
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", within(dialog));
     expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 });
