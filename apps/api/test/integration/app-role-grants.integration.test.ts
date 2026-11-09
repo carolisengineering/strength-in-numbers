@@ -8,9 +8,7 @@ import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, t
 import { logWorkout } from "./records-helpers.js";
 
 /**
- * Spec 21.1 AC21, AC22 — what `sin_app` can do, proven as `sin_app`. The grants are checked on the migrated database
- * (RLS off, as `0020` leaves it). For AC21 this file enables RLS on four tables inside its own container; Phase D proves
- * it on the migrated schema.
+ * Spec 21.1 AC21, AC22 — what `sin_app` can do, proven as `sin_app`, on the migrated schema (`0021` has RLS on).
  */
 describe.skipIf(!shouldRunIntegration())("Spec 21.1 — sin_app's grants and fail-closed policies (real Postgres)", () => {
   let db: AppIntegrationDb;
@@ -93,7 +91,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 — sin_app's grants and fai
     });
   });
 
-  describe("AC21 — fail closed, with RLS enabled on four tables in this container", () => {
+  describe("AC21 — fail closed, on the migrated schema", () => {
     let a: { user: string; workout: string; exercise: string };
     let b: { user: string; workout: string; exercise: string };
     let globalExercise: string;
@@ -126,9 +124,6 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 — sin_app's grants and fai
       a = await seed();
       b = await seed();
       globalExercise = await insertExercise(db);
-      for (const table of ["user", "exercise", "workout", "set_entry"]) {
-        await db.prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
-      }
     }, 60_000);
 
     for (const [label, who] of [["unset", null], ["set to ''", ""]] as const) {
