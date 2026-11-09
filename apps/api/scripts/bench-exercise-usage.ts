@@ -8,6 +8,7 @@
 import { buildApp } from "../src/app.js";
 import { checkDatabaseReady } from "../src/db.js";
 import { createScopedDb } from "../src/db/scoped.js";
+import { assertMeasuringAsApp, benchLoginLine } from "./lib/bench-login.js";
 import { createHevyRepository } from "../src/repositories/hevy.prisma.js";
 import { createHevyImportRepository } from "../src/repositories/hevy-import.prisma.js";
 import { createAccountExportRepository } from "../src/repositories/account-export.prisma.js";
@@ -29,12 +30,13 @@ const WARMUP = 20;
 const RUNS = 200;
 
 const db = await startIntegrationDb();
-// Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
-const scoped = createScopedDb(db.prisma);
+// Spec 21.1 AC37: measured through sin_app with RLS on, as server.ts wires it; fixtures stay on the owner client.
+process.stdout.write(`${benchLoginLine(await assertMeasuringAsApp(db.app))}\n`);
+const scoped = createScopedDb(db.app);
 const app = await buildApp({
   config: testConfig(),
   logger: false,
-  checkReadiness: () => checkDatabaseReady(db.prisma),
+  checkReadiness: () => checkDatabaseReady(db.app),
   tokenVerifier: fakeVerifier(() => authContext({ authSub: "auth0|bench-usage", email: "bench@ex.com" })),
   userRepository: createUserRepository(scoped),
   exerciseRepository: createExerciseRepository(scoped),

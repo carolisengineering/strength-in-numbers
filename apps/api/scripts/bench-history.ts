@@ -7,6 +7,7 @@
 import { createExerciseRepository } from "../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../src/repositories/workout.prisma.js";
 import { createScopedDb } from "../src/db/scoped.js";
+import { assertMeasuringAsApp, benchLoginLine } from "./lib/bench-login.js";
 import { startIntegrationDb } from "../test/integration/helpers.js";
 import { insertExercise, insertUser, logWorkout } from "../test/integration/records-helpers.js";
 
@@ -30,10 +31,14 @@ try {
       })),
     });
   }
-  // Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
-  const scoped = createScopedDb(db.prisma);
+  // Spec 21.1 AC37: measured through sin_app with RLS on, as server.ts wires it; fixtures stay on the owner client.
+  process.stdout.write(`${benchLoginLine(await assertMeasuringAsApp(db.app))}\n`);
+  const scoped = createScopedDb(db.app);
   const repo = createWorkoutRepository(scoped, createExerciseRepository(scoped));
-  const deepCursor = (await repo.listFinishedWorkouts(user, { limit: 150 })).next!; // 150 rows down
+  const deep = await repo.listFinishedWorkouts(user, { limit: 150 }); // 150 rows down
+  // Spec 21.1: RLS hides rows rather than failing, and a page with no rows would be fast and measure nothing.
+  if (deep.items.length !== 150 || deep.next === null) throw new Error(`expected 150 visible workouts and a next page, got ${deep.items.length}`);
+  const deepCursor = deep.next;
   const time = async (cursor?: string) => {
     const t: number[] = [];
     for (let r = 0; r < RUNS; r++) {
