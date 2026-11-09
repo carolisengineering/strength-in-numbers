@@ -327,7 +327,7 @@ describe("17.4 AC18 — the bar's guards still hold", () => {
     const button = logButton("A");
     await user.click(button);
     await waitFor(() => expect(scrolled()).toContain(panel("A")));
-    expect(screen.getByTestId("session-bar").querySelector("button")).toHaveFocus();
+    expect(screen.getByTestId("session-bar").querySelector(":scope > button")).toHaveFocus();
   });
 });
 

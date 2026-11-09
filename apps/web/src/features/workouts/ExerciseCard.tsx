@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core";
 
 import { Button } from "../../ui/Button";
@@ -51,6 +51,8 @@ export interface ExerciseCardProps {
   onLogged?: (event: LoggedEvent) => void;
   /** Spec 17.1 AC27: Finish mode. */
   logExtra?: boolean;
+  /** Spec 17.5 AC8: a sheet opened from this card (a set, Add note) ends the Undo offer. */
+  onSheetOpen?: () => void;
   /** Spec 17.5: passed straight through to `EntryRow`. */
   restore?: DraftRestore;
   onRestoreDone?: (token: number) => void;
@@ -95,6 +97,7 @@ export function ExerciseCard({
   headingRef,
   onLogged,
   logExtra,
+  onSheetOpen,
   restore,
   onRestoreDone,
   sections,
@@ -113,6 +116,10 @@ export function ExerciseCard({
   const [adding, setAdding] = useState(false);
   const setNote = useSetExerciseNote();
   const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
+  const sheetOpen = editing !== null || adding || noteSheet?.open === true;
+  useEffect(() => {
+    if (sheetOpen) onSheetOpen?.();
+  }, [sheetOpen, onSheetOpen]);
   const noteSync = sync.get(exercise.id);
   const hasNote = Boolean(exercise.notes);
   function saveNote(notes: string | null) {

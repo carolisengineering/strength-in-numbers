@@ -79,10 +79,20 @@
   min-height: var(--bar-action-height);
 }
 
-.sessionStatus {
+/* Spec 17.5 AC2: the status line is a row: its text, and Undo on the right while it is offered. */
+.statusRow {
   display: flex;
   flex-basis: 100%;
   align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sessionStatus {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
   justify-content: center;
   min-height: var(--session-status-height);
   margin: 0;
@@ -91,8 +101,28 @@
   text-align: center;
 }
 
+.statusRow[data-undo] .sessionStatus {
+  justify-content: flex-start;
+  text-align: start;
+}
+
+/*
+ * Spec 17.5 AC3, AC15: a 44 px Undo in a 44 px line would sit 4 px from Log (the bar's row-gap). It sits 4 px up into the
+ * bar's top padding instead: its margin box stays 44 px, so the line, the bar and the clearance don't change, and it is
+ * --space-2 from Log.
+ */
+.undo {
+  flex: none;
+  margin-block: calc(-1 * var(--space-1)) var(--space-1);
+}
+
 /* With the keyboard up room is scarcest, so an empty line gives its space back. */
 :global(:root[data-keyboard="open"]) .sessionStatus:empty {
+  display: none;
+}
+
+/* …and its wrapper too, or the empty row still adds the bar's row-gap. */
+:global(:root[data-keyboard="open"]) .statusRow:has(.sessionStatus:empty) {
   display: none;
 }
 
