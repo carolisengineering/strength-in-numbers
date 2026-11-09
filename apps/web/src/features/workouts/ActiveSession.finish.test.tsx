@@ -21,7 +21,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makePersonalRecord, makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
+import { deleteSetIn, discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
 
 const scrollIntoView = vi.fn();
@@ -197,7 +197,7 @@ describe("AC27 — 409 incomplete-working-sets", () => {
     const flagged = (await within(screen.getByRole("article", { name: "X" })).findAllByText("Needs data"))[0]!;
 
     await user.click(flagged.closest("button")!);
-    await user.click(within(screen.getByRole("dialog", { name: /Set 2/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /Set 2/ }));
 
     await waitFor(() => expect(screen.queryByText("Needs data")).not.toBeInTheDocument());
   });

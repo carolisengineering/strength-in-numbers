@@ -2,8 +2,10 @@ import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from
 import type { Modality, SetEntry } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
+import { formatSet } from "../format";
 import { reportUnexpected } from "../reportUnexpected";
 import type { EditScreenMode } from "../screenMode";
+import { SetDeleteConfirm } from "../SetDeleteConfirm";
 import { SetFields, type DraftEditField } from "../SetFields";
 import {
   createDraftReducer,
@@ -15,6 +17,7 @@ import {
   unitDefaultsFor,
   type DraftField,
 } from "../setDraft";
+import { useDeleteConfirm } from "../useDeleteConfirm";
 import styles from "../SetEditSheet.module.css";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure } from "./editFailure";
@@ -55,6 +58,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const confirm = useDeleteConfirm();
   // The sheet can be closed while a write is in flight: a late answer must not close a sheet opened since.
   const mounted = useRef(true);
   useEffect(
@@ -117,6 +121,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
       close();
       mode.report({ type: "saved", announcement });
     } catch (error) {
+      if (op === "delete-set") confirm.failed();
       failed(op, error);
     } finally {
       inFlight.current = false;
@@ -125,7 +130,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!parsed.ok) return;
+    if (confirm.confirming || !parsed.ok) return; // Enter in a field while the confirm is up saves nothing
     const body = parsed.body;
     if (target.kind === "add") {
       void run("create-set", async () => {
@@ -166,16 +171,25 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
           {formError}
         </p>
       ) : null}
-      <div className={styles.actions}>
-        {target.kind === "edit" ? (
-          <Button variant="danger" disabled={busy} onClick={() => remove(target.set)}>
-            Delete set
+      {confirm.confirming && target.kind === "edit" ? (
+        <SetDeleteConfirm
+          text={`Delete set ${target.set.setNumber}? ${formatSet(target.set, modality)} will be removed.`}
+          busy={del.isPending}
+          onKeep={confirm.keep}
+          onConfirm={() => remove(target.set)}
+        />
+      ) : (
+        <div className={styles.actions}>
+          {target.kind === "edit" ? (
+            <Button variant="danger" ref={confirm.askRef} disabled={busy} onClick={confirm.ask}>
+              Delete set
+            </Button>
+          ) : null}
+          <Button type="submit" busy={create.isPending || update.isPending} disabled={!parsed.ok || del.isPending}>
+            {target.kind === "add" ? "Add set" : "Save"}
           </Button>
-        ) : null}
-        <Button type="submit" busy={create.isPending || update.isPending} disabled={!parsed.ok || del.isPending}>
-          {target.kind === "add" ? "Add set" : "Save"}
-        </Button>
-      </div>
+        </div>
+      )}
     </form>
   );
 }

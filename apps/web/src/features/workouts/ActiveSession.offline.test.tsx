@@ -24,7 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
+import { deleteSetIn, finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -353,7 +353,7 @@ describe("06.2 AC10 — a sheet opened on a pending set still works after the se
 
   it("Delete removes the synced set on the server and on screen", async () => {
     const { fake, user } = await sheetOnPendingThenSync();
-    await user.click(within(screen.getByRole("dialog", { name: /Set 2/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /Set 2/ }));
     await waitFor(() => expect(fake.state.active!.exercises[0]!.sets).toHaveLength(1));
     expect(card().queryByRole("button", { name: /× 5/ })).not.toBeInTheDocument();
   });
@@ -364,7 +364,7 @@ describe("17.5 AC6 — a rejected delete comes back", () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(403, "forbidden"));
     await user.click(card().getByRole("button", { name: /60 kg × 8/ }));
-    await user.click(within(screen.getByRole("dialog", { name: /Set 1/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /Set 1/ }));
     await waitFor(() => expect(card().getByRole("button", { name: /60 kg × 8/ })).toBeInTheDocument());
     expect(card().getAllByText(/Couldn't save/).length).toBeGreaterThan(0);
     expect(card().getByRole("button", { name: /Discard/ })).toBeInTheDocument();

@@ -35,6 +35,13 @@ export const editDoneButton = (): HTMLElement => within(screen.getByTestId("edit
 /** Spec 18.0 AC8: a card's Add set button, named "Add set to {exercise}". */
 export const addSetButton = (name: string | RegExp): HTMLElement => within(card(name)).getByRole("button", { name: /^Add set to / });
 
+/** Spec 17.5 AC18: Delete set asks first, in place. `dialog` is the sheet, or queries already bound to it. */
+export async function deleteSetIn(user: UserEvent, dialog: HTMLElement | ReturnType<typeof within>): Promise<void> {
+  const scope = dialog instanceof HTMLElement ? within(dialog) : dialog;
+  await user.click(scope.getByRole("button", { name: "Delete set" }));
+  await user.click(scope.getByRole("button", { name: "Delete set" }));
+}
+
 /** The control that opens the Finish dialog. */
 export const finishButton = (): HTMLElement => screen.getByRole("button", { name: "Finish workout" });
 

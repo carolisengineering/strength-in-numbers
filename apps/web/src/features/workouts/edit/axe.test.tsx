@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { expectNoAxeViolations } from "../../../test/axe";
-import { addSetButton, card, changeTimeButton } from "../../../test/sessionHelpers";
+import { addSetButton, card, changeTimeButton, deleteSetIn } from "../../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
@@ -113,7 +113,7 @@ describe.each(["light", "dark"] as const)("Minor 9 / 18.0 AC44, AC57 — axe, %s
     const { user } = open((id) => `/app/history/${id}/edit`, one);
     await screen.findByRole("heading", { level: 1, name: "Edit workout" });
     await user.click(within(card("Bench Press")).getByRole("button", { name: /60 kg × 8/ }));
-    await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /^Set 1/ }));
     await waitFor(() => screen.getByRole("dialog", { name: EDIT_COPY.lastSet.title }));
     await expectNoAxeViolations(document.body);
   });

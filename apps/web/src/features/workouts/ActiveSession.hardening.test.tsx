@@ -44,7 +44,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
-import { finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
+import { deleteSetIn, finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
 import { WorkoutsScreen } from "./WorkoutsScreen";
 
@@ -412,7 +412,7 @@ describe("06.4 AC10 — a set write answering 404 while the workout still exists
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(404, "not-found"));
     const before = activeReads(fake);
 
-    await user.click(within(screen.getByRole("dialog", { name: /Set 1/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /Set 1/ }));
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /Set 1/ })).not.toBeInTheDocument());
     expect(x.queryByRole("button", { name: /60 kg × 8/ })).not.toBeInTheDocument();
@@ -506,7 +506,7 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     const x = within(screen.getByRole("article", { name: "X" }));
     await user.click(x.getByText("Needs data").closest("button")!);
     const sheet = screen.getByRole("dialog", { name: /Set 2/ });
-    await user.click(within(sheet).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet);
     await waitFor(() => expect(x.queryByText("Needs data")).not.toBeInTheDocument());
 
     // Y's row is now the first flagged, but no second reveal happens: Y stays collapsed (Spec 17.1 AC17, once per diagnosis).

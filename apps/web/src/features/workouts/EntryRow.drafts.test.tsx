@@ -23,7 +23,7 @@ import { USER_ID } from "../../test/catalogHarness";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
-import { discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
+import { deleteSetIn, discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
 import { DRAFTS_KEY, DRAFT_DEBOUNCE_MS, createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { EntryRow } from "./EntryRow";
@@ -106,7 +106,7 @@ describe("06.5 AC8 — a restored draft is never overwritten by a re-seed", () =
     const again = renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
     await again.user.click(within(card()).getByRole("button", { name: /80 kg × 8/ }));
-    await again.user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(again.user, await screen.findByRole("dialog"));
     await waitFor(() => expect(within(card()).queryByRole("button", { name: /80 kg × 8/ })).not.toBeInTheDocument());
     expect(field("Reps")).toHaveValue("99");
   });

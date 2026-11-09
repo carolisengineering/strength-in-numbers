@@ -25,7 +25,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
-import { card, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, deleteSetIn, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, fakeClient, makeQueryClient, prepareApp, renderApp, wrapperWith } from "../../test/workoutHarness";
@@ -524,6 +524,17 @@ describe("17.5 AC13 — focus and announcement", () => {
     expect(undoButton()).toHaveAccessibleName("Undo set 2, 47.5 × 6, Bench Press");
     expect(status()).not.toHaveAttribute("role");
     expect(status()).not.toHaveAttribute("aria-live");
+  });
+});
+
+describe("17.5 AC21 — nothing brings it back", () => {
+  it("Delete set offers no Undo, and tracks viaUndo false", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await user.click(within(card("A")).getByRole("button", { name: /47\.5 kg × 6/ }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /^Set 1/ }));
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(0));
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(observability.track).toHaveBeenCalledWith("set_deleted", { modality: "weight_reps", viaUndo: false });
   });
 });
 
