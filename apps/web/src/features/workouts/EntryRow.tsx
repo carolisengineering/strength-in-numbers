@@ -33,7 +33,19 @@ export interface LoggedEvent {
   readonly advance: boolean;
   /** The set went past the plan ("Extra set"). */
   readonly wasExtra: boolean;
+  /** The tapped Log label without "Log " (Spec 17.5 AC1): "47.5 × 6", "1:30". */
+  readonly value: string;
 }
+
+/** Spec 17.5 AC11: an undone set to take back into the draft, once. */
+export interface DraftRestore {
+  readonly token: number;
+  readonly exerciseId: string;
+  readonly set: SetEntry;
+}
+
+const listed = (sets: readonly SetEntry[], set: SetEntry) =>
+  sets.some((row) => row.id === set.id || (set.clientGeneratedId !== null && row.clientGeneratedId === set.clientGeneratedId));
 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
@@ -44,6 +56,9 @@ export interface EntryRowProps {
   onLogged?: (event: LoggedEvent) => void;
   /** Spec 17.1 AC27: in Finish mode the panel stays, with a secondary button for a set past the plan. */
   logExtra?: boolean;
+  /** Spec 17.5 AC11: applied once the set has left the list, unless the draft is edited; `onRestoreDone` fires either way. */
+  restore?: DraftRestore;
+  onRestoreDone?: (token: number) => void;
 }
 
 /**
@@ -53,7 +68,7 @@ export interface EntryRowProps {
  * Each attempt carries one `clientGeneratedId`, kept across failures and re-minted only after a
  * success (§6.5), so a retry after a lost response cannot log the set twice.
  */
-export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra }: EntryRowProps) {
+export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra, restore, onRestoreDone }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
   const defaults = unitDefaultsFor(unitPreference, exercise.modalitySnapshot);
@@ -79,6 +94,13 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
   if (seededFor !== seedKey) {
     setSeededFor(seedKey);
     if (untouched) dispatch({ type: "seed", plannedSets, sets: exercise.sets, defaults });
+  }
+  // Spec 17.5 AC11: after the re-seed above, so this dispatch queues second and wins. The query cache tells observers a
+  // moment after the delete resolves, so a render can hold the old list: the restore waits until the row has left.
+  const [restoredToken, setRestoredToken] = useState<number | null>(null);
+  if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !listed(exercise.sets, restore.set)) {
+    setRestoredToken(restore.token);
+    if (untouched) dispatch({ type: "restore", set: restore.set, defaults });
   }
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
@@ -162,7 +184,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
         drafts.clear();
       }
       setSeededFor(seedKeyOf(count + 1, set)); // this row's own log: the prop will catch up, and must not re-seed
-      onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra }); // last (§6.5)
+      onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra, value: label.replace(/^Log /, "") }); // last (§6.5)
     } catch (error) {
       reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);
@@ -201,6 +223,16 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
     store?.publish({ owner, label, ariaLabel, disabled: !parsed.ok, busy, run });
   }, [store, owner, label, ariaLabel, parsed.ok, busy, run]);
   useEffect(() => () => store?.withdraw(owner), [store, owner]);
+  // Spec 17.5 AC14: a tap on Undo ends this row's own double-tap window, so a Log tap right after it logs.
+  const restoreDone = useRef(onRestoreDone);
+  useLayoutEffect(() => {
+    restoreDone.current = onRestoreDone;
+  });
+  useLayoutEffect(() => {
+    if (restoredToken === null) return;
+    lastLoggedAt.current = Number.NEGATIVE_INFINITY;
+    restoreDone.current?.(restoredToken);
+  }, [restoredToken]);
 
   return (
     <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
