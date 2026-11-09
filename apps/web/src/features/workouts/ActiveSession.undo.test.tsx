@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import type { PlannedSet } from "@sin/core";
 import { focusManager, onlineManager } from "@tanstack/react-query";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
+import type { MouseEvent } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -25,8 +27,11 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 
 import { card, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
-import { createWorkoutFake } from "../../test/workoutFake";
-import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
+import { cleanupApp, fakeClient, makeQueryClient, prepareApp, renderApp, wrapperWith } from "../../test/workoutHarness";
+import { localStorageAdapter } from "../../storage/storage";
+import { REST_KEY, type RestStore } from "./restStore";
+import { useUndoLastLog } from "./useUndoLastLog";
 
 const read = (path: string): string => readFileSync(join(dirname(fileURLToPath(import.meta.url)), path), "utf8");
 const activeSessionCss = read("./ActiveSession.module.css");
@@ -287,5 +292,273 @@ describe("17.5 AC16 — keyboard up", () => {
   it("an empty line takes no room, wrapper included; the 17.4 rules stand", () => {
     expect(ruleFor(activeSessionCss, ':global(:root[data-keyboard="open"]) .statusRow:has(.sessionStatus:empty)')).toContain("display: none");
     expect(ruleFor(activeSessionCss, ':global(:root[data-keyboard="open"]) .sessionStatus:empty')).toContain("display: none");
+  });
+});
+
+const deletes = (fake: Fake) => fake.requests.filter((r) => r.method === "DELETE" && r.path.startsWith("/v1/sets/"));
+const posts = (fake: Fake) => fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"));
+const setsOf = (fake: Fake) => fake.state.active!.exercises[0]!.sets;
+const rows = (name: string, pattern: RegExp) => within(card(name)).queryAllByRole("button", { name: pattern });
+const announced = () => screen.getByTestId("session-announcement");
+const storedRest = () => localStorageAdapter().get(REST_KEY);
+
+async function logThenOffer(user: UserEvent, name = "A") {
+  await user.click(logButton(name));
+  await waitFor(() => expect(undoButton()).toBeInTheDocument());
+}
+
+describe("17.5 AC5, AC7 — Undo is the same delete, online or off", () => {
+  it("offline, an unsent create: canceled, with no request ever sent", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    goOffline(fake);
+    await logThenOffer(user);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(rows("A", /47\.5 kg × 6/)).toHaveLength(1));
+    await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
+    goOnline(fake);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(posts(fake)).toHaveLength(0);
+    expect(deletes(fake)).toHaveLength(0);
+  });
+
+  it("online, a synced set: exactly one DELETE for its server id", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    const serverId = setsOf(fake)[1]!.id;
+    await user.click(undoButton()!);
+    await waitFor(() => expect(deletes(fake)).toHaveLength(1));
+    expect(deletes(fake)[0]!.path).toBe(`/v1/sets/${serverId}`);
+    await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
+    expect(setsOf(fake)).toHaveLength(1);
+  });
+
+  it("offline, a synced set: the row leaves, the line is honest, Finish waits, and it lands once back online", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    await waitFor(() => expect(status().textContent).toBe("Set 2 logged · 47.5 × 6"));
+    goOffline(fake);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(status().textContent).toBe("Undoing set 2… · 1 set not saved yet"));
+    expect(rows("A", /47\.5 kg × 6/)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeDisabled();
+    goOnline(fake);
+    await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
+    expect(setsOf(fake)).toHaveLength(1);
+  });
+
+  it("a create that syncs while the offer is up: Undo sends the server id, and the set is gone", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    goOffline(fake);
+    await logThenOffer(user);
+    goOnline(fake);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    await waitFor(() => expect(status().textContent).toBe("Set 2 logged · 47.5 × 6"));
+    const serverId = setsOf(fake)[1]!.id;
+    await user.click(undoButton()!);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+    expect(deletes(fake)[0]!.path).toBe(`/v1/sets/${serverId}`);
+  });
+});
+
+describe("17.5 AC6 — a failed Undo", () => {
+  it("the row returns with Couldn't save, the line says nothing of its own, and Discard works", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    await waitFor(() => expect(status().textContent).toBe("Set 2 logged · 47.5 × 6"));
+    fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(403, "forbidden"));
+    await user.click(undoButton()!);
+    await waitFor(() => expect(within(card("A")).getAllByText(/Couldn't save/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(rows("A", /47\.5 kg × 6/)).toHaveLength(2));
+    expect(status().textContent).not.toMatch(/undone|Undoing/);
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeDisabled();
+    await user.click(within(card("A")).getByRole("button", { name: /^Discard/ }));
+    await waitFor(() => expect(within(card("A")).queryByText(/Couldn't save/)).not.toBeInTheDocument());
+    expect(status().textContent).not.toMatch(/undone|Undoing/);
+    expect(setsOf(fake)).toHaveLength(2);
+  });
+});
+
+describe("17.5 AC9 — the rest", () => {
+  const rested = (o: Partial<ExerciseSpec> = {}) => ex("A", { restSeconds: 120, plannedSets: planned(3), ...o });
+
+  it("an Undo clears the rest the log started", async () => {
+    const { user } = await setup([rested()]);
+    await logThenOffer(user);
+    expect(storedRest()).not.toBeNull();
+    await user.click(undoButton()!);
+    await waitFor(() => expect(storedRest()).toBeNull());
+  });
+
+  it("clears it with a typed draft too (O2)", async () => {
+    const { user } = await setup([rested()]);
+    await logThenOffer(user);
+    await user.type(within(card("A")).getByLabelText("Reps"), "1");
+    await user.click(undoButton()!);
+    await waitFor(() => expect(storedRest()).toBeNull());
+  });
+
+  it("a log that cleared a rest leaves it cleared: an earlier rest doesn't restart", async () => {
+    const plan: PlannedSet[] = [
+      { setType: "working", repsLow: 5, repsHigh: 5, weight: 100, weightUnit: "kg" },
+      { setType: "warmup", repsLow: 5, repsHigh: 5, weight: 50, weightUnit: "kg" },
+      { setType: "working", repsLow: 5, repsHigh: 5, weight: 100, weightUnit: "kg" },
+    ];
+    const { user } = await setup([rested({ plannedSets: plan })]);
+    await logThenOffer(user);
+    expect(storedRest()).not.toBeNull();
+    await restBetweenSets();
+    await user.click(logButton("A"));
+    await waitFor(() => expect(undoButton()).toHaveAccessibleName(/^Undo set 2,/));
+    expect(storedRest()).toBeNull();
+    await user.click(undoButton()!);
+    await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
+    await waitFor(() => expect(logButton("A")).toHaveTextContent("Log 50 × 5"));
+    expect(storedRest()).toBeNull();
+  });
+
+  it("a different running rest is left alone", async () => {
+    const set = makeSet({ setNumber: 1 });
+    const exercise = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "A", sets: [set] }] }).exercises[0]!;
+    const rest = { get: () => ({ startedAt: 2000, durationS: 60 }), start: vi.fn(), clear: vi.fn(), subscribe: vi.fn() } as unknown as RestStore;
+    const { result } = renderHook(
+      () => useUndoLastLog({ exercises: [exercise], ops: [], idMap: {}, rest, select: vi.fn(), revealPanel: vi.fn(), onFailure: vi.fn(), announce: vi.fn() }),
+      { wrapper: wrapperWith(makeQueryClient(), fakeClient({ deleteSet: () => Promise.resolve() })) },
+    );
+    act(() => result.current.offerFrom({ exerciseId: exercise.id, set, advance: true, wasExtra: false, value: "60 × 8" }, { name: "A", modality: "weight_reps" }, 1000));
+    await waitFor(() => expect(result.current.offer).not.toBeNull());
+    act(() => result.current.undo({ currentTarget: document.createElement("button") } as unknown as MouseEvent<HTMLButtonElement>));
+    await waitFor(() => expect(result.current.undoText).toBe("Set 1 undone"));
+    expect(rest.clear).not.toHaveBeenCalled();
+  });
+});
+
+describe("17.5 AC10 — back to the exercise", () => {
+  it("after an auto-advance in a superset, the logged card is current again, shown without stealing focus", async () => {
+    const { user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(3) }), ex("B", { supersetGroup: 1, plannedSets: planned(3) })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(logButton("B")).toBeInTheDocument());
+    const logTap = bar().querySelector(":scope > button");
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    scroll.mockClear();
+    await user.click(undoButton()!);
+    await waitFor(() => expect(logButton("A")).toBeInTheDocument());
+    await waitFor(() => expect(scroll.mock.contexts as unknown[]).toContain(within(card(/^A,/)).getByRole("form")));
+    for (const [options] of scroll.mock.calls) expect(options).toEqual({ block: "nearest" });
+    expect(logTap).toHaveFocus();
+  });
+});
+
+describe("17.5 AC11 — the values come back", () => {
+  it("a warm-up's weight, reps and type return, and one tap re-logs them as a prefill under a new key", async () => {
+    const warm: PlannedSet[] = [{ setType: "warmup", repsLow: 5, repsHigh: 5, weight: 50, weightUnit: "kg" }, ...planned(2)];
+    const { fake, user } = await setup([ex("A", { plannedSets: warm })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+    const undoneKey = setsOf(fake)[0]!.clientGeneratedId;
+    await user.click(undoButton()!);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(0));
+    await waitFor(() => expect(logButton("A")).toHaveTextContent("Log 50 × 5"));
+    expect(within(card("A")).getByRole("form")).toHaveAttribute("data-set-type", "warmup");
+    observability.track.mockClear();
+    await restBetweenSets();
+    await user.click(logButton("A"));
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+    expect(setsOf(fake)[0]).toMatchObject({ setType: "warmup", weight: 50, reps: 5 });
+    expect(setsOf(fake)[0]!.clientGeneratedId).not.toBe(undoneKey);
+    expect(observability.track).toHaveBeenCalledWith("set_logged", expect.objectContaining({ edited: false }));
+  });
+});
+
+describe("17.5 AC12 — Finish mode", () => {
+  it("Undo of the last planned set returns the bar to Log, focus unchanged, with one primary", async () => {
+    const { user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    const button = logButton("A");
+    await logThenOffer(user);
+    await waitFor(() => expect(button).toHaveTextContent("Finish workout"));
+    await user.click(undoButton()!);
+    await waitFor(() => expect(button).toHaveTextContent(/^Log /));
+    expect(button).toHaveFocus();
+    expect(document.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+  });
+});
+
+describe("17.5 AC13 — focus and announcement", () => {
+  it("a pointer tap leaves focus on Log, and the result is announced", async () => {
+    const { user } = await setup([ex("A", { sets: [firstSet()] })]);
+    const button = logButton("A");
+    await logThenOffer(user);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(announced()).toHaveTextContent(/^Set 2 undone$/));
+    expect(button).toHaveFocus();
+  });
+
+  it("a keyboard activation moves focus to Log, because Undo unmounts", async () => {
+    const { user } = await setup([ex("A", { sets: [firstSet()] })]);
+    const button = logButton("A");
+    await logThenOffer(user);
+    await user.tab({ shift: true });
+    expect(undoButton()).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
+    expect(button).toHaveFocus();
+  });
+
+  it("offline, then online: Undoing set N, then Set N undone", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    await waitFor(() => expect(status().textContent).toBe("Set 2 logged · 47.5 × 6"));
+    goOffline(fake);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(announced()).toHaveTextContent(/^Undoing set 2$/));
+    goOnline(fake);
+    await waitFor(() => expect(announced()).toHaveTextContent(/^Set 2 undone$/));
+  });
+
+  it("names the button in full, and the line isn't a live region", async () => {
+    const { user } = await setup([ex("Bench Press", { sets: [firstSet()] })]);
+    await logThenOffer(user, "Bench Press");
+    expect(undoButton()).toHaveAccessibleName("Undo set 2, 47.5 × 6, Bench Press");
+    expect(status()).not.toHaveAttribute("role");
+    expect(status()).not.toHaveAttribute("aria-live");
+  });
+});
+
+describe("17.5 AC14 — double taps", () => {
+  it("two clicks on the same Undo delete one set", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    const button = undoButton()!;
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+    expect(observability.track.mock.calls.filter(([name]) => name === "set_deleted")).toEqual([["set_deleted", { modality: "weight_reps", viaUndo: true }]]);
+  });
+
+  it("a double tap on Log makes one create and one offer", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await user.dblClick(logButton("A"));
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    expect(posts(fake)).toHaveLength(1);
+    expect(undoButton()).toHaveAccessibleName(/^Undo set 2,/);
+  });
+
+  it("Undo, then Log inside 600 ms, logs", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await logThenOffer(user);
+      await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+      await user.click(undoButton()!);
+      await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+      await user.click(logButton("A"));
+      await waitFor(() => expect(posts(fake)).toHaveLength(2));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
