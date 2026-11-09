@@ -21,7 +21,6 @@ const SIGNAL_ALLOWED = [
   "features/progress/LineChart.module.css",
   "features/exercises/RecordsView.module.css",
   "features/progress/ExerciseProgressBody.module.css",
-  "features/routines/UnitToggle.module.css",
   "features/routines/RoutinesSection.module.css",
   // Issue #98: the shared "‹ Back to …" text link (interactive), as on FinishedWorkoutScreen.
   "ui/BackLink.module.css",

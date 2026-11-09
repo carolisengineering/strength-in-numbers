@@ -132,9 +132,9 @@ describe("10.2 AC16 — Done in plan mode", () => {
   it("with rows loaded in different units, neither segment is pressed until one is picked (D3)", async () => {
     const { onPlanned, user } = setup(item({ plan: [set("a"), set("b", { weightUnit: "lb", weight: 225 })] }));
     const group = screen.getByRole("group", { name: "Weight unit" });
-    expect(within(group).getByRole("button", { name: "kg" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(group).getByRole("radio", { name: "kg" })).not.toBeChecked();
     expect(screen.getByText("Mixed units — pick one to use for all sets")).toBeInTheDocument();
-    await user.click(within(group).getByRole("button", { name: "lb" }));
+    await user.click(within(group).getByRole("radio", { name: "lb" }));
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onPlanned.mock.calls[0]![0].rows.map((r: DraftSet) => [r.weight, r.weightUnit])).toEqual([[100, "lb"], [225, "lb"]]);
   });
@@ -146,7 +146,7 @@ describe("10.2 AC13 — a weight typed into a weightless row takes the unit the 
       item({ plan: [set("a", { weight: null, weightUnit: null }), set("b", { weight: 100, weightUnit: "lb" }), set("c", { weight: 110, weightUnit: "lb" })] }),
       { defaultUnit: "kg" },
     );
-    expect(within(screen.getByRole("group", { name: "Weight unit" })).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("group", { name: "Weight unit" })).getByRole("radio", { name: "lb" })).toBeChecked();
     await user.type(screen.getByLabelText("Set 1 weight"), "45");
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onPlanned.mock.calls[0]![0].rows.map((r: DraftSet) => [r.weight, r.weightUnit])).toEqual([[45, "lb"], [100, "lb"], [110, "lb"]]);

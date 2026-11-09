@@ -54,7 +54,7 @@ describe("10.2 AC10 — the sheet takes the profile's unit", () => {
     prepareApp({ auth, catalog: sheetCatalog, fake, unitPreference: "lb" });
     const { user } = renderApp(editPath);
     const dialog = await open(user, /^Overhead Press/);
-    expect(within(dialog).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByRole("radio", { name: "lb" })).toBeChecked();
   });
   it("shows the stored unit and weight of a routine saved in pounds, whatever the profile says", async () => {
     const fake = createWorkoutFake({ catalog: sheetCatalog, routines: [makeRoutine({ id: routineId(1), name: "Lb", items: [makeRoutineItem({ exerciseId: exerciseId(1), targetSets: 2, targetRepsLow: 5, targetRepsHigh: 5, sets: Array(2).fill({ setType: "working", repsLow: 5, repsHigh: 5, weight: 135, weightUnit: "lb" }) })] })] });
@@ -62,7 +62,7 @@ describe("10.2 AC10 — the sheet takes the profile's unit", () => {
     const { user } = renderApp(editPath);
     const dialog = await open(user, /^Bench Press/);
     expect(within(dialog).getByLabelText("Weight")).toHaveValue("135");
-    expect(within(dialog).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByRole("radio", { name: "lb" })).toBeChecked();
   });
 });
 

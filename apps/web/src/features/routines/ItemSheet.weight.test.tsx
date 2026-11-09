@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Modality, WeightUnit } from "@sin/core";
@@ -20,21 +20,22 @@ function setup(initial = item(), extra: { modality?: Modality | null; defaultUni
   render(<ItemSheet open title="Bench Press" item={initial} onDone={onDone} onPlanned={onPlanned} onClose={onClose} {...extra} />);
   return { onDone, onPlanned, onClose, user: userEvent.setup() };
 }
-const unitButton = (name: "kg" | "lb") => screen.getByRole("button", { name });
+// Spec 17.7 AC6: the unit is a Segmented (radios), where UnitToggle drew pressed buttons.
+const unitButton = (name: "kg" | "lb") => within(screen.getByRole("group", { name: "Weight unit" })).getByRole("radio", { name });
 
 describe("10.2 AC10 — the quick line gains Weight", () => {
   it("shows Weight and a kg / lb toggle beside Sets and Reps; the toggle defaults to the profile unit", () => {
     setup(item(), { modality: "weight_reps", defaultUnit: "lb" });
     expect(screen.getByLabelText("Weight")).toHaveAttribute("inputmode", "decimal");
     expect(screen.getByRole("group", { name: "Weight unit" })).toBeInTheDocument();
-    expect(unitButton("lb")).toHaveAttribute("aria-pressed", "true");
-    expect(unitButton("kg")).toHaveAttribute("aria-pressed", "false");
+    expect(unitButton("lb")).toBeChecked();
+    expect(unitButton("kg")).not.toBeChecked();
   });
 
   it("a stored unit wins over the profile default; the stored weight is shown", () => {
     setup(item({ targetSets: 3, weight: 62.5, weightUnit: "lb" }), { modality: "weight_reps", defaultUnit: "kg" });
     expect(screen.getByLabelText("Weight")).toHaveValue("62.5");
-    expect(unitButton("lb")).toHaveAttribute("aria-pressed", "true");
+    expect(unitButton("lb")).toBeChecked();
   });
 
   it("'4 × 6–8 @ 100 kg' typed on the quick line is committed as quick-mode weight plus the five targets", async () => {

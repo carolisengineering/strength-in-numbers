@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { PLANNED_SETS_PER_ITEM_MAX } from "@sin/core";
+import { chooseSegment, segmentChoice, segmented, segmentOptions } from "../../test/controls";
 import { PlanRowList, SET_TYPE_CHOICES } from "./PlanRowList";
 import { addRow, moveRow, removeRow, setRowField, setUnit, unitOfRows, type PlanRowText } from "./planRows";
 
@@ -37,17 +38,18 @@ describe("10.2 AC13 — plan rows", () => {
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
     for (const n of [1, 2]) {
       const group = within(rowGroup(n));
-      expect(group.getByLabelText(`Set ${n} type`)).toBeInTheDocument();
+      expect(segmented(`Set ${n} type`, group)).toBeInTheDocument();
       expect(group.getByLabelText(`Set ${n} reps`)).toBeInTheDocument();
       expect(group.getByLabelText(`Set ${n} weight`)).toBeInTheDocument();
     }
-    expect(within(rowGroup(1)).getByLabelText("Set 1 type")).toHaveValue("warmup");
+    expect(segmentChoice("Set 1 type", rowGroup(1))).toBe("warmup");
     expect(within(rowGroup(2)).getByLabelText("Set 2 reps")).toHaveValue("8");
   });
 
-  it("the type select offers Warm-up, Working, Drop, Failure", () => {
+  it("17.7 AC6 — Set k type is four radios: Warm-up, Working, Drop, Failure", () => {
     setup(<Harness initial={[row("a")]} />);
-    const options = within(screen.getByLabelText("Set 1 type")).getAllByRole("option").map((o) => o.textContent);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    const options = segmentOptions("Set 1 type");
     expect(options).toEqual(SET_TYPE_CHOICES.map((c) => c.label));
     expect(options).toEqual(["Warm-up", "Working", "Drop", "Failure"]);
   });
@@ -99,30 +101,41 @@ describe("10.2 AC13 — plan rows", () => {
     await user.clear(reps);
     await user.type(reps, "5-8");
     expect(reps).toHaveValue("5-8");
-    await user.selectOptions(screen.getByLabelText("Set 1 type"), "drop");
-    expect(screen.getByLabelText("Set 1 type")).toHaveValue("drop");
+    await chooseSegment(user, "Set 1 type", "Drop");
+    expect(segmentChoice("Set 1 type")).toBe("drop");
   });
 
-  it("one kg / lb toggle above the rows, pressed for the shared unit; choosing relabels every row", async () => {
+  it("17.7 AC6 — one kg / lb strip above the rows, checked for the shared unit; choosing relabels every row", async () => {
     const { user } = setup(<Harness initial={[row("a"), row("b", { weight: "225" })]} />);
-    const group = screen.getByRole("group", { name: "Weight unit" });
-    expect(within(group).getByRole("button", { name: "kg" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "false");
-    await user.click(within(group).getByRole("button", { name: "lb" }));
-    expect(within(group).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "true");
+    const group = segmented("Weight unit");
+    expect(within(group).queryAllByRole("button")).toHaveLength(0);
+    expect(within(group).getByRole("radio", { name: "kg" })).toBeChecked();
+    expect(within(group).getByRole("radio", { name: "lb" })).not.toBeChecked();
+    await user.click(within(group).getByRole("radio", { name: "lb" }));
+    expect(within(group).getByRole("radio", { name: "lb" })).toBeChecked();
     expect(screen.getByLabelText("Set 2 weight")).toHaveValue("225"); // relabeled, never converted
   });
 
-  it("mixed units: neither segment pressed, a line says so, each row shows its own unit as text (D3)", async () => {
+  it("17.7 AC3 — mixed units: neither radio checked, a line says so, each row shows its own unit as text (D3)", async () => {
     const { user } = setup(<Harness initial={[row("a"), row("b", { weightUnit: "lb", weight: "225" })]} />);
-    const group = screen.getByRole("group", { name: "Weight unit" });
-    expect(within(group).getByRole("button", { name: "kg" })).toHaveAttribute("aria-pressed", "false");
-    expect(within(group).getByRole("button", { name: "lb" })).toHaveAttribute("aria-pressed", "false");
+    const group = segmented("Weight unit");
+    expect(within(group).getByRole("radio", { name: "kg" })).not.toBeChecked();
+    expect(within(group).getByRole("radio", { name: "lb" })).not.toBeChecked();
     expect(screen.getByText("Mixed units — pick one to use for all sets")).toBeInTheDocument();
     expect(within(rowGroup(1)).getByText("kg")).toBeInTheDocument();
     expect(within(rowGroup(2)).getByText("lb")).toBeInTheDocument();
-    await user.click(within(group).getByRole("button", { name: "kg" }));
+    await user.click(within(group).getByRole("radio", { name: "kg" }));
     expect(screen.queryByText("Mixed units — pick one to use for all sets")).toBeNull();
+    expect(within(group).getByRole("radio", { name: "kg" })).toBeChecked();
+  });
+
+  it("17.7 AC6 — choosing one row's type leaves the other rows and the unit as they were", async () => {
+    const { user } = setup(<Harness initial={[row("a", { setType: "warmup" }), row("b"), row("c", { setType: "failure" })]} />);
+    await chooseSegment(user, "Set 2 type", "Drop");
+    expect(segmentChoice("Set 1 type")).toBe("warmup");
+    expect(segmentChoice("Set 2 type")).toBe("drop");
+    expect(segmentChoice("Set 3 type")).toBe("failure");
+    expect(segmentChoice("Weight unit")).toBe("kg");
   });
 });
 
@@ -137,7 +150,7 @@ describe("10.2 AC11 — fields gated by what the exercise carries", () => {
     setup(<Harness initial={[row("a")]} showReps={false} showWeight={false} />);
     expect(screen.queryByLabelText("Set 1 reps")).toBeNull();
     expect(screen.queryByLabelText("Set 1 weight")).toBeNull();
-    expect(screen.getByLabelText("Set 1 type")).toBeInTheDocument();
+    expect(segmented("Set 1 type")).toBeInTheDocument();
   });
 });
 
