@@ -20,7 +20,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { card } from "../../../test/sessionHelpers";
+import { card, optionsButton, showOptions } from "../../../test/sessionHelpers";
 import { EDIT_COPY } from "./editCopy";
 
 afterEach(() => {
@@ -43,12 +43,28 @@ const patches = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.fi
 const sheet = () => within(screen.getByRole("dialog", { name: "Note for Bench Press" }));
 
 async function typeNote(user: Awaited<ReturnType<typeof open>>["user"], text: string, button = "Add note for Bench Press") {
+  await showOptions(user, "Bench Press"); // Spec 17.7 AC20: the note button is in Options
   await user.click(screen.getByRole("button", { name: button }));
   const field = sheet().getByLabelText("Note");
   await user.clear(field);
   await user.type(field, text);
   await user.click(sheet().getByRole("button", { name: "Save" }));
 }
+
+// Spec 17.7 AC20: the edit screen's card puts Add / Edit note in Options too; the note's text stays under the title.
+describe("17.7 AC20 — Add note in Options (edit screen)", () => {
+  it("the button appears only with Options open; the note stays under the title; the sheet closes back onto Options", async () => {
+    const { user } = await open("Pause");
+    expect(screen.queryByRole("button", { name: /note for Bench Press$/ })).toBeNull();
+    expect(within(card("Bench Press")).getByText("Pause")).toBeInTheDocument();
+    await user.click(optionsButton("Bench Press"));
+    await user.click(screen.getByRole("button", { name: "Edit note for Bench Press" }));
+    await user.click(sheet().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Note for Bench Press" })).toBeNull());
+    expect(optionsButton("Bench Press")).toHaveAttribute("aria-expanded", "true");
+    expect(within(card("Bench Press")).getByText("Pause")).toBeInTheDocument();
+  });
+});
 
 describe("18.0 AC12 — exercise notes wait for the server", () => {
   it("Save is busy while the PATCH is held; the body is exactly { notes }; it closes on 200 and the card shows the note", async () => {
@@ -70,6 +86,7 @@ describe("18.0 AC12 — exercise notes wait for the server", () => {
 
   it("an unchanged note closes with no request", async () => {
     const { fake, user } = await open("Pause");
+    await showOptions(user, "Bench Press");
     await user.click(screen.getByRole("button", { name: "Edit note for Bench Press" }));
     await user.click(sheet().getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Note for Bench Press" })).toBeNull());

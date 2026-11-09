@@ -84,8 +84,14 @@ export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promi
 /** Spec 18.0 AC34 / AC40: the header's Change Time button (live row 2, or the edit header). */
 export const changeTimeButton = (): HTMLElement => screen.getByRole("button", { name: "Change Time" });
 
-/** Spec 17.7 AC19: the superset toggles live in the current card's Options; open them if they are closed. */
-export async function showLinks(user: UserEvent): Promise<void> {
-  const options = screen.getByRole("button", { name: /^Options for / });
+/**
+ * Spec 17.7 AC19, AC20: the superset toggles and Add / Edit note live in a card's Options; open it if it is closed.
+ * With no `name`, the live screen's current card (the only one with Options); the edit screen passes the card's name.
+ */
+export async function showOptions(user: UserEvent, name?: string | RegExp): Promise<void> {
+  const options = name === undefined ? screen.getByRole("button", { name: /^Options for / }) : optionsButton(name);
   if (options.getAttribute("aria-expanded") !== "true") await user.click(options);
 }
+
+/** Spec 17.7 AC19: the superset toggles are in the current card's Options. */
+export const showLinks = (user: UserEvent): Promise<void> => showOptions(user);

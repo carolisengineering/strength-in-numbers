@@ -54,10 +54,37 @@ const FIELDS: Partial<Record<Modality, { shown: string[]; hidden: string[]; unit
   distance_duration: { shown: ["Distance", "Minutes", "Seconds"], hidden: ["Weight", "Added weight", "Reps"], units: ["Distance unit"] },
 };
 
+/** The edit screen of a finished workout holding `exercises` (Spec 18.0): every card is full there. */
+async function setupEdit(exercises: ExerciseSpec[]) {
+  const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises });
+  const fake = createWorkoutFake({ finished: [workout] });
+  prepareApp({ auth, fake });
+  const app = renderApp(`/app/history/${workout.id}/edit`);
+  await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+  return { fake, ...app };
+}
+
+// Spec 17.7 AC21 moves the type line off the live card; the edit screen keeps it, so 18.1 AC2 is checked there.
 describe("18.1 AC2 — the card's type line", () => {
-  it("a weight_distance exercise reads Weight + distance", async () => {
-    await setup([{ modality: "weight_distance", name: "Farmer Carry" }]);
+  it("a weight_distance exercise reads Weight + distance (edit screen)", async () => {
+    await setupEdit([{ modality: "weight_distance", name: "Farmer Carry" }]);
     expect(within(card("Farmer Carry")).getByText("Weight + distance")).toBeInTheDocument();
+  });
+});
+
+// Spec 17.7 AC21 (D7): the panel's fields already say what is logged, so the live card drops its type line.
+describe("17.7 AC21 — no type line while logging", () => {
+  it("a live current card has no 'Weight × reps'; a collapsed row reads as before", async () => {
+    await setup([{ modality: "weight_reps", name: "A" }, { modality: "weight_distance", name: "B" }]);
+    expect(within(card("A")).queryByText("Weight × reps")).toBeNull();
+    expect(card("A").querySelector("[class*='modality']")).toBeNull();
+    expect(within(card("B")).getByRole("button", { name: "B, no sets yet" })).toHaveTextContent(/^B · no sets yet$/);
+    expect(within(card("B")).queryByText("Weight + distance")).toBeNull();
+  });
+
+  it("the edit screen's card keeps it", async () => {
+    await setupEdit([{ modality: "weight_reps", name: "A", sets: [makeSet({ setNumber: 1 })] }]);
+    expect(within(card("A")).getByText("Weight × reps")).toBeInTheDocument();
   });
 });
 
@@ -390,7 +417,7 @@ describe("10.1 AC16 — an exercise with no targets or notes renders exactly tod
     card.querySelectorAll("[data-note-action]").forEach((node) => node.remove());
     // Spec 17.1 AC9: re-recorded for the collapsed rows.
     // Spec 17.1 AC18–AC23: re-recorded for the stepper panel.
-    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID" tabindex="-1">Plain</h2><p class="_modality_19586c">Weight × reps</p></div><button aria-label="Options for Plain" aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" data-set-type="working" novalidate="" aria-label="Log a set of Plain"><div class="_labelRow_63cf20"><p class="_setNumber_63cf20">Set 1</p></div><div class="_fields_affedb"><div class="_measures_affedb _entryMeasures_affedb"><div role="group" aria-label="Weight · kg" class="_stepper_f37d01"><button aria-label="Decrease weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_f37d01" inputmode="decimal" autocomplete="off" type="text" value=""></div><span class="_unit_f37d01" aria-hidden="true">kg</span></div><button aria-label="Increase weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div><div role="group" class="_stepper_f37d01"><button aria-label="Decrease reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_f37d01" inputmode="numeric" autocomplete="off" type="text" value=""></div><span class="_unit_f37d01" aria-hidden="true">&nbsp;</span></div><button aria-label="Increase reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div></div><div class="_panelActions_affedb"><button aria-pressed="false" aria-label="Warm-up for Plain" type="button" class="_button_241daf _secondary_241daf _toggle_7dc154">Warm-up</button><button aria-expanded="false" aria-label="More set options for Plain" type="button" class="_button_241daf _secondary_241daf">More</button></div></div><p class="_visuallyHidden_63cf20" role="status"></p></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
+    expect(normalizeIds(card.outerHTML)).toMatchInlineSnapshot(`"<article class="_card_19586c" aria-labelledby="ID"><header class="_header_19586c"><div class="_titles_19586c"><h2 class="_name_19586c" id="ID" tabindex="-1">Plain</h2></div><button aria-label="Options for Plain" aria-expanded="false" type="button" class="_button_241daf _secondary_241daf">Options</button></header><form class="ID63cf20" data-set-type="working" novalidate="" aria-label="Log a set of Plain"><div class="_labelRow_63cf20"><p class="_setNumber_63cf20">Set 1</p></div><div class="_fields_affedb"><div class="_measures_affedb _entryMeasures_affedb"><div role="group" aria-label="Weight · kg" class="_stepper_f37d01"><button aria-label="Decrease weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-weight">Weight</label><input id="ID-weight" class="_input_f37d01" inputmode="decimal" autocomplete="off" type="text" value=""></div><span class="_unit_f37d01" aria-hidden="true">kg</span></div><button aria-label="Increase weight by 2.5 kg" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div><div role="group" class="_stepper_f37d01"><button aria-label="Decrease reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01" disabled=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M5 12h14"></path></svg></button><div class="_figure_f37d01"><div class="_field_2e6e38"><label class="_label_2e6e38" for="ID-reps">Reps</label><input id="ID-reps" class="_input_f37d01" inputmode="numeric" autocomplete="off" type="text" value=""></div><span class="_unit_f37d01" aria-hidden="true">&nbsp;</span></div><button aria-label="Increase reps" type="button" class="_button_241daf _secondary_241daf _step_f37d01"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="_icon_f3321b"><path d="M12 5v14M5 12h14"></path></svg></button></div></div><div class="_panelActions_affedb"><button aria-pressed="false" aria-label="Warm-up for Plain" type="button" class="_button_241daf _secondary_241daf _toggle_7dc154">Warm-up</button><button aria-expanded="false" aria-label="More set options for Plain" type="button" class="_button_241daf _secondary_241daf">More</button></div></div><p class="_visuallyHidden_63cf20" role="status"></p></form><dialog class="_sheet_6c9a5c" aria-labelledby="ID"></dialog></article>"`);
   });
 });
 

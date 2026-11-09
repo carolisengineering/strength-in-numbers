@@ -20,7 +20,7 @@ import { onlineManager } from "@tanstack/react-query";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { makeCurrent, showLinks } from "../../test/sessionHelpers";
+import { makeCurrent, optionsButton, showLinks, showOptions } from "../../test/sessionHelpers";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -58,15 +58,20 @@ async function setupNotes(notes: string | null = "Pause every rep") {
   await screen.findByRole("heading", { name: "Workout" });
   return { fake, ...app };
 }
+/** Spec 17.7 AC20: Add / Edit note is in the current card's Options. */
 const openSheet = async (user: Awaited<ReturnType<typeof setupNotes>>["user"], label: string) => {
+  await showOptions(user);
   await user.click(screen.getByRole("button", { name: label }));
   return within(await screen.findByRole("dialog", { name: /^Note for/ }));
 };
+/** The header's note sync row (Spec 17.7 AC20: drawn only while the note is pending or failed). */
+const syncRow = () => screen.getByRole("article", { name: "X" }).querySelector("header [data-note-action]");
 
 describe("10.3 AC27 — the Note action and sheet", () => {
   it("every active card has one: 'Add note' when empty, 'Edit note' otherwise; the sheet is prefilled with a live count", async () => {
     const { user } = await setupNotes();
     await makeCurrent(user, "Y"); // Spec 17.1 AC9: only the current card mounts its Note action
+    await showOptions(user); // Spec 17.7 AC20
     expect(screen.getByRole("button", { name: "Add note for Y" })).toHaveTextContent("Add note");
     await makeCurrent(user, "X");
     const sheet = await openSheet(user, "Edit note for X");
@@ -174,6 +179,62 @@ describe("10.3 AC28 — delivery", () => {
     await user.click(screen.getByRole("button", { name: "Superset X with Y" }));
     await waitFor(() => expect(bodiesOf(fake).length).toBeGreaterThan(0));
     for (const body of bodiesOf(fake)) expect(Object.keys(body as object).every((k) => k === "position" || k === "supersetGroup")).toBe(true);
+  });
+});
+
+// Spec 17.7 AC20 (D6): Add / Edit note moves into Options; the note's text and its sync state stay in the header.
+describe("17.7 AC20 — Add note in Options (live)", () => {
+  it("with Options closed: no note button, the note's text under the title, no sync row; opening Options shows the button", async () => {
+    const { user } = await setupNotes();
+    expect(screen.queryByRole("button", { name: /note for X$/ })).toBeNull();
+    expect(cardX().getByText("Pause every rep")).toBeInTheDocument();
+    expect(syncRow()).toBeNull();
+    await showOptions(user);
+    expect(screen.getByRole("button", { name: "Edit note for X" })).toBeInTheDocument();
+    expect(cardX().getByText("Pause every rep")).toBeInTheDocument();
+  });
+
+  it("the sheet closes back onto an open Options", async () => {
+    const { user } = await setupNotes();
+    const sheet = await openSheet(user, "Edit note for X");
+    await user.click(sheet.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: /^Note for/ })).toBeNull();
+    expect(optionsButton("X")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Edit note for X" })).toBeInTheDocument();
+  });
+
+  it("a pending note shows 'Not saved yet' in the header with Options closed", async () => {
+    const { user, fake } = await setupNotes();
+    goOffline(fake);
+    const sheet = await openSheet(user, "Edit note for X");
+    await user.type(sheet.getByLabelText("Note"), "!");
+    await user.click(sheet.getByRole("button", { name: "Save" }));
+    await user.click(optionsButton("X"));
+    expect(optionsButton("X")).toHaveAttribute("aria-expanded", "false");
+    expect(syncRow()).toHaveTextContent("Not saved yet");
+    goOnline(fake);
+    await waitFor(() => expect(syncRow()).toBeNull());
+  });
+
+  it("a failed note, the first failure, Options closed: Show scrolls to the header's sync row and Discard works (Review Focus 5)", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    const { user, fake } = await setupNotes();
+    fake.failNext({ method: "PATCH", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
+    const sheet = await openSheet(user, "Edit note for X");
+    await user.clear(sheet.getByLabelText("Note"));
+    await user.type(sheet.getByLabelText("Note"), "Will fail");
+    await user.click(sheet.getByRole("button", { name: "Save" }));
+    await screen.findByText("1 note couldn't be saved");
+    await user.click(optionsButton("X"));
+    expect(syncRow()).toHaveTextContent("Couldn't save");
+    scroll.mockClear();
+    await user.click(within(screen.getByTestId("sync-status")).getByRole("button", { name: "Show" }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(syncRow());
+    await user.click(cardX().getByRole("button", { name: "Discard note for X" }));
+    await waitFor(() => expect(cardX().getByText("Pause every rep")).toBeInTheDocument());
+    expect(syncRow()).toBeNull();
   });
 });
 

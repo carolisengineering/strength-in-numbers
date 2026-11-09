@@ -40,7 +40,7 @@ vi.mock("./useWorkoutMutations", async (importOriginal) => {
   };
 });
 
-import { card, deleteSetIn, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
+import { card, deleteSetIn, logButton, makeCurrent, restBetweenSets, showOptions } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -195,6 +195,7 @@ describe("17.4 AC11 — one line, not a stack", () => {
     fake.setOffline(true);
     await user.click(logButton("A"));
     await waitFor(() => expect(status()).toHaveTextContent(/^1 set not saved yet$/));
+    await showOptions(user, "A"); // Spec 17.7 AC20: Add note is in Options
     await user.click(within(card("A")).getByRole("button", { name: /^Add note/ }));
     const sheet = within(await screen.findByRole("dialog"));
     await user.type(sheet.getByLabelText("Note"), "Felt good");

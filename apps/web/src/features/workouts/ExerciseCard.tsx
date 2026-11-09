@@ -150,29 +150,26 @@ export function ExerciseCard({
           <h2 className={styles.name} id={headingId} ref={headingRef} tabIndex={-1}>
             {exercise.exerciseNameSnapshot}
           </h2>
-          <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
+          {/* Spec 17.7 AC21 (D7): while logging, the panel's fields say what is logged; the edit screen keeps the line. */}
+          {live ? null : <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>}
           {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
           {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
-          {/* Spec 18.0 AC12: the note button stays in edit mode; its sheet waits for the server (no sync tags there). */}
-          <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
-            <Button
-              variant="secondary"
-              aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
-              onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
-            >
-              {hasNote ? "Edit note" : "Add note"}
-            </Button>
-            {/* Text, not color alone, marks the state (as for set rows). */}
-            {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
-            {noteSync?.state === "failed" ? (
-              <>
-                <span className={styles.failedTag}>Couldn't save</span>
-                <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
-                  Discard
-                </Button>
-              </>
-            ) : null}
-          </div>
+          {/* Spec 17.7 AC20: the note's sync state stays in the header, drawn only while it is pending or failed (the
+              edit screen's sheet waits for the server, so it never has one). The status line's Show scrolls here. */}
+          {noteSync ? (
+            <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
+              {/* Text, not color alone, marks the state (as for set rows). */}
+              {noteSync.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+              {noteSync.state === "failed" ? (
+                <>
+                  <span className={styles.failedTag}>Couldn't save</span>
+                  <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
+                    Discard
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
         <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
@@ -192,6 +189,16 @@ export function ExerciseCard({
           {isLast && moveReasons.down ? <p id={`${reasonId}-down`} className={styles.reason}>{moveReasons.down}</p> : null}
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
+          </Button>
+          {/* Spec 17.7 AC20 (§5 order). Spec 18.0 AC12: on the edit screen its sheet waits for the server. Opening the
+              sheet still ends the Undo offer through `onSheetOpen` (Spec 17.5 AC8). */}
+          <Button
+            variant="secondary"
+            data-note-action=""
+            aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
+            onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
+          >
+            {hasNote ? "Edit note" : "Add note"}
           </Button>
           {/* Spec 17.7 AC19: names stay "Superset {upper} with {lower}", whichever side the card is on. */}
           {linkAbove ? (

@@ -426,8 +426,8 @@ describe("10.3 AC37 — accessibility (component level): session", () => {
 
   it("controls name their target ('Edit note for Bench press'); a disabled Move says why in text, not a tooltip", async () => {
     const { user } = await sessionWithSections();
-    expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // present only once Tasks 10-12 exist
     await user.click(optionsButton("Bench press, superset 1"));
+    expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // Spec 17.7 AC20: in Options
     const up = within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Move up" });
     expect(up).toBeDisabled();
     expect(up).toHaveAccessibleDescription("First exercise in this section");
@@ -923,6 +923,45 @@ describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
     await waitFor(() => expect(screen.getByTestId("session-announcement")).toHaveTextContent("Timer saved"));
     expect(screen.getByTestId("session-announcement")).toHaveAttribute("role", "status");
     expect(screen.queryAllByRole("alert").filter((a) => /Timer saved/.test(a.textContent ?? ""))).toEqual([]);
+  });
+});
+
+// Spec 17.7 AC23: the decluttered card is axe-clean with its Options (Move, Remove, Add note, both Superset
+// toggles) and its panel's More open, in both themes.
+describe("17.7 AC23 — the live card with Options and More open, axe", () => {
+  afterEach(() => document.documentElement.removeAttribute("data-theme"));
+  async function live() {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        exercises: [
+          { modality: "weight_reps", name: "A", supersetGroup: 1 },
+          { modality: "weight_reps", name: "B", supersetGroup: 1, notes: "Pause" },
+          { modality: "weight_reps", name: "C" },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    await makeCurrent(app.user, /^B,/);
+    return app;
+  }
+
+  it.each(["light", "dark"])("Options open (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { user } = await live();
+    await user.click(optionsButton(/^B,/));
+    expect(screen.getByRole("button", { name: "Edit note for B" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Superset A with B" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Superset B with C" })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
+
+  it.each(["light", "dark"])("More open (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { user } = await live();
+    await openSetOptions(user, screen.getByRole("article", { name: /^B,/ }));
+    await expectNoAxeViolations(document.body);
   });
 });
 
