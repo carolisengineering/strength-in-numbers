@@ -258,6 +258,7 @@ Quiet, firm and thumb-sized.
 ### Chips and segmented controls
 - **Style:** unselected options look like secondary buttons (Raised Stone, Control Boundary).
 - **State:** selected fills with `--color-selected` and `--color-on-selected` text, together with `aria-pressed` or a checked radio. The Light / Dark / System theme switch is a segmented strip: three equal options inside one bordered 10px strip, divided by Control Boundary lines, with native radios kept in the accessibility tree.
+- **Segmented** (`ui/Segmented`, Spec 17.7): the theme strip made shared, for 2–4 fixed choices compared at a glance (units, set type, timer format, Profile units). A fieldset and its legend, one native radio per option; arrow keys move and choose, Tab enters once. Equal columns no narrower than `--segment-min-width` (5rem, so "Warm-up" keeps one line); four options sit four across or 2 × 2, never 3 + 1, so the 390 px panel shows set type 2 × 2 and the sheets show it four across. `value={null}` checks nothing (a plan's mixed units). A disabled option is muted; a checked one in a locked strip keeps a Teal Wash fill so the choice still shows.
 
 ### Cards / Containers
 - **Corner Style:** 10px.
@@ -270,6 +271,7 @@ Quiet, firm and thumb-sized.
 - **Style:** Stone Panel fill, 1px Control Boundary, 6px radius, at least 44px tall, 0.5rem by 0.75rem padding. A Label-style muted label sits above with a 0.25rem gap; hints are muted 0.875rem.
 - **Focus:** the global Focus Teal outline; the caret and native accents are teal too.
 - **Error:** the boundary turns Quiet Brick (`aria-invalid`) and a brick 0.875rem message follows.
+- **Select** (`ui/Select`, Spec 17.7): a long or data-driven list (muscle, equipment, section, time zone, the picker's filters, Hevy type) keeps the native menu, drawn like an input: the same 6px radius, 44px height and Control Boundary, a drawn chevron on the right in ink, no `data:` image. The picker's filters are inline Selects, so 6px, not the 10px of buttons: a select is a field, and fields are 6px.
 
 ### Navigation
 - **Style:** a bottom bar of equal columns on Stone Panel with a Hairline on top, clearing the iOS home indicator. Each target is an icon over a Label (0.875rem), at least 44px.

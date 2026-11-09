@@ -134,3 +134,12 @@ describe("18.0 AC45 — Change Time styles", () => {
     expect(found.filter((s) => /--color-pr\b|--color-pr-|--color-signal/.test(s.css)).map((s) => s.path)).toEqual([]);
   });
 });
+
+describe("17.7 AC11 — Segmented's checked fill is an allowed selection", () => {
+  it("allows ui/Segmented.module.css, and no longer the Theme or UnitToggle sheets it replaced", () => {
+    expect(SIGNAL_ALLOWED).toContain("ui/Segmented.module.css");
+    expect(SIGNAL_ALLOWED).not.toContain("features/me/ThemeSetting.module.css");
+    expect(SIGNAL_ALLOWED).not.toContain("features/routines/UnitToggle.module.css");
+    expect(sheets.find((s) => s.path === "ui/Segmented.module.css")?.css).toMatch(/--color-selected\b/);
+  });
+});

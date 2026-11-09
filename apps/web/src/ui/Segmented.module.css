@@ -42,7 +42,8 @@
   justify-content: center;
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
-  padding-inline: var(--space-2);
+  /* --space-1, not more: an option's text must fit on one line at --segment-min-width (the harness checks it). */
+  padding-inline: var(--space-1);
   box-shadow: 0 0 0 1px var(--color-border);
   background: var(--color-surface-raised);
   color: var(--color-text);
