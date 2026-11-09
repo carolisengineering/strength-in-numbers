@@ -1,0 +1,103 @@
+/* Spec 17.7 AC1: ThemeSetting's strip, made shared (the checked option is a selection, so it may use the selected tokens). */
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-label);
+}
+
+/*
+ * Equal columns that wrap below --segment-min-width rather than clip (AC2). Each option draws its own dividers (a 1px
+ * ring into the 1px gap), so a wrapped row's empty cell shows no fill; the strip's border draws the rounded outside.
+ */
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--segment-min-width)), 1fr));
+  gap: 1px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Four options are 4 across or 2 × 2, never 3 + 1: below the strip minimum the track floor is half the width. */
+.four {
+  grid-template-columns: repeat(auto-fit, minmax(max(var(--segment-min-width), min(calc(50% - 1px), calc((var(--segment-strip-min) - 100%) * 999))), 1fr));
+}
+
+.option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-target-min);
+  min-width: var(--tap-target-min);
+  padding-inline: var(--space-2);
+  box-shadow: 0 0 0 1px var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* The radio stays in the accessibility tree and takes focus; the whole option is its visible target. Two classes, so
+   Field's `.field :where(input)` rule never restyles a strip nested in a Field. */
+.option .radio {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.option:has(.radio:checked) {
+  background: var(--color-selected);
+  color: var(--color-on-selected);
+}
+
+.option:has(.radio:disabled) {
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+/* A locked choice still shows which option holds, in a quieter fill than an active one. */
+.option:has(.radio:checked:disabled) {
+  background: var(--color-signal-soft);
+  color: var(--color-text);
+}
+
+.option .radio:disabled {
+  cursor: not-allowed;
+}
+
+.option:has(.radio:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: calc(-1 * var(--focus-ring-width) * 2);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}

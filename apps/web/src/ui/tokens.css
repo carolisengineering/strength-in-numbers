@@ -77,6 +77,12 @@
   /* one-handed use: every interactive target is at least this big (AC2) */
   --tap-target-min: 44px;
 
+  /* Spec 17.7 AC2: a Segmented option's narrowest column before the strip wraps (4.5rem, not the spec's 5rem: four
+     5rem options need 320 px and the panel at 390 px is 294 px), and the width four options need side by side
+     (the 3 px is the strip's three 1px dividers). */
+  --segment-min-width: 4.5rem;
+  --segment-strip-min: calc(4 * var(--segment-min-width) + 3px);
+
   /* focus ring */
   --focus-ring-width: 2px;
 

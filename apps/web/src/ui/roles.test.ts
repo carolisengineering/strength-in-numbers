@@ -37,7 +37,8 @@ const SIGNAL_ALLOWED = [
   "features/workouts/RestLine.module.css",
   // Spec 17.1 D12: the current-set panel (signal-soft ground, teal set label) is the "do this next" surface.
   "features/workouts/EntryRow.module.css",
-  "features/me/ThemeSetting.module.css",
+  // Spec 17.7 AC11: the checked option is a selection, as Theme was (Theme now draws through it).
+  "ui/Segmented.module.css",
   // #108: the checked "Keep screen on during workouts" box is a selection, like Theme beside it.
   "features/me/KeepAwakeSetting.module.css",
   // Spec 20.2 AC23: the checked auto-push box is a selection, like Keep screen on.
