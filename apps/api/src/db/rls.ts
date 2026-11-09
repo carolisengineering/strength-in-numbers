@@ -22,11 +22,17 @@ export async function rlsStatus(client: RlsCatalogClient): Promise<RlsTableStatu
   return RLS_TABLES.map((table) => ({ table, enabled: on.get(table) === true }));
 }
 
+/** Spec 21.1 AC39 — the database a `db:rls` run is about to act on, for its first line of output. */
+export async function rlsTarget(client: RlsCatalogClient): Promise<{ database: string; login: string }> {
+  const rows = await client.$queryRaw<{ database: string; login: string }[]>`SELECT current_database() AS database, current_user AS login`;
+  return rows[0]!;
+}
+
 /**
  * Spec 21.1 D12 — the kill switch: every table or none, in one transaction, on the owner login. A command rather than a
  * migration, so it is instant and reversible, and `migrate deploy` never sees it. The locks are taken up front in the
- * API's write order with a 5 s timeout (as in `0021`), so a busy table fails the command cleanly instead of hanging an
- * incident; run it again. No `FORCE` in either direction (D6).
+ * API's write order with a 5 s timeout per lock (as in `0021`), so busy tables fail the command, by about 20 s at worst,
+ * instead of hanging an incident; nothing changes, and it can be run again. No `FORCE` in either direction (D6).
  */
 export async function setRls(owner: PrismaClient, on: boolean): Promise<void> {
   const action = on ? "ENABLE" : "DISABLE";
@@ -45,18 +51,28 @@ export async function setRls(owner: PrismaClient, on: boolean): Promise<void> {
 /**
  * Spec 21.1 Review Focus 4 — the boot check does not care whether RLS is on (D5), and `migrate deploy` will not run `0021`
  * again, so a kill switch left off after an incident would otherwise be silent. A failed read costs only the warning: the
- * API must still start. The error is not logged, because a connection error's message names the host.
+ * API must still start, so a read that stalls gives up after `timeoutMs`. The error is not logged, because a connection
+ * error's message names the host.
  */
 export async function warnIfRlsDisabled(
   client: RlsCatalogClient,
   logger: { warn(data: object, msg: string): void },
+  timeoutMs = 2_000,
 ): Promise<void> {
   let status: RlsTableStatus[];
+  let timer: NodeJS.Timeout | undefined;
   try {
-    status = await rlsStatus(client);
+    status = await Promise.race([
+      rlsStatus(client),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timed out")), timeoutMs);
+      }),
+    ]);
   } catch {
     logger.warn({}, "rls_status_unavailable");
     return;
+  } finally {
+    clearTimeout(timer);
   }
   const tables = status.filter((s) => !s.enabled).map((s) => s.table);
   if (tables.length > 0) logger.warn({ tables }, "rls_disabled");

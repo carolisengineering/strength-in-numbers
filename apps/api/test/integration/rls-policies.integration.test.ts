@@ -10,10 +10,13 @@ import { createScopedDb } from "../../src/db/scoped.js";
 import { NotFoundError } from "../../src/errors/app-error.js";
 import { rawSqlState } from "../../src/repositories/pg-errors.js";
 import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
+import { HevyIdInUseError } from "../../src/errors/app-error.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
-import { importWorkoutFixture, seedPairs } from "./hevy-import-helpers.js";
+import { importWorkoutFixture, insertLink, seedPairs } from "./hevy-import-helpers.js";
+import { logWorkout } from "./records-helpers.js";
 import { seedEveryTable, type SeededUser } from "./rls-seed.js";
 
 describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC35 — the risky paths as sin_app (real Postgres)", () => {
@@ -229,6 +232,127 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC35 — the risky paths as 
       const routines = await repos.routineRepository.list(missing);
       expect(routines.routines).toEqual([]);
       expect(await repos.userRepository.findByAuthSub(`auth0|${missing}`)).toBeNull();
+    });
+  });
+
+  describe("AC35 — a unique violation keeps its meaning under RLS, where Postgres omits the Key (...) DETAIL", () => {
+    const post = (server: FastifyInstance, token: string, url: string, payload: object) =>
+      server.inject({ method: "POST", url, headers: bearer(token), payload });
+    const startBody = (over: object = {}) => ({ clientGeneratedId: uuidv7(), startedAt: new Date(Date.now() - 60_000).toISOString(), ...over });
+    const routineBody = (name: string) => ({ name, items: [{ exerciseId: globalExercise, targetSets: 3 }] });
+
+    it("the DETAIL really is gone for sin_app with RLS on, which is why no code may read it", async () => {
+      const taken = uuidv7();
+      await db.prisma.$executeRaw`INSERT INTO "routine" (id, user_id, name) VALUES (${taken}::uuid, ${a.userId}::uuid, 'Detail probe')`;
+      let meta: { code?: string; message?: string } | undefined;
+      await asUser(a.userId, (tx) => tx.$executeRaw`INSERT INTO "routine" (id, user_id, name) VALUES (${uuidv7()}::uuid, ${a.userId}::uuid, 'Detail probe')`).catch((err: { meta?: typeof meta }) => {
+        meta = err.meta;
+      });
+      expect(meta?.code).toBe("23505");
+      expect(meta?.message).not.toContain("Key (");
+    });
+
+    it("a second POST /v1/workouts is 409 workout-in-progress-exists, and a replay of the first is still 200", async () => {
+      const token = `second-${uuidv7()}`;
+      const server = await makeApp();
+      const first = startBody();
+      expect((await post(server, token, "/v1/workouts", first)).statusCode).toBe(201);
+      const second = await post(server, token, "/v1/workouts", startBody());
+      expect(second.statusCode, second.body).toBe(409);
+      expect(second.json().type).toMatch(/workout-in-progress-exists$/);
+      expect((await post(server, token, "/v1/workouts", first)).statusCode).toBe(200);
+    });
+
+    it("starting from a routine during a live workout is 409 workout-in-progress-exists", async () => {
+      const token = `from-routine-${uuidv7()}`;
+      const server = await makeApp();
+      const routine = await post(server, token, "/v1/routines", routineBody("Start me"));
+      expect(routine.statusCode, routine.body).toBe(201);
+      expect((await post(server, token, "/v1/workouts", startBody())).statusCode).toBe(201);
+      const res = await post(server, token, "/v1/workouts", startBody({ routineId: routine.json().id }));
+      expect(res.statusCode, res.body).toBe(409);
+      expect(res.json().type).toMatch(/workout-in-progress-exists$/);
+    });
+
+    it("a duplicate routine name is 409 routine-name-taken, on POST (any case) and on a PUT rename", async () => {
+      const token = `names-${uuidv7()}`;
+      const server = await makeApp();
+      expect((await post(server, token, "/v1/routines", routineBody("Push A"))).statusCode).toBe(201);
+      const duplicate = await post(server, token, "/v1/routines", routineBody("PUSH a"));
+      expect(duplicate.statusCode, duplicate.body).toBe(409);
+      expect(duplicate.json().type).toMatch(/routine-name-taken$/);
+
+      const other = await post(server, token, "/v1/routines", routineBody("Pull B"));
+      const rename = await server.inject({ method: "PUT", url: `/v1/routines/${other.json().id}`, headers: bearer(token), payload: routineBody("Push A") });
+      expect(rename.statusCode, rename.body).toBe(409);
+      expect(rename.json().type).toMatch(/routine-name-taken$/);
+    });
+
+    it("two users may each use one routine name: the index is per user, and the other's row stays invisible", async () => {
+      const server = await makeApp();
+      expect((await post(server, `shared-a-${uuidv7()}`, "/v1/routines", routineBody("Same name"))).statusCode).toBe(201);
+      expect((await post(server, `shared-b-${uuidv7()}`, "/v1/routines", routineBody("Same name"))).statusCode).toBe(201);
+    });
+
+    describe("the Hevy import's match insert", () => {
+      const START = "2026-09-10T10:00:00Z";
+      const seedCandidate = async () => {
+        const user = await insertUser(db);
+        await seedPairs(db, user, [{ hevyTemplateId: "T-BENCH", exerciseId: globalExercise }]);
+        const { workoutId } = await logWorkout(db, user, { startedAt: new Date(START), exercises: [{ exerciseId: globalExercise, sets: [{ reps: 5, weight: 60 }] }] });
+        await db.prisma.$executeRaw`UPDATE "workout" SET title = 'Push day' WHERE id = ${workoutId}::uuid`;
+        return { user, workoutId };
+      };
+      const importOne = (user: string, hevyWorkoutId: string, atMatch: () => Promise<unknown>) =>
+        createHevyImportRepository(createScopedDb(db.app), {
+          onWriteStep: async (step) => {
+            if (step === "match") await atMatch();
+          },
+        }).importBatch(user, { dryRun: false, workouts: [importWorkoutFixture({ hevyWorkoutId })] }, new Date("2026-10-01T00:00:00Z"));
+
+      it("a Send that links the candidate first drops the match and creates the workout, so nothing is lost", async () => {
+        const { user, workoutId } = await seedCandidate();
+        const out = await importOne(user, "H-SEND", () => insertLink(db, { userId: user, workoutId, hevyWorkoutId: null, origin: "sent" }));
+        expect(out.results[0]!.outcome).toBe("create");
+        expect(out.results[0]!.workoutId).not.toBeNull();
+      });
+
+      it("the Hevy id linked first answers already_imported", async () => {
+        const { user } = await seedCandidate();
+        const { workoutId: other } = await logWorkout(db, user, { startedAt: new Date("2026-09-01T10:00:00Z"), exercises: [{ exerciseId: globalExercise, sets: [{ reps: 5, weight: 60 }] }] });
+        const out = await importOne(user, "H-FIRST", () => insertLink(db, { userId: user, workoutId: other, hevyWorkoutId: "H-FIRST", origin: "imported" }));
+        expect(out.results[0]!.outcome).toBe("already_imported");
+      });
+    });
+
+    it("a racing Hevy link complete that took the same id first is hevy-id-in-use, not a 500", async () => {
+      const user = await insertUser(db);
+      const finished = (day: string) =>
+        logWorkout(db, user, { startedAt: new Date(`2026-09-${day}T10:00:00Z`), exercises: [{ exerciseId: globalExercise, sets: [{ reps: 5, weight: 60 }] }] });
+      const [{ workoutId: w1 }, { workoutId: w2 }] = [await finished("01"), await finished("02")];
+      const repo = appRepositories(db.app).hevyRepository;
+      await repo.beginLink(user, w1, { relink: false });
+      const { fingerprint } = await repo.beginLink(user, w2, { relink: false });
+
+      // The rival's id is written but not committed, so `completeLink`'s holder read misses it and its UPDATE waits on the index.
+      let commit = () => {};
+      const committed = new Promise<void>((resolve) => (commit = resolve));
+      let markWritten = () => {};
+      const written = new Promise<void>((resolve) => (markWritten = resolve));
+      const rival = db.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`UPDATE "hevy_link" SET hevy_workout_id = 'H-RACE' WHERE workout_id = ${w1}::uuid`;
+          markWritten();
+          await committed;
+        },
+        { timeout: 20_000 },
+      );
+      await written;
+      const completing = repo.completeLink(user, w2, { hevyWorkoutId: "H-RACE", fingerprint }).catch((err: unknown) => err);
+      await new Promise((r) => setTimeout(r, 300));
+      commit();
+      await rival;
+      expect(await completing).toBeInstanceOf(HevyIdInUseError);
     });
   });
 

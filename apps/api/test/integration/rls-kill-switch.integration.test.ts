@@ -126,7 +126,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC39 — the kill switch (re
   it("AC39 — status prints one line per table and changes nothing", async () => {
     const { code, out } = await run(["status"]);
     expect(code).toBe(0);
-    expect(out.trimEnd().split("\n")).toHaveLength(19);
+    expect(out.trimEnd().split("\n")).toHaveLength(20);
+    expect(out.split("\n")[0]).toMatch(/^target: database sin_test, login \w+, (local|remote) host$/);
     for (const table of RLS_TABLES) expect(out).toMatch(new RegExp(`^${table} +on$`, "m"));
     expect(await enabledCount()).toBe(19);
   });

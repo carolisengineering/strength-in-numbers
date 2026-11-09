@@ -680,7 +680,7 @@ the moment it runs), from an up-to-date `main`:
 export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 pnpm run db:migrate:status    # expect: only 0021 pending
 pnpm run db:migrate:deploy
-pnpm --filter @sin/api run db:rls -- status    # expect: 19 lines ending "on" and no WARNING
+pnpm --filter @sin/api run db:rls -- status    # expect: "target: … remote host", then 19 lines ending "on", no WARNING
 ```
 
 RLS applies from that moment, with no restart. If `migrate deploy` fails, for a lock conflict or its 5-second
@@ -691,8 +691,13 @@ pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --
 ```
 
 Then re-run the post-deploy smoke (Actions → the latest `main` run → re-run `post-deploy smoke (staging)`) and open the
-app on a phone: History and a routine must show your own data. Missing data looks like an empty list, not an error, so
-look at real screens. **If anything is red or empty:**
+app on a phone. Missing data looks like an empty list, not an error, so look at real screens:
+
+- History and a routine show your own data.
+- Saving a routine under a name you already use says the name is taken.
+- Starting a workout while one is in progress takes you back to it.
+
+**If anything is red, empty or wrong**, with `OWNER_DATABASE_URL` still set:
 
 ```bash
 pnpm --filter @sin/api run db:rls -- disable    # instant; the API stays on sin_app and keeps serving
@@ -714,12 +719,20 @@ unset OWNER_DATABASE_URL
 
 **Rollback, by step.** Whenever you roll back, record it in the table below.
 
+**Export the owner URL first, and read the first line of the output.** The S7 block above ends with `unset`. With the variable
+unset, `db:rls` falls back to `apps/api/.env.owner`: your **local** database, if you have that file. It then exits 0 and prints
+19 `OFF` while staging hasn't changed. The first line says what it acted on, and for staging it must end `remote host`:
+
+```bash
+export OWNER_DATABASE_URL='<the owner string, ending &sslaccept=strict>'
+```
+
 | You are at | Do this |
 |---|---|
 | S3–S5 failing | Put the owner URL back in Render. |
 | S6 failing | Render → Manual Deploy → the previous commit. The Phase C code refuses the owner URL; the Phase B code runs on either login. |
 | S7 or S8 failing | `db:rls -- disable`, then diagnose. |
-| All the way back from S7 | `db:rls -- disable`, then set `DATABASE_URL` to the owner URL and redeploy a pre-Phase C commit. RLS doesn't apply to the owner, and every migration is backward-compatible. |
+| All the way back from S7 | `db:rls -- disable`. Then Render → Manual Deploy → a Phase B commit, still on `sin_app`, which that code runs on. Only then, if you want it, set `DATABASE_URL` to the owner URL: saving it redeploys, and Phase C or later code refuses that login. Every migration is backward-compatible. |
 
 **The trap: never roll code back past Phase B while RLS is on and the URL is `sin_app`.** Code from before Phase B sets no
 user, so with RLS on it sees nothing: every lifter's data looks gone. Disable RLS or switch to the owner URL first. Never
@@ -893,7 +906,7 @@ service). On a push to `main`:
 Any deviation exits non-zero and fails the pipeline.
 
 A red smoke after RLS rollout S5–S7: **read the boot line first.** `db_login_checked` means the login passed;
-`Refusing to start` names what's wrong with it. An `rls_disabled` warning means the kill switch is on or `0021` hasn't run.
+`Refusing to start` names what's wrong with it. An `rls_disabled` warning means RLS was off **when that boot ran**; a line from before S7 stays in the log, so `db:rls -- status` is what says whether it's off now.
 
 ### D3. Timing seam
 
@@ -1126,8 +1139,8 @@ pnpm --filter @sin/api run db:app-role     # expect: superuser no, bypassrls no,
 unset APP_ROLE_PASSWORD
 ```
 
-4. **Check the switch and the flags:** `pnpm --filter @sin/api run db:rls -- status` prints 19 lines ending `on` and no
-   `WARNING`, and step 3 printed a clean role. Never create or edit `sin_app` in the Neon Console (RLS rollout, S4).
+4. **Check the switch and the flags:** `pnpm --filter @sin/api run db:rls -- status` prints `target: … remote host`, 19 lines
+   ending `on` and no `WARNING`, and step 3 printed a clean role. Never create or edit `sin_app` in the Neon Console (RLS rollout, S4).
 5. **Put the `sin_app` URL in Secret Manager**, never the owner's. It's the same direct host and database, user `sin_app`,
    your password, `?sslmode=require&sslaccept=strict`. From stdin, so it never lands in your shell history:
 
@@ -1138,9 +1151,10 @@ pbpaste | gcloud secrets versions add si-database-url --project=<project-id> --d
 6. **Keep the owner URL only in the GitHub secret `DATABASE_URL_PROD` (F8) and your password manager.** It's never on
    Cloud Run: the API refuses to start with `OWNER_DATABASE_URL` in its environment.
 7. **AC29 — seed the empty database** with the owner URL, then run B6 (certificate and hostname verification) against both
-   production URLs:
+   production URLs. F5's Terraform steps sit between step 5 and this one, so export the URL again if this is a new shell:
 
 ```bash
+export OWNER_DATABASE_URL='<prod owner url>'
 pnpm --filter @sin/api run seed:catalog      # inserted > 0; again → unchanged
 pnpm --filter @sin/api run records:rebuild   # a no-op on an empty database
 unset OWNER_DATABASE_URL
@@ -1284,7 +1298,7 @@ Cloud are in [`observability.md`](observability.md).
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/main.js`) and `PORT` is being read. |
 | Smoke: `/readyz` → 503 | DB unreachable from the running service. Check `DATABASE_URL` on the service = the Neon string, and that the Neon project isn't disabled. A cold Neon compute can 503 the very first hit then recover. |
 | Smoke: `/v1/_authcheck` → 401 instead of 200 | Wrong `AUTH0_AUDIENCE`/`AUTH0_ISSUER` on the service vs the tenant, or the M2M app isn't authorized for the API. |
-| Smoke: `/v1/me` → **500** (first three checks pass) | The `user` table doesn't exist — **B4 migration not applied**, or applied to a different Neon branch/database than Render's `DATABASE_URL`. Re-run B4 with the exact string from Render's Environment. |
+| Smoke: `/v1/me` → **500** (first three checks pass) | The `user` table doesn't exist — **B4 migration not applied**, or applied to a different Neon branch/database than Render's `DATABASE_URL`. Re-run B4 with the owner string for the same Neon branch as Render's `DATABASE_URL`. Render holds the `sin_app` URL, which can't migrate. |
 | Smoke: `/v1/me` → 200 instead of 401 | The Action is putting `email` on **M2M** tokens too (it should only run on the Login flow, not client-credentials), or the namespace differs between the Action and `AUTH0_CLAIM_NAMESPACE`. |
 | Smoke: grant returns 401 `Unauthorized` | Bad/stale `AUTH0_STAGING_M2M_CLIENT_ID`/`SECRET` (e.g. from an old Test App after recreating the API). |
 | Smoke: grant returns 403 `access_denied: Service not enabled within domain: <aud>` | No API in the tenant has that exact Identifier — typo, trailing slash, or wrong subdomain. The Identifier is immutable; recreate the API to match `AUTH0_AUDIENCE`. |

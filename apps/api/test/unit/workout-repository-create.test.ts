@@ -42,19 +42,12 @@ function row(overrides: Partial<WorkoutDbRow> = {}): WorkoutDbRow {
 }
 
 /**
- * Models the real driver's shape (pinned by the integration test in
- * `workout-create-concurrency.integration.test.ts`, AC5): `$queryRaw`'s error
- * mapping surfaces only the DETAIL line (`Key (col[, col...])=(val) already
- * exists.`) as `meta.message` — the primary message naming the constraint
- * never reaches here — so `columns` is the DETAIL's column list, not a
- * constraint name.
+ * Models the real driver's shape as `sin_app` meets it with RLS on (pinned over HTTP in `rls-policies.integration.test.ts`):
+ * SQLSTATE 23505 with no constraint name and no `Key (...)` DETAIL.
  */
-function uniqueViolation(columns: string): Error & { code: string; meta: { code: string; message: string } } {
-  const message = `Key (${columns})=(00000000-0000-0000-0000-000000000000) already exists.`;
-  return Object.assign(new Error(message), {
-    code: "P2010",
-    meta: { code: "23505", message },
-  });
+function uniqueViolation(): Error & { code: string; meta: { code: string; message: string } } {
+  const message = "Unique constraint failed: ";
+  return Object.assign(new Error(message), { code: "P2010", meta: { code: "23505", message } });
 }
 
 /**
@@ -132,7 +125,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
   it("(b) 23505 on workout_user_active_key, re-read finds a row -> 200 replay (D50)", async () => {
     const stub = new ScriptedPrisma();
     const stored = row();
-    stub.queueError(uniqueViolation("user_id")); // insert throws
+    stub.queueError(uniqueViolation()); // insert throws
     stub.queueRows([stored]); // re-read: found -> this was a racing replay
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
@@ -144,7 +137,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
 
   it("(c) 23505 on workout_user_active_key, re-read finds nothing -> genuine 409", async () => {
     const stub = new ScriptedPrisma();
-    stub.queueError(uniqueViolation("user_id"));
+    stub.queueError(uniqueViolation());
     stub.queueRows([]); // re-read: empty -> real in-progress conflict
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
@@ -153,15 +146,15 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     );
   });
 
-  it("(d) 23505 on any other constraint surfaces as an internal error, never the 409, with no re-read attempted", async () => {
+  it("(d) any other database error surfaces as an internal error, never the 409, with no re-read attempted", async () => {
     const stub = new ScriptedPrisma();
-    stub.queueError(uniqueViolation("id"));
+    stub.queueError(Object.assign(new Error("check failed"), { code: "P2010", meta: { code: "23514", message: "check failed" } }));
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 
     await expect(repo.createWorkout(uuidv7(), fields(), "UTC")).rejects.not.toBeInstanceOf(
       WorkoutInProgressExistsError,
     );
-    expect(stub.calls).toHaveLength(1); // no re-read — the branch never fires for this constraint
+    expect(stub.calls).toHaveLength(1); // no re-read: the branch fires only for a unique violation
   });
 
   it("(e) zero rows + empty re-read retries the insert once; the retry succeeding -> 201-shaped", async () => {
@@ -182,7 +175,7 @@ describe("AC3/AC5 — createWorkout (scripted Prisma, no real DB)", () => {
     const stub = new ScriptedPrisma();
     stub.queueRows([]); // insert attempt 1: zero rows
     stub.queueRows([]); // re-read 1: empty
-    stub.queueError(uniqueViolation("user_id")); // insert attempt 2 (retry) throws
+    stub.queueError(uniqueViolation()); // insert attempt 2 (retry) throws
     stub.queueRows([]); // re-read 2: empty -> genuine conflict
     const repo = createWorkoutRepository(stub as unknown as PrismaClient, new FakeExerciseRepository());
 

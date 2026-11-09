@@ -27,7 +27,7 @@ import {
 import { fingerprintSourceOf, fingerprintVersion, hevyFingerprint } from "../hevy/fingerprint.js";
 import { validateMappingInput, type VisibleExercise } from "../hevy/mappingValidation.js";
 import type { HevyLinkBeginRecord, HevyRepository, HevyStatusRecord } from "./hevy.js";
-import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
+import { isRawUniqueViolation } from "./pg-errors.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
 type Tx = Prisma.TransactionClient;
@@ -373,8 +373,9 @@ export function createHevyRepository(db: UserScopedDb | PrismaClient): HevyRepos
                 claimed_at = NULL, claim_fingerprint = NULL, updated_at = now()
             WHERE id = ${row.id}::uuid AND user_id = ${userId}::uuid AND claimed_at IS NOT NULL`;
         } catch (err) {
-          // §6.6: a racing complete that took the same Hevy id; named by its columns ($queryRaw has no constraint name).
-          if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, hevy_workout_id") throw new HevyIdInUseError();
+          // §6.6: a racing complete that took the same Hevy id. This UPDATE sets no other key, so `hevy_link_hevy_id_key`
+          // is the one unique index it can hit; nothing here can read the index's name (pg-errors.ts).
+          if (isRawUniqueViolation(err)) throw new HevyIdInUseError();
           throw err;
         }
         return readLinkState(tx, userId, workoutId);

@@ -20,7 +20,12 @@ const neverConnect = (): PrismaClient => {
 /** A client whose `pg_class` read reports the given tables as off. */
 const fakeCatalog = (off: readonly string[]) =>
   ({
-    $queryRaw: () => Promise.resolve(RLS_TABLES.map((relname) => ({ relname, relrowsecurity: !off.includes(relname) }))),
+    $queryRaw: (strings: TemplateStringsArray) =>
+      Promise.resolve(
+        strings.join("").includes("current_database")
+          ? [{ database: "neondb", login: "neondb_owner" }]
+          : RLS_TABLES.map((relname) => ({ relname, relrowsecurity: !off.includes(relname) })),
+      ),
   }) as unknown as RlsCatalogClient;
 
 describe("Spec 21.1 AC39, Review Focus 5 — the argument never switches RLS by accident", () => {
@@ -96,7 +101,7 @@ describe("Spec 21.1 AC39 — status", () => {
     const t = io();
     const client = { ...fakeCatalog(["user", "workout"]), $disconnect: () => Promise.resolve() } as unknown as PrismaClient;
     expect(await main(["status"], { OWNER_DATABASE_URL: OWNER }, { io: t.io, makePrisma: () => client })).toBe(0);
-    expect(t.lines.out.trimEnd().split("\n")).toHaveLength(20);
+    expect(t.lines.out.trimEnd().split("\n")).toHaveLength(21); // the target, 19 tables, the warning
     expect(t.lines.out).toMatch(/^user +OFF$/m);
     expect(t.lines.out).toMatch(/^exercise +on$/m);
     expect(t.lines.out).toContain("WARNING: 2 tables have row-level security OFF");
@@ -107,6 +112,26 @@ describe("Spec 21.1 AC39 — status", () => {
     const client = { ...fakeCatalog([]), $disconnect: () => Promise.resolve() } as unknown as PrismaClient;
     expect(await main(["status"], { OWNER_DATABASE_URL: OWNER }, { io: t.io, makePrisma: () => client })).toBe(0);
     expect(t.lines.out).not.toContain("WARNING");
+  });
+});
+
+describe("Spec 21.1 AC39 — every run says which database it acted on", () => {
+  const run = async (argv: string[], url: string) => {
+    const t = io();
+    const client = { ...fakeCatalog([]), $disconnect: () => Promise.resolve() } as unknown as PrismaClient;
+    expect(await main(argv, { OWNER_DATABASE_URL: url }, { io: t.io, makePrisma: () => client })).toBe(0);
+    return t.lines.out.split("\n")[0];
+  };
+
+  it("names the database and login, and says the host is local, without printing it", async () => {
+    expect(await run(["status"], OWNER)).toBe("target: database neondb, login neondb_owner, local host");
+  });
+
+  it("a remote host reads remote, and its name and the password stay out of the output", async () => {
+    const line = await run(["status"], "postgresql://o:hunter2-secret@ep-cool-name.us-west-2.aws.neon.tech/neondb?sslmode=require");
+    expect(line).toBe("target: database neondb, login neondb_owner, remote host");
+    expect(line).not.toContain("ep-cool-name");
+    expect(line).not.toContain("hunter2-secret");
   });
 });
 
@@ -126,6 +151,13 @@ describe("Spec 21.1 Review Focus 4 — the boot warning", () => {
     const l = logger();
     await warnIfRlsDisabled(fakeCatalog([]), l.log);
     expect(l.warnings).toEqual([]);
+  });
+
+  it("a read that never answers cannot hold up the boot: it gives up with the same warning", async () => {
+    const l = logger();
+    const stalled = { $queryRaw: () => new Promise(() => undefined) } as unknown as RlsCatalogClient;
+    await warnIfRlsDisabled(stalled, l.log, 20);
+    expect(l.warnings).toEqual([{ data: {}, msg: "rls_status_unavailable" }]);
   });
 
   it("a failed read never stops the boot: the kill switch must leave the API able to start (D5)", async () => {

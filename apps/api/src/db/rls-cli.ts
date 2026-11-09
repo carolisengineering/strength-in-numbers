@@ -12,7 +12,7 @@ import { PrismaClient } from "@prisma/client";
 import { resolveDatabaseUrl } from "../db.js";
 import { redacted } from "./app-role-cli.js";
 import { ownerDatabaseUrl } from "./owner-url.js";
-import { rlsStatus, setRls, type RlsTableStatus } from "./rls.js";
+import { rlsStatus, rlsTarget, setRls, type RlsTableStatus } from "./rls.js";
 import { RLS_TABLES } from "./rls-tables.js";
 
 const USAGE = "usage: db:rls -- status|enable|disable";
@@ -35,6 +35,9 @@ export function parseRlsArgs(argv: readonly string[]): { ok: true; command: RlsC
   const command = COMMANDS.find((c) => c === args[0]);
   return args.length === 1 && command !== undefined ? { ok: true, command } : { ok: false, error: USAGE };
 }
+
+/** Local or remote, never the host itself: a run that acted on the wrong database must show it, and the name stays private. */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "db"]);
 
 function describeStatus(status: readonly RlsTableStatus[]): string {
   const width = Math.max(...status.map((s) => s.table.length)) + 2;
@@ -62,9 +65,11 @@ export async function main(
 
   const secrets = [owner.url];
   let url: string;
+  let hostKind: "local" | "remote";
   try {
     url = resolveDatabaseUrl(owner.url);
     const u = new URL(url);
+    hostKind = LOCAL_HOSTS.has(u.hostname) ? "local" : "remote";
     secrets.push(url, u.password, decodeURIComponent(u.password), u.host, u.hostname);
   } catch (err) {
     io.err(`OWNER_DATABASE_URL rejected: ${redacted(err, secrets)}\n`);
@@ -75,6 +80,8 @@ export async function main(
   let prisma: PrismaClient | undefined;
   try {
     prisma = deps.makePrisma ? deps.makePrisma(url) : new PrismaClient({ datasourceUrl: url });
+    const target = await rlsTarget(prisma);
+    io.out(`target: database ${target.database}, login ${target.login}, ${hostKind} host\n`);
     if (parsed.command === "disable") {
       io.out(`row-level security is being switched OFF for all ${RLS_TABLES.length} tables; switch it back with db:rls -- enable\n`);
     }
