@@ -527,6 +527,21 @@ describe("17.5 AC13 — focus and announcement", () => {
   });
 });
 
+describe("17.5 AC22 — what 17.4 and 17.1 promised still holds", () => {
+  it("one primary, focus on the bar's own button, and the line still reserved after an Undo", async () => {
+    const { user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    expect(document.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    expect(bar().querySelector(":scope > button")).toHaveFocus();
+    await user.click(undoButton()!);
+    await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
+    expect(bar().querySelector(":scope > button")).toHaveFocus();
+    expect(document.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+    expect(status()).toHaveAttribute("data-session-status");
+    expect(ruleFor(activeSessionCss, ".sessionStatus")).toContain("min-height: var(--session-status-height)");
+  });
+});
+
 describe("17.5 AC21 — nothing brings it back", () => {
   it("Delete set offers no Undo, and tracks viaUndo false", async () => {
     const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
