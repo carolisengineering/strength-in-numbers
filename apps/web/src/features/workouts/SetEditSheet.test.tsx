@@ -14,17 +14,20 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
+import type { Modality } from "@sin/core";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { deleteSetIn } from "../../test/sessionHelpers";
 
 afterEach(() => cleanupApp());
 
 async function setup(
   sets = [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 60, reps: 7 })],
+  modality: Modality = "weight_reps",
 ) {
   const fake = createWorkoutFake({
-    active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", sets }] }),
+    active: makeWorkoutDetail({ exercises: [{ modality, name: "X", sets }] }),
   });
   prepareApp({ auth, fake });
   const app = renderApp("/app/workouts");
@@ -39,6 +42,67 @@ const requests = (fake: ReturnType<typeof createWorkoutFake>, method: string) =>
   fake.requests.filter((r) => r.method === method);
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
+
+describe("17.5 AC18 — the first tap asks (live sheet)", () => {
+  async function asked() {
+    const app = await setup();
+    await app.user.click(setRow(/60 kg × 8/));
+    await app.user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    return app;
+  }
+
+  it("sends nothing, says what goes, and focuses Keep set, with no nested dialog", async () => {
+    const { fake } = await asked();
+    expect(requests(fake, "DELETE")).toHaveLength(0);
+    expect(within(dialog()).getByRole("group", { name: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
+    expect(within(dialog()).getByRole("button", { name: "Keep set" })).toHaveFocus();
+    expect(within(dialog()).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(within(dialog()).getByRole("button", { name: "Delete set" })).toHaveAttribute("data-variant", "danger");
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("Keep set brings the row back with typed values untouched, and focus on Delete set", async () => {
+    const { user } = await setup();
+    await user.click(setRow(/60 kg × 8/));
+    await user.type(within(dialog()).getByLabelText("Reps"), "{Control>}a{/Control}12");
+    await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    await user.click(within(dialog()).getByRole("button", { name: "Keep set" }));
+    expect(within(dialog()).getByLabelText("Reps")).toHaveValue("12");
+    expect(within(dialog()).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(within(dialog()).getByRole("button", { name: "Delete set" })).toHaveFocus();
+    expect(within(dialog()).queryByRole("group", { name: /will be removed/ })).not.toBeInTheDocument();
+  });
+
+  it("Close still closes the sheet", async () => {
+    const { fake, user } = await asked();
+    await user.click(within(dialog()).getByRole("button", { name: /^Close/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(requests(fake, "DELETE")).toHaveLength(0);
+  });
+
+  it("Enter in a field sends nothing and keeps the confirm up (Review Focus 4)", async () => {
+    const { fake, user } = await setup([makeSet({ setNumber: 1, weight: null, weightKg: null, weightUnit: null, reps: 8 })], "bodyweight_reps");
+    await user.click(setRow(/8/));
+    const reps = within(dialog()).getByLabelText("Reps");
+    await user.type(reps, "{Control>}a{/Control}9");
+    await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    await user.type(reps, "{Enter}");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(requests(fake, "PATCH")).toHaveLength(0);
+    expect(within(dialog()).getByRole("group", { name: /will be removed/ })).toBeInTheDocument();
+    expect(reps).toHaveValue("9");
+  });
+});
+
+describe("17.5 AC19 — the second tap commits (live sheet)", () => {
+  it("the sheet closes at once and the DELETE goes", async () => {
+    const { fake, user } = await setup();
+    await user.click(setRow(/60 kg × 8/));
+    await deleteSetIn(user, dialog());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(requests(fake, "DELETE")).toHaveLength(1));
+  });
+});
 
 describe("AC25 — edit and delete a logged set", () => {
   it("tapping a row opens a sheet titled with the set number and exercise, fields prefilled", async () => {
@@ -118,7 +182,7 @@ describe("AC25 — edit and delete a logged set", () => {
     const reads = activeReads(fake);
     await user.click(setRow(/60 kg × 8/));
 
-    await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, dialog());
 
     await waitFor(() => expect(within(card()).queryByText("60 kg × 8")).not.toBeInTheDocument());
     expect(requests(fake, "DELETE")).toHaveLength(1);
@@ -132,7 +196,7 @@ describe("AC25 — edit and delete a logged set", () => {
     fake.failNext({ method: "DELETE", path: /\/sets\// }, () => problemResponse(404, "not-found"));
     await user.click(setRow(/60 kg × 8/));
 
-    await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, dialog());
 
     await waitFor(() => expect(within(card()).queryByText("60 kg × 8")).not.toBeInTheDocument());
   });
@@ -175,7 +239,7 @@ describe("AC25 — edit and delete a logged set", () => {
     fake.failNext({ method: "DELETE", path: /\/sets\// }, () => HttpResponse.error());
     await user.click(setRow(/60 kg × 8/));
 
-    await user.click(within(dialog()).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, dialog());
 
     expect(within(card()).queryByText("60 kg × 8")).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Retry now" }));

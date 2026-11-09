@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -18,10 +18,12 @@ vi.mock("../../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import type { WorkoutDetail } from "@sin/core";
+import { API_BASE_URL } from "../../../test/catalogHarness";
+import { server } from "../../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { addSetButton, card, editDoneButton } from "../../../test/sessionHelpers";
+import { addSetButton, card, deleteSetIn, editDoneButton } from "../../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -81,12 +83,82 @@ describe("18.0 AC6 — edit a set", () => {
   });
 });
 
+describe("17.5 AC18 — the first tap asks (edit sheet)", () => {
+  it("sends nothing, says what goes, focuses Keep set; Keep set returns with typed values", async () => {
+    const { fake, user } = open();
+    await ready();
+    await openSet(user, /80 kg × 5/);
+    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}12");
+    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    expect(writes(fake)).toHaveLength(0);
+    expect(sheet(/^Set 2/).getByRole("group", { name: "Delete set 2? 80 kg × 5 will be removed." })).toBeInTheDocument();
+    expect(sheet(/^Set 2/).getByRole("button", { name: "Keep set" })).toHaveFocus();
+    expect(sheet(/^Set 2/).queryByRole("button", { name: "Save" })).toBeNull();
+    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Keep set" }));
+    expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("12");
+    expect(sheet(/^Set 2/).getByRole("button", { name: "Delete set" })).toHaveFocus();
+  });
+
+  it("Add mode has no Delete set and no confirm", async () => {
+    const { user } = open();
+    await ready();
+    await user.click(addSetButton("Bench Press"));
+    const s = sheet(/^New set/);
+    expect(s.queryByRole("button", { name: "Delete set" })).toBeNull();
+    expect(s.queryByRole("button", { name: "Keep set" })).toBeNull();
+  });
+});
+
+describe("17.5 AC19 — the second tap commits (edit sheet)", () => {
+  it("the sheet waits for the answer, then closes", async () => {
+    const { user } = open();
+    await ready();
+    const gate = deferred<void>();
+    server.use(http.delete(`${API_BASE_URL}/v1/sets/:id`, async () => {
+      await gate.promise;
+      return new HttpResponse(null, { status: 204 });
+    }));
+    await openSet(user, /80 kg × 5/);
+    await deleteSetIn(user, sheet(/^Set 2/));
+    expect(screen.getByRole("dialog", { name: /^Set 2/ })).toBeInTheDocument();
+    gate.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a failure closes the confirm and shows its alert, with the typed values kept", async () => {
+    const { fake, user } = open();
+    await ready();
+    fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(500, "boom"));
+    await openSet(user, /80 kg × 5/);
+    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}12");
+    await deleteSetIn(user, sheet(/^Set 2/));
+    await waitFor(() => expect(sheet(/^Set 2/).getByRole("alert")).toBeInTheDocument());
+    expect(sheet(/^Set 2/).queryByRole("group", { name: /will be removed/ })).toBeNull();
+    expect(sheet(/^Set 2/).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("12");
+    await waitFor(() => expect(sheet(/^Set 2/).getByRole("button", { name: "Delete set" })).toHaveFocus());
+  });
+});
+
+describe("17.5 AC20 — the last set", () => {
+  it("the 409 dialog still opens after the confirm, whose text doesn't mention it", async () => {
+    const { fake, user } = open([{ modality: "weight_reps", name: "Bench Press", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }]);
+    await ready();
+    await openSet(user, /60 kg × 8/);
+    await user.click(sheet(/^Set 1/).getByRole("button", { name: "Delete set" }));
+    expect(sheet(/^Set 1/).getByRole("group", { name: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
+    expect(writes(fake)).toHaveLength(0);
+    await user.click(sheet(/^Set 1/).getByRole("button", { name: "Delete set" }));
+    await screen.findByRole("dialog", { name: EDIT_COPY.lastSet.title });
+  });
+});
+
 describe("18.0 AC7 — delete a set", () => {
   it("DELETE removes the row and says Set deleted", async () => {
     const { fake, user } = open();
     await ready();
     await openSet(user, /80 kg × 5/);
-    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 2/));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(within(card("Bench Press")).queryByRole("button", { name: /80 kg × 5/ })).toBeNull();
     expect(announcement()).toHaveTextContent("Set deleted");
@@ -98,7 +170,7 @@ describe("18.0 AC7 — delete a set", () => {
     await ready();
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => problemResponse(404, "not-found"));
     await openSet(user, /80 kg × 5/);
-    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 2/));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(within(card("Bench Press")).queryByRole("button", { name: /80 kg × 5/ })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -152,11 +224,11 @@ describe("18.0 AC44 — the same announcement twice is spoken twice (final revie
     const { user } = open([{ ...bench(), sets: [...bench().sets!, makeSet({ setNumber: 3, weight: 85, reps: 3 })] }]);
     await ready();
     await openSet(user, /85 kg × 3/);
-    await user.click(sheet(/^Set 3/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 3/));
     await waitFor(() => expect(announcement()).toHaveTextContent("Set deleted"));
     const first = announcement().firstElementChild;
     await openSet(user, /80 kg × 5/);
-    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 2/));
     await waitFor(() => expect(announcement().firstElementChild).not.toBe(first));
     expect(announcement()).toHaveTextContent("Set deleted");
   });
@@ -245,7 +317,7 @@ describe("18.0 AC15 / AC16 — failures stay where the lifter acted", () => {
     await ready();
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => HttpResponse.error());
     await openSet(user, /80 kg × 5/);
-    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 2/));
     await waitFor(() => expect(sheet(/^Set 2/).getByRole("alert")).toHaveTextContent(EDIT_COPY.offline));
     expect(within(card("Bench Press")).getByRole("button", { name: /80 kg × 5/ })).toBeInTheDocument();
   });

@@ -25,6 +25,9 @@ import {
   useUpdateSet,
 } from "./useWorkoutMutations";
 
+const trackSpy = vi.hoisted(() => vi.fn());
+vi.mock("../../observability/track", () => ({ track: trackSpy }));
+
 const notFound = () => new ApiError({ status: 404, type: "https://x/problems/not-found", title: "Not found", requestId: "r" });
 
 function seeded() {
@@ -127,6 +130,21 @@ describe("set writes", () => {
     });
     await act(() => result.current.mutateAsync({ id: exercise.sets[0]!.id, modality: "weight_reps" }));
     expect(qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)!.exercises[0]!.sets).toEqual([]);
+  });
+
+  describe("17.5 AC17 — set_deleted says how it got there", () => {
+    it.each([
+      ["an Undo", { viaUndo: true }, true],
+      ["Delete set", {}, false],
+    ])("%s", async (_label, extra, viaUndo) => {
+      trackSpy.mockClear();
+      const { qc, exercise } = seeded();
+      const { result } = renderHook(() => useDeleteSet(), {
+        wrapper: wrapperWith(qc, fakeClient({ deleteSet: async () => undefined })),
+      });
+      await act(() => result.current.mutateAsync({ id: exercise.sets[0]!.id, modality: "weight_reps", ...extra }));
+      expect(trackSpy).toHaveBeenCalledWith("set_deleted", { modality: "weight_reps", viaUndo });
+    });
   });
 
   it("a delete answering 500 rejects and leaves the cache alone", async () => {

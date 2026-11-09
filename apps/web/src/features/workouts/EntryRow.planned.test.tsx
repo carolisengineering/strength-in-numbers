@@ -24,7 +24,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, deleteSetIn, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -157,7 +157,7 @@ describe("10.2 AC25 — a count change that is not this row's own log", () => {
   const twoLogged = () => [logged(1, { setType: "warmup", reps: 10, weight: 60 }), logged(2, { reps: 8, weight: 80 })];
   const deleteSecond = async (user: ReturnType<typeof renderApp>["user"]) => {
     await user.click(within(card("Bench")).getByRole("button", { name: /80 kg × 8/ }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, await screen.findByRole("dialog"));
   };
 
   it("deleting a set steps the label back and reseeds an untouched draft", async () => {

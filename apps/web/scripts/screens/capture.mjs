@@ -192,7 +192,7 @@ function makeHandler(state) {
     } else if (state.editSectioned && (res = sectionRoute(state.editSectioned, m, p, req.postData()))) {
       // Spec 10.6 AC28 (Phase B): the same writes on a finished copy of it, for the edit screen.
     } else if (m === "GET" && p === "/v1/workouts/active") {
-      const base = state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active;
+      const base = state.almostDone ?? (state.oneOffActive ? D.activeOneOff : state.planned ? D.activePlanned : state.done ? D.activeDone : D.active);
       // Spec 17.4 AC17: the logging-loop step needs logged sets to stay, as they do on the real API.
       const live = state.trackLogged ? { ...base, exercises: base.exercises.map((e) => ({ ...e, sets: [...e.sets, ...(state.trackLogged[e.id] ?? [])] })) } : base;
       res = state.active ? json(live) : problem(404, "not-found", "No active workout");
@@ -229,7 +229,7 @@ function makeHandler(state) {
       res = owner?.id === D.ids.oneSet ? problem(409, "workout-would-be-empty", "Workout would be empty") : { status: 204, body: "" };
     } else if (m === "POST" && (seg = /^\/v1\/workout-exercises\/([^/]+)\/sets$/.exec(p))) {
       const b = JSON.parse(req.postData() ?? "{}");
-      const we = D.active.exercises.find((e) => e.id === decodeURIComponent(seg[1]));
+      const we = (state.almostDone ?? D.active).exercises.find((e) => e.id === decodeURIComponent(seg[1]));
       const t = new Date().toISOString();
       const weId = decodeURIComponent(seg[1]);
       const created = {
@@ -622,6 +622,9 @@ const measureLoggingLoop = (page) =>
     const bar = document.querySelector('[data-testid="session-bar"]');
     const status = document.querySelector('[data-testid="session-status"]');
     const scroller = bar.closest("main");
+    // ":scope >": Spec 17.5's Undo is the bar's first button in the DOM, one level down.
+    const button = bar.querySelector(":scope > button");
+    const undo = status.parentElement.querySelector("button");
     const barTop = bar.getBoundingClientRect().top;
     const panel = document.querySelector('form[aria-label^="Log a set of"]');
     const covered = panel
@@ -631,9 +634,11 @@ const measureLoggingLoop = (page) =>
           .map((c) => c.getAttribute("aria-label") ?? c.textContent.trim() ?? c.tagName)
       : [];
     return {
-      button: bar.querySelector("button").textContent.trim(),
-      buttonTop: Math.round(bar.querySelector("button").getBoundingClientRect().top),
-      buttonHeight: Math.round(bar.querySelector("button").getBoundingClientRect().height),
+      button: button.textContent.trim(),
+      buttonTop: Math.round(button.getBoundingClientRect().top),
+      buttonHeight: Math.round(button.getBoundingClientRect().height),
+      undo: undo ? { width: Math.round(undo.getBoundingClientRect().width), height: Math.round(undo.getBoundingClientRect().height), bottom: Math.round(undo.getBoundingClientRect().bottom) } : null,
+      gapToLog: undo ? Math.round(button.getBoundingClientRect().top - undo.getBoundingClientRect().bottom) : null,
       statusHeight: Math.round(status.getBoundingClientRect().height),
       barHeight: Math.round(bar.getBoundingClientRect().height),
       scrollPadding: parseFloat(getComputedStyle(scroller).scrollPaddingBottom),
@@ -753,6 +758,38 @@ try {
       await page.keyboard.press("Escape");
       state.done = false;
     });
+    // Spec 17.5 AC25: the last planned set just logged, so the bar reads Finish workout with Undo beside the line (AC12).
+    await tryStep("undo in finish mode", async () => {
+      const last = D.activeDone.exercises.findLastIndex((e) => (e.plannedSets?.length ?? 0) > 0 && e.sets.length > 0);
+      state.almostDone = { ...D.activeDone, exercises: D.activeDone.exercises.map((e, k) => (k === last ? { ...e, sets: e.sets.slice(0, -1) } : e)) };
+      state.trackLogged = {};
+      try {
+        await go("/app/workouts");
+        await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
+        await page.getByTestId("session-bar").getByRole("button", { name: "Finish workout" }).waitFor({ timeout: 4000 });
+        await page.getByTestId("session-bar").getByRole("button", { name: /^Undo set / }).waitFor({ timeout: 4000 });
+        await shoot(page, device, "26h-undo-finish-mode", "Spec 17.5 AC12: the last planned set logged: Finish workout, with Undo on the status line");
+      } finally {
+        state.almostDone = null;
+        state.trackLogged = null;
+        await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
+      }
+    });
+    // Spec 17.5 AC18: the live sheet's inline confirm.
+    await tryStep("delete confirm (live)", async () => {
+      state.done = true;
+      try {
+        await go("/app/workouts");
+        await page.locator("article:has(form)").getByRole("listitem").first().getByRole("button").first().click();
+        await page.waitForSelector("dialog[open]", { timeout: 4000 });
+        await page.getByRole("button", { name: "Delete set" }).click();
+        await page.getByRole("button", { name: "Keep set" }).waitFor({ timeout: 4000 });
+        await shoot(page, device, "26i-delete-confirm-live", "Spec 17.5 AC18: Delete set asks in place; Keep set has focus");
+        await page.keyboard.press("Escape");
+      } finally {
+        state.done = false;
+      }
+    });
 
     // Spec 17.4 AC17: log four sets as a lifter would, with sets that stay. After every log the panel's controls must
     // clear the bar, and the button must not have moved. AC10: a message must not move it either.
@@ -785,13 +822,23 @@ try {
         steps.push({ step: `log ${i}`, ...after });
         if (after.buttonTop !== before.buttonTop) violations.push(`log ${i}: button top ${after.buttonTop}, was ${before.buttonTop}`);
         if (after.covered.length) violations.push(`log ${i}: under the bar: ${after.covered.join(", ")}`);
+        // Spec 17.5 AC3, AC4, AC15.
+        if (after.barHeight !== before.barHeight) violations.push(`log ${i}: bar is ${after.barHeight}px tall, was ${before.barHeight}`);
+        if (after.undo === null) violations.push(`log ${i}: no Undo was offered`);
+        else {
+          if (after.undo.width < 44 || after.undo.height < 44) violations.push(`log ${i}: Undo is ${after.undo.width} × ${after.undo.height}px (want at least 44 × 44)`);
+          if (after.gapToLog < 8) violations.push(`log ${i}: Undo is ${after.gapToLog}px from Log (want at least 8)`);
+        }
       }
       await shoot(page, device, "26b-logging-after-four-logs", "Spec 17.4: after four logs the panel still clears the bar and the button has not moved");
+      await shoot(page, device, "26e-undo-offer", "Spec 17.5 AC1: the status line says what was logged, with Undo on its right");
       for (const text of ["1 set not saved yet", "2 sets not saved yet · 1 note not saved yet"]) {
         await page.evaluate((t) => { document.querySelector('[data-testid="session-status"]').textContent = t; }, text);
         const withMessage = await measureLoggingLoop(page);
         steps.push({ step: text, ...withMessage });
         if (withMessage.buttonTop !== before.buttonTop) violations.push(`"${text}": button top ${withMessage.buttonTop}, was ${before.buttonTop}`);
+        if (withMessage.undo === null) violations.push(`"${text}": Undo left the line`);
+        if (text === "1 set not saved yet") await shoot(page, device, "26f-undo-sync-message", "Spec 17.5 AC2: a sync message replaces the confirmation; Undo stays");
       }
       await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two messages in the reserved status line; the button has not moved");
       // AC12: with the keyboard up an empty line gives up its space, and the scroll padding follows; a message keeps its place.
@@ -813,6 +860,14 @@ try {
         await page.setViewportSize({ width: 320, height: 568 });
         await page.waitForTimeout(200);
         await shoot(page, device, "26d-logging-320", "Spec 17.4: the workout bar at 320 × 568");
+        // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log.
+        const narrow = await measureLoggingLoop(page);
+        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "2 sets not saved yet · 1 note not saved yet"; });
+        const narrowLong = await measureLoggingLoop(page);
+        steps.push({ step: "320 px, long message", ...narrowLong });
+        if (narrowLong.buttonTop !== narrow.buttonTop) violations.push(`320 px: a long message moved the button from ${narrow.buttonTop} to ${narrowLong.buttonTop}`);
+        if (narrowLong.statusHeight > 44) violations.push(`320 px: a long message grew the line to ${narrowLong.statusHeight}px`);
+        await shoot(page, device, "26g-undo-320", "Spec 17.5 AC4: the longest message beside Undo at 320 × 568");
       }
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
@@ -1166,6 +1221,9 @@ try {
       await go(`/app/history/${D.ids.oneSet}/edit`);
       await page.getByRole("article").first().getByRole("listitem").first().getByRole("button").click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await page.getByRole("button", { name: "Delete set" }).click();
+      await page.getByRole("button", { name: "Keep set" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "35a-edit-delete-confirm", "Spec 17.5 AC18: the edit sheet's inline confirm, before the 409 path");
       await page.getByRole("button", { name: "Delete set" }).click();
       await page.getByRole("dialog", { name: "Delete this whole workout instead?" }).waitFor({ timeout: 4000 });
       await page.waitForTimeout(200);

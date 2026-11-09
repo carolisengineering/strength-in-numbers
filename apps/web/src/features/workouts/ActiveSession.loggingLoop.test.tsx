@@ -40,7 +40,7 @@ vi.mock("./useWorkoutMutations", async (importOriginal) => {
   };
 });
 
-import { card, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
+import { card, deleteSetIn, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -139,7 +139,7 @@ describe("17.4 AC7 — correcting or deleting the set just logged", () => {
     await user.click(logButton("A"));
     await waitFor(() => expect(within(card("A")).getByRole("button", { name: /105 kg × 5/ })).toBeInTheDocument());
     const sheet = await openRow(user, /105 kg × 5/);
-    await user.click(sheet.getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet);
     await waitFor(() => expect(logButton("A")).toHaveTextContent(/^Log 102.5 × 5$/));
   });
 });
@@ -327,7 +327,7 @@ describe("17.4 AC18 — the bar's guards still hold", () => {
     const button = logButton("A");
     await user.click(button);
     await waitFor(() => expect(scrolled()).toContain(panel("A")));
-    expect(screen.getByTestId("session-bar").querySelector("button")).toHaveFocus();
+    expect(screen.getByTestId("session-bar").querySelector(":scope > button")).toHaveFocus();
   });
 });
 

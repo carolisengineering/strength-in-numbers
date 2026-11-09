@@ -63,6 +63,8 @@ import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
+import { confirmationLine, statusLineText, undoName } from "./undoOffer";
+import { useUndoLastLog } from "./useUndoLastLog";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
 import { barMode, unloggedPlanned } from "./unloggedPlanned";
@@ -240,13 +242,17 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
    * hold the new set yet). The rest is decided first and always (a typed-since-tap log still rests); then current moves
    * per `advanceAfterLog`, never when the lifter typed since the tap and never when they already moved elsewhere.
    */
-  function onLogged({ exerciseId, set, advance, wasExtra }: LoggedEvent) {
+  function onLogged(event: LoggedEvent) {
+    const { exerciseId, set, advance, wasExtra } = event;
     const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
     if (!fresh || fresh.id !== workout.id) return;
     const freshRows = supersetRows(fresh.exercises);
     const restFor = restAfterLog({ rows: freshRows, loggedId: exerciseId, setType: set.setType });
     if (restFor) rest?.start(restFor.durationS);
     else rest?.clear();
+    // Spec 17.5 AC1: every log offers, even one that lands after the lifter moved on.
+    const logged = fresh.exercises.find((e) => e.id === exerciseId);
+    if (logged) undo.offerFrom(event, { name: logged.exerciseNameSnapshot, modality: logged.modalitySnapshot }, restFor ? (rest?.get()?.startedAt ?? null) : null);
     if (!advance || currentIdRef.current !== exerciseId) return;
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
     setSetsAwaited(fresh.exercises.reduce((n, e) => n + e.sets.length, 0));
@@ -346,6 +352,25 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     return null;
   }, [exercises, sync]);
   const firstFailedId = firstFailed?.rowId ?? null;
+  // Spec 17.5: the latest log's Undo, in the bar's status line.
+  const undo = useUndoLastLog({
+    exercises,
+    ops: outboxState.ops,
+    idMap: outboxState.idMap,
+    rest,
+    select: selectCurrent,
+    focusLeavesWith: (id) => {
+      const leaving = current.currentId;
+      return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
+    },
+    revealPanel: () => {
+      const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+      setSetsAwaited(fresh ? fresh.exercises.reduce((n, e) => n + e.sets.length, 0) : 0);
+    },
+    onFailure: (error) => void handleFailure("delete-set", error),
+    announce: setAnnouncement,
+  });
+  const { end: endUndo } = undo;
   const failedRowRef = useRef<HTMLElement | null>(null);
   const setFailedRowRef = useCallback((node: HTMLElement | null) => {
     failedRowRef.current = node;
@@ -374,6 +399,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       return;
     }
     showFailedPending.current = true;
+    undo.end();
     selectCurrent(firstFailed.exerciseId);
   }
   useEffect(() => {
@@ -713,6 +739,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               failedRowRef={setFailedRowRef}
               headingRef={headingRefFor(exercise.id)}
               onLogged={onLogged}
+              onSheetOpen={endUndo}
+              {...(undo.restore?.exerciseId === exercise.id ? { restore: undo.restore, onRestoreDone: undo.restoreDone } : {})}
               sections={workout.sections}
               linked={bracket !== "none"}
               onSection={(sectionId) => void sectionActions.setExerciseSection(exercise, sectionId)}
@@ -723,7 +751,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               summary={collapsedSummary(row, unitPreference)}
               accessibleName={label}
               sync={sync}
-              onSelect={() => makeCurrent(exercise.id, true)}
+              onSelect={() => {
+                undo.end();
+                makeCurrent(exercise.id, true);
+              }}
             />
           )}
         </div>
@@ -746,6 +777,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       </Fragment>
     );
   }
+
+  // Spec 17.5 AC8: anything that takes the screen over ends the offer.
+  const overlayOpen = pickerOpen || finishOpen || endEarlyOpen || discardOpen || changeTimeOpen || removing !== null || resultActions.sheet !== null || sectionActions.sheet !== null;
+  useEffect(() => {
+    if (overlayOpen) endUndo();
+  }, [overlayOpen, endUndo]);
 
   const atSectionCap = workout.sections.length >= ROUTINE_SECTIONS_MAX;
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
@@ -816,6 +853,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
+        onOpen={endUndo}
       />
 
       {shown ? (
@@ -932,17 +970,33 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       />
 
       <ActionBar data-testid="session-bar" data-session-bar="" className={styles.sessionBar}>
-        {/* Spec 17.4 AC10, AC11: one line, always reserved, so a message never moves the button under a thumb. */}
-        <p className={styles.sessionStatus} data-testid="session-status" data-session-status="">
-          {[
-            totalSets === 0 ? "Log at least one set to finish" : null,
-            unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : null,
-            unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null,
-            timerUnsaved > 0 ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet` : null,
-          ]
-            .filter((message) => message !== null)
-            .join(" · ")}
-        </p>
+        {/* Spec 17.4 AC10, AC11: one line, always reserved, so a message never moves the button under a thumb. Spec 17.5 AC2: Undo shares that line. */}
+        <div className={styles.statusRow} {...(undo.offer ? { "data-undo": "" } : {})}>
+          <p className={styles.sessionStatus} data-testid="session-status" data-session-status="">
+            {statusLineText({
+              undo: undo.undoText,
+              messages: [
+                totalSets === 0 ? "Log at least one set to finish" : null,
+                unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : null,
+                unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null,
+                timerUnsaved > 0 ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet` : null,
+              ].filter((message) => message !== null),
+              confirmation: undo.offer ? confirmationLine(undo.offer.row.setNumber, undo.offer.value) : null,
+            })}
+          </p>
+          {undo.offer ? (
+            <Button
+              variant="secondary"
+              className={styles.undo}
+              aria-label={undoName(undo.offer.row.setNumber, undo.offer.value, undo.offer.exerciseName)}
+              // A pointer tap never takes focus from Log (AC13).
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={undo.undo}
+            >
+              Undo
+            </Button>
+          ) : null}
+        </div>
         <LogBarButton action={barAction} />
       </ActionBar>
 

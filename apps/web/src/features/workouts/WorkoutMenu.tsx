@@ -16,13 +16,15 @@ export interface WorkoutMenuProps {
     onClick: () => void;
   };
   onDiscard: () => void;
+  /** Called when the menu opens (Spec 17.5 AC8). */
+  onOpen?: () => void;
 }
 
 /**
  * Spec 17.1 D13: the rare, away-from-the-thumb actions share one inline disclosure (the Options pattern, no popover).
  * The items stay revealed while their dialog is open, so the dialog can hand focus back to the item that opened it.
  */
-export function WorkoutMenu({ leading, below, endItem, onDiscard }: WorkoutMenuProps) {
+export function WorkoutMenu({ leading, below, endItem, onDiscard, onOpen }: WorkoutMenuProps) {
   const [open, setOpen] = useState(false);
   const reasonId = useId();
   const described = endItem.disabled && endItem.reason !== null;
@@ -30,7 +32,14 @@ export function WorkoutMenu({ leading, below, endItem, onDiscard }: WorkoutMenuP
     <div className={styles.top}>
       <div className={styles.row}>
         <div className={styles.leading}>{leading}</div>
-        <Button variant="secondary" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <Button
+          variant="secondary"
+          aria-expanded={open}
+          onClick={() => {
+            if (!open) onOpen?.();
+            setOpen(!open);
+          }}
+        >
           Workout menu
         </Button>
       </div>

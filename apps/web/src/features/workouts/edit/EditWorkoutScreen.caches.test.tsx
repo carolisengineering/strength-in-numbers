@@ -23,7 +23,7 @@ import { USER_ID } from "../../../test/catalogHarness";
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { addSetButton, card, editDoneButton } from "../../../test/sessionHelpers";
+import { addSetButton, card, deleteSetIn, editDoneButton } from "../../../test/sessionHelpers";
 import { OUTBOX_KEY } from "../outbox/outbox";
 
 let online = true;
@@ -164,7 +164,7 @@ describe("18.0 AC27 — edit telemetry", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New set · Bench Press" })).toBeNull());
     await changeWeight(user, /60 kg × 8/, "62.5");
     await user.click(within(card("Bench Press")).getByRole("button", { name: /62.5 kg × 8/ }));
-    await user.click(sheet(/^Set 1/).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, sheet(/^Set 1/));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set 1/ })).toBeNull());
 
     const calls = observability.track.mock.calls as [string, Record<string, unknown>][];

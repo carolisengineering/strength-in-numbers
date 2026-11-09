@@ -4,9 +4,11 @@ import type { Modality, SetEntry } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
 import { EditSetForm } from "./edit/EditSetForm";
+import { formatSet } from "./format";
 import { useScreenMode } from "./screenMode";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
+import { SetDeleteConfirm } from "./SetDeleteConfirm";
 import { SetFields, type DraftEditField } from "./SetFields";
 import {
   createDraftReducer,
@@ -17,6 +19,7 @@ import {
   unitDefaultsFor,
   type DraftField,
 } from "./setDraft";
+import { useDeleteConfirm } from "./useDeleteConfirm";
 import { useDeleteSet, useUpdateSet } from "./useWorkoutMutations";
 import styles from "./SetEditSheet.module.css";
 
@@ -84,6 +87,7 @@ function EditForm({
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const confirm = useDeleteConfirm();
   const parsed = useMemo(() => parseDraft(modality, draft), [modality, draft]);
   const busy = update.isPending || del.isPending;
 
@@ -123,7 +127,7 @@ function EditForm({
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (inFlight.current || !parsed.ok) return;
+    if (confirm.confirming || inFlight.current || !parsed.ok) return; // Enter in a field while the confirm is up saves nothing
     const patch = diffForPatch(set, parsed.body);
     if (patch === null) {
       onClose(); // nothing changed: no request
@@ -149,6 +153,7 @@ function EditForm({
       await del.mutateAsync({ id: set.id, modality });
       onClose();
     } catch (error) {
+      confirm.failed();
       failed("delete-set", error);
     } finally {
       inFlight.current = false;
@@ -163,14 +168,18 @@ function EditForm({
           {formError}
         </p>
       ) : null}
-      <div className={styles.actions}>
-        <Button variant="danger" disabled={busy} onClick={() => void remove()}>
-          Delete set
-        </Button>
-        <Button type="submit" busy={update.isPending} disabled={!parsed.ok || del.isPending}>
-          Save
-        </Button>
-      </div>
+      {confirm.confirming ? (
+        <SetDeleteConfirm text={`Delete set ${set.setNumber}? ${formatSet(set, modality)} will be removed.`} busy={del.isPending} onKeep={confirm.keep} onConfirm={() => void remove()} />
+      ) : (
+        <div className={styles.actions}>
+          <Button variant="danger" ref={confirm.askRef} disabled={busy} onClick={confirm.ask}>
+            Delete set
+          </Button>
+          <Button type="submit" busy={update.isPending} disabled={!parsed.ok || del.isPending}>
+            Save
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

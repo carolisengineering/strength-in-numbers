@@ -22,7 +22,7 @@ import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, ma
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
+import { card, deleteSetIn, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -601,7 +601,7 @@ describe("18.0 AC44 — the edit screen is accessible (component level)", () => 
   it("the last-set dialog starts on Cancel (Keep it)", async () => {
     const { user } = await editScreen([makeSet({ setNumber: 1, weight: 60, reps: 8 })]);
     await user.click(within(card("Bench Press")).getByRole("button", { name: /60 kg × 8/ }));
-    await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /^Set 1/ }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this whole workout instead?" });
     expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Keep it" }));
   });

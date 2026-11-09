@@ -54,6 +54,23 @@ const set = (o: Record<string, unknown> = {}): SetEntry =>
 
 const errorsOf = (r: ReturnType<typeof parseDraft>) => (r.ok ? {} : r.errors);
 
+describe("17.5 AC11 — the restore action", () => {
+  const defaults = { weightUnit: "lb", distanceUnit: "mi" } as const;
+  const restore = createDraftReducer(() => "fresh-key");
+
+  it("a warm-up comes back a warm-up, with its weight, unit and reps", () => {
+    const next = restore(base(), { type: "restore", set: set({ setType: "warmup", weight: 47.5, reps: 6 }), defaults });
+    expect(next).toMatchObject({ setType: "warmup", weight: "47.5", weightUnit: "kg", reps: "6" });
+  });
+  it("RPE stays blank even when the set has one", () => {
+    expect(restore(base(), { type: "restore", set: set({ rpe: 8 }), defaults }).rpe).toBe("");
+  });
+  it("mints a new attempt key, never the edit marker or the undone set's own key", () => {
+    const next = restore(base(), { type: "restore", set: set({ clientGeneratedId: "00000000-0000-4000-8000-00000000000c" }), defaults });
+    expect(next.attemptKey).toBe("fresh-key");
+  });
+});
+
 describe("AC6 — parseDraft", () => {
   it("weight_reps: trimmed comma decimal; exactly the visible measures + unit + setType", () => {
     expect(parseDraft("weight_reps", base({ weight: " 52,5 ", reps: "8" }))).toEqual({

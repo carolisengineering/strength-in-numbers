@@ -228,6 +228,11 @@ export function draftForEdit(set: SetEntry, defaults: UnitDefaults): SetDraft {
   return { ...draftFromSet(set, defaults, "edit"), setType: set.setType };
 }
 
+/** Everything a set's draft or line can show: two sets with the same key read the same (Spec 17.4 AC7, Spec 17.5 AC8). */
+export function setValuesKey(set: SetEntry): string {
+  return [set.setType, set.weight, set.weightUnit, set.reps, set.distance, set.distanceUnit, set.durationS, set.calories].join("|");
+}
+
 /**
  * The one place a draft is built from a card's list (Spec 10.2 AC22): today's copy-forward of the last logged
  * set, then — only when a planned row is next — the row overlaid. A field the row leaves null keeps the
@@ -271,7 +276,9 @@ export type DraftAction =
   /** `plannedSets` / `sets` (the list BEFORE this set) let the next draft be the next planned row (AC24). */
   | { type: "logged"; set: SetEntry; plannedSets?: readonly PlannedSet[]; sets?: readonly SetEntry[] }
   /** A set was logged but the lifter has typed since the tap: keep their values, only re-mint the key. */
-  | { type: "rekey" };
+  | { type: "rekey" }
+  /** Spec 17.5 AC11: an undone set's own values and set type, with a new key so a re-log is a new set. */
+  | { type: "restore"; set: SetEntry; defaults: UnitDefaults };
 
 /** `newKey` is injected so tests (and 06.2) control key minting. */
 export function createDraftReducer(newKey: () => string) {
@@ -283,6 +290,8 @@ export function createDraftReducer(newKey: () => string) {
         return { ...draftFromSet(action.from, action.defaults, newKey()), rpe: "" }; // an entry-row draft: no hidden RPE
       case "rekey":
         return { ...state, attemptKey: newKey() };
+      case "restore":
+        return { ...draftForEdit(action.set, action.defaults), rpe: "", attemptKey: newKey() };
       case "seed":
         return seedDraft({ plannedSets: action.plannedSets, sets: action.sets, defaults: action.defaults, attemptKey: newKey() });
       case "logged": {
