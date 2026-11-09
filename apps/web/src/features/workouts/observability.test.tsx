@@ -40,7 +40,7 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   exercise_removed: { setCount: "number" },
   set_logged: { modality: "string", setType: "string", edited: "boolean", msToLog: "number" },
   set_edited: { modality: "string" },
-  set_deleted: { modality: "string" },
+  set_deleted: { modality: "string", viaUndo: "boolean" },
   finish_blocked: { incompleteCount: "number" },
   // Spec 17.1 AC53: endedEarly and unloggedPlannedSets are scalars.
   workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number", hadPlannedDuration: "boolean" },

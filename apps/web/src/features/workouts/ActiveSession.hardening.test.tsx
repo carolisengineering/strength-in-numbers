@@ -419,7 +419,7 @@ describe("06.4 AC10 — a set write answering 404 while the workout still exists
     expect(screen.queryByText(/out of date|already finished/)).not.toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 20));
     expect(activeReads(fake)).toBe(before);
-    expect(observability.track).toHaveBeenCalledWith("set_deleted", { modality: "weight_reps" });
+    expect(observability.track).toHaveBeenCalledWith("set_deleted", { modality: "weight_reps", viaUndo: false });
     expect(fake.state.active).not.toBeNull(); // the workout itself is still active
   });
 });

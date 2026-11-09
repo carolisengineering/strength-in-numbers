@@ -233,7 +233,7 @@ export function useUpdateSet(): UseMutationResult<
   });
 }
 
-export function useDeleteSet(): UseMutationResult<void, Error, { id: string; modality: Modality }> {
+export function useDeleteSet(): UseMutationResult<void, Error, { id: string; modality: Modality; viaUndo?: boolean }> {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
   return useMutation({
@@ -242,9 +242,9 @@ export function useDeleteSet(): UseMutationResult<void, Error, { id: string; mod
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteSet(id)),
     onMutate: () => guardActiveReads(queryClient),
     onSettled: (_data, _error, _variables, guard) => rereadActiveIfStale(queryClient, guard),
-    onSuccess: (_void, { id, modality }) => {
+    onSuccess: (_void, { id, modality, viaUndo }) => {
       queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, (d) => (d ? withSetRemoved(d, id) : d));
-      track("set_deleted", { modality });
+      track("set_deleted", { modality, viaUndo: viaUndo ?? false });
     },
   });
 }
