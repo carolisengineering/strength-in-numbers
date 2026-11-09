@@ -4,6 +4,7 @@ import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core"
 import { Button } from "../../ui/Button";
 import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
+import { LinkToggle } from "../routines/LinkToggle";
 import { EntryRow, type DraftRestore, type LoggedEvent } from "./EntryRow";
 import { EditNoteSheet } from "./edit/EditNoteSheet";
 import { NoteSheet } from "./NoteSheet";
@@ -62,6 +63,18 @@ export interface ExerciseCardProps {
   onSection?: (sectionId: string | null) => void;
   /** Spec 10.6 AC11: the card sits in a linked superset run. */
   linked?: boolean;
+  /** Spec 17.7 AC19: the live screen's joints with the card above / below in its segment, shown in Options. */
+  linkAbove?: CardLink;
+  linkBelow?: CardLink;
+}
+
+/** One joint of the current card, as `ActiveSession` already computes it for the regroup. */
+export interface CardLink {
+  otherName: string;
+  linked: boolean;
+  refusal: string | null;
+  disabled: boolean;
+  onToggle: () => void;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -103,6 +116,8 @@ export function ExerciseCard({
   sections,
   onSection,
   linked = false,
+  linkAbove,
+  linkBelow,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -178,6 +193,31 @@ export function ExerciseCard({
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
           </Button>
+          {/* Spec 17.7 AC19: names stay "Superset {upper} with {lower}", whichever side the card is on. */}
+          {linkAbove ? (
+            <LinkToggle
+              id={`link-above-${exercise.id}`}
+              direction="previous"
+              above={linkAbove.otherName}
+              below={exercise.exerciseNameSnapshot}
+              linked={linkAbove.linked}
+              refusal={linkAbove.refusal}
+              disabled={linkAbove.disabled}
+              onToggle={linkAbove.onToggle}
+            />
+          ) : null}
+          {linkBelow ? (
+            <LinkToggle
+              id={`link-below-${exercise.id}`}
+              direction="next"
+              above={exercise.exerciseNameSnapshot}
+              below={linkBelow.otherName}
+              linked={linkBelow.linked}
+              refusal={linkBelow.refusal}
+              disabled={linkBelow.disabled}
+              onToggle={linkBelow.onToggle}
+            />
+          ) : null}
           {onSection && sections ? (
             <SectionPicker
               exerciseId={exercise.id}

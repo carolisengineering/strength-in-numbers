@@ -20,7 +20,7 @@ import { onlineManager } from "@tanstack/react-query";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { makeCurrent } from "../../test/sessionHelpers";
+import { makeCurrent, showLinks } from "../../test/sessionHelpers";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -170,6 +170,7 @@ describe("10.3 AC28 — delivery", () => {
 
   it("a regroup never carries notes: link two cards, every PATCH body is position / supersetGroup only", async () => {
     const { user, fake } = await setupNotes();
+    await showLinks(user); // Spec 17.7 AC19: the toggle is in the current card's Options
     await user.click(screen.getByRole("button", { name: "Superset X with Y" }));
     await waitFor(() => expect(bodiesOf(fake).length).toBeGreaterThan(0));
     for (const body of bodiesOf(fake)) expect(Object.keys(body as object).every((k) => k === "position" || k === "supersetGroup")).toBe(true);
