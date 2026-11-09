@@ -75,9 +75,9 @@ export async function restBetweenSets(): Promise<void> {
   else await new Promise((resolve) => setTimeout(resolve, 650));
 }
 
-/** Spec 17.1 AC23: Set type and the unit selects sit under "Set options" in the current-set panel. */
+/** Spec 17.1 AC23: set type and the units sit under "More" in the current-set panel ("Set options" until Spec 17.7). */
 export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promise<void> {
-  const toggle = within(scope).getByRole("button", { name: "Set options" });
+  const toggle = within(scope).getByRole("button", { name: /^More set options for / });
   if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
 }
 

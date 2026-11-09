@@ -68,7 +68,7 @@ async function setup() {
 describe("AC33 — accessibility and one-handed layout (component level)", () => {
   it("every input, select and textarea has a programmatic label", async () => {
     const { user } = await setup();
-    // Spec 17.1 AC23: Set type and the unit selects sit behind "Set options"; open it so they are still checked.
+    // Spec 17.1 AC23 / 17.7: set type and the units sit behind "More"; open it so they are still checked.
     await openSetOptions(user, card("X"));
 
     const controls = document.querySelectorAll("input, select, textarea");
@@ -478,7 +478,7 @@ describe("17.1 AC38 — no bare button names on the session screen", () => {
   it("every visible button name is unique or carries its exercise", async () => {
     const { user } = await three();
     await user.click(screen.getByRole("button", { name: "Options for Bench" }));
-    await user.click(screen.getByRole("button", { name: "Set options" }));
+    await user.click(screen.getByRole("button", { name: /^More set options for / }));
     await user.click(screen.getByRole("button", { name: "Workout menu" }));
     const all = names();
     for (const bare of ["Options", "Log set", "More", "Edit", "Discard"]) expect(all).not.toContain(bare);

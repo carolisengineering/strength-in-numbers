@@ -161,7 +161,7 @@ describe("18.1 AC40 — feet offline", () => {
     goOffline(fake);
     await makeCurrent(user, "Carry");
     await typeInto(user, "Carry", "Weight", "24");
-    await user.click(within(card("Carry")).getByRole("button", { name: "Set options" }));
+    await user.click(within(card("Carry")).getByRole("button", { name: /^More set options for / }));
     await chooseSegmentValue(user, "Distance unit", "ft", card("Carry"));
     await typeInto(user, "Carry", "Distance (ft)", "40");
     await user.click(logButton("Carry"));

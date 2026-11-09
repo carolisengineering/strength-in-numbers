@@ -245,6 +245,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
       </div>
       <SetFields
         variant="entry"
+        exerciseName={exercise.exerciseNameSnapshot}
         modality={exercise.modalitySnapshot}
         draft={draft}
         errors={{ ...clientErrors, ...serverErrors }}

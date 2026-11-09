@@ -125,7 +125,7 @@ describe("17.1 AC22 — other modalities", () => {
 });
 
 describe("17.1 AC23 — set type and unit stay reachable", () => {
-  it("Set options holds Set type and the unit; a unit change re-steps by the new unit", async () => {
+  it("More holds Set type and the unit; a unit change re-steps by the new unit", async () => {
     const { user } = await setup([X({ sets: [makeSet({ setNumber: 1, weight: 60, weightUnit: "kg", reps: 8 })] })]);
     expect(panel().queryByRole("group", { name: "Set type" })).toBeNull();
     await openSetOptions(user, card("X"));
