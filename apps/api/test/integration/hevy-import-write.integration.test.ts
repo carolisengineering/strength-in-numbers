@@ -6,18 +6,12 @@ import { translateHevyWorkout, WorkoutDetailSchema, type HevyImportWorkout, type
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { fingerprintSourceOf, hevyFingerprint } from "../../src/hevy/fingerprint.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createHevyImportRepository, loadContext } from "../../src/repositories/hevy-import.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { recordingClient } from "../helpers/recording-client.js";
-import { createWorkoutRepository, readWorkoutDetail } from "../../src/repositories/workout.prisma.js";
+import { readWorkoutDetail } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { importWorkoutFixture, rowCounts, seedPairs } from "./hevy-import-helpers.js";
 import { logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 
@@ -37,7 +31,7 @@ const set = (over: Partial<HevyImportWorkout["exercises"][number]["sets"][number
 
 /** Spec 19.1 §6.2 — the per-workout write transaction. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   let bench: string;
   let row: string;
@@ -48,16 +42,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import write (real 
     app = await buildApp({
       config: { ...testConfig(), hevyEnabledUserIds: Object.freeze(new Set([U])) },
       logger: pino({ level: "silent" }),
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier(() => authContext({ authSub: `auth0|${U}` })),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

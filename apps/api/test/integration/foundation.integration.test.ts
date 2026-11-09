@@ -10,20 +10,9 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import {
-  shouldRunIntegration,
-  startIntegrationDb,
-  type IntegrationDb,
-} from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 
 const BEARER = { authorization: "Bearer test-token" };
 const JSON_HEADERS = { ...BEARER, "content-type": "application/json" };
@@ -31,7 +20,7 @@ const JSON_HEADERS = { ...BEARER, "content-type": "application/json" };
 describe.skipIf(!shouldRunIntegration())(
   "Foundation & Auth — integration (real Postgres)",
   () => {
-    let db: IntegrationDb;
+    let db: AppIntegrationDb;
 
     beforeAll(async () => {
       db = await startIntegrationDb();
@@ -49,18 +38,11 @@ describe.skipIf(!shouldRunIntegration())(
       buildApp({
         config: testConfig(),
         logger: false,
-        checkReadiness: () => checkDatabaseReady(db.prisma),
+        checkReadiness: () => checkDatabaseReady(db.app),
         tokenVerifier: fakeVerifier(() =>
           authContext({ authSub: sub, email: `${sub}@ex.com` }),
         ),
-        userRepository: createUserRepository(db.prisma),
-        exerciseRepository: createExerciseRepository(db.prisma),
-        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-        personalRecordRepository: createPersonalRecordRepository(db.prisma),
-        routineRepository: createRoutineRepository(db.prisma),
-        accountExportRepository: createAccountExportRepository(db.prisma),
-        hevyRepository: createHevyRepository(db.prisma),
-        hevyImportRepository: createHevyImportRepository(db.prisma),
+        ...appRepositories(db.app),
       });
 
     it("first GET /v1/me inserts exactly one row; isNewUser true then false (Criterion 7)", async () => {
@@ -143,17 +125,10 @@ describe.skipIf(!shouldRunIntegration())(
       const app = await buildApp({
         config: testConfig(),
         logger: false,
-        checkReadiness: () => checkDatabaseReady(db.prisma),
+        checkReadiness: () => checkDatabaseReady(db.app),
         readinessTtlMs: 0,
         tokenVerifier: fakeVerifier(() => authContext()),
-        userRepository: createUserRepository(db.prisma),
-        exerciseRepository: createExerciseRepository(db.prisma),
-        workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-        personalRecordRepository: createPersonalRecordRepository(db.prisma),
-        routineRepository: createRoutineRepository(db.prisma),
-        accountExportRepository: createAccountExportRepository(db.prisma),
-        hevyRepository: createHevyRepository(db.prisma),
-        hevyImportRepository: createHevyImportRepository(db.prisma),
+        ...appRepositories(db.app),
       });
       const up = await app.inject({ method: "GET", url: "/readyz" });
       expect(up.statusCode).toBe(200);

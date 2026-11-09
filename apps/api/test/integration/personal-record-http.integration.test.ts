@@ -4,17 +4,9 @@ import { uuidv7 } from "uuidv7";
 import { PersonalRecordSchema } from "@sin/core";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, TRUNCATE_ALL } from "./records-helpers.js";
 
 const JSON_A = { authorization: "Bearer pr-a", "content-type": "application/json" };
@@ -22,7 +14,7 @@ const JSON_B = { authorization: "Bearer pr-b", "content-type": "application/json
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
 describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HTTP (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
@@ -41,20 +33,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HT
     return buildApp({
       config: testConfig(),
       logger: false,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => {
         if (token === "pr-a") return authContext({ authSub: "auth0|pr-a", email: "a@ex.com" });
         if (token === "pr-b") return authContext({ authSub: "auth0|pr-b", email: "b@ex.com" });
         throw new Error(`unexpected bearer token in test: ${token}`);
       }),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }

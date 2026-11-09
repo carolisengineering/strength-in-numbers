@@ -38,6 +38,13 @@ describe("15 AC15 / §7 — the database URL never reaches the log", () => {
     expect(out).not.toMatch(/s3cr3t-pw|ep-cool-name-123|neondb\?sslmode/);
     expect(out).toContain("P1001");
   });
+  it("Spec 21.1 AC28 — both URLs and both hosts are removed when both variables are set", async () => {
+    const { scrubDatabaseUrls } = await import("../../scripts/lib/migrate-status.js");
+    const app = "postgresql://sin_app:app-secret@ep-app-pooler.neon.tech:5432/neondb";
+    const text = `owner ${URL_} app ${app} at ep-cool-name-123.us-east-2.aws.neon.tech and ep-app-pooler.neon.tech, app-secret and s3cr3t-pw`;
+    const out = scrubDatabaseUrls(text, [URL_, app, undefined]);
+    expect(out).not.toMatch(/s3cr3t-pw|app-secret|ep-cool-name-123|ep-app-pooler/);
+  });
   it("a value that is not a URL is still removed verbatim", async () => {
     const { scrubDatabaseUrl } = await import("../../scripts/lib/migrate-status.js");
     expect(scrubDatabaseUrl("x not-a-url y", "not-a-url")).toBe("x <redacted> y");

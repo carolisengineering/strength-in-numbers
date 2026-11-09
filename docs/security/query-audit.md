@@ -10,13 +10,13 @@ Categories:
 
 - **user-filtered**: the statement itself carries a user predicate (`user_id = $acting`, `owner_user_id IS NULL OR owner_user_id = $acting`, `id = $acting` on `"user"`, an `ownership.ts` helper, or an `INSERT` that writes the acting user's id).
 - **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column).
-- **shared on purpose**: reference data (`muscle_group`, `equipment`, the catalog's `owner_user_id IS NULL` rows) or no table at all.
+- **shared on purpose**: reference data (`muscle_group`, `equipment`, the catalog's `owner_user_id IS NULL` rows), Postgres's own catalogs (`pg_*`), or no table at all.
 - **cross-user maintenance**: the operator scripts that act on many users (`account/purge.ts`, `records/rebuild.ts`, `seed/catalog.ts`).
 - **fragment**: a piece composed into other statements, classified through the callers listed beside it.
 
 ## Summary
 
-225 statements: 111 user-filtered, 54 anchored, 15 shared on purpose, 14 cross-user maintenance, 31 fragment.
+234 statements: 111 user-filtered, 54 anchored, 24 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -83,6 +83,25 @@ Categories:
 | `src/account/purge.ts#classifyTarget#1` | query | cross-user maintenance | ok | — | `14fb817c5283` | Reads user |
 | `src/account/purge.ts#purgeAccount#1` | query | cross-user maintenance | ok | — | `a236e9b5ff39` | Reads workout, set_entry, workout_exercise |
 | `src/account/purge.ts#purgeAccount#2` | query | cross-user maintenance | ok | — | `ab3e19bdc3df` | Deletes from user |
+
+## src/db/app-role.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/app-role.ts#readAppRoleReport#1` | query | shared on purpose | ok | — | `e8c51e99f8d4` | Reads pg_roles: sin_app's flags (operator command, no user data) |
+| `src/db/app-role.ts#readAppRoleReport#2` | query | shared on purpose | ok | — | `3fd479667ddd` | Reads pg_auth_members: sin_app's memberships (operator command, no user data) |
+| `src/db/app-role.ts#setAppRoleLogin#1` | query | shared on purpose | ok | — | `c69f5425d5e5` | Reads pg_roles: does sin_app exist (operator command) |
+| `src/db/app-role.ts#setAppRoleLogin#2` | query | shared on purpose | ok | — | `ce0b2d5921fc` | Transaction-local setting holding the password as a bound parameter (no table) |
+| `src/db/app-role.ts#setAppRoleLogin#3` | query | shared on purpose | ok | — | `bb4f4c3144c2` | ALTER ROLE sin_app LOGIN PASSWORD from the setting (no table) |
+| `src/db/app-role.ts#setAppRoleLogin#4` | query | shared on purpose | ok | — | `068abc9b2857` | Clears the transaction-local password setting (no table) |
+
+## src/db/login-check.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/login-check.ts#readFacts#1` | query | shared on purpose | ok | — | `bf5e8353f409` | Boot check: reads pg_roles / pg_class for the current login (no user data) |
+| `src/db/login-check.ts#readFacts#2` | query | shared on purpose | ok | — | `4067e45b9d91` | Boot check: reads pg_roles / pg_class for roles the login could SET ROLE into (no user data) |
+| `src/db/login-check.ts#readFacts#3` | query | shared on purpose | ok | — | `80e57d027f3e` | Boot check: reads the row_security setting (no table) |
 
 ## src/db/scoped.ts
 

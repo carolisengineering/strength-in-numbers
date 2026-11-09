@@ -14,8 +14,8 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "core:purity": "pnpm --filter @sin/core purity",
-    "db:migrate:status": "pnpm --filter @sin/api exec prisma migrate status",
-    "db:migrate:deploy": "pnpm --filter @sin/api exec prisma migrate deploy"
+    "db:migrate:status": "pnpm --filter @sin/api exec node --env-file-if-exists=.env.owner scripts/owner-env.mjs prisma migrate status",
+    "db:migrate:deploy": "pnpm --filter @sin/api exec node --env-file-if-exists=.env.owner scripts/owner-env.mjs prisma migrate deploy"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

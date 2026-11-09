@@ -6,6 +6,17 @@ import {
 } from "@testcontainers/postgresql";
 import { PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
+import type { BuildAppDeps } from "../../src/app.js";
+import { setAppRoleLogin } from "../../src/db/app-role.js";
+import { createScopedDb } from "../../src/db/scoped.js";
+import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
+import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
+import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
+import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
+import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
+import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { POSTGRES_IMAGE } from "./postgres-image.js";
 
 /**
@@ -45,7 +56,48 @@ export async function startBareDb(): Promise<IntegrationDb> {
   };
 }
 
-export async function startIntegrationDb(): Promise<IntegrationDb> {
+/** The fixed test password of the restricted login (Spec 21.1 AC30). */
+export const TEST_APP_PASSWORD = "sin_app_test";
+
+/** A migrated database: `prisma` is the container's superuser (fixtures, truncation), `app` the restricted `sin_app`. */
+export interface AppIntegrationDb extends IntegrationDb {
+  app: PrismaClient;
+  appUrl: string;
+}
+
+/**
+ * Spec 21.1 AC30 — every repository, wired the way `server.ts` wires them: `createScopedDb` once, over the client it is
+ * given (`db.app` in HTTP-level tests). Fixtures, truncation and assertions on stored rows stay on `db.prisma`.
+ */
+export function appRepositories(
+  client: PrismaClient,
+): Pick<
+  BuildAppDeps,
+  | "userRepository"
+  | "exerciseRepository"
+  | "workoutRepository"
+  | "personalRecordRepository"
+  | "routineRepository"
+  | "accountExportRepository"
+  | "hevyRepository"
+  | "hevyImportRepository"
+> {
+  const scoped = createScopedDb(client);
+  const exerciseRepository = createExerciseRepository(scoped);
+  return {
+    userRepository: createUserRepository(scoped),
+    exerciseRepository,
+    workoutRepository: createWorkoutRepository(scoped, exerciseRepository),
+    personalRecordRepository: createPersonalRecordRepository(scoped),
+    routineRepository: createRoutineRepository(scoped),
+    accountExportRepository: createAccountExportRepository(scoped),
+    hevyRepository: createHevyRepository(scoped),
+    hevyImportRepository: createHevyImportRepository(scoped),
+  };
+}
+
+/** Migrated, but `sin_app` is still `NOLOGIN`: the state right after `0020`, before `db:app-role` (Spec 21.1 AC23, AC31). */
+export async function startMigratedDb(): Promise<IntegrationDb> {
   const db = await startBareDb();
   // Apply the real migrations exactly as Render's pre-deploy step would.
   execFileSync("pnpm", ["exec", "prisma", "migrate", "deploy"], {
@@ -53,6 +105,25 @@ export async function startIntegrationDb(): Promise<IntegrationDb> {
     stdio: "inherit",
   });
   return db;
+}
+
+export async function startIntegrationDb(): Promise<AppIntegrationDb> {
+  const db = await startMigratedDb();
+  await setAppRoleLogin(db.prisma, TEST_APP_PASSWORD);
+  const u = new URL(db.url);
+  u.username = "sin_app";
+  u.password = TEST_APP_PASSWORD;
+  const appUrl = u.toString();
+  const app = new PrismaClient({ datasourceUrl: appUrl, log: [{ emit: "event", level: "query" }] });
+  return {
+    ...db,
+    app,
+    appUrl,
+    stop: async () => {
+      await app.$disconnect();
+      await db.stop();
+    },
+  };
 }
 
 /**

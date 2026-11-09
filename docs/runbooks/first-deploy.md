@@ -174,8 +174,12 @@ connection exists by default) and **Authentication → Social** for Google/Apple
    and silently downgrades to `prefer` (TLS optional); the app refuses to boot on
    it. B6 checks that strict validation actually works against Neon.
 
-**Record:** `DATABASE_URL` = that full string (it's a secret — GitHub/Render
-only, never commit it).
+**Record:** `OWNER_DATABASE_URL` = that full string (it's a secret: your password
+manager, never commit it, and never on the Render service).
+
+**On a fresh database, do B4 and "RLS rollout" step S4 now, before B2.** Since Spec 21.1
+Phase C the API refuses the owner login and won't start until the restricted login
+`sin_app` exists and has its password. B2 then uses the `sin_app` URL that S4 builds.
 
 ### B2. Create the Render service from the blueprint
 
@@ -194,11 +198,10 @@ and sets almost everything.
      `AUTH0_ISSUER`; committed in `render.yaml`).
    - **No database** — you're using Neon.
 4. It will prompt for the one **`sync: false`** var: **`DATABASE_URL`**. Paste
-   the Neon string from B1.
+   the **`sin_app` URL** from S4, not the owner string from B1.
 5. **Blueprint Name:** `strength-in-numbers`. **Apply** / **Create Resources**.
-6. Render starts the **first build**. It'll go live on `/healthz` (that endpoint
-   has no DB dependency) even before migrations exist — that's fine, B4 handles
-   the schema.
+6. Render starts the **first build**. It goes live once its boot check passes on
+   `sin_app`; a log line starting `Refusing to start` says why it didn't.
 
 ### B3. Check `api-shared` values
 
@@ -298,29 +301,37 @@ email claim, so every user route refuses it (`401 invalid-token`).
 
 ### B4. Run the migration against Neon (by hand) — **required, easy to miss**
 
-Free Render has no pre-deploy step, so apply `0001_create_user` yourself. **The
-service deploys fine, `/healthz` and `/readyz` go green, and `/v1/_authcheck`
-passes — all without the `user` table.** The first thing that needs it is
-`/v1/me`, so a skipped migration shows up only as a **`500` on `/v1/me`** (and
-the CI `smoke` failing at that exact step).
+Free Render has no pre-deploy step, so apply the migrations yourself. On a fresh
+database that comes before the first deploy: the API won't start until `0020` has
+created `sin_app` and S4 has given it a login. A later migration you forget shows up
+differently: the service stays up, and only the statements that need the new schema
+fail, as a **`500`** on those routes (and the CI `smoke` failing at that step).
 
-Use the **same connection string that is set as `DATABASE_URL` on the Render
-service** — copy it from Render (service → **Environment**), don't hand-assemble
-it. Neon has *branches*; migrating `neondb` on one branch while Render points at
-another is the classic trap. B4 and B5 (and their verify commands) all need the
-same value, so export it once for the shell session, from the repo root:
+Use the **owner login's** connection string, `OWNER_DATABASE_URL`. Since Spec 21.1
+Phase C the `DATABASE_URL` on the Render service is the restricted `sin_app` login,
+which cannot migrate; the maintenance commands read only `OWNER_DATABASE_URL` and
+refuse a lone `DATABASE_URL`. Copy the owner string from Neon (Connection details,
+the owner role, the **direct** host) or your password manager; don't hand-assemble it.
+It must be the same database Render uses: Neon has *branches*; migrating `neondb` on
+one branch while Render points at another is the classic trap, so compare the host
+with Render's `DATABASE_URL` (service → **Environment**). B4 and B5 (and their verify
+commands) all need the same value, so export it once for the shell session, from the
+repo root:
 
 ```bash
-export DATABASE_URL='<paste the exact value from Render, the direct -pooler-free host>'
+export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 ```
 
-An exported variable takes precedence over `apps/api/.env` (Prisma and tsx's
-`--env-file` both leave already-set variables alone), so this safely overrides
-the local Docker URL. **`unset DATABASE_URL` when you're done** (end of B5) so a
-later local command doesn't point at Neon by accident.
+The string must carry `sslmode=require&sslaccept=strict` (B1): the Prisma CLI reads the raw URL, so the wrapper these
+commands go through refuses one without them, rather than let the owner login connect with no certificate check.
+
+An exported variable takes precedence over `apps/api/.env.owner` (Node's and tsx's
+`--env-file` both leave already-set variables alone), so this safely overrides the
+local Docker URL. **`unset OWNER_DATABASE_URL` when you're done** (end of B5a, or of B5 if
+you skip it) so a later local command doesn't point at Neon by accident.
 
 ```bash
-pnpm run db:migrate:deploy   # = pnpm --filter @sin/api exec prisma migrate deploy
+pnpm run db:migrate:deploy   # the repo-pinned Prisma, with DATABASE_URL set from OWNER_DATABASE_URL for that child only
 ```
 
 Run it from the repo root with `pnpm`, never `npx prisma …` — `npx` fetches the
@@ -341,7 +352,7 @@ never run on app boot.)
 
 **Verify it landed** — any one of these:
 
-- **CLI, no console needed** (same exported `DATABASE_URL`):
+- **CLI, no console needed** (same exported `OWNER_DATABASE_URL`):
 
   ```bash
   pnpm run db:migrate:status
@@ -375,9 +386,9 @@ the Render service — the branch selector is at the top of the Neon console.
 Same reason as B4: no pre-deploy hook on the free plan, so the catalog seed is a
 **manual release step** (Spec 03.1 §8 / §11, D12). It is idempotent — re-run it
 on every deploy that touches `apps/api/prisma/catalog/*.json` (or just always;
-an unchanged catalog reports everything `unchanged`). Same `DATABASE_URL` rule
-as B4: the exact value from Render, the **direct** (non-`-pooler`) host — still
-exported from B4.
+an unchanged catalog reports everything `unchanged`). Same `OWNER_DATABASE_URL`
+rule as B4: the owner string, the **direct** (non-`-pooler`) host — still exported
+from B4.
 
 ```bash
 pnpm --filter @sin/api run seed:catalog
@@ -415,7 +426,7 @@ re-check the exported string against Render → Environment (branch included).
 Equivalent DB-side check, Neon SQL editor on the same branch:
 `select catalog_key, is_active from exercise order by 1;` → one row per file entry.
 
-Keep `DATABASE_URL` exported for B6.
+B6 exports its own `DATABASE_URL`.
 
 ### B5a. Rebuild personal records (by hand, after B4 + the Spec 07.0 deploy) — Spec 07.0
 
@@ -423,7 +434,7 @@ Keep `DATABASE_URL` exported for B6.
 finish / delete paths keep current from the 07.0 deploy onward. **Workouts finished
 before that deploy have no rows until this step runs** (staging already has some).
 Like B5 it is a manual release step: run it after `migrate deploy` and after the
-code is live, with the same direct-host `DATABASE_URL` still exported from B4.
+code is live, with the same direct-host `OWNER_DATABASE_URL` still exported from B4.
 Idempotent — re-run any time, and **always after a rollback window** (finishes and
 deletes during a rollback don't update the table).
 
@@ -441,7 +452,7 @@ eligible sets.
 
 ### 0010 — planned sets (Spec 09.1)
 
-1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.1; confirm with `db:migrate:status`.
+1. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy` **before** merging 09.1; confirm with `db:migrate:status`.
 2. Merge 09.1 (Render deploys the API).
 3. Consistency check — expected `0`:
 
@@ -456,7 +467,7 @@ eligible sets.
 
 ### 0011 — routine sections (Spec 09.2)
 
-1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.2; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code ignores the new tables and columns, so the migration safely precedes it.
+1. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy` **before** merging 09.2; confirm with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code ignores the new tables and columns, so the migration safely precedes it.
 2. Merge 09.2 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require fields the old API does not send — accepted on staging, as in 0010).
 3. Verify: `GET $BASE/v1/routines` shows `sections: []` and `sectionId: null` everywhere; `GET $BASE/v1/workouts/active` (or any `GET /v1/workouts/{id}`) shows `sections: []`, `routineNotes: null`. Consistency queries — both expected `0`:
 
@@ -470,7 +481,7 @@ eligible sets.
 
 ### 0012 — workout planned duration (Spec 07.4 Phase B)
 
-1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 07.4 Phase B; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `planned_duration_s`, so the migration safely precedes it.
+1. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy` **before** merging 07.4 Phase B; confirm with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `planned_duration_s`, so the migration safely precedes it.
 2. Merge Phase B (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `plannedDurationSeconds`, which the old API does not send — accepted on staging, as in 0010 / 0011).
 3. Verify: any `GET $BASE/v1/workouts/{id}` and the first page of `GET $BASE/v1/workouts` show `plannedDurationSeconds: null`. Consistency query — expected `0`:
 
@@ -489,7 +500,7 @@ eligible sets.
 
 ### 0013 — routine one-off (Spec 09.3)
 
-1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.3; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `one_off_until`, so the migration safely precedes it.
+1. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy` **before** merging 09.3; confirm with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status` (the 2026-10-04 incident: do not assume). Old code never reads or writes `one_off_until`, so the migration safely precedes it.
 2. Merge 09.3 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `oneOffUntil` and `routineIsOneOff`, which the old API does not send — accepted on staging, as in 0010 / 0011 / 0012).
 3. Verify: `GET $BASE/v1/routines` shows `oneOffUntil: null` everywhere; `GET $BASE/v1/workouts/active` (or any workout) shows `routineIsOneOff: false`; `POST $BASE/v1/routines/{id}/keep` on an ordinary routine answers `204`. Consistency query — expected `0`:
 
@@ -509,7 +520,7 @@ eligible sets.
 
 ### 0014 — workout section origin (Spec 09.4)
 
-1. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy` **before** merging 09.4; confirm with `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status` (do not assume). Old code never reads or writes `added_in_workout`, so the migration safely precedes it.
+1. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy` **before** merging 09.4; confirm with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status` (do not assume). Old code never reads or writes `added_in_workout`, so the migration safely precedes it.
 2. Merge 09.4 (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new bundle's schemas require `addedInWorkout` on every section, which the old API does not send — the session and History screens would fail to parse; accepted on staging, as in 0010 / 0011 / 0012 / 0013).
 3. Verify: `GET $BASE/v1/workouts/{id}` shows `addedInWorkout: false` on every section; `POST $BASE/v1/workouts/{id}/sections` on a scratch workout answers `201`; a `PATCH $BASE/v1/workout-exercises/{id}` with `sectionId` moves the exercise; `DELETE $BASE/v1/workout-sections/{id}` answers `204`. Consistency queries — expected `0` each (run the first immediately after deploy, before any test write):
 
@@ -532,15 +543,15 @@ eligible sets.
    ```
 
    A non-zero first count is a row whose `distance_m` would change from miles to NULL (D18): stop and fix it by hand first. No CHECK forbids such a row; only the API's unit-pairing rule (Spec 05.1 AC20) keeps it from being written, so expect 0.
-2. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:deploy`, then `db:migrate:status` (do not assume) and `\d set_entry` (a `calories smallint` column; `distance_m` still `numeric(9,3)` generated). Re-run the `md5` query: the hash must be unchanged. The `distance_m` rebuild briefly takes `ACCESS EXCLUSIVE` on `set_entry`; the old API's statements wait, then succeed (the column keeps its name and type). Expand-only, so the running API is unaffected.
+2. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:deploy`, then `db:migrate:status` (do not assume) and `\d set_entry` (a `calories smallint` column; `distance_m` still `numeric(9,3)` generated). Re-run the `md5` query: the hash must be unchanged. The `distance_m` rebuild briefly takes `ACCESS EXCLUSIVE` on `set_entry`; the old API's statements wait, then succeed (the column keeps its name and type). Expand-only, so the running API is unaffected.
 3. Merge Phase A (Render deploys; the static site redeploys in the same commit, so for a few minutes the new bundle requires `calories` on every set, which the old API does not send — accepted on staging, as in 0010–0014). Run the staging API smoke. No UI offers a new type yet.
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0015` by hand the same way before approving the release.
-5. After 05.3 **Phase B** is deployed (no migration), run `DATABASE_URL='<neon direct url>' pnpm --filter @sin/api run records:rebuild` (B5a) so earlier calories, weight + distance and weight + duration sets get their records. Check `GET /v1/personal-records` for the test user: the legacy records are unchanged, and only new-type records are added. The rebuild is idempotent, so a second run changes nothing. On production it is not required until new-type data exists there (Spec 05.3 D17); running it anyway is harmless.
+5. After 05.3 **Phase B** is deployed (no migration), run `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api run records:rebuild` (B5a) so earlier calories, weight + distance and weight + duration sets get their records. Check `GET /v1/personal-records` for the test user: the legacy records are unchanged, and only new-type records are added. The rebuild is idempotent, so a second run changes nothing. On production it is not required until new-type data exists there (Spec 05.3 D17); running it anyway is harmless.
 6. Rollback: revert the code; `0015` stays (harmless to old code). Caveat: old code's `z.enum` rejects a new modality, record type or `ft` unit in a response. Before a rollback with such rows: `DELETE FROM personal_record WHERE record_type IN ('max_calories','max_distance','max_duration');`, move new-type exercises (and their snapshots) back to a legacy type by hand, and as a last resort convert feet (`UPDATE set_entry SET distance = round(distance_m, 3), distance_unit = 'm' WHERE distance_unit = 'ft';`, which loses the typed unit). Until Spec 18.1 ships, only a deliberate API call creates such rows.
 
 ### 0016 — Hevy integration (Spec 19.0)
 
-1. Before merging 19.0 Phase B: `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds four empty tables (`hevy_exercise_pair`, `hevy_section_rule`, `hevy_link`, `hevy_account`) and widens `workout_source_check` to `('manual', 'hevy')`; there is no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link`. Expand-only, so the running API is unaffected.
+1. Before merging 19.0 Phase B: `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds four empty tables (`hevy_exercise_pair`, `hevy_section_rule`, `hevy_link`, `hevy_account`) and widens `workout_source_check` to `('manual', 'hevy')`; there is no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link`. Expand-only, so the running API is unaffected.
 2. Merge Phase B (Render deploys). Phase A (#189, the `"hevy"` source value in every bundle) is already live, so the rollout order of AC39 holds.
 3. Turn the feature on for Carol only: read her user id from `GET /v1/me`, then set `HEVY_ENABLED_USER_IDS` to it in the Render dashboard (`api-shared` env group). Not in `render.yaml`. Until it is set, every Hevy route answers `404`.
 4. Staging smoke (§11): `GET /v1/hevy/status` is `200` for Carol and `404` for the e2e test user; `PUT /v1/hevy/mapping` with one pair, then `GET` it back (an `ETag`; the same request with `If-None-Match` is `304`); `POST` then `DELETE /v1/workouts/{id}/hevy-link` on one of her finished workouts.
@@ -549,7 +560,7 @@ eligible sets.
 
 ### 0017 — Hevy link claim fingerprint (Spec 19.0 D29, minors 139 / 144)
 
-1. **Before merging** the owner-calls branch (merging auto-deploys staging, and the new code reads `hevy_link.claim_fingerprint` on every link read, begin and complete — without the column each answers `500`): `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds one nullable column, no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link` (a `claim_fingerprint text` column). Expand-only, so the running API is unaffected.
+1. **Before merging** the owner-calls branch (merging auto-deploys staging, and the new code reads `hevy_link.claim_fingerprint` on every link read, begin and complete — without the column each answers `500`): `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds one nullable column, no data statement. Check `db:migrate:status` again (do not assume) and `\d hevy_link` (a `claim_fingerprint text` column). Expand-only, so the running API is unaffected.
 2. Merge (Render deploys). A claim taken by the old code just before has no stored fingerprint and completes as before.
 3. Verify on one of Carol's finished workouts: `POST $BASE/v1/workouts/{id}/hevy-link` answers a `fingerprint`; `SELECT claim_fingerprint FROM hevy_link WHERE workout_id = '<id>'` equals it; then `DELETE` the same URL (release) and the column reads `NULL`. No backfill, no `records:rebuild`.
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0017` by hand the same way before approving the release.
@@ -557,7 +568,7 @@ eligible sets.
 
 ### 0018 — Timed sections (Spec 09.5)
 
-1. **Before merging** Phase A (merging auto-deploys staging, and the new code selects the `timer_*` / `result_*` columns and `workout_section_round` on every routine and workout read — without them each answers `500`): `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds nullable plan and result columns on `routine_section` / `workout_section`, one `result_capped BOOLEAN NOT NULL DEFAULT false` (metadata-only), three CHECKs over small tables and the new `workout_section_round` table; no data statement. Check `db:migrate:status` again (do not assume) and `\d workout_section_round`. Expand-only, so the running API is unaffected.
+1. **Before merging** Phase A (merging auto-deploys staging, and the new code selects the `timer_*` / `result_*` columns and `workout_section_round` on every routine and workout read — without them each answers `500`): `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then `db:migrate:deploy`. It adds nullable plan and result columns on `routine_section` / `workout_section`, one `result_capped BOOLEAN NOT NULL DEFAULT false` (metadata-only), three CHECKs over small tables and the new `workout_section_round` table; no data statement. Check `db:migrate:status` again (do not assume) and `\d workout_section_round`. Expand-only, so the running API is unaffected.
 2. Merge (Render deploys). The web bundle that ships with it parses `timer` on routine sections and `timer` / `result` / `roundTimes` on workout sections as required, so the Routines and session screens fail to parse for the minutes until the API is live (accepted on staging, as for 09.1 / 09.2 / 09.4).
 3. Verify: a routine read (`GET $BASE/v1/routines`) shows `"timer": null` on every section; `GET $BASE/v1/workouts/{id}` on a sectioned workout shows `"timer": null, "result": null, "roundTimes": []` on each section. Both consistency queries return `0`:
    - `SELECT count(*) FROM workout_section WHERE timer_format IS NOT NULL;` (immediately after the deploy, before any test write);
@@ -579,8 +590,8 @@ eligible sets.
 1. **Before merging** Phase A. Merging auto-deploys staging, and the new code's ownership predicates (`repositories/ownership.ts`) and three detail / History loaders read `user_id` on the child tables, so without the column every set edit, workout detail and History page answers `500`. Spec 21.1 §6.9 S1 was corrected to this order.
    - Count first: `SELECT count(*) FROM set_entry;`. Over about 500,000 rows, stop: split the backfill by id range by hand (spec §4.2). Not expected on staging (thousands of rows).
    - Pick a quiet minute (no workout in progress). `migrate deploy` runs the file as one transaction: it first locks the ten tables (`routine`, `workout` and their children) in `ACCESS EXCLUSIVE` mode and holds them until it commits. The backfill rewrites every child row once, so reads and writes on those tables wait a few seconds at staging's size, then go through. A request that arrives exactly while the locks are being taken can deadlock with it; Postgres then fails one side (that request answers `500`, or the migration fails).
-   - If the migration fails, for that reason or because it couldn't get the locks within 5 seconds (`lock_timeout`), it changes nothing, but Prisma records the attempt as failed and refuses later deploys (`P3009`). Clear that with `DATABASE_URL='<neon direct url>' pnpm --filter @sin/api exec prisma migrate resolve --rolled-back 0019_child_table_owner`, then deploy again.
-2. `DATABASE_URL='<neon direct url>' pnpm run db:migrate:status`, then `db:migrate:deploy`, then `db:migrate:status` again (do not assume). It adds `user_id` to `workout_exercise`, `workout_section`, `set_entry`, `workout_planned_set`, `workout_section_round`, `routine_item`, `routine_section` and `routine_item_set`; a `BEFORE INSERT` fill trigger on each; the backfill; `(id, user_id)` keys on five parents; composite foreign keys in place of the eight single-column ones; and `NOT NULL`. `\d set_entry` shows `user_id uuid not null`, the trigger `set_entry_fill_user` and the key `set_entry_workout_exercise_owner_fkey`. Expand-only: the running API never names the column, and the trigger fills it on every insert.
+   - If the migration fails, for that reason or because it couldn't get the locks within 5 seconds (`lock_timeout`), it changes nothing, but Prisma records the attempt as failed and refuses later deploys (`P3009`). Clear that with `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --rolled-back 0019_child_table_owner`, then deploy again.
+2. `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then `db:migrate:deploy`, then `db:migrate:status` again (do not assume). It adds `user_id` to `workout_exercise`, `workout_section`, `set_entry`, `workout_planned_set`, `workout_section_round`, `routine_item`, `routine_section` and `routine_item_set`; a `BEFORE INSERT` fill trigger on each; the backfill; `(id, user_id)` keys on five parents; composite foreign keys in place of the eight single-column ones; and `NOT NULL`. `\d set_entry` shows `user_id uuid not null`, the trigger `set_entry_fill_user` and the key `set_entry_workout_exercise_owner_fkey`. Expand-only: the running API never names the column, and the trigger fills it on every insert.
 3. The consistency query (spec AC1). Every row must be `0`:
 
    ```sql
@@ -598,6 +609,68 @@ eligible sets.
 5. Production (Spec 15): `deploy-prod` never migrates. Apply `0019` by hand the same way before approving the release (production is empty, so the backfill does nothing).
 6. Rollback: revert the code. The columns, triggers and keys stay, and old code runs on them unchanged (AC5: the whole suite passed on the migrated schema before the Phase A code existed). Nothing to undo in the data.
 
+### RLS rollout — the restricted login (Spec 21.1 §6.9, steps S3–S6)
+
+**Do S3–S5 before merging Phase C.** Render auto-deploys on merge, and the new code's boot check refuses the owner
+login, so staging's `DATABASE_URL` must already be the `sin_app` URL when that code arrives. Phase D adds S7 and S8.
+RLS stays off throughout these steps: the policies from `0020` do nothing until `0021`.
+
+**S3 — apply `0020`, from the Phase C branch.** Pick a quiet minute: the file locks all 19 tables for the moment it runs.
+RLS stays off, so afterward the running API (still on the owner login) behaves as before.
+
+```bash
+export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
+pnpm run db:migrate:status    # expect: only 0020 pending
+pnpm run db:migrate:deploy
+pnpm run db:migrate:status    # expect: up to date
+```
+
+If it fails, for a lock conflict or its 5-second `lock_timeout`, it changed nothing, but Prisma records the failure and
+blocks later deploys until you clear it, then retry:
+
+```bash
+pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --rolled-back 0020_app_role_and_policies
+```
+
+**S4 — give `sin_app` its login.** Never create or edit this role in the Neon Console: Console roles are members of
+`neon_superuser`, which bypasses row-level security. Use a hex password, so it needs no escaping in a URL, and keep it in
+your password manager.
+
+```bash
+export APP_ROLE_PASSWORD="$(openssl rand -hex 24)"
+pnpm --filter @sin/api run db:app-role
+```
+
+(With neither variable set in a terminal, it asks for the password instead, with echo off.)
+
+Expect exit 0 and `sin_app: login yes, superuser no, bypassrls no, createrole no, createdb no` then `memberOf: none`.
+To check by hand in the Neon SQL editor:
+
+```sql
+SELECT rolname, rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = 'sin_app';
+SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid WHERE m.member = 'sin_app'::regrole;  -- no rows
+```
+
+Filter on `member`: Postgres 16 also records the owner as holding `sin_app` `WITH ADMIN OPTION` (it created the role).
+That row has `sin_app` as the *granted* role, is harmless, and must not be revoked.
+
+Build the `sin_app` URL from the owner string: same direct host and database, user `sin_app`, your password,
+`?sslmode=require&sslaccept=strict`.
+
+**S5 — switch staging to `sin_app`.** Render dashboard → the API service → **Environment** → set `DATABASE_URL` to the
+`sin_app` URL. This redeploys the **Phase B** code, and real traffic now tests the grants. Re-run the post-deploy smoke
+(Actions → the latest `main` run → re-run `post-deploy smoke (staging)`) and open the app on a phone. A missing grant
+answers `500` and logs SQLSTATE `42501`. **If red: put the owner URL back in Render**, and diagnose.
+
+**S6 — merge Phase C.** First confirm `OWNER_DATABASE_URL` is **not** set in Render: the API refuses to start with it.
+After the deploy, the log has a `db_login_checked` line with `"superuser":false`; the smoke goes green. A refused boot
+ends with one line naming the reason (a rejected or unreachable database also shows Prisma's own `prisma:error` lines above it). **If red: Render → Manual Deploy → the previous commit.** Putting the owner URL back
+does not help here, because the Phase C code refuses it; the Phase B code runs on either login.
+
+```bash
+unset OWNER_DATABASE_URL APP_ROLE_PASSWORD
+```
+
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
 `sslmode=require` alone encrypts the link but, in Prisma's engine, does **not**
@@ -614,10 +687,12 @@ app backfills `sslaccept=strict` on boot, so a validation failure shows up as a
 `503` from `/readyz` and a red post-deploy smoke *after* the deploy. Building
 the image from the branch (step c) is what proves it ahead of time.
 
-Same exported `DATABASE_URL` as B4/B5 (with `&sslaccept=strict` already on it,
-per B1). `HOST` is the Neon direct host:
+This check reads `DATABASE_URL` itself, and any login will do for its `SELECT 1`, so
+export Render's value for this section (with `&sslaccept=strict` already on it, per
+B1). `HOST` is the Neon direct host:
 
 ```bash
+export DATABASE_URL='<the value from Render>'
 HOST=$(node -e 'console.log(new URL(process.env.DATABASE_URL).hostname)')
 ```
 
@@ -867,7 +942,7 @@ Testers can now download their data and request deletion themselves in the app
 
 **Monthly, or when a tester asks:**
 
-1. Export the direct-host `DATABASE_URL` (same as B4).
+1. Export the direct-host `OWNER_DATABASE_URL` (same as B4).
 2. Dry run — lists eligible accounts (user id, deleted date, workout and set counts; never email):
    `pnpm --filter @sin/api run account:purge`
 3. If the list is right: `pnpm --filter @sin/api run account:purge --confirm`
@@ -888,6 +963,10 @@ Auth0 dashboard (User Management → Users) by hand. Database backups age out on
 the host's retention window.
 
 ## Part F — Production on Google Cloud (Spec 15)
+
+> **Wait for Spec 21.1 Phase D before running this part.** Its commands below still say `DATABASE_URL` and F6 still stores
+> the owner URL as the runtime secret. Since Phase C the maintenance commands refuse that and the API refuses to start on
+> the owner login. Phase D rewrites these steps for the two logins (spec §6.9, "Production").
 
 Production is a separate Google Cloud project on the free tier: the API on **Cloud Run** (`si-api`,
 `us-central1`, scale 0 → 1), the web app on **Firebase Hosting**, its own **Neon** project, and a
@@ -1105,8 +1184,8 @@ Cloud are in [`observability.md`](observability.md).
 | B5 `seed aborted: … changed an identifying field` | A live `catalog_key`'s `name`/`modality` was edited in `exercises.json`. Append-only: restore the old entry, mark it `"retired": true`, and add the new one under a new key. |
 | B5 `seed aborted: … unknown primaryMuscleId` (or equipment) | The code isn't in `muscle-groups.json` / `equipment.json`. Add it there first. Codes are immutable once shipped. |
 | `GET /v1/exercises` returns `[]` on staging | B5 was skipped — run the seed. |
-| B5 seed fails: `relation "X" does not exist` (`code: 42P01`) | B4 was skipped, or `DATABASE_URL` points at a different Neon branch than the one B4 was run against. Run `prisma migrate status` first to confirm, then B4. |
-| `prisma migrate status` / `migrate deploy` prints a `Datasource` host containing `-pooler` | You exported the **pooled** connection string. `migrate status` will still report correctly, but `migrate deploy` needs the **direct** host — pooled connections (PgBouncer transaction mode) don't support the advisory locks Prisma migrate uses. Drop `-pooler` from the host, or toggle pooling off in Neon's Connection Details, and re-export `DATABASE_URL`. |
+| B5 seed fails: `relation "X" does not exist` (`code: 42P01`) | B4 was skipped, or `OWNER_DATABASE_URL` points at a different Neon branch than the one B4 was run against. Run `pnpm run db:migrate:status` first to confirm, then B4. |
+| `prisma migrate status` / `migrate deploy` prints a `Datasource` host containing `-pooler` | You exported the **pooled** connection string. `migrate status` will still report correctly, but `migrate deploy` needs the **direct** host — pooled connections (PgBouncer transaction mode) don't support the advisory locks Prisma migrate uses. Drop `-pooler` from the host, or toggle pooling off in Neon's Connection Details, and re-export `OWNER_DATABASE_URL`. |
 | Boot crash: `@prisma/client did not initialize yet. Please run "prisma generate"` | The runtime image has no generated client. Fixed in `Dockerfile` — the runtime stage runs `pnpm --filter @sin/api exec prisma generate` explicitly (`@prisma/client`'s postinstall can't find the schema in a pnpm monorepo). Don't remove that line. |
 | Boot/query: `libssl`/`libquery_engine` load error, or `prisma:warn Prisma failed to detect the libssl/openssl version` | `node:22-slim` ships without `openssl`. Fixed in `Dockerfile` base stage (`apt-get install openssl ca-certificates`). |
 | Render rollout stuck / unhealthy | `/healthz` isn't 200 — check the image actually started (`CMD` runs `node apps/api/dist/main.js`) and `PORT` is being read. |

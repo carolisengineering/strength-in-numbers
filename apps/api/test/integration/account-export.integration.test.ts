@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { AccountExportSchema, ExerciseSchema, MeSchema, RoutineItemSchema, RoutineSchema, RoutineSectionSchema, SetEntrySchema, WorkoutExerciseSchema, WorkoutSchema, WorkoutSectionSchema } from "@sin/core";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
 import { addTimedSection, addWorkoutSection, recordRounds, setResult } from "./section-helpers.js";
@@ -12,7 +12,7 @@ import { bearer, makeAccountApp, TRUNCATE_ACCOUNTS } from "./account-helpers.js"
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000);
 
 describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

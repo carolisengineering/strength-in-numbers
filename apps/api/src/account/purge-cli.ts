@@ -2,9 +2,9 @@
  * `pnpm --filter @sin/api run account:purge [--confirm] [--user <id>] [--skip-grace]`
  * (Spec 11 §6.4). An operator task (runbook "Account deletion requests"), not
  * a release step. Dry run unless `--confirm`. Against the direct-host
- * DATABASE_URL, like `records:rebuild`. Logs ids and counts only — never email.
+ * OWNER_DATABASE_URL, like `records:rebuild`. Logs ids and counts only — never email.
  *
- * Exit 1 on: a missing or rejected DATABASE_URL, any unrecognized or repeated
+ * Exit 1 on: a missing or rejected OWNER_DATABASE_URL, any unrecognized or repeated
  * argument, `--skip-grace` without `--user`, a `--user` target that was not
  * purged (or, in a dry run, not listed), or any account that failed.
  */
@@ -14,6 +14,7 @@ import { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
 import { isUserId } from "@sin/core";
 import { resolveDatabaseUrl } from "../db.js";
+import { ownerDatabaseUrl } from "../db/owner-url.js";
 import { runPurge, type PurgeOptions } from "./purge.js";
 
 const USAGE = "usage: [--confirm] [--user <id>] [--skip-grace]";
@@ -57,11 +58,12 @@ export async function main(
   deps: { makePrisma?: (url: string) => PrismaClient } = {},
 ): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
-  const databaseUrl = env.DATABASE_URL;
-  if (!databaseUrl) {
-    log.error("DATABASE_URL is required");
+  const owner = ownerDatabaseUrl(env);
+  if (!owner.ok) {
+    log.error(owner.error);
     return 1;
   }
+  const databaseUrl = owner.url;
   const args = parsePurgeArgs(argv);
   if (!args.ok) {
     log.error(args.error);
@@ -73,7 +75,7 @@ export async function main(
   } catch (err) {
     // Not `{ err }`: a malformed URL's TypeError carries the raw string (password
     // included) in an enumerable `input` property that pino would print.
-    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "DATABASE_URL rejected");
+    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "OWNER_DATABASE_URL rejected");
     return 1;
   }
 

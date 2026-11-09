@@ -7,7 +7,7 @@ import { createExerciseRepository } from "../../src/repositories/exercise.prisma
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
 import { loadWorkingSetRows } from "../../src/repositories/workout-history.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { buildWorld, type World } from "./cross-user/world.js";
 import { snapshot } from "./cross-user/snapshot.js";
 
@@ -17,7 +17,7 @@ import { snapshot } from "./cross-user/snapshot.js";
  * a mismatched (user, id) pair: it must find, return or change nothing. The world is Phase A's cross-user world.
  */
 describe.skipIf(!shouldRunIntegration())("Spec 21.0 Phase B — weak-spot predicates (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let w: World;
   const notFound = () => new NotFoundError("not found");
 
@@ -31,7 +31,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 Phase B — weak-spot predic
   });
 
   /** Runs `fn` in a transaction that is always rolled back, so lock helpers can be called on their own. */
-  async function inRolledBackTx<T>(fn: (tx: Parameters<Parameters<IntegrationDb["prisma"]["$transaction"]>[0]>[0]) => Promise<T>): Promise<T> {
+  async function inRolledBackTx<T>(fn: (tx: Parameters<Parameters<AppIntegrationDb["prisma"]["$transaction"]>[0]>[0]) => Promise<T>): Promise<T> {
     const rollback = new Error("rollback");
     let out: T | undefined;
     await db.prisma

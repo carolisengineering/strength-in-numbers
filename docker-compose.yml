@@ -30,14 +30,16 @@ services:
     environment:
       NODE_ENV: development
       PORT: "3000"
-      DATABASE_URL: postgresql://sin:sin@db:5432/sin?sslmode=disable
+      DATABASE_URL: postgresql://sin_app:sin_app_local@db:5432/sin?sslmode=disable
       AUTH0_ISSUER: https://si-staging.us.auth0.com/
       AUTH0_AUDIENCE: https://api.strengthinnumbers.app
       AUTH0_CLAIM_NAMESPACE: https://strengthinnumbers.app/
       WEB_ORIGIN: http://localhost:5173
       LOG_LEVEL: debug
     command: >
-      sh -c "pnpm --filter @sin/api exec prisma migrate deploy && node apps/api/dist/main.js"
+      sh -c "DATABASE_URL=postgresql://sin:sin@db:5432/sin?sslmode=disable pnpm --filter @sin/api exec prisma migrate deploy
+      && OWNER_DATABASE_URL=postgresql://sin:sin@db:5432/sin?sslmode=disable APP_ROLE_PASSWORD=sin_app_local node apps/api/dist/db/app-role-cli.js
+      && node apps/api/dist/main.js"
     ports:
       - "3000:3000"
 

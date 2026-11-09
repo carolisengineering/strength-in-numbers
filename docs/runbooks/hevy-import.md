@@ -24,10 +24,10 @@ A batch that creates workouts sets `hevy_account.records_stale = true` and does 
 Use either fix:
 
 - **From the app:** call `POST /v1/hevy/import/finish` (the UI does this whenever `recordsStale` is true on opening). Calling it twice is safe.
-- **By hand:** use the exact `DATABASE_URL` from Render (runbook B4).
+- **By hand:** use `OWNER_DATABASE_URL`, the owner login (runbook B4); Render's `DATABASE_URL` is `sin_app`.
 
   ```bash
-  DATABASE_URL='<url>' pnpm --filter @sin/api run records:rebuild --user <id>
+  OWNER_DATABASE_URL='<owner url>' pnpm --filter @sin/api run records:rebuild --user <id>
   ```
 
   ```sql
@@ -49,7 +49,7 @@ DELETE FROM hevy_link WHERE user_id = '<id>' AND origin = 'matched';
 Then rebuild that user's records, and clear the flag the import left set:
 
 ```bash
-DATABASE_URL='<url>' pnpm --filter @sin/api run records:rebuild --user <id>
+OWNER_DATABASE_URL='<owner url>' pnpm --filter @sin/api run records:rebuild --user <id>
 ```
 
 ```sql

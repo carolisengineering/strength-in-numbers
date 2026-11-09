@@ -17,6 +17,11 @@ export function classifyMigrateStatus(output: string, exitCode: number): Migrate
   return { ok: false, state: "unknown" };
 }
 
+/** Spec 21.1 AC28: `scrubDatabaseUrl` once per URL that is set (the owner's, and `DATABASE_URL` if the environment has one). */
+export function scrubDatabaseUrls(text: string, urls: readonly (string | undefined)[]): string {
+  return urls.reduce<string>((out, url) => (url ? scrubDatabaseUrl(out, url) : out), text);
+}
+
 /** Spec 15 §7: remove everything that identifies the database (the URL, host:port, hostname, password) before printing. */
 export function scrubDatabaseUrl(text: string, databaseUrl: string): string {
   const secrets = [databaseUrl];

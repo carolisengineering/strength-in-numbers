@@ -7,12 +7,12 @@ import { ageOneOff } from "./one-off-helpers.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout } from "./records-helpers.js";
 import { routineFixture, TRUNCATE_ROUTINES } from "./routine-helpers.js";
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.3 — one-off routines (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance | undefined;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

@@ -33,16 +33,16 @@ describe("AC22 — records:rebuild argument parsing", () => {
 });
 
 describe("AC22 — records:rebuild CLI exits 1 before touching a database", () => {
-  it("exits 1 without DATABASE_URL", async () => {
+  it("exits 1 without OWNER_DATABASE_URL", async () => {
     await expect(main([], { ...QUIET })).resolves.toBe(1);
   });
 
   it("exits 1 on a bad argument", async () => {
-    await expect(main(["--users", ID], { ...QUIET, DATABASE_URL: "postgresql://u:p@localhost:5432/sin" })).resolves.toBe(1);
+    await expect(main(["--users", ID], { ...QUIET, OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/sin" })).resolves.toBe(1);
   });
 
-  it("exits 1 (no crash) when DATABASE_URL is rejected by resolveDatabaseUrl", async () => {
-    const env = { ...QUIET, DATABASE_URL: "postgresql://u:p@localhost:5432/sin?sslmode=verify-full" };
+  it("exits 1 (no crash) when OWNER_DATABASE_URL is rejected by resolveDatabaseUrl", async () => {
+    const env = { ...QUIET, OWNER_DATABASE_URL: "postgresql://u:p@localhost:5432/sin?sslmode=verify-full" };
     await expect(main([], env)).resolves.toBe(1);
   });
 });

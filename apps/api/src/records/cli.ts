@@ -2,11 +2,11 @@
  * `pnpm --filter @sin/api run records:rebuild [--user <id>]` (Spec 07.0 §6.5, §11).
  *
  * Manual release step after `prisma migrate deploy`, against the same
- * DATABASE_URL (direct Neon host — runbook B4 / B5a). Idempotent, and safe
+ * OWNER_DATABASE_URL (direct Neon host — runbook B4 / B5a). Idempotent, and safe
  * against live traffic: it takes the same per-user lock as the finish and
  * delete paths. Logs ids and counts only — never record values.
  *
- * Exit code 1 on a missing or rejected DATABASE_URL, any argument other than
+ * Exit code 1 on a missing or rejected OWNER_DATABASE_URL, any argument other than
  * `--user <id>` / `--user=<id>`, or any failure;
  * a failed user's transaction rolls back and earlier users stay rebuilt.
  */
@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
 import { isUserId } from "@sin/core";
-import { prismaFor } from "../db.js";
+import { prismaFor, resolveDatabaseUrl } from "../db.js";
+import { ownerDatabaseUrl } from "../db/owner-url.js";
 import { rebuildRecords } from "./rebuild.js";
 
 export type RebuildArgs = { ok: true; userId: string | undefined } | { ok: false; error: string };
@@ -47,9 +48,18 @@ export function parseRebuildArgs(argv: readonly string[]): RebuildArgs {
 
 export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
-  const databaseUrl = env.DATABASE_URL;
-  if (!databaseUrl) {
-    log.error("DATABASE_URL is required");
+  const owner = ownerDatabaseUrl(env);
+  if (!owner.ok) {
+    log.error(owner.error);
+    return 1;
+  }
+  let databaseUrl: string;
+  try {
+    databaseUrl = resolveDatabaseUrl(owner.url);
+  } catch (err) {
+    // Not `{ err }`: a malformed URL's TypeError carries the raw string (password included) in an enumerable `input`
+    // property that pino would print.
+    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "OWNER_DATABASE_URL rejected");
     return 1;
   }
   const args = parseRebuildArgs(argv);

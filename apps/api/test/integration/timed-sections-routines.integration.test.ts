@@ -12,7 +12,7 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { strongEtag } from "../../src/routes/http-cache.js";
 import { bearer, makeAccountApp } from "./account-helpers.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent } from "./section-helpers.js";
@@ -22,7 +22,7 @@ const omit = (o: Record<string, unknown>, keys: string[]) => Object.fromEntries(
 const AMRAP = { format: "amrap", capSeconds: 720 };
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.5 — routine timers (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

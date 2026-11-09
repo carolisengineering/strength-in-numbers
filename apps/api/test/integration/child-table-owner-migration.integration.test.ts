@@ -1,6 +1,6 @@
 // Spec 21.1 Phase A, AC1–AC6 — migration 0019 (an owner column on the eight child tables), real Postgres.
-// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from timed-sections-migration, apps/api CLAUDE.md).
-import { execFileSync, spawnSync } from "node:child_process";
+// The whole-schema `prisma migrate diff` no-drift check moved to app-role-migration with 0020 (apps/api CLAUDE.md).
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -312,27 +312,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
     });
   });
 
-  describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {
-    it("prisma migrate diff reports only the generated set_entry columns: the composite owner keys are in schema.prisma too", () => {
-      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-      const r = spawnSync(
-        "pnpm",
-        ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-        { cwd: apiDir, encoding: "utf8" },
-      );
-      const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-      expect(r.status, report).toBe(2);
-      const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-      // schema.prisma declares each parent link as the composite owner relation 0019 created, so the only difference
-      // left is the long-standing one: the two generated set_entry columns (Specs 05.1, 05.3).
-      const expected = [
-        "[*] Changed the `set_entry` table",
-        expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
-        expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
-      ];
-      expect(changeLines, report).toEqual(expected);
-    });
-  });
+  // AC5/AC6's whole-schema no-drift check moved to app-role-migration (0020 is the newest migration).
 
   describe("Review Focus — the migration window", () => {
     it("a set inserted after the triggers and before the backfill is filled by the trigger", async () => {

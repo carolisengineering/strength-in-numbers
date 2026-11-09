@@ -75,7 +75,8 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
-      # /healthz needs no database, so a Neon wake-up cannot fail the startup probe.
+      # /healthz needs no database, but the API listens only after its boot check (Spec 21.1 §6.4), which retries a
+      # waking Neon for up to 20 s: inside this probe's 30 s budget.
       startup_probe {
         period_seconds    = 2
         failure_threshold = 15

@@ -67,7 +67,7 @@ describe("15 AC15 / AC18 / AC19 / AC20 — the deploy job's order", () => {
   it("DATABASE_URL_PROD appears only in the migration step's env", () => {
     const raw = read(".github/workflows/deploy-prod.yml");
     expect(raw.match(/DATABASE_URL_PROD/g)).toHaveLength(1);
-    expect(steps().find((s) => /check-migrate-status/.test(s.run ?? ""))!.env).toEqual({ DATABASE_URL: "${{ secrets.DATABASE_URL_PROD }}" });
+    expect(steps().find((s) => /check-migrate-status/.test(s.run ?? ""))!.env).toEqual({ OWNER_DATABASE_URL: "${{ secrets.DATABASE_URL_PROD }}" });
   });
   it("deploys the API by digest, never a tag, and asserts the revision", () => {
     const run = steps().map((s) => s.run ?? "").join("\n");

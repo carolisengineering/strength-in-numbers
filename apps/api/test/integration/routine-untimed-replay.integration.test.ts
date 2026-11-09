@@ -3,7 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { bearer, makeAccountApp } from "./account-helpers.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise } from "./records-helpers.js";
 import { TRUNCATE_ROUTINES } from "./routine-helpers.js";
 import { assertSectionsConsistent } from "./section-helpers.js";
@@ -59,7 +59,7 @@ const ROWS: Row[] = [
 ];
 
 describe.skipIf(!shouldRunIntegration())("Spec 09.5 AC8 — untimed bodies replay unchanged (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

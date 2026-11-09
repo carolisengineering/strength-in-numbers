@@ -1,42 +1,26 @@
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import type { RateLimitConfig } from "../../src/plugins/rate-limit.js";
-import type { IntegrationDb } from "./helpers.js";
+import { appRepositories, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
 
 /** Every bearer token maps to `auth0|<token>` — so two tokens can share a sub
  * by passing `{ "tok-a2": "auth0|tok-a" }` in `alias`. */
 export function makeAccountApp(
-  db: IntegrationDb,
+  db: AppIntegrationDb,
   opts: { alias?: Record<string, string>; rateLimits?: RateLimitConfig; logger?: false } = {},
 ): Promise<FastifyInstance> {
-  const exerciseRepository = createExerciseRepository(db.prisma);
   return buildApp({
     config: testConfig(),
     logger: opts.logger ?? false,
-    checkReadiness: () => checkDatabaseReady(db.prisma),
+    checkReadiness: () => checkDatabaseReady(db.app),
     tokenVerifier: fakeVerifier((token) => {
       const sub = opts.alias?.[token] ?? `auth0|${token}`;
       return authContext({ authSub: sub, email: `${sub.slice(6)}@ex.com` });
     }),
-    userRepository: createUserRepository(db.prisma),
-    exerciseRepository,
-    workoutRepository: createWorkoutRepository(db.prisma, exerciseRepository),
-    personalRecordRepository: createPersonalRecordRepository(db.prisma),
-    routineRepository: createRoutineRepository(db.prisma),
-    accountExportRepository: createAccountExportRepository(db.prisma),
-    hevyRepository: createHevyRepository(db.prisma),
-    hevyImportRepository: createHevyImportRepository(db.prisma),
+    ...appRepositories(db.app),
     rateLimits: opts.rateLimits ?? GENEROUS_LIMITS,
   });
 }

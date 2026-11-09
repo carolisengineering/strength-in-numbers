@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise } from "./records-helpers.js";
 import {
   startTestTelemetry,
@@ -18,7 +18,7 @@ import { METRIC_NAMES } from "../../src/telemetry/views.js";
  * imports of anything that loads Fastify (Global Constraints).
  */
 describe.skipIf(!shouldRunIntegration())("Spec 13.0 telemetry against real Postgres", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let h: TelemetryHarness;
   let app: FastifyInstance;
   let base: string;
@@ -28,35 +28,20 @@ describe.skipIf(!shouldRunIntegration())("Spec 13.0 telemetry against real Postg
     if (!shouldRunIntegration()) return;
     h = startTestTelemetry();
     db = await startIntegrationDb();
-    // Same wiring as personal-record-http.integration.test.ts: every repository
+    // Same wiring as personal-record-http.integration.test.ts: every repository, on sin_app
     // real (the user is provisioned by the auth plugin on the first request),
     // GENEROUS_LIMITS because this test sends more writes than RATE_LIMITS allow.
     const { buildApp } = await import("../../src/app.js");
     const { checkDatabaseReady } = await import("../../src/db.js");
     const { GENEROUS_LIMITS, testConfig } = await import("../helpers/build-test-app.js");
     const { authContext, fakeVerifier } = await import("../helpers/fakes.js");
-    const { createUserRepository } = await import("../../src/repositories/user.prisma.js");
-    const { createExerciseRepository } = await import("../../src/repositories/exercise.prisma.js");
-    const { createWorkoutRepository } = await import("../../src/repositories/workout.prisma.js");
-    const { createPersonalRecordRepository } = await import("../../src/repositories/personal-record.prisma.js");
-    const { createRoutineRepository } = await import("../../src/repositories/routine.prisma.js");
-    const { createAccountExportRepository } = await import("../../src/repositories/account-export.prisma.js");
-    const { createHevyRepository } = await import("../../src/repositories/hevy.prisma.js");
-    const { createHevyImportRepository } = await import("../../src/repositories/hevy-import.prisma.js");
 
     app = await buildApp({
       config: testConfig(),
       logger: false,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier(() => authContext({ authSub: "auth0|telemetry", email: "t@ex.com" })),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
     await app.listen({ port: 0, host: "127.0.0.1" });

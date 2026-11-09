@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "../helpers.js";
+import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "../helpers.js";
 import { settleCapture, startCapture } from "../one-off-helpers.js";
 import { makeCrossUserApp } from "./app.js";
 import { buildWorld, type World } from "./world.js";
@@ -9,7 +9,7 @@ import { OWNERSHIP_MAP, snapshot, userReachableTables } from "./snapshot.js";
 
 /** Spec 21.0 §6.2 — the world the cross-user cases run in, and the snapshots that watch it. */
 describe.skipIf(!shouldRunIntegration())("Spec 21.0 — cross-user world (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   let as: (actor: "A" | "B" | "C") => Record<string, string>;
   let world: World;
@@ -77,8 +77,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — cross-user world (real P
   });
 
   it("AC17 — the app runs its queries on the handle it is given", async () => {
-    // A second client on the same database stands in for Spec 21.1's restricted login.
-    const other = { prisma: new PrismaClient({ datasourceUrl: db.url, log: [{ emit: "event", level: "query" }] }) } as IntegrationDb;
+    // A second client on the restricted login: the app must use this one, not the world's own db.app.
+    const client = new PrismaClient({ datasourceUrl: db.appUrl, log: [{ emit: "event", level: "query" }] });
+    const other = { app: client, prisma: client } as AppIntegrationDb;
     const built = await makeCrossUserApp(other);
     try {
       const seen = await startCapture(other);

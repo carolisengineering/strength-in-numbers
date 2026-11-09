@@ -30,11 +30,12 @@ pnpm --filter @sin/api run audit:queries [--write]   # Spec 21.0: check docs/sec
 RUN_INTEGRATION=1 pnpm --filter @sin/api run test:integration   # Testcontainers Postgres
 pnpm --filter @sin/api run dev                 # local API on :8080, loads apps/api/.env
 pnpm --filter @sin/api run dev:idp             # local JWKS + token minter on :9999 (loopback only)
-DATABASE_URL='<url>' pnpm run db:migrate:status   # repo-pinned Prisma; for Neon use the exact DATABASE_URL from Render (runbook B4)
-DATABASE_URL='<url>' pnpm run db:migrate:deploy   # manual release step — migrations never run on boot
-pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
-DATABASE_URL='<url>' pnpm --filter @sin/api run records:rebuild [--user <id>]  # Spec 07.0; manual release step after migrate deploy (runbook B5a)
-DATABASE_URL='<url>' pnpm --filter @sin/api run account:purge [--confirm] [--user <id>] [--skip-grace]  # Spec 11; dry run by default; operator task (runbook), NOT a release step
+OWNER_DATABASE_URL='<owner url>' pnpm run db:migrate:status   # repo-pinned Prisma; the owner login (locally apps/api/.env.owner). Render's DATABASE_URL is sin_app and cannot migrate (runbook B4)
+OWNER_DATABASE_URL='<owner url>' pnpm run db:migrate:deploy   # manual release step — migrations never run on boot
+OWNER_DATABASE_URL='<owner url>' APP_ROLE_PASSWORD='<password>' pnpm --filter @sin/api run db:app-role   # Spec 21.1: gives sin_app its login, prints its flags; idempotent (no APP_ROLE_PASSWORD: asks in a terminal)
+OWNER_DATABASE_URL='<owner url>' pnpm --filter @sin/api run seed:catalog [dir]  # idempotent catalog seed (Spec 03.1); manual release step after migrate deploy
+OWNER_DATABASE_URL='<owner url>' pnpm --filter @sin/api run records:rebuild [--user <id>]  # Spec 07.0; manual release step after migrate deploy (runbook B5a)
+OWNER_DATABASE_URL='<owner url>' pnpm --filter @sin/api run account:purge [--confirm] [--user <id>] [--skip-grace]  # Spec 11; dry run by default; operator task (runbook), NOT a release step
 pnpm --filter @sin/api run bench:finish         # Spec 07.0 AC27 finish-latency benchmark (Docker; dev tool, not CI)
 pnpm --filter @sin/api run bench:history        # Spec 07.1 AC20 history-page latency benchmark (Docker; dev tool, not CI)
 pnpm --filter @sin/api run bench:progress       # Spec 07.2 AC19 progress-series latency benchmark (Docker; dev tool, not CI)

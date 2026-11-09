@@ -4,19 +4,12 @@ import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
-import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
-import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { hevyFingerprint } from "../../src/hevy/fingerprint.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { legacyHevyFingerprintSourceV1 } from "../helpers/legacy-fingerprint-source.js";
-import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 import { addTimedSection, recordRounds, setResult } from "./section-helpers.js";
 
@@ -27,7 +20,7 @@ const FP = /^v1:[0-9a-f]{64}$/;
 
 /** Spec 19.0 AC26–AC31, AC37 — Hevy links against a real Postgres. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   const lines: Record<string, unknown>[] = [];
   let ex: string;
@@ -40,16 +33,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
     app = await buildApp({
       config: { ...testConfig(), hevyEnabledUserIds: Object.freeze(new Set([A_ID, B_ID])) },
       logger,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => authContext({ authSub: `auth0|${token === "a" ? A_ID : B_ID}` })),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: createWorkoutRepository(db.prisma, createExerciseRepository(db.prisma)),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);

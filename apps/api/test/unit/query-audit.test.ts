@@ -339,6 +339,19 @@ describe("AC21 — category sanity over fixtures (final review #4)", () => {
     expect(issues.some((s) => s.includes("all#1") && s.includes("shared"))).toBe(true);
   });
 
+  it("Spec 21.1 — Postgres's own catalogs (pg_*) are not user data: shared on purpose is allowed, but not with an owned table beside them", () => {
+    const CATALOG = src(
+      "src/db/c.ts",
+      `export async function roles(db: unknown) { return db.$queryRaw\`SELECT rolname FROM pg_roles WHERE rolname = 'sin_app'\`; }
+       export async function mixed(db: unknown) { return db.$queryRaw\`SELECT r.rolname FROM pg_roles r JOIN "workout" w ON TRUE\`; }`,
+    );
+    const catalogRows = extractStatements([CATALOG]);
+    const shared = parseAudit(writeAudit([], catalogRows)).map((r) => ({ ...r, status: "ok", category: "shared on purpose" }));
+    const issues = sanityIssues(shared, catalogRows);
+    expect(issues.some((s) => s.includes("roles#1"))).toBe(false);
+    expect(issues.some((s) => s.includes("mixed#1") && s.includes("shared"))).toBe(true);
+  });
+
   it("a model-delegate call on an owned table is not shared on purpose", () => {
     const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows);
     expect(issues.some((s) => s.includes("me#1") && s.includes("shared"))).toBe(true);

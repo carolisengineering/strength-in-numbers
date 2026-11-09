@@ -39,8 +39,9 @@ docker compose up -d db
 ## 2. Apply migrations
 
 ```bash
-DATABASE_URL='postgresql://sin:sin@localhost:5433/sin?sslmode=disable' \
-  pnpm --filter @sin/api exec prisma migrate deploy
+OWNER_DATABASE_URL='postgresql://sin:sin@localhost:5433/sin?sslmode=disable' pnpm run db:migrate:deploy
+OWNER_DATABASE_URL='postgresql://sin:sin@localhost:5433/sin?sslmode=disable' APP_ROLE_PASSWORD=sin_app_local \
+  pnpm --filter @sin/api run db:app-role
 ```
 
 Expected: `0001_create_user` applies cleanly.

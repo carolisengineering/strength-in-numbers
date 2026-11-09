@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { NotFoundError, RateLimitedError, SyncTokenExpiredError } from "./app-error.js";
 import { normalizeError, problemResponse } from "./problem.js";
 import { clientAddress, type ClientIpSource } from "../plugins/rate-limit.js";
+import { rlsViolation } from "../repositories/pg-errors.js";
 
 /**
  * Installs the RFC 9457 error + not-found handlers on a Fastify context
@@ -38,8 +39,14 @@ export function registerErrorContract(app: FastifyInstance, opts: { clientIpSour
         "rate_limited",
       );
     } else if (problem.status >= 500) {
-      // Internal reason to the logs; the client only ever sees the generic body.
-      request.log.error({ err }, "request error");
+      // Internal reason to the logs; the client only ever sees the generic body. A 42501 is a missing grant or a policy
+      // refusing a row (Spec 21.1 §9): it gets its own line so a rollout step or a bug shows up by name.
+      const violation = rlsViolation(err);
+      if (violation !== null) {
+        request.log.error({ ...violation, route: request.routeOptions.url ?? null, request_id: request.id }, "rls_violation");
+      } else {
+        request.log.error({ err }, "request error");
+      }
     } else {
       // #27 / BL-5: a 4xx is the client's mistake or ordinary traffic (a 404, a 409, a 422), so it logs at
       // info and an error-level line still means "look". A token that fails verification is the exception:

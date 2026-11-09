@@ -7,17 +7,11 @@ import type { HevyImportWorkout } from "@sin/core";
 import { runPurge } from "../../src/account/purge.js";
 import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
-import { createAccountExportRepository } from "../../src/repositories/account-export.prisma.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
-import { createHevyImportRepository } from "../../src/repositories/hevy-import.prisma.js";
-import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
-import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
-import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
-import { createUserRepository } from "../../src/repositories/user.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { seedPairs } from "./hevy-import-helpers.js";
 import { logWorkout, recordsOf, TRUNCATE_ALL, type ExerciseSpec, type RecordRow } from "./records-helpers.js";
 
@@ -35,7 +29,7 @@ const comparable = (rows: RecordRow[]) =>
 
 /** Spec 19.1 AC30, AC31, AC34 — the import end to end, through the routes. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import end to end (real Postgres)", () => {
-  let db: IntegrationDb;
+  let db: AppIntegrationDb;
   let app: FastifyInstance;
   let ids: { bench: string; row: string; carry: string };
 
@@ -45,16 +39,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import end to end (
     app = await buildApp({
       config: { ...testConfig(), hevyEnabledUserIds: Object.freeze(new Set([A_ID])) },
       logger: silent,
-      checkReadiness: () => checkDatabaseReady(db.prisma),
+      checkReadiness: () => checkDatabaseReady(db.app),
       tokenVerifier: fakeVerifier((token) => authContext({ authSub: `auth0|${token === "a" ? A_ID : B_ID}` })),
-      userRepository: createUserRepository(db.prisma),
-      exerciseRepository: createExerciseRepository(db.prisma),
-      workoutRepository: workouts(),
-      personalRecordRepository: createPersonalRecordRepository(db.prisma),
-      routineRepository: createRoutineRepository(db.prisma),
-      accountExportRepository: createAccountExportRepository(db.prisma),
-      hevyRepository: createHevyRepository(db.prisma),
-      hevyImportRepository: createHevyImportRepository(db.prisma),
+      ...appRepositories(db.app),
       rateLimits: GENEROUS_LIMITS,
     });
   }, 180_000);
