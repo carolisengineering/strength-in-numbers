@@ -136,6 +136,7 @@ describe("17.5 AC19 — the second tap commits (edit sheet)", () => {
     expect(sheet(/^Set 2/).queryByRole("group", { name: /will be removed/ })).toBeNull();
     expect(sheet(/^Set 2/).getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("12");
+    await waitFor(() => expect(sheet(/^Set 2/).getByRole("button", { name: "Delete set" })).toHaveFocus());
   });
 });
 
