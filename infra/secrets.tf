@@ -1,5 +1,6 @@
 # Spec 15 AC4 / D14: an empty container; its value is added by hand (gcloud secrets versions add), so no
 # secret value is ever in a .tf file, a variable file or the state. No google_secret_manager_secret_version.
+# Holds the restricted `sin_app` URL, never the owner's (Spec 21.1).
 resource "google_secret_manager_secret" "database_url" {
   secret_id = "si-database-url"
   replication {
