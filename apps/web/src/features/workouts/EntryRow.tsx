@@ -143,10 +143,10 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   // No submit button (the bar logs), so Enter in any input is handled here: a valid draft logs, an invalid one shows
   // every message (Spec 06.4 D2). preventDefault also stops a one-field form's implicit submission.
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
+    // Spec 17.7: only a text field logs on Enter. Units and set type are radios now (a radio is an input too), and
+    // Segmented stops their Enter from submitting.
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "text") return;
     event.preventDefault();
-    // Spec 17.7: units and set type are radios now, and a radio is an input too; Enter there chooses, it never logs.
-    if (event.target.type === "radio") return;
     if (parsed.ok) {
       void log();
       return;

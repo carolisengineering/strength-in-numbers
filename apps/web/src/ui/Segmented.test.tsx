@@ -129,6 +129,22 @@ describe("17.7 AC10 — hint and error", () => {
   });
 });
 
+describe("17.7 AC1 — Enter on an option", () => {
+  it("chooses nothing new and never submits the form around it, as a select's Enter never did", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((event: { preventDefault(): void }) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <Segmented name="unit" legend="Weight unit" options={UNITS} value="kg" onChange={vi.fn()} />
+        <button type="submit">Save</button>
+      </form>,
+    );
+    screen.getByRole("radio", { name: "kg" }).focus();
+    await user.keyboard("{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
 describe("17.7 AC1 — disabled", () => {
   it("disables each radio, and so does a disabled fieldset around it", () => {
     const { rerender } = render(<Segmented name="unit" legend="Weight unit" options={UNITS} value="kg" onChange={vi.fn()} disabled />);

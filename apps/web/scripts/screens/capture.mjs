@@ -1443,7 +1443,7 @@ try {
           await page.setViewportSize(size);
           const narrow = size.width === 320;
           // At 390 the panel (294 px) is under the four-across width, so 2 × 2; the sheets are wide enough for four.
-          const rule = narrow ? "two" : null;
+          const rule = size.width <= 390 ? "two" : null;
 
           await go("/app/workouts");
           await page.getByRole("button", { name: "Set options" }).first().click({ timeout: 4000 });

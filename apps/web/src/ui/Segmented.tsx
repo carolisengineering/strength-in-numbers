@@ -33,7 +33,15 @@ export function Segmented<T extends string>({ name, legend, options, value, onCh
   const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
-    <fieldset className={styles.fieldset} aria-describedby={describedBy} disabled={disabled}>
+    <fieldset
+      className={styles.fieldset}
+      aria-describedby={describedBy}
+      disabled={disabled}
+      // A browser submits a form on Enter from a radio; a select never did. Enter here chooses, it never saves a sheet.
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.type === "radio") event.preventDefault();
+      }}
+    >
       <legend className={styles.legend}>{legend}</legend>
       <div className={options.length === 4 ? `${styles.options} ${styles.four}` : styles.options}>
         {options.map((option) => (
