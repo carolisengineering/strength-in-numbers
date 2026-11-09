@@ -3,6 +3,7 @@ import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type Modality } from "@sin/core"
 
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
 import { SET_TYPE_LABELS } from "./format";
 import { visibleMeasures } from "./measures";
 import type { DraftField, SetDraft } from "./setDraft";
@@ -28,19 +29,20 @@ const DISTANCE_UNITS = DISTANCE_UNIT_VALUES; // Spec 05.3 D20: ft joins m, km, m
 
 type Common = Omit<SetFieldsProps, "variant"> & { id: (name: string) => string };
 
+const SET_TYPE_OPTIONS = SET_TYPE_VALUES.map((type) => ({ value: type, label: SET_TYPE_LABELS[type] }));
+const optionsOf = (units: readonly string[]) => units.map((unit) => ({ value: unit, label: unit }));
+
+/** Spec 17.7 AC6: four fixed types, compared at a glance, so a Segmented rather than a menu. */
 function SetTypeField({ draft, onChange, id }: Common) {
   return (
-    <Field id={id("type")} label="Set type" hint={draft.setType === "failure" ? "Couldn't complete a rep? Log 0 reps." : undefined}>
-      {(control) => (
-        <select {...control} className={styles.select} value={draft.setType} onChange={(e) => onChange("setType", e.target.value)}>
-          {SET_TYPE_VALUES.map((type) => (
-            <option key={type} value={type}>
-              {SET_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </select>
-      )}
-    </Field>
+    <Segmented
+      name={id("type")}
+      legend="Set type"
+      options={SET_TYPE_OPTIONS}
+      value={draft.setType}
+      onChange={(value) => onChange("setType", value)}
+      hint={draft.setType === "failure" ? "Couldn't complete a rep? Log 0 reps." : undefined}
+    />
   );
 }
 
@@ -54,21 +56,15 @@ function TextField({ name, label, inputMode, value, error, onChange, id, classNa
   );
 }
 
-/** A value and its unit select in one row under the value's label, so an error goes under both and never pulls the
- *  select away from its value (#203). The label names the value; the select keeps its own `aria-label`. */
+/** A value and its unit inside the value's one Field, the unit under the value, so an error goes under both and never
+ *  pulls the unit away from its value (#203). The label names the value; the unit strip's legend names the unit. */
 function UnitField({ name, label, value, error, onChange, id, unitLabel, unit, units, onUnitChange }: { name: string; label: string; value: string; error?: string | undefined; onChange: (v: string) => void; id: (n: string) => string; unitLabel: string; unit: string; units: readonly string[]; onUnitChange: (v: string) => void }) {
   return (
     <Field id={id(name)} label={label} error={error}>
       {(control) => (
         <div className={styles.withUnit}>
           <input {...control} className={styles.input} type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
-          <select className={styles.unit} aria-label={unitLabel} value={unit} onChange={(e) => onUnitChange(e.target.value)}>
-            {units.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
+          <Segmented name={id(`${name}-unit`)} legend={unitLabel} options={optionsOf(units)} value={unit} onChange={onUnitChange} />
         </div>
       )}
     </Field>
@@ -223,30 +219,10 @@ function EntryFields(props: Common) {
         <div className={styles.options}>
           <SetTypeField {...props} />
           {measures.includes("weight") ? (
-            <Field id={id("weight-unit")} label="Weight unit">
-              {(control) => (
-                <select {...control} className={styles.select} value={draft.weightUnit} onChange={(e) => onChange("weightUnit", e.target.value)}>
-                  {WEIGHT_UNITS.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
+            <Segmented name={id("weight-unit")} legend="Weight unit" options={optionsOf(WEIGHT_UNITS)} value={draft.weightUnit} onChange={(value) => onChange("weightUnit", value)} />
           ) : null}
           {measures.includes("distance") ? (
-            <Field id={id("distance-unit")} label="Distance unit">
-              {(control) => (
-                <select {...control} className={styles.select} value={draft.distanceUnit} onChange={(e) => onChange("distanceUnit", e.target.value)}>
-                  {DISTANCE_UNITS.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {unit}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
+            <Segmented name={id("distance-unit")} legend="Distance unit" options={optionsOf(DISTANCE_UNITS)} value={draft.distanceUnit} onChange={(value) => onChange("distanceUnit", value)} />
           ) : null}
         </div>
       ) : null}

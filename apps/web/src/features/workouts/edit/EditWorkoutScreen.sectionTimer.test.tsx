@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -68,7 +69,7 @@ const sectionPatches = (fake: Opened["fake"]) => fake.requests.filter((r) => r.m
 async function editTimer(user: Opened["user"], format: "amrap" | "none", name = "Main") {
   await user.click(screen.getByRole("button", { name: `Edit section ${name}` }));
   const dialog = sheet("Edit section");
-  await user.selectOptions(dialog.getByLabelText("Timer"), format);
+  await chooseSegmentValue(user, "Timer", format, dialog);
   if (format === "amrap") await user.type(dialog.getByLabelText("Time limit"), "1200");
   await user.click(dialog.getByRole("button", { name: "Save" }));
 }
@@ -148,7 +149,7 @@ describe("10.7 AC26 — timer writes on the edit screen", () => {
     await user.click(screen.getByRole("button", { name: "Add section" }));
     const dialog = sheet("New section");
     await user.type(dialog.getByLabelText("Name"), "Finisher");
-    await user.selectOptions(dialog.getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", dialog);
     await user.type(dialog.getByLabelText("Time limit"), "1200");
     await user.click(dialog.getByRole("button", { name: "Add section" }));
     await waitFor(() => expect(announcement()).toHaveTextContent("Section added: Finisher"));

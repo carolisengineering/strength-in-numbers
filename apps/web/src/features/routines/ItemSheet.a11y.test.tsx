@@ -16,9 +16,13 @@ describe("10.2 AC34 — the plan rows", () => {
     open([set("a"), set("b"), set("c")]);
     const list = screen.getByRole("list", { name: "Planned sets" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
-    for (const control of list.querySelectorAll("input, select")) {
-      expect(control).toHaveAccessibleName(/^Set \d+ (type|reps|weight)$/);
+    for (const control of list.querySelectorAll("input:not([type=radio]), select")) {
+      expect(control).toHaveAccessibleName(/^Set \d+ (reps|weight)$/);
     }
+    // Spec 17.7: a row's type is a Segmented; its radios are named by the option, and their group by the set.
+    const radios = list.querySelectorAll("input[type=radio]");
+    expect(radios).toHaveLength(12);
+    for (const radio of radios) expect(radio.closest("fieldset")).toHaveAccessibleName(/^Set \d+ type$/);
     for (const button of within(list).getAllByRole("button")) {
       expect(button).toHaveAccessibleName(/, set \d+$/);
     }
@@ -35,10 +39,14 @@ describe("10.2 AC34 — the plan rows", () => {
     expect(remove).not.toHaveAttribute("title");
     expect(screen.getByRole("button", { name: "Move up, set 1" })).toBeDisabled();
   });
-  it("the unit toggle is a labeled group of pressed-state buttons", () => {
+  it("17.7 AC6 — the unit is a labeled group of radios with a checked state", () => {
     open([set("a")]);
     const group = screen.getByRole("group", { name: "Weight unit" });
-    for (const button of within(group).getAllByRole("button")) expect(button).toHaveAttribute("aria-pressed");
+    expect(within(group).queryAllByRole("button")).toHaveLength(0);
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(2);
+    expect(within(group).getByRole("radio", { name: "kg" })).toBeChecked();
+    expect(within(group).getByRole("radio", { name: "lb" })).not.toBeChecked();
   });
   it("every button is the shared Button (it carries the tap-target sizing)", () => {
     open([set("a"), set("b")]);

@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import { segmentChoice } from "../../test/controls";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PlannedSet } from "@sin/core";
@@ -85,16 +86,16 @@ describe("10.2 AC22 / AC23 — the draft arrives filled; one tap logs it", () =>
   it("fills type, weight, unit and reps from the next row; there is no RPE field", async () => {
     const { user } = await setup([bench()]);
     await openSetOptions(user, card("Bench"));
-    expect(field("Bench", "Set type")).toHaveValue("warmup");
+    expect(segmentChoice("Set type", card("Bench"))).toBe("warmup");
     expect(field("Bench", "Weight")).toHaveValue("60");
-    expect(field("Bench", "Weight unit")).toHaveValue("kg");
+    expect(segmentChoice("Weight unit", card("Bench"))).toBe("kg");
     expect(field("Bench", "Reps")).toHaveValue("10");
     expect(screen.queryByLabelText("RPE")).toBeNull();
   });
   it("the plan's unit wins over the profile's", async () => {
     const { user } = await setup([bench({ plannedSets: [planned("working", 5, 135, "lb")] })], "kg");
     await openSetOptions(user, card("Bench"));
-    expect(field("Bench", "Weight unit")).toHaveValue("lb");
+    expect(segmentChoice("Weight unit", card("Bench"))).toBe("lb");
   });
   it("a single tap sends the row's values, isComplete, the attempt key and the row's type; a warm-up logs as warmup", async () => {
     const { fake, user } = await setup([bench()]);
@@ -119,7 +120,7 @@ describe("10.2 AC24 — after a log", () => {
     await openSetOptions(user, card("Bench"));
     expect(field("Bench", "Weight")).toHaveValue("80");
     expect(field("Bench", "Reps")).toHaveValue("8");
-    expect(field("Bench", "Set type")).toHaveValue("working");
+    expect(segmentChoice("Set type", card("Bench"))).toBe("working");
     await restBetweenSets();
     await user.click(logButton("Bench"));
     await within(card("Bench")).findByText("Set 3 of 3");
@@ -129,7 +130,7 @@ describe("10.2 AC24 — after a log", () => {
     await within(card("Bench")).findByText("Extra set");
     expect(field("Bench", "Weight")).toHaveValue("100");
     expect(field("Bench", "Reps")).toHaveValue("6");
-    expect(field("Bench", "Set type")).toHaveValue("working");
+    expect(segmentChoice("Set type", card("Bench"))).toBe("working");
     expect(setPosts(fake)).toHaveLength(3);
   });
 
@@ -275,7 +276,7 @@ describe("10.2 AC27 — no plan, no change", () => {
     expect(within(card("Bench")).getByText("Set 2")).toBeInTheDocument();
     expect(field("Bench", "Weight")).toHaveValue("60");
     expect(field("Bench", "Reps")).toHaveValue("8");
-    expect(field("Bench", "Set type")).toHaveValue("working");
+    expect(segmentChoice("Set type", card("Bench"))).toBe("working");
     expect(within(card("Bench")).queryByText(/ of /)).toBeNull();
   });
 });
@@ -360,7 +361,7 @@ describe("18.1 AC12 — planned prefill for the new types", () => {
     await makeCurrent(user, "Bike");
     expect(field("Bike", "Calories")).toHaveValue("");
     await openSetOptions(user, card("Bike"));
-    expect(field("Bike", "Set type")).toHaveValue("warmup");
+    expect(segmentChoice("Set type", card("Bike"))).toBe("warmup");
   });
   it("an edited carry draft is not overwritten when the count changes by another route", async () => {
     const { fake, queryClient, user } = await setup([{ modality: "weight_distance", name: "Carry", plannedSets: carryPlan }]);

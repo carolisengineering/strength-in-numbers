@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { segmentChoice } from "../../../test/controls";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -182,7 +183,7 @@ describe("18.0 AC6 — editing a warm-up keeps it a warm-up (/code-review #1)", 
     const { fake, user } = open([{ modality: "weight_reps", name: "Bench Press", sets: [makeSet({ setNumber: 1, setType: "warmup", weight: 40, reps: 8 }), makeSet({ setNumber: 2 })] }]);
     await ready();
     await openSet(user, /40 kg × 8/);
-    expect(sheet(/^Set 1/).getByLabelText("Set type")).toHaveValue("warmup");
+    expect(segmentChoice("Set type", sheet(/^Set 1/))).toBe("warmup");
     await user.click(sheet(/^Set 1/).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set 1/ })).toBeNull());
     expect(writes(fake)).toEqual([]);
@@ -441,7 +442,7 @@ describe("18.0 AC8 — Review Focus 3, 4, 5", () => {
     const { fake, user } = open([{ modality: "weight_reps", name: "Bench Press", sets: [makeSet({ setNumber: 1, weight: 135, weightUnit: "lb", reps: 5 })] }], { unitPreference: "kg" });
     await ready();
     await openSet(user, /135 lb × 5/);
-    expect(sheet(/^Set 1/).getByLabelText("Weight unit")).toHaveValue("lb");
+    expect(segmentChoice("Weight unit", sheet(/^Set 1/))).toBe("lb");
     await user.click(sheet(/^Set 1/).getByRole("button", { name: "Close" }));
     await user.click(addSetButton("Bench Press"));
     await user.click(sheet("New set · Bench Press").getByRole("button", { name: "Add set" }));

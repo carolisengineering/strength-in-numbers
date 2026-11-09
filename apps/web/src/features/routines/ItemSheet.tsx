@@ -2,6 +2,7 @@ import { useState } from "react";
 import { deriveTargets, forbiddenMeasuresFor, type Modality, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
 import { Sheet } from "../../ui/Sheet";
 import {
   addRow,
@@ -17,7 +18,7 @@ import {
   type PlanRowText,
   type RowErrors,
 } from "./planRows";
-import { PlanRowList } from "./PlanRowList";
+import { PlanRowList, WEIGHT_UNIT_CHOICES } from "./PlanRowList";
 import type { DraftItem, PlannedEdit } from "./routineDraft";
 import type { SheetMessages } from "./sheetIssues";
 import styles from "./ItemSheet.module.css";
@@ -32,7 +33,6 @@ import {
   parseWeight,
   type Targets,
 } from "./targetFormat";
-import { UnitToggle } from "./UnitToggle";
 import { WEIGHT_NEEDS_SETS } from "./validateDraft";
 
 export interface ItemSheetProps {
@@ -184,7 +184,7 @@ export function ItemSheet({
                 <Field id="item-weight" label="Weight" {...(errors.weight ? { error: errors.weight } : {})}>
                   {(control) => <input {...control} className={styles.input} inputMode="decimal" autoComplete="off" value={weight} onChange={(e) => setWeight(e.target.value)} />}
                 </Field>
-                <UnitToggle label="Weight unit" value={unit} onChange={setQuickUnit} />
+                <Segmented name="item-unit" legend="Weight unit" options={WEIGHT_UNIT_CHOICES} value={unit} onChange={setQuickUnit} />
               </div>
             ) : null}
           </>

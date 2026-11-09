@@ -11,6 +11,8 @@ import { useSession } from "../../auth/useSession";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Screen } from "../../ui/Screen";
+import { Segmented } from "../../ui/Segmented";
+import { Select } from "../../ui/Select";
 import { Spinner } from "../../ui/Spinner";
 import { AccountDataSection } from "../account/AccountDataSection";
 import { DeleteAccountSection } from "../account/DeleteAccountSection";
@@ -26,6 +28,7 @@ import { useUpdateMe } from "./useUpdateMe";
 
 type FieldName = keyof UpdateMeInput;
 const FIELD_NAMES: readonly FieldName[] = ["displayName", "unitPreference", "timezone"];
+const UNIT_OPTIONS = UNIT_PREFERENCE_VALUES.map((unit) => ({ value: unit, label: unit }));
 const isFieldName = (path: string): path is FieldName =>
   (FIELD_NAMES as readonly string[]).includes(path);
 
@@ -152,26 +155,20 @@ function ProfileForm({ me }: { me: Me }) {
           )}
         </Field>
 
-        <Field id="unitPreference" label="Units" error={fieldErrors.unitPreference}>
-          {(control) => (
-            <select
-              {...control}
-              value={values.unitPreference}
-              onChange={(e) => set("unitPreference", e.target.value as UnitPreference)}
-            >
-              {UNIT_PREFERENCE_VALUES.map((unit) => (
-                <option key={unit} value={unit}>
-                  {unit}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
+        {/* Spec 17.7 AC6, AC10: two fixed units, so a Segmented; its error is an alert the group names. */}
+        <Segmented<UnitPreference>
+          name="unitPreference"
+          legend="Units"
+          options={UNIT_OPTIONS}
+          value={values.unitPreference}
+          onChange={(unit) => set("unitPreference", unit)}
+          error={fieldErrors.unitPreference}
+        />
 
         <Field id="timezone" label="Time zone" error={fieldErrors.timezone}>
           {(control) =>
             zoneOptions ? (
-              <select
+              <Select
                 {...control}
                 value={values.timezone}
                 onChange={(e) => set("timezone", e.target.value)}
@@ -181,7 +178,7 @@ function ProfileForm({ me }: { me: Me }) {
                     {zone}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
               <input
                 {...control}

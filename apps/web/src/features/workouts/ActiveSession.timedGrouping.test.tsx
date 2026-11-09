@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -72,7 +73,7 @@ const oneRun = (sectionName: string) => {
 async function setTimer(user: Setup["user"], section: string, format: "amrap" | "time_cap" | "set_timer" | "none", fill?: () => Promise<void>) {
   await user.click(screen.getByRole("button", { name: `Edit section ${section}` }));
   const dialog = sheet("Edit section");
-  await user.selectOptions(dialog.getByLabelText("Timer"), format);
+  await chooseSegmentValue(user, "Timer", format, dialog);
   if (format === "amrap") await user.type(dialog.getByLabelText("Time limit"), "1200");
   if (format === "set_timer") {
     await user.type(dialog.getByLabelText("Rounds"), "5");

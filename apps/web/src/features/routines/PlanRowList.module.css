@@ -25,6 +25,12 @@
   gap: var(--space-2);
 }
 
+/* Spec 17.7: set type spans the row, above reps and weight. */
+.type {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .input {
   width: 100%;
   min-height: var(--tap-target-min);

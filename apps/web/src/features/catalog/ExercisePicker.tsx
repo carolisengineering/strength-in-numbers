@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { track } from "../../observability/track";
 import { Button } from "../../ui/Button";
+import { Select } from "../../ui/Select";
 import { Sheet } from "../../ui/Sheet";
 import { Spinner } from "../../ui/Spinner";
 import { CreateExerciseForm } from "./CreateExerciseForm";
@@ -126,8 +127,8 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
 
         {muscles.data && equipment.data ? (
           <div className={styles.filters}>
-            <select
-              className={styles.chip}
+            <Select
+              inline
               aria-label="Muscle"
               value={muscleId ?? ""}
               onChange={(event) => setMuscleId(event.target.value || null)}
@@ -138,9 +139,9 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
                   {muscle.name}
                 </option>
               ))}
-            </select>
-            <select
-              className={styles.chip}
+            </Select>
+            <Select
+              inline
               aria-label="Equipment"
               value={equipmentId ?? ""}
               onChange={(event) => setEquipmentId(event.target.value || null)}
@@ -151,7 +152,7 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
                   {item.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         ) : null}
 

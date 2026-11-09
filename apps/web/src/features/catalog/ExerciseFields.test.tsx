@@ -78,6 +78,17 @@ describe("10.4 AC26 — ExerciseFields is the one set of create-exercise inputs"
     expect(onChange).toHaveBeenLastCalledWith({ ...EMPTY_EXERCISE_FIELDS, primaryMuscleId: "chest", secondaryMuscleIds: [] });
   });
 
+  it("17.7 AC7 — Primary muscle and Equipment are drawn by Select, with the same names", async () => {
+    render(<Harness onChange={vi.fn()} />);
+    await userEvent.click(screen.getByText("More details"));
+    for (const name of ["Primary muscle", "Equipment"]) {
+      const select = screen.getByRole("combobox", { name });
+      expect(select).toHaveValue("");
+      expect(select.parentElement?.tagName).toBe("SPAN");
+      expect(select.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
   it("no reference data → no More details", () => {
     render(<Harness muscleGroups={undefined} />);
     expect(screen.queryByText("More details")).toBeNull();

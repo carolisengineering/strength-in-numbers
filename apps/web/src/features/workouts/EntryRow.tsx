@@ -15,7 +15,7 @@ import styles from "./EntryRow.module.css";
 
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
-/** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
+/** The free-text inputs: only these can show a client-side message once touched (units and type are radios). */
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "calories"]);
 
 /**
@@ -143,7 +143,9 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   // No submit button (the bar logs), so Enter in any input is handled here: a valid draft logs, an invalid one shows
   // every message (Spec 06.4 D2). preventDefault also stops a one-field form's implicit submission.
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
+    // Spec 17.7: only a text field logs on Enter. Units and set type are radios now (a radio is an input too), and
+    // Segmented stops their Enter from submitting.
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "text") return;
     event.preventDefault();
     if (parsed.ok) {
       void log();

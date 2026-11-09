@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -69,7 +70,7 @@ const groupsIn = (fake: Opened["fake"], id: string, sectionName: string) => {
 async function makeAmrap(user: Opened["user"], section: string) {
   await user.click(screen.getByRole("button", { name: `Edit section ${section}` }));
   const dialog = sheet("Edit section");
-  await user.selectOptions(dialog.getByLabelText("Timer"), "amrap");
+  await chooseSegmentValue(user, "Timer", "amrap", dialog);
   await user.type(dialog.getByLabelText("Time limit"), "1200");
   await user.click(dialog.getByRole("button", { name: "Save" }));
 }

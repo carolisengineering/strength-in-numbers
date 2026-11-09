@@ -32,14 +32,14 @@ describe("18.1 AC22 — item sheet", () => {
   it("plan mode: calories rows show only Type; weighted rows show Type and Weight", async () => {
     const user = setup("calories");
     await user.click(screen.getByRole("button", { name: "Plan each set" }));
-    expect(screen.getByLabelText("Set 1 type")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Set 1 type" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Set 1 reps")).toBeNull();
     expect(screen.queryByLabelText("Set 1 weight")).toBeNull();
   });
   it.each(["weight_distance", "weight_duration"] as const)("plan mode, %s: Type and Weight, no reps", async (modality) => {
     const user = setup(modality);
     await user.click(screen.getByRole("button", { name: "Plan each set" }));
-    expect(screen.getByLabelText("Set 1 type")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Set 1 type" })).toBeInTheDocument();
     expect(screen.getByLabelText("Set 1 weight")).toBeInTheDocument();
     expect(screen.queryByLabelText("Set 1 reps")).toBeNull();
   });

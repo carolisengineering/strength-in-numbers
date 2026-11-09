@@ -1,6 +1,7 @@
 import { TIMER_FORMAT_VALUES } from "@sin/core";
 import { useState } from "react";
 import { Field } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
 import { digitsToSeconds } from "./clockDigits";
 import { ClockField } from "./ClockField";
 import styles from "./sectionTimer.module.css";
@@ -26,12 +27,16 @@ export interface TimerFieldsProps {
   disabled?: boolean;
 }
 
-const CHOICES: readonly TimerFormatChoice[] = ["none", ...TIMER_FORMAT_VALUES];
+const CHOICES: readonly { value: TimerFormatChoice; label: string }[] = (["none", ...TIMER_FORMAT_VALUES] as const).map((choice) => ({
+  value: choice,
+  label: TIMER_FORMAT_LABELS[choice],
+}));
 const ROUNDS_DIGITS_MAX = 3;
 const secondsOver59 = (digits: string) => digits !== "" && digitsToSeconds(digits) === null;
 
 /**
- * Spec 10.7 AC4–AC5: the Timer group — a `Timer` select (None / Set Timer / AMRAP / Time Cap), then the chosen
+ * Spec 10.7 AC4–AC5: the Timer group — a `Timer` choice (None / Set Timer / AMRAP / Time Cap; a Segmented since
+ * Spec 17.7), then the chosen
  * format's fields. `Seconds go up to 59.` never flashes mid-entry: it shows once the field is left (or after Done),
  * and only while the digits still say it.
  */
@@ -55,25 +60,16 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled =
 
   const group = (
     <div className={styles.group}>
-      <Field id={`${idPrefix}-format`} label={TIMER_LABEL}>
-        {(control) => (
-          <select
-            {...control}
-            className={styles.select}
-            value={value.format}
-            onChange={(event) => {
-              setLeft({});
-              onChange(withFormat(value, event.target.value as TimerFormatChoice));
-            }}
-          >
-            {CHOICES.map((choice) => (
-              <option key={choice} value={choice}>
-                {TIMER_FORMAT_LABELS[choice]}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
+      <Segmented<TimerFormatChoice>
+        name={`${idPrefix}-format`}
+        legend={TIMER_LABEL}
+        options={CHOICES}
+        value={value.format}
+        onChange={(format) => {
+          setLeft({});
+          onChange(withFormat(value, format));
+        }}
+      />
       {value.format === "set_timer" ? (
         <>
           <Field id={`${idPrefix}-rounds`} label={ROUNDS_LABEL} error={errors.rounds}>

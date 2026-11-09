@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { segmented } from "../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -208,12 +209,12 @@ describe("10.7 AC40 — no timer change under unsent entries", () => {
     fake.setOffline(true); // the browser says online, the network fails: the entry stays queued
     await user.click(screen.getByRole("button", { name: "Edit section Main" }));
     const edit = within(screen.getByRole("dialog", { name: "Edit section" }));
-    expect(edit.getByLabelText("Timer")).toBeDisabled();
+    for (const radio of within(segmented("Timer", edit)).getAllByRole("radio")) expect(radio).toBeDisabled();
     expect(edit.getByText("Wait for the logged times to save before changing the timer.")).toBeInTheDocument();
     expect(edit.getByLabelText("Name")).toBeEnabled();
     await user.click(edit.getByRole("button", { name: "Cancel" }));
     await user.click(screen.getByRole("button", { name: "Edit section Other" }));
-    expect(within(screen.getByRole("dialog", { name: "Edit section" })).getByLabelText("Timer")).toBeEnabled();
+    for (const radio of within(segmented("Timer", within(screen.getByRole("dialog", { name: "Edit section" })))).getAllByRole("radio")) expect(radio).toBeEnabled();
   });
 });
 

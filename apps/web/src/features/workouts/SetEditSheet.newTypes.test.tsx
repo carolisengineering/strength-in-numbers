@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { segmentChoice } from "../../test/controls";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -49,9 +50,9 @@ describe("18.1 AC20 — the live set sheet", () => {
     const { user } = await setup("weight_distance", CARRY("m", 40, 40));
     await user.click(within(card()).getByRole("button", { name: /24 kg · 40 m/ }));
     expect(dialog().getByLabelText("Weight")).toHaveValue("24");
-    expect(dialog().getByLabelText("Weight unit")).toHaveValue("kg");
+    expect(segmentChoice("Weight unit", dialog())).toBe("kg");
     expect(dialog().getByLabelText("Distance")).toHaveValue("40");
-    expect(dialog().getByLabelText("Distance unit")).toHaveValue("m");
+    expect(segmentChoice("Distance unit", dialog())).toBe("m");
     expect(dialog().queryByLabelText("Reps")).toBeNull();
   });
   it.each([
@@ -60,7 +61,7 @@ describe("18.1 AC20 — the live set sheet", () => {
   ] as const)("Review Focus 3 — a carry stored in %s opens with %s selected, not the m default", async (unit, distance, distanceM) => {
     const { user } = await setup("weight_distance", CARRY(unit, distance, distanceM));
     await user.click(within(card()).getByRole("button", { name: new RegExp(`24 kg · ${distance} ${unit}`) }));
-    expect(dialog().getByLabelText("Distance unit")).toHaveValue(unit);
+    expect(segmentChoice("Distance unit", dialog())).toBe(unit);
   });
   it("a hold opens with Weight + unit and Minutes / Seconds prefilled", async () => {
     const { user } = await setup("weight_duration", HOLD);

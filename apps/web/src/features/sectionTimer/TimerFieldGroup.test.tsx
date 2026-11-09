@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
+import { chooseSegmentValue, segmentChoice, segmented, segmentOptions } from "../../test/controls";
 import { FOR_TIME_HINT, SECONDS_MAX_ERROR } from "./timerCopy";
 import { fieldsFromTimer, type TimerFieldErrors, type TimerFieldsValue } from "./timerFields";
 import { TimerFields } from "./TimerFieldGroup";
@@ -17,17 +18,18 @@ function Harness(props: { initial?: TimerFieldsValue; errors?: TimerFieldErrors 
   );
 }
 const valueOf = () => JSON.parse(screen.getByTestId("value").textContent!) as TimerFieldsValue;
-const select = () => screen.getByLabelText("Timer");
 
 describe("10.7 AC4 — timer fields", () => {
-  it("the options are None, Set Timer, AMRAP, Time Cap", () => {
+  it("17.7 AC6 — Timer is a group of four radios: None, Set Timer, AMRAP, Time Cap", () => {
     render(<Harness />);
-    expect(within(select()).getAllByRole("option").map((o) => o.textContent)).toEqual(["None", "Set Timer", "AMRAP", "Time Cap"]);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(within(segmented("Timer")).getAllByRole("radio")).toHaveLength(4);
+    expect(segmentOptions("Timer")).toEqual(["None", "Set Timer", "AMRAP", "Time Cap"]);
   });
 
   it("a section with no timer opens on None, with nothing below", () => {
     render(<Harness />);
-    expect(select()).toHaveValue("none");
+    expect(segmentChoice("Timer")).toBe("none");
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
@@ -37,29 +39,29 @@ describe("10.7 AC4 — timer fields", () => {
     ["time_cap", ["Cap"]],
   ])("%s shows exactly its fields", async (format, labels) => {
     render(<Harness />);
-    await userEvent.selectOptions(select(), format);
+    await chooseSegmentValue(userEvent, "Timer", format);
     expect(screen.getAllByRole("textbox").map((i) => i.getAttribute("id")).map((id) => document.querySelector(`label[for="${id}"]`)!.textContent)).toEqual(labels);
   });
 
   it("the Cap field says how to leave it For Time", async () => {
     render(<Harness />);
-    await userEvent.selectOptions(select(), "time_cap");
+    await chooseSegmentValue(userEvent, "Timer", "time_cap");
     expect(document.getElementById(screen.getByLabelText("Cap").getAttribute("aria-describedby")!.split(" ")[0]!)).toHaveTextContent(FOR_TIME_HINT);
   });
 
   it("choosing AMRAP after typing a Set Timer leaves the new field empty", async () => {
     render(<Harness />);
-    await userEvent.selectOptions(select(), "set_timer");
+    await chooseSegmentValue(userEvent, "Timer", "set_timer");
     await userEvent.type(screen.getByLabelText("Rounds"), "5");
     await userEvent.type(screen.getByLabelText("Round length"), "500");
-    await userEvent.selectOptions(select(), "amrap");
+    await chooseSegmentValue(userEvent, "Timer", "amrap");
     expect(screen.getByLabelText("Time limit")).toHaveValue("");
     expect(valueOf()).toEqual({ format: "amrap", rounds: "", roundDigits: "", capDigits: "" });
   });
 
   it("Rounds takes digits only, at most 3", async () => {
     render(<Harness />);
-    await userEvent.selectOptions(select(), "set_timer");
+    await chooseSegmentValue(userEvent, "Timer", "set_timer");
     await userEvent.type(screen.getByLabelText("Rounds"), "1a2b34");
     expect(screen.getByLabelText("Rounds")).toHaveValue("123");
   });

@@ -15,6 +15,8 @@ const base: ExerciseFieldsProps = {
 };
 
 describe("18.2 AC57 — disabled choice", () => {
+  // Re-recorded for Spec 17.7 AC7: Primary muscle and Equipment are drawn by the shared Select (a span, the select
+  // and a chevron); nothing else in this markup changed.
   it("with no new props the markup is exactly what it was before Phase B", () => {
     const { container } = render(
       <div data-testid="root">

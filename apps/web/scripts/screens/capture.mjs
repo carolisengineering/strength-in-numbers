@@ -615,6 +615,37 @@ async function tryStep(label, fn) {
   try { await fn(); } catch (e) { console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`); report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` }); }
 }
 
+// Spec 17.7 AC2: a Segmented wraps rather than clips or scrolls. Four options sit four across or 2 × 2, never 3 + 1.
+const segments = [];
+const measureSegments = (page, scope, legend) =>
+  page.evaluate(({ scope, legend }) => {
+    const root = document.querySelector(scope);
+    if (!root) return { missing: `no ${scope}` };
+    const group = [...root.querySelectorAll("fieldset")].find((f) => f.querySelector(":scope > legend")?.textContent === legend);
+    if (!group) return { missing: `no "${legend}" in ${scope}` };
+    const labels = [...group.querySelectorAll("label")];
+    // An option's text on more than one line ("Warm- / up") reads as broken even when nothing is clipped.
+    const lineCount = (el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    };
+    const wrapped = labels.filter((l) => lineCount(l.querySelector("span") ?? l) > 1).map((l) => l.textContent.trim());
+    const tops = labels.map((l) => Math.round(l.getBoundingClientRect().top));
+    const rows = [...new Set(tops)];
+    const doc = document.documentElement;
+    const sheet = document.querySelector("dialog[open]");
+    const scrollers = sheet ? [sheet, ...sheet.querySelectorAll("*")].filter((el) => /auto|scroll/.test(getComputedStyle(el).overflowY)) : [];
+    const visible = (el) => el.getClientRects().length > 0;
+    return {
+      perRow: rows.map((t) => tops.filter((top) => top === t).length),
+      wrapped,
+      hscroll: doc.scrollWidth > doc.clientWidth,
+      sheetHscroll: scrollers.some((el) => el.scrollWidth > el.clientWidth),
+      clipped: [...document.querySelectorAll("label")].filter((l) => visible(l) && l.scrollWidth > l.clientWidth).map((l) => l.textContent.trim().slice(0, 40)),
+    };
+  }, { scope, legend });
+
 // Spec 17.4 AC10, AC13, AC17: the workout screen's bar, read in a real browser (jsdom has no layout).
 const loggingLoop = [];
 const measureLoggingLoop = (page) =>
@@ -1041,7 +1072,7 @@ try {
       await go("/app/workouts");
       await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
       const sheet = page.locator("dialog[open]");
-      await sheet.getByLabel("Timer").selectOption("amrap");
+      await sheet.getByRole("group", { name: "Timer" }).getByRole("radio", { name: "AMRAP" }).check(); // Spec 17.7: a Segmented
       await sheet.getByLabel("Time limit", { exact: true }).pressSequentially("1200");
       await sheet.getByRole("button", { name: "Save", exact: true }).click();
       await page.getByRole("dialog", { name: "Change Main's timer?" }).waitFor({ timeout: 4000 });
@@ -1087,7 +1118,7 @@ try {
 
     // Spec 10.7 AC63: the section sheet's Timer group in each format, and the timed editor's headers and brackets.
     state.showTimed = true;
-    for (const [format, slug, label, fill] of [
+    for (const [, slug, label, fill] of [
       ["set_timer", "set-timer", "Set Timer", [["Rounds", "5"], ["Round length", "500"]]],
       ["amrap", "amrap", "AMRAP", [["Time limit", "1200"]]],
       ["time_cap", "time-cap", "Time Cap", []],
@@ -1096,7 +1127,7 @@ try {
         await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
         await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
         const sheet = page.locator("dialog[open]");
-        await sheet.getByLabel("Timer").selectOption(format);
+        await sheet.getByRole("group", { name: "Timer" }).getByRole("radio", { name: label }).check(); // Spec 17.7: a Segmented
         for (const [field, digits] of fill) {
           await sheet.getByLabel(field, { exact: true }).fill("");
           await sheet.getByLabel(field, { exact: true }).pressSequentially(digits);
@@ -1376,6 +1407,75 @@ try {
 
     await go("/app/profile");
     await shoot(page, device, "17-profile", "Profile: settings form, export, sign out, delete account");
+    // Spec 17.7 AC27 (Phase A): the two shared controls where they replaced a select.
+    await page.getByRole("group", { name: "Units" }).scrollIntoViewIfNeeded();
+    await shoot(page, device, "s177a-profile-segmented", "Spec 17.7: Profile Units as a two-option Segmented; Time zone as a Select");
+    await tryStep("picker select", async () => {
+      state.active = true;
+      await go("/app/workouts");
+      await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+      await page.waitForSelector("dialog[open]", { timeout: 4000 });
+      await page.getByRole("combobox", { name: "Muscle" }).waitFor({ timeout: 4000 });
+      await shoot(page, device, "s177a-picker-select", "Spec 17.7 AC7: the picker's Muscle and Equipment filters as inline Selects (6 px, chevron)");
+      await page.keyboard.press("Escape");
+      state.active = false;
+    });
+    // Spec 17.7 AC2: the four-option Set type in the panel, the edit sheet and a routine plan row, measured at 390 × 844
+    // and 320 × 568 on the phone (desktop measures at its own width). A step that never reports fails the run.
+    await tryStep("segmented widths", async () => {
+      const steps = [];
+      const violations = [];
+      const sizes = device === "mobile" ? [{ width: 390, height: 844 }, { width: 320, height: 568 }] : [opts.viewport];
+      const check = (where, size, m, rule) => {
+        steps.push({ where, width: size.width, ...m });
+        if (m.missing) return violations.push(`${where} at ${size.width}: ${m.missing}`);
+        if (m.hscroll) violations.push(`${where} at ${size.width}: the page scrolls sideways`);
+        if (m.sheetHscroll) violations.push(`${where} at ${size.width}: the sheet scrolls sideways`);
+        for (const label of m.clipped) violations.push(`${where} at ${size.width}: "${label}" is clipped`);
+        for (const label of m.wrapped) violations.push(`${where} at ${size.width}: "${label}" wraps to two lines`);
+        const rows = m.perRow.join("+");
+        if (rule === "two" && rows !== "2+2") violations.push(`${where} at ${size.width}: Set type is ${rows}, want 2 × 2`);
+        if (rows === "3+1") violations.push(`${where} at ${size.width}: Set type is 3 + 1`);
+      };
+      state.active = true;
+      try {
+        for (const size of sizes) {
+          await page.setViewportSize(size);
+          const narrow = size.width === 320;
+          // At 390 the panel (294 px) is under the four-across width, so 2 × 2; the sheets are wide enough for four.
+          const rule = size.width <= 390 ? "two" : null;
+
+          await go("/app/workouts");
+          await page.getByRole("button", { name: "Set options" }).first().click({ timeout: 4000 });
+          await page.waitForTimeout(200);
+          check("panel", size, await measureSegments(page, 'form[aria-label^="Log a set of"]', "Set type"), rule);
+          if (!narrow) await shoot(page, device, "s177a-set-options-segmented", "Spec 17.7 AC6: Set options with Set type (2 × 2 in the 390 px panel) and Weight unit as Segmented");
+
+          await go(`/app/history/${D.ids.latestPush}/edit`);
+          await page.getByRole("button", { name: /^Add set to Bench/ }).first().click({ timeout: 4000 });
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          await page.waitForTimeout(200);
+          check("edit sheet", size, await measureSegments(page, "dialog[open]", "Set type"), narrow ? "two" : null);
+          await page.keyboard.press("Escape");
+
+          await go(`/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
+          await page.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click({ timeout: 4000 });
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          await page.waitForTimeout(200);
+          check("plan row", size, await measureSegments(page, "dialog[open]", "Set 1 type"), narrow ? "two" : null);
+          await shoot(page, device, `s177a-plan-row-segmented${narrow ? "-320" : ""}`, `Spec 17.7 AC6: a routine plan row's Set type across the row, Weight unit above the rows${narrow ? ", at 320 × 568 (2 × 2)" : ""}`);
+          await page.keyboard.press("Escape");
+        }
+        if (steps.length !== sizes.length * 3) violations.push(`measured ${steps.length} of ${sizes.length * 3} surfaces`);
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        await page.setViewportSize(opts.viewport);
+        state.active = false;
+      }
+      segments.push({ theme, device, steps, violations });
+      for (const v of violations) console.error(`  SEGMENTED ${theme}/${device}: ${v}`);
+    });
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
       const hevyContext = async (seedKey, o = {}) => {
@@ -1773,12 +1873,18 @@ if (tooSmall.length) process.exitCode = 1;
 if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
 if (offCenter.length) process.exitCode = 1;
 if (loggingLoop.some((l) => l.violations.length)) process.exitCode = 1;
+if (segments.some((l) => l.violations.length)) process.exitCode = 1;
+// Spec 17.7 AC2: a segmented-widths step that never reported must not read as a pass either.
+if (segments.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED segmented widths"))) {
+  console.error("  SEGMENTED: the step did not run on every device");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

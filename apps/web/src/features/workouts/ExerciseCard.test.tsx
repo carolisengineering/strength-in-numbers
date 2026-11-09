@@ -1,5 +1,6 @@
 import { MODALITY_VALUES, type Modality } from "@sin/core";
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue, segmentChoice, segmented, segmentOptions } from "../../test/controls";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,9 +68,9 @@ describe("AC21 — entry row fields per modality", () => {
     const row = within(card("X"));
 
     for (const label of FIELDS[modality]!.shown) expect(row.getByLabelText(label)).toBeInTheDocument();
-    for (const label of FIELDS[modality]!.units) expect(row.getByLabelText(label)).toBeInTheDocument();
+    for (const label of FIELDS[modality]!.units) expect(segmented(label, row)).toBeInTheDocument();
     for (const label of FIELDS[modality]!.hidden) expect(row.queryByLabelText(label)).not.toBeInTheDocument();
-    if (FIELDS[modality]!.units.length === 0) expect(row.queryByLabelText(/unit/)).not.toBeInTheDocument();
+    if (FIELDS[modality]!.units.length === 0) expect(row.queryByRole("group", { name: /unit/ })).not.toBeInTheDocument();
   });
 
   it.each(MODALITY_VALUES)("%s also offers Set type (default Working); no RPE, no More (17.1 AC1)", async (modality) => {
@@ -77,7 +78,7 @@ describe("AC21 — entry row fields per modality", () => {
     await openSetOptions(user, card("X"));
     const row = within(card("X"));
 
-    expect(row.getByLabelText("Set type")).toHaveValue("working");
+    expect(segmentChoice("Set type", row)).toBe("working");
     expect(row.queryByLabelText(/RPE/)).not.toBeInTheDocument();
     expect(row.queryByText(/^More$/)).not.toBeInTheDocument();
     expect(card("X").querySelector("details, summary")).toBeNull();
@@ -96,33 +97,32 @@ describe("AC21 — entry row fields per modality", () => {
   it("units default from the profile: kg → kg / km", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "kg");
     await openSetOptions(user, card("X"));
-    expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("kg");
+    expect(segmentChoice("Weight unit", within(card("X")))).toBe("kg");
     await makeCurrent(user, "Y");
     await openSetOptions(user, card("Y"));
-    expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("km");
+    expect(segmentChoice("Distance unit", within(card("Y")))).toBe("km");
   });
 
   it("units default from the profile: lb → lb / mi", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }, { modality: "distance_duration", name: "Y" }], "lb");
     await openSetOptions(user, card("X"));
-    expect(within(card("X")).getByLabelText("Weight unit")).toHaveValue("lb");
+    expect(segmentChoice("Weight unit", within(card("X")))).toBe("lb");
     await makeCurrent(user, "Y");
     await openSetOptions(user, card("Y"));
-    expect(within(card("Y")).getByLabelText("Distance unit")).toHaveValue("mi");
+    expect(segmentChoice("Distance unit", within(card("Y")))).toBe("mi");
   });
 
   it("Failure shows the log-0-reps hint", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
     await openSetOptions(user, card("X"));
-    await user.selectOptions(within(card("X")).getByLabelText("Set type"), "failure");
+    await chooseSegmentValue(user, "Set type", "failure", within(card("X")));
     expect(within(card("X")).getByText("Couldn't complete a rep? Log 0 reps.")).toBeInTheDocument();
   });
 
-  it("the Set type select offers the four types", async () => {
+  it("17.7 AC6 — Set type offers the four types", async () => {
     const { user } = await setup([{ modality: "weight_reps", name: "X" }]);
     await openSetOptions(user, card("X"));
-    const options = within(within(card("X")).getByLabelText("Set type")).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual(["Warm-up", "Working", "Drop", "Failure"]);
+    expect(segmentOptions("Set type", card("X"))).toEqual(["Warm-up", "Working", "Drop", "Failure"]);
   });
 });
 
@@ -145,8 +145,8 @@ describe("AC22 — prefill", () => {
     const row = within(card("X"));
     expect(row.getByLabelText("Weight")).toHaveValue("62.5");
     expect(row.getByLabelText("Reps")).toHaveValue("6");
-    expect(row.getByLabelText("Weight unit")).toHaveValue("lb");
-    expect(row.getByLabelText("Set type")).toHaveValue("working");
+    expect(segmentChoice("Weight unit", row)).toBe("lb");
+    expect(segmentChoice("Set type", row)).toBe("working");
   });
 
   it("after a log the values stay (copy-forward) and the next POST carries a fresh key", async () => {
@@ -220,7 +220,7 @@ describe("AC23 — Log set", () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
     const row = within(card("X"));
     await openSetOptions(user, card("X"));
-    await user.selectOptions(row.getByLabelText("Set type"), "failure");
+    await chooseSegmentValue(user, "Set type", "failure", row);
     await user.type(row.getByLabelText("Weight"), "100");
     await user.type(row.getByLabelText("Reps"), "0");
 
