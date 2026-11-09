@@ -2,9 +2,9 @@ import { useId } from "react";
 import { PLANNED_SETS_PER_ITEM_MAX, type SetType, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
+import { Segmented } from "../../ui/Segmented";
 import type { PlanRowText, RowErrors } from "./planRows";
 import styles from "./PlanRowList.module.css";
-import { UnitToggle } from "./UnitToggle";
 
 /** The 05.1 wording and order. Local on purpose: `routines/` must not import `workouts/`. */
 export const SET_TYPE_CHOICES: readonly { value: SetType; label: string }[] = [
@@ -12,6 +12,12 @@ export const SET_TYPE_CHOICES: readonly { value: SetType; label: string }[] = [
   { value: "working", label: "Working" },
   { value: "drop", label: "Drop" },
   { value: "failure", label: "Failure" },
+];
+
+/** kg / lb for the plan and the quick line (Spec 17.7 AC6: a Segmented, where `UnitToggle` was). */
+export const WEIGHT_UNIT_CHOICES: readonly { value: WeightUnit; label: string }[] = [
+  { value: "kg", label: "kg" },
+  { value: "lb", label: "lb" },
 ];
 
 export interface PlanRowListProps {
@@ -28,7 +34,8 @@ export interface PlanRowListProps {
 }
 
 /**
- * One editable row per planned set (Spec 10.2 AC13): a labeled group "Set k" with Type, Reps, Weight and
+ * One editable row per planned set (Spec 10.2 AC13): a labeled group "Set k" with Type (a Segmented across the row,
+ * Spec 17.7), Reps, Weight and
  * Move up / Move down / Remove. Controlled — the item sheet owns the rows and the pure ops in `planRows.ts`.
  * Disabled controls say why in text (P6); the edge Move buttons are self-evidently positional.
  * (The file is `PlanRowList`, not `PlanRows`: that name differs from `planRows.ts` only by case.)
@@ -41,7 +48,8 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, onField,
   const minId = `${prefix}-min`;
   return (
     <div className={styles.plan}>
-      {showWeight ? <UnitToggle label="Weight unit" value={unit} onChange={onUnit} /> : null}
+      {/* Spec 10.2 AC13 / D3: "mixed" checks neither unit, so rows in different units never look like they match. */}
+      {showWeight ? <Segmented name={`${prefix}-unit`} legend="Weight unit" options={WEIGHT_UNIT_CHOICES} value={unit === "mixed" ? null : unit} onChange={onUnit} /> : null}
       {showWeight && unit === "mixed" ? <p className={styles.note}>Mixed units — pick one to use for all sets</p> : null}
       <ol className={styles.rows} aria-label="Planned sets">
         {rows.map((row, index) => {
@@ -51,17 +59,10 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, onField,
           return (
             <li key={row.key} className={styles.row}>
               <div role="group" aria-label={`Set ${n}`} className={styles.group}>
-                <Field id={id("type")} label={`Set ${n} type`}>
-                  {(control) => (
-                    <select {...control} className={styles.input} value={row.setType} onChange={(e) => onField(row.key, { setType: e.target.value as SetType })}>
-                      {SET_TYPE_CHOICES.map((choice) => (
-                        <option key={choice.value} value={choice.value}>
-                          {choice.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </Field>
+                {/* Spec 17.7 AC6: the row's own radio name, so choosing one row's type never unchecks another's. */}
+                <div className={styles.type}>
+                  <Segmented<SetType> name={id("type")} legend={`Set ${n} type`} options={SET_TYPE_CHOICES} value={row.setType} onChange={(setType) => onField(row.key, { setType })} />
+                </div>
                 {showReps ? (
                   <Field id={id("reps")} label={`Set ${n} reps`} {...(error?.reps ? { error: error.reps } : {})}>
                     {(control) => <input {...control} type="text" inputMode="text" autoComplete="off" className={styles.input} value={row.reps} onChange={(e) => onField(row.key, { reps: e.target.value })} />}

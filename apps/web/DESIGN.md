@@ -225,7 +225,7 @@ Mobile-first and single column. A screen is a flex column with a 1rem (`--space-
 
 The spacing scale is `--space-1` through `--space-8` (0.25, 0.5, 0.75, 1, 1.5, 2rem). Rows inside a panel are separated by gaps (0.5rem between set rows), not by borders. Every card-like panel uses the card insets (`--card-pad-block` 0.75rem, `--card-pad-inline` 1rem), so their edges line up.
 
-**The ActionBar** holds a screen's thumb-zone actions (Add exercise / Finish, Cancel / Save, Start). It is sticky at the bottom of the scrolling main, flush on the nav, on the Stone Ground with a Hairline above. It bleeds across exactly `--screen-pad` on each side, its buttons share the width equally, and an optional muted status line sits under them. A screen with an ActionBar drops its own bottom padding, and the scroller keeps `--action-bar-clearance` of scroll padding so focused content never hides behind the bar (WCAG 2.4.11). On the workout screen it is taller: a 3.5rem button under a status line that is always reserved at `--session-status-height` (44px), so a message never moves the button (Spec 17.4).
+**The ActionBar** holds a screen's thumb-zone actions (Add exercise / Finish, Cancel / Save, Start). It is sticky at the bottom of the scrolling main, flush on the nav, on the Stone Ground with a Hairline above. It bleeds across exactly `--screen-pad` on each side, its buttons share the width equally, and an optional muted status line sits under them. A screen with an ActionBar drops its own bottom padding, and the scroller keeps `--action-bar-clearance` of scroll padding so focused content never hides behind the bar (WCAG 2.4.11). On the workout screen it is taller: a 3.5rem button under a status line that is always reserved at `--session-status-height` (44px), so a message never moves the button (Spec 17.4). After a log that line also holds a secondary Undo on its right, 8px from the button, with its height unchanged (Spec 17.5).
 
 **The Thumb Rule.** Every interactive target is at least `--tap-target-min` (44px) in both axes. Sizes are rem so they follow the user's font setting; radii, the tap target and the 1px lines are the physical exceptions.
 
@@ -258,6 +258,7 @@ Quiet, firm and thumb-sized.
 ### Chips and segmented controls
 - **Style:** unselected options look like secondary buttons (Raised Stone, Control Boundary).
 - **State:** selected fills with `--color-selected` and `--color-on-selected` text, together with `aria-pressed` or a checked radio. The Light / Dark / System theme switch is a segmented strip: three equal options inside one bordered 10px strip, divided by Control Boundary lines, with native radios kept in the accessibility tree.
+- **Segmented** (`ui/Segmented`, Spec 17.7): the theme strip made shared, for 2–4 fixed choices compared at a glance (units, set type, timer format, Profile units). A fieldset and its legend, one native radio per option; arrow keys move and choose, Tab enters once. Equal columns no narrower than `--segment-min-width` (5rem, so "Warm-up" keeps one line); four options sit four across or 2 × 2, never 3 + 1, so the 390 px panel shows set type 2 × 2 and the sheets show it four across. `value={null}` checks nothing (a plan's mixed units). A disabled option is muted; a checked one in a locked strip keeps a Teal Wash fill so the choice still shows.
 
 ### Cards / Containers
 - **Corner Style:** 10px.
@@ -270,6 +271,7 @@ Quiet, firm and thumb-sized.
 - **Style:** Stone Panel fill, 1px Control Boundary, 6px radius, at least 44px tall, 0.5rem by 0.75rem padding. A Label-style muted label sits above with a 0.25rem gap; hints are muted 0.875rem.
 - **Focus:** the global Focus Teal outline; the caret and native accents are teal too.
 - **Error:** the boundary turns Quiet Brick (`aria-invalid`) and a brick 0.875rem message follows.
+- **Select** (`ui/Select`, Spec 17.7): a long or data-driven list (muscle, equipment, section, time zone, the picker's filters, Hevy type) keeps the native menu, drawn like an input: the same 6px radius, 44px height and Control Boundary, a drawn chevron on the right in ink, no `data:` image. The picker's filters are inline Selects, so 6px, not the 10px of buttons: a select is a field, and fields are 6px.
 
 ### Navigation
 - **Style:** a bottom bar of equal columns on Stone Panel with a Hairline on top, clearing the iOS home indicator. Each target is an icon over a Label (0.875rem), at least 44px.

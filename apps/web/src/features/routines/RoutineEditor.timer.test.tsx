@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../test/controls";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -56,7 +57,7 @@ describe("10.7 AC9 — the routine section sheet in the editor", () => {
     const { user } = await open(routineId(3));
     await user.click(editSection("Main"));
     const dialog = await screen.findByRole("dialog", { name: "Edit section" });
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "set_timer");
+    await chooseSegmentValue(user, "Timer", "set_timer", within(dialog));
     await user.type(within(dialog).getByLabelText("Rounds"), "5");
     await user.type(within(dialog).getByLabelText("Round length"), "500");
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
@@ -80,7 +81,7 @@ describe("10.7 AC13 — editor coupling (screen)", () => {
     const { user } = await open(routineId(3));
     await user.click(editSection("Main"));
     const dialog = await screen.findByRole("dialog", { name: "Edit section" });
-    await user.selectOptions(within(dialog).getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", within(dialog));
     await user.type(within(dialog).getByLabelText("Time limit"), "1200");
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     const first = screen.getByRole("button", { name: "Superset Bench Press with Barbell Row" });

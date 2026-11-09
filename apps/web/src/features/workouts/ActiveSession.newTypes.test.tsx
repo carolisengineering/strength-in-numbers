@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue } from "../../test/controls";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -161,7 +162,7 @@ describe("18.1 AC40 — feet offline", () => {
     await makeCurrent(user, "Carry");
     await typeInto(user, "Carry", "Weight", "24");
     await user.click(within(card("Carry")).getByRole("button", { name: "Set options" }));
-    await user.selectOptions(field("Carry", "Distance unit"), "ft");
+    await chooseSegmentValue(user, "Distance unit", "ft", card("Carry"));
     await typeInto(user, "Carry", "Distance (ft)", "40");
     await user.click(logButton("Carry"));
     await within(card("Carry")).findByRole("button", { name: /24 kg · 40 ft/ });

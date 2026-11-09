@@ -112,6 +112,15 @@ export function MinusIcon(props: IconProps) {
   );
 }
 
+/** A select's menu affordance (Spec 17.7 AC4, D3): drawn beside the select's own text, never a `data:` background. */
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </Svg>
+  );
+}
+
 /** Increase — a plus (Spec 17.1 steppers). */
 export function PlusIcon(props: IconProps) {
   return (

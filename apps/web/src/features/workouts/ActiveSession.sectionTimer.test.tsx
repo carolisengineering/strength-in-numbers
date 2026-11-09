@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { chooseSegmentValue, segmentChoice, segmented } from "../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -75,7 +76,7 @@ async function openEdit(user: Setup["user"], name = "Main") {
   return sheet("Edit section");
 }
 async function chooseAmrap(user: Setup["user"], dialog: ReturnType<typeof sheet>, digits = "1200") {
-  await user.selectOptions(dialog.getByLabelText("Timer"), "amrap");
+  await chooseSegmentValue(user, "Timer", "amrap", dialog);
   await user.type(dialog.getByLabelText("Time limit"), digits);
 }
 
@@ -85,11 +86,11 @@ describe("10.7 AC15 — Timer group on the workout sheets", () => {
     await user.click(screen.getByRole("button", { name: "Add section" }));
     const dialog = sheet("New section");
     const note = dialog.getByLabelText("Note");
-    const timer = dialog.getByLabelText("Timer");
+    const timer = segmented("Timer", dialog);
     expect(note.compareDocumentPosition(timer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(timer).toHaveValue("none");
+    expect(segmentChoice("Timer", dialog)).toBe("none");
     expect(dialog.getByLabelText("Name")).not.toHaveFocus();
-    expect(timer).not.toHaveFocus();
+    expect(timer.contains(document.activeElement)).toBe(false);
   });
 
   it("Add with AMRAP 12:00 sends exactly { name, timer }", async () => {
@@ -108,7 +109,7 @@ describe("10.7 AC15 — Timer group on the workout sheets", () => {
     await user.click(screen.getByRole("button", { name: "Add section" }));
     const dialog = sheet("New section");
     await user.type(dialog.getByLabelText("Name"), "Finisher");
-    await user.selectOptions(dialog.getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", dialog);
     await user.click(dialog.getByRole("button", { name: "Add section" }));
     expect(await dialog.findByText("Enter the time limit.")).toBeInTheDocument();
     expect(sectionWrites(fake)).toEqual([]);
@@ -131,7 +132,7 @@ describe("10.7 AC15 — Timer group on the workout sheets", () => {
     await waitFor(() => expect(announcement()).toHaveTextContent("Timer saved"));
     dialog = await openEdit(user);
     await user.type(dialog.getByLabelText("Name"), " B");
-    await user.selectOptions(dialog.getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", dialog);
     await user.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(sectionWrites(fake)).toHaveLength(2));
     await waitFor(() => expect(announcement()).toHaveTextContent("Timer saved"));
@@ -190,7 +191,7 @@ describe("10.7 AC16 — confirm before clearing (live)", () => {
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Change Main's timer?" })).toBeNull());
     await waitFor(() => expect(sheet("Edit section").getByRole("button", { name: "Save" })).toHaveFocus());
-    expect(sheet("Edit section").getByLabelText("Timer")).toHaveValue("amrap");
+    expect(segmentChoice("Timer", sheet("Edit section"))).toBe("amrap");
     expect(sectionWrites(fake)).toEqual([]);
   });
 
@@ -242,7 +243,7 @@ describe("10.7 AC18 — a stale screen", () => {
     await user.click(dialog.getByRole("button", { name: "Save" }));
     expect(await dialog.findByText("Times were logged for this section. Check them and try again.")).toBeInTheDocument();
     expect(dialog.getByLabelText("Name")).toHaveValue("Main set");
-    expect(dialog.getByLabelText("Timer")).toHaveValue("amrap");
+    expect(segmentChoice("Timer", dialog)).toBe("amrap");
     expect(dialog.getByLabelText("Time limit")).toHaveValue("12:00");
     expect(fake.state.active!.sections[0]).toMatchObject({ name: "Main", timer: SET5, roundTimes: TWO_ROUNDS });
     const reads = fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
@@ -301,7 +302,7 @@ describe("10.7 AC24 — online-only timer writes", () => {
     await user.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(announcement()).toHaveTextContent("Timer saved"));
     dialog = await openEdit(user, "Zq-Unique-Name");
-    await user.selectOptions(dialog.getByLabelText("Timer"), "none");
+    await chooseSegmentValue(user, "Timer", "none", dialog);
     await user.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(observability.track.mock.calls.filter(([e]) => e === "section_timer_set")).toHaveLength(2));
     expect(observability.track.mock.calls.filter(([e]) => e === "section_timer_set")).toEqual([

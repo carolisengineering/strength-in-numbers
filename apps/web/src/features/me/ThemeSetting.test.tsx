@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { localStorageAdapter } from "../../storage/storage";
+import { Segmented } from "../../ui/Segmented";
 import { THEME_KEY } from "../../ui/theme";
 import { ThemeSetting } from "./ThemeSetting";
 
@@ -36,8 +37,19 @@ describe("AC21 — the switch renders and is accessible", () => {
   });
 
   it("gives every option at least the 44 px tap target", () => {
-    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ThemeSetting.module.css"), "utf8");
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../ui/Segmented.module.css"), "utf8");
     expect(/\.option\s*\{[^}]*min-height:\s*var\(--tap-target-min\)[^}]*min-width:\s*var\(--tap-target-min\)/.test(css)).toBe(true);
+  });
+});
+
+describe("17.7 AC8 — Theme renders through Segmented", () => {
+  it("draws the shared strip, with its hint as the group's description", () => {
+    const { container } = render(<ThemeSetting />);
+    const shared = render(<Segmented name="x" legend="x" options={[{ value: "a", label: "a" }]} value="a" onChange={() => {}} />);
+    const fieldset = container.querySelector("fieldset")!;
+    expect(fieldset.className).toBe(shared.container.querySelector("fieldset")!.className);
+    expect(fieldset.querySelector("label")!.className).toBe(shared.container.querySelector("label")!.className);
+    expect(screen.getByRole("group", { name: "Theme" })).toHaveAccessibleDescription("Applies on this device.");
   });
 });
 

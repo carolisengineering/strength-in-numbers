@@ -1,0 +1,54 @@
+/*
+ * Spec 17.7 AC4, §6.4: the select is styled as `.wrap .select` (two classes), so it outranks Field's
+ * `.field :where(input, select, textarea)` and looks the same inside or outside a Field. Field's invalid rule has the
+ * same two-class weight, so the invalid border is written here too rather than left to stylesheet order.
+ */
+.wrap {
+  display: block;
+  position: relative;
+  width: 100%;
+}
+
+.inline {
+  display: inline-block;
+  width: auto;
+  flex: none;
+}
+
+.wrap .select {
+  appearance: none;
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--select-chevron-gutter) var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+}
+
+.wrap .select[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.wrap .select:disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+/* Two classes: icons.module.css sizes every icon with one, and the chevron is smaller. */
+.wrap .chevron {
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  translate: 0 -50%;
+  width: var(--space-4);
+  height: var(--space-4);
+  color: var(--color-text);
+  pointer-events: none;
+}
+
+.wrap:has(.select:disabled) .chevron {
+  color: var(--color-muted);
+}

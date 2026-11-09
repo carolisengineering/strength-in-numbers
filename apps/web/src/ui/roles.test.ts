@@ -21,7 +21,6 @@ const SIGNAL_ALLOWED = [
   "features/progress/LineChart.module.css",
   "features/exercises/RecordsView.module.css",
   "features/progress/ExerciseProgressBody.module.css",
-  "features/routines/UnitToggle.module.css",
   "features/routines/RoutinesSection.module.css",
   // Issue #98: the shared "‹ Back to …" text link (interactive), as on FinishedWorkoutScreen.
   "ui/BackLink.module.css",
@@ -37,7 +36,8 @@ const SIGNAL_ALLOWED = [
   "features/workouts/RestLine.module.css",
   // Spec 17.1 D12: the current-set panel (signal-soft ground, teal set label) is the "do this next" surface.
   "features/workouts/EntryRow.module.css",
-  "features/me/ThemeSetting.module.css",
+  // Spec 17.7 AC11: the checked option is a selection, as Theme was (Theme now draws through it).
+  "ui/Segmented.module.css",
   // #108: the checked "Keep screen on during workouts" box is a selection, like Theme beside it.
   "features/me/KeepAwakeSetting.module.css",
   // Spec 20.2 AC23: the checked auto-push box is a selection, like Keep screen on.
@@ -132,5 +132,14 @@ describe("18.0 AC45 — Change Time styles", () => {
     const found = sheets.filter((s) => changed.includes(s.path));
     expect(found.map((s) => s.path).sort()).toEqual([...changed].sort());
     expect(found.filter((s) => /--color-pr\b|--color-pr-|--color-signal/.test(s.css)).map((s) => s.path)).toEqual([]);
+  });
+});
+
+describe("17.7 AC11 — Segmented's checked fill is an allowed selection", () => {
+  it("allows ui/Segmented.module.css, and no longer the Theme or UnitToggle sheets it replaced", () => {
+    expect(SIGNAL_ALLOWED).toContain("ui/Segmented.module.css");
+    expect(SIGNAL_ALLOWED).not.toContain("features/me/ThemeSetting.module.css");
+    expect(SIGNAL_ALLOWED).not.toContain("features/routines/UnitToggle.module.css");
+    expect(sheets.find((s) => s.path === "ui/Segmented.module.css")?.css).toMatch(/--color-selected\b/);
   });
 });

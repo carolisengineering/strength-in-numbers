@@ -23,7 +23,7 @@ import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card as cardOf, discardWorkout, finishButton, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card as cardOf, deleteSetIn, discardWorkout, finishButton, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 
 // Distinctive on purpose, so a leak is unmistakable in a scan.
 const SECRET_NAME = "Zebra Overhead Press";
@@ -40,7 +40,7 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   exercise_removed: { setCount: "number" },
   set_logged: { modality: "string", setType: "string", edited: "boolean", msToLog: "number" },
   set_edited: { modality: "string" },
-  set_deleted: { modality: "string" },
+  set_deleted: { modality: "string", viaUndo: "boolean" },
   finish_blocked: { incompleteCount: "number" },
   // Spec 17.1 AC53: endedEarly and unloggedPlannedSets are scalars.
   workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number", hadPlannedDuration: "boolean" },
@@ -159,7 +159,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     await card(SECRET_NAME).findByText(/73\.5 kg × 9/);
 
     await user.click(card(SECRET_NAME).getByRole("button", { name: /73\.5 kg × 9/ }));
-    await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
+    await deleteSetIn(user, screen.getByRole("dialog", { name: /^Set 1/ }));
     await waitFor(() => expect(card(SECRET_NAME).queryByText(/73\.5/)).not.toBeInTheDocument());
 
     await user.click(optionsButton(SECRET_NAME));

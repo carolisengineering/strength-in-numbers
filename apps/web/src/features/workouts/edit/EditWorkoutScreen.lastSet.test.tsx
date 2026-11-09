@@ -20,7 +20,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { card } from "../../../test/sessionHelpers";
+import { card, deleteSetIn } from "../../../test/sessionHelpers";
 import { EDIT_COPY } from "./editCopy";
 
 afterEach(() => {
@@ -43,7 +43,7 @@ const dialog = () => screen.getByRole("dialog", { name: EDIT_COPY.lastSet.title 
 async function deleteOnlySet(user: ReturnType<typeof openOneSet>["user"]) {
   await screen.findByRole("heading", { level: 1, name: "Edit workout" });
   await user.click(within(card("Bench Press")).getByRole("button", { name: /60 kg × 8/ }));
-  await user.click(within(screen.getByRole("dialog", { name: /^Set 1/ })).getByRole("button", { name: "Delete set" }));
+  await deleteSetIn(user, screen.getByRole("dialog", { name: /^Set 1/ }));
   await waitFor(() => expect(dialog()).toBeInTheDocument());
 }
 

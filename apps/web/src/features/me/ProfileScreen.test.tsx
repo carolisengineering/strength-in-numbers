@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chooseSegmentValue, segmentChoice, segmented, segmentValues } from "../../test/controls";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,20 +105,29 @@ const form = async () => within(await screen.findByTestId("profile-form"));
 const user = () => userEvent.setup();
 
 describe("AC5 — Profile loads current values (Spec 04.1 §2)", () => {
-  it("renders displayName, unit <select> from UNIT_PREFERENCE_VALUES, and timezone <select> with the current values selected", async () => {
+  it("17.7 AC6 — renders displayName, Units as radios from UNIT_PREFERENCE_VALUES, and the timezone <select>, with the current values selected", async () => {
     renderProfile();
     const f = await form();
 
     expect(f.getByLabelText("Display name")).toHaveValue("Sam");
 
-    const units = f.getByLabelText("Units") as HTMLSelectElement;
-    expect([...units.options].map((o) => o.value)).toEqual(["kg", "lb"]);
-    expect(units).toHaveValue("kg");
+    expect(within(segmented("Units", f)).getAllByRole("radio")).toHaveLength(2);
+    expect(segmentValues("Units", f)).toEqual(["kg", "lb"]);
+    expect(segmentChoice("Units", f)).toBe("kg");
 
     const zone = f.getByLabelText("Time zone") as HTMLSelectElement;
     expect(zone.tagName).toBe("SELECT");
     expect([...zone.options].map((o) => o.value)).toEqual(tz.zones);
     expect(zone).toHaveValue("Europe/London");
+  });
+
+  it("17.7 AC7 — Time zone is drawn by Select, with the same name and value", async () => {
+    renderProfile();
+    const f = await form();
+    const zone = f.getByRole("combobox", { name: "Time zone" });
+    expect(zone).toHaveValue("Europe/London");
+    expect(zone.parentElement?.tagName).toBe("SPAN");
+    expect(zone.parentElement?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("keeps a stored timezone that is not in the host list as a selected extra option", async () => {
@@ -202,7 +212,7 @@ describe("AC6 — Profile saves (Spec 04.1 §2)", () => {
     const f = await form();
     const u = user();
 
-    await u.selectOptions(f.getByLabelText("Units"), "lb");
+    await chooseSegmentValue(u, "Units", "lb", f);
     await u.selectOptions(f.getByLabelText("Time zone"), "Asia/Tokyo");
     await u.click(f.getByRole("button", { name: "Save" }));
 
@@ -251,7 +261,7 @@ describe("AC7 — Profile validation errors (Spec 04.1 §2)", () => {
     expect(alert).not.toHaveTextContent("XYZZY");
     expect(alert).toHaveAttribute("id", "displayName-error");
     expect(f.getByLabelText("Display name")).toHaveAttribute("aria-invalid", "true");
-    expect(f.getByLabelText("Units")).not.toHaveAttribute("aria-invalid");
+    expect(segmented("Units", f)).not.toHaveAttribute("aria-describedby");
     expect(f.getByLabelText("Time zone")).not.toHaveAttribute("aria-invalid");
     expect(screen.queryByTestId("profile-form-error")).toBeNull();
     expect(screen.queryByTestId("profile-saved")).toBeNull();
@@ -277,14 +287,16 @@ describe("AC7 — Profile validation errors (Spec 04.1 §2)", () => {
     const f = await form();
     const u = user();
 
-    await u.selectOptions(f.getByLabelText("Units"), "lb");
+    await chooseSegmentValue(u, "Units", "lb", f);
     await u.click(f.getByRole("button", { name: "Save" }));
 
     const formError = await screen.findByTestId("profile-form-error");
     expect(formError).toHaveTextContent("is not a recognized field");
-    for (const label of ["Display name", "Units", "Time zone"]) {
+    for (const label of ["Display name", "Time zone"]) {
       expect(f.getByLabelText(label)).not.toHaveAttribute("aria-invalid");
     }
+    // Spec 17.7 AC10: a group can't carry aria-invalid; it names no error when its field has none.
+    expect(segmented("Units", f)).not.toHaveAttribute("aria-describedby");
   });
 
   it("a 503 → single form-level message carrying the requestId", async () => {
@@ -306,17 +318,51 @@ describe("AC7 — Profile validation errors (Spec 04.1 §2)", () => {
     const f = await form();
     const u = user();
 
-    await u.selectOptions(f.getByLabelText("Units"), "lb");
+    await chooseSegmentValue(u, "Units", "lb", f);
     await u.click(f.getByRole("button", { name: "Save" }));
 
     const formError = await screen.findByTestId("profile-form-error");
     expect(formError).toHaveTextContent(/Reference: [0-9a-f-]{36}/);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(f.getByLabelText("Units")).not.toHaveAttribute("aria-invalid");
+    expect(segmented("Units", f)).not.toHaveAttribute("aria-describedby");
     // The failed save leaves the form dirty so the user can retry.
     await waitFor(() =>
       expect(f.getByRole("button", { name: "Save" })).toBeEnabled(),
     );
+  });
+
+  it("17.7 AC10 — a 422 on unitPreference shows under Units, is named by the group, and choosing again clears it", async () => {
+    server.use(
+      http.patch(ME_URL, () =>
+        problem(
+          {
+            type: "https://strengthinnumbers.app/problems/validation-error",
+            title: "Validation failed",
+            status: 422,
+            detail: "The request body failed validation.",
+            instance: "req-5",
+            errors: [{ path: "unitPreference", message: "must be kg or lb" }],
+          },
+          422,
+        ),
+      ),
+    );
+    renderProfile();
+    const f = await form();
+    const u = user();
+
+    await chooseSegmentValue(u, "Units", "lb", f);
+    await u.click(f.getByRole("button", { name: "Save" }));
+    const alert = await f.findByRole("alert");
+    expect(alert).toHaveTextContent("must be kg or lb");
+    const group = segmented("Units", f);
+    expect(group.contains(alert)).toBe(true);
+    expect(group).toHaveAccessibleDescription("must be kg or lb");
+    expect(f.getByLabelText("Display name")).not.toHaveAttribute("aria-invalid");
+
+    await chooseSegmentValue(u, "Units", "kg", f);
+    expect(f.queryByRole("alert")).toBeNull();
+    expect(segmented("Units", f)).not.toHaveAttribute("aria-describedby");
   });
 
   it("editing a field clears its inline error", async () => {

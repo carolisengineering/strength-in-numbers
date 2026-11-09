@@ -22,21 +22,12 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--stepper-min-width)), 1fr));
 }
 
-/* A value and its unit select side by side under the value's label; the unit is a narrow second column. */
+/* A value, then its unit strip under it, inside the value's one <Field>, so the Field's error comes after both (#203,
+   Spec 17.7). The strip's radios use Segmented's two-class rule, so Field's input rule never restyles them. */
 .withUnit {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-}
-
-.withUnit > :first-child {
-  flex: 1;
-}
-
-/* The unit select is inside its value's <Field>, which draws it like any control; this only keeps it narrow,
-   outranking Field's full width (`.field :where(select)`) whichever stylesheet loads last. */
-.withUnit > .unit {
-  flex: none;
-  width: auto;
 }
 
 .duration {
@@ -49,9 +40,7 @@
 }
 
 /* Every control is at least --tap-target-min tall (Spec 06.1 AC33). */
-.input,
-.select,
-.unit {
+.input {
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
 }
@@ -64,7 +53,7 @@
   font-stretch: var(--font-stretch-figure);
 }
 
-/* "Set options": the Set type and unit selects, revealed inline. */
+/* "Set options": Set type and the units, revealed inline. */
 .options {
   display: flex;
   flex-direction: column;

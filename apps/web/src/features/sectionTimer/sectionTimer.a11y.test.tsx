@@ -48,7 +48,8 @@ describe("10.7 AC59 — sectionTimer accessibly", () => {
     await expectNoAxeViolations(container);
   });
 
-  it.each([".input", ".select"])("%s is at least a tap target tall", (selector) => {
+  // Spec 17.7: the Timer format is a Segmented; its options' tap target is checked with ui/Segmented.module.css.
+  it.each([".input"])("%s is at least a tap target tall", (selector) => {
     expect(hasTapTarget("./sectionTimer.module.css", selector)).toBe(true);
   });
 });

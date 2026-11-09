@@ -9,13 +9,13 @@ import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { RestReadout } from "./RestReadout";
 import { SetFields, type DraftEditField } from "./SetFields";
-import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, unitDefaultsFor, type DraftField } from "./setDraft";
+import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, setValuesKey, unitDefaultsFor, type DraftField } from "./setDraft";
 import { useCreateSet } from "./useWorkoutMutations";
 import styles from "./EntryRow.module.css";
 
 const reduceDraft = createDraftReducer(() => crypto.randomUUID());
 
-/** The free-text inputs: only these can show a client-side message once touched (units and type are selects). */
+/** The free-text inputs: only these can show a client-side message once touched (units and type are radios). */
 const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", "minutes", "seconds", "calories"]);
 
 /**
@@ -23,8 +23,7 @@ const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", 
  * draft can carry that set's values, so correcting it must re-seed an untouched draft, or one tap records the mistake.
  */
 function seedKeyOf(count: number, last: SetEntry | undefined): string {
-  if (last === undefined) return String(count);
-  return [count, last.setType, last.weight, last.weightUnit, last.reps, last.distance, last.distanceUnit, last.durationS, last.calories].join("|");
+  return last === undefined ? String(count) : `${count}|${setValuesKey(last)}`;
 }
 
 export interface LoggedEvent {
@@ -34,7 +33,19 @@ export interface LoggedEvent {
   readonly advance: boolean;
   /** The set went past the plan ("Extra set"). */
   readonly wasExtra: boolean;
+  /** The tapped Log label without "Log " (Spec 17.5 AC1): "47.5 × 6", "1:30". */
+  readonly value: string;
 }
+
+/** Spec 17.5 AC11: an undone set to take back into the draft, once. */
+export interface DraftRestore {
+  readonly token: number;
+  readonly exerciseId: string;
+  readonly set: SetEntry;
+}
+
+const listed = (sets: readonly SetEntry[], set: SetEntry) =>
+  sets.some((row) => row.id === set.id || (set.clientGeneratedId !== null && row.clientGeneratedId === set.clientGeneratedId));
 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
@@ -45,6 +56,9 @@ export interface EntryRowProps {
   onLogged?: (event: LoggedEvent) => void;
   /** Spec 17.1 AC27: in Finish mode the panel stays, with a secondary button for a set past the plan. */
   logExtra?: boolean;
+  /** Spec 17.5 AC11: applied once the set has left the list, unless the draft is edited; `onRestoreDone` fires either way. */
+  restore?: DraftRestore;
+  onRestoreDone?: (token: number) => void;
 }
 
 /**
@@ -54,7 +68,7 @@ export interface EntryRowProps {
  * Each attempt carries one `clientGeneratedId`, kept across failures and re-minted only after a
  * success (§6.5), so a retry after a lost response cannot log the set twice.
  */
-export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra }: EntryRowProps) {
+export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra, restore, onRestoreDone }: EntryRowProps) {
   const idPrefix = useId();
   const create = useCreateSet();
   const defaults = unitDefaultsFor(unitPreference, exercise.modalitySnapshot);
@@ -81,10 +95,18 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
     setSeededFor(seedKey);
     if (untouched) dispatch({ type: "seed", plannedSets, sets: exercise.sets, defaults });
   }
+  // Spec 17.5 AC11: after the re-seed above, so this dispatch queues second and wins. The query cache tells observers a
+  // moment after the delete resolves, so a render can hold the old list: the restore waits until the row has left.
+  const [restoredToken, setRestoredToken] = useState<number | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !listed(exercise.sets, restore.set)) {
+    setRestoredToken(restore.token);
+    setAnnouncement(""); // AC13: a re-log repeats "Set N logged", and a live region says nothing when its words don't change
+    if (untouched) dispatch({ type: "restore", set: restore.set, defaults });
+  }
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
   const [formError, setFormError] = useState<{ text: string } | null>(null);
-  const [announcement, setAnnouncement] = useState("");
   const inFlight = useRef(false); // synchronous guard against a double tap
   // Spec 06.2: a queued log resolves at once, so the busy button no longer spans a double tap. A second
   // tap within this window with nothing typed in between is the same tap, not a second set.
@@ -121,7 +143,9 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
   // No submit button (the bar logs), so Enter in any input is handled here: a valid draft logs, an invalid one shows
   // every message (Spec 06.4 D2). preventDefault also stops a one-field form's implicit submission.
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>) {
-    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) return;
+    // Spec 17.7: only a text field logs on Enter. Units and set type are radios now (a radio is an input too), and
+    // Segmented stops their Enter from submitting.
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "text") return;
     event.preventDefault();
     if (parsed.ok) {
       void log();
@@ -163,7 +187,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
         drafts.clear();
       }
       setSeededFor(seedKeyOf(count + 1, set)); // this row's own log: the prop will catch up, and must not re-seed
-      onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra }); // last (§6.5)
+      onLogged?.({ exerciseId: exercise.id, set, advance: !typedSinceTap, wasExtra, value: label.replace(/^Log /, "") }); // last (§6.5)
     } catch (error) {
       reportUnexpected("create-set", error);
       const action = resolveFailure("create-set", error);
@@ -202,6 +226,16 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra 
     store?.publish({ owner, label, ariaLabel, disabled: !parsed.ok, busy, run });
   }, [store, owner, label, ariaLabel, parsed.ok, busy, run]);
   useEffect(() => () => store?.withdraw(owner), [store, owner]);
+  // Spec 17.5 AC14: a tap on Undo ends this row's own double-tap window, so a Log tap right after it logs.
+  const restoreDone = useRef(onRestoreDone);
+  useLayoutEffect(() => {
+    restoreDone.current = onRestoreDone;
+  });
+  useLayoutEffect(() => {
+    if (restoredToken === null) return;
+    lastLoggedAt.current = Number.NEGATIVE_INFINITY;
+    restoreDone.current?.(restoredToken);
+  }, [restoredToken]);
 
   return (
     <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>

@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { chooseSegmentValue, segmentChoice } from "../../../test/controls";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { makeTimedSection } from "../../../test/workoutFixtures";
@@ -19,7 +20,7 @@ describe("10.7 AC15 — the Timer group in the workout sheet", () => {
     const { user, onSubmit } = renderSheet();
     const d = dialog("New section");
     await user.type(d.getByLabelText("Name"), "Finisher");
-    await user.selectOptions(d.getByLabelText("Timer"), "amrap");
+    await chooseSegmentValue(user, "Timer", "amrap", d);
     await user.type(d.getByLabelText("Time limit"), "1200");
     await user.click(d.getByRole("button", { name: "Add section" }));
     expect(onSubmit).toHaveBeenCalledWith({ name: "Finisher", notes: "", timer: { format: "amrap", capSeconds: 720 } });
@@ -36,7 +37,7 @@ describe("10.7 AC15 — the Timer group in the workout sheet", () => {
     const { user, onSubmit } = renderSheet();
     const d = dialog("New section");
     await user.type(d.getByLabelText("Name"), "Finisher");
-    await user.selectOptions(d.getByLabelText("Timer"), "set_timer");
+    await chooseSegmentValue(user, "Timer", "set_timer", d);
     await user.click(d.getByRole("button", { name: "Add section" }));
     expect(d.getByText("Enter the number of rounds.")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
@@ -45,7 +46,7 @@ describe("10.7 AC15 — the Timer group in the workout sheet", () => {
   it("edit mode starts from the section's timer", () => {
     renderSheet({ mode: "edit", section: makeTimedSection({ name: "Main" }) });
     const d = dialog("Edit section");
-    expect(d.getByLabelText("Timer")).toHaveValue("set_timer");
+    expect(segmentChoice("Timer", d)).toBe("set_timer");
     expect(d.getByLabelText("Rounds")).toHaveValue("5");
     expect(d.getByLabelText("Round length")).toHaveValue("5:00");
   });

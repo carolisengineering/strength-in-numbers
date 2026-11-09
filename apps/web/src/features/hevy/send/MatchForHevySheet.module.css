@@ -65,7 +65,6 @@
   gap: var(--space-1);
 }
 
-.field input,
-.field select {
+.field input {
   min-height: var(--tap-target-min);
 }

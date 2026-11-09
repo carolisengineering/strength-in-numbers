@@ -6,7 +6,7 @@ const routines = raw(import.meta.glob(["../routines/*.ts", "../routines/*.tsx", 
 const stripComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 // `PlanRowList.tsx` is the plan rows component (not `PlanRows.tsx`: that differs from `planRows.ts` only by case).
-const NEW_ROUTINES = ["PlanRowList.tsx", "UnitToggle.tsx", "ItemSheet.tsx", "planRows.ts", "sheetIssues.ts"].map((f) => `../routines/${f}`);
+const NEW_ROUTINES = ["PlanRowList.tsx", "ItemSheet.tsx", "planRows.ts", "sheetIssues.ts"].map((f) => `../routines/${f}`);
 const NEW_WORKOUTS = ["./plannedSets.ts", "./setDraft.ts", "./EntryRow.tsx", "./supersetRows.ts"];
 
 describe("10.2 AC34 — the files this spec adds or changes", () => {
