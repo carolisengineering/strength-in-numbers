@@ -20,7 +20,7 @@
     "seed:catalog": "tsx --env-file-if-exists=.env.owner prisma/seed.ts",
     "records:rebuild": "tsx --env-file-if-exists=.env.owner scripts/rebuild-records.ts",
     "db:app-role": "tsx --env-file-if-exists=.env.owner scripts/db-app-role.ts",
-    "db:rls": "tsx --env-file-if-exists=.env.owner scripts/db-rls.ts",
+    "db:rls": "tsx scripts/db-rls.ts",
     "account:purge": "tsx --env-file-if-exists=.env.owner scripts/purge-accounts.ts",
     "bench:finish": "tsx scripts/bench-finish.ts",
     "bench:history": "tsx scripts/bench-history.ts",

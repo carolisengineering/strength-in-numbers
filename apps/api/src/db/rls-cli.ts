@@ -5,6 +5,8 @@
  * API warns `rls_disabled` at boot for as long as it stays off. `status` exits 0 even when tables are off, but says so.
  *
  * Exit 1 when the argument is anything else (a typo must never switch RLS), the owner URL is missing, or anything fails.
+ * Unlike the other maintenance commands it never reads `.env.owner`: with the variable unset, an `enable` meant for a remote
+ * database would switch the local one and print 19 `on`. Locally, pass the URL inline.
  */
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -36,7 +38,10 @@ export function parseRlsArgs(argv: readonly string[]): { ok: true; command: RlsC
   return args.length === 1 && command !== undefined ? { ok: true, command } : { ok: false, error: USAGE };
 }
 
-/** Local or remote, never the host itself: a run that acted on the wrong database must show it, and the name stays private. */
+/**
+ * A run that acted on the wrong database must show it. Staging and production can both be `neondb` / `neondb_owner`, so a
+ * remote target also shows the host's first label, Neon's endpoint id; the region and domain stay out of the output.
+ */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "db"]);
 
 function describeStatus(status: readonly RlsTableStatus[]): string {
@@ -65,11 +70,11 @@ export async function main(
 
   const secrets = [owner.url];
   let url: string;
-  let hostKind: "local" | "remote";
+  let where: string;
   try {
     url = resolveDatabaseUrl(owner.url);
     const u = new URL(url);
-    hostKind = LOCAL_HOSTS.has(u.hostname) ? "local" : "remote";
+    where = LOCAL_HOSTS.has(u.hostname) ? "local host" : `remote host ${u.hostname.split(".")[0]}`;
     secrets.push(url, u.password, decodeURIComponent(u.password), u.host, u.hostname);
   } catch (err) {
     io.err(`OWNER_DATABASE_URL rejected: ${redacted(err, secrets)}\n`);
@@ -81,7 +86,7 @@ export async function main(
   try {
     prisma = deps.makePrisma ? deps.makePrisma(url) : new PrismaClient({ datasourceUrl: url });
     const target = await rlsTarget(prisma);
-    io.out(`target: database ${target.database}, login ${target.login}, ${hostKind} host\n`);
+    io.out(`target: database ${target.database}, login ${target.login}, ${where}\n`);
     if (parsed.command === "disable") {
       io.out(`row-level security is being switched OFF for all ${RLS_TABLES.length} tables; switch it back with db:rls -- enable\n`);
     }

@@ -46,6 +46,18 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC33 — the table inventory
     expect(await rlsInventoryProblems(db.prisma)).toEqual([]);
   });
 
+  it("AC33 — a table with a user_id column must be on the AC34 probe's list, so a USING (true) policy can't pass unprobed", async () => {
+    const ofProbe = async () => (await rlsInventoryProblems(db.prisma)).filter((p) => p.includes(`"inventory_owned"`));
+    try {
+      await db.prisma.$executeRawUnsafe(`CREATE TABLE public.inventory_owned (id uuid, user_id uuid)`);
+      await db.prisma.$executeRawUnsafe(`ALTER TABLE public.inventory_owned ENABLE ROW LEVEL SECURITY`);
+      await db.prisma.$executeRawUnsafe(`CREATE POLICY inventory_owned_any ON public.inventory_owned TO sin_app USING (true)`);
+      expect(await ofProbe()).toContain(`table "inventory_owned": has a user_id column but is not in OWNED_TABLES, so the AC34 probe skips it`);
+    } finally {
+      await db.prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS public.inventory_owned`);
+    }
+  });
+
   it("AC33 — a policy for another role does not count as a policy for sin_app", async () => {
     await db.prisma.$executeRawUnsafe(`DROP POLICY muscle_group_read ON "muscle_group"`);
     try {

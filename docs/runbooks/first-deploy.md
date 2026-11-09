@@ -680,7 +680,7 @@ the moment it runs), from an up-to-date `main`:
 export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
 pnpm run db:migrate:status    # expect: only 0021 pending
 pnpm run db:migrate:deploy
-pnpm --filter @sin/api run db:rls -- status    # expect: "target: … remote host", then 19 lines ending "on", no WARNING
+pnpm --filter @sin/api run db:rls -- status    # expect: "target: … remote host ep-…" (this database's id), then 19 lines ending "on", no WARNING
 ```
 
 RLS applies from that moment, with no restart. If `migrate deploy` fails, for a lock conflict or its 5-second
@@ -719,9 +719,10 @@ unset OWNER_DATABASE_URL
 
 **Rollback, by step.** Whenever you roll back, record it in the table below.
 
-**Export the owner URL first, and read the first line of the output.** The S7 block above ends with `unset`. With the variable
-unset, `db:rls` falls back to `apps/api/.env.owner`: your **local** database, if you have that file. It then exits 0 and prints
-19 `OFF` while staging hasn't changed. The first line says what it acted on, and for staging it must end `remote host`:
+**Export the owner URL first, and read the first line of the output.** The S7 block above ends with `unset`, and `db:rls` won't
+run without the variable: unlike the other maintenance commands, it never reads `apps/api/.env.owner`. The first line says what
+it acted on. It ends `remote host ep-…`, the start of the host in the URL you exported. Staging and production can look the same
+on that line apart from this id, so check that it's the database you mean:
 
 ```bash
 export OWNER_DATABASE_URL='<the owner string, ending &sslaccept=strict>'
@@ -734,9 +735,15 @@ export OWNER_DATABASE_URL='<the owner string, ending &sslaccept=strict>'
 | S7 or S8 failing | `db:rls -- disable`, then diagnose. |
 | All the way back from S7 | `db:rls -- disable`. Then Render → Manual Deploy → a Phase B commit, still on `sin_app`, which that code runs on. Only then, if you want it, set `DATABASE_URL` to the owner URL: saving it redeploys, and Phase C or later code refuses that login. Every migration is backward-compatible. |
 
-**The trap: never roll code back past Phase B while RLS is on and the URL is `sin_app`.** Code from before Phase B sets no
-user, so with RLS on it sees nothing: every lifter's data looks gone. Disable RLS or switch to the owner URL first. Never
-run `migrate dev` or `migrate resolve` on Neon to "undo" `0021`; undoing RLS is the command above, not a migration.
+**The trap: never deploy a commit from before Phase D while RLS is on, not even the previous one.** Run `db:rls -- disable`
+first. Render's Manual Deploy will offer those commits, and each breaks differently with RLS on:
+
+- **Phase C code** sets the user, but it reads text that Postgres leaves out under RLS. A second `POST /v1/workouts` and a
+  duplicate routine name answer `500` instead of `409`, and a Hevy import can report `already_imported` and skip a workout
+  it should have created.
+- **Code from before Phase B** sets no user, so it sees nothing: every lifter's data looks gone.
+
+Never run `migrate dev` or `migrate resolve` on Neon to "undo" `0021`; undoing RLS is the command above, not a migration.
 
 **Outcomes.** Fill in one row per step as you go (AC40).
 
@@ -1139,7 +1146,7 @@ pnpm --filter @sin/api run db:app-role     # expect: superuser no, bypassrls no,
 unset APP_ROLE_PASSWORD
 ```
 
-4. **Check the switch and the flags:** `pnpm --filter @sin/api run db:rls -- status` prints `target: … remote host`, 19 lines
+4. **Check the switch and the flags:** `pnpm --filter @sin/api run db:rls -- status` prints `target: … remote host ep-…` with production's id, 19 lines
    ending `on` and no `WARNING`, and step 3 printed a clean role. Never create or edit `sin_app` in the Neon Console (RLS rollout, S4).
 5. **Put the `sin_app` URL in Secret Manager**, never the owner's. It's the same direct host and database, user `sin_app`,
    your password, `?sslmode=require&sslaccept=strict`. From stdin, so it never lands in your shell history:

@@ -8,7 +8,7 @@ import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { assertLoginCannotBypassRls } from "../../src/db/login-check.js";
 import { main } from "../../src/db/rls-cli.js";
-import { RLS_TABLES } from "../../src/db/rls-tables.js";
+import { RLS_LOCK_ORDER, RLS_TABLES, quoteIdent } from "../../src/db/rls-tables.js";
 import { GENEROUS_LIMITS, TEST_ENV, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
@@ -127,7 +127,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC39 — the kill switch (re
     const { code, out } = await run(["status"]);
     expect(code).toBe(0);
     expect(out.trimEnd().split("\n")).toHaveLength(20);
-    expect(out.split("\n")[0]).toMatch(/^target: database sin_test, login \w+, (local|remote) host$/);
+    expect(out.split("\n")[0]).toMatch(/^target: database sin_test, login \w+, (local host|remote host \S+)$/);
     for (const table of RLS_TABLES) expect(out).toMatch(new RegExp(`^${table} +on$`, "m"));
     expect(await enabledCount()).toBe(19);
   });
@@ -173,6 +173,40 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC39 — the kill switch (re
       await holder;
     }
   }, 30_000);
+
+  it("AC39 — locks that each arrive inside their 5 s timeout still can't hold the switch past its limit", async () => {
+    // Each table frees 4 s after the one before, so no single lock times out and only a limit on the whole statement can fire.
+    const tables = RLS_LOCK_ORDER.slice(0, 4);
+    const releases: (() => void)[] = [];
+    const holders: Promise<void>[] = [];
+    for (const table of tables) {
+      let markHeld = () => {};
+      const held = new Promise<void>((resolve) => (markHeld = resolve));
+      holders.push(
+        db.prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe(`LOCK TABLE ${quoteIdent(table)} IN ACCESS SHARE MODE`);
+            markHeld();
+            await new Promise<void>((release) => releases.push(release));
+          },
+          { timeout: 40_000 },
+        ),
+      );
+      await held;
+    }
+    const timers = releases.map((release, i) => setTimeout(release, 4_000 * (i + 1)));
+    const started = Date.now();
+    try {
+      const { code } = await run(["disable"]);
+      expect(code).toBe(1);
+      expect(Date.now() - started).toBeLessThan(14_000);
+      expect(await enabledCount()).toBe(19);
+    } finally {
+      for (const timer of timers) clearTimeout(timer);
+      for (const release of releases) release();
+      await Promise.all(holders);
+    }
+  }, 45_000);
 
   describe("Review Focus 4 — the boot warning", () => {
     it("with RLS off, the server logs rls_disabled naming 19 tables and still reaches api listening", async () => {

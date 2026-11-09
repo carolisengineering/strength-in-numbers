@@ -349,10 +349,42 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC35 — the risky paths as 
       );
       await written;
       const completing = repo.completeLink(user, w2, { hevyWorkoutId: "H-RACE", fingerprint }).catch((err: unknown) => err);
-      await new Promise((r) => setTimeout(r, 300));
+      // Wait until the UPDATE is seen blocked. Committing any sooner lets the holder read answer, and the catch goes untested.
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const blocked = await db.prisma.$queryRaw<{ n: bigint }[]>`
+          SELECT count(*) AS n FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid() AND query LIKE '%UPDATE "hevy_link"%'`;
+        if (blocked[0]!.n > 0n) break;
+        if (Date.now() > deadline) throw new Error("completeLink's UPDATE never waited on the rival's uncommitted id");
+        await new Promise((r) => setTimeout(r, 25));
+      }
       commit();
       await rival;
       expect(await completing).toBeInstanceOf(HevyIdInUseError);
+    });
+
+    it("the catches that read any 23505 as one index still have only that index to hit: a new unique index must revisit them", async () => {
+      const rows = await db.prisma.$queryRaw<{ table_name: string; index_name: string }[]>`
+        SELECT t.relname AS table_name, i.relname AS index_name
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class t ON t.oid = x.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public' AND x.indisunique AND t.relname IN ('workout', 'routine', 'hevy_link')
+        ORDER BY 1, 2`;
+      expect(rows.map((r) => `${r.table_name}.${r.index_name}`)).toEqual([
+        "hevy_link.hevy_link_hevy_id_key",
+        "hevy_link.hevy_link_pkey",
+        "hevy_link.hevy_link_workout_key",
+        "routine.routine_id_user_key",
+        "routine.routine_pkey",
+        "routine.routine_user_name_key",
+        "workout.workout_id_user_key",
+        "workout.workout_pkey",
+        "workout.workout_user_active_key",
+        "workout.workout_user_client_id_key",
+      ]);
     });
   });
 

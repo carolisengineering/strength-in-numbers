@@ -31,14 +31,16 @@ export async function rlsTarget(client: RlsCatalogClient): Promise<{ database: s
 /**
  * Spec 21.1 D12 — the kill switch: every table or none, in one transaction, on the owner login. A command rather than a
  * migration, so it is instant and reversible, and `migrate deploy` never sees it. The locks are taken up front in the
- * API's write order with a 5 s timeout per lock (as in `0021`), so busy tables fail the command, by about 20 s at worst,
- * instead of hanging an incident; nothing changes, and it can be run again. No `FORCE` in either direction (D6).
+ * API's write order with a 5 s timeout per lock (as in `0021`). That timeout alone doesn't bound 19 locks, so a statement
+ * limit below the transaction's stops the wait by 12 s: busy tables fail the command instead of stalling every request
+ * during an incident. Nothing changes when it fails, and it can be run again. No `FORCE` in either direction (D6).
  */
 export async function setRls(owner: PrismaClient, on: boolean): Promise<void> {
   const action = on ? "ENABLE" : "DISABLE";
   await owner.$transaction(
     async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '5s'`);
+      await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '12s'`);
       await tx.$executeRawUnsafe(`LOCK TABLE ${RLS_LOCK_ORDER.map(quoteIdent).join(", ")} IN ACCESS EXCLUSIVE MODE`);
       for (const table of RLS_TABLES) {
         await tx.$executeRawUnsafe(`ALTER TABLE ${quoteIdent(table)} ${action} ROW LEVEL SECURITY`);

@@ -1,4 +1,5 @@
 // apps/api/test/unit/rls-cli.test.ts
+import { readFileSync } from "node:fs";
 import type { PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { OWNER_URL_MISSING } from "../../src/db/owner-url.js";
@@ -127,11 +128,23 @@ describe("Spec 21.1 AC39 — every run says which database it acted on", () => {
     expect(await run(["status"], OWNER)).toBe("target: database neondb, login neondb_owner, local host");
   });
 
-  it("a remote host reads remote, and its name and the password stay out of the output", async () => {
+  it("a remote host shows its first label, which tells staging from production when both use Neon's default names; the rest of the host and the password stay out", async () => {
     const line = await run(["status"], "postgresql://o:hunter2-secret@ep-cool-name.us-west-2.aws.neon.tech/neondb?sslmode=require");
-    expect(line).toBe("target: database neondb, login neondb_owner, remote host");
-    expect(line).not.toContain("ep-cool-name");
+    expect(line).toBe("target: database neondb, login neondb_owner, remote host ep-cool-name");
+    expect(line).not.toContain("neon.tech");
+    expect(line).not.toContain("us-west-2");
     expect(line).not.toContain("hunter2-secret");
+  });
+
+  it("two Neon projects with the same default names print different lines", async () => {
+    const staging = await run(["status"], "postgresql://o:p@ep-staging-1.us-east-2.aws.neon.tech/neondb?sslmode=require");
+    const production = await run(["status"], "postgresql://o:p@ep-prod-2.us-east-2.aws.neon.tech/neondb?sslmode=require");
+    expect(staging).not.toBe(production);
+  });
+
+  it("the kill switch never guesses its target: no .env.owner fallback, so an unset URL is a refusal, not a run on the local database", () => {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> };
+    expect(pkg.scripts["db:rls"]).toBe("tsx scripts/db-rls.ts");
   });
 });
 
