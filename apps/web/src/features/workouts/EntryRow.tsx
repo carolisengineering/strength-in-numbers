@@ -9,7 +9,7 @@ import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { RestReadout } from "./RestReadout";
 import { SetFields, type DraftEditField } from "./SetFields";
-import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, unitDefaultsFor, type DraftField } from "./setDraft";
+import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, setValuesKey, unitDefaultsFor, type DraftField } from "./setDraft";
 import { useCreateSet } from "./useWorkoutMutations";
 import styles from "./EntryRow.module.css";
 
@@ -23,8 +23,7 @@ const TEXT_FIELDS: ReadonlySet<string> = new Set(["weight", "reps", "distance", 
  * draft can carry that set's values, so correcting it must re-seed an untouched draft, or one tap records the mistake.
  */
 function seedKeyOf(count: number, last: SetEntry | undefined): string {
-  if (last === undefined) return String(count);
-  return [count, last.setType, last.weight, last.weightUnit, last.reps, last.distance, last.distanceUnit, last.durationS, last.calories].join("|");
+  return last === undefined ? String(count) : `${count}|${setValuesKey(last)}`;
 }
 
 export interface LoggedEvent {
