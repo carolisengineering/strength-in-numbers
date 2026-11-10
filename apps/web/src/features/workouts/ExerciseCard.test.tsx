@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { MODALITY_VALUES, type Modality } from "@sin/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { chooseSegmentValue, segmentChoice, segmented, segmentOptions } from "../../test/controls";
@@ -344,6 +348,50 @@ describe("AC23 — Log set", () => {
     const call = observability.track.mock.calls.find(([name]) => name === "set_logged")!;
     expect(Object.keys(call[1] as object).sort()).toEqual(["edited", "modality", "msToLog", "setType"]);
     expect(call[1]).toMatchObject({ modality: "weight_reps", setType: "working", edited: true });
+  });
+});
+
+describe("17.8 AC18 — rows look tappable", () => {
+  const rows = (name: string) => [...card(name).querySelectorAll<HTMLButtonElement>("ol button")];
+  // The row's name without the icon: the icon is aria-hidden, so the name must be exactly the row's text.
+  const expectPencilLast = (button: HTMLButtonElement) => {
+    const icon = button.lastElementChild;
+    expect(icon?.tagName.toLowerCase()).toBe("svg");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(button.querySelectorAll("svg")).toHaveLength(1);
+    expect(button).toHaveAccessibleName(button.textContent!.replace(/\s+/g, " ").trim());
+  };
+
+  it("live: each logged row is one button ending with a muted pencil; its name is unchanged", async () => {
+    await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 }), makeSet({ setNumber: 2, weight: 60, reps: 7 })] }]);
+    expect(rows("X")).toHaveLength(2);
+    for (const button of rows("X")) expectPencilLast(button);
+    expect(within(card("X")).getByRole("button", { name: /^1\s*60 kg × 8$/ })).toBeInTheDocument();
+  });
+
+  it("live: the pencil comes after a Couldn't save tag", async () => {
+    const { fake, user } = await setup([{ modality: "weight_reps", name: "X" }]);
+    await user.type(within(card("X")).getByLabelText("Weight"), "60");
+    await user.type(within(card("X")).getByLabelText("Reps"), "8");
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(422, "validation-error", { errors: [{ path: "weight", message: "Too heavy" }] }));
+    await user.click(logButton("X"));
+    const tag = await within(card("X")).findByText("Couldn't save");
+    const button = tag.closest("button")!;
+    expectPencilLast(button);
+    expect(tag.nextElementSibling).toBe(button.lastElementChild);
+  });
+
+  it("edit: each logged row ends with the pencil too", async () => {
+    await setupEdit([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }]);
+    expect(rows("X")).toHaveLength(1);
+    expectPencilLast(rows("X")[0]!);
+  });
+
+  it("the pencil is --color-muted, and a row keeps its 44 px height", () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ExerciseCard.module.css"), "utf8");
+    const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+    expect(rule(".setIcon")).toMatch(/color:\s*var\(--color-muted\)/);
+    expect(rule(".set")).toMatch(/min-height:\s*var\(--tap-target-min\)/);
   });
 });
 

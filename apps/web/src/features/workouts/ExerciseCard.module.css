@@ -99,6 +99,19 @@
   font-weight: 700;
 }
 
+/* Spec 17.8 AC18: the row's muted pencil, at the right end; after a tag it sits beside it, and the tag keeps its place. */
+.setIcon {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-muted);
+}
+
+.needsDataTag + .setIcon,
+.pendingTag + .setIcon,
+.failedTag + .setIcon {
+  margin-left: 0;
+}
+
 .rowActions {
   display: flex;
   gap: var(--space-2);
