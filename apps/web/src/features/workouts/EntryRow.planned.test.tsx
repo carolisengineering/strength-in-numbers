@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { segmentChoice } from "../../test/controls";
 import { http, HttpResponse } from "msw";
@@ -76,8 +80,10 @@ describe("10.2 AC21 — the label", () => {
   it("is plain text; the form's accessible name and the 'Set N logged' announcement are unchanged", async () => {
     const { user } = await setup([bench()]);
     const label = within(card("Bench")).getByText("Set 1 of 3 · Warm-up");
-    expect(label.tagName).toBe("P");
+    // Spec 17.8 AC5: the set label is a span in the set line's paragraph, beside the target.
+    expect(label.closest("p")).not.toBeNull();
     expect(label).not.toHaveAttribute("role");
+    expect(label.closest("p")).not.toHaveAttribute("role");
     expect(screen.getByRole("form", { name: "Log a set of Bench" })).toBeInTheDocument();
     await user.click(logButton("Bench"));
     await waitFor(() => expect(within(card("Bench")).getByRole("status")).toHaveTextContent("Set 1 logged"));
@@ -497,5 +503,55 @@ describe("17.7 AC13, AC17 — a warm-up that comes back", () => {
     await user.click(undo);
     await within(card("Overhead Press")).findByText("Set 2 · Warm-up");
     expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+const RANGE_PLAN: PlannedSet[] = [
+  planned("warmup", 8, 40),
+  { setType: "working", repsLow: 6, repsHigh: 8, weight: null, weightUnit: null },
+  { setType: "working", repsLow: 6, repsHigh: 8, weight: null, weightUnit: null },
+];
+const benchForm = () => within(card("Bench")).getByRole("form", { name: "Log a set of Bench" });
+const setLine = () => within(benchForm()).getByText(/^(Set \d|Extra set)/).closest("p")!;
+
+describe("17.8 AC5 — the panel label", () => {
+  it("leads with the exercise's name, hidden from a screen reader; the form keeps its accessible name", async () => {
+    await setup([bench({ plannedSets: RANGE_PLAN, sets: [logged(1)] })]);
+    const name = within(benchForm()).getByText("Bench");
+    expect(name.closest("[aria-hidden='true']")).not.toBeNull();
+    expect(screen.getByRole("form", { name: "Log a set of Bench" })).toBe(benchForm());
+  });
+
+  it("the set line reads 'Set 2 of 3 · target 6–8'", async () => {
+    await setup([bench({ plannedSets: RANGE_PLAN, sets: [logged(1)] })]);
+    expect(setLine()).toHaveTextContent(/^Set 2 of 3 · target 6–8$/);
+  });
+
+  it("a warm-up row reads 'Set 1 of 3 · Warm-up · target 8 @ 40 kg'", async () => {
+    await setup([bench({ plannedSets: RANGE_PLAN })]);
+    expect(setLine()).toHaveTextContent(/^Set 1 of 3 · Warm-up · target 8 @ 40 kg$/);
+  });
+
+  it("the name is bold signal teal and both lines are at least --font-size-md, the target line in --color-text", () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "EntryRow.module.css"), "utf8");
+    const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+    expect(rule(".exerciseName")).toMatch(/font-size:\s*var\(--font-size-md\)/);
+    expect(rule(".exerciseName")).toMatch(/font-weight:\s*700/);
+    expect(rule(".exerciseName")).toMatch(/color:\s*var\(--color-signal\)/);
+    expect(rule(".setLine")).toMatch(/font-size:\s*var\(--font-size-md\)/);
+    expect(rule(".setLine")).toMatch(/color:\s*var\(--color-text\)/);
+  });
+});
+
+describe("17.8 AC6 — no target", () => {
+  it.each<[string, ExerciseSpec]>([
+    ["an extra set", bench({ plannedSets: RANGE_PLAN, sets: [logged(1), logged(2), logged(3)] })],
+    ["no plan", { modality: "weight_reps", name: "Bench", sets: [logged(1)] }],
+    ["an empty planned row", bench({ plannedSets: [{ setType: "working", repsLow: null, repsHigh: null, weight: null, weightUnit: null }] })],
+    ["a stale plan on a duration exercise", { modality: "duration", name: "Bench", plannedSets: [planned("working", 8, 60)] }],
+  ])("%s shows no target and no trailing ' · '", async (_case, spec) => {
+    await setup([spec]);
+    expect(setLine().textContent).not.toMatch(/target/);
+    expect(setLine().textContent).not.toMatch(/·\s*$/);
   });
 });

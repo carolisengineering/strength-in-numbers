@@ -382,8 +382,10 @@ describe("10.2 AC34 — the entry-row label", () => {
     await setup();
     const form = screen.getByRole("form", { name: "Log a set of X" });
     const label = within(form).getByText(/^Set \d+/);
-    expect(label.tagName).toBe("P");
+    // Spec 17.8 AC5: the set label is a span in the set line's paragraph, beside the target.
+    expect(label.closest("p")).not.toBeNull();
     expect(label).not.toHaveAttribute("role");
+    expect(label.closest("p")).not.toHaveAttribute("role");
   });
 });
 
