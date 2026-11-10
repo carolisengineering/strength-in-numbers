@@ -1,0 +1,90 @@
+/*
+ * Spec 17.6 AC2–AC4, AC18–AC19: the record ledger. One panel on the brass tint (Tint Not Outline: no border). Brass only
+ * for the heading and the gains; the new value is ink and bold, the old value and its arrow muted. Static: no motion.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--card-pad-block) var(--card-pad-inline);
+  border-radius: var(--radius-md);
+  background: var(--color-pr-soft);
+  overflow-wrap: anywhere;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-pr);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.lifts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.name {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.row {
+  margin: 0;
+}
+
+/* AC4: label then figure on one line; a figure too wide for the rest of the line wraps under the label. */
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-3);
+}
+
+.label {
+  flex: 0 0 var(--record-label-width);
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.figure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.old {
+  color: var(--color-muted);
+}
+
+.new {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.gain {
+  margin-inline-start: auto;
+  color: var(--color-pr);
+  font-weight: 700;
+}
+
+.source,
+.explain {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
