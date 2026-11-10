@@ -9,7 +9,7 @@ type MetricField = "bestE1rm" | "topSetWeight" | "totalVolume" | "maxReps" | "ma
 export const METRIC_ORDER: readonly Metric[] = ["est1rm", "topSet", "volume", "reps", "calories", "distance", "duration"];
 
 export const METRICS: Record<Metric, { label: string; field: MetricField; unit: RecordUnit }> = {
-  est1rm: { label: "Est. 1RM", field: "bestE1rm", unit: "kg" },
+  est1rm: { label: "Est. 1-rep max", field: "bestE1rm", unit: "kg" }, // Spec 17.6 D6
   topSet: { label: "Top set", field: "topSetWeight", unit: "kg" },
   volume: { label: "Volume", field: "totalVolume", unit: "kg_reps" },
   reps: { label: "Reps", field: "maxReps", unit: "reps" },
@@ -50,7 +50,7 @@ export function availableMetrics(series?: ProgressSeries): Metric[] {
   return METRIC_ORDER.filter((m) => series.points.some((p) => valueOf(p, m) !== null));
 }
 
-/** Est. 1RM, else top set, else reps, then the 18.1 metrics — never volume (a session sum, not the set PR; 07.2 D12). */
+/** Est. 1-rep max, else top set, else reps, then the 18.1 metrics — never volume (a session sum, not the set PR; 07.2 D12). */
 export function defaultMetric(available: readonly Metric[]): Metric | undefined {
   return (["est1rm", "topSet", "reps", "calories", "distance", "duration"] as const).find((m) => available.includes(m));
 }

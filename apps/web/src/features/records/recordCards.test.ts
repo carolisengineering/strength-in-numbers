@@ -60,7 +60,7 @@ describe("17.2 AC15 / AC16 / AC17 / AC20 / AC26 — one card per exercise, set v
       workout: w,
       pref: "kg",
     });
-    expect(cards.map((c) => c.lead.label)).toEqual(["Best est. 1RM", "Most reps"]);
+    expect(cards.map((c) => c.lead.label)).toEqual(["Est. 1-rep max", "Most reps"]);
     expect(cards[1]!.lead).toMatchObject({ valueText: "12 reps", gainText: "+2 reps", wasText: "was 10 reps" });
   });
 
@@ -92,7 +92,7 @@ describe("17.2 AC21 / AC22 / AC23 — e1RM rounding and the gain after it", () =
   it("a lone e1RM whose rounded gain is zero leads with the rounded value, no gain, no was", () => {
     const w = workoutOf([bench()]);
     const [card] = buildRecordCards({ records: [e1(w, 137.2, 137)], workout: w, pref: "kg" });
-    expect(card!.lead).toMatchObject({ label: "Best est. 1RM", valueText: "137 kg", gainText: null, wasText: null, first: false });
+    expect(card!.lead).toMatchObject({ label: "Est. 1-rep max", valueText: "137 kg", gainText: null, wasText: null, first: false });
   });
   it("with another record present a zero-gain e1RM is a chip, not the lead", () => {
     const w = workoutOf([bench()]);

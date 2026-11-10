@@ -27,6 +27,7 @@ import { makePersonalRecord, makeProgressPoint } from "../../test/workoutFixture
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { exercisePath } from "../exercises/paths";
+import { recordLabel } from "../records/labels";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 8, 12) });
@@ -72,7 +73,7 @@ function setup(
 }
 
 const seriesGets = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => SERIES.test(r.path));
-const chart = () => screen.getByRole("img", { name: /^(Est\. 1RM|Top set|Volume|Reps),/ });
+const chart = () => screen.getByRole("img", { name: /^(Est\. 1-rep max|Top set|Volume|Reps),/ });
 const metricGroup = () => screen.getByRole("group", { name: "Metric" });
 const rangeGroup = () => screen.getByRole("group", { name: "Range" });
 const sessions = () => within(screen.getByRole("list", { name: "Sessions" })).getAllByRole("button");
@@ -81,11 +82,21 @@ const readout = () => document.querySelector("[aria-live='polite']")!;
 describe("08.1 AC13 / 18.2 AC23 — the body's defaults", () => {
   it("defaults est. 1RM and 3M; the body draws no title or back link of its own", async () => {
     setup();
-    await screen.findByRole("img", { name: /^Est\. 1RM, 3 months:/ });
-    expect(within(metricGroup()).getByRole("button", { name: "Est. 1RM" })).toHaveAttribute("aria-pressed", "true");
+    await screen.findByRole("img", { name: /^Est\. 1-rep max, 3 months:/ });
+    expect(within(metricGroup()).getByRole("button", { name: "Est. 1-rep max" })).toHaveAttribute("aria-pressed", "true");
     expect(within(rangeGroup()).getByRole("button", { name: "3M" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Back to Progress" })).toBeNull();
+  });
+});
+
+describe("17.6 AC16 — one name for the estimate", () => {
+  it("the Metric chip, the chart's name and the record line all say Est. 1-rep max", async () => {
+    setup();
+    await screen.findByRole("img", { name: /^Est\. 1-rep max, 3 months:/ });
+    expect(within(metricGroup()).getByRole("button", { name: "Est. 1-rep max" })).toBeInTheDocument();
+    expect(within(metricGroup()).queryByRole("button", { name: /1RM/ })).toBeNull();
+    expect(recordLabel("best_est_1rm")).toBe("Est. 1-rep max");
   });
 });
 
@@ -115,7 +126,7 @@ describe("08.1 AC14 / 18.2 AC23 — the metric control", () => {
     const { user } = setup({ points });
     await screen.findByRole("img", { name: /^Top set, 3 months:/ });
     await user.click(within(rangeGroup()).getByRole("button", { name: "1Y" }));
-    await screen.findByRole("img", { name: /^Est\. 1RM, 1 year:/ });
+    await screen.findByRole("img", { name: /^Est\. 1-rep max, 1 year:/ });
     await user.click(within(metricGroup()).getByRole("button", { name: "Volume" }));
     await screen.findByRole("img", { name: /^Volume, 1 year:/ });
     await user.click(within(rangeGroup()).getByRole("button", { name: "3M" }));
@@ -215,7 +226,7 @@ describe("08.1 AC19 / 18.2 AC23 — the exercise's personal records", () => {
   it("shows the lineage's records via RecordsSection", async () => {
     setup();
     const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText("Barbell bench press — Best est. 1RM 122.5 kg (was 115 kg)")).toBeInTheDocument();
+    expect(within(block).getByText("Barbell bench press — Est. 1-rep max 122.5 kg (was 115 kg)")).toBeInTheDocument();
   });
 });
 
@@ -266,7 +277,7 @@ describe("08.1 AC21 / 18.2 AC23 — series failure", () => {
     await user.click(within(rangeGroup()).getByRole("button", { name: "1Y" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't load 1 year");
-    expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /^Est\. 1-rep max, 3 months:/ })).toBeInTheDocument();
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
     await screen.findByRole("img", { name: /1 year/ });
   });
@@ -279,7 +290,7 @@ describe("08.1 AC21 / 18.2 AC23 — series failure", () => {
     await user.click(within(rangeGroup()).getByRole("button", { name: "1Y" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't load 1 year");
-    expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /^Est\. 1-rep max, 3 months:/ })).toBeInTheDocument();
     fake.setOffline(false);
     onlineManager.setOnline(true);
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
@@ -298,7 +309,7 @@ describe("08.1 AC21 / 18.2 AC23 — series failure", () => {
     expect(await screen.findByText("Loading 1 year…")).toHaveAttribute("role", "status");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(document.querySelector("[aria-busy='true']")).not.toBeNull();
-    expect(screen.getByRole("img", { name: /^Est\. 1RM, 3 months:/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /^Est\. 1-rep max, 3 months:/ })).toBeInTheDocument();
     gate.resolve();
     await screen.findByRole("img", { name: /1 year/ });
   });
@@ -342,10 +353,10 @@ describe("08.1 AC23 / 18.2 AC23 — unknown and malformed ids", () => {
 describe("08.1 AC24 / 18.2 AC23 — units follow the profile", () => {
   it("lb: summary, readout and sessions in lb", async () => {
     setup({ unitPreference: "lb" });
-    await screen.findByRole("img", { name: "Est. 1RM, 3 months: 231 lb to 270 lb, best 270 lb" });
+    await screen.findByRole("img", { name: "Est. 1-rep max, 3 months: 231 lb to 270 lb, best 270 lb" });
     expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 270 lb");
     expect(sessions()[0]).toHaveTextContent("270 lb");
-    expect(await screen.findByText(/Best est\. 1RM 270 lb/)).toBeInTheDocument();
+    expect(await screen.findByText(/Est\. 1-rep max 270 lb/)).toBeInTheDocument();
   });
 });
 

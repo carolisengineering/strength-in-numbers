@@ -63,7 +63,7 @@ describe("08.1 AC2 — metrics are data-derived and null-safe", () => {
   it("values and captions use the shared formatter", () => {
     const [p] = pointsFor(series([c]), "est1rm", "lb");
     expect(formatPointValue(p!, "est1rm", "lb")).toBe("270 lb");
-    expect(captionFor("est1rm", "kg")).toBe("Est. 1RM (kg)");
+    expect(captionFor("est1rm", "kg")).toBe("Est. 1-rep max (kg)");
     expect(captionFor("volume", "lb")).toBe("Volume (lb × reps)");
     expect(captionFor("reps", "lb")).toBe("Reps");
   });
@@ -77,14 +77,14 @@ describe("08.1 AC9 — the chart's accessible summary", () => {
   it("first to last, best, in kg", () => {
     const points = pointsFor(series([p1, p2, p3]), "est1rm", "kg");
     expect(chartSummary({ metric: "est1rm", range: "3m", points, pref: "kg" })).toBe(
-      "Est. 1RM, 3 months: 105 kg to 122.5 kg, best 125 kg",
+      "Est. 1-rep max, 3 months: 105 kg to 122.5 kg, best 125 kg",
     );
   });
 
   it("in lb, through the same formatter as the readout", () => {
     const points = pointsFor(series([p1, p3]), "est1rm", "lb");
     expect(chartSummary({ metric: "est1rm", range: "1y", points, pref: "lb" })).toBe(
-      "Est. 1RM, 1 year: 231 lb to 270 lb, best 270 lb",
+      "Est. 1-rep max, 1 year: 231 lb to 270 lb, best 270 lb",
     );
     expect(formatPointValue(points[1]!, "est1rm", "lb")).toBe("270 lb");
   });
@@ -92,7 +92,7 @@ describe("08.1 AC9 — the chart's accessible summary", () => {
   it("one point", () => {
     const points = pointsFor(series([p3]), "est1rm", "kg");
     expect(chartSummary({ metric: "est1rm", range: "all", points, pref: "kg" })).toBe(
-      "Est. 1RM, all time: 1 session, 122.5 kg",
+      "Est. 1-rep max, all time: 1 session, 122.5 kg",
     );
   });
 });

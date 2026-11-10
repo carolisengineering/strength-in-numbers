@@ -6,7 +6,7 @@ export function recordLabel(type: RecordType): string {
     case "heaviest_weight":
       return "Heaviest weight";
     case "best_est_1rm":
-      return "Best est. 1RM";
+      return "Est. 1-rep max";
     case "best_set_volume":
       return "Best set volume";
     case "max_reps":

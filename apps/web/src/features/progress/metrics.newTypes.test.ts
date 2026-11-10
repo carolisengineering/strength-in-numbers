@@ -45,7 +45,7 @@ describe("18.1 AC32 — units on the chart", () => {
     expect(captionFor("calories", "lb")).toBe("Calories");
     expect(captionFor("distance", "lb")).toBe("Distance (m)");
     expect(captionFor("duration", "kg")).toBe("Time (seconds)");
-    expect(captionFor("est1rm", "lb")).toBe("Est. 1RM (lb)");
+    expect(captionFor("est1rm", "lb")).toBe("Est. 1-rep max (lb)");
     expect(captionFor("volume", "kg")).toBe("Volume (kg × reps)");
     expect(captionFor("reps", "kg")).toBe("Reps");
   });

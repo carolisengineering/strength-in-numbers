@@ -59,7 +59,7 @@ describe("08.1 AC10 / 18.2 AC6 — routes and navigation", () => {
     const { router } = setup();
     await screen.findByRole("list", { name: "Exercises" });
     await router.navigate(`/app/exercises/${BENCH}`);
-    await screen.findByRole("img", { name: /^Est\. 1RM, / });
+    await screen.findByRole("img", { name: /^Est\. 1-rep max, / });
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(within(nav).getByRole("link", { name: "Exercises" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "History" })).not.toHaveAttribute("aria-current");
@@ -73,7 +73,7 @@ describe("08.1 AC11 / 18.2 AC6 — a Records row", () => {
     const links = within(list).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual([`/app/exercises/${BENCH}`, `/app/exercises/${PULL}`]);
     expect(links[0]).toHaveTextContent("Barbell bench press");
-    expect(links[0]).toHaveTextContent("Best est. 1RM 122.5 kg · Tue 6 Oct");
+    expect(links[0]).toHaveTextContent("Est. 1-rep max 122.5 kg · Tue 6 Oct");
     expect(links[1]).toHaveTextContent("Most reps 15 reps · Sun 4 Oct");
     expect(fake.requests.filter((r) => r.path === "/v1/personal-records")).toEqual([expect.objectContaining({ search: "" })]);
   });
@@ -138,6 +138,6 @@ describe("08.1 AC24 / 18.2 AC6 — list units follow the profile", () => {
   it("lb profile → headline in lb", async () => {
     setup({ unitPreference: "lb" });
     const list = await screen.findByRole("list", { name: "Exercises" });
-    expect(within(list).getAllByRole("link")[0]).toHaveTextContent("Best est. 1RM 270 lb · Tue 6 Oct");
+    expect(within(list).getAllByRole("link")[0]).toHaveTextContent("Est. 1-rep max 270 lb · Tue 6 Oct");
   });
 });
