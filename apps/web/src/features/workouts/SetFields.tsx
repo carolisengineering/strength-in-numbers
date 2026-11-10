@@ -39,13 +39,15 @@ interface SetFieldsBase {
   onChange: (field: DraftEditField, value: string) => void;
   /** Makes each control's id unique on a screen with many cards. */
   idPrefix: string;
+  /** Named in the steppers' accessible names ("+5 lb, increase weight for Bench", Spec 17.8 AC4, AC16). */
+  exerciseName: string;
 }
 
 /**
- * `entry`: the current-set panel (steppers, the Warm-up toggle and More, Spec 17.1 / 17.7), which names the exercise in
- * its controls' accessible names. `sheet`: the edit sheet's layout.
+ * `entry`: the current-set panel (steppers, the Warm-up toggle and More, Spec 17.1 / 17.7). `sheet`: the edit sheet's
+ * layout, with the same steppers and the set type and units shown (Spec 17.8 AC16).
  */
-export type SetFieldsProps = SetFieldsBase & ({ variant?: "sheet" } | { variant: "entry"; exerciseName: string });
+export type SetFieldsProps = SetFieldsBase & { variant?: "sheet" | "entry" };
 
 const WEIGHT_UNITS = ["kg", "lb"] as const;
 const DISTANCE_UNITS = DISTANCE_UNIT_VALUES; // Spec 05.3 D20: ft joins m, km, mi
@@ -73,22 +75,8 @@ function TextField({ name, label, inputMode, value, error, onChange, id, classNa
   return (
     <Field id={id(name)} label={label} error={error}>
       {(control) => (
-        <input {...control} className={className} type="text" inputMode={inputMode} autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
-      )}
-    </Field>
-  );
-}
-
-/** A value and its unit inside the value's one Field, the unit under the value, so an error goes under both and never
- *  pulls the unit away from its value (#203). The label names the value; the unit strip's legend names the unit. */
-function UnitField({ name, label, value, error, onChange, id, unitLabel, unit, units, onUnitChange }: { name: string; label: string; value: string; error?: string | undefined; onChange: (v: string) => void; id: (n: string) => string; unitLabel: string; unit: string; units: readonly string[]; onUnitChange: (v: string) => void }) {
-  return (
-    <Field id={id(name)} label={label} error={error}>
-      {(control) => (
-        <div className={styles.withUnit}>
-          <input {...control} className={styles.input} type="text" inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
-          <Segmented name={id(`${name}-unit`)} legend={unitLabel} options={optionsOf(units)} value={unit} onChange={onUnitChange} />
-        </div>
+        // Spec 17.8 AC17: focus selects the text, as a stepper's field does, so typing replaces it.
+        <input {...control} className={className} type="text" inputMode={inputMode} autoComplete="off" value={value} onFocus={(e) => e.currentTarget.select()} onChange={(e) => onChange(e.target.value)} />
       )}
     </Field>
   );
@@ -106,38 +94,18 @@ export function SetFields(props: SetFieldsProps) {
 }
 
 function SheetFields(props: Common) {
-  const { modality, draft, errors, onChange, id } = props;
+  const { draft, onChange, id } = props;
+  // Spec 17.8 AC16: the sheet's label stays "Distance", so its unit strip names the unit; `nameCarryUnit` is off.
+  const below = (measure: MeasureName): ReactNode =>
+    measure === "weight" ? (
+      <Segmented name={id("weight-unit")} legend="Weight unit" options={optionsOf(WEIGHT_UNITS)} value={draft.weightUnit} onChange={(value) => onChange("weightUnit", value)} />
+    ) : measure === "distance" ? (
+      <Segmented name={id("distance-unit")} legend="Distance unit" options={optionsOf(DISTANCE_UNITS)} value={draft.distanceUnit} onChange={(value) => onChange("distanceUnit", value)} />
+    ) : null;
   return (
     <div className={styles.fields}>
       <SetTypeField {...props} />
-      <div className={styles.measures}>
-        {visibleMeasures(modality).map((measure) => {
-          switch (measure) {
-            case "distance":
-              return (
-                <UnitField key={measure} name="distance" label="Distance" value={draft.distance} error={errors.distance} onChange={(v) => onChange("distance", v)} id={id}
-                  unitLabel="Distance unit" unit={draft.distanceUnit} units={DISTANCE_UNITS} onUnitChange={(v) => onChange("distanceUnit", v)} />
-              );
-            case "weight":
-              return (
-                <UnitField key={measure} name="weight" label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"} value={draft.weight} error={errors.weight} onChange={(v) => onChange("weight", v)} id={id}
-                  unitLabel="Weight unit" unit={draft.weightUnit} units={WEIGHT_UNITS} onUnitChange={(v) => onChange("weightUnit", v)} />
-              );
-            case "reps":
-              return <TextField key={measure} name="reps" label="Reps" inputMode="numeric" value={draft.reps} error={errors.reps} onChange={(v) => onChange("reps", v)} id={id} className={styles.input} />;
-            case "durationS":
-              // Two numeric fields, not "m:ss": a phone's numeric keypad has no colon (D10).
-              return (
-                <div className={styles.duration} key={measure}>
-                  <TextField name="minutes" label="Minutes" inputMode="numeric" value={draft.minutes} error={errors.minutes} onChange={(v) => onChange("minutes", v)} id={id} className={styles.input} />
-                  <TextField name="seconds" label="Seconds" inputMode="numeric" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={styles.input} />
-                </div>
-              );
-            case "calories":
-              return <TextField key={measure} name="calories" label="Calories" inputMode="numeric" value={draft.calories} error={errors.calories} onChange={(v) => onChange("calories", v)} id={id} className={styles.input} />;
-          }
-        })}
-      </div>
+      <StepperMeasures {...props} nameCarryUnit={false} below={below} />
     </div>
   );
 }
@@ -146,9 +114,10 @@ function SheetFields(props: Common) {
  * Spec 17.1 §6.4–§6.5, Spec 17.8 AC11–AC13: one stepper per measure, weight, reps and calories as `NumberStepper`s,
  * distance stepping by its unit (`DISTANCE_STEP`), a duration as the same frame around its Minutes and Seconds fields.
  * `nameCarryUnit`: the entry panel's carry names its unit in the label ("Distance (ft)", Spec 18.1 D5), because the unit
- * is under More, so its stepper has no unit line. `below` draws under a measure (the sheet's unit strips).
+ * is under More, so its stepper has no unit line. `below` is a weight's or distance's unit strip (the sheet's), drawn in
+ * the unit line's place.
  */
-function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, nameCarryUnit, below }: Common & { exerciseName: string; nameCarryUnit: boolean; below?: (measure: MeasureName) => ReactNode }) {
+function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, nameCarryUnit, below }: Common & { nameCarryUnit: boolean; below?: (measure: MeasureName) => ReactNode }) {
   // Spec 17.8 AC3–AC4: the button shows the bare step ("+5"); its name carries the unit ("+5 lb, increase weight for X").
   const weightStep = WEIGHT_STEP[draft.weightUnit];
   const weightStepNamed = `${weightStep} ${draft.weightUnit}`;
@@ -164,6 +133,7 @@ function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, 
             id={id("weight")}
             label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"}
             unit={draft.weightUnit}
+            below={below?.("weight")}
             value={draft.weight}
             inputMode="decimal"
             error={errors.weight}
@@ -203,6 +173,7 @@ function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, 
             id={id("distance")}
             label={carryLabel ? `Distance (${draft.distanceUnit})` : "Distance"}
             unit={carryLabel ? undefined : draft.distanceUnit}
+            below={below?.("distance")}
             value={draft.distance}
             inputMode="decimal"
             error={errors.distance}
@@ -267,17 +238,9 @@ function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, 
   };
   return (
     <div className={`${styles.measures} ${styles.entryMeasures}`}>
-      {visibleMeasures(modality).map((measure) => {
-        const extra = below?.(measure);
-        return extra ? (
-          <div key={measure} className={styles.withBelow}>
-            {control(measure)}
-            {extra}
-          </div>
-        ) : (
-          <Fragment key={measure}>{control(measure)}</Fragment>
-        );
-      })}
+      {visibleMeasures(modality).map((measure) => (
+        <Fragment key={measure}>{control(measure)}</Fragment>
+      ))}
     </div>
   );
 }

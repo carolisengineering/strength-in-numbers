@@ -175,10 +175,11 @@ describe("17.8 AC13 — centered figures", () => {
 });
 
 describe("18.1 AC20 — the sheet variant", () => {
-  it("calories shows a Calories text field; no stepper", () => {
-    render(<SetFields variant="sheet" modality="calories" draft={draftFor("calories", { calories: "20" })} errors={{}} idPrefix="s" onChange={() => {}} />);
+  // Amended by Spec 17.8 AC16: the sheet has the same calories stepper as the panel.
+  it("calories shows a Calories field, with the calories stepper", () => {
+    render(<SetFields exerciseName="X" variant="sheet" modality="calories" draft={draftFor("calories", { calories: "20" })} errors={{}} idPrefix="s" onChange={() => {}} />);
     expect(screen.getByLabelText("Calories")).toHaveValue("20");
     expect(screen.getByLabelText("Calories")).toHaveAttribute("inputmode", "numeric");
-    expect(screen.queryByRole("button", { name: /calories by/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "+5, increase calories for X" })).toBeInTheDocument();
   });
 });

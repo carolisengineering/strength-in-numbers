@@ -10,6 +10,11 @@ export interface NumberStepperProps {
   label: string;
   /** Shown under the number and named in the group ("Weight · lb"); omitted for reps. */
   unit?: string | undefined;
+  /**
+   * Spec 17.8 AC16: drawn under the row in the unit line's place (the edit sheet's unit strip), inside the Field, so an
+   * error still goes under the value and its unit together (#203).
+   */
+  below?: ReactNode;
   value: string;
   inputMode: "decimal" | "numeric";
   error?: string | undefined;
@@ -64,7 +69,7 @@ export function StepperFrame({ decreaseText, increaseText, decreaseLabel, increa
  * Spec 17.8 AC1–AC3: the label sits above one grid row that holds the buttons and the input, so the buttons are
  * centered on the number by structure (D2), and each button shows its step as text, not an icon (D1).
  */
-export function NumberStepper({ id, label, unit, value, inputMode, error, decreaseText, increaseText, decreaseLabel, increaseLabel, canDecrease, canIncrease, onChange, onDecrease, onIncrease }: NumberStepperProps) {
+export function NumberStepper({ id, label, unit, below, value, inputMode, error, decreaseText, increaseText, decreaseLabel, increaseLabel, canDecrease, canIncrease, onChange, onDecrease, onIncrease }: NumberStepperProps) {
   return (
     // Named only when it carries a unit ("Weight · lb"): a unitless group named like its input ("Reps") would give
     // two controls the same name. The ± buttons are named on their own either way.
@@ -84,10 +89,12 @@ export function NumberStepper({ id, label, unit, value, inputMode, error, decrea
                 onChange={(event) => onChange(event.target.value)}
               />
             </StepperFrame>
-            {/* Always present, so two steppers side by side line up on their inputs; empty for reps. */}
-            <span className={styles.unit} aria-hidden="true">
-              {unit ?? " "}
-            </span>
+            {below ?? (
+              // Always present, so two steppers side by side line up on their inputs; empty for reps.
+              <span className={styles.unit} aria-hidden="true">
+                {unit ?? " "}
+              </span>
+            )}
           </>
         )}
       </Field>

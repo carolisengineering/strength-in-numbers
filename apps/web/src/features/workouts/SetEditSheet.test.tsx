@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { chooseSegmentValue, segmentChoice } from "../../test/controls";
+import { chooseSegmentValue, segmentChoice, segmented } from "../../test/controls";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -43,6 +43,58 @@ const requests = (fake: ReturnType<typeof createWorkoutFake>, method: string) =>
   fake.requests.filter((r) => r.method === method);
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
+
+describe("17.8 AC16 — the sheet has steppers", () => {
+  const openFirstRow = async (user: Awaited<ReturnType<typeof setup>>["user"]) => {
+    await user.click(card().querySelector("ol button") as HTMLElement);
+    return within(dialog());
+  };
+
+  it("weight × reps: the AC4 names with the exercise; unit and set type are radios; Save and Delete set as before", async () => {
+    const { user } = await setup();
+    const d = await openFirstRow(user);
+    expect(d.getByRole("button", { name: "+2.5 kg, increase weight for X" })).toHaveTextContent(/^\+2\.5$/);
+    expect(d.getByRole("button", { name: "\u22121, decrease reps for X" })).toHaveTextContent(/^\u22121$/);
+    expect(segmented("Weight unit", dialog())).toBeInTheDocument();
+    expect(segmented("Set type", dialog())).toBeInTheDocument();
+    expect(d.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(d.getByRole("button", { name: "Delete set" })).toBeInTheDocument();
+  });
+
+  it.each<[Modality, Record<string, unknown>, string]>([
+    ["calories", { reps: null, weight: null, weightUnit: null, weightKg: null, calories: 20 }, "+5, increase calories for X"],
+    ["duration", { reps: null, weight: null, weightUnit: null, weightKg: null, durationS: 45 }, "+5 s, increase time for X"],
+    ["weight_distance", { reps: null, weight: 24, distance: 40, distanceUnit: "m", distanceM: 40 }, "+10 m, increase distance for X"],
+  ])("%s has its steppers", async (modality, values, name) => {
+    const { user } = await setup([makeSet({ setNumber: 1, ...values })], modality);
+    const d = await openFirstRow(user);
+    expect(d.getByRole("button", { name })).toBeInTheDocument();
+  });
+
+  it("a draft that doesn't parse keeps Save disabled, and a step makes it valid again", async () => {
+    const { user } = await setup();
+    const d = await openFirstRow(user);
+    await user.clear(d.getByLabelText("Reps"));
+    expect(d.getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.click(d.getByRole("button", { name: "+1, increase reps for X" }));
+    expect(d.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("Review Focus 4: on a set with RPE 8, up then down and Save sends nothing; up and Save sends the weight and no rpe", async () => {
+    const { fake, user } = await setup([makeSet({ setNumber: 1, weight: 60, reps: 8, rpe: 8 })]);
+    let d = await openFirstRow(user);
+    await user.click(d.getByRole("button", { name: "+2.5 kg, increase weight for X" }));
+    await user.click(d.getByRole("button", { name: "\u22122.5 kg, decrease weight for X" }));
+    await user.click(d.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Set \d · X$/ })).toBeNull());
+    expect(requests(fake, "PATCH")).toHaveLength(0);
+    d = await openFirstRow(user);
+    await user.click(d.getByRole("button", { name: "+2.5 kg, increase weight for X" }));
+    await user.click(d.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(requests(fake, "PATCH")).toHaveLength(1));
+    expect(requests(fake, "PATCH")[0]!.body).toEqual({ weight: 62.5 });
+  });
+});
 
 describe("17.5 AC18 — the first tap asks (live sheet)", () => {
   async function asked() {

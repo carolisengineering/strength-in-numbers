@@ -30,6 +30,8 @@ export type EditSetTarget =
 export interface EditSetFormProps {
   target: EditSetTarget;
   modality: Modality;
+  /** Named in the steppers' accessible names (Spec 17.8 AC16). */
+  exerciseName: string;
   unitPreference: "kg" | "lb";
   onClose: () => void;
   mode: EditScreenMode;
@@ -45,7 +47,7 @@ const reduceDraft = createDraftReducer(() => crypto.randomUUID());
  * answer, and every failure stays here with the typed values (AC14–AC16). Add mode copies the last set forward
  * with no plan (D16) and keeps one `clientGeneratedId` for every retry of this opening (AC17).
  */
-export function EditSetForm({ target, modality, unitPreference, onClose, mode }: EditSetFormProps) {
+export function EditSetForm({ target, modality, exerciseName, unitPreference, onClose, mode }: EditSetFormProps) {
   const create = useEditCreateSet();
   const update = useEditUpdateSet();
   const del = useEditDeleteSet();
@@ -165,7 +167,7 @@ export function EditSetForm({ target, modality, unitPreference, onClose, mode }:
   const idPrefix = target.kind === "edit" ? `edit-${target.set.id}` : `add-${target.workoutExerciseId}`;
   return (
     <form className={styles.form} onSubmit={submit} noValidate>
-      <SetFields modality={modality} draft={draft} errors={errors} onChange={onChange} idPrefix={idPrefix} />
+      <SetFields modality={modality} exerciseName={exerciseName} draft={draft} errors={errors} onChange={onChange} idPrefix={idPrefix} />
       {formError ? (
         <p className={styles.formError} role="alert">
           {formError}
