@@ -4,6 +4,7 @@ import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core"
 import { Button } from "../../ui/Button";
 import { CheckIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
+import { LinkToggle } from "../routines/LinkToggle";
 import { EntryRow, type DraftRestore, type LoggedEvent } from "./EntryRow";
 import { EditNoteSheet } from "./edit/EditNoteSheet";
 import { NoteSheet } from "./NoteSheet";
@@ -62,6 +63,18 @@ export interface ExerciseCardProps {
   onSection?: (sectionId: string | null) => void;
   /** Spec 10.6 AC11: the card sits in a linked superset run. */
   linked?: boolean;
+  /** Spec 17.7 AC19: the live screen's joints with the card above / below in its segment, shown in Options. */
+  linkAbove?: CardLink;
+  linkBelow?: CardLink;
+}
+
+/** One joint of the current card, as `ActiveSession` already computes it for the regroup. */
+export interface CardLink {
+  otherName: string;
+  linked: boolean;
+  refusal: string | null;
+  disabled: boolean;
+  onToggle: () => void;
 }
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
@@ -103,6 +116,8 @@ export function ExerciseCard({
   sections,
   onSection,
   linked = false,
+  linkAbove,
+  linkBelow,
 }: ExerciseCardProps) {
   const reasonId = useId();
   const headingId = useId();
@@ -135,29 +150,26 @@ export function ExerciseCard({
           <h2 className={styles.name} id={headingId} ref={headingRef} tabIndex={-1}>
             {exercise.exerciseNameSnapshot}
           </h2>
-          <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>
+          {/* Spec 17.7 AC21 (D7): while logging, the panel's fields say what is logged; the edit screen keeps the line. */}
+          {live ? null : <p className={styles.modality}>{MODALITY_LABELS[exercise.modalitySnapshot]}</p>}
           {targetLine === "" ? null : <p className={styles.target}>{targetLine}</p>}
           {exercise.notes ? <p className={styles.notes}>{exercise.notes}</p> : null}
-          {/* Spec 18.0 AC12: the note button stays in edit mode; its sheet waits for the server (no sync tags there). */}
-          <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
-            <Button
-              variant="secondary"
-              aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
-              onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
-            >
-              {hasNote ? "Edit note" : "Add note"}
-            </Button>
-            {/* Text, not color alone, marks the state (as for set rows). */}
-            {noteSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
-            {noteSync?.state === "failed" ? (
-              <>
-                <span className={styles.failedTag}>Couldn't save</span>
-                <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
-                  Discard
-                </Button>
-              </>
-            ) : null}
-          </div>
+          {/* Spec 17.7 AC20: the note's sync state stays in the header, drawn only while it is pending or failed (the
+              edit screen's sheet waits for the server, so it never has one). The status line's Show scrolls here. */}
+          {noteSync ? (
+            <div className={styles.noteRow} data-note-action="" ref={exercise.id === firstFailedId ? failedRowRef : undefined}>
+              {/* Text, not color alone, marks the state (as for set rows). */}
+              {noteSync.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
+              {noteSync.state === "failed" ? (
+                <>
+                  <span className={styles.failedTag}>Couldn't save</span>
+                  <Button variant="secondary" aria-label={`Discard note for ${exercise.exerciseNameSnapshot}`} onClick={() => onDiscardOp?.(noteSync.opId)}>
+                    Discard
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {/* Spec 17.1 AC38 (WCAG 2.5.3): visible text first, the exercise after. */}
         <Button variant="secondary" aria-label={`Options for ${exercise.exerciseNameSnapshot}`} aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
@@ -178,6 +190,42 @@ export function ExerciseCard({
           <Button variant="danger" disabled={structureBusy} onClick={onRemove}>
             Remove exercise
           </Button>
+          {/* Spec 17.7 AC20 (§5 order). Spec 18.0 AC12: on the edit screen its sheet waits for the server. Opening the
+              sheet still ends the Undo offer through `onSheetOpen` (Spec 17.5 AC8). */}
+          <Button
+            variant="secondary"
+            data-note-action=""
+            aria-label={`${hasNote ? "Edit" : "Add"} note for ${exercise.exerciseNameSnapshot}`}
+            onClick={() => setNoteSheet((s) => ({ session: (s?.session ?? 0) + 1, open: true }))}
+          >
+            {hasNote ? "Edit note" : "Add note"}
+          </Button>
+          {/* Spec 17.7 AC19, AC23: "Superset with previous: {neighbor}" / "Superset with next: {neighbor}"; either side of a
+              joint sends the same regroup (upperId is always the upper card). */}
+          {linkAbove ? (
+            <LinkToggle
+              id={`link-above-${exercise.id}`}
+              direction="previous"
+              above={linkAbove.otherName}
+              below={exercise.exerciseNameSnapshot}
+              linked={linkAbove.linked}
+              refusal={linkAbove.refusal}
+              disabled={linkAbove.disabled}
+              onToggle={linkAbove.onToggle}
+            />
+          ) : null}
+          {linkBelow ? (
+            <LinkToggle
+              id={`link-below-${exercise.id}`}
+              direction="next"
+              above={exercise.exerciseNameSnapshot}
+              below={linkBelow.otherName}
+              linked={linkBelow.linked}
+              refusal={linkBelow.refusal}
+              disabled={linkBelow.disabled}
+              onToggle={linkBelow.onToggle}
+            />
+          ) : null}
           {onSection && sections ? (
             <SectionPicker
               exerciseId={exercise.id}

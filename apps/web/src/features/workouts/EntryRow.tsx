@@ -240,11 +240,12 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   return (
     <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
       <div className={styles.labelRow}>
-        <p className={styles.setNumber}>{setLabel(plannedSets, count)}</p>
+        <p className={styles.setNumber}>{setLabel(plannedSets, count, draft.setType)}</p>
         <RestReadout workoutId={exercise.workoutId} />
       </div>
       <SetFields
         variant="entry"
+        exerciseName={exercise.exerciseNameSnapshot}
         modality={exercise.modalitySnapshot}
         draft={draft}
         errors={{ ...clientErrors, ...serverErrors }}

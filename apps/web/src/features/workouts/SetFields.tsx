@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type Modality } from "@sin/core";
 
 import { Button } from "../../ui/Button";
@@ -10,24 +10,29 @@ import type { DraftField, SetDraft } from "./setDraft";
 import { NumberStepper } from "./NumberStepper";
 import { CALORIES_STEP, WEIGHT_STEP, caloriesAtLimit, repsAtLimit, stepCalories, stepReps, stepWeight, weightAtLimit } from "./stepper";
 import styles from "./SetFields.module.css";
+import { WarmupToggle } from "./WarmupToggle";
 
 export type DraftEditField = keyof Omit<SetDraft, "attemptKey">;
 
-export interface SetFieldsProps {
+interface SetFieldsBase {
   modality: Modality;
   draft: SetDraft;
   errors: Partial<Record<DraftField, string>>;
   onChange: (field: DraftEditField, value: string) => void;
   /** Makes each control's id unique on a screen with many cards. */
   idPrefix: string;
-  /** `entry`: the current-set panel (steppers, "Set options", Spec 17.1). `sheet`: the edit sheet's layout, unchanged. */
-  variant?: "sheet" | "entry";
 }
+
+/**
+ * `entry`: the current-set panel (steppers, the Warm-up toggle and More, Spec 17.1 / 17.7), which names the exercise in
+ * its controls' accessible names. `sheet`: the edit sheet's layout.
+ */
+export type SetFieldsProps = SetFieldsBase & ({ variant?: "sheet" } | { variant: "entry"; exerciseName: string });
 
 const WEIGHT_UNITS = ["kg", "lb"] as const;
 const DISTANCE_UNITS = DISTANCE_UNIT_VALUES; // Spec 05.3 D20: ft joins m, km, mi
 
-type Common = Omit<SetFieldsProps, "variant"> & { id: (name: string) => string };
+type Common = SetFieldsBase & { id: (name: string) => string };
 
 const SET_TYPE_OPTIONS = SET_TYPE_VALUES.map((type) => ({ value: type, label: SET_TYPE_LABELS[type] }));
 const optionsOf = (units: readonly string[]) => units.map((unit) => ({ value: unit, label: unit }));
@@ -77,9 +82,9 @@ function UnitField({ name, label, value, error, onChange, id, unitLabel, unit, u
  * forbidden-measure rule would reject. Numeric fields are text inputs with `inputMode`, never `type="number"`.
  * Spec 17.1 Phase A: RPE is not shown; the draft still carries it, so an edit never clears a stored value.
  */
-export function SetFields({ variant = "sheet", ...props }: SetFieldsProps) {
+export function SetFields(props: SetFieldsProps) {
   const id = (name: string) => `${props.idPrefix}-${name}`;
-  return variant === "entry" ? <EntryFields {...props} id={id} /> : <SheetFields {...props} id={id} />;
+  return props.variant === "entry" ? <EntryFields {...props} id={id} /> : <SheetFields {...props} id={id} />;
 }
 
 function SheetFields(props: Common) {
@@ -119,10 +124,22 @@ function SheetFields(props: Common) {
   );
 }
 
-/** Spec 17.1 §6.4–§6.5: steppers for weight, reps and calories (18.1), figure-sized fields for duration and distance, and "Set options". */
-function EntryFields(props: Common) {
-  const { modality, draft, errors, onChange, id } = props;
-  const [optionsOpen, setOptionsOpen] = useState(false);
+/**
+ * Spec 17.1 §6.4–§6.5: steppers for weight, reps and calories (18.1), figure-sized fields for duration and distance.
+ * Spec 17.7 Phase B: a Warm-up toggle and More in one row; More reveals set type and the units, scrolled clear of the bar.
+ */
+function EntryFields(props: Common & { exerciseName: string }) {
+  const { modality, draft, errors, onChange, id, exerciseName } = props;
+  // More is open for one set: the attempt key changes when the set is logged (or an Undo restores one), so the next
+  // set's panel starts compact and 17.4's post-log reveal can fit it above the bar (at 320 × 568 an open block could not).
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  const optionsOpen = openFor === draft.attemptKey;
+  const revealed = useRef<HTMLDivElement>(null);
+  // AC16: only an opening scrolls; a block already open on mount, or closing, doesn't. The scroller's padding is 17.4's
+  // --session-bar-clearance, so "nearest" lands it above the bar.
+  useEffect(() => {
+    if (optionsOpen) revealed.current?.scrollIntoView?.({ block: "nearest" });
+  }, [optionsOpen]);
   const measures = visibleMeasures(modality);
   const step = `${WEIGHT_STEP[draft.weightUnit]} ${draft.weightUnit}`;
   const figure = `${styles.input} ${styles.figureInput}`;
@@ -169,7 +186,7 @@ function EntryFields(props: Common) {
                 />
               );
             case "distance":
-              // Spec 18.1 D5: a carry's label names its unit ("Distance (ft)"), since its unit select is under Set options.
+              // Spec 18.1 D5: a carry's label names its unit ("Distance (ft)"), since its unit is under More (Spec 17.7).
               return (
                 <TextField
                   key={measure}
@@ -212,11 +229,14 @@ function EntryFields(props: Common) {
           }
         })}
       </div>
-      <Button variant="secondary" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((open) => !open)}>
-        Set options
-      </Button>
+      <div className={styles.panelActions}>
+        <WarmupToggle exerciseName={exerciseName} pressed={draft.setType === "warmup"} onToggle={() => onChange("setType", draft.setType === "warmup" ? "working" : "warmup")} />
+        <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOpenFor(optionsOpen ? null : draft.attemptKey)}>
+          More
+        </Button>
+      </div>
       {optionsOpen ? (
-        <div className={styles.options}>
+        <div className={styles.options} ref={revealed}>
           <SetTypeField {...props} />
           {measures.includes("weight") ? (
             <Segmented name={id("weight-unit")} legend="Weight unit" options={optionsOf(WEIGHT_UNITS)} value={draft.weightUnit} onChange={(value) => onChange("weightUnit", value)} />

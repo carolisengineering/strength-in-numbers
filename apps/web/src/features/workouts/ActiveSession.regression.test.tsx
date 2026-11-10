@@ -15,7 +15,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { onlineManager } from "@tanstack/react-query";
 import { localStorageAdapter } from "../../storage/storage";
-import { card, logButton, makeCurrent } from "../../test/sessionHelpers";
+import { card, logButton, makeCurrent, showOptions } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -74,6 +74,7 @@ describe("17.1 AC35 — drafts and re-seed survive the new screen", () => {
 describe("17.1 AC37 — notes on the current card", () => {
   it("Add note works on the current card and is queued as a note op", async () => {
     const { fake, user } = await setup();
+    await showOptions(user, "X"); // Spec 17.7 AC20: Add note is in Options
     await user.click(within(card("X")).getByRole("button", { name: "Add note for X" }));
     const sheet = await screen.findByRole("dialog");
     await user.type(within(sheet).getByRole("textbox"), "Pause");

@@ -79,7 +79,7 @@ describe("17.1 AC24 — 44 px targets", () => {
     expect(stepper.slice(stepper.indexOf(".step {"))).toMatch(/min-width:\s*calc\(var\(--space-8\) \+ var\(--space-4\)\)/);
     const card = read("./ExerciseCard.module.css");
     expect(card.slice(card.indexOf(".summary {"))).toMatch(/min-height:\s*var\(--tap-target-min\)/);
-    // The Workout menu, its items, "Set options" and the bar button are the shared Button, sized to --tap-target-min.
+    // The Workout menu, its items, Warm-up and More (Spec 17.7) and the bar button are the shared Button, sized to --tap-target-min.
     expect(read("../../ui/Button.module.css")).toMatch(/--tap-target-min/);
   });
 });

@@ -38,6 +38,8 @@ const SIGNAL_ALLOWED = [
   "features/workouts/EntryRow.module.css",
   // Spec 17.7 AC11: the checked option is a selection, as Theme was (Theme now draws through it).
   "ui/Segmented.module.css",
+  // Spec 17.7 AC13: a pressed Warm-up is a selection, as a Segmented's checked option is.
+  "features/workouts/WarmupToggle.module.css",
   // #108: the checked "Keep screen on during workouts" box is a selection, like Theme beside it.
   "features/me/KeepAwakeSetting.module.css",
   // Spec 20.2 AC23: the checked auto-push box is a selection, like Keep screen on.

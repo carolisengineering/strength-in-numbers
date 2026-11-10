@@ -71,7 +71,8 @@ async function openPickerAndPick(user: ReturnType<typeof renderApp>["user"], nam
 }
 
 describe("AC17 — session layout and Add exercise", () => {
-  it("renders exercises in position order, with the modality label", async () => {
+  // Spec 17.7 AC21 amends this: the live card has no type line; the panel's fields say what is logged.
+  it("renders exercises in position order; the panel's fields name the modality, with no type line", async () => {
     const detail = makeWorkoutDetail({
       exercises: [
         { modality: "weight_reps", name: "First" },
@@ -86,9 +87,13 @@ describe("AC17 — session layout and Add exercise", () => {
     await screen.findByRole("heading", { name: "Workout" });
 
     expect(cardNames()).toEqual(["First", "Second", "Third"]);
-    expect(within(card("First")).getByText("Weight × reps")).toBeInTheDocument();
+    expect(within(card("First")).queryByText("Weight × reps")).toBeNull();
+    expect(within(card("First")).getByLabelText("Weight")).toBeInTheDocument();
+    expect(within(card("First")).getByLabelText("Reps")).toBeInTheDocument();
     await makeCurrent(user, "Third");
-    expect(within(card("Third")).getByText("Duration")).toBeInTheDocument();
+    expect(within(card("Third")).queryByText("Duration")).toBeNull();
+    expect(within(card("Third")).getByLabelText("Minutes")).toBeInTheDocument();
+    expect(within(card("Third")).queryByLabelText("Reps")).toBeNull();
   });
 
   it("shows an Add your first exercise hint when there are none, and a sticky bar with the right action", async () => {

@@ -680,6 +680,31 @@ const measureLoggingLoop = (page) =>
     };
   });
 
+// Spec 17.7 Phase B (AC16, AC22, Review Focus 4): the decluttered card and its More block, read in a real browser.
+const cardDeclutter = [];
+// AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
+// (Phase A merged, none of Phase B) on 2026-11-09. Phase B must take at least 60 px off it.
+const CARD_HEADER_BASE_390 = 204;
+const measureCardHeader = (page) =>
+  page.evaluate(() => {
+    const form = document.querySelector('form[aria-label^="Log a set of"]');
+    return Math.round(form.getBoundingClientRect().top - form.closest("article").getBoundingClientRect().top);
+  });
+/** The current panel's More and the block it reveals (the element after its row), against the bar's top. */
+const measureMore = (page) =>
+  page.evaluate(() => {
+    const more = document.querySelector('form[aria-label^="Log a set of"] button[aria-label^="More set options for"]');
+    if (!more) return { missing: "no More button" };
+    const open = more.getAttribute("aria-expanded") === "true";
+    const block = open ? more.parentElement.nextElementSibling : null;
+    return {
+      open,
+      moreBottom: Math.round(more.getBoundingClientRect().bottom),
+      blockBottom: block ? Math.round(block.getBoundingClientRect().bottom) : null,
+      barTop: Math.round(document.querySelector('[data-testid="session-bar"]').getBoundingClientRect().top),
+    };
+  });
+
 const browser = await chromium.launch();
 try {
   {
@@ -958,7 +983,8 @@ try {
       await page.waitForTimeout(300);
       const rowing = page.getByRole("article", { name: "Rowing Machine" }).getByRole("heading", { level: 2 }).getByRole("button");
       if (await rowing.count()) await rowing.click(); // collapsed: make it current first
-      await page.getByRole("button", { name: "Options for Rowing Machine" }).click();
+      // exact: Playwright's default name match is a substring, and "More set options for Rowing Machine" holds it (Spec 17.7).
+      await page.getByRole("button", { name: "Options for Rowing Machine", exact: true }).click();
       await page.getByRole("article", { name: "Rowing Machine" }).getByLabel("Section").scrollIntoViewIfNeeded();
       await shoot(page, device, "54-section-options-picker", "Options on a card logged before any section existed: the Section select (Spec 10.6 AC9)");
       await page.getByRole("button", { name: "Edit section Strength" }).click();
@@ -1446,7 +1472,8 @@ try {
           const rule = size.width <= 390 ? "two" : null;
 
           await go("/app/workouts");
-          await page.getByRole("button", { name: "Set options" }).first().click({ timeout: 4000 });
+          // Spec 17.7 Phase B: Set options became More ("More set options for {exercise}").
+          await page.getByRole("button", { name: /^More set options for / }).first().click({ timeout: 4000 });
           await page.waitForTimeout(200);
           check("panel", size, await measureSegments(page, 'form[aria-label^="Log a set of"]', "Set type"), rule);
           if (!narrow) await shoot(page, device, "s177a-set-options-segmented", "Spec 17.7 AC6: Set options with Set type (2 × 2 in the 390 px panel) and Weight unit as Segmented");
@@ -1475,6 +1502,119 @@ try {
       }
       segments.push({ theme, device, steps, violations });
       for (const v of violations) console.error(`  SEGMENTED ${theme}/${device}: ${v}`);
+    });
+    // Spec 17.7 Phase B: AC22 (the card's header is at least 60 px shorter at 390), AC16 (More's block clears the bar
+    // at 390 × 844 and 320 × 568), Review Focus 4 (a log with More open keeps the loop's guarantees; the reveal clears
+    // the bar with the keypad up) and the AC27 shots. Taps go by coordinates, as in the logging loop: locator.click()
+    // scrolls a sticky bar's list first. A step that never reports fails the run.
+    await tryStep("card and more", async () => {
+      const steps = [];
+      const violations = [];
+      const sizes = device === "mobile" ? [{ width: 390, height: 844 }, { width: 320, height: 568 }] : [opts.viewport];
+      const panelButton = (name) => page.locator('form[aria-label^="Log a set of"]').getByRole("button", { name });
+      const tap = async (locator) => {
+        // Only a control the bar hides is brought up first; a thumb would scroll to it too.
+        const hidden = await locator.evaluate((el) => el.getBoundingClientRect().bottom > document.querySelector('[data-testid="session-bar"]').getBoundingClientRect().top);
+        if (hidden) {
+          await locator.evaluate((el) => el.scrollIntoView({ block: "center" }));
+          await page.waitForTimeout(250);
+        }
+        const box = await locator.boundingBox();
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(500);
+      };
+      const openMoreAndCheck = async (where) => {
+        await tap(panelButton(/^More set options for /));
+        const m = await measureMore(page);
+        steps.push({ step: where, ...m });
+        if (m.missing) violations.push(`${where}: ${m.missing}`);
+        else if (!m.open) violations.push(`${where}: More did not open`);
+        else if (m.blockBottom > m.barTop) violations.push(`${where}: More's block ends at ${m.blockBottom}, under the bar at ${m.barTop}`);
+      };
+      state.active = true;
+      try {
+        for (const size of sizes) {
+          await page.setViewportSize(size);
+          const narrow = size.width === 320;
+          const suffix = narrow ? "-320" : "";
+          const at = `${size.width} × ${size.height}`;
+          await go("/app/workouts");
+          await page.evaluate(() => { document.querySelector('[data-testid="session-bar"]').closest("main").style.overflowAnchor = "none"; });
+          if (size.width === 390) {
+            const header = await measureCardHeader(page);
+            steps.push({ step: `header at ${at}`, header, base: CARD_HEADER_BASE_390 });
+            if (header > CARD_HEADER_BASE_390 - 60) violations.push(`AC22: the card's header is ${header}px at ${at}, want ≤ ${CARD_HEADER_BASE_390 - 60}`);
+          }
+          await shoot(page, device, `s177b-panel-more-closed${suffix}`, `Spec 17.7 AC12, AC21: the current card with Warm-up and More, no type line, no note row${narrow ? ", at 320 × 568" : ""}`);
+          await openMoreAndCheck(`More at ${at}`);
+          await shoot(page, device, `s177b-panel-more-open${suffix}`, `Spec 17.7 AC13, AC16: More open, its block above the bar${narrow ? ", at 320 × 568" : ""}`);
+          await tap(panelButton(/^Warm-up for /));
+          await shoot(page, device, `s177b-panel-warmup-pressed${suffix}`, `Spec 17.7 AC12, AC17: Warm-up pressed: filled, a check, the label names the type${narrow ? ", at 320 × 568" : ""}`);
+          await page.locator("article:has(form)").getByRole("button", { name: /^Options for / }).click();
+          // The click scrolls the card's header into view; bring up the list it opened (Move up … Superset … Section).
+          await page.locator("article:has(form)").getByRole("button", { name: "Remove exercise" }).evaluate((el) => el.parentElement.scrollIntoView({ block: "center" }));
+          await page.waitForTimeout(300);
+          await shoot(page, device, `s177b-card-options-open${suffix}`, `Spec 17.7 AC19, AC20: Options with Move, Remove, Add note and the Superset toggles${narrow ? ", at 320 × 568" : ""}`);
+
+          // Review Focus 4: with the keypad up the scroll padding is compact; the reveal must still clear the bar. The phone
+          // at 390 × 844 only, faked as 01k does (a 508 px frame above a 336 px keypad); a desktop has no keypad, and at
+          // 568 px tall the frame left above one could not hold the panel at all.
+          await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:drafts"); } catch { /* storage blocked */ } });
+          if (device === "mobile" && size.width === 390) {
+            await go("/app/workouts");
+            await page.evaluate(() => {
+              const root = document.documentElement;
+              document.querySelector('[data-testid="session-bar"]').closest("main").style.overflowAnchor = "none";
+              root.style.setProperty("--app-top", "0px");
+              root.style.setProperty("--app-height", "508px");
+              root.setAttribute("data-keyboard", "open");
+            });
+            await page.waitForTimeout(250);
+            await openMoreAndCheck(`More at ${at}, keypad up`);
+            await page.evaluate(() => {
+              const root = document.documentElement;
+              root.removeAttribute("data-keyboard");
+              root.style.removeProperty("--app-top");
+              root.style.removeProperty("--app-height");
+            });
+          }
+
+          // Review Focus 4: a log with More open: the button stays put and nothing in the panel is under the bar.
+          state.trackLogged = {};
+          await go("/app/workouts");
+          await page.evaluate(() => { document.querySelector('[data-testid="session-bar"]').closest("main").style.overflowAnchor = "none"; });
+          await openMoreAndCheck(`More at ${at}, before a log`);
+          const before = await measureLoggingLoop(page);
+          const log = page.getByTestId("session-bar").getByRole("button", { name: /^Log / });
+          const box = await log.boundingBox();
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
+          const after = await measureLoggingLoop(page);
+          steps.push({ step: `log with More open at ${at}`, before: before.buttonTop, after: after.buttonTop, covered: after.covered });
+          if (after.buttonTop !== before.buttonTop) violations.push(`log with More open at ${at}: button top ${after.buttonTop}, was ${before.buttonTop}`);
+          if (after.covered.length) violations.push(`log with More open at ${at}: under the bar: ${after.covered.join(", ")}`);
+          state.trackLogged = null;
+          // The next size starts as the lifter found it: no rest running, no edited draft (the Warm-up tap stored one).
+          await page.evaluate(() => {
+            try { window.localStorage.removeItem("sin:workout:rest"); window.localStorage.removeItem("sin:workout:drafts"); } catch { /* storage blocked */ }
+          });
+        }
+        // Per size: More, More before a log, the log; on the phone at 390 also the header and the keypad check.
+        const want = sizes.length * 3 + (device === "mobile" ? 2 : 0);
+        if (steps.length !== want) violations.push(`measured ${steps.length} of ${want} checks`);
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
+        await page.evaluate(() => {
+          try { window.localStorage.removeItem("sin:workout:rest"); window.localStorage.removeItem("sin:workout:drafts"); } catch { /* storage blocked */ }
+        });
+        await page.setViewportSize(opts.viewport);
+        state.trackLogged = null;
+        state.active = false;
+      }
+      cardDeclutter.push({ theme, device, steps, violations });
+      for (const v of violations) console.error(`  CARD DECLUTTER ${theme}/${device}: ${v}`);
     });
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
@@ -1866,7 +2006,7 @@ try {
 }
 
 // Spec 17.1 AC24: every enabled, visible control on the session screens is at least 44 px in both axes.
-const SESSION_SHOTS = /\/(01|03|04|2[2-6])-/;
+const SESSION_SHOTS = /\/(01|03|04|2[2-6]|s177b)-/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
@@ -1879,12 +2019,18 @@ if (segments.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED segm
   console.error("  SEGMENTED: the step did not run on every device");
   process.exitCode = 1;
 }
+// Spec 17.7 Phase B: the card-and-more checks fail the run on a violation or when the step never reported.
+if (cardDeclutter.some((l) => l.violations.length)) process.exitCode = 1;
+if (cardDeclutter.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED card and more"))) {
+  console.error("  CARD DECLUTTER: the step did not run on every device");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

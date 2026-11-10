@@ -22,7 +22,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card as cardByName, finishButton, makeCurrent, optionsButton } from "../../test/sessionHelpers";
+import { card as cardByName, finishButton, linkToggle, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -56,7 +56,8 @@ const patches = (fake: Fake) =>
     .filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workout-exercises/"))
     .map((r) => [nameOf(fake, decodeURIComponent(r.path.split("/").pop()!)), r.body]);
 const activeReads = (fake: Fake) => fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
-const toggle = (above: string, below: string) => screen.getByRole("button", { name: `Superset ${above} with ${below}` });
+/** Spec 17.7 AC19, AC23: the joint's toggle in the current card's Options, from either side. */
+const toggle = linkToggle;
 /** A superset member's article is named by its label ("B, superset 1"), so match the name up to the comma. */
 const label = (name: string) => new RegExp(`^${name}(,|$)`);
 const card = (name: string) => cardByName(label(name));
@@ -66,6 +67,10 @@ const brackets = () => Array.from(document.querySelectorAll("[data-bracket]")).m
 const openOptions = async (user: ReturnType<typeof renderApp>["user"], name: string) => {
   await makeCurrent(user, name);
   await user.click(optionsButton(name));
+};
+const clickToggle = async (user: ReturnType<typeof renderApp>["user"], above: string, below: string) => {
+  await showLinks(user);
+  await user.click(toggle(above, below));
 };
 
 describe("10.1 AC17 — bracket and names on the active screen", () => {
@@ -95,12 +100,14 @@ describe("10.1 AC18 — tolerant server states render without crashing", () => {
 describe("10.1 AC19 — link toggles", () => {
   it("one between each adjacent pair, none after the last; pressed state and label follow the link", async () => {
     const { user } = await setup([ex("A", 1), ex("B", 1), ex("C")]);
+    await showLinks(user);
     expect(toggle("A", "B")).toHaveAttribute("aria-pressed", "true");
-    // Spec 17.0: the check is a drawn icon now (the font has no ✓); the visible word stays.
-    expect(toggle("A", "B")).toHaveTextContent(/^Superset$/);
+    // Spec 17.0: the check is a drawn icon (the font has no ✓). Spec 17.7 AC19: the text names the side, linked or not.
+    expect(toggle("A", "B")).toHaveTextContent(/^Superset with next$/);
     expect(toggle("A", "B").querySelector("svg")).not.toBeNull();
-    // Spec 17.1 AC16: toggles show only beside the current card.
+    // Spec 17.1 AC16, 17.7 AC19: toggles show only in the current card's Options.
     await makeCurrent(user, /^B,/);
+    await showLinks(user);
     expect(toggle("B", "C")).toHaveAttribute("aria-pressed", "false");
     expect(toggle("B", "C")).toHaveTextContent("Superset with next");
     expect(screen.getAllByRole("button", { name: /^Superset / })).toHaveLength(2);
@@ -108,6 +115,7 @@ describe("10.1 AC19 — link toggles", () => {
   it("the 8-member cap disables the toggle with its reason, referenced by aria-describedby", async () => {
     const { user } = await setup([ex("A", 1), ex("B", 1), ex("C", 1), ex("D", 1), ex("E", 2), ex("F", 2), ex("G", 2), ex("H", 2), ex("I", 2)]);
     await makeCurrent(user, /^D,/);
+    await showLinks(user);
     const capped = toggle("D", "E");
     expect(capped).toBeDisabled();
     const reason = document.getElementById(capped.getAttribute("aria-describedby")!);
@@ -130,7 +138,7 @@ describe("10.1 AC20 — a toggle sends the planned PATCHes", () => {
   it.each(cases)("%s", async (_label, exercises, [above, below], expected, after) => {
     const { fake, user } = await setup(exercises);
     await makeCurrent(user, label(above));
-    await user.click(toggle(above, below));
+    await clickToggle(user, above, below);
     await waitFor(() => expect(names()).toEqual(after));
     expect(patches(fake)).toEqual(expected);
   });
@@ -138,7 +146,7 @@ describe("10.1 AC20 — a toggle sends the planned PATCHes", () => {
     const eight = ["A", "B", "C", "D", "E", "F", "G", "H"].map((n) => ex(n, 1));
     const { fake, user } = await setup(eight);
     await makeCurrent(user, /^D,/);
-    await user.click(toggle("D", "E"));
+    await clickToggle(user, "D", "E");
     await waitFor(() => expect(names()).toContain("E, superset 2"));
     expect(patches(fake)).toEqual(["H", "G", "F", "E"].map((n) => [n, { supersetGroup: 2 }]));
   });
@@ -179,7 +187,7 @@ describe("10.1 AC22 — one regroup at a time", () => {
       }),
     );
     // A (an unplanned exercise with a logged set) stays current, so only A–B shows until C is made current.
-    await user.click(toggle("A", "B"));
+    await clickToggle(user, "A", "B");
 
     expect(toggle("A", "B")).toBeDisabled();
     expect(finishButton()).toBeDisabled();
@@ -204,7 +212,7 @@ describe("10.1 AC23 — a mid-plan failure stops, refetches once, and shows the 
     await makeCurrent(user, /^D,/);
     failSecond(fake, () => problemResponse(500, "about:blank"));
     const reads = activeReads(fake);
-    await user.click(toggle("D", "E"));
+    await clickToggle(user, "D", "E");
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't change the superset — try again");
     expect(alert).toHaveTextContent(/Request ID: \S+/);
@@ -218,14 +226,14 @@ describe("10.1 AC23 — a mid-plan failure stops, refetches once, and shows the 
     const { fake, user } = await setup(eight);
     await makeCurrent(user, /^D,/);
     failSecond(fake, () => problemResponse(429, "rate-limited"));
-    await user.click(toggle("D", "E"));
+    await clickToggle(user, "D", "E");
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't change the superset — try again");
   });
   it("network: the offline message verbatim", async () => {
     const { fake, user } = await setup(eight);
     await makeCurrent(user, /^D,/);
     failSecond(fake, () => HttpResponse.error());
-    await user.click(toggle("D", "E"));
+    await clickToggle(user, "D", "E");
     expect(await screen.findByRole("alert")).toHaveTextContent("You're offline — try again when you have signal");
     expect(patches(fake)).toHaveLength(2);
   });
@@ -234,7 +242,7 @@ describe("10.1 AC23 — a mid-plan failure stops, refetches once, and shows the 
     await makeCurrent(user, /^D,/);
     failSecond(fake, () => problemResponse(404, "not-found"));
     const reads = activeReads(fake);
-    await user.click(toggle("D", "E"));
+    await clickToggle(user, "D", "E");
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_conflict", { kind: "stale-position" }));
     expect(activeReads(fake) - reads).toBe(1);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -243,7 +251,7 @@ describe("10.1 AC23 — a mid-plan failure stops, refetches once, and shows the 
     const { fake, user } = await setup([ex("A"), ex("B")]);
     fake.failNext({ method: "PATCH", path: /workout-exercises/ }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
-    await user.click(toggle("A", "B"));
+    await clickToggle(user, "A", "B");
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
   });
 });
@@ -253,7 +261,7 @@ describe("10.1 AC14 — online-only", () => {
     const { fake, user } = await setup([ex("A"), ex("B")]);
     const stored = JSON.stringify({ ...localStorage });
     fake.setOffline(true);
-    await user.click(toggle("A", "B"));
+    await clickToggle(user, "A", "B");
     expect(await screen.findByRole("alert")).toHaveTextContent("You're offline — try again when you have signal");
     expect(names()).toEqual(["A", "B"]);
     expect(JSON.stringify({ ...localStorage })).toBe(stored);
@@ -267,7 +275,7 @@ describe("10.1 AC29 — regroup failures carry static tags only", () => {
     await makeCurrent(user, /^D,/);
     for (const response of [() => problemResponse(500, "about:blank"), () => problemResponse(418, "teapot"), () => HttpResponse.error()]) {
       fake.failNext({ method: "PATCH", path: /workout-exercises/ }, response);
-      await user.click(toggle("D", "E"));
+      await clickToggle(user, "D", "E");
       await screen.findByRole("alert");
     }
     const payloads = JSON.stringify([...observability.track.mock.calls, ...observability.reportError.mock.calls.map(([, ctx]) => ctx)]);
@@ -289,5 +297,94 @@ describe("10.1 AC13 — a plain move's Try again re-sends the same position (R1,
     await waitFor(() => expect(patches(fake)).toHaveLength(2));
     expect(patches(fake).map(([, body]) => body)).toEqual([{ position: 2 }, { position: 2 }]);
     await waitFor(() => expect(names()).toEqual(["A", "C", "B", "D"]));
+  });
+});
+
+// Spec 17.7 AC19 (D5): Superset with previous / next live in the current card's Options; the joint keeps the bracket.
+describe("17.7 AC19 — Superset in Options", () => {
+  const inOptions = (name: string) => within(card(name)).queryAllByRole("button", { name: /^Superset / });
+  const visible = (name: string) => inOptions(name).map((b) => b.textContent);
+
+  it("no superset button before Options opens; the bracket still draws through a linked joint", async () => {
+    await setup([ex("A", 1), ex("B", 1), ex("C")]);
+    expect(screen.queryAllByRole("button", { name: /^Superset / })).toHaveLength(0);
+    expect(brackets()).toContain("middle");
+  });
+
+  it("the middle card has previous and next; the first only next; the last only previous; each name starts with its text and names the neighbor", async () => {
+    const { user } = await setup([ex("A"), ex("B"), ex("C")]);
+    await openOptions(user, "B");
+    expect(visible("B")).toEqual(["Superset with previous", "Superset with next"]);
+    // 17.7 AC23 (WCAG 2.5.3, as 17.1 AC38): the name starts with the visible text, then names the neighbor.
+    expect(inOptions("B").map((b) => b.getAttribute("aria-label"))).toEqual(["Superset with previous: A", "Superset with next: C"]);
+    for (const b of inOptions("B")) expect(b.getAttribute("aria-label")!.startsWith(b.textContent!)).toBe(true);
+    await openOptions(user, "A");
+    expect(visible("A")).toEqual(["Superset with next"]);
+    await openOptions(user, "C");
+    expect(visible("C")).toEqual(["Superset with previous"]);
+  });
+
+  it("a linked joint is pressed, keeps its visible text and draws a check", async () => {
+    const { user } = await setup([ex("A", 1), ex("B", 1), ex("C")]);
+    await openOptions(user, "A, superset 1");
+    const linked = toggle("A", "B");
+    expect(linked).toHaveAttribute("aria-pressed", "true");
+    expect(linked).toHaveTextContent(/^Superset with next$/);
+    expect(linked.querySelector("svg")).not.toBeNull();
+  });
+
+  it.each([
+    ["next, from the upper card", "A", "A", "B"],
+    ["previous, from the lower card", "B", "A", "B"],
+  ])("with %s: the same PATCHes, upper card first", async (_label, from, above, below) => {
+    const { fake, user } = await setup([ex("A"), ex("B")]);
+    await openOptions(user, from);
+    await clickToggle(user, above, below);
+    await waitFor(() => expect(names()).toEqual(["A, superset 1", "B, superset 1"]));
+    expect(patches(fake)).toEqual([["A", { supersetGroup: 1 }], ["B", { supersetGroup: 1 }]]);
+  });
+
+  it("after a toggle resolves, Options stays open and shows the new state (Review Focus 1)", async () => {
+    const { user } = await setup([ex("A"), ex("B"), ex("C")]);
+    await openOptions(user, "B");
+    await clickToggle(user, "A", "B");
+    await waitFor(() => expect(names()).toContain("B, superset 1"));
+    await waitFor(() => expect(toggle("A", "B")).toHaveAttribute("aria-pressed", "true"));
+    expect(within(card("B")).getByRole("button", { name: "Move up" })).toBeInTheDocument();
+    expect(optionsButton(/^B,/)).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("at the 8-member cap each direction reads its own joint's refusal", async () => {
+    const { user } = await setup([ex("A", 1), ex("B", 1), ex("C", 1), ex("D", 1), ex("E", 2), ex("F", 2), ex("G", 2), ex("H", 2), ex("I", 2)]);
+    for (const from of ["D, superset 1", "E, superset 2"]) {
+      await openOptions(user, from);
+      const capped = toggle("D", "E");
+      expect(capped).toBeDisabled();
+      expect(document.getElementById(capped.getAttribute("aria-describedby")!)).toHaveTextContent("A superset can have up to 8 exercises");
+    }
+    // The other joint of E (E–F) is linked, so it is pressed and enabled.
+    expect(toggle("E", "F")).toHaveAttribute("aria-pressed", "true");
+    expect(toggle("E", "F")).toBeEnabled();
+  });
+
+  it("the first card of a headed section has no previous, though a card sits above the heading (Review Focus 2)", async () => {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        sections: [{ name: "One" }, { name: "Two" }],
+        exercises: [
+          { modality: "weight_reps", name: "a1", sectionIndex: 0 },
+          { modality: "weight_reps", name: "a2", sectionIndex: 0 },
+          { modality: "weight_reps", name: "b1", sectionIndex: 1 },
+          { modality: "weight_reps", name: "b2", sectionIndex: 1 },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    await openOptions(user, "b1");
+    expect(visible("b1")).toEqual(["Superset with next"]);
+    await openOptions(user, "a2");
+    expect(visible("a2")).toEqual(["Superset with previous"]);
   });
 });

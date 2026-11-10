@@ -21,6 +21,7 @@ import { LINK_CAP_MESSAGE } from "@sin/core";
 import { makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { linkToggleQuery, showLinks } from "../../test/sessionHelpers";
 
 afterEach(() => cleanupApp());
 
@@ -41,7 +42,8 @@ describe("10.1 AC15 — a refused plan is a warning, with no request", () => {
   ])("%o → the banner says so and nothing is sent", async (refusal, text) => {
     planner.refusal = refusal;
     const { fake, user } = await setup();
-    await user.click(screen.getByRole("button", { name: "Superset A with B" }));
+    await showLinks(user); // Spec 17.7 AC19
+    await user.click(screen.getByRole("button", { name: linkToggleQuery("A", "B") }));
     expect(await screen.findByText(text)).toBeInTheDocument();
     expect(fake.requests.filter((r) => r.method === "PATCH")).toEqual([]);
   });

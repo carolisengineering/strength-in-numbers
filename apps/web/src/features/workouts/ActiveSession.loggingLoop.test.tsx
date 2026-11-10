@@ -40,7 +40,7 @@ vi.mock("./useWorkoutMutations", async (importOriginal) => {
   };
 });
 
-import { card, deleteSetIn, logButton, makeCurrent, restBetweenSets } from "../../test/sessionHelpers";
+import { addSetButton, card, deleteSetIn, logButton, makeCurrent, openSetOptions, restBetweenSets, showOptions } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -195,6 +195,7 @@ describe("17.4 AC11 — one line, not a stack", () => {
     fake.setOffline(true);
     await user.click(logButton("A"));
     await waitFor(() => expect(status()).toHaveTextContent(/^1 set not saved yet$/));
+    await showOptions(user, "A"); // Spec 17.7 AC20: Add note is in Options
     await user.click(within(card("A")).getByRole("button", { name: /^Add note/ }));
     const sheet = within(await screen.findByRole("dialog"));
     await user.type(sheet.getByLabelText("Note"), "Felt good");
@@ -328,6 +329,64 @@ describe("17.4 AC18 — the bar's guards still hold", () => {
     await user.click(button);
     await waitFor(() => expect(scrolled()).toContain(panel("A")));
     expect(screen.getByTestId("session-bar").querySelector(":scope > button")).toHaveFocus();
+  });
+});
+
+// Spec 17.7 AC24: the Warm-up toggle and More change none of the loop's guarantees (17.1, 17.4). A superset, so a
+// warm-up log still advances to the partner.
+describe("17.7 AC24 — the loop's guarantees hold with More open and Warm-up pressed", () => {
+  async function prepared() {
+    const app = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(2) }), ex("B", { supersetGroup: 1, plannedSets: planned(2) })]);
+    await openSetOptions(app.user, card(/^A,/));
+    await app.user.click(within(card(/^A,/)).getByRole("button", { name: "Warm-up for A" }));
+    expect(within(card(/^A,/)).getByRole("button", { name: "Warm-up for A" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(card(/^A,/)).getByRole("button", { name: "More set options for A" })).toHaveAttribute("aria-expanded", "true");
+    scroll.mockClear();
+    return app;
+  }
+
+  it("one primary Button on the screen", async () => {
+    await prepared();
+    expect(document.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
+  });
+
+  it("a double tap across the advance logs one warm-up, and focus stays on the bar's button", async () => {
+    const { fake, user } = await prepared();
+    await user.dblClick(logButton("A"));
+    await waitFor(() => expect(scrolled()).toContain(panel(/^B,/)));
+    await new Promise((resolve) => setTimeout(resolve, 100)); // let a second (wrong) log reach the fake if one was sent
+    expect(setPosts(fake)).toHaveLength(1);
+    expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "warmup" });
+    expect(screen.getByTestId("session-bar").querySelector(":scope > button")).toHaveFocus();
+  });
+
+  it("offline, the log queues and its exercise says 'Not saved yet'", async () => {
+    const { fake, user } = await prepared();
+    fake.setOffline(true);
+    await user.click(logButton("A"));
+    await waitFor(() => expect(status()).toHaveTextContent(/^1 set not saved yet/));
+    expect(within(card(/^A,/)).getByText("Not saved yet")).toBeInTheDocument();
+  });
+
+  it("a stepper edit and Warm-up keep More open; a log closes it, so the next set's panel is compact (17.7 AC16)", async () => {
+    const { user } = await setup([ex("A", { plannedSets: planned(3) })]);
+    const more = () => within(card("A")).getByRole("button", { name: "More set options for A" });
+    await openSetOptions(user, card("A"));
+    await user.click(within(card("A")).getByRole("button", { name: "Warm-up for A" }));
+    await user.click(within(card("A")).getByRole("button", { name: /^Increase reps/ }));
+    expect(more()).toHaveAttribute("aria-expanded", "true");
+    await user.click(logButton("A"));
+    await waitFor(() => expect(more()).toHaveAttribute("aria-expanded", "false"));
+    expect(within(card("A")).queryByRole("group", { name: "Set type" })).toBeNull();
+  });
+
+  it("the edit screen's Add set still opens its sheet", async () => {
+    const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [ex("A", { sets: [makeSet({ setNumber: 1 })] })] });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [workout] }) });
+    const { user } = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    await user.click(addSetButton("A"));
+    expect(await screen.findByRole("dialog", { name: "New set · A" })).toBeInTheDocument();
   });
 });
 
