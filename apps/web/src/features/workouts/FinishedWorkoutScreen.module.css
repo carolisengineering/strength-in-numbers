@@ -15,11 +15,6 @@
   font-size: var(--font-size-sm);
 }
 
-/* Spec 18.0 AC1: Edit workout under the stats, its natural width. */
-.editRow {
-  display: flex;
-}
-
 .exercises {
   display: flex;
   flex-direction: column;
@@ -103,8 +98,9 @@
   white-space: pre-line;
 }
 
+/* Spec 17.6 AC23: the routine note, last, under its label (`.workoutNotes` + `.notesLabel`). */
 .routineNotes {
-  margin: 0 0 var(--space-3);
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

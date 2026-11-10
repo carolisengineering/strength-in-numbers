@@ -110,7 +110,17 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       leadFill
       lead={
         <SummaryTop home={home}>
-          {(open) => <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} showButton={open} />}
+          {(open) => (
+            <>
+              {/* Spec 17.6 AC22 (D7): Edit workout is a menu item above Delete; navigation only, no request. */}
+              {open ? (
+                <Button variant="secondary" onClick={() => void navigate(`/app/${section}/${workout.id}/edit`)}>
+                  Edit workout
+                </Button>
+              ) : null}
+              <DeleteWorkoutControl workoutId={workout.id} setCount={setCount} afterDelete={home.to} showButton={open} />
+            </>
+          )}
         </SummaryTop>
       }
     >
@@ -118,24 +128,15 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.title === null ? null : <WorkoutText text={workout.title} variant="title" />}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
-      {/* Spec 17.6 AC1 (D3): the records right after the date, before the routine note, notes and stats. */}
+      {/* Spec 17.6 AC21: records, stats, workout notes, exercises, the Hevy block, then the routine note. */}
       <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} section={section} />
-      {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
+      <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
       {workout.notes === null ? null : (
         <section className={styles.workoutNotes} aria-label="Workout notes">
           <p className={styles.notesLabel}>Notes</p>
           <WorkoutText text={workout.notes} variant="notes" />
         </section>
       )}
-      <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
-      {/* Spec 18.0 AC1 / D11: at the top, under the stats; navigation only, no request. */}
-      <div className={styles.editRow}>
-        <Button variant="secondary" onClick={() => void navigate(`/app/${section}/${workout.id}/edit`)}>
-          Edit workout
-        </Button>
-      </div>
-      {/* Spec 20.2 AC1 / D13: under the stats and Edit workout; the owner's only (renders nothing for anyone else). */}
-      <HevyWorkoutSection workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {
           const body = segment.rows.map((row, k) => (
@@ -157,13 +158,22 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
           );
         })}
       </div>
+      {/* Spec 17.6 AC24 (D7): after the exercises, unchanged; the owner's only (renders nothing for anyone else). */}
+      <HevyWorkoutSection workout={workout} />
+      {/* Spec 17.6 AC23: last, as plain text under a muted label, only when set. */}
+      {workout.routineNotes ? (
+        <section className={styles.workoutNotes} aria-label="Routine note">
+          <p className={styles.notesLabel}>Routine note</p>
+          <p className={styles.routineNotes}>{workout.routineNotes}</p>
+        </section>
+      ) : null}
     </Screen>
   );
 }
 
 /**
  * #107: the way back and the rare actions lead the screen, so a long workout needs no scroll to leave it. Back on
- * the left, the Workout menu on the right; its items (Delete workout) revealed below, full width, as on the live
+ * the left, the Workout menu on the right; its items (Edit workout, then Delete workout, Spec 17.6 AC22) revealed below, full width, as on the live
  * session's menu (Spec 17.1 D13: an inline disclosure, no popover). Only the item follows `open`: the control's
  * dialog, notice and in-flight lock stay mounted, so closing the menu never drops a failure or a pending delete.
  */
