@@ -110,6 +110,11 @@
   /* a stepper's − and + buttons, in both axes (Spec 17.8 AC2: 56px, the same as 17.4's Log button) */
   --stepper-size: 3.5rem;
 
+  /* Spec 17.8 AC10: the panel's rest slot, wide enough for "Rest 14:59" at figure size, so a rest never reflows the
+     label; and the narrowest the exercise's name gets beside it before the slot wraps below */
+  --rest-slot-width: 6.5rem;
+  --rest-name-min-width: 6.5rem;
+
   /* the narrowest a stepper (two 3.5rem buttons and their gaps around a figure that fits "102.5") gets before the entry
      panel stacks its measures (Spec 17.1 AC24, raised by Spec 17.8 AC2: two side by side do not fit at 390px) */
   --stepper-min-width: 14rem;

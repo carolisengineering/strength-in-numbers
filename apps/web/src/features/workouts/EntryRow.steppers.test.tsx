@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { PlannedSet } from "@sin/core";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -207,6 +211,27 @@ describe("17.8 AC4 — names", () => {
   it("a weighted bodyweight's button still says weight, though its label is Added weight", async () => {
     await setup([X({ modality: "weighted_bodyweight" })]);
     expect(panel().getByRole("button", { name: "+5 lb, increase weight for X" })).toBeInTheDocument();
+  });
+});
+
+describe("17.8 AC10 — the rest slot is always there", () => {
+  it("the slot is mounted with no timer and with one, so a rest starting never changes the label row", async () => {
+    // A rest starts only while a planned set remains (17.1 D8), so the exercise has a plan.
+    const working: PlannedSet = { setType: "working", repsLow: 5, repsHigh: 5, weight: 185, weightUnit: "lb" };
+    const { user } = await setup([X({ restSeconds: 120, plannedSets: [working, working, working] })]);
+    const slot = () => card("X").querySelector("[data-rest-slot]");
+    expect(slot()).not.toBeNull();
+    expect(within(card("X")).queryByRole("timer")).toBeNull();
+    await user.click(logButton("X"));
+    await within(card("X")).findByRole("timer");
+    expect(within(slot() as HTMLElement).getByRole("timer")).toBeInTheDocument();
+  });
+
+  it("the slot reserves the figure's width and line height", () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "EntryRow.module.css"), "utf8");
+    const rule = css.slice(css.indexOf(".restSlot {"), css.indexOf("}", css.indexOf(".restSlot {")));
+    expect(rule).toMatch(/min-width:\s*var\(--rest-slot-width\)/);
+    expect(rule).toMatch(/min-height:\s*calc\(var\(--font-size-figure\) \* var\(--line-height\)\)/);
   });
 });
 

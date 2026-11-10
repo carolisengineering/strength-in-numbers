@@ -1,8 +1,27 @@
-/* Spec 17.1 AC44: the rest countdown, a figure in the panel's label row (tabular digits come from body). */
+/*
+ * Spec 17.1 AC44, Spec 17.8 AC7: the rest countdown, a figure at the right of the panel's label row (tabular digits
+ * come from body). "Rest" is a smaller caption inside it.
+ */
 .readout {
   margin: 0;
   color: var(--color-text);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-figure);
   font-weight: var(--font-weight-figure);
   font-stretch: var(--font-stretch-figure);
+  white-space: nowrap;
+}
+
+.caption {
+  font-size: var(--font-size-sm);
+}
+
+/*
+ * Spec 17.8 AC8: "Ready" at the same figure size on the panel's "do this next" teal, a state change with no motion. No
+ * block padding, so it is no taller than the running figure and the label row never moves (AC10).
+ */
+.ready {
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-signal);
+  color: var(--color-on-signal);
 }

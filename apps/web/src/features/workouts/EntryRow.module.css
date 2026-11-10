@@ -15,18 +15,33 @@
   gap: var(--space-1);
 }
 
+/* The name wraps within its column and the readout stays right; only much larger text sizes wrap it below (17.8 AC7). */
 .labelHead {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
 .exerciseName {
+  flex: 1 1 var(--rest-name-min-width);
+  min-width: 0;
   color: var(--color-signal);
   font-size: var(--font-size-md);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+/* Spec 17.8 AC10: reserved whether a rest runs or not, at the figure's line height. */
+.restSlot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: var(--rest-slot-width);
+  min-height: calc(var(--font-size-figure) * var(--line-height));
+  margin-inline-start: auto;
 }
 
 .setLine {

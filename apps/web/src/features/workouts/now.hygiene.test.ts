@@ -40,8 +40,9 @@ const SRC = join(here, "..", "..");
 const NEW_CSS = ["./NumberStepper.module.css", "./WorkoutMenu.module.css", "./SessionClock.module.css", "./RestReadout.module.css", "../../ui/VisuallyHidden.module.css"];
 
 describe("17.1 AC40 — roles and tokens", () => {
-  it("teal in the new and changed workout stylesheets appears only in EntryRow.module.css", () => {
-    for (const path of [...NEW_CSS, "./ExerciseCard.module.css", "./SetFields.module.css", "./ActiveSession.module.css"]) {
+  // Spec 17.8 AC8: RestReadout's filled "Ready" joins the panel's teal (rest.hygiene.test.ts checks the rest of that file).
+  it("teal in the new and changed workout stylesheets appears only in EntryRow.module.css and RestReadout's Ready", () => {
+    for (const path of [...NEW_CSS.filter((p) => p !== "./RestReadout.module.css"), "./ExerciseCard.module.css", "./SetFields.module.css", "./ActiveSession.module.css"]) {
       expect(read(path), path).not.toMatch(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/);
     }
     expect(read("./EntryRow.module.css")).toMatch(/--color-signal-soft/);

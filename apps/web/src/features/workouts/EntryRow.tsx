@@ -248,7 +248,10 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
           <p className={styles.exerciseName} aria-hidden="true">
             {exercise.exerciseNameSnapshot}
           </p>
-          <RestReadout workoutId={exercise.workoutId} />
+          {/* Spec 17.8 AC10: always mounted at the figure's size, so a rest starting or ending never moves the steppers. */}
+          <div className={styles.restSlot} data-rest-slot>
+            <RestReadout workoutId={exercise.workoutId} />
+          </div>
         </div>
         <p className={styles.setLine}>
           <span>{setLabel(plannedSets, count, draft.setType)}</span>
