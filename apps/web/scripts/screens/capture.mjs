@@ -1024,7 +1024,9 @@ try {
             await go("/app/workouts");
             const header = page.getByRole("article", { name: "Echo Bike" }).getByRole("heading", { level: 2 }).getByRole("button");
             if (await header.count()) await header.click();
-            checkPanel(`${at} calories`, await measureEntryPanel(page));
+            const calories = await measureEntryPanel(page);
+            if (!calories.missing && calories.panel !== "Log a set of Echo Bike") violations.push(`${at} calories: measured "${calories.panel}", not Echo Bike`);
+            checkPanel(`${at} calories`, calories);
           } finally {
             state.newTypes = null;
           }
@@ -1052,6 +1054,16 @@ try {
           await go("/app/workouts");
           const running = await measureEntryPanel(page);
           steps.push({ step: "390 rest running", ...running });
+          // The widest readout: a 15-minute rest (the 900 s bound) reads "Rest 15:00", which must fit the reserved slot.
+          const saved90 = await page.evaluate(() => window.localStorage.getItem("sin:workout:rest"));
+          await page.evaluate(() => {
+            const file = JSON.parse(window.localStorage.getItem("sin:workout:rest"));
+            window.localStorage.setItem("sin:workout:rest", JSON.stringify({ ...file, durationS: 900, startedAt: Date.now() }));
+          });
+          await go("/app/workouts");
+          const longRest = await measureEntryPanel(page);
+          steps.push({ step: "390 long rest", ...longRest });
+          await page.evaluate((raw) => window.localStorage.setItem("sin:workout:rest", raw), saved90);
           await leaveSeconds(2);
           await go("/app/workouts");
           await page.waitForTimeout(3000);
@@ -1067,8 +1079,11 @@ try {
           steps.push({ step: "390 no rest", ...none });
           if (running.restState !== "running") violations.push(`AC10: the running state read "${running.restState}"`);
           if (none.restState !== null) violations.push(`AC10: the no-rest state read "${none.restState}"`);
-          for (const [name, m] of [["running", running], ["Ready", ready]]) {
+          if (longRest.restState !== "running") violations.push(`AC10: the 15-minute rest read "${longRest.restState}"`);
+          for (const [name, m] of [["running", running], ["a 15-minute rest", longRest], ["Ready", ready]]) {
             if (m.panel !== none.panel) violations.push(`AC10: ${name} measured "${m.panel}", no rest "${none.panel}"`);
+            // A readout wider than the slot's min-width would grow it, narrow the name and could rewrap it.
+            if (Math.abs(m.slotWidth - none.slotWidth) > 0.5) violations.push(`AC10: the rest slot is ${m.slotWidth}px with ${name}, ${none.slotWidth}px with no rest`);
             if (Math.abs(m.labelRowHeight - none.labelRowHeight) > 0.5) violations.push(`AC10: label row is ${m.labelRowHeight}px with ${name}, ${none.labelRowHeight}px with no rest`);
             if (Math.abs(m.firstRowOffset - none.firstRowOffset) > 0.5) violations.push(`AC10: steppers start ${m.firstRowOffset}px down with ${name}, ${none.firstRowOffset}px with no rest`);
           }
