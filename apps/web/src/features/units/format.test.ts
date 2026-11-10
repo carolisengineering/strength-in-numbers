@@ -147,6 +147,14 @@ describe("17.6 AC6 — a rise that rounds away is value only", () => {
     expect(formatRecordPair(pair("heaviest_weight", 94, null, "kg"), "kg")).toEqual({ newText: "94 kg", oldText: null, gainText: null, spoken: "94 kg" });
   });
 
+  it("a lb account's gain is the difference of the shown values, so it never contradicts them or reads +0", () => {
+    // 99.991 kg reads 220.4 lb and 99.995 kg reads 220.5 lb: the exact gain (0.009 lb) would print "+0 lb".
+    expect(formatRecordPair(pair("heaviest_weight", 99.995, 99.991, "kg"), "lb")).toMatchObject({ oldText: "220.4", newText: "220.5 lb", gainText: "+0.1 lb" });
+    // 220.46 lb → 224.94 lb read 220.5 → 224.9: the gain is 4.4, not the exact 4.48 rounded to 4.5.
+    expect(formatRecordPair(pair("heaviest_weight", storedKg(224.94), storedKg(220.46), "kg"), "lb")).toMatchObject({ oldText: "220.5", newText: "224.9 lb", gainText: "+4.4 lb" });
+    expect(formatRecordPair(pair("heaviest_weight", storedKg(225), storedKg(220), "kg"), "lb")).toMatchObject({ gainText: "+5 lb" });
+  });
+
   it("Review Focus 3: a lb account where stored 100 and 100.017 kg both read 220.5 lb", () => {
     expect(formatRecordPair(pair("heaviest_weight", 100.017, 100, "kg"), "lb")).toEqual({ newText: "220.5 lb", oldText: null, gainText: null, spoken: "220.5 lb" });
   });

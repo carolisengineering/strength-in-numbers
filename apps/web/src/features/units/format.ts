@@ -105,6 +105,17 @@ export interface RecordPairText {
   readonly spoken: string;
 }
 
+/**
+ * A lb account's weight gain, from the two values as shown (each rounded to 0.1 lb), so the ledger's "220.5 → 224.9 lb"
+ * is followed by "+4.4 lb", never the exact difference rounded on its own ("+4.5 lb", or "+0 lb" for 220.4 → 220.5).
+ * Null when the shown values do not rise. kg shows as stored, so its exact difference already matches.
+ */
+function lbGainOfShown(newKg: number, prevKg: number): string | null {
+  const tenths = (kg: number) => Math.round(kgToLb(kg) * 10);
+  const gain = tenths(newKg) - tenths(prevKg);
+  return gain > 0 ? `+${LB.format(gain / 10)} lb` : null;
+}
+
 // The suffix units a figure's new value carries for both sides; a duration ("1 min 30 s") has none of them.
 const SUFFIX_UNIT = / (kg|lb|reps?|cal|m)$/;
 
@@ -122,7 +133,12 @@ export function formatRecordPair(
   const valueOnly = { newText, oldText: null, gainText: null, spoken: newText };
   if (record.previousValue === null) return valueOnly;
   const oldFull = formatRecordByType(record.recordType, record.previousValue, record.unit, pref);
-  const gainText = record.recordType === "best_est_1rm" ? formatE1rmGain(record.value, record.previousValue, pref) : `+${formatRecordValue(record.value - record.previousValue, record.unit, pref)}`;
+  const gainText =
+    record.recordType === "best_est_1rm"
+      ? formatE1rmGain(record.value, record.previousValue, pref)
+      : record.unit === "kg" && pref === "lb"
+        ? lbGainOfShown(record.value, record.previousValue)
+        : `+${formatRecordValue(record.value - record.previousValue, record.unit, pref)}`;
   if (gainText === null || oldFull === newText) return valueOnly;
   return { newText, oldText: oldFull.replace(SUFFIX_UNIT, ""), gainText, spoken: `was ${oldFull}, now ${newText}, up ${gainText.slice(1)}` };
 }
