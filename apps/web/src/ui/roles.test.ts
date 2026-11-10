@@ -44,6 +44,8 @@ const SIGNAL_ALLOWED = [
   "features/me/KeepAwakeSetting.module.css",
   // Spec 20.2 AC23: the checked auto-push box is a selection, like Keep screen on.
   "features/hevy/AutoPushSetting.module.css",
+  // Spec 17.8 AC8: "Ready" is the "do this next" state of the current-set panel, the same role as EntryRow (17.1 D12).
+  "features/workouts/RestReadout.module.css",
 ];
 // Spec 17.2 AC35: the record cards join the records block and the History badge.
 const PR_ALLOWED = ["features/records/PersonalRecordsBlock.module.css", "features/records/RecordCardList.module.css", "features/history/HistoryScreen.module.css"];

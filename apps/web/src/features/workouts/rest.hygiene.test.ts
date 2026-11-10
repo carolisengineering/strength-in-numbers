@@ -39,8 +39,21 @@ describe("17.1 AC54 — the rest line roles", () => {
     const colors = [...read("./RestLine.module.css").matchAll(/var\((--color-[\w-]+)\)/g)].map((m) => m[1]);
     expect(new Set(colors)).toEqual(new Set(["--color-signal", "--color-line"]));
   });
-  it("the readout uses no teal", () => {
-    expect(read("./RestReadout.module.css")).not.toMatch(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/);
+  // Spec 17.8 AC8 amends this: the filled "Ready" (`.ready`) is the readout's one teal; the running figure has none.
+  it("the readout uses no teal outside its .ready block", () => {
+    const css = read("./RestReadout.module.css");
+    const at = css.indexOf(".ready {");
+    expect(at).toBeGreaterThanOrEqual(0);
+    const rest = css.slice(0, at) + css.slice(css.indexOf("}", at) + 1);
+    expect(rest).not.toMatch(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/);
+  });
+});
+
+describe("17.8 AC9 — still silent", () => {
+  it("the readout adds no sound, vibration, notification or live region", () => {
+    const src = strip(read("./RestReadout.tsx"));
+    expect(src).not.toMatch(/navigator\.vibrate|\bNotification\b|\bAudio\b|AudioContext|serviceWorker|aria-live/);
+    expect(src).toMatch(/role="timer"/);
   });
 });
 

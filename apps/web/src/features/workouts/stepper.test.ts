@@ -1,7 +1,7 @@
 import { SET_REPS_MAX } from "@sin/core";
 import { describe, expect, it } from "vitest";
 
-import { WEIGHT_STEP, repsAtLimit, stepReps, stepWeight, weightAtLimit, type StepDirection } from "./stepper";
+import { MINUS, WEIGHT_STEP, repsAtLimit, stepName, stepReps, stepText, stepWeight, weightAtLimit, type StepDirection } from "./stepper";
 
 describe("17.1 AC18 — the weight stepper", () => {
   it("steps 5 for lb and 2.5 for kg (D5)", () => {
@@ -59,5 +59,30 @@ describe("17.1 AC19 — the reps stepper", () => {
     expect(repsAtLimit("", "down")).toBe(true);
     expect(repsAtLimit("1", "down")).toBe(false);
     expect(repsAtLimit(String(SET_REPS_MAX), "up")).toBe(true);
+  });
+});
+
+describe("17.8 AC3 — stepText", () => {
+  it.each<[StepDirection, number | string, string]>([
+    ["down", 5, "−5"],
+    ["up", 2.5, "+2.5"],
+    ["down", 1, "−1"],
+  ])("(%s, %s) → %s", (direction, step, text) => {
+    expect(stepText(direction, step)).toBe(text);
+  });
+
+  it("a down step starts with the true minus sign, U+2212, never an ASCII hyphen", () => {
+    expect(stepText("down", 5).codePointAt(0)).toBe(0x2212);
+    expect(MINUS).toBe("−");
+  });
+});
+
+describe("17.8 AC4 — stepName", () => {
+  it.each<[StepDirection, number | string, string, string, string]>([
+    ["down", "5 lb", "weight", "Overhead Press", "−5 lb, decrease weight for Overhead Press"],
+    ["up", 1, "reps", "Overhead Press", "+1, increase reps for Overhead Press"],
+    ["down", 5, "calories", "Echo Bike", "−5, decrease calories for Echo Bike"],
+  ])("(%s, %s, %s, %s)", (direction, step, noun, exercise, name) => {
+    expect(stepName(direction, step, noun, exercise)).toBe(name);
   });
 });

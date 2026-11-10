@@ -65,8 +65,8 @@ async function shiftAndSave(user: Opened["user"]) {
   await user.type(d.getByLabelText("Round 1"), "440");
   await user.clear(d.getByLabelText("Round 2"));
   await user.type(d.getByLabelText("Round 2"), "905");
-  await user.click(d.getByRole("button", { name: "Increase rounds" }));
-  await user.click(d.getByRole("button", { name: "Increase reps" }));
+  await user.click(d.getByRole("button", { name: "+1, increase rounds" }));
+  await user.click(d.getByRole("button", { name: "+1, increase reps" }));
   await user.click(d.getByRole("button", { name: "Save" }));
   return d;
 }

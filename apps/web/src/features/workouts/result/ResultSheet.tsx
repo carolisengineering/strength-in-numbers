@@ -91,6 +91,8 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         value={draft.rounds}
         inputMode="numeric"
         error={errors["rounds"]}
+        decreaseText={RESULT_COPY.stepDown}
+        increaseText={RESULT_COPY.stepUp}
         decreaseLabel={RESULT_COPY.decreaseRounds}
         increaseLabel={RESULT_COPY.increaseRounds}
         canDecrease={draft.rounds !== "" && Number(draft.rounds) > 0}
@@ -105,6 +107,8 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         value={draft.reps}
         inputMode="numeric"
         error={errors["reps"]}
+        decreaseText={RESULT_COPY.stepDown}
+        increaseText={RESULT_COPY.stepUp}
         decreaseLabel={RESULT_COPY.decreaseReps}
         increaseLabel={RESULT_COPY.increaseReps}
         canDecrease={draft.reps !== "" && Number(draft.reps) > 0}

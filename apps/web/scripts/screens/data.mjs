@@ -162,7 +162,8 @@ function item(key, position, o = {}) {
     id: uuid("b1000000", ++itemN),
     position,
     exerciseId: exByKey[key].id,
-    targetSets: o.targetSets ?? (sets.length ? working.length || null : null),
+    // Spec 17.8 §6.4: every row, warm-ups included, as production derives it (deriveTargets), so the card line agrees with "Set 2 of 4".
+    targetSets: o.targetSets ?? (sets.length || null),
     targetRepsLow: o.targetRepsLow ?? (lows.length ? Math.min(...lows) : null),
     targetRepsHigh: o.targetRepsHigh ?? (highs.length ? Math.max(...highs) : null),
     targetRpe: o.targetRpe ?? null,

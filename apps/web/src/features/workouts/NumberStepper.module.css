@@ -1,28 +1,32 @@
 /*
- * Spec 17.1 §6.4: − number + in three columns. The buttons are sized for a thumb (3rem, at least the 44px target in
- * both axes, AC24); the number is set in the signature figure style (AC39c). No teal here: the buttons are secondary.
+ * Spec 17.1 §6.4, Spec 17.8 AC1–AC3: the label above one row of − number +, the unit under the row. The buttons share
+ * the input's grid row, so they are centered on the number by structure, whatever the label, unit or an error does to
+ * the column (17.8 D2). The buttons are --stepper-size in both axes (56px, 17.8 AC2), above the 44px target; the
+ * number is set in the signature figure style (17.1 AC39c). No teal here: the buttons are secondary.
  */
 .stepper {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--space-2);
-}
-
-.step {
-  min-width: calc(var(--space-8) + var(--space-4));
-  min-height: calc(var(--space-8) + var(--space-4));
-  padding: 0;
-}
-
-.figure {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
 }
 
-.input {
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two classes, so these outrank Button.module.css whichever stylesheet loads last. */
+.row .step {
+  min-width: var(--stepper-size);
+  min-height: var(--stepper-size);
+  padding: 0;
+  font-size: var(--font-size-lg);
+}
+
+/* Two classes, so the inline padding outranks Field's `.field :where(input)` rule and "102.5" fits at 320px. */
+.row .input {
   min-height: calc(var(--space-8) + var(--space-4));
+  padding-inline: var(--space-1);
   text-align: center;
   font-size: var(--font-size-figure);
   font-weight: var(--font-weight-figure);

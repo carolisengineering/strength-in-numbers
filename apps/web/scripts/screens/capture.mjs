@@ -680,6 +680,46 @@ const measureLoggingLoop = (page) =>
     };
   });
 
+// Spec 17.8 Phase A (AC1, AC2, AC10, AC20): the current-set panel, read in a real browser.
+const entryPanel = [];
+const measureEntryPanel = (page) =>
+  page.evaluate(() => {
+    const form = document.querySelector('form[aria-label^="Log a set of"]');
+    if (!form) return { missing: "no panel" };
+    const box = (el) => el.getBoundingClientRect();
+    const round = (n) => Math.round(n * 10) / 10;
+    const rows = [...form.querySelectorAll("[data-stepper-row]")].map((row) => {
+      const input = row.querySelector("input");
+      const i = box(input);
+      const middle = i.top + i.height / 2;
+      return {
+        label: input.labels?.[0]?.textContent ?? input.id,
+        buttons: [...row.querySelectorAll(":scope > button")].map((b) => {
+          const r = box(b);
+          return { text: b.textContent, w: round(r.width), h: round(r.height), offset: round(r.top + r.height / 2 - middle) };
+        }),
+      };
+    });
+    const small = [...form.querySelectorAll("button, input")]
+      .filter((c) => c.getClientRects().length > 0 && !c.disabled)
+      .filter((c) => box(c).width < 43.5 || box(c).height < 43.5)
+      .map((c) => `${c.tagName.toLowerCase()} "${c.getAttribute("aria-label") ?? c.textContent.trim()}" ${round(box(c).width)}×${round(box(c).height)}`);
+    const labelRow = form.firstElementChild;
+    const firstRow = form.querySelector("[data-stepper-row]") ?? form.querySelector("input");
+    const slot = form.querySelector("[data-rest-slot]");
+    const timer = form.querySelector('[role="timer"]');
+    return {
+      panel: form.getAttribute("aria-label"),
+      rows,
+      small,
+      hscroll: form.scrollWidth > form.clientWidth,
+      labelRowHeight: round(box(labelRow).height),
+      firstRowOffset: round(box(firstRow).top - box(form).top),
+      slotWidth: slot ? round(box(slot).width) : null,
+      restState: timer ? timer.getAttribute("data-state") : null,
+    };
+  });
+
 // Spec 17.7 Phase B (AC16, AC22, Review Focus 4): the decluttered card and its More block, read in a real browser.
 const cardDeclutter = [];
 // AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
@@ -937,6 +977,137 @@ try {
       for (const v of violations) console.error(`  LOGGING LOOP ${theme}/${device}: ${v}`);
     });
 
+    // Spec 17.8 Phase A (AC1, AC2, AC10, AC20): the live panel's steppers, label row and rest, measured in a real browser.
+    await tryStep("entry panel", async () => {
+      const violations = [];
+      const steps = [];
+      const sizes = device === "mobile" ? [{ width: 390, height: 844 }, { width: 320, height: 568 }] : [opts.viewport];
+      const clearStored = () => page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); window.localStorage.removeItem("sin:workout:drafts"); } catch { /* storage blocked */ } });
+      const checkPanel = (where, m) => {
+        steps.push({ step: where, ...m });
+        if (m.missing) { violations.push(`${where}: ${m.missing}`); return; }
+        if (m.rows.length === 0) violations.push(`${where}: no stepper row`);
+        for (const row of m.rows) {
+          for (const b of row.buttons) {
+            // AC1: each button's vertical center within 1 px of the input's.
+            if (Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
+            // AC2: 56 × 56.
+            if (Math.abs(b.w - 56) > 0.5 || Math.abs(b.h - 56) > 0.5) violations.push(`${where}: ${row.label} "${b.text}" is ${b.w} × ${b.h} (want 56 × 56)`);
+          }
+        }
+        // AC20: no target under 44 px, no horizontal overflow.
+        for (const s of m.small) violations.push(`${where}: ${s} is under 44 px`);
+        if (m.hscroll) violations.push(`${where}: the panel scrolls sideways`);
+      };
+      try {
+        for (const size of sizes) {
+          await page.setViewportSize(size);
+          const at = `${size.width} × ${size.height}`;
+          // Weight × reps: the active workout's current panel.
+          await clearStored();
+          await go("/app/workouts");
+          checkPanel(`${at} weight × reps`, await measureEntryPanel(page));
+          if (size.width === 320) {
+            await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
+            await shoot(page, device, "01p-panel-320", "Spec 17.8: the live panel at 320 × 568: centered 56 px steppers with their step, the name and set lines");
+            // AC2: "102.5" shows in full at 320 px.
+            const weight = page.locator('form[aria-label^="Log a set of"]').getByLabel("Weight", { exact: true });
+            await weight.fill("102.5");
+            const clipped = await weight.evaluate((input) => input.scrollWidth > input.clientWidth + 1);
+            steps.push({ step: `${at} 102.5`, clipped });
+            if (clipped) violations.push(`${at}: "102.5" is clipped in the weight field`);
+          }
+          // Calories: the new-types workout's Echo Bike panel.
+          state.newTypes = structuredClone(D.activeNewTypes);
+          try {
+            await clearStored();
+            await go("/app/workouts");
+            const header = page.getByRole("article", { name: "Echo Bike" }).getByRole("heading", { level: 2 }).getByRole("button");
+            if (await header.count()) await header.click();
+            const calories = await measureEntryPanel(page);
+            if (!calories.missing && calories.panel !== "Log a set of Echo Bike") violations.push(`${at} calories: measured "${calories.panel}", not Echo Bike`);
+            checkPanel(`${at} calories`, calories);
+          } finally {
+            state.newTypes = null;
+          }
+        }
+        // AC10, at 390 px on one panel state: the label row's height and the first stepper row's offset are the same with a
+        // rest running, at Ready and with no rest. Each state is read after a reload, so the same panel is current.
+        if (device === "mobile") {
+          await page.setViewportSize({ width: 390, height: 844 });
+          await clearStored();
+          await go("/app/workouts");
+          const benchHeading = page.getByRole("article", { name: /^Bench/ }).getByRole("heading", { level: 2 }).getByRole("button");
+          if (await benchHeading.count()) await benchHeading.click();
+          for (let i = 0; i < 3 && (await page.getByRole("timer").count()) === 0; i += 1) {
+            await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
+            await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
+          }
+          const leaveSeconds = (s) => page.evaluate((left) => {
+            const raw = window.localStorage.getItem("sin:workout:rest");
+            if (raw === null) return false;
+            const file = JSON.parse(raw);
+            window.localStorage.setItem("sin:workout:rest", JSON.stringify({ ...file, startedAt: Date.now() - (file.durationS - left) * 1000 }));
+            return true;
+          }, s);
+          if (!(await leaveSeconds(90))) throw new Error("no rest started after three logs");
+          await go("/app/workouts");
+          const running = await measureEntryPanel(page);
+          steps.push({ step: "390 rest running", ...running });
+          // The widest readout: a 15-minute rest (the 900 s bound) reads "Rest 15:00", which must fit the reserved slot.
+          const saved90 = await page.evaluate(() => window.localStorage.getItem("sin:workout:rest"));
+          await page.evaluate(() => {
+            const file = JSON.parse(window.localStorage.getItem("sin:workout:rest"));
+            window.localStorage.setItem("sin:workout:rest", JSON.stringify({ ...file, durationS: 900, startedAt: Date.now() }));
+          });
+          await go("/app/workouts");
+          const longRest = await measureEntryPanel(page);
+          steps.push({ step: "390 long rest", ...longRest });
+          await page.evaluate((raw) => window.localStorage.setItem("sin:workout:rest", raw), saved90);
+          await leaveSeconds(2);
+          await go("/app/workouts");
+          await page.waitForTimeout(3000);
+          const ready = await measureEntryPanel(page);
+          steps.push({ step: "390 Ready", ...ready });
+          if (ready.restState !== "ready") violations.push(`AC10: after the rest ended the readout is "${ready.restState}" (want ready)`);
+          await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
+          await shoot(page, device, "26j-rest-ready", "Spec 17.8 AC8: the rest ended: a filled Ready at figure size in the panel's label row");
+          const savedRest = await page.evaluate(() => window.localStorage.getItem("sin:workout:rest"));
+          await clearStored();
+          await go("/app/workouts");
+          const none = await measureEntryPanel(page);
+          steps.push({ step: "390 no rest", ...none });
+          if (running.restState !== "running") violations.push(`AC10: the running state read "${running.restState}"`);
+          if (none.restState !== null) violations.push(`AC10: the no-rest state read "${none.restState}"`);
+          if (longRest.restState !== "running") violations.push(`AC10: the 15-minute rest read "${longRest.restState}"`);
+          for (const [name, m] of [["running", running], ["a 15-minute rest", longRest], ["Ready", ready]]) {
+            if (m.panel !== none.panel) violations.push(`AC10: ${name} measured "${m.panel}", no rest "${none.panel}"`);
+            // A readout wider than the slot's min-width would grow it, narrow the name and could rewrap it.
+            if (Math.abs(m.slotWidth - none.slotWidth) > 0.5) violations.push(`AC10: the rest slot is ${m.slotWidth}px with ${name}, ${none.slotWidth}px with no rest`);
+            if (Math.abs(m.labelRowHeight - none.labelRowHeight) > 0.5) violations.push(`AC10: label row is ${m.labelRowHeight}px with ${name}, ${none.labelRowHeight}px with no rest`);
+            if (Math.abs(m.firstRowOffset - none.firstRowOffset) > 0.5) violations.push(`AC10: steppers start ${m.firstRowOffset}px down with ${name}, ${none.firstRowOffset}px with no rest`);
+          }
+          // The 320 px capture of a running rest (AC23), on the same panel: the saved rest, restarted 30 s ago.
+          await page.setViewportSize({ width: 320, height: 568 });
+          await page.evaluate((raw) => {
+            if (raw === null) return;
+            window.localStorage.setItem("sin:workout:rest", JSON.stringify({ ...JSON.parse(raw), startedAt: Date.now() - 30_000 }));
+          }, savedRest);
+          await go("/app/workouts");
+          await page.getByRole("timer").scrollIntoViewIfNeeded();
+          await shoot(page, device, "26k-rest-running-320", "Spec 17.8 AC7: a rest running at 320 × 568: the figure beside the exercise's name");
+        }
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        state.newTypes = null;
+        await page.setViewportSize(opts.viewport);
+        await clearStored();
+      }
+      entryPanel.push({ theme, device, steps, violations });
+      for (const v of violations) console.error(`  ENTRY PANEL ${theme}/${device}: ${v}`);
+    });
+
     // Spec 18.0 AC49 (Phase B): the live header with and without a took, the Change Time sheet and the "Ends …" line.
     await tryStep("change time (live)", async () => {
       await go("/app/workouts");
@@ -1068,8 +1239,8 @@ try {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Log result for Finisher" }).click({ timeout: 4000 });
       const amrap = page.locator("dialog[open]");
-      await amrap.getByRole("button", { name: "Increase rounds" }).click();
-      await amrap.getByRole("button", { name: "Increase reps" }).click();
+      await amrap.getByRole("button", { name: "+1, increase rounds" }).click();
+      await amrap.getByRole("button", { name: "+1, increase reps" }).click();
       await amrap.getByRole("button", { name: "Add round time" }).click();
       await amrap.getByLabel("Round 1", { exact: true }).pressSequentially("410");
       await shoot(page, device, "94-log-result-amrap", "Log result, AMRAP: Rounds and Reps steppers, the optional round ends with their hint and Add round time (Spec 10.7 AC29)");
@@ -1085,7 +1256,7 @@ try {
       await cap.getByLabel("Finish time", { exact: true }).pressSequentially("1420");
       await shoot(page, device, "95-log-result-time-cap", "Log result, Time Cap: Finished with a finish time (Spec 10.7 AC30)");
       await cap.getByRole("radio", { name: "Hit the cap" }).check();
-      await cap.getByRole("button", { name: "Increase rounds" }).click();
+      await cap.getByRole("button", { name: "+1, increase rounds" }).click();
       await shoot(page, device, "95-log-result-time-cap-hit", "Log result, Time Cap: Hit the cap, with Rounds and Reps (Spec 10.7 AC30)");
       await page.keyboard.press("Escape");
     });
@@ -2006,7 +2177,8 @@ try {
 }
 
 // Spec 17.1 AC24: every enabled, visible control on the session screens is at least 44 px in both axes.
-const SESSION_SHOTS = /\/(01|03|04|2[2-6]|s177b)-/;
+// Spec 17.8: the panel and rest captures at 320 px and Ready count too.
+const SESSION_SHOTS = /\/(01|01p|03|04|2[2-6]|26[jk]|s177b)-/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
@@ -2025,12 +2197,18 @@ if (cardDeclutter.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED
   console.error("  CARD DECLUTTER: the step did not run on every device");
   process.exitCode = 1;
 }
+// Spec 17.8 Phase A: the entry-panel checks fail the run on a violation or when the step never reported.
+if (entryPanel.some((l) => l.violations.length)) process.exitCode = 1;
+if (entryPanel.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED entry panel"))) {
+  console.error("  ENTRY PANEL: the step did not run on every device");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { PlannedSet } from "@sin/core";
 import { onlineManager } from "@tanstack/react-query";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
@@ -16,7 +20,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
-import { discardWorkout } from "../../test/sessionHelpers";
+import { card, discardWorkout, makeCurrent } from "../../test/sessionHelpers";
 import { makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -93,6 +97,56 @@ describe("17.1 AC41 / AC44 / AC48 — a working set starts the exercise rest: re
     const said = screen.getByText("Rest over");
     expect(said.closest("[role='status']")).not.toBeNull();
     expect(said.closest("[aria-hidden='true']")).toBeNull();
+  });
+});
+
+const restCss = () => readFileSync(join(dirname(fileURLToPath(import.meta.url)), "RestReadout.module.css"), "utf8");
+const cssRule = (css: string, selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+
+describe("17.8 AC7 — rest is a figure", () => {
+  it("the timer still reads 'Rest 1:59', with 'Rest' a caption element of its own, and no live region", async () => {
+    const { user, fake } = await setup([ex("A"), ex("B")]);
+    await logOnce(user, fake);
+    expect(readout()).toHaveTextContent(/^Rest 1:59$/);
+    const caption = within(readout()!).getByText("Rest");
+    expect(caption).not.toBe(readout());
+    expect(readout()).not.toHaveAttribute("aria-live");
+    expect(readout()).toHaveAttribute("data-state", "running");
+  });
+
+  it("the readout is set in the figure tokens, the caption smaller", () => {
+    const readoutRule = cssRule(restCss(), ".readout");
+    for (const token of ["--font-size-figure", "--font-weight-figure", "--font-stretch-figure"]) expect(readoutRule).toContain(`var(${token})`);
+    expect(cssRule(restCss(), ".caption")).toMatch(/font-size:\s*var\(--font-size-sm\)/);
+  });
+});
+
+describe("17.8 AC8 — Ready is visible", () => {
+  it("at zero the timer reads Ready with data-state='ready'", async () => {
+    const { user, fake } = await setup([ex("A"), ex("B")]);
+    await logOnce(user, fake);
+    advance(120_000);
+    expect(readout()).toHaveTextContent(/^Ready$/);
+    expect(readout()).toHaveAttribute("data-state", "ready");
+  });
+
+  it("Ready is a filled teal ground, a state change with no animation", () => {
+    const ready = cssRule(restCss(), ".ready");
+    expect(ready).toMatch(/background:\s*var\(--color-signal\)/);
+    expect(ready).toMatch(/color:\s*var\(--color-on-signal\)/);
+    expect(restCss()).not.toMatch(/animation|@keyframes|transition/);
+  });
+
+  it("Ready survives an exercise change: the superset partner's new panel still shows it, and 'Rest over' was said once (Review Focus 5)", async () => {
+    const { user, fake } = await setup([ex("A", { supersetGroup: 1 }), ex("B", { supersetGroup: 1 })]);
+    await logOnce(user, fake); // A1 → B current
+    await logOnce(user, fake); // B1 ends the round → rest; A is current again
+    advance(120_000);
+    expect(readout()).toHaveTextContent(/^Ready$/);
+    await makeCurrent(user, /^B,/);
+    expect(within(card(/^B,/)).getByRole("timer")).toHaveTextContent(/^Ready$/);
+    expect(within(card(/^B,/)).getByRole("timer")).toHaveAttribute("data-state", "ready");
+    expect(screen.getAllByText("Rest over")).toHaveLength(1);
   });
 });
 

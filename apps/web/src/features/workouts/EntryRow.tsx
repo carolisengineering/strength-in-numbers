@@ -4,7 +4,7 @@ import type { SetEntry, WorkoutExerciseDetail } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { useDraftPersistence, useRestoredDraft } from "./drafts/useDraftPersistence";
 import { DOUBLE_TAP_MS, LogActionContext, logLabel } from "./logAction";
-import { nextPlanned, setLabel } from "./plannedSets";
+import { nextPlanned, setLabel, setTarget } from "./plannedSets";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
 import { RestReadout } from "./RestReadout";
@@ -222,6 +222,8 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   const label = logLabel(exercise.modalitySnapshot, draft, unitPreference);
   const ariaLabel = `${label} for ${exercise.exerciseNameSnapshot}`;
   const busy = create.isPending;
+  const next = nextPlanned(plannedSets, count);
+  const target = next.kind === "planned" ? setTarget(next.row, exercise.modalitySnapshot) : null;
   useEffect(() => {
     store?.publish({ owner, label, ariaLabel, disabled: !parsed.ok, busy, run });
   }, [store, owner, label, ariaLabel, parsed.ok, busy, run]);
@@ -239,9 +241,22 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
 
   return (
     <form className={styles.row} data-set-type={draft.setType} onSubmit={(event) => event.preventDefault()} onKeyDown={onKeyDown} noValidate aria-label={`Log a set of ${exercise.exerciseNameSnapshot}`}>
+      {/* Spec 17.8 AC5 (D8): the card's heading scrolls away, so the panel names its exercise; the form's aria-label
+          already does for a screen reader. Then the set and, when planned, its target. */}
       <div className={styles.labelRow}>
-        <p className={styles.setNumber}>{setLabel(plannedSets, count, draft.setType)}</p>
-        <RestReadout workoutId={exercise.workoutId} />
+        <div className={styles.labelHead}>
+          <p className={styles.exerciseName} aria-hidden="true">
+            {exercise.exerciseNameSnapshot}
+          </p>
+          {/* Spec 17.8 AC10: always mounted at the figure's size, so a rest starting or ending never moves the steppers. */}
+          <div className={styles.restSlot} data-rest-slot>
+            <RestReadout workoutId={exercise.workoutId} />
+          </div>
+        </div>
+        <p className={styles.setLine}>
+          <span>{setLabel(plannedSets, count, draft.setType)}</span>
+          {target !== null ? <span> · target {target}</span> : null}
+        </p>
       </div>
       <SetFields
         variant="entry"

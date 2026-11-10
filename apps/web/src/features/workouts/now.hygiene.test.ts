@@ -40,8 +40,9 @@ const SRC = join(here, "..", "..");
 const NEW_CSS = ["./NumberStepper.module.css", "./WorkoutMenu.module.css", "./SessionClock.module.css", "./RestReadout.module.css", "../../ui/VisuallyHidden.module.css"];
 
 describe("17.1 AC40 — roles and tokens", () => {
-  it("teal in the new and changed workout stylesheets appears only in EntryRow.module.css", () => {
-    for (const path of [...NEW_CSS, "./ExerciseCard.module.css", "./SetFields.module.css", "./ActiveSession.module.css"]) {
+  // Spec 17.8 AC8: RestReadout's filled "Ready" joins the panel's teal (rest.hygiene.test.ts checks the rest of that file).
+  it("teal in the new and changed workout stylesheets appears only in EntryRow.module.css and RestReadout's Ready", () => {
+    for (const path of [...NEW_CSS.filter((p) => p !== "./RestReadout.module.css"), "./ExerciseCard.module.css", "./SetFields.module.css", "./ActiveSession.module.css"]) {
       expect(read(path), path).not.toMatch(/--color-(signal|on-signal|signal-soft|selected|on-selected)\b/);
     }
     expect(read("./EntryRow.module.css")).toMatch(/--color-signal-soft/);
@@ -69,14 +70,18 @@ describe("17.1 AC40 — roles and tokens", () => {
 });
 
 describe("17.1 AC24 — 44 px targets", () => {
-  it("the ± buttons and number inputs are 3rem; the collapsed row is at least the tap target", () => {
+  // Spec 17.8 AC2 amends the buttons' size: 56 px (--stepper-size) in both axes; the input keeps its 3rem floor.
+  it("the ± buttons are --stepper-size and the number inputs 3rem; the collapsed row is at least the tap target", () => {
     const stepper = read("./NumberStepper.module.css");
-    for (const selector of [".step {", ".input {"]) {
+    const rule = (selector: string) => {
       const at = stepper.indexOf(selector);
       expect(at, selector).toBeGreaterThanOrEqual(0);
-      expect(stepper.slice(at, stepper.indexOf("}", at))).toMatch(/min-height:\s*calc\(var\(--space-8\) \+ var\(--space-4\)\)/);
-    }
-    expect(stepper.slice(stepper.indexOf(".step {"))).toMatch(/min-width:\s*calc\(var\(--space-8\) \+ var\(--space-4\)\)/);
+      return stepper.slice(at, stepper.indexOf("}", at));
+    };
+    expect(rule(".step {")).toMatch(/min-height:\s*var\(--stepper-size\)/);
+    expect(rule(".step {")).toMatch(/min-width:\s*var\(--stepper-size\)/);
+    expect(rule(".input {")).toMatch(/min-height:\s*calc\(var\(--space-8\) \+ var\(--space-4\)\)/);
+    expect(read("../../ui/tokens.css")).toMatch(/--stepper-size:\s*3\.5rem;/);
     const card = read("./ExerciseCard.module.css");
     expect(card.slice(card.indexOf(".summary {"))).toMatch(/min-height:\s*var\(--tap-target-min\)/);
     // The Workout menu, its items, Warm-up and More (Spec 17.7) and the bar button are the shared Button, sized to --tap-target-min.
@@ -115,6 +120,17 @@ describe("17.1 AC37 — regroup still never carries notes", () => {
 describe("17.1 AC35 — progress stays positional", () => {
   it("the new pure modules never read setNumber", () => {
     for (const path of ["./currentExercise.ts", "./summaryLine.ts", "./unloggedPlanned.ts"]) expect(stripComments(read(path)), path).not.toMatch(/setNumber/);
+  });
+});
+
+describe("17.8 AC1 — centered by structure", () => {
+  it("the buttons share the input's grid row, centered; no rule computes a margin-top", () => {
+    const stepper = read("./NumberStepper.module.css");
+    const at = stepper.indexOf(".row {");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(stepper.slice(at, stepper.indexOf("}", at))).toMatch(/align-items:\s*center/);
+    expect(stepper).not.toMatch(/margin-top\s*:/);
+    expect(read("./NumberStepper.tsx")).toMatch(/data-stepper-row/);
   });
 });
 

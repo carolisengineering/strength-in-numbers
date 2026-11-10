@@ -382,8 +382,10 @@ describe("10.2 AC34 — the entry-row label", () => {
     await setup();
     const form = screen.getByRole("form", { name: "Log a set of X" });
     const label = within(form).getByText(/^Set \d+/);
-    expect(label.tagName).toBe("P");
+    // Spec 17.8 AC5: the set label is a span in the set line's paragraph, beside the target.
+    expect(label.closest("p")).not.toBeNull();
     expect(label).not.toHaveAttribute("role");
+    expect(label.closest("p")).not.toHaveAttribute("role");
   });
 });
 
@@ -494,10 +496,10 @@ describe("17.1 AC38 — no bare button names on the session screen", () => {
 
   it("the steppers say what they step, by the draft's unit", async () => {
     await three();
-    expect(screen.getByRole("button", { name: "Decrease weight by 2.5 kg" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Decrease reps" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Increase reps" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^\u22122\.5 kg, decrease weight for / })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^\+2\.5 kg, increase weight for / })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^\u22121, decrease reps for / })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^\+1, increase reps for / })).toBeInTheDocument();
   });
 
   it("a failed row's actions name the set and the exercise", async () => {
@@ -983,7 +985,7 @@ describe("10.7 AC59 — Log result accessibly (Phase C)", () => {
       expect(within(dialog).getByLabelText("Round 1")).toBeInTheDocument();
       if (format === "time_cap") expect(within(dialog).getAllByRole("radio")).toHaveLength(2);
       // A Time Cap opens on Finished (no steppers until Hit the cap).
-      if (format === "amrap") expect(within(dialog).getByRole("button", { name: "Increase rounds" })).toBeInTheDocument();
+      if (format === "amrap") expect(within(dialog).getByRole("button", { name: "+1, increase rounds" })).toBeInTheDocument();
       for (const control of dialog.querySelectorAll("input, select")) expect(control).toHaveAccessibleName();
       await expectNoAxeViolations(dialog);
     },

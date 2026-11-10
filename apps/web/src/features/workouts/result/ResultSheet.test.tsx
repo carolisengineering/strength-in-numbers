@@ -53,13 +53,20 @@ describe("10.7 AC28–AC30 — bodies", () => {
     const { dialog, user } = renderSheet(section({ format: "amrap", capSeconds: 720 }, rt([[1, 250], [2, 515]])));
     expect(dialog.getByLabelText("Rounds")).toBeInTheDocument();
     expect(dialog.getByLabelText("Reps")).toBeInTheDocument();
-    for (const name of ["Increase rounds", "Decrease rounds", "Increase reps", "Decrease reps"]) expect(dialog.getByRole("button", { name })).toBeInTheDocument();
+    for (const name of ["+1, increase rounds", "−1, decrease rounds", "+1, increase reps", "−1, decrease reps"]) expect(dialog.getByRole("button", { name })).toBeInTheDocument();
     expect(dialog.getByText("Type the gym clock when each round ended.")).toBeInTheDocument();
     expect(dialog.getByRole("group", { name: "Round ends (optional)" })).toBeInTheDocument();
     await user.click(dialog.getByRole("button", { name: "Add round time" }));
     expect(dialog.getByLabelText("Round 3")).toHaveValue("");
-    await user.click(dialog.getByRole("button", { name: "Increase rounds" }));
+    await user.click(dialog.getByRole("button", { name: "+1, increase rounds" }));
     expect(dialog.getByLabelText("Rounds")).toHaveValue("1");
+  });
+
+  it("17.8 AC4 — result steppers show −1 / +1 and their names lead with that text", () => {
+    const { dialog } = renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    expect(dialog.getByRole("button", { name: "−1, decrease rounds" })).toHaveTextContent(/^−1$/);
+    expect(dialog.getByRole("button", { name: "+1, increase reps" })).toHaveTextContent(/^\+1$/);
+    expect(dialog.getByRole("button", { name: "+1, increase rounds" }).querySelector("svg")).toBeNull();
   });
 
   it("Time Cap: Finished / Hit the cap; switching to Hit the cap and back empties Finish time", async () => {
