@@ -1,8 +1,11 @@
 import type { Modality } from "@sin/core";
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { makeSet } from "../../test/workoutFixtures";
+import { formatSet } from "./format";
 import { createLogActionStore, logLabel, useLogAction, type LogAction, type LogActionStore } from "./logAction";
+import { SetFields } from "./SetFields";
 import type { SetDraft } from "./setDraft";
 
 const draft = (o: Partial<SetDraft> = {}): SetDraft => ({
@@ -18,6 +21,28 @@ const draft = (o: Partial<SetDraft> = {}): SetDraft => ({
   setType: "working",
   attemptKey: "k",
   ...o,
+});
+
+describe("17.8 AC15 — the button and the row agree", () => {
+  it.each<[string, Modality, Partial<SetDraft>, "kg" | "lb", string, Record<string, unknown>]>([
+    ["a carry of 1,000 m", "weight_distance", { weight: "24", distance: "1000", distanceUnit: "m", weightUnit: "kg" }, "kg", "Log 24 · 1,000 m", { weight: 24, weightUnit: "kg", reps: null, distance: 1000, distanceUnit: "m", distanceM: 1000 }],
+    ["distance and duration", "distance_duration", { distance: "1000", minutes: "25", seconds: "0", distanceUnit: "m" }, "kg", "Log 1,000 m · 25:00", { weight: null, weightUnit: null, weightKg: null, reps: null, distance: 1000, distanceUnit: "m", distanceM: 1000, durationS: 1500 }],
+    ["a weight of 1,000", "weight_reps", { weight: "1000", reps: "5" }, "lb", "Log 1,000 × 5", { weight: 1000, weightUnit: "lb", weightKg: 453.592, reps: 5 }],
+    ["a weight of 1,000.5", "weight_reps", { weight: "1000.5", reps: "5" }, "lb", "Log 1,000.5 × 5", { weight: 1000.5, weightUnit: "lb", weightKg: 453.819, reps: 5 }],
+    ["a comma-typed decimal", "weight_reps", { weight: "102,5", reps: "5", weightUnit: "kg" }, "kg", "Log 102.5 × 5", { weight: 102.5, weightUnit: "kg", weightKg: 102.5, reps: 5 }],
+    ["a unit that differs from the profile", "weight_reps", { weight: "1000", reps: "5", weightUnit: "kg" }, "lb", "Log 1,000 kg × 5", { weight: 1000, weightUnit: "kg", weightKg: 1000, reps: 5 }],
+  ])("%s", (_label, modality, values, pref, expected, logged) => {
+    const label = logLabel(modality, draft(values), pref);
+    expect(label).toBe(expected);
+    // Every figure on the button appears, written the same way, in the logged row's text.
+    const row = formatSet(makeSet(logged), modality);
+    for (const figure of label.replace(/^Log /, "").match(/[\d][\d,.:]*/g) ?? []) expect(row, `${figure} in "${row}"`).toContain(figure);
+  });
+
+  it("the draft's field keeps its ungrouped text", () => {
+    render(<SetFields variant="entry" exerciseName="X" modality="weight_reps" draft={draft({ weight: "1000", reps: "5" })} errors={{}} idPrefix="t" onChange={() => {}} />);
+    expect(screen.getByLabelText("Weight")).toHaveValue("1000");
+  });
 });
 
 describe("17.1 AC25 — logLabel follows the modality (§6.6 table)", () => {
