@@ -1,0 +1,11 @@
+/* Spec 17.7 AC13: a pressed Warm-up is a selection, so it takes the selected fill (on SIGNAL_ALLOWED). Two classes, so it
+   outranks the Button's own `.secondary` whatever the load order. The check beside the text is the second cue. */
+.toggle {
+  justify-content: center;
+}
+
+.toggle.pressed {
+  background: var(--color-selected);
+  border-color: var(--color-selected);
+  color: var(--color-on-selected);
+}

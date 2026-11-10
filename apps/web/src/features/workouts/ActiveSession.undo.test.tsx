@@ -212,6 +212,8 @@ describe("17.5 AC8 — how long it stays", () => {
 
   it("ends when Add note opens", async () => {
     const { user } = await offered();
+    await user.click(optionsButton("A")); // Spec 17.7 AC20: Add note is in Options, and opening Options alone keeps the offer
+    expect(undoButton()).toBeInTheDocument();
     await user.click(within(card("A")).getByRole("button", { name: "Add note for A" }));
     await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
   });

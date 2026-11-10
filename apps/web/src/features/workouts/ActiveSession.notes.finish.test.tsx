@@ -22,7 +22,7 @@ import { localStorageAdapter } from "../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { finishButton, logButton } from "../../test/sessionHelpers";
+import { finishButton, logButton, showOptions } from "../../test/sessionHelpers";
 import { OUTBOX_KEY } from "./outbox/outbox";
 
 let online = true;
@@ -59,6 +59,7 @@ async function setupNotes(notes: string | null = "Pause every rep") {
   return { fake, ...app };
 }
 const openSheet = async (user: Awaited<ReturnType<typeof setupNotes>>["user"], label: string) => {
+  await showOptions(user); // Spec 17.7 AC20: Add / Edit note is in the current card's Options
   await user.click(screen.getByRole("button", { name: label }));
   return within(await screen.findByRole("dialog", { name: /^Note for/ }));
 };

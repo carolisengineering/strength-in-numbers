@@ -11,7 +11,8 @@ export const NAMES = {
   close: "Close",
   logSet: /^Log /,
   logSetForm: (exercise: string) => `Log a set of ${exercise}`,
-  options: (exercise: string) => `Options for ${exercise}`,
+  // Anchored: Playwright matches a string name as a substring, and Spec 17.7's "More set options for {exercise}" holds it.
+  options: (exercise: string) => new RegExp(`^Options for ${exercise.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
   workoutMenu: "Workout menu",
   moveUp: "Move up",
   removeExercise: "Remove exercise",

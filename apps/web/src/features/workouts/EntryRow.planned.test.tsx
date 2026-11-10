@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { segmentChoice } from "../../test/controls";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,12 +20,14 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
+import { localStorageAdapter } from "../../storage/storage";
 import { API_BASE_URL } from "../../test/catalogHarness";
 import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { card, deleteSetIn, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { DRAFTS_KEY } from "./drafts/draftStore";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -130,6 +132,7 @@ describe("10.2 AC24 — after a log", () => {
     await within(card("Bench")).findByText("Extra set");
     expect(field("Bench", "Weight")).toHaveValue("100");
     expect(field("Bench", "Reps")).toHaveValue("6");
+    await openSetOptions(user, card("Bench")); // Spec 17.7: a log closes More
     expect(segmentChoice("Set type", card("Bench"))).toBe("working");
     expect(setPosts(fake)).toHaveLength(3);
   });
@@ -382,5 +385,117 @@ describe("18.1 AC12 — planned prefill for the new types", () => {
     });
     await within(card("Carry")).findByText("Set 2 of 2");
     expect(field("Carry", "Weight")).toHaveValue("30");
+  });
+});
+
+// Spec 17.7 Phase B: the Warm-up toggle, through the whole screen (the draft store, telemetry, a log).
+const press = (name: string) => within(card(name)).getByRole("button", { name: `Warm-up for ${name}` });
+const form = (name: string) => within(card(name)).getByRole("form", { name: `Log a set of ${name}` });
+const stored = () => localStorageAdapter().get(DRAFTS_KEY);
+const press1 = (o: Partial<ExerciseSpec> = {}): ExerciseSpec => ({ modality: "weight_reps", name: "Overhead Press", sets: [logged(1, { reps: 8, weight: 40 })], ...o });
+
+describe("17.7 AC13 — a Warm-up tap is an ordinary edit", () => {
+  it("sets the draft's type, is stored, and logs as an edited warm-up; another tap goes back to working", async () => {
+    const { fake, user } = await setup([press1()]);
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "false");
+    await user.click(press("Overhead Press"));
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "true");
+    expect(form("Overhead Press")).toHaveAttribute("data-set-type", "warmup");
+    expect(within(card("Overhead Press")).getByText("Set 2 · Warm-up")).toBeInTheDocument();
+    await waitFor(() => expect(stored()).toContain('"setType":"warmup"'));
+    await user.click(press("Overhead Press"));
+    expect(form("Overhead Press")).toHaveAttribute("data-set-type", "working");
+    expect(within(card("Overhead Press")).getByText("Set 2")).toBeInTheDocument();
+    await user.click(press("Overhead Press"));
+    await user.click(logButton("Overhead Press"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    expect(setPosts(fake)[0]!.body).toMatchObject({ setType: "warmup" });
+    expect(observability.track).toHaveBeenCalledWith("set_logged", expect.objectContaining({ edited: true }));
+  });
+});
+
+describe("17.7 AC14 — a planned warm-up is already pressed", () => {
+  it("is pressed on mount, stores nothing, and logs unedited", async () => {
+    const { user } = await setup([bench()]);
+    expect(press("Bench")).toHaveAttribute("aria-pressed", "true");
+    expect(stored()).toBeNull();
+    await user.click(logButton("Bench"));
+    await waitFor(() => expect(observability.track).toHaveBeenCalledWith("set_logged", expect.objectContaining({ edited: false })));
+    expect(stored()).toBeNull();
+  });
+});
+
+describe("17.7 AC18 — the toggle does not stick", () => {
+  it("an unplanned warm-up's next draft is working again", async () => {
+    const { user } = await setup([press1()]);
+    await user.click(press("Overhead Press"));
+    await user.click(logButton("Overhead Press"));
+    await within(card("Overhead Press")).findByText("Set 3");
+    expect(form("Overhead Press")).toHaveAttribute("data-set-type", "working");
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("a planned ramp follows the plan's next row", async () => {
+    const ramp = [planned("warmup", 10, 40), planned("warmup", 5, 60), planned("working", 5, 80)];
+    const { user } = await setup([bench({ plannedSets: ramp })]);
+    expect(press("Bench")).toHaveAttribute("aria-pressed", "true");
+    await user.click(logButton("Bench"));
+    await within(card("Bench")).findByText("Set 2 of 3 · Warm-up");
+    expect(press("Bench")).toHaveAttribute("aria-pressed", "true");
+    await restBetweenSets();
+    await user.click(logButton("Bench"));
+    await within(card("Bench")).findByText("Set 3 of 3");
+    expect(press("Bench")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // Review Focus 3: the plan expected a typed-during-flight log to keep the warm-up (the `rekey` path). On the live
+  // screen a log is queued and resolves at once, so the next draft is seeded before any typing and the warm-up ends.
+  // What must hold either way: the label and the draft's type agree, so a warm-up is never invisible.
+  it("typing after a warm-up log, with the server slow, leaves a working draft whose label says so (Review Focus 3)", async () => {
+    const { fake, user } = await setup([press1()]);
+    const exerciseRowId = fake.state.active!.exercises[0]!.id;
+    const gate = deferred<void>();
+    server.use(
+      http.post(`${API_BASE_URL}/v1/workout-exercises/:id/sets`, async () => {
+        await gate.promise;
+        return HttpResponse.json(makeSet({ workoutExerciseId: exerciseRowId, setNumber: 2, setType: "warmup", weight: 40, reps: 8 }), { status: 201 });
+      }),
+    );
+    await user.click(press("Overhead Press"));
+    await user.click(logButton("Overhead Press"));
+    const reps = field("Overhead Press", "Reps");
+    await user.clear(reps);
+    await user.type(reps, "7");
+    gate.resolve();
+    await within(card("Overhead Press")).findByText("Set 3");
+    expect(reps).toHaveValue("7");
+    expect(form("Overhead Press")).toHaveAttribute("data-set-type", "working");
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "false");
+    await user.click(press("Overhead Press"));
+    expect(within(card("Overhead Press")).getByText("Set 3 · Warm-up")).toBeInTheDocument();
+    expect(reps).toHaveValue("7");
+  });
+});
+
+describe("17.7 AC13, AC17 — a warm-up that comes back", () => {
+  it("a stored warm-up draft restores pressed, with the label's suffix", async () => {
+    const { user } = await setup([press1()]);
+    await user.click(press("Overhead Press"));
+    await waitFor(() => expect(stored()).toContain('"setType":"warmup"'));
+    cleanup();
+    renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "true");
+    expect(within(card("Overhead Press")).getByText("Set 2 · Warm-up")).toBeInTheDocument();
+  });
+
+  it("a warm-up taken back by Undo restores pressed, with the label's suffix", async () => {
+    const { user } = await setup([press1()]);
+    await user.click(press("Overhead Press"));
+    await user.click(logButton("Overhead Press"));
+    const undo = await screen.findByRole("button", { name: /^Undo set 2/ });
+    await user.click(undo);
+    await within(card("Overhead Press")).findByText("Set 2 · Warm-up");
+    expect(press("Overhead Press")).toHaveAttribute("aria-pressed", "true");
   });
 });

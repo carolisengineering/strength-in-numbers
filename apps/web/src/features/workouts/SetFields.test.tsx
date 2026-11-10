@@ -2,25 +2,26 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES } from "@sin/core";
+import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type Modality } from "@sin/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { chooseSegment, segmented, segmentOptions, segmentValue } from "../../test/controls";
 import { SET_TYPE_LABELS } from "./format";
 import { SetFields } from "./SetFields";
-import { draftFromSet, unitDefaultsFor } from "./setDraft";
+import { draftFromSet, unitDefaultsFor, type SetDraft } from "./setDraft";
 
 const props = { modality: "distance_duration" as const, draft: draftFromSet(null, unitDefaultsFor("kg"), "k"), errors: {}, onChange: () => {}, idPrefix: "t" };
 
-describe("05.3 AC21 — feet in Set options", () => {
+describe("05.3 AC21 — feet under More (Set options before Spec 17.7)", () => {
   it("sheet: Distance unit lists m, km, mi, ft", () => {
     render(<SetFields {...props} variant="sheet" />);
     expect(segmentOptions("Distance unit")).toEqual(["m", "km", "mi", "ft"]);
   });
-  it("entry: under Set options, Distance unit lists m, km, mi, ft", async () => {
-    render(<SetFields {...props} variant="entry" />);
-    await userEvent.click(screen.getByRole("button", { name: /Set options/ }));
+  it("entry: under More, Distance unit lists m, km, mi, ft", async () => {
+    render(<SetFields {...props} variant="entry" exerciseName="X" />);
+    await userEvent.click(screen.getByRole("button", { name: /^More set options for / }));
     expect(segmentOptions("Distance unit")).toEqual(["m", "km", "mi", "ft"]);
   });
 });
@@ -30,11 +31,11 @@ describe("17.7 AC6 — units and set type are Segmented", () => {
 
   for (const variant of ["entry", "sheet"] as const) {
     const open = async () => {
-      if (variant === "entry") await userEvent.click(screen.getByRole("button", { name: /Set options/ }));
+      if (variant === "entry") await userEvent.click(screen.getByRole("button", { name: /^More set options for / }));
     };
 
     it(`${variant}: Set type is four radios in order, Weight unit is kg and lb, and no select is left`, async () => {
-      render(<SetFields {...props} modality="weight_reps" variant={variant} />);
+      render(<SetFields {...props} modality="weight_reps" variant={variant} exerciseName="X" />);
       await open();
       expect(segmentOptions("Set type")).toEqual(typeLabels);
       expect(segmentValue("Set type")).toBe("Working");
@@ -46,13 +47,13 @@ describe("17.7 AC6 — units and set type are Segmented", () => {
     it(`${variant}: a choice sends the same edit values as the select did`, async () => {
       const user = userEvent.setup();
       const onChange = vi.fn();
-      const { rerender } = render(<SetFields {...props} modality="weight_reps" onChange={onChange} variant={variant} />);
+      const { rerender } = render(<SetFields {...props} modality="weight_reps" onChange={onChange} variant={variant} exerciseName="X" />);
       await open();
       await chooseSegment(user, "Set type", "Drop");
       expect(onChange).toHaveBeenLastCalledWith("setType", "drop");
       await chooseSegment(user, "Weight unit", "lb");
       expect(onChange).toHaveBeenLastCalledWith("weightUnit", "lb");
-      rerender(<SetFields {...props} modality="distance_duration" onChange={onChange} variant={variant} />);
+      rerender(<SetFields {...props} modality="distance_duration" onChange={onChange} variant={variant} exerciseName="X" />);
       if (variant === "entry" && !screen.queryByRole("group", { name: "Distance unit" })) await open();
       await chooseSegment(user, "Distance unit", "mi");
       expect(onChange).toHaveBeenLastCalledWith("distanceUnit", "mi");
@@ -60,7 +61,7 @@ describe("17.7 AC6 — units and set type are Segmented", () => {
     });
 
     it(`${variant}: the Failure hint still shows`, async () => {
-      render(<SetFields {...props} modality="weight_reps" draft={{ ...props.draft, setType: "failure" }} variant={variant} />);
+      render(<SetFields {...props} modality="weight_reps" draft={{ ...props.draft, setType: "failure" }} variant={variant} exerciseName="X" />);
       await open();
       expect(segmented("Set type")).toHaveAccessibleDescription("Couldn't complete a rep? Log 0 reps.");
     });
@@ -109,5 +110,135 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
     const [weightError, repsError] = screen.getAllByRole("alert");
     expect(screen.getByLabelText("Weight").parentElement?.nextElementSibling).toBe(weightError);
     expect(screen.getByLabelText("Reps").nextElementSibling).toBe(repsError);
+  });
+});
+
+// Spec 17.7 Phase B: the entry panel's Warm-up toggle and More, through a draft held like EntryRow holds it.
+function Entry({ modality = "weight_reps", initial = props.draft, onChange }: { modality?: Modality; initial?: SetDraft; onChange?: (field: string, value: string) => void }) {
+  const [draft, setDraft] = useState(initial);
+  return (
+    <SetFields
+      variant="entry"
+      exerciseName="Overhead Press"
+      modality={modality}
+      draft={draft}
+      errors={{}}
+      idPrefix="t"
+      onChange={(field, value) => {
+        onChange?.(field, value);
+        setDraft((d) => ({ ...d, [field]: value }));
+      }}
+    />
+  );
+}
+const warmup = () => screen.getByRole("button", { name: "Warm-up for Overhead Press" });
+const more = () => screen.getByRole("button", { name: "More set options for Overhead Press" });
+
+describe("17.7 AC12 — Warm-up and More replace Set options", () => {
+  it("the panel has a Warm-up and a More button in one row, and no Set options", () => {
+    render(<Entry />);
+    expect(warmup().parentElement).toBe(more().parentElement);
+    expect(screen.queryByRole("button", { name: "Set options" })).toBeNull();
+    expect(screen.queryByText("Set options")).toBeNull();
+  });
+});
+
+describe("17.7 AC13 — the Warm-up toggle", () => {
+  it("is pressed exactly when the draft is a warm-up, and each tap is an ordinary setType edit", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Entry onChange={onChange} />);
+    expect(warmup()).toHaveAttribute("aria-pressed", "false");
+    expect(warmup()).toHaveTextContent(/^Warm-up$/);
+    expect(warmup().querySelector("svg")).toBeNull();
+    await user.click(warmup());
+    expect(onChange).toHaveBeenLastCalledWith("setType", "warmup");
+    expect(warmup()).toHaveAttribute("aria-pressed", "true");
+    expect(warmup().querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    await user.click(warmup());
+    expect(onChange).toHaveBeenLastCalledWith("setType", "working");
+    expect(warmup()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("its name starts with its visible text and names the exercise", () => {
+    render(<Entry />);
+    expect(warmup()).toHaveAccessibleName("Warm-up for Overhead Press");
+  });
+
+  it("a Drop or Failure draft is not pressed", () => {
+    render(<Entry initial={{ ...props.draft, setType: "drop" }} />);
+    expect(warmup()).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("17.7 AC15 — More reveals set type and the units", () => {
+  it("reads More, is named for the exercise, and its aria-expanded follows", async () => {
+    const user = userEvent.setup();
+    render(<Entry />);
+    expect(more()).toHaveTextContent(/^More$/);
+    expect(more()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Set type" })).toBeNull();
+    await user.click(more());
+    expect(more()).toHaveAttribute("aria-expanded", "true");
+    expect(segmentOptions("Set type")).toEqual(SET_TYPE_VALUES.map((type) => SET_TYPE_LABELS[type]));
+    expect(segmented("Weight unit")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Distance unit" })).toBeNull();
+    await user.click(more());
+    expect(more()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("group", { name: "Set type" })).toBeNull();
+  });
+
+  it("shows Distance unit for a distance modality, and no unit for calories", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Entry modality="distance_duration" />);
+    await user.click(more());
+    expect(segmented("Distance unit")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Weight unit" })).toBeNull();
+    unmount();
+    render(<Entry modality="calories" />);
+    await user.click(more());
+    expect(segmented("Set type")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /unit$/ })).toBeNull();
+  });
+
+  it("shows the failure hint when Failure is chosen", async () => {
+    const user = userEvent.setup();
+    render(<Entry />);
+    await user.click(more());
+    await chooseSegment(user, "Set type", "Failure");
+    expect(screen.getByText("Couldn't complete a rep? Log 0 reps.")).toBeInTheDocument();
+  });
+
+  it("the toggle and Set type always agree (D8)", async () => {
+    const user = userEvent.setup();
+    render(<Entry />);
+    await user.click(more());
+    await user.click(warmup());
+    expect(segmentValue("Set type")).toBe("Warm-up");
+    await chooseSegment(user, "Set type", "Drop");
+    expect(warmup()).toHaveAttribute("aria-pressed", "false");
+    await chooseSegment(user, "Set type", "Warm-up");
+    expect(warmup()).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("17.7 AC16 — the revealed block scrolls clear of the bar", () => {
+  const original = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = original;
+  });
+
+  it("scrolls once, nearest and not smooth, when More opens; never on close or on a closed mount", async () => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    render(<Entry />);
+    expect(scroll).not.toHaveBeenCalled();
+    await user.click(more());
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scroll.mock.contexts[0]).toBe(segmented("Set type").parentElement);
+    await user.click(more());
+    expect(scroll).toHaveBeenCalledTimes(1);
   });
 });

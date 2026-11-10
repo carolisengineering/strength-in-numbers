@@ -23,7 +23,7 @@ import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, ma
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, deleteSetIn, finishButton, logButton, makeCurrent, openSetOptions, optionsButton } from "../../test/sessionHelpers";
+import { card, deleteSetIn, finishButton, linkToggleQuery, logButton, makeCurrent, openSetOptions, optionsButton, showLinks } from "../../test/sessionHelpers";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -68,7 +68,7 @@ async function setup() {
 describe("AC33 — accessibility and one-handed layout (component level)", () => {
   it("every input, select and textarea has a programmatic label", async () => {
     const { user } = await setup();
-    // Spec 17.1 AC23: Set type and the unit selects sit behind "Set options"; open it so they are still checked.
+    // Spec 17.1 AC23 / 17.7: set type and the units sit behind "More"; open it so they are still checked.
     await openSetOptions(user, card("X"));
 
     const controls = document.querySelectorAll("input, select, textarea");
@@ -358,13 +358,16 @@ describe("10.1 AC27 — session supersets, accessibly", () => {
 
     expect(screen.getByRole("article", { name: "A, superset 1, 3 sets" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "E, superset 2" })).toBeInTheDocument();
-    const linked = screen.getByRole("button", { name: "Superset A with B" });
+    await showLinks(user); // Spec 17.7 AC19: the toggles are in the current card's Options
+    const linked = screen.getByRole("button", { name: linkToggleQuery("A", "B") });
     expect(linked.tagName).toBe("BUTTON");
     expect(linked).toHaveAttribute("aria-pressed", "true");
-    await makeCurrent(user, /^I,/); // Spec 17.1 AC16: toggles show only beside the current card
-    expect(screen.getByRole("button", { name: "Superset I with J" })).toHaveAttribute("aria-pressed", "false");
+    await makeCurrent(user, /^I,/); // Spec 17.1 AC16: toggles show only for the current card
+    await showLinks(user);
+    expect(screen.getByRole("button", { name: linkToggleQuery("I", "J") })).toHaveAttribute("aria-pressed", "false");
     await makeCurrent(user, /^D,/);
-    const capped = screen.getByRole("button", { name: "Superset D with E" });
+    await showLinks(user);
+    const capped = screen.getByRole("button", { name: linkToggleQuery("D", "E") });
     expect(capped).toBeDisabled();
     expect(document.getElementById(capped.getAttribute("aria-describedby")!)).toHaveTextContent("A superset can have up to 8 exercises");
     const brackets = document.querySelectorAll("[data-bracket]");
@@ -423,8 +426,8 @@ describe("10.3 AC37 — accessibility (component level): session", () => {
 
   it("controls name their target ('Edit note for Bench press'); a disabled Move says why in text, not a tooltip", async () => {
     const { user } = await sessionWithSections();
-    expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // present only once Tasks 10-12 exist
     await user.click(optionsButton("Bench press, superset 1"));
+    expect(screen.getByRole("button", { name: "Add note for Bench press" })).toBeInTheDocument(); // Spec 17.7 AC20: in Options
     const up = within(screen.getByRole("article", { name: /^Bench press/ })).getByRole("button", { name: "Move up" });
     expect(up).toBeDisabled();
     expect(up).toHaveAccessibleDescription("First exercise in this section");
@@ -478,7 +481,7 @@ describe("17.1 AC38 — no bare button names on the session screen", () => {
   it("every visible button name is unique or carries its exercise", async () => {
     const { user } = await three();
     await user.click(screen.getByRole("button", { name: "Options for Bench" }));
-    await user.click(screen.getByRole("button", { name: "Set options" }));
+    await user.click(screen.getByRole("button", { name: /^More set options for / }));
     await user.click(screen.getByRole("button", { name: "Workout menu" }));
     const all = names();
     for (const bare of ["Options", "Log set", "More", "Edit", "Discard"]) expect(all).not.toContain(bare);
@@ -920,6 +923,45 @@ describe("10.7 AC59 — workout timers, accessibly (Phase B)", () => {
     await waitFor(() => expect(screen.getByTestId("session-announcement")).toHaveTextContent("Timer saved"));
     expect(screen.getByTestId("session-announcement")).toHaveAttribute("role", "status");
     expect(screen.queryAllByRole("alert").filter((a) => /Timer saved/.test(a.textContent ?? ""))).toEqual([]);
+  });
+});
+
+// Spec 17.7 AC23: the decluttered card is axe-clean with its Options (Move, Remove, Add note, both Superset
+// toggles) and its panel's More open, in both themes.
+describe("17.7 AC23 — the live card with Options and More open, axe", () => {
+  afterEach(() => document.documentElement.removeAttribute("data-theme"));
+  async function live() {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({
+        exercises: [
+          { modality: "weight_reps", name: "A", supersetGroup: 1 },
+          { modality: "weight_reps", name: "B", supersetGroup: 1, notes: "Pause" },
+          { modality: "weight_reps", name: "C" },
+        ],
+      }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    await makeCurrent(app.user, /^B,/);
+    return app;
+  }
+
+  it.each(["light", "dark"])("Options open (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { user } = await live();
+    await user.click(optionsButton(/^B,/));
+    expect(screen.getByRole("button", { name: "Edit note for B" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("A", "B") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("B", "C") })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
+
+  it.each(["light", "dark"])("More open (%s)", async (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    const { user } = await live();
+    await openSetOptions(user, screen.getByRole("article", { name: /^B,/ }));
+    await expectNoAxeViolations(document.body);
   });
 });
 

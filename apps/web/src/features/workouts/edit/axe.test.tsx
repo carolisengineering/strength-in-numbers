@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
   state: {
@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { expectNoAxeViolations } from "../../../test/axe";
-import { addSetButton, card, changeTimeButton, deleteSetIn } from "../../../test/sessionHelpers";
+import { addSetButton, card, changeTimeButton, deleteSetIn, showOptions } from "../../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
@@ -77,8 +77,16 @@ describe.each(["light", "dark"] as const)("Minor 9 / 18.0 AC44, AC57 — axe, %s
     await expectNoAxeViolations(document.body);
   });
 
+  it("a card's Options open, with Add note in it (Spec 17.7 AC23)", async () => {
+    const { user } = await openEdit();
+    await showOptions(user, "Bench Press");
+    expect(screen.getByRole("button", { name: "Add note for Bench Press" })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body);
+  });
+
   it("the note sheet open", async () => {
     const { user } = await openEdit();
+    await showOptions(user, "Bench Press"); // Spec 17.7 AC20
     await user.click(screen.getByRole("button", { name: "Add note for Bench Press" }));
     await screen.findByRole("dialog", { name: "Note for Bench Press" });
     await expectNoAxeViolations(document.body);

@@ -14,7 +14,6 @@ import { ActionBar } from "../../ui/ActionBar";
 import { Screen } from "../../ui/Screen";
 import { VisuallyHidden } from "../../ui/VisuallyHidden";
 import { ExercisePicker } from "../catalog/ExercisePicker";
-import { LinkToggle } from "../routines/LinkToggle";
 import { SupersetBracket } from "../routines/SupersetBracket";
 import { useCatalog } from "../catalog/useCatalog";
 import { advanceAfterLog } from "./currentExercise";
@@ -23,7 +22,7 @@ import { RestLine } from "./RestLine";
 import { restAfterLog } from "./restTimer";
 import { useRestStore, useRestStores } from "./useRestTimer";
 import type { LoggedEvent } from "./EntryRow";
-import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "./ExerciseCard";
+import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON, type CardLink } from "./ExerciseCard";
 import { EDIT_COPY } from "./edit/editCopy";
 import { ChangeTimeSheet } from "./changeTime/ChangeTimeSheet";
 import { useChangeTime } from "./changeTime/useChangeTime";
@@ -705,11 +704,21 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   function renderRow(row: SupersetRow, k: number, segment: SectionSegment) {
     const { exercise, bracket, line, label, linkedBelow } = row;
     const below = segment.rows[k + 1]?.exercise;
-    const segmentSlots: SessionSlot[] = segment.rows.map((r) => ({ id: r.exercise.id, group: r.exercise.supersetGroup }));
-    const refusal = canLinkRule(segmentSlots, k);
+    const above = segment.rows[k - 1];
     const isCurrent = exercise.id === current.currentId;
-    // Spec 17.1 AC16: a link toggle only beside the current card; elsewhere just the bracket's continuity.
-    const showToggle = below !== undefined && (isCurrent || below.id === current.currentId);
+    // Spec 17.7 AC19 (D5): the current card's joints, inside its Options; the joints between cards keep only the bracket.
+    const linkAt = (joint: number): Pick<CardLink, "refusal" | "disabled"> => {
+      const refusal = canLinkRule(segment.rows.map((r): SessionSlot => ({ id: r.exercise.id, group: r.exercise.supersetGroup })), joint);
+      return { refusal: refusal.ok ? null : refusal.reason, disabled: structureBusy };
+    };
+    const linkAbove: CardLink | undefined =
+      isCurrent && above
+        ? { otherName: above.exercise.exerciseNameSnapshot, linked: above.linkedBelow, ...linkAt(k - 1), onToggle: () => void runRegroup({ type: "toggleLink", upperId: above.exercise.id }) }
+        : undefined;
+    const linkBelow: CardLink | undefined =
+      isCurrent && below
+        ? { otherName: below.exerciseNameSnapshot, linked: linkedBelow, ...linkAt(k), onToggle: () => void runRegroup({ type: "toggleLink", upperId: exercise.id }) }
+        : undefined;
     return (
       <Fragment key={exercise.id}>
         <div className={bracket === "none" ? styles.slot : `${styles.slot} ${styles.grouped}`}>
@@ -744,6 +753,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               sections={workout.sections}
               linked={bracket !== "none"}
               onSection={(sectionId) => void sectionActions.setExerciseSection(exercise, sectionId)}
+              {...(linkAbove ? { linkAbove } : {})}
+              {...(linkBelow ? { linkBelow } : {})}
             />
           ) : (
             <CollapsedExercise
@@ -761,17 +772,6 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         {below ? (
           <div className={styles.joint}>
             <SupersetBracket position={linkedBelow ? "middle" : "none"} />
-            {showToggle ? (
-              <LinkToggle
-                id={`link-${exercise.id}`}
-                above={exercise.exerciseNameSnapshot}
-                below={below.exerciseNameSnapshot}
-                linked={linkedBelow}
-                refusal={refusal.ok ? null : refusal.reason}
-                disabled={structureBusy}
-                onToggle={() => void runRegroup({ type: "toggleLink", upperId: exercise.id })}
-              />
-            ) : null}
           </div>
         ) : null}
       </Fragment>

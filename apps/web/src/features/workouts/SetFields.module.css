@@ -53,7 +53,14 @@
   font-stretch: var(--font-stretch-figure);
 }
 
-/* "Set options": Set type and the units, revealed inline. */
+/* Spec 17.7 AC12: the Warm-up toggle and More share one row of two equal columns. */
+.panelActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+/* "More" (Spec 17.7 AC15): Set type and the units, revealed inline and scrolled clear of the bar (AC16). */
 .options {
   display: flex;
   flex-direction: column;

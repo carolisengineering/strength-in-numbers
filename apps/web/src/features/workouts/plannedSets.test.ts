@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PlannedSet } from "@sin/core";
+import type { PlannedSet, SetType } from "@sin/core";
 import { nextPlanned, setLabel } from "./plannedSets";
 
 const row = (o: Partial<PlannedSet> = {}): PlannedSet => ({ setType: "working", repsLow: 8, repsHigh: 8, weight: 80, weightUnit: "kg", ...o });
@@ -24,6 +24,7 @@ describe("10.2 AC20 — nextPlanned", () => {
   });
 });
 
+// Since Spec 17.7 the label takes the draft's type; an untouched planned draft carries the row's own type.
 describe("10.2 AC21 — setLabel", () => {
   it.each([
     [0, "Set 1 of 3 · Warm-up"],
@@ -32,15 +33,31 @@ describe("10.2 AC21 — setLabel", () => {
     [3, "Extra set"],
     [9, "Extra set"],
   ])("%i logged → %s", (logged, label) => {
-    expect(setLabel(PLAN, logged)).toBe(label);
+    expect(setLabel(PLAN, logged, PLAN[logged]?.setType ?? "working")).toBe(label);
   });
   it("shows the 05.1 label for every non-working type", () => {
-    expect(setLabel([row({ setType: "drop" })], 0)).toBe("Set 1 of 1 · Drop");
-    expect(setLabel([row({ setType: "failure" })], 0)).toBe("Set 1 of 1 · Failure");
-    expect(setLabel([row({ setType: "warmup" })], 0)).toBe("Set 1 of 1 · Warm-up");
+    expect(setLabel([row({ setType: "drop" })], 0, "drop")).toBe("Set 1 of 1 · Drop");
+    expect(setLabel([row({ setType: "failure" })], 0, "failure")).toBe("Set 1 of 1 · Failure");
+    expect(setLabel([row({ setType: "warmup" })], 0, "warmup")).toBe("Set 1 of 1 · Warm-up");
   });
   it("with no plan it is exactly today's 'Set {n + 1}'", () => {
-    expect(setLabel([], 0)).toBe("Set 1");
-    expect(setLabel([], 4)).toBe("Set 5");
+    expect(setLabel([], 0, "working")).toBe("Set 1");
+    expect(setLabel([], 4, "working")).toBe("Set 5");
+  });
+});
+
+describe("17.7 AC17 — the label names the draft's set type, not the plan row's", () => {
+  const four = [row({ setType: "warmup" }), row(), row(), row()];
+  it.each<[string, readonly PlannedSet[], number, SetType, string]>([
+    ["4 rows, row 2 working, a warm-up draft", four, 1, "warmup", "Set 2 of 4 · Warm-up"],
+    ["4 rows, row 2 working, a working draft", four, 1, "working", "Set 2 of 4"],
+    ["4 rows, row 1 a warm-up, turned to working", four, 0, "working", "Set 1 of 4"],
+    ["1 row, a failure draft", [row()], 0, "failure", "Set 1 of 1 · Failure"],
+    ["no plan, a warm-up draft", [], 2, "warmup", "Set 3 · Warm-up"],
+    ["no plan, a working draft", [], 2, "working", "Set 3"],
+    ["plan used up, a drop draft", [row()], 1, "drop", "Extra set · Drop"],
+    ["plan used up, a working draft", [row()], 1, "working", "Extra set"],
+  ])("%s", (_case, plan, logged, type, label) => {
+    expect(setLabel(plan, logged, type)).toBe(label);
   });
 });

@@ -42,11 +42,15 @@ async function active(rpe: number | null) {
 
 describe("17.1 AC1 — no RPE control in the entry row or the set edit sheet", () => {
   it("the entry row has no RPE field and no More disclosure", async () => {
-    await active(null);
+    const { user } = await active(null);
     const row = within(card());
     expect(row.queryByLabelText(/RPE/)).toBeNull();
-    expect(row.queryByText(/RPE|^More$/)).toBeNull();
+    expect(row.queryByText(/RPE/)).toBeNull();
     expect(card().querySelector("details, summary")).toBeNull();
+    // Spec 17.7 adds a More button for set type and the units; it reveals no RPE either.
+    await user.click(row.getByRole("button", { name: /^More set options for / }));
+    expect(row.queryByLabelText(/RPE/)).toBeNull();
+    expect(row.queryByText(/RPE/)).toBeNull();
   });
 
   it("the set edit sheet has no RPE field and no More disclosure, even for a set that has one", async () => {

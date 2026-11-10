@@ -75,11 +75,31 @@ export async function restBetweenSets(): Promise<void> {
   else await new Promise((resolve) => setTimeout(resolve, 650));
 }
 
-/** Spec 17.1 AC23: Set type and the unit selects sit under "Set options" in the current-set panel. */
+/** Spec 17.1 AC23: set type and the units sit under "More" in the current-set panel ("Set options" until Spec 17.7). */
 export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promise<void> {
-  const toggle = within(scope).getByRole("button", { name: "Set options" });
+  const toggle = within(scope).getByRole("button", { name: /^More set options for / });
   if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
 }
 
 /** Spec 18.0 AC34 / AC40: the header's Change Time button (live row 2, or the edit header). */
 export const changeTimeButton = (): HTMLElement => screen.getByRole("button", { name: "Change Time" });
+
+/**
+ * Spec 17.7 AC19, AC20: the superset toggles and Add / Edit note live in a card's Options; open it if it is closed.
+ * With no `name`, the live screen's current card (the only one with Options); the edit screen passes the card's name.
+ */
+export async function showOptions(user: UserEvent, name?: string | RegExp): Promise<void> {
+  const options = name === undefined ? screen.getByRole("button", { name: /^Options for / }) : optionsButton(name);
+  if (options.getAttribute("aria-expanded") !== "true") await user.click(options);
+}
+
+/** Spec 17.7 AC19: the superset toggles are in the current card's Options. */
+export const showLinks = (user: UserEvent): Promise<void> => showOptions(user);
+
+/**
+ * Spec 17.7 AC19, AC23: the live screen's toggle for the joint between `above` and `below`, from whichever side is
+ * current: "Superset with next: {below}" in the upper card's Options, "Superset with previous: {above}" in the lower's.
+ */
+export const linkToggleQuery = (above: string, below: string): RegExp =>
+  new RegExp(`^Superset with (next: ${escape(below)}|previous: ${escape(above)})$`);
+export const linkToggle = (above: string, below: string): HTMLElement => screen.getByRole("button", { name: linkToggleQuery(above, below) });

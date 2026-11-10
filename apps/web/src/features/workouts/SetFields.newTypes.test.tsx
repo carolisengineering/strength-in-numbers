@@ -19,6 +19,7 @@ function Entry({ modality, initial, onChange }: { modality: Modality; initial: S
   return (
     <SetFields
       variant="entry"
+      exerciseName="X"
       modality={modality}
       draft={draft}
       errors={{}}
@@ -30,7 +31,7 @@ function Entry({ modality, initial, onChange }: { modality: Modality; initial: S
     />
   );
 }
-const openOptions = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Set options" }));
+const openOptions = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: /^More set options for / }));
 // Labels and legends: since Spec 17.7 the unit and type controls are named by a legend.
 const optionLabels = () => [...document.querySelectorAll("label, legend")].map((l) => l.textContent);
 
@@ -41,7 +42,7 @@ describe("18.1 AC5 — calories panel", () => {
     expect(within(group).getByLabelText("Calories")).toHaveAttribute("inputmode", "numeric");
     for (const label of ["Weight", "Reps", "Distance", "Minutes", "Seconds"]) expect(screen.queryByLabelText(label)).toBeNull();
   });
-  it("Set options holds only the Set type", async () => {
+  it("More holds only the Set type", async () => {
     const user = userEvent.setup();
     render(<Entry modality="calories" initial={draftFor("calories")} />);
     await openOptions(user);
@@ -70,7 +71,7 @@ describe("18.1 AC7 — weight + distance panel", () => {
     expect(screen.getByLabelText("Distance (m)")).toBeInTheDocument();
     expect(screen.queryByLabelText("Reps")).toBeNull();
   });
-  it("Set options holds Set type, Weight unit and Distance unit (m, km, mi, ft)", async () => {
+  it("More holds Set type, Weight unit and Distance unit (m, km, mi, ft)", async () => {
     const user = userEvent.setup();
     render(<Entry modality="weight_distance" initial={draftFor("weight_distance")} />);
     await openOptions(user);
@@ -82,7 +83,7 @@ describe("18.1 AC7 — weight + distance panel", () => {
 });
 
 describe("18.1 AC8 — weight + duration panel", () => {
-  it("a Weight stepper, Minutes and Seconds; no reps; Set options has no Distance unit", async () => {
+  it("a Weight stepper, Minutes and Seconds; no reps; More has no Distance unit", async () => {
     const user = userEvent.setup();
     render(<Entry modality="weight_duration" initial={draftFor("weight_duration")} />);
     expect(screen.getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();

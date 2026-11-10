@@ -13,7 +13,7 @@ describe("18.2 AC52 — a Duration card with a stale planned row shows no reps o
       attemptKey: "k",
     });
     expect(draft.reps).toBe("8");
-    render(<SetFields variant="entry" modality="duration" draft={draft} errors={{}} idPrefix="t" onChange={() => {}} />);
+    render(<SetFields variant="entry" exerciseName="X" modality="duration" draft={draft} errors={{}} idPrefix="t" onChange={() => {}} />);
     expect(screen.queryByLabelText("Reps")).toBeNull();
     expect(screen.queryByLabelText("Weight")).toBeNull();
     expect(screen.getByLabelText("Minutes")).toBeInTheDocument();
