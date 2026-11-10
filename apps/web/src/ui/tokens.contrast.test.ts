@@ -69,8 +69,8 @@ const PAIRS: Array<[string, string[], number, string]> = [
   ["--color-danger", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 4.5, "errors, destructive (also field errors in the current-set panel)"],
   ["--color-success", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "saved"],
   ["--color-warning", ["--color-bg", "--color-surface", "--color-surface-raised"], 4.5, "needs attention"],
-  ["--color-border", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft"], 3, "control boundary (1.4.11), also inside the tinted current-set panel (Spec 17.1 D18)"],
-  ["--color-focus", ["--color-bg", "--color-surface", "--color-surface-raised"], 3, "focus ring"],
+  ["--color-border", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-signal-soft", "--color-pr-soft"], 3, "control boundary (1.4.11), also inside the tinted current-set panel (Spec 17.1 D18) and the record ledger's Show all (Spec 17.6)"],
+  ["--color-focus", ["--color-bg", "--color-surface", "--color-surface-raised", "--color-pr-soft"], 3, "focus ring (also on the record ledger's tint, Spec 17.6)"],
   ["--color-signal", ["--color-bg", "--color-surface"], 3, "superset bracket, chart stroke"],
 ];
 

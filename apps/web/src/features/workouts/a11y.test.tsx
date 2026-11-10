@@ -218,8 +218,9 @@ describe("08.0 AC23 — History and the records block, accessibly", () => {
     const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet()] }] });
     prepareApp({ auth, fake: createWorkoutFake({ finished: [workout], records: [makePersonalRecord({ workoutId: workout.id })] }) });
     renderApp(`/app/history/${workout.id}`);
-    const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByRole("heading", { level: 2, name: "Personal records" })).toBeInTheDocument();
+    // Spec 17.6 AC15: on History the ledger is "Record from this workout".
+    const block = await screen.findByRole("region", { name: "Record from this workout" });
+    expect(within(block).getByRole("heading", { level: 2, name: "Record from this workout" })).toBeInTheDocument();
     expect(within(block).getByRole("list")).toBeInTheDocument();
   });
 
@@ -513,8 +514,8 @@ describe("17.1 AC38 — no bare button names on the session screen", () => {
   });
 });
 
-describe("17.2 AC30 — the record cards are accessible", () => {
-  it("heading order is h1 then h2 then h3, the chips are plain list items, and nothing relies on color", async () => {
+describe("17.6 AC17 / 17.2 AC30 — the ledger is accessible", () => {
+  it("heading order is h1 then h2 then h3, a row holds no link or button, and the gain is text", async () => {
     const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [makeSet()] }] });
     const e = workout.exercises[0]!;
     const mine = (o: Record<string, unknown>) => makePersonalRecord({ workoutId: workout.id, exerciseId: e.exerciseId, sourceExerciseId: e.exerciseId, exerciseName: "Bench Press", sourceSetId: e.sets[0]!.id, ...o });
@@ -526,16 +527,15 @@ describe("17.2 AC30 — the record cards are accessible", () => {
       }),
     });
     renderApp(`/app/workouts/${workout.id}`);
-    const block = await screen.findByRole("region", { name: "Personal records" });
+    const block = await screen.findByRole("region", { name: "New record" });
     const levels = within(screen.getByRole("main")).getAllByRole("heading").map((h) => Number(h.tagName.slice(1)));
     expect(levels[0]).toBe(1);
     expect(levels.indexOf(2)).toBeLessThan(levels.indexOf(3));
-    expect(within(block).getByRole("heading", { level: 3, name: "Bench Press" })).toBeInTheDocument();
-    const chips = within(block).getByRole("list", { name: "Also set records for Bench Press" });
-    expect(within(chips).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Est. 1RM"]);
-    expect(within(chips).queryByRole("link")).toBeNull();
-    expect(within(chips).queryByRole("button")).toBeNull();
+    const lift = within(block).getByRole("heading", { level: 3, name: "Bench Press" }).closest("li")!;
+    expect(within(lift).queryByRole("link")).toBeNull();
+    expect(within(lift).queryByRole("button")).toBeNull();
     expect(within(block).getByText("+2.5 kg")).toBeInTheDocument(); // the gain is text, not a color
+    expect(within(block).getByText("Heaviest weight: was 100 kg, now 102.5 kg, up 2.5 kg")).toBeInTheDocument();
   });
 });
 

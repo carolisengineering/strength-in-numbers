@@ -32,7 +32,7 @@ export function groupByExercise(records: readonly PersonalRecord[]): ExerciseEnt
   );
 }
 
-/** `"Best est. 1RM 122.5 kg · Tue 6 Oct"`, or the date alone when there is no headline type (AC11). */
+/** `"Est. 1-rep max 122.5 kg · Tue 6 Oct"`, or the date alone when there is no headline type (AC11). */
 export function headlineText(entry: ExerciseEntry, pref: UnitPreference): string {
   const date = formatLocalDate(entry.newest.localDate);
   const h = entry.headline;

@@ -1,46 +1,41 @@
-import { useEffect, useId } from "react";
+import { useEffect } from "react";
 import type { UnitPreference, WorkoutDetail } from "@sin/core";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
-import { buildRecordCards, recordsNewCount } from "./recordCards";
-import { RecordCards } from "./RecordCardList";
+import { FirstTimeLines } from "./FirstTimeLines";
 import { useWorkoutRecords } from "./queries";
+import { buildRecordLedger, type LedgerSection } from "./recordLedger";
+import { RecordLedgerPanel } from "./RecordLedgerPanel";
 import styles from "./PersonalRecordsBlock.module.css";
 
 /**
- * The records this workout holds now, on the finished summary (Spec 08.0 §5.3, D14; cards since Spec 17.2). Renders nothing
- * while pending, nothing when there is nothing to show (set-volume records are not shown here, AC16), and its own notice on
- * failure beside any cards already shown: the summary never waits on it (08.0 AC19, 17.2 AC28). Progress keeps
+ * The records this workout holds now, on the finished summary (Spec 08.0 §5.3, D14; the ledger since Spec 17.6). Renders
+ * nothing while pending and nothing when there is nothing to show (set-volume records are not shown, 17.2 AC16); on a
+ * failure its notice sits beside whatever it already shows, so the summary never waits on it (08.0 AC19, 17.6 AC1). The
+ * panel holds only beaten records; first-ever numbers are quiet lines after it (17.6 AC12–AC13). Progress keeps
  * `RecordsSection`.
  */
-export function PersonalRecordsBlock({ workoutId, unitPreference, workout }: { workoutId: string; unitPreference: UnitPreference; workout: Pick<WorkoutDetail, "exercises"> }) {
+export function PersonalRecordsBlock({ workoutId, unitPreference, workout, section }: { workoutId: string; unitPreference: UnitPreference; workout: Pick<WorkoutDetail, "exercises">; section: LedgerSection }) {
   const query = useWorkoutRecords(workoutId);
-  const headingId = useId();
 
   useEffect(() => {
     if (query.error) reportUnexpected("load-records", query.error);
   }, [query.error]);
 
   if (query.isPending) return null;
-  const records = query.data ?? [];
-  const cards = buildRecordCards({ records, workout, pref: unitPreference });
-  if (!query.isError && cards.length === 0) return null;
+  const ledger = buildRecordLedger({ records: query.data ?? [], workout, pref: unitPreference, section });
+  if (!query.isError && ledger.heading === null && ledger.firsts.length === 0) return null;
 
   return (
-    <section className={styles.block} aria-labelledby={headingId}>
-      <div className={styles.header}>
-        <h2 className={styles.heading} id={headingId}>
-          Personal records
-        </h2>
-        {cards.length > 0 ? <p className={styles.count}>{recordsNewCount(records)} new</p> : null}
-      </div>
+    <div className={styles.block}>
       {query.isError ? (
         <InlineNotice tone="error" requestId={classifyWorkoutError(query.error, { op: "load-records" }).requestId} actionLabel="Try again" onAction={() => void query.refetch()}>
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {cards.length > 0 ? <RecordCards cards={cards} /> : null}
-    </section>
+      {ledger.heading === null ? null : <RecordLedgerPanel heading={ledger.heading} lifts={ledger.lifts} />}
+      {ledger.firsts.length === 0 ? null : <FirstTimeLines lines={ledger.firsts} />}
+    </div>
   );
 }

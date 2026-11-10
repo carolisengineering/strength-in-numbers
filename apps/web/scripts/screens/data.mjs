@@ -579,6 +579,48 @@ export const finishedTimed = makeWorkout(16, at(1), 40, [
     roundTimes: [{ round: 1, seconds: 140 }, { round: 2, seconds: 305 }],
   }),
 });
+// Spec 17.6 AC20: two summaries for the record ledger, kept out of `finished` (so History, `latestFinished` and the
+// computed records are unchanged) and served on their own with hand-written records (`ledgerRecords`).
+/** Seven weighted lifts that each beat a record: the ledger collapses to three behind "Show all 7 lifts". */
+export const finishedManyLifts = makeWorkout(40, at(3, 7), 62, [
+  { key: "bench_press", sets: [W(5, 85)] },
+  { key: "overhead_press", sets: [W(6, 47.5)] },
+  { key: "incline_db_press", sets: [W(8, 28)] },
+  { key: "lateral_raise", sets: [W(12, 12)] },
+  { key: "triceps_pushdown", sets: [W(10, 35)] },
+  { key: "barbell_row", sets: [W(8, 72.5)] },
+  { key: "lat_pulldown", sets: [W(10, 62.5)] },
+], { title: "Heavy everything" });
+/** Two lifts that beat records and two logged for the first time: a panel, then two quiet lines. */
+export const finishedMixed = makeWorkout(41, at(3, 10), 55, [
+  { key: "back_squat", sets: [W(5, 125)] },
+  { key: "romanian_deadlift", sets: [W(8, 105)] },
+  { key: "leg_press", sets: [W(10, 180)] },
+  { key: "barbell_curl", sets: [W(10, 32.5)] },
+], { title: "New program day" });
+const ledgerRecord = (w, i, type, value, previousValue) => {
+  const we = w.exercises[i];
+  const s = we.sets[0];
+  return { exerciseId: we.exerciseId, sourceExerciseId: we.exerciseId, exerciseName: we.exerciseNameSnapshot, recordType: type, value, unit: "kg", previousValue, sourceSetId: s.id, workoutId: w.id, achievedAt: s.completedAt, localDate: w.localDate };
+};
+// Epley, as `computeRecords` uses it, rounded to 2 decimals (that helper is declared further down).
+const e1rmOf = (w, i) => {
+  const set = w.exercises[i].sets[0];
+  return Math.round(set.weightKg * (1 + set.reps / 30) * 100) / 100;
+};
+export const ledgerRecords = [
+  ...finishedManyLifts.exercises.flatMap((we, i) => [
+    ledgerRecord(finishedManyLifts, i, "heaviest_weight", we.sets[0].weightKg, we.sets[0].weightKg - 2.5),
+    // The first two lifts also beat their est. 1-rep max (from the same set, so one "from your …" line).
+    ...(i < 2 ? [ledgerRecord(finishedManyLifts, i, "best_est_1rm", e1rmOf(finishedManyLifts, i), e1rmOf(finishedManyLifts, i) - 3)] : []),
+  ]),
+  ledgerRecord(finishedMixed, 0, "heaviest_weight", 125, 120),
+  ledgerRecord(finishedMixed, 0, "best_est_1rm", e1rmOf(finishedMixed, 0), e1rmOf(finishedMixed, 0) - 4),
+  ledgerRecord(finishedMixed, 1, "heaviest_weight", 105, 100),
+  ledgerRecord(finishedMixed, 2, "heaviest_weight", 180, null),
+  ledgerRecord(finishedMixed, 3, "heaviest_weight", 32.5, null),
+];
+
 const AT_MAIN = uuid("f2000000", 7);
 const AT_FIN = uuid("f2000000", 8);
 /** A live Conditioning workout: Main has three round times logged (so changing its format asks first). */
@@ -790,6 +832,9 @@ export function payloadChecks() {
     ["history", "WorkoutHistoryResponseSchema", history],
     ["history with the timed day", "WorkoutHistoryResponseSchema", historyTimed],
     ["finished, timed sections", "WorkoutDetailSchema", finishedTimed],
+    ["finished, seven record lifts", "WorkoutDetailSchema", finishedManyLifts],
+    ["finished, mixed records", "WorkoutDetailSchema", finishedMixed],
+    ["ledger records", "PersonalRecordsResponseSchema", { records: ledgerRecords }],
     ["active, timed sections", "WorkoutDetailSchema", activeTimed],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ["exercise usage", "ExerciseUsageResponseSchema", usage()],

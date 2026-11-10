@@ -364,8 +364,8 @@ describe("08.0 AC21 — finish lands on a summary with its PRs and no extra fetc
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
-    const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument(); // 17.2 AC15: a record card
+    const block = await screen.findByRole("region", { name: /record/i });
+    expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument(); // 17.6 AC2: a lift in the ledger
     expect(within(block).getByText("102.5 kg")).toBeInTheDocument();
     expect(fake.requests.some((r) => r.path === "/v1/personal-records")).toBe(false);
 
@@ -391,7 +391,7 @@ describe("08.0 AC7 — the 409 recovery path gets the cache effects", () => {
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
-    const block = await screen.findByRole("region", { name: "Personal records" });
+    const block = await screen.findByRole("region", { name: /record/i });
     expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument();
     expect(within(block).getByText("102.5 kg")).toBeInTheDocument();
     const gets = fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/personal-records");

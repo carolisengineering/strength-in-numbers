@@ -19,3 +19,11 @@ describe("17.2 AC29 — e1RM is rounded wherever it is shown", () => {
     expect(strip(read("../progress/metrics.ts"))).toMatch(/metric === "est1rm"[\s\S]*roundedE1rm\(/);
   });
 });
+
+describe("17.6 AC5 — no record arithmetic outside format.ts", () => {
+  it("the ledger model and its components never subtract record values", () => {
+    for (const p of ["../records/recordLedger.ts", "../records/RecordLedgerPanel.tsx", "../records/FirstTimeLines.tsx"]) {
+      expect(strip(read(p)), p).not.toMatch(/value\s*-\s/i);
+    }
+  });
+});

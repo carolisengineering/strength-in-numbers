@@ -37,7 +37,7 @@ export const NAMES = {
   /** The shell header's link to Profile, named "Profile: <display name or email>". */
   profileLink: /^Profile: /,
   benchRow: /^Barbell bench press/,
-  chartSummary: /^Est\. 1RM, 3 months:/,
+  chartSummary: /^Est\. 1-rep max, 3 months:/,
   metricGroup: "Metric",
   logIn: "Log in",
   notSavedYet: /not saved yet/i,

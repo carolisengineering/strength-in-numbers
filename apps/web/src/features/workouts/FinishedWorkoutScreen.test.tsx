@@ -276,8 +276,8 @@ describe("08.0 AC19 — the summary never waits on records", () => {
     const { user } = renderApp(`/app/workouts/${workout.id}`);
 
     expect(await screen.findByRole("region", { name: "Barbell bench press" })).toBeInTheDocument();
-    const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByRole("alert")).toHaveTextContent("Couldn't load records");
+    // Spec 17.6: a failure with nothing cached is the notice alone (no region, no heading).
+    expect(await screen.findByText("Couldn't load records")).toBeInTheDocument();
     expect(await revealDelete(user)).toBeEnabled();
     expect(screen.getByRole("link", { name: "Back to Workouts" })).toHaveAttribute("href", "/app/workouts");
   });
@@ -291,10 +291,11 @@ describe("08.0 AC19 — the summary never waits on records", () => {
     prepareApp({ auth, fake, unitPreference: "lb" });
     renderApp(`/app/workouts/${workout.id}`);
 
-    const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByRole("heading", { level: 3, name: "Barbell bench press" })).toBeInTheDocument(); // 17.2 AC15: a card
+    const block = await screen.findByRole("region", { name: /record/i });
+    expect(within(block).getByRole("heading", { level: 3, name: "Barbell bench press" })).toBeInTheDocument(); // 17.6 AC2: a lift
     expect(within(block).getByText("226 lb")).toBeInTheDocument();
-    expect(within(block).getByText("was 220.5 lb")).toBeInTheDocument();
+    expect(within(block).getByText("220.5")).toBeInTheDocument(); // 17.6 AC5: the old value drops the shared unit
+    expect(within(block).queryByText("was 220.5 lb")).toBeNull();
     // Set rows keep the unit they were entered in (Review Focus 5).
     expect(within(screen.getByRole("region", { name: "Barbell bench press" })).getByText("60 kg × 8")).toBeInTheDocument();
   });
@@ -423,16 +424,44 @@ describe("17.0 AC8 — warm-up sets are marked on the summary too", () => {
   });
 });
 
+describe("17.6 AC1 — the records come right after the date", () => {
+  it("after From routine, before the routine note, the workout notes and the stats", async () => {
+    const workout = { ...routineWorkout("Push A"), routineNotes: "Keep rest short on the accessories.", notes: "Felt strong." };
+    const fake = createWorkoutFake({ finished: [workout], records: [makePersonalRecord({ workoutId: workout.id, exerciseName: "Bench" })] });
+    prepareApp({ auth, fake });
+    renderApp(`/app/workouts/${workout.id}`);
+    const records = await screen.findByRole("region", { name: "New record" });
+    const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(follows(screen.getByText("From routine: Push A"), records)).toBe(true);
+    for (const later of [screen.getByText("Keep rest short on the accessories."), screen.getByRole("region", { name: "Workout notes" }), screen.getByText("duration")]) {
+      expect(follows(records, later)).toBe(true);
+    }
+  });
+});
+
+describe("17.6 AC15 — the same screen in History", () => {
+  it.each([
+    ["workouts", "New record"],
+    ["history", "Record from this workout"],
+  ] as const)("/app/%s/:id reads %s", async (section, name) => {
+    const workout = finished();
+    const fake = createWorkoutFake({ finished: [workout], records: [makePersonalRecord({ workoutId: workout.id, exerciseName: "Barbell bench press" })] });
+    prepareApp({ auth, fake });
+    renderApp(`/app/${section}/${workout.id}`);
+    expect(await screen.findByRole("region", { name })).toBeInTheDocument();
+  });
+});
+
 describe("18.0 AC1 — Edit workout on the summary", () => {
-  it.each(["workouts", "history"] as const)("on /app/%s/:id: a secondary button after the stats, before the records; it navigates with no request", async (section) => {
+  it.each(["workouts", "history"] as const)("on /app/%s/:id: a secondary button after the stats, with the records before both (17.6 AC1); it navigates with no request", async (section) => {
     const { fake, workout, user, router } = setup((id) => `/app/${section}/${id}`);
     fake.state.records.push(makePersonalRecord({ workoutId: workout.id }));
     const button = await screen.findByRole("button", { name: "Edit workout" });
     expect(button.className).toMatch(/_secondary_/);
     const stats = screen.getByText("duration");
-    const records = await screen.findByRole("region", { name: "Personal records" });
+    const records = await screen.findByRole("region", { name: /record/i });
     expect(stats.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(button.compareDocumentPosition(records) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(records.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const writes = () => fake.requests.filter((r) => r.method !== "GET").length;
     const before = writes();
     await user.click(button);

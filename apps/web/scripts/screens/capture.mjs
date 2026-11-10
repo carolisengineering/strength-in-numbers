@@ -204,13 +204,15 @@ function makeHandler(state) {
     } else if (m === "GET" && p === "/v1/workouts") res = json(state.historyTimed ? D.historyTimed : D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const id = decodeURIComponent(seg[1]);
-      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed].find((x) => x.id === id);
+      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed, D.finishedManyLifts, D.finishedMixed].find((x) => x.id === id);
       res = w ? json(w) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/personal-records") {
       const ex = url.searchParams.get("exerciseId");
       const wo = url.searchParams.get("workoutId");
       // Records and series resolve a fork's id to its lineage root, as the API does (07.0, 07.2 AC4).
-      res = json({ records: D.records.filter((r) => (!ex || r.exerciseId === rootIn(state, ex)) && (!wo || r.workoutId === wo)) });
+      // Spec 17.6 AC20: the ledger fixtures' records join only a workout's own read.
+      const all = wo ? [...D.records, ...D.ledgerRecords] : D.records;
+      res = json({ records: all.filter((r) => (!ex || r.exerciseId === rootIn(state, ex)) && (!wo || r.workoutId === wo)) });
     } else if (m === "GET" && (seg = /^\/v1\/progress\/exercises\/([^/]+)$/.exec(p))) {
       const series = D.progressFor(rootIn(state, decodeURIComponent(seg[1])));
       const from = url.searchParams.get("from");
@@ -728,6 +730,29 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
       })(),
     };
   }, scope);
+
+// Spec 17.6 AC4, AC20: the summary's record ledger, read in a real browser.
+const recordLedger = [];
+const measureLedger = (page) =>
+  page.evaluate(() => {
+    const nameOf = (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent ?? el.getAttribute("aria-label") ?? "";
+    const regions = [...document.querySelectorAll("section[aria-labelledby], section[aria-label]")].filter((s) => /record/i.test(nameOf(s)));
+    const panel = regions.find((s) => s.querySelector("h2")) ?? null;
+    const lifts = panel ? [...panel.querySelectorAll(":scope > ul > li")] : [];
+    const lines = panel ? [...panel.querySelectorAll("li [aria-hidden='true']")] : [];
+    const main = document.querySelector("main");
+    return {
+      recordRegions: regions.map(nameOf),
+      heading: panel ? panel.querySelector("h2").textContent : null,
+      lifts: lifts.length,
+      liftsWithoutEstimate: lifts.filter((li) => ![...li.querySelectorAll("[aria-hidden='true']")].some((l) => l.textContent.startsWith("Est. 1-rep max"))).length,
+      labels: lines.map((l) => l.firstElementChild?.textContent ?? ""),
+      toggle: panel?.querySelector(":scope > button")?.textContent ?? null,
+      firsts: [...document.querySelectorAll('ul[aria-label="First time logged"] > li')].map((li) => li.textContent),
+      overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
+      hscroll: main ? main.scrollWidth > main.clientWidth : false,
+    };
+  });
 
 // Spec 17.7 Phase B (AC16, AC22, Review Focus 4): the decluttered card and its More block, read in a real browser.
 const cardDeclutter = [];
@@ -1474,16 +1499,83 @@ try {
     // #107: Back and the Workout menu lead the summary; open, the menu reveals Delete workout.
     await page.getByRole("button", { name: "Workout menu" }).click();
     await shoot(page, device, "13a-history-detail-menu", "History detail with the Workout menu open (#107)");
-    // Spec 17.2 AC40: the summary in its other states.
-    await tryStep("record-card summaries", async () => {
-      await go(`/app/history/${D.ids.firstWorkout}`);
-      await shoot(page, device, "27-summary-first-record", "The first Push Day: the one record it still holds is a first record ('First record' in brass, no gain, no was)");
-      await go(`/app/history/${D.ids.noRecords}`);
-      await shoot(page, device, "28-summary-no-records", "A light day: stats with volume, no records section, no brass");
-      await go(`/app/history/${D.ids.volumeOnly}`);
-      await shoot(page, device, "29-summary-volume-only", "Only a set-volume record: the section is hidden and History shows no badge for it");
-      await go(`/app/history/${D.ids.plankOnly}`);
-      await shoot(page, device, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records");
+    // Spec 17.2 AC40, Spec 17.6 AC20: the summary's records in every state, checked as well as captured.
+    await tryStep("record ledger summaries", async () => {
+      const violations = [];
+      const steps = [];
+      const read = async (where) => {
+        const m = await measureLedger(page);
+        steps.push({ where, ...m });
+        return m;
+      };
+      const expect = (ok, text) => { if (!ok) violations.push(text); };
+      try {
+        await go(`/app/workouts/${D.ids.latestPush}`);
+        let m = await read("11 latest push");
+        expect(m.heading === "New records on 3 lifts", `11: heading "${m.heading}" (want "New records on 3 lifts")`);
+        expect(m.liftsWithoutEstimate === 0, `11: ${m.liftsWithoutEstimate} lift(s) without an est. 1-rep max row`);
+        await go(`/app/history/${D.ids.latestFinished}`);
+        m = await read("13 history detail");
+        expect(m.heading === null || m.heading.startsWith("Record"), `13: heading "${m.heading}" (want "Records from this workout…")`);
+        await go(`/app/history/${D.ids.firstWorkout}`);
+        m = await read("27 first record");
+        expect(m.heading === null, `27: a ledger heading "${m.heading}" on a first-records-only workout`);
+        expect(m.firsts.length >= 1, "27: no First time logged line");
+        await shoot(page, device, "27-summary-first-record", "The first Push Day: every record it still holds is a first one, so quiet First time logged lines, no panel, no brass (Spec 17.6 AC12)");
+        for (const [id, file, note] of [
+          [D.ids.noRecords, "28-summary-no-records", "A light day: stats with volume, no records, no brass"],
+          [D.ids.volumeOnly, "29-summary-volume-only", "Only a set-volume record: nothing shows, and History shows no badge for it"],
+          [D.ids.plankOnly, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records"],
+          [D.finishedTimed.id, null, null],
+        ]) {
+          await go(`/app/history/${id}`);
+          m = await read(file ?? "97 timed");
+          expect(m.recordRegions.length === 0 && m.firsts.length === 0, `${file ?? "97"}: records shown (${m.recordRegions.join(", ")}${m.firsts.join(", ")})`);
+          if (file) await shoot(page, device, file, note);
+        }
+        await go(`/app/history/${D.ids.conditioning}`);
+        m = await read("65 conditioning");
+        expect(m.labels.includes("Most calories") && m.labels.includes("Longest distance"), `65: rows ${JSON.stringify(m.labels)} (want Most calories and Longest distance)`);
+        await go(`/app/workouts/${D.finishedManyLifts.id}`);
+        m = await read("27a many lifts");
+        expect(m.heading === "New records on 7 lifts" && m.lifts === 3 && m.toggle === "Show all 7 lifts", `27a: ${m.heading} / ${m.lifts} shown / "${m.toggle}"`);
+        await shoot(page, device, "27a-summary-many-lifts", "Spec 17.6 AC11: seven lifts collapse to three behind Show all 7 lifts; the heading counts all seven");
+        await page.getByRole("button", { name: "Show all 7 lifts" }).click();
+        m = await read("27b many lifts open");
+        expect(m.lifts === 7 && m.toggle === "Show fewer", `27b: ${m.lifts} shown / "${m.toggle}"`);
+        await shoot(page, device, "27b-summary-many-lifts-open", "Spec 17.6 AC11: expanded, all seven lifts and Show fewer");
+        await go(`/app/workouts/${D.finishedMixed.id}`);
+        m = await read("27c mixed");
+        expect(m.heading === "New records on 2 lifts" && m.firsts.length === 2, `27c: ${m.heading} / ${m.firsts.length} first line(s)`);
+        await shoot(page, device, "27c-summary-mixed", "Spec 17.6 AC13: a panel for the two lifts that beat something, then two quiet First time logged lines");
+        if (device === "mobile") {
+          // AC4: at 320 × 568 nothing clips and nothing scrolls sideways.
+          await page.setViewportSize({ width: 320, height: 568 });
+          await go(`/app/workouts/${D.finishedManyLifts.id}`);
+          await page.getByRole("button", { name: "Show all 7 lifts" }).click();
+          m = await read("27d many lifts at 320");
+          expect(!m.hscroll && m.overflowingRows.length === 0, `27d: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
+          await shoot(page, device, "27d-summary-ledger-320", "Spec 17.6 AC4: the ledger at 320 × 568, rows wrapping under their labels");
+          await go(`/app/history/${D.ids.conditioning}`);
+          m = await read("27d conditioning at 320");
+          expect(!m.hscroll && m.overflowingRows.length === 0, `27d conditioning: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
+          // D6: the wider chart label fits the Metric group at 320 px.
+          await go(`/app/exercises/${D.ids.bench}`);
+          const metric = await page.getByRole("group", { name: "Metric" }).evaluate((group) => {
+            const chip = [...group.querySelectorAll("button")].find((b) => b.textContent === "Est. 1-rep max");
+            return { overflow: group.scrollWidth > group.clientWidth + 1, chip: chip ? chip.scrollWidth > chip.clientWidth + 1 : null };
+          });
+          steps.push({ where: "metric group at 320", ...metric });
+          expect(!metric.overflow, "320: the Metric group overflows");
+          expect(metric.chip === false, `320: the Est. 1-rep max chip is ${metric.chip === null ? "missing" : "clipped"}`);
+        }
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        await page.setViewportSize(opts.viewport);
+      }
+      recordLedger.push({ theme, device, steps, violations });
+      for (const v of violations) console.error(`  RECORD LEDGER ${theme}/${device}: ${v}`);
     });
 
     // Spec 18.0 AC49: the summary's Edit workout, the edit screen, its sheets and the last-set dialog.
@@ -1651,7 +1743,7 @@ try {
       await shoot(page, device, "64-progress-new-types", "Progress list rows for the new types: Most calories, Longest distance, Longest hold headlines (Spec 18.1 AC28, AC30)");
       await go(`/app/history/${D.ids.conditioning}`);
       await page.getByText("Most calories").first().scrollIntoViewIfNeeded();
-      await shoot(page, device, "65-summary-new-type-records", "Workout summary record cards: a calories card and a carry card with a Longest distance chip (Spec 18.1 AC29)");
+      await shoot(page, device, "65-summary-new-type-records", "Workout summary ledger: Most calories and a carry's Heaviest weight and Longest distance rows, meters as m (Spec 18.1 AC29, Spec 17.6 AC7)");
       const charts = [
         [D.ids.echoBike, "66-progress-calories", "Progress chart: Echo Bike, Calories metric, integer ticks (Spec 18.1 AC31, AC32)"],
         [D.ids.farmerCarry, "67-progress-carry", "Progress chart: Farmer Carry, Top set and Distance chips (Spec 18.1 AC31)"],
@@ -2267,12 +2359,18 @@ if (entryPanel.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED en
   console.error("  ENTRY PANEL: the step did not run on every device");
   process.exitCode = 1;
 }
+// Spec 17.6 AC20: the ledger checks fail the run on a violation or when the step never reported.
+if (recordLedger.some((l) => l.violations.length)) process.exitCode = 1;
+if (recordLedger.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED record ledger"))) {
+  console.error("  RECORD LEDGER: the step did not run on every device");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);
