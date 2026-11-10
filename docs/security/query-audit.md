@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-234 statements: 111 user-filtered, 54 anchored, 24 shared on purpose, 14 cross-user maintenance, 31 fragment.
+241 statements: 112 user-filtered, 54 anchored, 29 shared on purpose, 14 cross-user maintenance, 31 fragment, 1 uncategorized. **1 need review.**
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -103,6 +103,17 @@ Categories:
 | `src/db/login-check.ts#readFacts#2` | query | shared on purpose | ok | — | `4067e45b9d91` | Boot check: reads pg_roles / pg_class for roles the login could SET ROLE into (no user data) |
 | `src/db/login-check.ts#readFacts#3` | query | shared on purpose | ok | — | `80e57d027f3e` | Boot check: reads the row_security setting (no table) |
 
+## src/db/rls.ts
+
+| Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
+|---|---|---|---|---|---|---|
+| `src/db/rls.ts#rlsStatus#1` | query | shared on purpose | ok | — | `85f7fd656d23` | Reads pg_class for the RLS state of the 19 tables (no user data) |
+| `src/db/rls.ts#rlsTarget#1` | query | shared on purpose | ok | — | `31a9fe383ff0` | Reads the current database and login for db:rls's first output line (no table) |
+| `src/db/rls.ts#setRls#1` | query | shared on purpose | ok | — | `4554a9b04ca5` | Kill switch, owner login: sets its transaction's lock timeout (no table) |
+| `src/db/rls.ts#setRls#2` | query | shared on purpose | ok | — | `9b5c80c91706` | Kill switch, owner login: limits how long the lock statement can wait (no table) |
+| `src/db/rls.ts#setRls#3` | query | shared on purpose | ok | — | `904ab873f1e2` | Kill switch, owner login: locks the 19 tables up front; reads no row |
+| `src/db/rls.ts#setRls#4` | query | shared on purpose | ok | — | `48e4c93e6614` | Kill switch, owner login: ALTER TABLE ENABLE/DISABLE ROW LEVEL SECURITY; reads no row |
+
 ## src/db/scoped.ts
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
@@ -177,6 +188,7 @@ Categories:
 | `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#8` | query | user-filtered | ok | — | `0e2f4dad7651` | Inserts into hevy_account, SET |
 | `src/repositories/hevy-import.prisma.ts#insertMatchedLink#1` | query | user-filtered | ok | — | `e38a36e333e5` | Reads workout (FOR SHARE) |
 | `src/repositories/hevy-import.prisma.ts#insertMatchedLink#2` | query | user-filtered | ok | — | `d92c394ef51b` | Inserts into hevy_link |
+| `src/repositories/hevy-import.prisma.ts#insertMatchedLink#3` | query | user-filtered | ok | — | `5ff184bead2d` | After a unique violation: is this Hevy id already linked for this user? |
 | `src/repositories/hevy-import.prisma.ts#finishImport#1` | query | user-filtered | ok | — | `0d01fd6dbbb7` | Reads hevy_account (FOR UPDATE) |
 | `src/repositories/hevy-import.prisma.ts#finishImport#2` | query | user-filtered | ok | — | `25cd382df00a` | Updates hevy_account |
 

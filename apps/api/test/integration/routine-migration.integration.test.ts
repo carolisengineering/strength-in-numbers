@@ -84,7 +84,7 @@ describe.skipIf(!shouldRunIntegration())("AC27 — migration 0009 applies cleanl
     const ex = await insertExercise(db);
     const r = await routine(u);
     await insertItem(r, ex, "", "");
-    // The driver surfaces only the DETAIL line, which names the key columns, not the index.
+    // This runs on the superuser. Under RLS Postgres omits this DETAIL line, so application code must never read it (Spec 21.1 §12).
     await expect(insertItem(r, ex, "", "")).rejects.toThrow(/Key \(routine_id, "position"\)=/);
     await expect(routine(u, "push a")).rejects.toThrow(/Key \(user_id, lower\(name\)\)=/);
     const other = await insertUser(db);

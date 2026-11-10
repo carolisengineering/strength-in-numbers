@@ -4,7 +4,7 @@ import { parseUserId } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createScopedDb, type UserScopedDb } from "../../src/db/scoped.js";
-import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns, type RawPrismaError } from "../../src/repositories/pg-errors.js";
+import { isRawUniqueViolation, rawSqlState, type RawPrismaError } from "../../src/repositories/pg-errors.js";
 import { shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
 
 /**
@@ -91,7 +91,6 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 — the scoped handle on rea
         expect(isRawUniqueViolation(scoped)).toBe(isRawUniqueViolation(bare));
         expect(scoped.code).toBe(bare.code);
         expect(scoped.meta).toEqual(bare.meta);
-        expect(violatedConstraintColumns(scoped)).toBe(violatedConstraintColumns(bare));
         expect(scoped.constructor).toBe(bare.constructor);
       });
     }

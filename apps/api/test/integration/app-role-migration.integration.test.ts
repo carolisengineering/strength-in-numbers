@@ -1,6 +1,6 @@
 // apps/api/test/integration/app-role-migration.integration.test.ts
-// Spec 21.1 Phase C, AC23 — migration 0020 (role sin_app, grants, inert policies), real Postgres.
-// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from child-table-owner-migration, apps/api CLAUDE.md).
+// Spec 21.1 Phase C, AC23 — migration 0020 (role sin_app, grants, policies), real Postgres. Migrations run through 0021,
+// so RLS is on here; `enable-rls-migration` owns that state and the whole-schema no-drift check.
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -73,16 +73,11 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase C — migration 0020 (
     expect(await roleFlags()).toEqual({ rolcanlogin: false, rolsuper: false, rolbypassrls: false, rolcreatedb: false, rolcreaterole: false });
   });
 
-  it("AC23 — 23 policies, all TO sin_app, none active (RLS is off on all 19 tables)", async () => {
+  it("AC23 — 23 policies, all TO sin_app", async () => {
     const policies = await db.prisma.$queryRaw<{ policyname: string; roles: string[] }[]>`
       SELECT policyname, roles::text[] AS roles FROM pg_policies WHERE schemaname = 'public' ORDER BY policyname`;
     expect(policies.map((p) => p.policyname)).toEqual(POLICY_NAMES);
     expect(policies.every((p) => p.roles.length === 1 && p.roles[0] === "sin_app")).toBe(true);
-    const rls = await db.prisma.$queryRaw<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[]>`
-      SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
-      WHERE relnamespace = 'public'::regnamespace AND relname = ANY(${ALL_TABLES}::text[])`;
-    expect(rls.map((r) => r.relname).sort()).toEqual([...ALL_TABLES].sort());
-    expect(rls.filter((r) => r.relrowsecurity || r.relforcerowsecurity)).toEqual([]);
   });
 
   it("AC23 — the owned tables' policies are FOR ALL with the same USING and WITH CHECK", async () => {
@@ -164,29 +159,4 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase C — migration 0020 (
     expect(r.stdout).toContain("check-migrate-status: ok (up-to-date)");
     expect(r.stdout).not.toContain(owner.host);
   }, 60_000);
-
-  // Moved from child-table-owner-migration (Spec 21.1 Phase A AC5/AC6): the whole-schema no-drift check lives in the
-  // newest migration's test.
-  describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {
-    it("prisma migrate diff reports only the generated set_entry columns: the composite owner keys are in schema.prisma too", () => {
-      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-      const r = spawnSync(
-        "pnpm",
-        ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-        { cwd: apiDir, encoding: "utf8" },
-      );
-      const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-      expect(r.status, report).toBe(2);
-      const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-      // schema.prisma declares each parent link as the composite owner relation 0019 created, so the only difference
-      // left is the long-standing one: the two generated set_entry columns (Specs 05.1, 05.3). 0020's role, grants,
-      // functions and policies are outside Prisma's model.
-      const expected = [
-        "[*] Changed the `set_entry` table",
-        expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
-        expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
-      ];
-      expect(changeLines, report).toEqual(expected);
-    });
-  });
 });

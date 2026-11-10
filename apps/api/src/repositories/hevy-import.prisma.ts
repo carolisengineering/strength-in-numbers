@@ -30,7 +30,7 @@ import {
   type HevyLinkHit,
   type WriteOutcome,
 } from "./hevy-import.js";
-import { isRawUniqueViolation, rawSqlState, violatedConstraintColumns } from "./pg-errors.js";
+import { isRawUniqueViolation, rawSqlState } from "./pg-errors.js";
 import { assertSetMeasuresValid } from "./set-writes.js";
 import { readWorkoutDetail } from "./workout.prisma.js";
 
@@ -283,7 +283,11 @@ export function createHevyImportRepository(db: UserScopedDb | PrismaClient, seam
       });
     } catch (err) {
       if (!isRawUniqueViolation(err)) throw err;
-      return violatedConstraintColumns(err) === "workout_id" ? "taken" : "already_imported";
+      // Two unique indexes can fire here and nothing can read which did (pg-errors.ts), so ask after the rollback. If the
+      // Hevy id is linked, this workout is imported, whichever index fired; otherwise the candidate is what was taken.
+      const holder = await c.$queryRaw<{ id: string }[]>`
+        SELECT id::text FROM "hevy_link" WHERE user_id = ${userId}::uuid AND hevy_workout_id = ${hevyWorkoutId}`;
+      return holder.length > 0 ? "already_imported" : "taken";
     }
   }
 

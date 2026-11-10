@@ -69,6 +69,7 @@ export interface AuditRow {
  * can't carry request input. Every one builds SQL from code constants (column lists, aliases, table names).
  */
 export const UNSAFE_ALLOWLIST: Record<string, string> = {
+  "src/db/rls.ts#setRls": "Table names come only from the constant RLS_LOCK_ORDER / RLS_TABLES, through quoteIdent; DDL cannot take bound parameters.",
   "src/repositories/exercise.prisma.ts#exerciseColumns":
     "Joins the constant EXERCISE_DB_COLUMNS list, optionally prefixed by a table alias every caller passes as a literal (`e`).",
   "src/repositories/planned-sets.ts#plannedSetsJson":

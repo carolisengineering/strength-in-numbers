@@ -10,6 +10,7 @@ import { pino } from "pino";
 import { rebuildRecords } from "../src/records/rebuild.js";
 import { createHevyImportRepository } from "../src/repositories/hevy-import.prisma.js";
 import { createScopedDb } from "../src/db/scoped.js";
+import { assertMeasuringAsApp, benchLoginLine } from "./lib/bench-login.js";
 import { startIntegrationDb } from "../test/integration/helpers.js";
 import { seedPairs } from "../test/integration/hevy-import-helpers.js";
 import { insertExercise, insertUser } from "../test/integration/records-helpers.js";
@@ -85,8 +86,9 @@ try {
     };
   });
 
-  // Spec 21.1 Phase B: measured through the scoped handle, as server.ts wires it; fixtures stay on the owner client.
-  const repo = createHevyImportRepository(createScopedDb(db.prisma));
+  // Spec 21.1 AC37: measured through sin_app with RLS on, as server.ts wires it; fixtures stay on the owner client.
+  process.stdout.write(`${benchLoginLine(await assertMeasuringAsApp(db.app))}\n`);
+  const repo = createHevyImportRepository(createScopedDb(db.app));
   const batches: number[] = [];
   let matched = 0;
   for (let i = 0; i < workouts.length; i += HEVY_IMPORT_BATCH_MAX) {

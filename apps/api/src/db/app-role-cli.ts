@@ -58,7 +58,7 @@ function describeReport(r: AppRoleReport): string {
 }
 
 /** An error's text with every secret replaced: the message of a failed connect or statement may quote either. */
-function redacted(err: unknown, secrets: readonly string[]): string {
+export function redacted(err: unknown, secrets: readonly string[]): string {
   const name = (err as Error)?.constructor?.name ?? typeof err;
   let message = err instanceof Error ? err.message : String(err);
   // Longest first, so a whole URL goes before its password would break the match (scrubDatabaseUrl does the same).

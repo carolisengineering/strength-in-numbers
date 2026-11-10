@@ -19,7 +19,7 @@ import {
   ValidationError,
   type FieldError,
 } from "../errors/app-error.js";
-import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
+import { isRawUniqueViolation } from "./pg-errors.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import { deleteExpiredOneOffs, keepOneOff, sweepExpiredOneOffs } from "./routine-one-off.prisma.js";
 import { timerFromColumns, timerToColumns, type TimerColumns } from "./section-timer-columns.js";
@@ -256,10 +256,10 @@ async function insertItems(
   return rowValues.length;
 }
 
-/** The DETAIL line of a `routine_user_name_key` violation lists the index's
- * key expressions; any other 23505 here is a bug and surfaces as a 500. */
+/** For the one statement each caller wraps: a create's `INSERT` (a fresh uuidv7 `id`) or a replace's `UPDATE` (which sets
+ * no key but `name`) can hit only `routine_user_name_key`. Nothing here can read the index's name (pg-errors.ts). */
 function nameTaken(err: unknown): boolean {
-  return isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id, lower(name)";
+  return isRawUniqueViolation(err);
 }
 
 export function createRoutineRepository(db: UserScopedDb | PrismaClient): RoutineRepository {

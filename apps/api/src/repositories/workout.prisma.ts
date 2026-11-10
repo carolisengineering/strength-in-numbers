@@ -19,7 +19,7 @@ import {
   WorkoutInProgressExistsError,
 } from "../errors/app-error.js";
 import type { ExerciseRepository } from "./exercise.js";
-import { isRawUniqueViolation, violatedConstraintColumns } from "./pg-errors.js";
+import { isRawUniqueViolation } from "./pg-errors.js";
 import { plannedSetsJson, toPlannedSet, type PlannedSetDbRow } from "./planned-sets.js";
 import { timedFieldsFromColumns, timedFieldsJson, type TimedColumns } from "./section-timer-columns.js";
 import type {
@@ -418,10 +418,10 @@ export function createWorkoutRepository(
         ? { kind: "inserted", row: insertedRow, copiedCount: 0, plannedSetCount: 0, sectionCount: 0, timedSectionCount: 0 }
         : { kind: "no-row" };
     } catch (err) {
-      if (isRawUniqueViolation(err) && violatedConstraintColumns(err) === "user_id") {
-        return { kind: "active-conflict" };
-      }
-      throw err; // a 23505 on any other constraint is a bug -> surfaces as 500 (D40)
+      // `ON CONFLICT` absorbs the client id key and `id` is a fresh uuidv7, so the one unique index this statement can
+      // hit is `workout_user_active_key` (Spec 05.0 D40). Nothing here can read the index's name (pg-errors.ts).
+      if (isRawUniqueViolation(err)) return { kind: "active-conflict" };
+      throw err;
     }
   }
 
