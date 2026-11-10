@@ -94,3 +94,35 @@ export function formatE1rmGain(newKg: number, prevKg: number, pref: UnitPreferen
 export function formatRecordByType(recordType: RecordType, value: number, unit: RecordUnit, pref: UnitPreference): string {
   return recordType === "best_est_1rm" ? roundedE1rm(value, pref) : formatRecordValue(value, unit, pref);
 }
+
+/** Spec 17.6 AC4–AC6: a record's ledger figure. `oldText` and `gainText` are null for a value-only row. */
+export interface RecordPairText {
+  readonly newText: string;
+  /** The old value, without a suffix unit the new value carries ("80"); seconds keep their words ("1 min 30 s"). */
+  readonly oldText: string | null;
+  readonly gainText: string | null;
+  /** The sentence a screen reader hears, without the label: "was 80 kg, now 82.5 kg, up 2.5 kg", or "94 kg". */
+  readonly spoken: string;
+}
+
+// The suffix units a figure's new value carries for both sides; a duration ("1 min 30 s") has none of them.
+const SUFFIX_UNIT = / (kg|lb|reps?|cal|m)$/;
+
+/**
+ * Spec 17.6 AC5 (D2): old → new and the gain for one record, the only arithmetic on record values in the web. An est.
+ * 1-rep max gains by its rounded values (17.2 AC22); every other type by the exact difference through
+ * `formatRecordValue`. A first record, a rise that rounds away, or two values that read the same in the lifter's unit
+ * (a lb account, stored 100 and 100.017 kg) is value only, so no row ever says "+0" or "220.5 → 220.5".
+ */
+export function formatRecordPair(
+  record: { readonly recordType: RecordType; readonly value: number; readonly previousValue: number | null; readonly unit: RecordUnit },
+  pref: UnitPreference,
+): RecordPairText {
+  const newText = formatRecordByType(record.recordType, record.value, record.unit, pref);
+  const valueOnly = { newText, oldText: null, gainText: null, spoken: newText };
+  if (record.previousValue === null) return valueOnly;
+  const oldFull = formatRecordByType(record.recordType, record.previousValue, record.unit, pref);
+  const gainText = record.recordType === "best_est_1rm" ? formatE1rmGain(record.value, record.previousValue, pref) : `+${formatRecordValue(record.value - record.previousValue, record.unit, pref)}`;
+  if (gainText === null || oldFull === newText) return valueOnly;
+  return { newText, oldText: oldFull.replace(SUFFIX_UNIT, ""), gainText, spoken: `was ${oldFull}, now ${newText}, up ${gainText.slice(1)}` };
+}
