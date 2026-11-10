@@ -23,7 +23,7 @@ import { makePersonalRecord, makeProgressPoint, makeRoutine, makeRoutineItem, ma
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { catalog, pushSectioned } from "../../test/routineFixtures";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card, deleteSetIn, finishButton, logButton, makeCurrent, openSetOptions, optionsButton, showLinks } from "../../test/sessionHelpers";
+import { card, deleteSetIn, finishButton, linkToggleQuery, logButton, makeCurrent, openSetOptions, optionsButton, showLinks } from "../../test/sessionHelpers";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -359,15 +359,15 @@ describe("10.1 AC27 — session supersets, accessibly", () => {
     expect(screen.getByRole("article", { name: "A, superset 1, 3 sets" })).toBeInTheDocument();
     expect(screen.getByRole("article", { name: "E, superset 2" })).toBeInTheDocument();
     await showLinks(user); // Spec 17.7 AC19: the toggles are in the current card's Options
-    const linked = screen.getByRole("button", { name: "Superset A with B" });
+    const linked = screen.getByRole("button", { name: linkToggleQuery("A", "B") });
     expect(linked.tagName).toBe("BUTTON");
     expect(linked).toHaveAttribute("aria-pressed", "true");
     await makeCurrent(user, /^I,/); // Spec 17.1 AC16: toggles show only for the current card
     await showLinks(user);
-    expect(screen.getByRole("button", { name: "Superset I with J" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: linkToggleQuery("I", "J") })).toHaveAttribute("aria-pressed", "false");
     await makeCurrent(user, /^D,/);
     await showLinks(user);
-    const capped = screen.getByRole("button", { name: "Superset D with E" });
+    const capped = screen.getByRole("button", { name: linkToggleQuery("D", "E") });
     expect(capped).toBeDisabled();
     expect(document.getElementById(capped.getAttribute("aria-describedby")!)).toHaveTextContent("A superset can have up to 8 exercises");
     const brackets = document.querySelectorAll("[data-bracket]");
@@ -952,8 +952,8 @@ describe("17.7 AC23 — the live card with Options and More open, axe", () => {
     const { user } = await live();
     await user.click(optionsButton(/^B,/));
     expect(screen.getByRole("button", { name: "Edit note for B" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Superset A with B" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Superset B with C" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("A", "B") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("B", "C") })).toBeInTheDocument();
     await expectNoAxeViolations(document.body);
   });
 

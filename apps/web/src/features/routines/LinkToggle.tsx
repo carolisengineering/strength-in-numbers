@@ -14,7 +14,8 @@ export interface LinkToggleProps {
   disabled?: boolean;
   /**
    * Spec 17.7 AC19: inside a card's Options the toggle names its neighbor's side ("Superset with previous" / "with
-   * next"), full width, check beside the text when linked. Absent: today's toggle between two cards, unchanged.
+   * next"), full width, check beside the text when linked; its name is the text plus the neighbor ("Superset with
+   * next: Lateral Raise"). Absent: today's toggle between two cards ("Superset {above} with {below}"), unchanged.
    */
   direction?: "previous" | "next";
 }
@@ -24,18 +25,20 @@ export function LinkToggle({ id, above, below, linked, refusal, onToggle, disabl
   const reasonId = `${id}-reason`;
   const blocked = !linked && refusal !== null;
   if (direction) {
+    const text = `Superset with ${direction}`;
     return (
       <div className={`${styles.link} ${styles.linkFlush}`}>
         <Button
           variant="secondary"
           block
           aria-pressed={linked}
-          aria-label={`Superset ${above} with ${below}`}
+          // Spec 17.7 AC23 (WCAG 2.5.3, as 17.1 AC38): the name starts with the visible text, then names the neighbor.
+          aria-label={`${text}: ${direction === "previous" ? above : below}`}
           disabled={blocked || disabled}
           {...(blocked ? { "aria-describedby": reasonId } : {})}
           onClick={onToggle}
         >
-          {`Superset with ${direction}`}
+          {text}
           {linked ? <CheckIcon className={styles.linkCheck} /> : null}
         </Button>
         {blocked ? (

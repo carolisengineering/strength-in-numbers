@@ -95,3 +95,11 @@ export async function showOptions(user: UserEvent, name?: string | RegExp): Prom
 
 /** Spec 17.7 AC19: the superset toggles are in the current card's Options. */
 export const showLinks = (user: UserEvent): Promise<void> => showOptions(user);
+
+/**
+ * Spec 17.7 AC19, AC23: the live screen's toggle for the joint between `above` and `below`, from whichever side is
+ * current: "Superset with next: {below}" in the upper card's Options, "Superset with previous: {above}" in the lower's.
+ */
+export const linkToggleQuery = (above: string, below: string): RegExp =>
+  new RegExp(`^Superset with (next: ${escape(below)}|previous: ${escape(above)})$`);
+export const linkToggle = (above: string, below: string): HTMLElement => screen.getByRole("button", { name: linkToggleQuery(above, below) });

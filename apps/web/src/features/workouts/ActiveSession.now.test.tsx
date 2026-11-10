@@ -15,7 +15,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
-import { card, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
+import { card, linkToggleQuery, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -117,12 +117,12 @@ describe("17.1 AC16 — brackets, sections and link toggles", () => {
     expect(screen.queryAllByRole("button", { name: /^Superset / })).toHaveLength(0);
     expect(card(/^B,/).closest("[class*='grouped']")).not.toBeNull(); // a run's card is named by its label ("B, superset 1")
     await showLinks(user);
-    expect(screen.getByRole("button", { name: "Superset A with B" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Superset B with C" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("A", "B") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: linkToggleQuery("B", "C") })).not.toBeInTheDocument();
     await makeCurrent(user, /^B,/);
     await showLinks(user);
-    expect(screen.getByRole("button", { name: "Superset A with B" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Superset B with C" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("A", "B") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: linkToggleQuery("B", "C") })).toBeInTheDocument();
   });
 
   it("collapsed rows sit under their section headings", async () => {

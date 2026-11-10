@@ -19,7 +19,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makeWorkoutDetail, type ExerciseSpec, type WorkoutDetailOptions } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
+import { linkToggleQuery, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -78,13 +78,13 @@ describe("10.3 AC26 — moves and links stay inside a section", () => {
   it("the link toggle exists only between cards of the same segment; no body ever names sectionId or notes", async () => {
     const { user, fake } = await setup(SECTIONED);
     await showLinks(user); // Spec 17.7 AC19: the toggles are in the current card's Options
-    expect(screen.queryByRole("button", { name: "Superset a3 with b1" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Superset b2 with tail" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Superset a1 with a2" }));
+    expect(screen.queryByRole("button", { name: linkToggleQuery("a3", "b1") })).toBeNull();
+    expect(screen.queryByRole("button", { name: linkToggleQuery("b2", "tail") })).toBeNull();
+    await user.click(screen.getByRole("button", { name: linkToggleQuery("a1", "a2") }));
     await makeCurrent(user, "b1"); // Spec 17.1 AC16: the toggle shows only for the current card
     await showLinks(user);
-    expect(screen.queryByRole("button", { name: "Superset a3 with b1" })).toBeNull();
-    await user.click(await screen.findByRole("button", { name: "Superset b1 with b2" }));
+    expect(screen.queryByRole("button", { name: linkToggleQuery("a3", "b1") })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: linkToggleQuery("b1", "b2") }));
     await waitFor(() => expect(bodies(fake).length).toBeGreaterThanOrEqual(2));
     for (const body of bodies(fake)) {
       expect(Object.keys(body).every((k) => k === "position" || k === "supersetGroup")).toBe(true);
@@ -94,11 +94,11 @@ describe("10.3 AC26 — moves and links stay inside a section", () => {
   it("each section numbers its runs by itself, and the screen shows the on-screen ordinal", async () => {
     const { user } = await setup(SECTIONED);
     await showLinks(user);
-    await user.click(screen.getByRole("button", { name: "Superset a1 with a2" }));
+    await user.click(screen.getByRole("button", { name: linkToggleQuery("a1", "a2") }));
     await waitFor(() => expect(screen.getByRole("article", { name: "a1, superset 1" })).toBeInTheDocument());
     await makeCurrent(user, "b1"); // Spec 17.1 AC16
     await showLinks(user);
-    await user.click(screen.getByRole("button", { name: "Superset b1 with b2" }));
+    await user.click(screen.getByRole("button", { name: linkToggleQuery("b1", "b2") }));
     // the planner may reuse the stored number 1 in B; runs end at the heading, so B's run is 'superset 2' on screen
     await waitFor(() => expect(screen.getByRole("article", { name: "b1, superset 2" })).toBeInTheDocument());
   });

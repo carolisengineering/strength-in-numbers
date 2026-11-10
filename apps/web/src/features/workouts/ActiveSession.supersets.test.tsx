@@ -22,7 +22,7 @@ import { server } from "../../test/msw/server";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
-import { card as cardByName, finishButton, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
+import { card as cardByName, finishButton, linkToggle, makeCurrent, optionsButton, showLinks } from "../../test/sessionHelpers";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -56,7 +56,8 @@ const patches = (fake: Fake) =>
     .filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workout-exercises/"))
     .map((r) => [nameOf(fake, decodeURIComponent(r.path.split("/").pop()!)), r.body]);
 const activeReads = (fake: Fake) => fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
-const toggle = (above: string, below: string) => screen.getByRole("button", { name: `Superset ${above} with ${below}` });
+/** Spec 17.7 AC19, AC23: the joint's toggle in the current card's Options, from either side. */
+const toggle = linkToggle;
 /** A superset member's article is named by its label ("B, superset 1"), so match the name up to the comma. */
 const label = (name: string) => new RegExp(`^${name}(,|$)`);
 const card = (name: string) => cardByName(label(name));
@@ -310,11 +311,13 @@ describe("17.7 AC19 — Superset in Options", () => {
     expect(brackets()).toContain("middle");
   });
 
-  it("the middle card has previous and next; the first only next; the last only previous; names keep upper-with-lower", async () => {
+  it("the middle card has previous and next; the first only next; the last only previous; each name starts with its text and names the neighbor", async () => {
     const { user } = await setup([ex("A"), ex("B"), ex("C")]);
     await openOptions(user, "B");
     expect(visible("B")).toEqual(["Superset with previous", "Superset with next"]);
-    expect(inOptions("B").map((b) => b.getAttribute("aria-label"))).toEqual(["Superset A with B", "Superset B with C"]);
+    // 17.7 AC23 (WCAG 2.5.3, as 17.1 AC38): the name starts with the visible text, then names the neighbor.
+    expect(inOptions("B").map((b) => b.getAttribute("aria-label"))).toEqual(["Superset with previous: A", "Superset with next: C"]);
+    for (const b of inOptions("B")) expect(b.getAttribute("aria-label")!.startsWith(b.textContent!)).toBe(true);
     await openOptions(user, "A");
     expect(visible("A")).toEqual(["Superset with next"]);
     await openOptions(user, "C");
