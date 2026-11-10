@@ -131,6 +131,15 @@ describe("17.6 AC10 / 17.2 AC25 — order", () => {
   });
 });
 
+describe("17.6 AC10 — a lift is named by a row it shows", () => {
+  it("when a hidden first record carries another snapshot name, the lift takes the shown row's name", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    const l = ledger([rec(w, 0, { ...heaviest(190, null), exerciseName: "Bench Press" }), rec(w, 0, { ...estimate(225, 215), exerciseName: "Bench Press (paused)" })], w);
+    expect(l.lifts[0]!.rows.map((r) => r.type)).toEqual(["best_est_1rm"]);
+    expect(l.lifts[0]!.name).toBe("Bench Press (paused)");
+  });
+});
+
 describe("17.6 AC12 — first times are quiet lines", () => {
   it("a first heaviest", () => {
     const w = workoutOf([lift("Triceps Pushdown")]);

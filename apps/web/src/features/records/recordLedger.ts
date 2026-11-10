@@ -92,12 +92,13 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
   type Built = { order: number; name: string } & ({ kind: "lift"; lift: LedgerLift } | { kind: "first"; first: FirstTimeLine });
   const built: Built[] = [...groups.entries()].map(([key, group]) => {
     const ordered = [...group].sort((a, b) => typeOrder(a) - typeOrder(b));
-    const name = ordered[0]!.exerciseName;
     const slots = group.map((r) => position.get(r.sourceExerciseId)).filter((n): n is number => n !== undefined);
     const order = slots.length > 0 ? Math.min(...slots) : Number.POSITIVE_INFINITY;
     const beaten = ordered.filter((r) => r.previousValue !== null).map((r) => ({ record: r, pair: formatRecordPair(r, pref) }));
     // AC6 (17.2 D16): an est. 1-rep max whose rounded gain is not a rise is dropped while another beaten row shows.
     const shown = beaten.filter((b) => !(b.record.recordType === "best_est_1rm" && b.pair.gainText === null && beaten.length > 1));
+    // Each record carries its own source snapshot's name: name the lift by a row it shows, else by its lead record.
+    const name = (shown[0]?.record ?? ordered[0]!).exerciseName;
     if (shown.length === 0) {
       // AC12 (D1): a lift that beat nothing is one quiet line, led by its first record in type order.
       const lead = ordered[0]!;
