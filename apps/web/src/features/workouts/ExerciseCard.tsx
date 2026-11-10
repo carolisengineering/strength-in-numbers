@@ -200,7 +200,8 @@ export function ExerciseCard({
           >
             {hasNote ? "Edit note" : "Add note"}
           </Button>
-          {/* Spec 17.7 AC19: names stay "Superset {upper} with {lower}", whichever side the card is on. */}
+          {/* Spec 17.7 AC19, AC23: "Superset with previous: {neighbor}" / "Superset with next: {neighbor}"; either side of a
+              joint sends the same regroup (upperId is always the upper card). */}
           {linkAbove ? (
             <LinkToggle
               id={`link-above-${exercise.id}`}
