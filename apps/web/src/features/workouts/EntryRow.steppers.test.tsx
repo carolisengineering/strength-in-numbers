@@ -44,24 +44,24 @@ const panel = () => within(card("X"));
 describe("17.1 AC18 — the weight stepper", () => {
   it("steps 5 lb by the draft's unit and writes the formatted value", async () => {
     const { user } = await setup([X({ sets: [lbSet] })]);
-    await user.click(panel().getByRole("button", { name: "Increase weight by 5 lb" }));
+    await user.click(panel().getByRole("button", { name: "+5 lb, increase weight for X" }));
     expect(panel().getByLabelText("Weight")).toHaveValue("190");
-    await user.click(panel().getByRole("button", { name: "Decrease weight by 5 lb" }));
-    await user.click(panel().getByRole("button", { name: "Decrease weight by 5 lb" }));
+    await user.click(panel().getByRole("button", { name: "\u22125 lb, decrease weight for X" }));
+    await user.click(panel().getByRole("button", { name: "\u22125 lb, decrease weight for X" }));
     expect(panel().getByLabelText("Weight")).toHaveValue("180");
   });
 
   it("disables − at 0 (blank counts as 0) and + at SET_WEIGHT_MAX", async () => {
     const { user } = await setup([X()]);
-    expect(panel().getByRole("button", { name: "Decrease weight by 5 lb" })).toBeDisabled();
+    expect(panel().getByRole("button", { name: "\u22125 lb, decrease weight for X" })).toBeDisabled();
     await user.type(panel().getByLabelText("Weight"), "9999.999");
-    expect(panel().getByRole("button", { name: "Increase weight by 5 lb" })).toBeDisabled();
+    expect(panel().getByRole("button", { name: "+5 lb, increase weight for X" })).toBeDisabled();
   });
 
   it("weighted bodyweight labels it Added weight and has both steppers", async () => {
     await setup([X({ modality: "weighted_bodyweight" })]);
     expect(panel().getByLabelText("Added weight")).toBeInTheDocument();
-    expect(panel().getByRole("button", { name: "Increase reps" })).toBeInTheDocument();
+    expect(panel().getByRole("button", { name: "+1, increase reps for X" })).toBeInTheDocument();
     expect(panel().getByRole("group", { name: "Added weight · lb" })).toBeInTheDocument();
   });
 });
@@ -69,11 +69,11 @@ describe("17.1 AC18 — the weight stepper", () => {
 describe("17.1 AC19 — the reps stepper", () => {
   it("steps by one from blank and floors at 0", async () => {
     const { user } = await setup([X()]);
-    await user.click(panel().getByRole("button", { name: "Increase reps" }));
+    await user.click(panel().getByRole("button", { name: "+1, increase reps for X" }));
     expect(panel().getByLabelText("Reps")).toHaveValue("1");
-    await user.click(panel().getByRole("button", { name: "Decrease reps" }));
+    await user.click(panel().getByRole("button", { name: "\u22121, decrease reps for X" }));
     expect(panel().getByLabelText("Reps")).toHaveValue("0");
-    expect(panel().getByRole("button", { name: "Decrease reps" })).toBeDisabled();
+    expect(panel().getByRole("button", { name: "\u22121, decrease reps for X" })).toBeDisabled();
   });
 });
 
@@ -97,7 +97,7 @@ describe("17.1 AC20 — the number is still an input", () => {
 describe("17.1 AC21 — a stepper tap is an edit", () => {
   it("persists the draft (06.5 AC6) and is never overwritten by a count change (10.2 AC25)", async () => {
     const { user } = await setup([X({ sets: [lbSet] })]);
-    await user.click(panel().getByRole("button", { name: "Increase reps" }));
+    await user.click(panel().getByRole("button", { name: "+1, increase reps for X" }));
     await waitFor(() => expect(JSON.parse(localStorageAdapter().get(DRAFTS_KEY) ?? "{}").byExercise).toBeTruthy());
     const stored = JSON.parse(localStorageAdapter().get(DRAFTS_KEY)!);
     expect(Object.values(stored.byExercise as Record<string, { reps: string }>)[0]!.reps).toBe("6");
@@ -105,7 +105,7 @@ describe("17.1 AC21 — a stepper tap is an edit", () => {
 
   it("set_logged reports edited: true after a stepper tap (the log button is the card's until Task 10, then the bar's)", async () => {
     const { user } = await setup([X({ sets: [lbSet] })]);
-    await user.click(panel().getByRole("button", { name: "Increase reps" }));
+    await user.click(panel().getByRole("button", { name: "+1, increase reps for X" }));
     await user.click(logButton("X"));
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("set_logged", expect.objectContaining({ edited: true })));
   });
@@ -113,9 +113,9 @@ describe("17.1 AC21 — a stepper tap is an edit", () => {
 
 describe("17.1 AC22 — other modalities", () => {
   it.each([
-    ["bodyweight_reps", ["Increase reps"], ["Increase weight by 5 lb"], []],
-    ["duration", [], ["Increase reps", "Increase weight by 5 lb"], ["Minutes", "Seconds"]],
-    ["distance_duration", [], ["Increase reps", "Increase weight by 5 lb"], ["Distance", "Minutes", "Seconds"]],
+    ["bodyweight_reps", ["+1, increase reps for X"], ["+5 lb, increase weight for X"], []],
+    ["duration", [], ["+1, increase reps for X", "+5 lb, increase weight for X"], ["Minutes", "Seconds"]],
+    ["distance_duration", [], ["+1, increase reps for X", "+5 lb, increase weight for X"], ["Distance", "Minutes", "Seconds"]],
   ] as const)("%s", async (modality, shown, hidden, fields) => {
     await setup([X({ modality })]);
     for (const name of shown) expect(panel().getByRole("button", { name })).toBeInTheDocument();
@@ -130,9 +130,9 @@ describe("17.1 AC23 — set type and unit stay reachable", () => {
     expect(panel().queryByRole("group", { name: "Set type" })).toBeNull();
     await openSetOptions(user, card("X"));
     expect(segmented("Set type", card("X"))).toBeInTheDocument();
-    expect(panel().getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
+    expect(panel().getByRole("button", { name: "+2.5 kg, increase weight for X" })).toBeInTheDocument();
     await chooseSegment(user, "Weight unit", "lb", card("X"));
-    await user.click(panel().getByRole("button", { name: "Increase weight by 5 lb" }));
+    await user.click(panel().getByRole("button", { name: "+5 lb, increase weight for X" }));
     expect(panel().getByLabelText("Weight")).toHaveValue("65");
   });
 
@@ -158,6 +158,55 @@ describe("17.1 AC23 — set type and unit stay reachable", () => {
     const form = panel().getByRole("form", { name: "Log a set of X" });
     expect(within(form).getByText("Set 1 of 2 · Warm-up")).toBeInTheDocument();
     expect(form).toHaveAttribute("data-set-type", "warmup");
+  });
+});
+
+describe("17.8 AC3 — the buttons show their step", () => {
+  const stepButtons = (scope: HTMLElement) => within(scope).getAllByRole("button").filter((b) => b.closest("[data-stepper-row]") !== null);
+
+  it("lb weight shows −5 / +5, reps −1 / +1, and no step button holds an icon", async () => {
+    await setup([X({ sets: [lbSet] })]);
+    expect(stepButtons(card("X")).map((b) => b.textContent)).toEqual(["−5", "+5", "−1", "+1"]);
+    for (const button of stepButtons(card("X"))) expect(button.querySelector("svg")).toBeNull();
+  });
+
+  it("kg weight shows −2.5 / +2.5", async () => {
+    await setup([X({ sets: [makeSet({ setNumber: 1, weight: 60, weightUnit: "kg", reps: 8 })] })], "kg");
+    expect(stepButtons(card("X")).slice(0, 2).map((b) => b.textContent)).toEqual(["−2.5", "+2.5"]);
+  });
+
+  it("calories show −5 / +5", async () => {
+    await setup([X({ modality: "calories" })]);
+    expect(stepButtons(card("X")).map((b) => b.textContent)).toEqual(["−5", "+5"]);
+  });
+});
+
+describe("17.8 AC4 — names", () => {
+  it("weight and reps name their step and the exercise", async () => {
+    await setup([X({ name: "Overhead Press", sets: [lbSet] })]);
+    const press = within(card("Overhead Press"));
+    expect(press.getByRole("button", { name: "−5 lb, decrease weight for Overhead Press" })).toHaveTextContent(/^−5$/);
+    expect(press.getByRole("button", { name: "+5 lb, increase weight for Overhead Press" })).toBeInTheDocument();
+    expect(press.getByRole("button", { name: "+1, increase reps for Overhead Press" })).toHaveTextContent(/^\+1$/);
+    expect(press.getByRole("button", { name: "−1, decrease reps for Overhead Press" })).toBeInTheDocument();
+  });
+
+  it("calories name their step and the exercise", async () => {
+    await setup([X({ name: "Echo Bike", modality: "calories" })]);
+    expect(within(card("Echo Bike")).getByRole("button", { name: "−5, decrease calories for Echo Bike" })).toBeInTheDocument();
+    expect(within(card("Echo Bike")).getByRole("button", { name: "+5, increase calories for Echo Bike" })).toBeInTheDocument();
+  });
+
+  it("a unit change in More renames the button by the new step", async () => {
+    const { user } = await setup([X({ sets: [lbSet] })]);
+    await openSetOptions(user, card("X"));
+    await chooseSegment(user, "Weight unit", "kg", card("X"));
+    expect(panel().getByRole("button", { name: "+2.5 kg, increase weight for X" })).toHaveTextContent(/^\+2\.5$/);
+  });
+
+  it("a weighted bodyweight's button still says weight, though its label is Added weight", async () => {
+    await setup([X({ modality: "weighted_bodyweight" })]);
+    expect(panel().getByRole("button", { name: "+5 lb, increase weight for X" })).toBeInTheDocument();
   });
 });
 

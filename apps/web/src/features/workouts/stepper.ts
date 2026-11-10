@@ -59,3 +59,19 @@ export function caloriesAtLimit(text: string, direction: StepDirection): boolean
   const calories = toWhole(text);
   return direction === "up" ? calories >= SET_CALORIES_MAX : calories <= 0;
 }
+
+/** Spec 17.8 AC3: the true minus sign (U+2212), never an ASCII hyphen, in every visible step and name. */
+export const MINUS = "−";
+
+/** A step button's visible text: "−5", "+2.5". `step` may carry a unit ("5 lb") for a name. */
+export function stepText(direction: StepDirection, step: number | string): string {
+  return `${direction === "up" ? "+" : MINUS}${step}`;
+}
+
+/**
+ * Spec 17.8 AC4: the accessible name starts with the visible text (WCAG 2.5.3) and names the exercise (17.1 AC38):
+ * "−5 lb, decrease weight for Overhead Press".
+ */
+export function stepName(direction: StepDirection, step: number | string, noun: string, exerciseName: string): string {
+  return `${stepText(direction, step)}, ${direction === "up" ? "increase" : "decrease"} ${noun} for ${exerciseName}`;
+}

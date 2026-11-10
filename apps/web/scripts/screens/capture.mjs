@@ -1068,8 +1068,8 @@ try {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Log result for Finisher" }).click({ timeout: 4000 });
       const amrap = page.locator("dialog[open]");
-      await amrap.getByRole("button", { name: "Increase rounds" }).click();
-      await amrap.getByRole("button", { name: "Increase reps" }).click();
+      await amrap.getByRole("button", { name: "+1, increase rounds" }).click();
+      await amrap.getByRole("button", { name: "+1, increase reps" }).click();
       await amrap.getByRole("button", { name: "Add round time" }).click();
       await amrap.getByLabel("Round 1", { exact: true }).pressSequentially("410");
       await shoot(page, device, "94-log-result-amrap", "Log result, AMRAP: Rounds and Reps steppers, the optional round ends with their hint and Add round time (Spec 10.7 AC29)");
@@ -1085,7 +1085,7 @@ try {
       await cap.getByLabel("Finish time", { exact: true }).pressSequentially("1420");
       await shoot(page, device, "95-log-result-time-cap", "Log result, Time Cap: Finished with a finish time (Spec 10.7 AC30)");
       await cap.getByRole("radio", { name: "Hit the cap" }).check();
-      await cap.getByRole("button", { name: "Increase rounds" }).click();
+      await cap.getByRole("button", { name: "+1, increase rounds" }).click();
       await shoot(page, device, "95-log-result-time-cap-hit", "Log result, Time Cap: Hit the cap, with Rounds and Reps (Spec 10.7 AC30)");
       await page.keyboard.press("Escape");
     });

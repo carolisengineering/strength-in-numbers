@@ -54,20 +54,20 @@ describe("18.1 AC5 — calories panel", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { unmount } = render(<Entry modality="calories" initial={draftFor("calories", { calories: "20" })} onChange={onChange} />);
-    await user.click(screen.getByRole("button", { name: "Increase calories by 5" }));
+    await user.click(screen.getByRole("button", { name: "+5, increase calories for X" }));
     expect(onChange).toHaveBeenCalledWith("calories", "25");
     expect(screen.getByLabelText("Calories")).toHaveValue("25");
     unmount();
     render(<Entry modality="calories" initial={draftFor("calories", { calories: String(SET_CALORIES_MAX) })} />);
-    expect(screen.getByRole("button", { name: "Increase calories by 5" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Decrease calories by 5" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "+5, increase calories for X" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "\u22125, decrease calories for X" })).toBeEnabled();
   });
 });
 
 describe("18.1 AC7 — weight + distance panel", () => {
   it("a Weight stepper and a Distance (m) input; no reps", () => {
     render(<Entry modality="weight_distance" initial={draftFor("weight_distance", { weight: "24" })} />);
-    expect(screen.getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+2.5 kg, increase weight for X" })).toBeInTheDocument();
     expect(screen.getByLabelText("Distance (m)")).toBeInTheDocument();
     expect(screen.queryByLabelText("Reps")).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("18.1 AC8 — weight + duration panel", () => {
   it("a Weight stepper, Minutes and Seconds; no reps; More has no Distance unit", async () => {
     const user = userEvent.setup();
     render(<Entry modality="weight_duration" initial={draftFor("weight_duration")} />);
-    expect(screen.getByRole("button", { name: "Increase weight by 2.5 kg" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+2.5 kg, increase weight for X" })).toBeInTheDocument();
     expect(screen.getByLabelText("Minutes")).toBeInTheDocument();
     expect(screen.getByLabelText("Seconds")).toBeInTheDocument();
     expect(screen.queryByLabelText("Reps")).toBeNull();

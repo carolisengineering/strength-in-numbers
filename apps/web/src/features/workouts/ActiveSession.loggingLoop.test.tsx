@@ -81,7 +81,7 @@ async function setup(exercises: ExerciseSpec[]) {
 describe("17.4 AC7 — a carried value survives leaving and returning to an exercise", () => {
   it("a superset's first exercise still shows the weight it was lifted at, after its partner's set", async () => {
     const { user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(3) }), ex("B", { supersetGroup: 1, plannedSets: planned(3) })]);
-    await user.click(within(card(/^A,/)).getByRole("button", { name: /^Increase weight/ }));
+    await user.click(within(card(/^A,/)).getByRole("button", { name: /increase weight/ }));
     await user.click(logButton("A"));
     await waitFor(() => expect(logButton("B")).toBeInTheDocument());
     await restBetweenSets();
@@ -91,7 +91,7 @@ describe("17.4 AC7 — a carried value survives leaving and returning to an exer
 });
 
 describe("17.4 AC7 — correcting or deleting the set just logged", () => {
-  const bump = (user: Awaited<ReturnType<typeof setup>>["user"]) => user.click(within(card("A")).getByRole("button", { name: /^Increase weight/ }));
+  const bump = (user: Awaited<ReturnType<typeof setup>>["user"]) => user.click(within(card("A")).getByRole("button", { name: /increase weight/ }));
   const openRow = async (user: Awaited<ReturnType<typeof setup>>["user"], text: RegExp) => {
     await user.click(within(card("A")).getByRole("button", { name: text }));
     return within(await screen.findByRole("dialog"));
@@ -147,7 +147,7 @@ describe("17.4 AC7 — correcting or deleting the set just logged", () => {
 describe("17.4 AC8 — the bar tells the truth about a carried value", () => {
   it("reads the carried weight, one tap sends it, and it is not an edit", async () => {
     const { fake, user } = await setup([ex("A", { plannedSets: planned(3) })]);
-    await user.click(within(card("A")).getByRole("button", { name: /^Increase weight/ }));
+    await user.click(within(card("A")).getByRole("button", { name: /increase weight/ }));
     await user.click(logButton("A"));
     await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
     await waitFor(() => expect(logButton("A")).toHaveTextContent(/^Log 102.5 × 5$/));
@@ -162,7 +162,7 @@ describe("17.4 AC8 — the bar tells the truth about a carried value", () => {
 
   it("reads the carried reps at the top of a range", async () => {
     const { user } = await setup([ex("A", { plannedSets: planned(3, 100, 6, 8) })]);
-    const more = within(card("A")).getByRole("button", { name: "Increase reps" });
+    const more = within(card("A")).getByRole("button", { name: /increase reps/ });
     await user.click(more);
     await user.click(more);
     await user.click(logButton("A"));
@@ -373,7 +373,7 @@ describe("17.7 AC24 — the loop's guarantees hold with More open and Warm-up pr
     const more = () => within(card("A")).getByRole("button", { name: "More set options for A" });
     await openSetOptions(user, card("A"));
     await user.click(within(card("A")).getByRole("button", { name: "Warm-up for A" }));
-    await user.click(within(card("A")).getByRole("button", { name: /^Increase reps/ }));
+    await user.click(within(card("A")).getByRole("button", { name: /increase reps/ }));
     expect(more()).toHaveAttribute("aria-expanded", "true");
     await user.click(logButton("A"));
     await waitFor(() => expect(more()).toHaveAttribute("aria-expanded", "false"));

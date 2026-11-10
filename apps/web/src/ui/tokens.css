@@ -107,9 +107,12 @@
   /* the narrowest a set-entry field column gets before the row wraps to one column (fits two at 320px) */
   --field-min-width: 7rem;
 
-  /* the narrowest a stepper (two 3rem buttons around a figure that fits "102.5") gets before the entry panel stacks its
-     measures (Spec 17.1 AC24: two side by side do not fit at 390px) */
-  --stepper-min-width: 13rem;
+  /* a stepper's − and + buttons, in both axes (Spec 17.8 AC2: 56px, the same as 17.4's Log button) */
+  --stepper-size: 3.5rem;
+
+  /* the narrowest a stepper (two 3.5rem buttons and their gaps around a figure that fits "102.5") gets before the entry
+     panel stacks its measures (Spec 17.1 AC24, raised by Spec 17.8 AC2: two side by side do not fit at 390px) */
+  --stepper-min-width: 14rem;
 
   /* card insets: every card-like panel uses these, so their edges line up */
   --card-pad-block: var(--space-3);

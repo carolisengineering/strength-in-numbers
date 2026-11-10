@@ -8,7 +8,7 @@ import { SET_TYPE_LABELS } from "./format";
 import { visibleMeasures } from "./measures";
 import type { DraftField, SetDraft } from "./setDraft";
 import { NumberStepper } from "./NumberStepper";
-import { CALORIES_STEP, WEIGHT_STEP, caloriesAtLimit, repsAtLimit, stepCalories, stepReps, stepWeight, weightAtLimit } from "./stepper";
+import { CALORIES_STEP, WEIGHT_STEP, caloriesAtLimit, repsAtLimit, stepCalories, stepName, stepReps, stepText, stepWeight, weightAtLimit } from "./stepper";
 import styles from "./SetFields.module.css";
 import { WarmupToggle } from "./WarmupToggle";
 
@@ -141,7 +141,9 @@ function EntryFields(props: Common & { exerciseName: string }) {
     if (optionsOpen) revealed.current?.scrollIntoView?.({ block: "nearest" });
   }, [optionsOpen]);
   const measures = visibleMeasures(modality);
-  const step = `${WEIGHT_STEP[draft.weightUnit]} ${draft.weightUnit}`;
+  // Spec 17.8 AC3–AC4: the button shows the bare step ("+5"); its name carries the unit ("+5 lb, increase weight for X").
+  const weightStep = WEIGHT_STEP[draft.weightUnit];
+  const weightStepNamed = `${weightStep} ${draft.weightUnit}`;
   const figure = `${styles.input} ${styles.figureInput}`;
   return (
     <div className={styles.fields}>
@@ -158,8 +160,10 @@ function EntryFields(props: Common & { exerciseName: string }) {
                   value={draft.weight}
                   inputMode="decimal"
                   error={errors.weight}
-                  decreaseLabel={`Decrease weight by ${step}`}
-                  increaseLabel={`Increase weight by ${step}`}
+                  decreaseText={stepText("down", weightStep)}
+                  increaseText={stepText("up", weightStep)}
+                  decreaseLabel={stepName("down", weightStepNamed, "weight", exerciseName)}
+                  increaseLabel={stepName("up", weightStepNamed, "weight", exerciseName)}
                   canDecrease={!weightAtLimit(draft.weight, "down")}
                   canIncrease={!weightAtLimit(draft.weight, "up")}
                   onChange={(v) => onChange("weight", v)}
@@ -176,8 +180,10 @@ function EntryFields(props: Common & { exerciseName: string }) {
                   value={draft.reps}
                   inputMode="numeric"
                   error={errors.reps}
-                  decreaseLabel="Decrease reps"
-                  increaseLabel="Increase reps"
+                  decreaseText={stepText("down", 1)}
+                  increaseText={stepText("up", 1)}
+                  decreaseLabel={stepName("down", 1, "reps", exerciseName)}
+                  increaseLabel={stepName("up", 1, "reps", exerciseName)}
                   canDecrease={!repsAtLimit(draft.reps, "down")}
                   canIncrease={!repsAtLimit(draft.reps, "up")}
                   onChange={(v) => onChange("reps", v)}
@@ -210,8 +216,10 @@ function EntryFields(props: Common & { exerciseName: string }) {
                   value={draft.calories}
                   inputMode="numeric"
                   error={errors.calories}
-                  decreaseLabel={`Decrease calories by ${CALORIES_STEP}`}
-                  increaseLabel={`Increase calories by ${CALORIES_STEP}`}
+                  decreaseText={stepText("down", CALORIES_STEP)}
+                  increaseText={stepText("up", CALORIES_STEP)}
+                  decreaseLabel={stepName("down", CALORIES_STEP, "calories", exerciseName)}
+                  increaseLabel={stepName("up", CALORIES_STEP, "calories", exerciseName)}
                   canDecrease={!caloriesAtLimit(draft.calories, "down")}
                   canIncrease={!caloriesAtLimit(draft.calories, "up")}
                   onChange={(v) => onChange("calories", v)}
