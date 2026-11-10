@@ -132,6 +132,7 @@ describe("10.2 AC24 — after a log", () => {
     await within(card("Bench")).findByText("Extra set");
     expect(field("Bench", "Weight")).toHaveValue("100");
     expect(field("Bench", "Reps")).toHaveValue("6");
+    await openSetOptions(user, card("Bench")); // Spec 17.7: a log closes More
     expect(segmentChoice("Set type", card("Bench"))).toBe("working");
     expect(setPosts(fake)).toHaveLength(3);
   });

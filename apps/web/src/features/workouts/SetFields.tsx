@@ -130,7 +130,10 @@ function SheetFields(props: Common) {
  */
 function EntryFields(props: Common & { exerciseName: string }) {
   const { modality, draft, errors, onChange, id, exerciseName } = props;
-  const [optionsOpen, setOptionsOpen] = useState(false);
+  // More is open for one set: the attempt key changes when the set is logged (or an Undo restores one), so the next
+  // set's panel starts compact and 17.4's post-log reveal can fit it above the bar (at 320 × 568 an open block could not).
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  const optionsOpen = openFor === draft.attemptKey;
   const revealed = useRef<HTMLDivElement>(null);
   // AC16: only an opening scrolls; a block already open on mount, or closing, doesn't. The scroller's padding is 17.4's
   // --session-bar-clearance, so "nearest" lands it above the bar.
@@ -228,7 +231,7 @@ function EntryFields(props: Common & { exerciseName: string }) {
       </div>
       <div className={styles.panelActions}>
         <WarmupToggle exerciseName={exerciseName} pressed={draft.setType === "warmup"} onToggle={() => onChange("setType", draft.setType === "warmup" ? "working" : "warmup")} />
-        <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOptionsOpen((open) => !open)}>
+        <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOpenFor(optionsOpen ? null : draft.attemptKey)}>
           More
         </Button>
       </div>

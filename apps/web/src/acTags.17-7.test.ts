@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.17-7.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /**
- * Spec 17.7 AC26, Phase A's part: AC1 and AC3–AC11. AC2 is the screenshot harness's `segments` check (jsdom has no
- * layout). Phase B extends WANTED with AC12–AC24. Only numbers written as "17.7 ACn" (or "17.7 ACn, ACm") in a describe
- * title count; a title that cites another spec's criteria does not tag 17.7's.
+ * Spec 17.7 AC26: AC1, AC3–AC21, AC23 and AC24. The rest are not unit tests: AC2 and AC22 are the screenshot harness
+ * (its `segments` and `cardDeclutter` checks; jsdom has no layout; AC16 is also measured there, beside its unit test),
+ * AC25 is the docs, AC26 is this scan, and AC27–AC28 are the shots and the phone check. Only numbers written as
+ * "17.7 ACn" (or "17.7 ACn, ACm") in a describe title count; a title that cites another spec's criteria does not tag 17.7's.
  */
-const WANTED = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+const WANTED = [1, ...Array.from({ length: 19 }, (_, k) => k + 3), 23, 24];
 
 describe("17.7 AC26 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.7 ACn'", () => {
