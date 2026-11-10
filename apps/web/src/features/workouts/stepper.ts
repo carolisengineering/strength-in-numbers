@@ -84,7 +84,8 @@ const DISTANCE_STEP_MILLI: Readonly<Record<DistanceUnit, number>> = { m: 10_000,
 
 /**
  * The largest distance, in milli-units of `unit`, that `parseDraft` accepts: the entered value is bounded by
- * SET_DISTANCE_MAX, and so are its meters (Review Focus 1: in ft the entered-value bound is the one that bites).
+ * SET_DISTANCE_MAX, and so are its meters (in ft the entered-value bound is the one that bites: 999,995 ft is only
+ * about 305 km).
  */
 function distanceLimitMilli(unit: DistanceUnit): number {
   const fits = (milli: number) => milli / 1000 <= SET_DISTANCE_MAX && toCanonicalMeters(milli / 1000, unit) <= SET_DISTANCE_MAX;

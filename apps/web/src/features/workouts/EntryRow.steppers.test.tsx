@@ -214,6 +214,37 @@ describe("17.8 AC4 — names", () => {
   });
 });
 
+describe("17.8 AC11 — duration steppers", () => {
+  const plank = () => within(card("Plank"));
+
+  it("a Plank's panel has −5 s / +5 s with the exercise in their names; − is disabled when blank", async () => {
+    await setup([X({ name: "Plank", modality: "duration" })]);
+    expect(plank().getByRole("button", { name: "\u22125 s, decrease time for Plank" })).toHaveTextContent(/^\u22125 s$/);
+    expect(plank().getByRole("button", { name: "+5 s, increase time for Plank" })).toHaveTextContent(/^\+5 s$/);
+    expect(plank().getByRole("button", { name: "\u22125 s, decrease time for Plank" })).toBeDisabled();
+  });
+
+  it("+ from blank writes 0 and 5; 0:59 + 5 s writes 1 and 4 and the bar reads Log 1:04", async () => {
+    const { user } = await setup([X({ name: "Plank", modality: "duration" })]);
+    await user.click(plank().getByRole("button", { name: "+5 s, increase time for Plank" }));
+    expect(plank().getByLabelText("Minutes")).toHaveValue("0");
+    expect(plank().getByLabelText("Seconds")).toHaveValue("5");
+    await user.clear(plank().getByLabelText("Seconds"));
+    await user.type(plank().getByLabelText("Seconds"), "59");
+    await user.click(plank().getByRole("button", { name: "+5 s, increase time for Plank" }));
+    expect(plank().getByLabelText("Minutes")).toHaveValue("1");
+    expect(plank().getByLabelText("Seconds")).toHaveValue("4");
+    await waitFor(() => expect(logButton("Plank")).toHaveTextContent(/^Log 1:04/));
+  });
+
+  it("a step is an edit: set_logged reports edited: true", async () => {
+    const { user } = await setup([X({ name: "Plank", modality: "duration" })]);
+    await user.click(plank().getByRole("button", { name: "+5 s, increase time for Plank" }));
+    await user.click(logButton("Plank"));
+    await waitFor(() => expect(observability.track).toHaveBeenCalledWith("set_logged", expect.objectContaining({ edited: true })));
+  });
+});
+
 describe("17.8 AC10 — the rest slot is always there", () => {
   it("the slot is mounted with no timer and with one, so a rest starting never changes the label row", async () => {
     // A rest starts only while a planned set remains (17.1 D8), so the exercise has a plan.
@@ -249,11 +280,11 @@ describe("17.7 AC9 — a unit change converts nothing", () => {
 
   it("a distance of 2 stays 2 when km becomes mi, and the draft stores mi", async () => {
     const { user } = await setup([X({ modality: "distance_duration" })], "kg");
-    await user.type(panel().getByLabelText(/^Distance/), "2");
+    await user.type(panel().getByLabelText("Distance"), "2");
     await openSetOptions(user, card("X"));
     expect(segmentValue("Distance unit", card("X"))).toBe("km");
     await chooseSegment(user, "Distance unit", "mi", card("X"));
-    expect(panel().getByLabelText(/^Distance/)).toHaveValue("2");
+    expect(panel().getByLabelText("Distance")).toHaveValue("2");
     await waitFor(() => expect(JSON.parse(localStorageAdapter().get(DRAFTS_KEY) ?? "{}").byExercise).toBeTruthy());
     const stored = JSON.parse(localStorageAdapter().get(DRAFTS_KEY)!);
     expect(Object.values(stored.byExercise as Record<string, { distance: string; distanceUnit: string }>)[0]).toMatchObject({ distance: "2", distanceUnit: "mi" });

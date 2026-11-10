@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type Modality } from "@sin/core";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type MeasureName, type Modality } from "@sin/core";
 
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
@@ -7,8 +7,26 @@ import { Segmented } from "../../ui/Segmented";
 import { SET_TYPE_LABELS } from "./format";
 import { visibleMeasures } from "./measures";
 import type { DraftField, SetDraft } from "./setDraft";
-import { NumberStepper } from "./NumberStepper";
-import { CALORIES_STEP, WEIGHT_STEP, caloriesAtLimit, repsAtLimit, stepCalories, stepName, stepReps, stepText, stepWeight, weightAtLimit } from "./stepper";
+import { NumberStepper, StepperFrame } from "./NumberStepper";
+import {
+  CALORIES_STEP,
+  DISTANCE_STEP,
+  DURATION_STEP_S,
+  WEIGHT_STEP,
+  caloriesAtLimit,
+  distanceAtLimit,
+  durationAtLimit,
+  repsAtLimit,
+  stepCalories,
+  stepDistance,
+  stepDuration,
+  stepName,
+  stepReps,
+  stepText,
+  stepWeight,
+  weightAtLimit,
+  type StepDirection,
+} from "./stepper";
 import styles from "./SetFields.module.css";
 import { WarmupToggle } from "./WarmupToggle";
 
@@ -125,11 +143,151 @@ function SheetFields(props: Common) {
 }
 
 /**
- * Spec 17.1 §6.4–§6.5: steppers for weight, reps and calories (18.1), figure-sized fields for duration and distance.
+ * Spec 17.1 §6.4–§6.5, Spec 17.8 AC11–AC13: one stepper per measure, weight, reps and calories as `NumberStepper`s,
+ * distance stepping by its unit (`DISTANCE_STEP`), a duration as the same frame around its Minutes and Seconds fields.
+ * `nameCarryUnit`: the entry panel's carry names its unit in the label ("Distance (ft)", Spec 18.1 D5), because the unit
+ * is under More, so its stepper has no unit line. `below` draws under a measure (the sheet's unit strips).
+ */
+function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, nameCarryUnit, below }: Common & { exerciseName: string; nameCarryUnit: boolean; below?: (measure: MeasureName) => ReactNode }) {
+  // Spec 17.8 AC3–AC4: the button shows the bare step ("+5"); its name carries the unit ("+5 lb, increase weight for X").
+  const weightStep = WEIGHT_STEP[draft.weightUnit];
+  const weightStepNamed = `${weightStep} ${draft.weightUnit}`;
+  const distanceStep = DISTANCE_STEP[draft.distanceUnit];
+  const distanceStepNamed = `${distanceStep} ${draft.distanceUnit}`;
+  const carryLabel = nameCarryUnit && modality === "weight_distance";
+  const figure = `${styles.input} ${styles.figureInput}`;
+  const control = (measure: MeasureName): ReactNode => {
+    switch (measure) {
+      case "weight":
+        return (
+          <NumberStepper
+            id={id("weight")}
+            label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"}
+            unit={draft.weightUnit}
+            value={draft.weight}
+            inputMode="decimal"
+            error={errors.weight}
+            decreaseText={stepText("down", weightStep)}
+            increaseText={stepText("up", weightStep)}
+            decreaseLabel={stepName("down", weightStepNamed, "weight", exerciseName)}
+            increaseLabel={stepName("up", weightStepNamed, "weight", exerciseName)}
+            canDecrease={!weightAtLimit(draft.weight, "down")}
+            canIncrease={!weightAtLimit(draft.weight, "up")}
+            onChange={(v) => onChange("weight", v)}
+            onDecrease={() => onChange("weight", stepWeight(draft.weight, draft.weightUnit, "down"))}
+            onIncrease={() => onChange("weight", stepWeight(draft.weight, draft.weightUnit, "up"))}
+          />
+        );
+      case "reps":
+        return (
+          <NumberStepper
+            id={id("reps")}
+            label="Reps"
+            value={draft.reps}
+            inputMode="numeric"
+            error={errors.reps}
+            decreaseText={stepText("down", 1)}
+            increaseText={stepText("up", 1)}
+            decreaseLabel={stepName("down", 1, "reps", exerciseName)}
+            increaseLabel={stepName("up", 1, "reps", exerciseName)}
+            canDecrease={!repsAtLimit(draft.reps, "down")}
+            canIncrease={!repsAtLimit(draft.reps, "up")}
+            onChange={(v) => onChange("reps", v)}
+            onDecrease={() => onChange("reps", stepReps(draft.reps, "down"))}
+            onIncrease={() => onChange("reps", stepReps(draft.reps, "up"))}
+          />
+        );
+      case "distance":
+        return (
+          <NumberStepper
+            id={id("distance")}
+            label={carryLabel ? `Distance (${draft.distanceUnit})` : "Distance"}
+            unit={carryLabel ? undefined : draft.distanceUnit}
+            value={draft.distance}
+            inputMode="decimal"
+            error={errors.distance}
+            decreaseText={stepText("down", distanceStep)}
+            increaseText={stepText("up", distanceStep)}
+            decreaseLabel={stepName("down", distanceStepNamed, "distance", exerciseName)}
+            increaseLabel={stepName("up", distanceStepNamed, "distance", exerciseName)}
+            canDecrease={!distanceAtLimit(draft.distance, draft.distanceUnit, "down")}
+            canIncrease={!distanceAtLimit(draft.distance, draft.distanceUnit, "up")}
+            onChange={(v) => onChange("distance", v)}
+            onDecrease={() => onChange("distance", stepDistance(draft.distance, draft.distanceUnit, "down"))}
+            onIncrease={() => onChange("distance", stepDistance(draft.distance, draft.distanceUnit, "up"))}
+          />
+        );
+      case "calories":
+        return (
+          <NumberStepper
+            id={id("calories")}
+            label="Calories"
+            unit="cal"
+            value={draft.calories}
+            inputMode="numeric"
+            error={errors.calories}
+            decreaseText={stepText("down", CALORIES_STEP)}
+            increaseText={stepText("up", CALORIES_STEP)}
+            decreaseLabel={stepName("down", CALORIES_STEP, "calories", exerciseName)}
+            increaseLabel={stepName("up", CALORIES_STEP, "calories", exerciseName)}
+            canDecrease={!caloriesAtLimit(draft.calories, "down")}
+            canIncrease={!caloriesAtLimit(draft.calories, "up")}
+            onChange={(v) => onChange("calories", v)}
+            onDecrease={() => onChange("calories", stepCalories(draft.calories, "down"))}
+            onIncrease={() => onChange("calories", stepCalories(draft.calories, "up"))}
+          />
+        );
+      case "durationS": {
+        // Two numeric fields, not "m:ss": a phone's numeric keypad has no colon (Spec 06.1 D10). A step rewrites both.
+        const stepTo = (direction: StepDirection) => {
+          const next = stepDuration(draft.minutes, draft.seconds, direction);
+          onChange("minutes", next.minutes);
+          onChange("seconds", next.seconds);
+        };
+        const durationStep = `${DURATION_STEP_S} s`;
+        return (
+          <StepperFrame
+            decreaseText={stepText("down", durationStep)}
+            increaseText={stepText("up", durationStep)}
+            decreaseLabel={stepName("down", durationStep, "time", exerciseName)}
+            increaseLabel={stepName("up", durationStep, "time", exerciseName)}
+            canDecrease={!durationAtLimit(draft.minutes, draft.seconds, "down")}
+            canIncrease={!durationAtLimit(draft.minutes, draft.seconds, "up")}
+            onDecrease={() => stepTo("down")}
+            onIncrease={() => stepTo("up")}
+          >
+            <div className={styles.durationFields}>
+              <TextField name="minutes" label="Minutes" inputMode="numeric" value={draft.minutes} error={errors.minutes} onChange={(v) => onChange("minutes", v)} id={id} className={figure} />
+              <TextField name="seconds" label="Seconds" inputMode="numeric" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={figure} />
+            </div>
+          </StepperFrame>
+        );
+      }
+    }
+  };
+  return (
+    <div className={`${styles.measures} ${styles.entryMeasures}`}>
+      {visibleMeasures(modality).map((measure) => {
+        const extra = below?.(measure);
+        return extra ? (
+          <div key={measure} className={styles.withBelow}>
+            {control(measure)}
+            {extra}
+          </div>
+        ) : (
+          <Fragment key={measure}>{control(measure)}</Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Spec 17.1 §6.4–§6.5, Spec 17.8 Phase B: a stepper for every measure (`StepperMeasures`).
  * Spec 17.7 Phase B: a Warm-up toggle and More in one row; More reveals set type and the units, scrolled clear of the bar.
  */
 function EntryFields(props: Common & { exerciseName: string }) {
-  const { modality, draft, errors, onChange, id, exerciseName } = props;
+  const { modality, draft, onChange, id, exerciseName } = props;
   // More is open for one set: the attempt key changes when the set is logged (or an Undo restores one), so the next
   // set's panel starts compact and 17.4's post-log reveal can fit it above the bar (at 320 × 568 an open block could not).
   const [openFor, setOpenFor] = useState<string | null>(null);
@@ -141,102 +299,9 @@ function EntryFields(props: Common & { exerciseName: string }) {
     if (optionsOpen) revealed.current?.scrollIntoView?.({ block: "nearest" });
   }, [optionsOpen]);
   const measures = visibleMeasures(modality);
-  // Spec 17.8 AC3–AC4: the button shows the bare step ("+5"); its name carries the unit ("+5 lb, increase weight for X").
-  const weightStep = WEIGHT_STEP[draft.weightUnit];
-  const weightStepNamed = `${weightStep} ${draft.weightUnit}`;
-  const figure = `${styles.input} ${styles.figureInput}`;
   return (
     <div className={styles.fields}>
-      <div className={`${styles.measures} ${styles.entryMeasures}`}>
-        {measures.map((measure) => {
-          switch (measure) {
-            case "weight":
-              return (
-                <NumberStepper
-                  key={measure}
-                  id={id("weight")}
-                  label={modality === "weighted_bodyweight" ? "Added weight" : "Weight"}
-                  unit={draft.weightUnit}
-                  value={draft.weight}
-                  inputMode="decimal"
-                  error={errors.weight}
-                  decreaseText={stepText("down", weightStep)}
-                  increaseText={stepText("up", weightStep)}
-                  decreaseLabel={stepName("down", weightStepNamed, "weight", exerciseName)}
-                  increaseLabel={stepName("up", weightStepNamed, "weight", exerciseName)}
-                  canDecrease={!weightAtLimit(draft.weight, "down")}
-                  canIncrease={!weightAtLimit(draft.weight, "up")}
-                  onChange={(v) => onChange("weight", v)}
-                  onDecrease={() => onChange("weight", stepWeight(draft.weight, draft.weightUnit, "down"))}
-                  onIncrease={() => onChange("weight", stepWeight(draft.weight, draft.weightUnit, "up"))}
-                />
-              );
-            case "reps":
-              return (
-                <NumberStepper
-                  key={measure}
-                  id={id("reps")}
-                  label="Reps"
-                  value={draft.reps}
-                  inputMode="numeric"
-                  error={errors.reps}
-                  decreaseText={stepText("down", 1)}
-                  increaseText={stepText("up", 1)}
-                  decreaseLabel={stepName("down", 1, "reps", exerciseName)}
-                  increaseLabel={stepName("up", 1, "reps", exerciseName)}
-                  canDecrease={!repsAtLimit(draft.reps, "down")}
-                  canIncrease={!repsAtLimit(draft.reps, "up")}
-                  onChange={(v) => onChange("reps", v)}
-                  onDecrease={() => onChange("reps", stepReps(draft.reps, "down"))}
-                  onIncrease={() => onChange("reps", stepReps(draft.reps, "up"))}
-                />
-              );
-            case "distance":
-              // Spec 18.1 D5: a carry's label names its unit ("Distance (ft)"), since its unit is under More (Spec 17.7).
-              return (
-                <TextField
-                  key={measure}
-                  name="distance"
-                  label={modality === "weight_distance" ? `Distance (${draft.distanceUnit})` : "Distance"}
-                  inputMode="decimal"
-                  value={draft.distance}
-                  error={errors.distance}
-                  onChange={(v) => onChange("distance", v)}
-                  id={id}
-                  className={figure}
-                />
-              );
-            case "calories":
-              return (
-                <NumberStepper
-                  key={measure}
-                  id={id("calories")}
-                  label="Calories"
-                  unit="cal"
-                  value={draft.calories}
-                  inputMode="numeric"
-                  error={errors.calories}
-                  decreaseText={stepText("down", CALORIES_STEP)}
-                  increaseText={stepText("up", CALORIES_STEP)}
-                  decreaseLabel={stepName("down", CALORIES_STEP, "calories", exerciseName)}
-                  increaseLabel={stepName("up", CALORIES_STEP, "calories", exerciseName)}
-                  canDecrease={!caloriesAtLimit(draft.calories, "down")}
-                  canIncrease={!caloriesAtLimit(draft.calories, "up")}
-                  onChange={(v) => onChange("calories", v)}
-                  onDecrease={() => onChange("calories", stepCalories(draft.calories, "down"))}
-                  onIncrease={() => onChange("calories", stepCalories(draft.calories, "up"))}
-                />
-              );
-            case "durationS":
-              return (
-                <div className={styles.duration} key={measure}>
-                  <TextField name="minutes" label="Minutes" inputMode="numeric" value={draft.minutes} error={errors.minutes} onChange={(v) => onChange("minutes", v)} id={id} className={figure} />
-                  <TextField name="seconds" label="Seconds" inputMode="numeric" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={figure} />
-                </div>
-              );
-          }
-        })}
-      </div>
+      <StepperMeasures {...props} nameCarryUnit />
       <div className={styles.panelActions}>
         <WarmupToggle exerciseName={exerciseName} pressed={draft.setType === "warmup"} onToggle={() => onChange("setType", draft.setType === "warmup" ? "working" : "warmup")} />
         <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOpenFor(optionsOpen ? null : draft.attemptKey)}>

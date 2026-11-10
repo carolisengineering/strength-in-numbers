@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import styles from "./NumberStepper.module.css";
@@ -24,6 +26,38 @@ export interface NumberStepperProps {
   onIncrease: () => void;
 }
 
+export interface StepperFrameProps {
+  decreaseText: string;
+  increaseText: string;
+  decreaseLabel: string;
+  increaseLabel: string;
+  canDecrease: boolean;
+  canIncrease: boolean;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  /** The center of the row: one input (`NumberStepper`) or a duration's two fields (Spec 17.8 AC11). */
+  children: ReactNode;
+}
+
+/**
+ * Spec 17.8 §6.1: the − and + buttons around whatever sits in the middle, on one grid row (`data-stepper-row`, the
+ * harness's hook). A duration stepper is this frame around two fields, a sibling of `NumberStepper`, not a second
+ * implementation.
+ */
+export function StepperFrame({ decreaseText, increaseText, decreaseLabel, increaseLabel, canDecrease, canIncrease, onDecrease, onIncrease, children }: StepperFrameProps) {
+  return (
+    <div className={styles.row} data-stepper-row>
+      <Button variant="secondary" className={styles.step} aria-label={decreaseLabel} disabled={!canDecrease} onClick={onDecrease}>
+        {decreaseText}
+      </Button>
+      {children}
+      <Button variant="secondary" className={styles.step} aria-label={increaseLabel} disabled={!canIncrease} onClick={onIncrease}>
+        {increaseText}
+      </Button>
+    </div>
+  );
+}
+
 /**
  * Spec 17.1 §6.4: − number +. The number stays a text input (AC20): focus selects it so typing replaces it. A button
  * at its limit is disabled, not hidden. Each tap is an ordinary edit (`onChange` → the draft's `edit` action, AC21).
@@ -38,10 +72,7 @@ export function NumberStepper({ id, label, unit, value, inputMode, error, decrea
       <Field id={id} label={label} error={error}>
         {(control) => (
           <>
-            <div className={styles.row} data-stepper-row>
-              <Button variant="secondary" className={styles.step} aria-label={decreaseLabel} disabled={!canDecrease} onClick={onDecrease}>
-                {decreaseText}
-              </Button>
+            <StepperFrame {...{ decreaseText, increaseText, decreaseLabel, increaseLabel, canDecrease, canIncrease, onDecrease, onIncrease }}>
               <input
                 {...control}
                 className={styles.input}
@@ -52,10 +83,7 @@ export function NumberStepper({ id, label, unit, value, inputMode, error, decrea
                 onFocus={(event) => event.currentTarget.select()}
                 onChange={(event) => onChange(event.target.value)}
               />
-              <Button variant="secondary" className={styles.step} aria-label={increaseLabel} disabled={!canIncrease} onClick={onIncrease}>
-                {increaseText}
-              </Button>
-            </div>
+            </StepperFrame>
             {/* Always present, so two steppers side by side line up on their inputs; empty for reps. */}
             <span className={styles.unit} aria-hidden="true">
               {unit ?? " "}

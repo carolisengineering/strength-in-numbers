@@ -14,12 +14,12 @@ import { draftFromSet, unitDefaultsFor, type SetDraft } from "./setDraft";
 
 const draftFor = (modality: Modality, o: Partial<SetDraft> = {}): SetDraft => ({ ...draftFromSet(null, unitDefaultsFor("kg", modality), "k"), ...o });
 
-function Entry({ modality, initial, onChange }: { modality: Modality; initial: SetDraft; onChange?: (f: DraftEditField, v: string) => void }) {
+function Entry({ modality, initial, onChange, name = "X" }: { modality: Modality; initial: SetDraft; onChange?: (f: DraftEditField, v: string) => void; name?: string }) {
   const [draft, setDraft] = useState(initial);
   return (
     <SetFields
       variant="entry"
-      exerciseName="X"
+      exerciseName={name}
       modality={modality}
       draft={draft}
       errors={{}}
@@ -113,6 +113,64 @@ describe("18.1 AC40 — feet in the panel", () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.tsx"), "utf8");
     expect(src).not.toMatch(/\[\s*"m"/);
     expect(src).toContain("DISTANCE_UNIT_VALUES");
+  });
+});
+
+describe("17.8 AC12 — distance steppers", () => {
+  const stepButtons = () => [...document.querySelectorAll("[data-stepper-row]")].flatMap((row) => [...row.querySelectorAll(":scope > button")]);
+
+  it("a carry in m steps ±10, named with the unit and the exercise", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Entry modality="weight_distance" name="Farmer Carry" initial={draftFor("weight_distance", { weight: "24", distance: "40" })} onChange={onChange} />);
+    const down = screen.getByRole("button", { name: "\u221210 m, decrease distance for Farmer Carry" });
+    expect(down).toHaveTextContent(/^\u221210$/);
+    expect(screen.getByRole("button", { name: "+10 m, increase distance for Farmer Carry" })).toHaveTextContent(/^\+10$/);
+    await user.click(screen.getByRole("button", { name: "+10 m, increase distance for Farmer Carry" }));
+    expect(onChange).toHaveBeenCalledWith("distance", "50");
+    expect(screen.getByLabelText("Distance (m)")).toHaveValue("50");
+  });
+
+  it("a unit change to km in More makes the steps ±0.1", async () => {
+    const user = userEvent.setup();
+    render(<Entry modality="weight_distance" name="Farmer Carry" initial={draftFor("weight_distance", { distance: "1" })} />);
+    await openOptions(user);
+    await chooseSegmentValue(user, "Distance unit", "km", screen);
+    expect(screen.getByRole("button", { name: "+0.1 km, increase distance for Farmer Carry" })).toHaveTextContent(/^\+0\.1$/);
+    expect(screen.getByRole("button", { name: "\u22120.1 km, decrease distance for Farmer Carry" })).toHaveTextContent(/^\u22120\.1$/);
+  });
+
+  it("a carry's label names its unit, so the stepper has no unit line or unit group name", async () => {
+    const user = userEvent.setup();
+    render(<Entry modality="weight_distance" initial={draftFor("weight_distance")} />);
+    await openOptions(user);
+    await chooseSegmentValue(user, "Distance unit", "ft", screen);
+    const input = screen.getByLabelText("Distance (ft)");
+    expect(input.closest("[data-stepper-row]")).not.toBeNull();
+    expect(screen.queryByRole("group", { name: /^Distance ·/ })).toBeNull();
+    expect(stepButtons().map((b) => b.textContent)).toContain("+10");
+  });
+
+  it("distance_duration keeps the plain Distance label, with its unit line and group name", () => {
+    render(<Entry modality="distance_duration" initial={draftFor("distance_duration")} />);
+    expect(screen.getByLabelText("Distance").closest("[data-stepper-row]")).not.toBeNull();
+    expect(screen.getByRole("group", { name: "Distance · km" })).toBeInTheDocument();
+  });
+});
+
+describe("17.8 AC13 — centered figures", () => {
+  const css = (file: string) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), file), "utf8");
+  const rule = (source: string, selector: string) => {
+    const at = source.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return source.slice(at, source.indexOf("}", at));
+  };
+  it("the figure fields and the stepper input are centered; duration fields wrap at --duration-field-min-width (Review Focus 5)", () => {
+    expect(rule(css("SetFields.module.css"), ".figureInput")).toMatch(/text-align:\s*center/);
+    expect(rule(css("NumberStepper.module.css"), ".row .input")).toMatch(/text-align:\s*center/);
+    expect(rule(css("SetFields.module.css"), ".durationFields")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule(css("SetFields.module.css"), ".durationFields > *")).toMatch(/flex:\s*1 1 var\(--duration-field-min-width\)/);
+    expect(css("../../ui/tokens.css")).toMatch(/--duration-field-min-width:\s*3\.75rem;/);
   });
 });
 

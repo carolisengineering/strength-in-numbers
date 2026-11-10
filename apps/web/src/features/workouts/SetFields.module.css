@@ -45,9 +45,32 @@
   min-width: var(--tap-target-min);
 }
 
-/* Spec 17.1 D6: duration and distance keep their fields, sized like the stepper figures. */
+/* A measure and what the sheet draws under it (its unit strip), in one grid cell (Spec 17.8 AC16). */
+.withBelow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Spec 17.8 AC11: Minutes and Seconds between a duration's buttons, side by side where both labels fit
+   (390 px) and stacked where they don't (320 px), by wrapping, with no media query. */
+.durationFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.durationFields > * {
+  flex: 1 1 var(--duration-field-min-width);
+  min-width: 0;
+}
+
+/* Spec 17.1 D6, Spec 17.8 AC13: the duration fields, set and centered like the stepper figures. */
 .figureInput {
   min-height: calc(var(--space-8) + var(--space-4));
+  text-align: center;
   font-size: var(--font-size-figure);
   font-weight: var(--font-weight-figure);
   font-stretch: var(--font-stretch-figure);
