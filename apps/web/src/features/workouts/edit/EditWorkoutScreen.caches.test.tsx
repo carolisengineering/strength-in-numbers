@@ -90,7 +90,8 @@ describe("18.0 AC23 — no request burst; the summary is fresh", () => {
     await user.click(editDoneButton());
     await screen.findByRole("heading", { name: "Workout summary" });
     expect(await screen.findByText("100 kg × 5")).toBeInTheDocument();
-    const records = await screen.findByRole("region", { name: "Personal records" });
+    // Spec 17.6 AC12: a first-ever record is a quiet line, not a panel.
+    const records = await screen.findByText(/^First time logged: Bench Press/);
     await waitFor(() => expect(records).toHaveTextContent(/100/));
     expect(recordsReads(fake, done, workout.id)).toBe(1);
 

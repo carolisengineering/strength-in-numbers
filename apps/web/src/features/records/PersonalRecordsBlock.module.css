@@ -1,26 +1,15 @@
-/* The summary's records section (Spec 17.2): a heading row over the cards; the cards carry the tint. */
+/* The summary's records (Spec 17.6): the notice, the ledger panel and the first-time lines, stacked. `RecordsSection`
+   (Progress) uses `.block` and `.heading` too. */
 .block {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-}
-
 /* Brass means a record (Spec 17.0 §6.2). Bold, so brass has air on the page ground. */
-.heading,
-.count {
+.heading {
   margin: 0;
   color: var(--color-pr);
   font-size: var(--font-size-lg);
   font-weight: 700;
-}
-
-.count {
-  font-size: var(--font-size-md);
 }

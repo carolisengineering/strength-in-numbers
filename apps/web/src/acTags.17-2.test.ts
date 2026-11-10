@@ -6,7 +6,9 @@ const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.
  * Spec 17.2 AC38 (AC1-AC36; AC37 is the contrast table, a CI pair check). Only numbers written as "17.2 ACn" (or "17.2 ACn / ACm") count; a title that
  * also cites another spec's criteria does not tag 17.2's.
  */
-const WANTED = Array.from({ length: 36 }, (_, i) => i + 1);
+// Spec 17.6 retires AC15, AC17–AC20, AC26 and AC27 (the cards, chips and "N new" became the ledger and a count of lifts).
+const RETIRED_BY_17_6 = [15, 17, 18, 19, 20, 26, 27];
+const WANTED = Array.from({ length: 36 }, (_, i) => i + 1).filter((n) => !RETIRED_BY_17_6.includes(n));
 
 describe("17.2 AC38 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.2 ACn'", () => {

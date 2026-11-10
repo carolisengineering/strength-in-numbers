@@ -118,6 +118,8 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.title === null ? null : <WorkoutText text={workout.title} variant="title" />}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
+      {/* Spec 17.6 AC1 (D3): the records right after the date, before the routine note, notes and stats. */}
+      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} section={section} />
       {workout.routineNotes ? <p className={styles.routineNotes}>{workout.routineNotes}</p> : null}
       {workout.notes === null ? null : (
         <section className={styles.workoutNotes} aria-label="Workout notes">
@@ -134,7 +136,6 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       </div>
       {/* Spec 20.2 AC1 / D13: under the stats and Edit workout; the owner's only (renders nothing for anyone else). */}
       <HevyWorkoutSection workout={workout} />
-      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} />
       <div className={styles.exercises}>
         {segments.map((segment) => {
           const body = segment.rows.map((row, k) => (

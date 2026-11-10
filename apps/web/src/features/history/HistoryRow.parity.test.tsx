@@ -41,21 +41,21 @@ function setup(recordTypes: ("heaviest_weight" | "best_est_1rm" | "best_set_volu
       recordType,
       unit: recordType === "best_set_volume" ? "kg_reps" : "kg",
       value: recordType === "best_set_volume" ? 500 : 100,
-      previousValue: null,
+      previousValue: recordType === "best_set_volume" ? 450 : 90,
     }),
   );
   prepareApp({ auth, fake: createWorkoutFake({ finished: [workout], records }) });
   return { workout, ...renderApp("/app/history") };
 }
 
-describe("17.2 AC32 / AC34 — the History row and the summary agree (07.3)", () => {
-  it("three records of which one is set volume: the row says 2 PRs and the summary says 2 new", async () => {
+describe("17.2 AC34 — the History row and the summary, 07.3", () => {
+  // Spec 17.6 F1: the row counts record rows as served; the summary counts lifts, until Spec 07.6 aligns them.
+  it("three records of which one is set volume: the row says 2 PRs and the summary counts 1 lift", async () => {
     const { workout, router } = setup(["heaviest_weight", "best_est_1rm", "best_set_volume"]);
     const row = await screen.findByRole("link", { name: /Bench Press/ });
     expect(within(row).getByRole("img", { name: "2 personal records" })).toHaveTextContent("2 PRs");
     await act(() => router.navigate(`/app/history/${workout.id}`));
-    const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText("2 new")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Records from this workout on 1 lift" })).toBeInTheDocument();
   });
 
   it("a workout whose only record is set volume has no badge and no records section", async () => {
@@ -64,7 +64,7 @@ describe("17.2 AC32 / AC34 — the History row and the summary agree (07.3)", ()
     expect(within(row).queryByRole("img")).toBeNull();
     await act(() => router.navigate(`/app/history/${workout.id}`));
     expect(await screen.findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Personal records" })).toBeNull();
+    expect(screen.queryByRole("region", { name: /record/i })).toBeNull();
   });
 });
 

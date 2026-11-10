@@ -3,21 +3,18 @@ import { describe, expect, it } from "vitest";
 
 import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { formatRecordValue, formatSeconds } from "../units/format";
-import { buildRecordCards } from "./recordCards";
-import { recordLabel, recordLine, shortRecordLabel, sortRecords } from "./labels";
+import { buildRecordLedger } from "./recordLedger";
+import { recordLabel, recordLine, sortRecords } from "./labels";
 
 describe("18.1 AC26 — record labels", () => {
-  it("both functions name the three new types the same way", () => {
-    for (const fn of [recordLabel, shortRecordLabel]) {
-      expect(fn("max_calories")).toBe("Most calories");
-      expect(fn("max_distance")).toBe("Longest distance");
-      expect(fn("max_duration")).toBe("Longest hold");
-    }
+  it("names the three new types", () => {
+    expect(recordLabel("max_calories")).toBe("Most calories");
+    expect(recordLabel("max_distance")).toBe("Longest distance");
+    expect(recordLabel("max_duration")).toBe("Longest hold");
   });
   it("every record type has a non-empty name", () => {
     for (const t of RECORD_TYPE_VALUES) {
       expect(recordLabel(t)).not.toBe("");
-      expect(shortRecordLabel(t)).not.toBe("");
     }
   });
 });
@@ -48,18 +45,19 @@ describe("18.1 AC27 — record values", () => {
   });
 });
 
-const card = (r: Partial<Record<keyof PersonalRecord, unknown>>) =>
-  buildRecordCards({ records: [makePersonalRecord({ exerciseName: "X", ...r })], workout: makeWorkoutDetail({ exercises: [] }), pref: "kg" })[0]!;
+// Spec 17.6: the gain is the ledger row's.
+const gainOf = (r: Partial<Record<keyof PersonalRecord, unknown>>) =>
+  buildRecordLedger({ records: [makePersonalRecord({ exerciseName: "X", ...r })], workout: makeWorkoutDetail({ exercises: [] }), pref: "kg", section: "workouts" }).lifts[0]!.rows[0]!.gainText;
 
 describe("18.1 AC27 — gains", () => {
   it("+5 cal, +10 m, +15 s", () => {
-    expect(card({ recordType: "max_calories", unit: "cal", value: 120, previousValue: 115 }).lead.gainText).toBe("+5 cal");
-    expect(card({ recordType: "max_distance", unit: "m", value: 50, previousValue: 40 }).lead.gainText).toBe("+10 m");
-    expect(card({ recordType: "max_duration", unit: "s", value: 105, previousValue: 90 }).lead.gainText).toBe("+15 s");
+    expect(gainOf({ recordType: "max_calories", unit: "cal", value: 120, previousValue: 115 })).toBe("+5 cal");
+    expect(gainOf({ recordType: "max_distance", unit: "m", value: 50, previousValue: 40 })).toBe("+10 m");
+    expect(gainOf({ recordType: "max_duration", unit: "s", value: 105, previousValue: 90 })).toBe("+15 s");
   });
   it("Review Focus 1 — a distance gain carries no float noise", () => {
     expect(12.194 - 12.192).not.toBe(0.002);
-    expect(card({ recordType: "max_distance", unit: "m", value: 12.194, previousValue: 12.192 }).lead.gainText).toBe("+0.002 m");
+    expect(gainOf({ recordType: "max_distance", unit: "m", value: 12.194, previousValue: 12.192 })).toBe("+0.002 m");
   });
 });
 
