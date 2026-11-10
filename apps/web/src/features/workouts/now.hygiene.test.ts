@@ -24,6 +24,16 @@ describe("17.1 AC21 — seedDraft stays the only builder of a draft from a list"
   });
 });
 
+describe("17.8 AC19 — regression guards", () => {
+  it("the stepper components never dispatch or seed a draft: a step is an ordinary edit through onChange", () => {
+    for (const path of ["./SetFields.tsx", "./NumberStepper.tsx"]) expect(stripComments(read(path)), path).not.toMatch(/\bdispatch\(|\bseedDraft\(/);
+  });
+  it("seedDraft( is still called only from EntryRow.tsx and setDraft.ts", () => {
+    const callers = Object.entries(workouts).filter(([, src]) => /\bseedDraft\(/.test(stripComments(src))).map(([p]) => p).sort();
+    expect(callers).toEqual(["./EntryRow.tsx", "./setDraft.ts"]);
+  });
+});
+
 describe("17.1 AC39 — (c) the panel's numbers use the signature figure tokens", () => {
   it("NumberStepper and the figure inputs set size, weight and stretch from the figure tokens; nothing overrides numerics", () => {
     for (const path of ["./NumberStepper.module.css", "./SetFields.module.css"]) {

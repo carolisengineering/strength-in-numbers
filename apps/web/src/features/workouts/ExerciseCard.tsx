@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core";
 
 import { Button } from "../../ui/Button";
-import { CheckIcon } from "../../ui/icons";
+import { CheckIcon, PencilIcon } from "../../ui/icons";
 import { MODALITY_LABELS } from "../catalog/labels";
 import { LinkToggle } from "../routines/LinkToggle";
 import { EntryRow, type DraftRestore, type LoggedEvent } from "./EntryRow";
@@ -265,6 +265,8 @@ export function ExerciseCard({
                   {needsData ? <span className={styles.needsDataTag}>Needs data</span> : null}
                   {rowSync?.state === "pending" ? <span className={styles.pendingTag}>Not saved yet</span> : null}
                   {rowSync?.state === "failed" ? <span className={styles.failedTag}>Couldn't save</span> : null}
+                  {/* Spec 17.8 AC18: a muted pencil says the row opens its set; aria-hidden, so the name is unchanged. */}
+                  <PencilIcon className={styles.setIcon} />
                 </button>
                 {rowSync?.state === "failed" ? (
                   <span className={styles.rowActions}>

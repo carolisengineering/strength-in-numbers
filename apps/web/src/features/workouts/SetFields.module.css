@@ -22,32 +22,30 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--stepper-min-width)), 1fr));
 }
 
-/* A value, then its unit strip under it, inside the value's one <Field>, so the Field's error comes after both (#203,
-   Spec 17.7). The strip's radios use Segmented's two-class rule, so Field's input rule never restyles them. */
-.withUnit {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.duration {
-  display: flex;
-  gap: var(--space-3);
-}
-
-.duration > * {
-  flex: 1;
-}
-
 /* Every control is at least --tap-target-min tall (Spec 06.1 AC33). */
 .input {
   min-height: var(--tap-target-min);
   min-width: var(--tap-target-min);
 }
 
-/* Spec 17.1 D6: duration and distance keep their fields, sized like the stepper figures. */
+/* Spec 17.8 AC11: Minutes and Seconds between a duration's buttons, side by side where both labels fit
+   (390 px) and stacked where they don't (320 px), by wrapping, with no media query. */
+.durationFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.durationFields > * {
+  flex: 1 1 var(--duration-field-min-width);
+  min-width: 0;
+}
+
+/* Spec 17.1 D6, Spec 17.8 AC13: the duration fields, set and centered like the stepper figures. */
 .figureInput {
   min-height: calc(var(--space-8) + var(--space-4));
+  text-align: center;
   font-size: var(--font-size-figure);
   font-weight: var(--font-weight-figure);
   font-stretch: var(--font-stretch-figure);

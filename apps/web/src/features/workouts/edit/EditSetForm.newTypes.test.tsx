@@ -15,7 +15,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../../test/workoutFixtures";
-import { createWorkoutFake } from "../../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { addSetButton, card } from "../../../test/sessionHelpers";
 
@@ -30,6 +30,30 @@ function open(exercises: ExerciseSpec[], unitPreference: "kg" | "lb" = "kg") {
 }
 const ready = () => screen.findByRole("heading", { level: 1, name: "Edit workout" });
 const sheet = (name: RegExp | string) => within(screen.getByRole("dialog", { name }));
+
+describe("17.8 AC16 — edit screen", () => {
+  it("the set sheet and the add-set form use the steppers, named with the exercise", async () => {
+    const { user } = open([{ modality: "duration", name: "Plank", sets: [makeSet({ reps: null, weight: null, weightUnit: null, weightKg: null, durationS: 45 })] }]);
+    await ready();
+    await user.click(within(card("Plank")).getByRole("button", { name: /0:45/ }));
+    expect(sheet(/^Set 1 · Plank/).getByRole("button", { name: "+5 s, increase time for Plank" })).toBeInTheDocument();
+    await user.click(sheet(/^Set 1 · Plank/).getByRole("button", { name: "Close" }));
+    await user.click(addSetButton("Plank"));
+    expect(sheet("New set · Plank").getByRole("button", { name: "\u22125 s, decrease time for Plank" })).toBeInTheDocument();
+  });
+
+  it("a server 422 on durationS shows under the duration's fields", async () => {
+    const { fake, user } = open([{ modality: "duration", name: "Plank", sets: [makeSet({ reps: null, weight: null, weightUnit: null, weightKg: null, durationS: 45 })] }]);
+    await ready();
+    fake.failNext({ method: "PATCH", path: /\/sets\// }, () => problemResponse(422, "validation-error", { errors: [{ path: "durationS", message: "Too long" }] }));
+    await user.click(within(card("Plank")).getByRole("button", { name: /0:45/ }));
+    const s = sheet(/^Set 1 · Plank/);
+    await user.click(s.getByRole("button", { name: "+5 s, increase time for Plank" }));
+    await user.click(s.getByRole("button", { name: "Save" }));
+    const message = await s.findByText("Too long");
+    expect(message.closest("[data-stepper-row]")).not.toBeNull();
+  });
+});
 
 describe("18.1 AC20 — the edit screen's set sheet", () => {
   it("calories: a Calories field prefilled", async () => {

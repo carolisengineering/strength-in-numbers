@@ -682,10 +682,10 @@ const measureLoggingLoop = (page) =>
 
 // Spec 17.8 Phase A (AC1, AC2, AC10, AC20): the current-set panel, read in a real browser.
 const entryPanel = [];
-const measureEntryPanel = (page) =>
-  page.evaluate(() => {
-    const form = document.querySelector('form[aria-label^="Log a set of"]');
-    if (!form) return { missing: "no panel" };
+const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
+  page.evaluate((scope) => {
+    const form = document.querySelector(scope);
+    if (!form) return { missing: `no ${scope}` };
     const box = (el) => el.getBoundingClientRect();
     const round = (n) => Math.round(n * 10) / 10;
     const rows = [...form.querySelectorAll("[data-stepper-row]")].map((row) => {
@@ -717,8 +717,17 @@ const measureEntryPanel = (page) =>
       firstRowOffset: round(box(firstRow).top - box(form).top),
       slotWidth: slot ? round(box(slot).width) : null,
       restState: timer ? timer.getAttribute("data-state") : null,
+      // Spec 17.8 Phase B: a duration's Minutes and Seconds labels (side by side or stacked) and any clipped label.
+      duration: (() => {
+        const labels = [...form.querySelectorAll("[data-stepper-row] label")].filter((l) => /^(Minutes|Seconds)$/.test(l.textContent.trim()));
+        return labels.length === 2 ? { tops: labels.map((l) => round(box(l).top)), clipped: labels.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent.trim()) } : null;
+      })(),
+      dialogHscroll: (() => {
+        const dialog = form.closest("dialog");
+        return dialog ? dialog.scrollWidth > dialog.clientWidth : false;
+      })(),
     };
-  });
+  }, scope);
 
 // Spec 17.7 Phase B (AC16, AC22, Review Focus 4): the decluttered card and its More block, read in a real browser.
 const cardDeclutter = [];
@@ -828,7 +837,7 @@ try {
     await tryStep("duration exercise", async () => {
       await go("/app/workouts");
       await page.getByRole("article", { name: "Plank" }).getByRole("heading", { level: 2 }).getByRole("button").click();
-      await shoot(page, device, "24-duration-exercise", "Plank current: Minutes / Seconds fields, no steppers");
+      await shoot(page, device, "24-duration-exercise", "Plank current: −5 s / +5 s around the Minutes and Seconds fields (Spec 17.8 AC11)");
     });
     await tryStep("rest running", async () => {
       await go("/app/workouts");
@@ -989,8 +998,9 @@ try {
         if (m.rows.length === 0) violations.push(`${where}: no stepper row`);
         for (const row of m.rows) {
           for (const b of row.buttons) {
-            // AC1: each button's vertical center within 1 px of the input's.
-            if (Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
+            // AC1: each button's vertical center within 1 px of the input's (weight, reps, calories, distance; not a
+            // duration, whose buttons sit beside two labeled fields).
+            if (!/^(Minutes|Seconds)$/.test(row.label) && Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
             // AC2: 56 × 56.
             if (Math.abs(b.w - 56) > 0.5 || Math.abs(b.h - 56) > 0.5) violations.push(`${where}: ${row.label} "${b.text}" is ${b.w} × ${b.h} (want 56 × 56)`);
           }
@@ -998,6 +1008,18 @@ try {
         // AC20: no target under 44 px, no horizontal overflow.
         for (const s of m.small) violations.push(`${where}: ${s} is under 44 px`);
         if (m.hscroll) violations.push(`${where}: the panel scrolls sideways`);
+        if (m.dialogHscroll) violations.push(`${where}: the sheet scrolls sideways`);
+      };
+      const clippedValue = async (where, scope, label, value) => {
+        const input = page.locator(scope).getByLabel(label, { exact: true });
+        await input.fill(value);
+        const clipped = await input.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+        steps.push({ step: `${where} ${value}`, clipped });
+        if (clipped) violations.push(`${where}: "${value}" is clipped in ${label}`);
+      };
+      const openCard = async (name) => {
+        const header = page.getByRole("article", { name }).getByRole("heading", { level: 2 }).getByRole("button");
+        if (await header.count()) await header.click();
       };
       try {
         for (const size of sizes) {
@@ -1017,19 +1039,60 @@ try {
             steps.push({ step: `${at} 102.5`, clipped });
             if (clipped) violations.push(`${at}: "102.5" is clipped in the weight field`);
           }
-          // Calories: the new-types workout's Echo Bike panel.
+          // Spec 17.8 Phase B (AC11, AC20, Review Focus 5): the Plank's duration steppers. At 390 px Minutes and Seconds sit
+          // side by side; at 320 px they stack, and neither label is clipped.
+          await clearStored();
+          await go("/app/workouts");
+          await openCard("Plank");
+          const plank = await measureEntryPanel(page);
+          if (!plank.missing && plank.panel !== "Log a set of Plank") violations.push(`${at} duration: measured "${plank.panel}", not Plank`);
+          checkPanel(`${at} duration`, plank);
+          if (plank.duration === null || plank.duration === undefined) violations.push(`${at} duration: no Minutes and Seconds in a stepper row`);
+          else {
+            const [minutesTop, secondsTop] = plank.duration.tops;
+            if (size.width >= 390 && Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} duration: Minutes and Seconds don't share a line at ${size.width} px`);
+            if (size.width === 320 && !(secondsTop > minutesTop + 1)) violations.push(`${at} duration: Minutes and Seconds don't stack at 320 px`);
+            for (const label of plank.duration.clipped) violations.push(`${at} duration: the ${label} label is clipped`);
+          }
+          if (size.width === 320) {
+            await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
+            await shoot(page, device, "24b-duration-320", "Spec 17.8 AC11: a Plank at 320 × 568: −5 s / +5 s around Minutes over Seconds");
+          }
+          // Calories and the carry: the new-types workout's Echo Bike and Farmer Carry panels.
           state.newTypes = structuredClone(D.activeNewTypes);
           try {
             await clearStored();
             await go("/app/workouts");
-            const header = page.getByRole("article", { name: "Echo Bike" }).getByRole("heading", { level: 2 }).getByRole("button");
-            if (await header.count()) await header.click();
+            await openCard("Echo Bike");
             const calories = await measureEntryPanel(page);
             if (!calories.missing && calories.panel !== "Log a set of Echo Bike") violations.push(`${at} calories: measured "${calories.panel}", not Echo Bike`);
             checkPanel(`${at} calories`, calories);
+            if (size.width === 320) {
+              await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
+              await shoot(page, device, "59b-calories-320", "Spec 17.8: a Calories panel at 320 × 568");
+            }
+            await openCard("Farmer Carry");
+            const carry = await measureEntryPanel(page);
+            if (!carry.missing && carry.panel !== "Log a set of Farmer Carry") violations.push(`${at} carry: measured "${carry.panel}", not Farmer Carry`);
+            checkPanel(`${at} carry`, carry);
+            await clippedValue(`${at} carry`, 'form[aria-label^="Log a set of"]', "Distance (m)", "1000");
+            if (size.width === 320) {
+              await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
+              await shoot(page, device, "60b-carry-320", "Spec 17.8 AC12: a carry at 320 × 568: weight and distance steppers, Distance (m)");
+            }
           } finally {
             state.newTypes = null;
           }
+          // AC16, AC20: the edit sheet's steppers (the edit screen's Add set, copied forward from Bench Press).
+          await clearStored();
+          await go(`/app/history/${D.ids.latestPush}/edit`);
+          await page.getByRole("button", { name: /^Add set to Bench/ }).first().click();
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          const sheet = await measureEntryPanel(page, "dialog[open] form");
+          checkPanel(`${at} edit sheet`, sheet);
+          await clippedValue(`${at} edit sheet`, "dialog[open]", "Weight", "102.5");
+          await shoot(page, device, size.width === 320 ? "33e-edit-sheet-320" : "33d-edit-sheet-steppers", size.width === 320 ? "Spec 17.8 AC16: the edit sheet at 320 × 568: the same steppers, the unit strip under the weight" : "Spec 17.8 AC16: the edit sheet's steppers, with Set type and the unit strips");
+          await page.keyboard.press("Escape");
         }
         // AC10, at 390 px on one panel state: the label row's height and the first stepper row's offset are the same with a
         // rest running, at Ready and with no rest. Each state is read after a reload, so the same panel is current.
@@ -2177,8 +2240,9 @@ try {
 }
 
 // Spec 17.1 AC24: every enabled, visible control on the session screens is at least 44 px in both axes.
-// Spec 17.8: the panel and rest captures at 320 px and Ready count too.
-const SESSION_SHOTS = /\/(01|01p|03|04|2[2-6]|26[jk]|s177b)-/;
+// Spec 17.8: the panel, rest, new-type and edit-sheet captures count too, at every size (no trailing "-", so 24b, 33d,
+// 59b and 60b are included).
+const SESSION_SHOTS = /\/(01|03|04|2[2-6]|59|60|61|33|s177b)/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;

@@ -1,4 +1,4 @@
-import { SET_CALORIES_MAX, SET_REPS_MAX, SET_WEIGHT_MAX, type WeightUnit } from "@sin/core";
+import { SET_CALORIES_MAX, SET_DISTANCE_MAX, SET_DURATION_S_MAX, SET_REPS_MAX, SET_WEIGHT_MAX, toCanonicalMeters, type DistanceUnit, type WeightUnit } from "@sin/core";
 
 import { formatWeight } from "../routines/targetFormat";
 
@@ -58,6 +58,53 @@ export function stepCalories(text: string, direction: StepDirection): string {
 export function caloriesAtLimit(text: string, direction: StepDirection): boolean {
   const calories = toWhole(text);
   return direction === "up" ? calories >= SET_CALORIES_MAX : calories <= 0;
+}
+
+/**
+ * Spec 17.8 AC11 (D5, O2): a duration steps its total by 5 s and rewrites both fields, so 0:59 + 5 s reads 1:04 and
+ * seconds never pass 59. A field that doesn't parse counts as 0. The output is unpadded, like `draftFromSet`.
+ */
+export const DURATION_STEP_S = 5;
+
+const durationTotal = (minutes: string, seconds: string): number => toWhole(minutes) * 60 + toWhole(seconds);
+
+export function stepDuration(minutes: string, seconds: string, direction: StepDirection): { minutes: string; seconds: string } {
+  const total = clamp(durationTotal(minutes, seconds) + (direction === "up" ? DURATION_STEP_S : -DURATION_STEP_S), 0, SET_DURATION_S_MAX);
+  return { minutes: String(Math.floor(total / 60)), seconds: String(total % 60) };
+}
+
+export function durationAtLimit(minutes: string, seconds: string, direction: StepDirection): boolean {
+  const total = durationTotal(minutes, seconds);
+  return direction === "up" ? total >= SET_DURATION_S_MAX : total <= 0;
+}
+
+/** Spec 17.8 AC12 (O2): 10 for m and ft, 0.1 for km and mi, in the draft's distance unit. */
+export const DISTANCE_STEP: Readonly<Record<DistanceUnit, number>> = { m: 10, ft: 10, km: 0.1, mi: 0.1 };
+const DISTANCE_STEP_MILLI: Readonly<Record<DistanceUnit, number>> = { m: 10_000, ft: 10_000, km: 100, mi: 100 };
+
+/**
+ * The largest distance, in milli-units of `unit`, that `parseDraft` accepts: the entered value is bounded by
+ * SET_DISTANCE_MAX, and so are its meters (in ft the entered-value bound is the one that bites: 999,995 ft is only
+ * about 305 km).
+ */
+function distanceLimitMilli(unit: DistanceUnit): number {
+  const fits = (milli: number) => milli / 1000 <= SET_DISTANCE_MAX && toCanonicalMeters(milli / 1000, unit) <= SET_DISTANCE_MAX;
+  let milli = Math.min(Math.round(SET_DISTANCE_MAX * 1000), Math.floor((SET_DISTANCE_MAX * 1000) / toCanonicalMeters(1, unit)));
+  while (milli > 0 && !fits(milli)) milli -= 1;
+  return milli;
+}
+
+/** Integer milli-units, as weight steps, so 0.1 + 0.2 is exactly 0.3; a step never leaves text `parseDraft` refuses. */
+export function stepDistance(text: string, unit: DistanceUnit, direction: StepDirection): string {
+  const milli = toMilli(text);
+  const limit = distanceLimitMilli(unit);
+  if (direction === "up") return milli + DISTANCE_STEP_MILLI[unit] > limit ? text : formatWeight((milli + DISTANCE_STEP_MILLI[unit]) / 1000);
+  return formatWeight(clamp(milli - DISTANCE_STEP_MILLI[unit], 0, limit) / 1000);
+}
+
+export function distanceAtLimit(text: string, unit: DistanceUnit, direction: StepDirection): boolean {
+  const milli = toMilli(text);
+  return direction === "up" ? milli + DISTANCE_STEP_MILLI[unit] > distanceLimitMilli(unit) : milli <= 0;
 }
 
 /** Spec 17.8 AC3: the true minus sign (U+2212), never an ASCII hyphen, in every visible step and name. */

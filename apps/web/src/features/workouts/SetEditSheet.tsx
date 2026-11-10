@@ -56,12 +56,13 @@ export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps)
       {/* Keyed by set id (or the opening) so each open starts from that set's values. */}
       {mode.kind === "edit" ? (
         set ? (
-          <EditSetForm key={set.id} target={{ kind: "edit", set }} modality={rest.modality} unitPreference={rest.unitPreference} onClose={rest.onClose} mode={mode} />
+          <EditSetForm key={set.id} target={{ kind: "edit", set }} modality={rest.modality} exerciseName={rest.exerciseName} unitPreference={rest.unitPreference} onClose={rest.onClose} mode={mode} />
         ) : add ? (
           <EditSetForm
             key={`add-${add.session}`}
             target={{ kind: "add", workoutExerciseId: add.workoutExerciseId, sets: add.sets }}
             modality={rest.modality}
+            exerciseName={rest.exerciseName}
             unitPreference={rest.unitPreference}
             onClose={rest.onClose}
             mode={mode}
@@ -77,6 +78,7 @@ export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps)
 function EditForm({
   set,
   modality,
+  exerciseName,
   unitPreference,
   onClose,
   onGone,
@@ -162,7 +164,7 @@ function EditForm({
 
   return (
     <form className={styles.form} onSubmit={(event) => void save(event)} noValidate>
-      <SetFields modality={modality} draft={draft} errors={errors} onChange={onChange} idPrefix={`edit-${set.id}`} />
+      <SetFields modality={modality} exerciseName={exerciseName} draft={draft} errors={errors} onChange={onChange} idPrefix={`edit-${set.id}`} />
       {formError ? (
         <p className={styles.formError} role="alert">
           {formError}

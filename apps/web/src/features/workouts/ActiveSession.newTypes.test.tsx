@@ -141,6 +141,33 @@ describe("18.1 AC16 — logging the new types", () => {
   });
 });
 
+describe("17.8 AC14 — no seed from the plan", () => {
+  // A plan row carries no duration (Spec 09.1 D8): a Plank planned for 3 sets opens empty.
+  const PLANK: ExerciseSpec = {
+    modality: "duration",
+    name: "Plank",
+    plannedSets: [1, 2, 3].map(() => ({ setType: "working" as const, repsLow: null, repsHigh: null, weight: null, weightUnit: null })),
+  };
+
+  it("the first set opens with both fields empty, the bar reads Log set and is disabled, and nothing but reads is sent", async () => {
+    const { fake } = await setup([PLANK]);
+    expect(field("Plank", "Minutes")).toHaveValue("");
+    expect(field("Plank", "Seconds")).toHaveValue("");
+    expect(logButton("Plank")).toHaveTextContent(/^Log set$/);
+    expect(logButton("Plank")).toHaveAttribute("aria-disabled", "true"); // the bar stays focusable (17.1)
+    expect(fake.requests.filter((r) => r.method !== "GET")).toEqual([]);
+  });
+
+  it("after one logged set, the next draft copies it forward", async () => {
+    const { fake, user } = await setup([PLANK]);
+    await typeInto(user, "Plank", "Seconds", "45");
+    await user.click(logButton("Plank"));
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    await waitFor(() => expect(field("Plank", "Seconds")).toHaveValue("45"));
+    expect(field("Plank", "Minutes")).toHaveValue("0");
+  });
+});
+
 describe("18.1 AC16 — the bar follows the current card (Review Focus 4)", () => {
   it("from a calories card to a carry card, the bar never shows a stale label", async () => {
     const { user } = await setup();

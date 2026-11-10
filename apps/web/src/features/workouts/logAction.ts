@@ -1,20 +1,21 @@
 import { createContext, useSyncExternalStore } from "react";
 import { formatClock, type Modality } from "@sin/core";
 
-import { formatWeight } from "../routines/targetFormat";
 import { formatCount } from "./format";
 import { parseDraft, type SetDraft } from "./setDraft";
 
 /**
  * Spec 17.1 §6.6: the bar button's visible text. Mirrors `formatSet`'s core: the weight unit is appended only when it
  * differs from the profile's; a distance always carries its unit. "Log set" while the draft does not parse.
+ * Spec 17.8 AC15 (D6): weight and distance are grouped like the logged row ("Log 1,000 m · 25:00"); the field keeps
+ * its own ungrouped text.
  */
 export function logLabel(modality: Modality, draft: SetDraft, unitPreference: "kg" | "lb"): string {
   const parsed = parseDraft(modality, draft);
   if (!parsed.ok) return "Log set";
   const body = parsed.body;
   const unit = body.weightUnit !== undefined && body.weightUnit !== unitPreference ? ` ${body.weightUnit}` : "";
-  const weight = body.weight === undefined || body.weight === null ? "" : `${formatWeight(body.weight)}${unit}`;
+  const weight = body.weight === undefined || body.weight === null ? "" : `${formatCount(body.weight)}${unit}`;
   const reps = body.reps ?? 0;
   const duration = formatClock(body.durationS ?? 0);
   switch (modality) {
@@ -27,12 +28,12 @@ export function logLabel(modality: Modality, draft: SetDraft, unitPreference: "k
     case "duration":
       return `Log ${duration}`;
     case "distance_duration":
-      return `Log ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""} · ${duration}`;
+      return `Log ${formatCount(body.distance ?? 0)} ${body.distanceUnit ?? ""} · ${duration}`;
     // Spec 18.1 §6.5: the weight carries its unit only when it differs from the profile's, as for weight × reps.
     case "calories":
       return `Log ${formatCount(body.calories ?? 0)} cal`;
     case "weight_distance":
-      return `Log ${weight} · ${String(body.distance ?? 0)} ${body.distanceUnit ?? ""}`;
+      return `Log ${weight} · ${formatCount(body.distance ?? 0)} ${body.distanceUnit ?? ""}`;
     case "weight_duration":
       return `Log ${weight} · ${duration}`;
   }

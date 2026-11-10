@@ -14,9 +14,33 @@ import { draftFromSet, unitDefaultsFor, type SetDraft } from "./setDraft";
 
 const props = { modality: "distance_duration" as const, draft: draftFromSet(null, unitDefaultsFor("kg"), "k"), errors: {}, onChange: () => {}, idPrefix: "t" };
 
+describe("17.8 AC17 — select on focus", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const MODALITIES: Modality[] = ["weight_reps", "bodyweight_reps", "weighted_bodyweight", "duration", "distance_duration", "calories", "weight_distance", "weight_duration"];
+  for (const variant of ["entry", "sheet"] as const) {
+    it.each(MODALITIES)(`${variant}: focusing each text input of %s selects its text once`, (modality) => {
+      const select = vi.spyOn(HTMLInputElement.prototype, "select");
+      render(<SetFields {...props} modality={modality} variant={variant} exerciseName="X" />);
+      const inputs = [...document.querySelectorAll<HTMLInputElement>('input[type="text"]')];
+      expect(inputs.length).toBeGreaterThan(0);
+      for (const input of inputs) {
+        select.mockClear();
+        input.focus();
+        expect(select, input.id).toHaveBeenCalledTimes(1);
+      }
+    });
+  }
+
+  it("SetFields.tsx writes no <input outside TextField", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.tsx"), "utf8");
+    const textField = src.slice(src.indexOf("function TextField("), src.indexOf("\n}\n", src.indexOf("function TextField(")));
+    expect(src.split("<input").length - 1).toBe(textField.split("<input").length - 1);
+  });
+});
+
 describe("05.3 AC21 — feet under More (Set options before Spec 17.7)", () => {
   it("sheet: Distance unit lists m, km, mi, ft", () => {
-    render(<SetFields {...props} variant="sheet" />);
+    render(<SetFields exerciseName="X" {...props} variant="sheet" />);
     expect(segmentOptions("Distance unit")).toEqual(["m", "km", "mi", "ft"]);
   });
   it("entry: under More, Distance unit lists m, km, mi, ft", async () => {
@@ -70,7 +94,8 @@ describe("17.7 AC6 — units and set type are Segmented", () => {
 
 // #203: in the New set sheet a "Required" under Reps dropped the Weight column a line, because the columns were
 // bottom-aligned. They are top-aligned now, and the unit sits in the value's own Field under the value, so an error
-// goes under both and never pulls the unit away from its value.
+// goes under both and never pulls the unit away from its value. Spec 17.8 AC16 (amended): the value is a stepper now,
+// so its row (− value +) and then its unit strip sit in the Field, and the error comes after both.
 describe("#203 — the sheet's fields line up when one shows an error", () => {
   const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.module.css"), "utf8");
   const rule = (selector: string) =>
@@ -78,7 +103,6 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
 
   it("top-aligns the measure columns, so a taller column never moves its neighbor", () => {
     expect(rule(".measures")).toMatch(/align-items:\s*start/);
-    expect(rule(".withUnit")).not.toMatch(/align-items:\s*(flex-)?end/);
   });
 
   for (const [measure, label, unit, modality] of [
@@ -86,11 +110,12 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
     ["distance", "Distance", "Distance unit", "distance_duration"],
   ] as const) {
     it(`17.7 AC6 — puts the ${measure} value, then its unit, then the error, in the value's one Field`, () => {
-      render(<SetFields {...props} modality={modality} errors={{ [measure]: "Required" }} variant="sheet" />);
+      render(<SetFields exerciseName="X" {...props} modality={modality} errors={{ [measure]: "Required" }} variant="sheet" />);
       const input = screen.getByLabelText(label);
       const group = segmented(unit);
       const error = screen.getByRole("alert");
-      expect(group.parentElement).toBe(input.parentElement);
+      const row = input.closest("[data-stepper-row]")!;
+      expect(group.parentElement).toBe(row.parentElement);
       const order = [input, group, error];
       for (let i = 1; i < order.length; i += 1) {
         expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -98,7 +123,8 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
       const field = input.closest("label")?.parentElement ?? screen.getByText(label, { selector: "label" }).parentElement!;
       expect(field.contains(group)).toBe(true);
       expect(field.contains(error)).toBe(true);
-      expect(input.parentElement?.nextElementSibling).toBe(error);
+      expect(row.nextElementSibling).toBe(group);
+      expect(group.nextElementSibling).toBe(error);
       expect(input).toHaveAttribute("aria-describedby", error.id);
       expect(input).toHaveAttribute("aria-invalid", "true");
       expect(within(group).queryByRole("alert")).toBeNull();
@@ -106,10 +132,12 @@ describe("#203 — the sheet's fields line up when one shows an error", () => {
   }
 
   it("gives each field its own error under its own control when both are empty", () => {
-    render(<SetFields {...props} modality="weight_reps" errors={{ weight: "Required", reps: "Required" }} variant="sheet" />);
+    render(<SetFields exerciseName="X" {...props} modality="weight_reps" errors={{ weight: "Required", reps: "Required" }} variant="sheet" />);
     const [weightError, repsError] = screen.getAllByRole("alert");
-    expect(screen.getByLabelText("Weight").parentElement?.nextElementSibling).toBe(weightError);
-    expect(screen.getByLabelText("Reps").nextElementSibling).toBe(repsError);
+    // Each error is the last thing in its own Field, after the value's row and the unit strip or line.
+    const fieldOf = (label: string) => screen.getByLabelText(label).closest("[data-stepper-row]")!.parentElement!;
+    expect(fieldOf("Weight").lastElementChild).toBe(weightError);
+    expect(fieldOf("Reps").lastElementChild).toBe(repsError);
   });
 });
 
