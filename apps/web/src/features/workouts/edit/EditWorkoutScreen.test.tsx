@@ -20,7 +20,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { editDoneButton } from "../../../test/sessionHelpers";
+import { editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
 import { formatStartedAt } from "../format";
 import { EDIT_COPY } from "./editCopy";
 
@@ -179,7 +179,7 @@ describe("18.0 AC15 — a failed refresh does not hide the summary (final review
     const { user } = renderApp(`/app/history/${workout.id}`);
     await screen.findByRole("heading", { name: "Workout summary" });
     fake.failNext({ method: "GET", path: new RegExp(`^/v1/workouts/${workout.id}$`) }, () => problemResponse(500, "about:blank"), 3);
-    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    await openEditFromSummary(user);
     expect(await screen.findByText(EDIT_COPY.refreshFailed)).toBeInTheDocument();
     await user.click(editDoneButton());
     await screen.findByRole("heading", { name: "Workout summary" });

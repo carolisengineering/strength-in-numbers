@@ -34,7 +34,7 @@ function open(section: "workouts" | "history", details: { title?: string | null;
 const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
 describe("18.0 AC50 — the summary shows the title and notes", () => {
-  it.each(["workouts", "history"] as const)("on /app/%s/:id: the title before the date (not a heading); the notes section after From routine, before the stats", async (section) => {
+  it.each(["workouts", "history"] as const)("on /app/%s/:id: the title before the date (not a heading); the notes section after the stats (amended by 17.6 AC21)", async (section) => {
     await open(section, { title: "Heavy bench day", notes: "Shoulder felt tight on set 3." });
     const title = screen.getByText("Heavy bench day");
     expect(title.tagName).toBe("P");
@@ -43,7 +43,7 @@ describe("18.0 AC50 — the summary shows the title and notes", () => {
     expect(notes).toHaveTextContent("Notes");
     expect(notes).toHaveTextContent("Shoulder felt tight on set 3.");
     expect(follows(screen.getByText("From routine: Push Day"), notes)).toBe(true);
-    expect(follows(notes, screen.getByText("duration"))).toBe(true);
+    expect(follows(screen.getByText("duration"), notes)).toBe(true);
     expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["Workout summary"]);
   });
 

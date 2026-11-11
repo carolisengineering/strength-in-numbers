@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.17-6.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /**
- * Spec 17.6 AC26, Phase A's part: AC1–AC19. AC20 is the screenshot harness ("record ledger summaries"), AC25 the docs,
- * AC27 the phone check; Phase B adds AC21–AC24. Only numbers written as "17.6 ACn" (or "17.6 ACn / ACm") count; a title
- * that also cites another spec's criteria does not tag 17.6's.
+ * Spec 17.6 AC26: AC1–AC19 and AC21–AC24. AC20 is the screenshot harness ("record ledger summaries", and capture 13's
+ * first-screen check), AC25 the docs, AC27 the phone check. Only numbers written as "17.6 ACn" (or "17.6 ACn / ACm")
+ * count; a title that also cites another spec's criteria does not tag 17.6's.
  */
-const WANTED = Array.from({ length: 19 }, (_, i) => i + 1);
+const WANTED = [...Array.from({ length: 19 }, (_, i) => i + 1), 21, 22, 23, 24];
 
 describe("17.6 AC26 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.6 ACn'", () => {

@@ -32,6 +32,13 @@ export const optionsButton = (name: string | RegExp): HTMLElement => within(card
 /** Spec 18.0 AC3: the edit screen's bottom bar button, its one primary. */
 export const editDoneButton = (): HTMLElement => within(screen.getByTestId("edit-bar")).getByRole("button", { name: "Done" });
 
+/** Spec 17.6 AC22: Edit workout lives in the summary's Workout menu; open the menu if it is closed, then click it. */
+export async function openEditFromSummary(user: UserEvent): Promise<void> {
+  const menu = screen.getByRole("button", { name: "Workout menu" });
+  if (menu.getAttribute("aria-expanded") !== "true") await user.click(menu);
+  await user.click(screen.getByRole("button", { name: "Edit workout" }));
+}
+
 /** Spec 18.0 AC8: a card's Add set button, named "Add set to {exercise}". */
 export const addSetButton = (name: string | RegExp): HTMLElement => within(card(name)).getByRole("button", { name: /^Add set to / });
 

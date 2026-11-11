@@ -43,7 +43,7 @@ describe("20.2 AC1 / AC2 / AC3 — section rendering", () => {
   it("not the owner (the default 404 status): no section and no link request", async () => {
     const s = setupSendScreen(auth, { owner: false });
     renderApp(HISTORY);
-    await screen.findByRole("button", { name: "Edit workout" });
+    await screen.findByRole("heading", { name: "Workout summary" });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByRole("region", { name: "Hevy" })).toBeNull();
     expect(s.link.log).toEqual([]);
