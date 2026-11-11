@@ -24,7 +24,7 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving
   const [text, setText] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
   return (
-    <Sheet open={open} title={`Note for ${exerciseName}`} onClose={onClose} dismissible={dismissible}>
+    <Sheet noActionRow open={open} title={`Note for ${exerciseName}`} onClose={onClose} dismissible={dismissible}>
       <form
         className={styles.form}
         noValidate

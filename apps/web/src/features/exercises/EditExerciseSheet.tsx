@@ -34,7 +34,7 @@ export interface EditExerciseSheetProps {
 export function EditExerciseSheet({ open, row, onClose, onSaved, onGone }: EditExerciseSheetProps) {
   const [saving, setSaving] = useState(false);
   return (
-    <Sheet open={open} title={EXERCISES_COPY.editTitle} onClose={onClose} dismissible={!saving}>
+    <Sheet noActionRow open={open} title={EXERCISES_COPY.editTitle} onClose={onClose} dismissible={!saving}>
       {open ? <EditForm row={row} onCancel={onClose} onSaved={onSaved} onGone={onGone} onSavingChange={setSaving} /> : null}
     </Sheet>
   );

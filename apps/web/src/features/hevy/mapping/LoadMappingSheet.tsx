@@ -171,7 +171,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   }
 
   return (
-    <Sheet open={open} title={LOAD_SHEET_TITLE} onClose={close} dismissible={!put.isPending}>
+    <Sheet noActionRow open={open} title={LOAD_SHEET_TITLE} onClose={close} dismissible={!put.isPending}>
       {/* Minor 185: both regions are there from first paint, empty, so their text is announced when it arrives. */}
       <p className={styles.progress} role="status" data-testid="hevy-load-progress">
         {step.kind === "reading" ? readingTemplates(progress.page, progress.pageCount) : step.kind === "checking" ? CHECKING_FILE : ""}

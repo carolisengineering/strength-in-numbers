@@ -187,6 +187,7 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
 
   return (
     <Sheet
+      noActionRow
       open={open}
       title={view === "create" ? "Create exercise" : "Add exercise"}
       onClose={onClose}

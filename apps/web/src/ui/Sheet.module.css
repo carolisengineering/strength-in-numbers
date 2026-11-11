@@ -24,6 +24,7 @@
 .sheet[open] {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sheet::backdrop {
@@ -58,8 +59,61 @@
   line-height: 1;
 }
 
+/* Spec 17.10: the body and the action row are siblings in one column, so the body scrolls, the row stays at the
+   bottom of the visible rectangle and covers nothing (WCAG 2.4.11); no sticky positioning. */
+.panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-4);
+  scroll-padding-block: var(--space-4);
+}
+
+.actions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-line);
+}
+
+/* The keyboard covers the home indicator, so the row drops its inset while it is up (#206's frame). */
+:global(:root[data-keyboard="open"]) .actions {
+  padding-bottom: var(--space-3);
+}
+
+.status {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.notice:empty,
+.status:empty {
+  display: none;
+}
+
+/* Order is danger, dismiss, primary; equal shares, wrapping rather than clipping. */
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.buttons button {
+  flex: 1 1 0;
+}
+
+/* A slot is only a position; the caller's buttons are the flex items. */
+.slot {
+  display: contents;
 }

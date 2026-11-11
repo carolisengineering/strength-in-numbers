@@ -134,7 +134,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   );
 
   return (
-    <Sheet open={open} title={RESULT_COPY.title} onClose={onCancel} dismissible={!busy}>
+    <Sheet noActionRow open={open} title={RESULT_COPY.title} onClose={onCancel} dismissible={!busy}>
       <form ref={formRef} className={styles.form} noValidate onSubmit={submit}>
         <div className={styles.header}>
           <p className={styles.name}>{section.name}</p>

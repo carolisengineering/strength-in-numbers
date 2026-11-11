@@ -44,7 +44,7 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
   }
 
   return (
-    <Sheet open={open} title="Edit section" onClose={onClose}>
+    <Sheet noActionRow open={open} title="Edit section" onClose={onClose}>
       <form
         className={styles.form}
         noValidate

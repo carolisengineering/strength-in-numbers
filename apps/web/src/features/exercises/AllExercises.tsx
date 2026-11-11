@@ -144,7 +144,7 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
           ))}
         </ul>
       )}
-      <Sheet open={creating} title={EXERCISES_COPY.newExerciseSheet} onClose={() => setCreating(false)}>
+      <Sheet noActionRow open={creating} title={EXERCISES_COPY.newExerciseSheet} onClose={() => setCreating(false)}>
         {creating ? (
           <CreateExerciseForm
             initialName={query}

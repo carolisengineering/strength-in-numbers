@@ -160,7 +160,7 @@ export function ItemSheet({
   }
 
   return (
-    <Sheet open={open} title={title} onClose={onClose}>
+    <Sheet noActionRow open={open} title={title} onClose={onClose}>
       <form
         className={styles.form}
         noValidate

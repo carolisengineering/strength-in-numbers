@@ -127,7 +127,7 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
 
   return (
     // A save in flight keeps the sheet open, so its failure is shown where the lifter can see it (AC41, DM-12).
-    <Sheet open={open} title="Change Time" onClose={onClose} dismissible={!mutation.isPending}>
+    <Sheet noActionRow open={open} title="Change Time" onClose={onClose} dismissible={!mutation.isPending}>
       <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
         <Field id="change-time-day" label="Day" {...(errors.day ? { error: errors.day } : {})}>
           {(control) => (

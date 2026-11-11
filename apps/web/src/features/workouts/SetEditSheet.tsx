@@ -49,6 +49,7 @@ export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps)
   const add = mode.kind === "edit" && set === null ? adding : null;
   return (
     <Sheet
+      noActionRow
       open={set !== null || add !== null}
       title={set ? `Set ${set.setNumber} · ${rest.exerciseName}` : add ? `New set · ${rest.exerciseName}` : "Edit set"}
       onClose={rest.onClose}
