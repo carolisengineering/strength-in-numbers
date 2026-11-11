@@ -1,8 +1,9 @@
 import type { SectionTimer } from "@sin/core";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Sheet } from "../../ui/Sheet";
+import { SheetActions } from "../../ui/SheetActions";
 import { TimerFields } from "../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../sectionTimer/timerFields";
 import type { DraftSection } from "./routineDraft";
@@ -29,6 +30,7 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
   const [errors, setErrors] = useState<{ name?: string; notes?: string }>({ name: messages.name, notes: messages.notes });
   const [timer, setTimer] = useState(() => fieldsFromTimer(section.timer));
   const [timerErrors, setTimerErrors] = useState<TimerFieldErrors>(messages.timer ?? {});
+  const formId = useId();
 
   function done() {
     const nameParsed = parseSectionName(name);
@@ -44,8 +46,9 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
   }
 
   return (
-    <Sheet noActionRow open={open} title="Edit section" onClose={onClose}>
+    <Sheet open={open} title="Edit section" onClose={onClose}>
       <form
+        id={formId}
         className={styles.form}
         noValidate
         onSubmit={(event) => {
@@ -69,10 +72,14 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
             setTimer(next);
           }}
         />
-        <Button type="submit" block>
-          Done
-        </Button>
       </form>
+      <SheetActions
+        primary={
+          <Button type="submit" form={formId}>
+            Done
+          </Button>
+        }
+      />
     </Sheet>
   );
 }
