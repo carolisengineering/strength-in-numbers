@@ -14,6 +14,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/accountHarness";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
@@ -204,5 +205,53 @@ describe("Minor 232 — the markers sheet's loading line shows the page", () => 
     hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
     const dialog = await openMarkers();
     expect(await within(dialog).findByText(readingTemplates(1, 3))).toHaveAttribute("role", "status");
+  });
+});
+
+const markerRow = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+describe("17.10 AC15 — the markers sheet's row (Review Focus 4)", () => {
+  it("with no key, the row holds only Cancel", async () => {
+    const dialog = await openMarkers();
+    await within(dialog).findByText(NO_KEY_FOR_FILE);
+    expect(markerRow()).toEqual(["Cancel"]);
+  });
+
+  it("while Hevy's list loads, the row holds only Cancel", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    server.use(templatesHandler(TEMPLATES, { hold: 1 }));
+    const dialog = await openMarkers();
+    await within(dialog).findByRole("status");
+    expect(markerRow()).toEqual(["Cancel"]);
+  });
+
+  it("after a failed read, the row holds only Cancel", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    server.use(http.get("https://api.hevyapp.com/v1/exercise_templates", () => HttpResponse.json({ error: "down" }, { status: 503 })));
+    const dialog = await openMarkers();
+    await within(dialog).findByRole("alert", {}, { timeout: 4000 });
+    expect(markerRow()).toEqual(["Cancel"]);
+  });
+
+  it("once loaded, the row reads Cancel then Save markers, and the body has neither", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    const dialog = await openMarkers();
+    await within(dialog).findByRole("group", { name: "Warmup" });
+    expect(markerRow()).toEqual(["Cancel", "Save markers"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Save markers" })).toBeNull();
+    expect(within(sheetBody()).queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("a failed save is the row's notice", async () => {
+    hevyKeyStore.set(USER_ID, VALID_KEY, { remember: false });
+    server.use(
+      http.patch(MAPPING_URL, () =>
+        HttpResponse.json({ type: "x/rate-limited", title: "t", status: 429, detail: "d", instance: "i" }, { status: 429, headers: { "content-type": "application/problem+json", "retry-after": "7" } }),
+      ),
+    );
+    const dialog = await openMarkers();
+    await within(dialog).findByRole("group", { name: "Warmup" });
+    await userEvent.click(sheetRow().getByRole("button", { name: "Save markers" }));
+    expect(await sheetRow().findByText(mappingRateLimited(7_000))).toBeInTheDocument();
   });
 });

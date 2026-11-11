@@ -5,6 +5,7 @@ import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { useCatalog } from "../../catalog/useCatalog";
 import { fold } from "../../catalog/visibility";
 import { HevyError } from "../client/hevyErrors";
@@ -123,7 +124,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   );
 
   return (
-    <Sheet noActionRow open={open} title={MARKERS_SHEET_TITLE} onClose={onClose} dismissible={!patch.isPending}>
+    <Sheet open={open} title={MARKERS_SHEET_TITLE} onClose={onClose} dismissible={!patch.isPending}>
       {client === null ? (
         <p role="status">{NO_KEY_FOR_FILE}</p>
       ) : templates.isPending ? (
@@ -142,10 +143,15 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
           />
           {group(MARKER_WARMUP, warmup, setWarmup, "hevy-marker-warmup", workout)}
           {group(MARKER_WORKOUT, workout, setWorkout, "hevy-marker-workout", warmup)}
-          {failure !== null ? <p role="alert">{failure}</p> : null}
-          <Button busy={patch.isPending} disabled={patch.isPending} onClick={() => save()}>
-            {SAVE_MARKERS}
-          </Button>
+          {/* Spec 17.10 AC15: Save markers only once there is something to save. */}
+          <SheetActions
+            notice={failure !== null ? <p role="alert">{failure}</p> : null}
+            primary={
+              <Button busy={patch.isPending} disabled={patch.isPending} onClick={() => save()}>
+                {SAVE_MARKERS}
+              </Button>
+            }
+          />
         </div>
       )}
       <ConfirmDialog
