@@ -1,8 +1,9 @@
 import type { Equipment, Exercise, MuscleGroup } from "@sin/core";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
+import { SheetActions } from "../../ui/SheetActions";
 import styles from "./CreateExerciseForm.module.css";
 import {
   EMPTY_EXERCISE_FIELDS,
@@ -23,7 +24,6 @@ export interface CreateExerciseFormProps {
   muscleGroups: readonly MuscleGroup[] | undefined;
   equipment: readonly Equipment[] | undefined;
   onCreated: (exercise: Exercise) => void;
-  onCancel: () => void;
 }
 
 /**
@@ -32,13 +32,15 @@ export interface CreateExerciseFormProps {
  * set-logging row looks like — and the optional catalog metadata sits under a
  * collapsed "More details". The write goes through `useCatalog().createCustom`
  * so Spec 06.2 can queue it.
+ *
+ * Spec 17.10: it always sits in a `Sheet` and puts Save in the sheet's row; Cancel is the sheet's own. The hosts
+ * don't latch it during a save: closing mid-save is allowed, and the `mounted` guard drops the late answer.
  */
 export function CreateExerciseForm({
   initialName,
   muscleGroups,
   equipment,
   onCreated,
-  onCancel,
 }: CreateExerciseFormProps) {
   const { createCustom } = useCatalog();
   const [values, setValues] = useState<ExerciseFieldValues>({ ...EMPTY_EXERCISE_FIELDS, name: initialName.trim() });
@@ -46,6 +48,7 @@ export function CreateExerciseForm({
   const [formError, setFormError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const formId = useId();
 
   // The sheet can close while a save is in flight. The POST still completes
   // (the row lands in the store), but a form that is gone must not report a
@@ -95,7 +98,7 @@ export function CreateExerciseForm({
   };
 
   return (
-    <form className={styles.form} onSubmit={(event) => void onSubmit(event)} noValidate>
+    <form id={formId} className={styles.form} onSubmit={(event) => void onSubmit(event)} noValidate>
       <ExerciseFields
         values={values}
         onChange={setValues}
@@ -106,20 +109,20 @@ export function CreateExerciseForm({
         onDetailsOpenChange={setDetailsOpen}
       />
 
-      {formError ? (
-        <p className={styles.formError} role="alert">
-          {formError}
-        </p>
-      ) : null}
-
-      <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
-        <Button type="submit" busy={saving} disabled={!canSave}>
-          Save
-        </Button>
-      </div>
+      <SheetActions
+        notice={
+          formError ? (
+            <p className={styles.formError} role="alert">
+              {formError}
+            </p>
+          ) : null
+        }
+        primary={
+          <Button type="submit" form={formId} busy={saving} disabled={!canSave}>
+            Save
+          </Button>
+        }
+      />
     </form>
   );
 }

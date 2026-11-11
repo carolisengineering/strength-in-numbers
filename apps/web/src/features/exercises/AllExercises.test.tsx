@@ -23,6 +23,7 @@ import type { Exercise } from "@sin/core";
 import { API_BASE_URL, USER_ID } from "../../test/catalogHarness";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { server } from "../../test/msw/server";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { searchByName } from "../catalog/visibility";
@@ -259,6 +260,22 @@ describe("18.2 AC17 — + New exercise", () => {
     // The list's usage read lands before the test ends (deferred minor 121).
     await list();
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  });
+});
+
+describe("17.10 AC14, AC7 — + New exercise's sheet uses the action row", () => {
+  it("Cancel then Save in the row, none in the body; Cancel closes the sheet", async () => {
+    const fake = createWorkoutFake({ usage: [], serveExercises: true, catalog: CATALOG });
+    prepareApp({ auth, fake, catalog: CATALOG });
+    const { user } = renderApp("/app/exercises");
+    await list();
+    await user.click(screen.getByRole("button", { name: EXERCISES_COPY.newExercise }));
+    await screen.findByRole("dialog", { name: EXERCISES_COPY.newExerciseSheet });
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Save" })).toBeNull();
+    expect(sheetRow().getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: EXERCISES_COPY.newExerciseSheet })).toBeNull());
   });
 });
 

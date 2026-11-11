@@ -1,9 +1,10 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { WORKOUT_NOTES_MAX, WORKOUT_TITLE_MAX, type WorkoutDetail } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import styles from "../NoteSheet.module.css";
 import sheetStyles from "../SetEditSheet.module.css";
 import { reportUnexpected } from "../reportUnexpected";
@@ -24,6 +25,7 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
   const [form, setForm] = useState<DetailsForm>(initial);
   const [errors, setErrors] = useState<Partial<Record<DetailsField, string>>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const formId = useId();
   const inFlight = useRef(false);
 
   function change(field: DetailsField, value: string) {
@@ -85,24 +87,28 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
   return (
     // DM-12: a save in flight keeps the sheet open, so its failure is shown where the lifter can see it.
     <Sheet open={open} title={EDIT_COPY.details.heading} onClose={onClose} dismissible={!save.isPending}>
-      <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
+      <form id={formId} className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
         <Field id="workout-title" label={EDIT_COPY.details.title} hint={`${Array.from(form.title).length} / ${WORKOUT_TITLE_MAX}`} {...(errors.title ? { error: errors.title } : {})}>
           {(control) => <input {...control} type="text" className={styles.input} value={form.title} onChange={(e) => change("title", e.target.value)} />}
         </Field>
         <Field id="workout-notes" label={EDIT_COPY.details.notes} hint={`${Array.from(form.notes).length} / ${WORKOUT_NOTES_MAX}`} {...(errors.notes ? { error: errors.notes } : {})}>
           {(control) => <textarea {...control} className={styles.input} rows={6} value={form.notes} onChange={(e) => change("notes", e.target.value)} />}
         </Field>
-        {formError ? (
-          <p className={sheetStyles.formError} role="alert">
-            {formError}
-          </p>
-        ) : null}
-        <div className={styles.actions}>
-          <Button type="submit" busy={save.isPending}>
+      </form>
+      <SheetActions
+        notice={
+          formError ? (
+            <p className={sheetStyles.formError} role="alert">
+              {formError}
+            </p>
+          ) : null
+        }
+        primary={
+          <Button type="submit" form={formId} busy={save.isPending}>
             {EDIT_COPY.details.save}
           </Button>
-        </div>
-      </form>
+        }
+      />
     </Sheet>
   );
 }

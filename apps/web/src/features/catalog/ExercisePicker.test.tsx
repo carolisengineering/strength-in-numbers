@@ -27,6 +27,7 @@ import {
   USER_ID,
 } from "../../test/catalogHarness";
 import { server } from "../../test/msw/server";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 import { ExercisePicker } from "./ExercisePicker";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -419,6 +420,29 @@ describe("AC28 — the create form opens from the create row", () => {
 
     expect(screen.getByRole("dialog", { name: "Add exercise" })).toBeInTheDocument();
     expect(search()).toHaveValue("Zercher");
+  });
+});
+
+describe("17.10 AC14, AC3 — the picker's create view uses the action row (Review Focus 4)", () => {
+  it("the row reads Cancel then Save; its Cancel goes back to the list and keeps the search, without closing", async () => {
+    const { user, onClose } = renderPicker();
+    await user.type(search(), "Zercher");
+    await user.click(screen.getByRole("button", { name: 'Can\'t find it? Create "Zercher"' }));
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Save" })).toBeNull();
+
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Add exercise" })).toBeInTheDocument();
+    expect(search()).toHaveValue("Zercher");
+  });
+
+  it("the header's Close leaves the picker from the create view", async () => {
+    const { user, onClose } = renderPicker();
+    await user.click(screen.getByRole("button", { name: "Create a custom exercise" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

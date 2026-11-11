@@ -192,7 +192,7 @@ export function MatchForHevySheet({
   };
 
   return (
-    <Sheet open title={C.matchTitle} onClose={onCancel} dismissible={!saving}>
+    <Sheet noActionRow open title={C.matchTitle} onClose={onCancel} dismissible={!saving}>
       <div ref={marker} className={styles.body}>
         {cards.map(({ exercise, choice }) => {
           const id = exercise.exerciseId;

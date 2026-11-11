@@ -14,12 +14,3 @@
   color: var(--color-text);
   font-size: var(--font-size-md);
 }
-
-.actions {
-  display: flex;
-  gap: var(--space-3);
-}
-
-.actions > button {
-  flex: 1;
-}

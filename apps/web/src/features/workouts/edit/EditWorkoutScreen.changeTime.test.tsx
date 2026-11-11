@@ -154,7 +154,7 @@ describe("18.0 AC42 — Done waits", () => {
     await save(user);
     await waitFor(() => expect(editDoneButton()).toBeDisabled());
     expect(screen.getByText(EDIT_COPY.saving)).toBeInTheDocument();
-    fireEvent.submit(sheet().getByRole("button", { name: "Save time" }).closest("form")!);
+    fireEvent.submit((sheet().getByRole("button", { name: "Save time" }) as HTMLButtonElement).form!);
     expect(patches(fake)).toHaveLength(1);
     await act(async () => held.resolve(problemResponse(500, "about:blank")));
     await waitFor(() => expect(editDoneButton()).toBeEnabled());

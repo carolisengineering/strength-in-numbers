@@ -15,7 +15,7 @@ export interface MoveToSectionSheetProps {
 /** "Move to section…" (Spec 10.3 AC18): No section and every section by name; choosing one closes the sheet. */
 export function MoveToSectionSheet({ open, title, current, sections, onChoose, onClose }: MoveToSectionSheetProps) {
   return (
-    <Sheet open={open} title={title} onClose={onClose}>
+    <Sheet noActionRow open={open} title={title} onClose={onClose}>
       <ul className={styles.choices} aria-label="Sections">
         <li>
           <Button variant="secondary" block disabled={current === null} {...(current === null ? { "aria-current": "true" as const } : {})} onClick={() => onChoose(null)}>

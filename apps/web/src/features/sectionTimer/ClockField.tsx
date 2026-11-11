@@ -6,8 +6,13 @@ import { CLOCK_HINT } from "./timerCopy";
 export interface ClockFieldProps {
   id: string;
   label: string;
-  /** A second hint sentence after the clock hint (the Cap field's For Time line). */
-  hint?: string;
+  /**
+   * A second hint sentence after the clock hint (the Cap field's For Time line). `null`: no hint of its own, for a
+   * field in a group that says the clock hint once (Spec 17.10 AC13); pass the group's hint id as `describedBy`.
+   */
+  hint?: string | null;
+  /** Spec 17.10 AC13: an element id that describes this field too (a group's hint), named before its error. */
+  describedBy?: string;
   digits: string;
   error?: string;
   onChange(digits: string): void;
@@ -18,12 +23,14 @@ export interface ClockFieldProps {
  * Spec 10.7 AC1–AC3: a minutes-and-seconds field whose digits fill from the right (`341` is 3:41). Every change —
  * typing, Backspace, paste — goes through `nextDigits`, so the caller only ever holds digits.
  */
-export function ClockField({ id, label, hint, digits, error, onChange, onBlur }: ClockFieldProps) {
+export function ClockField({ id, label, hint, describedBy, digits, error, onChange, onBlur }: ClockFieldProps) {
+  const ownHint = hint === null ? undefined : hint ? `${CLOCK_HINT} ${hint}` : CLOCK_HINT;
   return (
-    <Field id={id} label={label} hint={hint ? `${CLOCK_HINT} ${hint}` : CLOCK_HINT} error={error}>
+    <Field id={id} label={label} hint={ownHint} error={error}>
       {(control) => (
         <input
           {...control}
+          aria-describedby={[describedBy, control["aria-describedby"]].filter(Boolean).join(" ") || undefined}
           className={styles.input}
           type="text"
           inputMode="numeric"

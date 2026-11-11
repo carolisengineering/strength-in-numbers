@@ -95,8 +95,3 @@
   min-height: var(--tap-target-min);
 }
 
-.actions {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-}

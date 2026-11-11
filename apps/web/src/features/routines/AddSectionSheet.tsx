@@ -17,7 +17,7 @@ export function AddSectionSheet({ open, onAdd, onClose }: AddSectionSheetProps) 
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   return (
-    <Sheet open={open} title="Add section" onClose={onClose}>
+    <Sheet noActionRow open={open} title="Add section" onClose={onClose}>
       <div className={styles.form}>
         <div role="group" aria-label="Section names" className={styles.starters}>
           {SECTION_STARTERS.map((starter) => (

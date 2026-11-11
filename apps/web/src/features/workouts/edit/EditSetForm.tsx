@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
 import type { Modality, SetEntry } from "@sin/core";
 
-import { Button } from "../../../ui/Button";
 import { formatSet } from "../format";
 import { reportUnexpected } from "../reportUnexpected";
 import type { EditScreenMode } from "../screenMode";
-import { SetDeleteConfirm } from "../SetDeleteConfirm";
 import { SetFields, type DraftEditField } from "../SetFields";
+import { SetSheetActions } from "../SetSheetActions";
 import {
   createDraftReducer,
   diffForPatch,
@@ -61,6 +60,7 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const confirm = useDeleteConfirm();
+  const formId = useId();
   // The sheet can be closed while a write is in flight: a late answer must not close a sheet opened since.
   const mounted = useRef(true);
   useEffect(
@@ -73,7 +73,6 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
     if (mounted.current) onClose();
   };
   const parsed = useMemo(() => parseDraft(modality, draft), [modality, draft]);
-  const busy = create.isPending || update.isPending || del.isPending;
   const errors: Partial<Record<DraftField, string>> = { ...(parsed.ok ? {} : parsed.errors), ...serverErrors };
 
   function onChange(field: DraftEditField, value: string) {
@@ -166,32 +165,21 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
 
   const idPrefix = target.kind === "edit" ? `edit-${target.set.id}` : `add-${target.workoutExerciseId}`;
   return (
-    <form className={styles.form} onSubmit={submit} noValidate>
+    <form id={formId} className={styles.form} onSubmit={submit} noValidate>
       <SetFields modality={modality} exerciseName={exerciseName} draft={draft} errors={errors} onChange={onChange} idPrefix={idPrefix} />
-      {formError ? (
-        <p className={styles.formError} role="alert">
-          {formError}
-        </p>
-      ) : null}
-      {confirm.confirming && target.kind === "edit" ? (
-        <SetDeleteConfirm
-          text={`Delete set ${target.set.setNumber}? ${formatSet(target.set, modality)} will be removed.`}
-          busy={del.isPending}
-          onKeep={confirm.keep}
-          onConfirm={() => remove(target.set)}
-        />
-      ) : (
-        <div className={styles.actions}>
-          {target.kind === "edit" ? (
-            <Button variant="danger" ref={confirm.askRef} disabled={busy} onClick={confirm.ask}>
-              Delete set
-            </Button>
-          ) : null}
-          <Button type="submit" busy={create.isPending || update.isPending} disabled={!parsed.ok || del.isPending}>
-            {target.kind === "add" ? "Add set" : "Save"}
-          </Button>
-        </div>
-      )}
+      <SetSheetActions
+        formId={formId}
+        confirm={confirm}
+        question={target.kind === "edit" ? `Delete set ${target.set.setNumber}? ${formatSet(target.set, modality)} will be removed.` : null}
+        primaryLabel={target.kind === "add" ? "Add set" : "Save"}
+        saving={create.isPending || update.isPending}
+        deleting={del.isPending}
+        canSave={parsed.ok}
+        onDelete={() => {
+          if (target.kind === "edit") remove(target.set);
+        }}
+        formError={formError}
+      />
     </form>
   );
 }

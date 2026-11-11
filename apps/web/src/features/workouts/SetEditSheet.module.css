@@ -8,10 +8,3 @@
   color: var(--color-danger);
   font-size: var(--font-size-sm);
 }
-
-/* Save is the thumb-zone-side action; Delete is deliberately apart from it. */
-.actions {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-}

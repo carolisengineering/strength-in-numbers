@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { exerciseId } from "../../test/catalogFixtures";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 import { ItemSheet } from "./ItemSheet";
 import type { DraftItem } from "./routineDraft";
 import { REST_MESSAGE } from "./targetFormat";
@@ -92,5 +93,40 @@ describe("10.0 AC28 — the item sheet", () => {
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("17.10 AC14, AC7 — the item sheet uses the action row", () => {
+  it("the row holds Cancel then Done; Done submits once; Plan each set stays in the body", async () => {
+    const { onDone, user } = setup();
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Done"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Done" })).toBeNull();
+    expect(within(sheetBody()).getByRole("button", { name: "Plan each set" })).toBeInTheDocument();
+    await user.click(sheetRow().getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cancel calls onClose and commits nothing", async () => {
+    const { onDone, onClose, user } = setup();
+    await user.type(screen.getByLabelText("Sets"), "3");
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("an invalid Done keeps the sheet open and commits nothing (10.2 AC16)", async () => {
+    const { onDone, onClose, user } = setup();
+    await user.type(screen.getByLabelText("Sets"), "abc");
+    await user.click(sheetRow().getByRole("button", { name: "Done" }));
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveAttribute("open");
+  });
+
+  it("in plan mode, Back to the quick line stays in the body", async () => {
+    const { user } = setup(item({ targetSets: 3, targetRepsLow: 8, targetRepsHigh: 8 }));
+    await user.click(screen.getByRole("button", { name: "Plan each set" }));
+    expect(within(sheetBody()).getByRole("button", { name: "Back to the quick line" })).toBeInTheDocument();
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Done"]);
   });
 });

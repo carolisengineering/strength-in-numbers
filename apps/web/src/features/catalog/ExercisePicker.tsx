@@ -187,9 +187,13 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
 
   return (
     <Sheet
+      // Spec 17.10: the list view gets its row in Phase B. The create view's Cancel goes back to the list with the
+      // search kept; Close still leaves the picker.
+      noActionRow={view !== "create"}
       open={open}
       title={view === "create" ? "Create exercise" : "Add exercise"}
       onClose={onClose}
+      onDismiss={view === "create" ? () => setView("list") : undefined}
     >
       {view === "create" ? (
         <CreateExerciseForm
@@ -201,7 +205,6 @@ export function ExercisePicker({ open, onPick, onClose, allowCreate = true }: Ex
             setView("list");
             onPick(exercise);
           }}
-          onCancel={() => setView("list")}
         />
       ) : (
         renderList()

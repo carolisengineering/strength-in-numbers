@@ -22,6 +22,7 @@ import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -184,5 +185,42 @@ describe("18.0 AC55 — round trip", () => {
     await screen.findByRole("heading", { name: "Workout summary" });
     expect(screen.queryByText(TITLE)).toBeNull();
     expect(screen.getByRole("region", { name: "Workout notes" })).toHaveTextContent("Line two");
+  });
+});
+
+describe("17.10 AC14, AC7, AC3 — the Details sheet uses the action row", () => {
+  it("the row reads Cancel then Save details; Cancel closes with no request", async () => {
+    const { fake, user } = await open();
+    await edit(user, "Title", "Deload");
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save details"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Save details" })).toBeNull();
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Details" })).toBeNull());
+    expect(patches(fake)).toHaveLength(0);
+  });
+
+  it("while saving, Cancel is aria-disabled; the failure then shows in the row", async () => {
+    const { fake, user } = await open();
+    const held = deferred<void>();
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\// }, (async () => {
+      await held.promise;
+      return problemResponse(500, "about:blank");
+    }) as unknown as () => Response);
+    await edit(user, "Title", "Deload");
+    await user.click(sheetRow().getByRole("button", { name: "Save details" }));
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    await user.click(cancel);
+    expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the details — try again"));
+  });
+
+  it("Enter in Notes adds a line", async () => {
+    const { user } = await open();
+    await user.click(panel().getByRole("button", { name: "Edit details" }));
+    await user.type(sheet().getByLabelText("Notes"), "one{Enter}two");
+    expect(sheet().getByLabelText("Notes")).toHaveValue("one\ntwo");
+    expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
   });
 });

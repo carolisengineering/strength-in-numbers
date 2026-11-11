@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { chooseSegmentValue, segmentChoice } from "../../test/controls";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 import { ENTER_ROUND_LENGTH, ENTER_ROUNDS } from "../sectionTimer/timerCopy";
 import type { DraftSection } from "./routineDraft";
 import { SectionHeader } from "./SectionHeader";
@@ -117,5 +118,24 @@ describe("10.7 AC4 — a new format starts clean", () => {
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Check the timer and try again.");
     await chooseSegmentValue(user, "Timer", "none", within(dialog));
     expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("17.10 AC14, AC7 — the routine section sheet uses the action row", () => {
+  it("the row holds Cancel then Done; Done submits once", async () => {
+    const user = userEvent.setup();
+    const { onDone } = sheet();
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Done"]);
+    expect(within(sheetBody()).queryByRole("button", { name: "Done" })).toBeNull();
+    await user.click(sheetRow().getByRole("button", { name: "Done" }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cancel calls onClose and commits nothing", async () => {
+    const user = userEvent.setup();
+    const { onDone, onClose } = sheet();
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
   });
 });

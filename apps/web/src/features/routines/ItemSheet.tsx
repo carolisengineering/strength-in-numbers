@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { deriveTargets, forbiddenMeasuresFor, type Modality, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Segmented } from "../../ui/Segmented";
 import { Sheet } from "../../ui/Sheet";
+import { SheetActions } from "../../ui/SheetActions";
 import {
   addRow,
   enterPlan,
@@ -87,6 +88,7 @@ export function ItemSheet({
   const [rest, setRest] = useState(item.restSeconds === null ? "" : formatRest(item.restSeconds));
   const [notes, setNotes] = useState(item.notes ?? "");
   const [errors, setErrors] = useState<SheetMessages>(fieldMessages);
+  const formId = useId();
   const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, RowErrors>>(rowMessages);
 
   const planUnit: WeightUnit | "mixed" = plan === null ? unit : (unitOfRows(plan) ?? unit);
@@ -162,6 +164,7 @@ export function ItemSheet({
   return (
     <Sheet open={open} title={title} onClose={onClose}>
       <form
+        id={formId}
         className={styles.form}
         noValidate
         onSubmit={(event) => {
@@ -225,10 +228,14 @@ export function ItemSheet({
             Plan each set
           </Button>
         ) : null}
-        <Button type="submit" block>
-          Done
-        </Button>
       </form>
+      <SheetActions
+        primary={
+          <Button type="submit" form={formId}>
+            Done
+          </Button>
+        }
+      />
     </Sheet>
   );
 }

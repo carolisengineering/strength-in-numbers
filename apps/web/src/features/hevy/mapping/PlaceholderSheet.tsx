@@ -123,7 +123,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   );
 
   return (
-    <Sheet open={open} title={MARKERS_SHEET_TITLE} onClose={onClose} dismissible={!patch.isPending}>
+    <Sheet noActionRow open={open} title={MARKERS_SHEET_TITLE} onClose={onClose} dismissible={!patch.isPending}>
       {client === null ? (
         <p role="status">{NO_KEY_FOR_FILE}</p>
       ) : templates.isPending ? (

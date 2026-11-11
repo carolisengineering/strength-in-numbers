@@ -64,7 +64,7 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   }
 
   return (
-    <Sheet open={open} title={editing ? SECTION_COPY.editTitle : SECTION_COPY.newTitle} onClose={onClose} dismissible={!busy}>
+    <Sheet noActionRow open={open} title={editing ? SECTION_COPY.editTitle : SECTION_COPY.newTitle} onClose={onClose} dismissible={!busy}>
       <form className={styles.form} noValidate onSubmit={submit}>
         {editing ? null : <p className={styles.intro}>{SECTION_COPY.newIntro}</p>}
         <Field id="section-name" label={SECTION_COPY.nameLabel} {...(errors.name ? { error: errors.name } : {})}>

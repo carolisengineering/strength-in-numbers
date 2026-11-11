@@ -1,15 +1,14 @@
-import { useMemo, useReducer, useRef, useState, type FormEvent } from "react";
+import { useId, useMemo, useReducer, useRef, useState, type FormEvent } from "react";
 import type { Modality, SetEntry } from "@sin/core";
 
-import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
 import { EditSetForm } from "./edit/EditSetForm";
 import { formatSet } from "./format";
 import { useScreenMode } from "./screenMode";
 import { reportUnexpected } from "./reportUnexpected";
 import { resolveFailure } from "./sessionErrors";
-import { SetDeleteConfirm } from "./SetDeleteConfirm";
 import { SetFields, type DraftEditField } from "./SetFields";
+import { SetSheetActions } from "./SetSheetActions";
 import {
   createDraftReducer,
   diffForPatch,
@@ -90,8 +89,8 @@ function EditForm({
   const [formError, setFormError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const confirm = useDeleteConfirm();
+  const formId = useId();
   const parsed = useMemo(() => parseDraft(modality, draft), [modality, draft]);
-  const busy = update.isPending || del.isPending;
 
   // Everything is shown here, not only touched fields: someone opening a set flagged "Needs data"
   // has come to fix exactly what is missing.
@@ -163,25 +162,19 @@ function EditForm({
   }
 
   return (
-    <form className={styles.form} onSubmit={(event) => void save(event)} noValidate>
+    <form id={formId} className={styles.form} onSubmit={(event) => void save(event)} noValidate>
       <SetFields modality={modality} exerciseName={exerciseName} draft={draft} errors={errors} onChange={onChange} idPrefix={`edit-${set.id}`} />
-      {formError ? (
-        <p className={styles.formError} role="alert">
-          {formError}
-        </p>
-      ) : null}
-      {confirm.confirming ? (
-        <SetDeleteConfirm text={`Delete set ${set.setNumber}? ${formatSet(set, modality)} will be removed.`} busy={del.isPending} onKeep={confirm.keep} onConfirm={() => void remove()} />
-      ) : (
-        <div className={styles.actions}>
-          <Button variant="danger" ref={confirm.askRef} disabled={busy} onClick={confirm.ask}>
-            Delete set
-          </Button>
-          <Button type="submit" busy={update.isPending} disabled={!parsed.ok || del.isPending}>
-            Save
-          </Button>
-        </div>
-      )}
+      <SetSheetActions
+        formId={formId}
+        confirm={confirm}
+        question={`Delete set ${set.setNumber}? ${formatSet(set, modality)} will be removed.`}
+        primaryLabel="Save"
+        saving={update.isPending}
+        deleting={del.isPending}
+        canSave={parsed.ok}
+        onDelete={() => void remove()}
+        formError={formError}
+      />
     </form>
   );
 }

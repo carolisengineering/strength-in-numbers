@@ -1,7 +1,9 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { Button } from "./Button";
 import styles from "./Sheet.module.css";
 import { CloseIcon } from "./icons";
+import { SheetSlotsContext, type SheetSlots } from "./sheetSlots";
 
 export interface SheetProps {
   /** The parent owns this; the sheet never closes itself. */
@@ -14,8 +16,19 @@ export interface SheetProps {
    * and Escape do nothing; a close the browser makes anyway still calls `onClose`, so the parent stays in step.
    */
   dismissible?: boolean;
+  /** Spec 17.10: the bottom row's dismiss button's text. Default "Cancel". */
+  dismissLabel?: string;
+  /**
+   * Spec 17.10: what the row's dismiss button does, when that isn't closing (the picker's create view goes back
+   * to its list). Default `onClose`. Close and Escape always call `onClose`.
+   */
+  onDismiss?: () => void;
+  /** Spec 17.10 Phase A only: draws no bottom row, for the sheets Phase B has not moved yet. Removed in Phase B. */
+  noActionRow?: boolean;
   children?: ReactNode;
 }
+
+const NO_SLOTS: SheetSlots = { danger: null, primary: null, status: null, notice: null };
 
 /**
  * Full-height modal sheet (Spec 06.0 §5, AC24) on the native `<dialog>`.
@@ -26,10 +39,31 @@ export interface SheetProps {
  * The Close button is first in DOM order, so `showModal()`'s automatic focus
  * lands on it instead of on a text field (which would raise the phone
  * keyboard). CSS puts it visually on the right.
+ *
+ * Spec 17.10: below the scrolling body, as its sibling (never sticky, so it covers nothing), is one action row:
+ * danger, dismiss, primary. `Sheet` draws the dismiss button; a sheet's own `SheetActions` portals the others in.
  */
-export function Sheet({ open, title, onClose, dismissible = true, children }: SheetProps) {
+export function Sheet({
+  open,
+  title,
+  onClose,
+  dismissible = true,
+  dismissLabel = "Cancel",
+  onDismiss,
+  noActionRow = false,
+  children,
+}: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // The row's slot elements, held in state through callback refs so `SheetActions` re-renders into them. A ref
+  // callback runs in the commit, so its update lands before paint and the row never shows empty.
+  const [slots, setSlots] = useState<SheetSlots>(NO_SLOTS);
+  const slotRefs = useMemo(() => {
+    const refFor = (slot: keyof SheetSlots) => (element: HTMLElement | null) => {
+      setSlots((current) => (current[slot] === element ? current : { ...current, [slot]: element }));
+    };
+    return { danger: refFor("danger"), primary: refFor("primary"), status: refFor("status"), notice: refFor("notice") };
+  }, []);
   // The latest `open`, so the native `close` handler can tell "the dialog closed itself" (a form
   // method=dialog, a browser close request) from "the parent closed it" (the effect below).
   const openRef = useRef(open);
@@ -79,7 +113,32 @@ export function Sheet({ open, title, onClose, dismissible = true, children }: Sh
               {title}
             </h2>
           </header>
-          <div className={styles.body}>{children}</div>
+          <SheetSlotsContext.Provider value={slots}>
+            <div className={styles.panel}>
+              <div className={styles.body} data-sheet-body="">
+                {children}
+              </div>
+              {noActionRow ? null : (
+                <div className={styles.actions} data-sheet-actions="">
+                  <div className={styles.notice} ref={slotRefs.notice} />
+                  <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
+                  <div className={styles.buttons}>
+                    <div className={styles.slot} ref={slotRefs.danger} />
+                    <Button
+                      variant="secondary"
+                      aria-disabled={dismissible ? undefined : true}
+                      onClick={() => {
+                        if (dismissible) (onDismiss ?? onClose)();
+                      }}
+                    >
+                      {dismissLabel}
+                    </Button>
+                    <div className={styles.slot} ref={slotRefs.primary} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </SheetSlotsContext.Provider>
         </>
       ) : null}
     </dialog>

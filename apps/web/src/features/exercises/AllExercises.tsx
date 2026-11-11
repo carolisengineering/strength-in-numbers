@@ -154,7 +154,6 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
               setCreating(false);
               void navigate(exercisePath(created.id));
             }}
-            onCancel={() => setCreating(false)}
           />
         ) : null}
       </Sheet>
