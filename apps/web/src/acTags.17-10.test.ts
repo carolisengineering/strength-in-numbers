@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.17-10.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /**
- * Spec 17.10 AC21 (AC1-AC14, AC16-AC18 for Phase A; AC15 joins in Phase B; AC19 is the screenshot harness, AC20 the
+ * Spec 17.10 AC21 (AC1-AC18; AC19 is the screenshot harness, AC20 the
  * docs, AC22 the phone check). Only numbers written as "17.10 ACn" (or "17.10 ACn, ACm") count.
  */
-const WANTED = [...Array.from({ length: 14 }, (_, i) => i + 1), 16, 17, 18];
+const WANTED = Array.from({ length: 18 }, (_, i) => i + 1);
 
 describe("17.10 AC21 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.10 ACn'", () => {

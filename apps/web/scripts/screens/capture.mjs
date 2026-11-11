@@ -559,7 +559,13 @@ const measureSheetRows = (page) =>
           if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName}" is under the row`);
         }
         return { title: d.querySelector("h2")?.textContent ?? "", rowTop: rr.top, rowBottom: rr.bottom, dialogBottom: dr.bottom, bodyHeight: br.height, buttons: buttons.map((b) => b.textContent), violations: v };
-      }),
+      })
+      // Phase B: every sheet has the row, so an open sheet (it has the header's Close) without one is a violation.
+      .concat(
+        [...document.querySelectorAll("dialog[open]")]
+          .filter((d) => d.querySelector('button[aria-label="Close"]') && !d.querySelector("[data-sheet-actions]"))
+          .map((d) => ({ title: d.querySelector("h2")?.textContent ?? "", violations: ["the sheet has no action row"] })),
+      ),
   );
 async function checkFrontDoor(page, label) {
   const m = await page.evaluate(() => {

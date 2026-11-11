@@ -23,8 +23,6 @@ export interface SheetProps {
    * to its list). Default `onClose`. Close and Escape always call `onClose`.
    */
   onDismiss?: () => void;
-  /** Spec 17.10 Phase A only: draws no bottom row, for the sheets Phase B has not moved yet. Removed in Phase B. */
-  noActionRow?: boolean;
   children?: ReactNode;
 }
 
@@ -50,7 +48,6 @@ export function Sheet({
   dismissible = true,
   dismissLabel = "Cancel",
   onDismiss,
-  noActionRow = false,
   children,
 }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -118,25 +115,23 @@ export function Sheet({
               <div className={styles.body} data-sheet-body="">
                 {children}
               </div>
-              {noActionRow ? null : (
-                <div className={styles.actions} data-sheet-actions="">
-                  <div className={styles.notice} ref={slotRefs.notice} />
-                  <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
-                  <div className={styles.buttons}>
-                    <div className={styles.slot} ref={slotRefs.danger} />
-                    <Button
-                      variant="secondary"
-                      aria-disabled={dismissible ? undefined : true}
-                      onClick={() => {
-                        if (dismissible) (onDismiss ?? onClose)();
-                      }}
-                    >
-                      {dismissLabel}
-                    </Button>
-                    <div className={styles.slot} ref={slotRefs.primary} />
-                  </div>
+              <div className={styles.actions} data-sheet-actions="">
+                <div className={styles.notice} ref={slotRefs.notice} />
+                <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
+                <div className={styles.buttons}>
+                  <div className={styles.slot} ref={slotRefs.danger} />
+                  <Button
+                    variant="secondary"
+                    aria-disabled={dismissible ? undefined : true}
+                    onClick={() => {
+                      if (dismissible) (onDismiss ?? onClose)();
+                    }}
+                  >
+                    {dismissLabel}
+                  </Button>
+                  <div className={styles.slot} ref={slotRefs.primary} />
                 </div>
-              )}
+              </div>
             </div>
           </SheetSlotsContext.Provider>
         </>
