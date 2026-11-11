@@ -54,7 +54,7 @@ describe("10.7 AC28–AC30 — bodies", () => {
     expect(dialog.getByLabelText("Rounds")).toBeInTheDocument();
     expect(dialog.getByLabelText("Reps")).toBeInTheDocument();
     for (const name of ["+1, increase rounds", "−1, decrease rounds", "+1, increase reps", "−1, decrease reps"]) expect(dialog.getByRole("button", { name })).toBeInTheDocument();
-    expect(dialog.getByText("Type the gym clock when each round ended.")).toBeInTheDocument();
+    expect(dialog.getByText("Type the gym clock when each round ended. Type the digits: 341 is 3:41.")).toBeInTheDocument();
     expect(dialog.getByRole("group", { name: "Round ends (optional)" })).toBeInTheDocument();
     await user.click(dialog.getByRole("button", { name: "Add round time" }));
     expect(dialog.getByLabelText("Round 3")).toHaveValue("");
@@ -123,5 +123,43 @@ describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
     renderSheet(section(SET5, [], null, "<img src=x onerror=alert(1)>"));
     expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
     expect(document.querySelector("img")).toBeNull();
+  });
+});
+
+describe("17.10 AC13 — the clock hint is said once per group", () => {
+  const HINT = "Type the digits: 341 is 3:41.";
+
+  it("a five-round Set Timer shows the hint once, and every round points at it", () => {
+    const { dialog } = renderSheet(section(SET5));
+    const hints = dialog.getAllByText(HINT);
+    expect(hints).toHaveLength(1);
+    const hintId = hints[0]!.id;
+    expect(hintId).not.toBe("");
+    const rounds = dialog.getAllByLabelText(/^Round \d$/);
+    expect(rounds).toHaveLength(5);
+    for (const round of rounds) expect(round.getAttribute("aria-describedby")?.split(" ")).toContain(hintId);
+  });
+
+  it("AMRAP: the round-ends group's hint reads both sentences, once", () => {
+    const { dialog } = renderSheet(section({ format: "amrap", capSeconds: 720 }, rt([[1, 250], [2, 515]])));
+    const hint = dialog.getByText(`Type the gym clock when each round ended. ${HINT}`);
+    expect(dialog.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").includes(HINT))).toHaveLength(1);
+    for (const round of dialog.getAllByLabelText(/^Round \d$/)) expect(round.getAttribute("aria-describedby")?.split(" ")).toContain(hint.id);
+  });
+
+  it("a round with an error names the hint and the error", async () => {
+    const { dialog, user } = renderSheet(section(SET5));
+    await user.type(dialog.getByLabelText("Round 1"), "375");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    const ids = dialog.getByLabelText("Round 1").getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(ids).toHaveLength(2);
+    expect(document.getElementById(ids[0]!)).toHaveTextContent(HINT);
+    expect(document.getElementById(ids[1]!)).toHaveAttribute("role", "alert");
+  });
+
+  it("Time Cap's lone Finish time keeps its own hint", () => {
+    const { dialog } = renderSheet(section({ format: "time_cap", capSeconds: 900 }));
+    expect(dialog.getByLabelText("Finish time").getAttribute("aria-describedby")).toBe("result-finish-hint");
+    expect(document.getElementById("result-finish-hint")).toHaveTextContent(HINT);
   });
 });

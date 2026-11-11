@@ -81,3 +81,23 @@ describe("10.7 AC3 — field accessibility", () => {
     expect(document.getElementById("cap-hint")).toHaveTextContent(`${CLOCK_HINT} Leave empty for For Time, with no cap.`);
   });
 });
+
+describe("17.10 AC13 — a field in a group points at the group's hint", () => {
+  it("hint={null} draws no hint of its own; describedBy names the group's", () => {
+    render(<ClockField id="r1" label="Round 1" hint={null} describedBy="group-hint" digits="" onChange={() => {}} />);
+    expect(document.getElementById("r1-hint")).toBeNull();
+    expect(screen.queryByText(CLOCK_HINT)).toBeNull();
+    expect(screen.getByLabelText("Round 1").getAttribute("aria-describedby")).toBe("group-hint");
+  });
+
+  it("with an error, it names the group's hint and the error", () => {
+    render(<ClockField id="r1" label="Round 1" hint={null} describedBy="group-hint" digits="375" error="Seconds go up to 59." onChange={() => {}} />);
+    expect(screen.getByLabelText("Round 1").getAttribute("aria-describedby")).toBe("group-hint r1-error");
+  });
+
+  it("a lone field keeps its own hint (screenshots 90 and 95 unchanged)", () => {
+    render(<ClockField id="cap" label="Cap" digits="" onChange={() => {}} />);
+    expect(document.getElementById("cap-hint")).toHaveTextContent(CLOCK_HINT);
+    expect(screen.getByLabelText("Cap").getAttribute("aria-describedby")).toBe("cap-hint");
+  });
+});

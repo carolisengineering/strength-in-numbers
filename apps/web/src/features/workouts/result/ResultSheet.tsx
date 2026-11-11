@@ -6,6 +6,7 @@ import { Sheet } from "../../../ui/Sheet";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { ClockField } from "../../sectionTimer/ClockField";
 import { TimerLine } from "../../sectionTimer/TimerLine";
+import { CLOCK_HINT } from "../../sectionTimer/timerCopy";
 import { NumberStepper } from "../NumberStepper";
 import { RESULT_COPY } from "./resultCopy";
 import {
@@ -32,6 +33,9 @@ export interface ResultSheetProps {
   onCancel(): void;
   onSave(draft: ResultDraft): void;
 }
+
+/** Spec 17.10 AC13: the one hint the round fields share; Set Timer's rows and the round-ends group never both render. */
+const CLOCK_HINT_ID = "result-clock-hint";
 
 const step = (text: string, by: 1 | -1, max: number): string => {
   const n = text === "" ? 0 : Number(text);
@@ -79,7 +83,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const setRow = (round: number, digits: string) => setDraft((d) => ({ ...d, rows: d.rows.map((r) => (r.round === round ? { ...r, digits } : r)) }));
   const roundRow = (round: number, digits: string) => (
     <div key={round} className={styles.round} data-round={round}>
-      <ClockField id={`result-round-${round}`} label={RESULT_COPY.roundLabel(round)} digits={digits} error={errors[`row:${round}`]} onChange={(d) => setRow(round, d)} />
+      <ClockField id={`result-round-${round}`} label={RESULT_COPY.roundLabel(round)} hint={null} describedBy={CLOCK_HINT_ID} digits={digits} error={errors[`row:${round}`]} onChange={(d) => setRow(round, d)} />
       {round === next ? <span className={styles.next}>{RESULT_COPY.next}</span> : null}
     </div>
   );
@@ -123,7 +127,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const roundEnds = (
     <fieldset className={styles.group}>
       <legend className={styles.legend}>{RESULT_COPY.roundEnds}</legend>
-      <p className={styles.hint}>{RESULT_COPY.roundEndsHint}</p>
+      <p className={styles.hint} id={CLOCK_HINT_ID}>{`${RESULT_COPY.roundEndsHint} ${CLOCK_HINT}`}</p>
       {draft.rows.map((r) => roundRow(r.round, r.digits))}
       {highest < TIMER_ROUNDS_MAX ? (
         <Button variant="secondary" className={styles.addRound} onClick={() => setDraft(addRoundRow)}>
@@ -143,6 +147,9 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
 
         {timer.format === "set_timer" ? (
           <>
+            <p className={styles.hint} id={CLOCK_HINT_ID}>
+              {CLOCK_HINT}
+            </p>
             {draft.rows.map((r) => roundRow(r.round, r.digits))}
             {total !== null ? <p className={styles.total}>{RESULT_COPY.total(formatClock(total))}</p> : null}
           </>
