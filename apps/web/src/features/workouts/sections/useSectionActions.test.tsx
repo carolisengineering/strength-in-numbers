@@ -207,6 +207,16 @@ describe("10.6 AC8 — remove", () => {
     expect(removeSection).not.toHaveBeenCalled();
   });
 
+  it("17.10 AC15 — Review Focus 2: the remove confirm's Cancel focuses the row's Remove section", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));
+    await user.click(sheet("Edit section").getByRole("button", { name: "Remove section" }));
+    await user.click(sheet("Remove Warm-up?").getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove Warm-up?" })).toBeNull());
+    expect(document.activeElement?.textContent).toBe("Remove section");
+    expect(document.activeElement?.closest("[data-sheet-actions]")).not.toBeNull();
+  });
+
   it("#159 — another device removed the open sheet's section: the sheet closes with the sectionGone banner", async () => {
     const { user, workout, deps, rerender } = setup();
     await user.click(screen.getByRole("button", { name: "Open edit Warm-up" }));

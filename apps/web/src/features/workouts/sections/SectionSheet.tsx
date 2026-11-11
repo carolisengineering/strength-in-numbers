@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import type { WorkoutSection } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { TimerFields } from "../../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../../sectionTimer/timerFields";
 import { SECTION_COPY } from "./sectionCopy";
@@ -51,6 +52,9 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   // The sheet's own timer errors (a parse on submit, or `{}` after a format change) win over the server's.
   const [ownTimerErrors, setOwnTimerErrors] = useState<TimerFieldErrors | null>(null);
   const editing = mode === "edit";
+  const formId = useId();
+  const lineId = useId();
+  const removable = editing && onRemove !== undefined;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -64,8 +68,14 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   }
 
   return (
-    <Sheet noActionRow open={open} title={editing ? SECTION_COPY.editTitle : SECTION_COPY.newTitle} onClose={onClose} dismissible={!busy}>
-      <form className={styles.form} noValidate onSubmit={submit}>
+    <Sheet
+      open={open}
+      title={editing ? SECTION_COPY.editTitle : SECTION_COPY.newTitle}
+      onClose={onClose}
+      dismissible={!busy}
+      dismissLabel={SECTION_COPY.cancel}
+    >
+      <form id={formId} className={styles.form} noValidate onSubmit={submit}>
         {editing ? null : <p className={styles.intro}>{SECTION_COPY.newIntro}</p>}
         <Field id="section-name" label={SECTION_COPY.nameLabel} {...(errors.name ? { error: errors.name } : {})}>
           {(control) => (
@@ -87,24 +97,31 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
           }}
         />
         {timerLocked !== undefined ? <p className={styles.timerLocked}>{timerLocked}</p> : null}
-        {errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
-        <div className={styles.actions}>
-          <Button variant="secondary" disabled={busy} onClick={onClose}>
-            {SECTION_COPY.cancel}
-          </Button>
-          <Button type="submit" busy={busy} ref={saveRef}>
-            {editing ? SECTION_COPY.save : SECTION_COPY.addSection}
-          </Button>
-        </div>
       </form>
-      {editing && onRemove ? (
+      {/* Spec 17.10: the line stays in the body, last, and describes the row's Remove section; in the status line it
+          would sit above Save on every edit. */}
+      {removable ? (
         <div className={styles.remove} data-divider="">
-          <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef}>
-            {SECTION_COPY.removeSection}
-          </Button>
-          <p className={styles.removeLine}>{SECTION_COPY.removeLine}</p>
+          <p id={lineId} className={styles.removeLine}>
+            {SECTION_COPY.removeLine}
+          </p>
         </div>
       ) : null}
+      <SheetActions
+        notice={errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
+        danger={
+          removable ? (
+            <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef} aria-describedby={lineId}>
+              {SECTION_COPY.removeSection}
+            </Button>
+          ) : undefined
+        }
+        primary={
+          <Button type="submit" form={formId} busy={busy} ref={saveRef}>
+            {editing ? SECTION_COPY.save : SECTION_COPY.addSection}
+          </Button>
+        }
+      />
     </Sheet>
   );
 }

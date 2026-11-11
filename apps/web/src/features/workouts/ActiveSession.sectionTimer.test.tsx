@@ -182,6 +182,17 @@ describe("10.7 AC16 — confirm before clearing (live)", () => {
     expect(sectionWrites(fake)).toEqual([]);
   });
 
+  it("17.10 AC15 — Review Focus 2: Cancel returns focus to the row's Save", async () => {
+    const { user } = await setup(timed());
+    const dialog = await openEdit(user);
+    await chooseAmrap(user, dialog);
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    const confirm = await screen.findByRole("dialog", { name: "Change Main's timer?" });
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Save"));
+    expect(document.activeElement?.closest("[data-sheet-actions]")).not.toBeNull();
+  });
+
   it("Cancel closes it, returns focus to Save and sends nothing", async () => {
     const { user, fake } = await setup(timed());
     const dialog = await openEdit(user);
