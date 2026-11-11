@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { sheetBody, sheetRow } from "../../test/sheetHelpers";
+import { EXERCISE_NOTE_MAX } from "./exerciseNote";
 import { NoteSheet } from "./NoteSheet";
 
 function setup(props: Partial<Parameters<typeof NoteSheet>[0]> = {}) {
@@ -38,9 +39,19 @@ describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("the save error stays under the field, in the body", () => {
+  it("a failed save shows in the row, so it stays in view (Review Focus 1, final review #1)", () => {
     setup({ saveError: "Couldn't save the note — try again" });
-    expect(within(sheetBody()).getByRole("alert")).toHaveTextContent("Couldn't save the note — try again");
+    expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the note — try again");
+    expect(within(sheetBody()).queryByRole("alert")).toBeNull();
+  });
+
+  it("a note that doesn't parse shows its error under the field, and the save error waits", async () => {
+    const { user } = setup({ saveError: "Couldn't save the note — try again" });
+    await user.click(screen.getByLabelText("Note"));
+    await user.paste("x".repeat(EXERCISE_NOTE_MAX + 1));
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    expect(within(sheetBody()).getByRole("alert")).toBeInTheDocument();
+    expect(sheetRow().queryByRole("alert")).toBeNull();
   });
 });
 
