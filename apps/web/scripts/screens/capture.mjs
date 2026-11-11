@@ -733,6 +733,8 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
 
 // Spec 17.6 AC4, AC20: the summary's record ledger, read in a real browser.
 const recordLedger = [];
+/** Spec 17.6 AC21: on a 390 × 844 phone, capture 13's records start above the bottom nav (mobile only). */
+const summaryFirstScreen = [];
 const measureLedger = (page) =>
   page.evaluate(() => {
     const nameOf = (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent ?? el.getAttribute("aria-label") ?? "";
@@ -1519,8 +1521,8 @@ try {
       } catch (e) {
         violations.push(`13: the check stopped early: ${e.message.split("\n")[0]}`);
       }
-      recordLedger.push({ theme, device, steps: [firstScreen], violations });
-      for (const v of violations) console.error(`  RECORD LEDGER ${theme}/${device}: ${v}`);
+      summaryFirstScreen.push({ theme, device, ...firstScreen, violations });
+      for (const v of violations) console.error(`  SUMMARY FIRST SCREEN ${theme}/${device}: ${v}`);
     }
     // #107: Back and the Workout menu lead the summary; open, the menu reveals Edit workout and Delete workout.
     await page.getByRole("button", { name: "Workout menu" }).click();
@@ -1607,7 +1609,9 @@ try {
     // Spec 18.0 AC49: the summary's Edit workout, the edit screen, its sheets and the last-set dialog.
     await tryStep("edit past workouts", async () => {
       await go(`/app/history/${D.ids.latestPush}`);
-      await shoot(page, device, "31-summary-edit", "Summary with a title and two-line notes; Edit workout is in the Workout menu (Spec 18.0, 17.6)");
+      await page.getByRole("button", { name: "Workout menu" }).click();
+      await page.getByRole("button", { name: "Edit workout" }).waitFor();
+      await shoot(page, device, "31-summary-edit", "Summary with a title and two-line notes; the Workout menu open on Edit workout (Spec 18.0, 17.6 AC22)");
       await go(`/app/history/${D.ids.latestPush}/edit`);
       await shoot(page, device, "32-edit-screen", "Edit screen: banner, header, Details panel, sectioned cards with a superset, Done (Spec 18.0)");
       await page.getByRole("button", { name: /^Add set to Bench/ }).first().click();
@@ -2391,12 +2395,18 @@ if (recordLedger.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED 
   console.error("  RECORD LEDGER: the step did not run on every device");
   process.exitCode = 1;
 }
+// Spec 17.6 AC21: the first-screen check fails the run on a violation, or when a mobile run never reached it.
+if (summaryFirstScreen.some((s) => s.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && summaryFirstScreen.length === 0) {
+  console.error("  SUMMARY FIRST SCREEN: the check did not run on mobile");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

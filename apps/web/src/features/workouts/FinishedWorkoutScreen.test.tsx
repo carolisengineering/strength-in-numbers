@@ -468,14 +468,16 @@ describe("18.0 AC1 — Edit workout on the summary", () => {
     expect(writes()).toBe(before);
   });
 
-  it("is absent while the workout is loading and on the load-failed state", async () => {
+  it("is unreachable while the workout is loading and on the load-failed state: no Workout menu to open (17.6 AC22)", async () => {
     const workout = finished();
     const fake = createWorkoutFake({ finished: [workout] });
     fake.failNext({ method: "GET", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(500, "internal"));
     prepareApp({ auth, fake });
     renderApp(`/app/history/${workout.id}`);
+    expect(screen.queryByRole("button", { name: "Workout menu" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit workout" })).toBeNull();
     await screen.findByText("Couldn't load this workout.");
+    expect(screen.queryByRole("button", { name: "Workout menu" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit workout" })).toBeNull();
   });
 });
