@@ -224,7 +224,15 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
             current={current}
             onApplyRule={(templateId) => setStep({ ...step, resolved: applyRule(step.resolved, templateId) })}
           />
+          {/* Spec 17.10: a failed replace shows in the row, where the Load tap was, however far the preview is scrolled. */}
           <SheetActions
+            notice={
+              step.error !== null ? (
+                <p className={styles.notice} role="alert">
+                  {step.error}
+                </p>
+              ) : null
+            }
             primary={
               <Button
                 busy={put.isPending}
@@ -247,10 +255,9 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   );
 }
 
+/** The top region's errors: the choose step's. A preview's failed replace is the row's notice (Spec 17.10). */
 function errorsOf(step: Step): string[] {
-  if (step.kind === "choose") return step.errors;
-  if (step.kind === "preview" && step.error !== null) return [step.error];
-  return [];
+  return step.kind === "choose" ? step.errors : [];
 }
 
 function leftOutText(l: LeftOut): string {

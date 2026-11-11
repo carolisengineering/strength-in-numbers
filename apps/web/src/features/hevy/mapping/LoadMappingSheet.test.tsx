@@ -558,6 +558,19 @@ describe("17.10 AC15, AC3 — the load sheet's row (Review Focus 1)", () => {
   });
 });
 
+describe("17.10 AC15 — a failed replace is the row's notice (final review)", () => {
+  it("the sentence shows above the row's buttons, not at the top of a scrolled preview; the choose step's region stays empty", async () => {
+    server.use(http.put(MAPPING_URL, () => HttpResponse.error()));
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await userEvent.click(await within(dialog).findByRole("button", { name: loadButton(2) }));
+    const alert = await sheetRow().findByRole("alert");
+    expect(alert).toHaveTextContent(MAPPING_OFFLINE);
+    expect(within(dialog).getByTestId("hevy-load-errors")).toHaveTextContent("");
+    expect(within(dialog).getByRole("region", { name: "Preview" })).toBeInTheDocument();
+  });
+});
+
 describe("17.10 AC7 — the load sheet's body has no Cancel or Load button", () => {
   it("in the preview", async () => {
     const dialog = await openSheet();
