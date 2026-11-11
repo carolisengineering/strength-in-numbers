@@ -139,12 +139,14 @@ describe("AC30 — finished workout summary", () => {
     expect(within(screen.getByRole("region", { name: "Pull-up" })).getByText("12 reps")).toBeInTheDocument();
   });
 
-  it("is read-only: no input, select or textarea, and no edit affordance (amended by 18.0 AC1: its one edit control is Edit workout, a link to the edit screen)", async () => {
-    setup();
+  it("is read-only: no input, select or textarea, and no edit affordance (amended by 18.0 AC1 and 17.6 AC22: its one edit control is Edit workout, in the Workout menu)", async () => {
+    const { user } = setup();
     await screen.findByRole("heading", { name: "Workout summary" });
 
     const main = screen.getByRole("main");
     expect(main.querySelector("input, select, textarea")).toBeNull();
+    expect(within(main).queryByRole("button", { name: /edit/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
     expect(within(main).getAllByRole("button", { name: /edit/i }).map((b) => b.textContent)).toEqual(["Edit workout"]);
     expect(within(main).queryByRole("button", { name: /log set|finish|add exercise/i })).not.toBeInTheDocument();
     // The sets are plain text, not tappable rows.
@@ -453,15 +455,12 @@ describe("17.6 AC15 — the same screen in History", () => {
 });
 
 describe("18.0 AC1 — Edit workout on the summary", () => {
-  it.each(["workouts", "history"] as const)("on /app/%s/:id: a secondary button after the stats, with the records before both (17.6 AC1); it navigates with no request", async (section) => {
+  it.each(["workouts", "history"] as const)("on /app/%s/:id: a secondary item in the Workout menu (17.6 AC22); it navigates with no request", async (section) => {
     const { fake, workout, user, router } = setup((id) => `/app/${section}/${id}`);
-    fake.state.records.push(makePersonalRecord({ workoutId: workout.id }));
-    const button = await screen.findByRole("button", { name: "Edit workout" });
-    expect(button.className).toMatch(/_secondary_/);
-    const stats = screen.getByText("duration");
-    const records = await screen.findByRole("region", { name: /record/i });
-    expect(stats.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(records.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await screen.findByRole("heading", { name: "Workout summary" });
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    const button = screen.getByRole("button", { name: "Edit workout" });
+    expect(button).toHaveAttribute("data-variant", "secondary");
     const writes = () => fake.requests.filter((r) => r.method !== "GET").length;
     const before = writes();
     await user.click(button);

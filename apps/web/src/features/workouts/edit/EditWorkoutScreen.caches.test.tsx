@@ -23,7 +23,7 @@ import { USER_ID } from "../../../test/catalogHarness";
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { addSetButton, card, deleteSetIn, editDoneButton } from "../../../test/sessionHelpers";
+import { addSetButton, card, deleteSetIn, editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
 import { OUTBOX_KEY } from "../outbox/outbox";
 
 let online = true;
@@ -74,7 +74,7 @@ describe("18.0 AC23 — no request burst; the summary is fresh", () => {
     await screen.findByRole("heading", { name: "History" });
     await act(() => router.navigate(`/app/history/${workout.id}`));
     await screen.findByRole("heading", { name: "Workout summary" });
-    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    await openEditFromSummary(user);
     await ready();
 
     const mark = fake.requests.length;
@@ -106,7 +106,7 @@ describe("18.0 AC23 — no request burst; the summary is fresh", () => {
     const { fake, workout } = setup();
     const { user, router } = renderApp(`/app/history/${workout.id}`);
     await screen.findByRole("heading", { name: "Workout summary" });
-    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    await openEditFromSummary(user);
     await ready();
     await changeWeight(user, /80 kg × 5/, "90");
     const back = fake.requests.length;

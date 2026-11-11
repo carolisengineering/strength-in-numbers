@@ -1496,9 +1496,35 @@ try {
     await shoot(page, device, "12-history", `History list (${D.finished.length} finished workouts: badges with counts, and rows with none)`);
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
-    // #107: Back and the Workout menu lead the summary; open, the menu reveals Delete workout.
+    if (device === "mobile") {
+      // Spec 17.6 AC21 (the finding that started the spec): at 390 × 844 the records start above the bottom nav, on the first screen.
+      const firstScreen = { where: "13 records on the first screen at 390 × 844" };
+      const violations = [];
+      try {
+        const box = await page.evaluate(() => {
+          // The full-page capture just before leaves the scroller wherever it ended; measure the first screen.
+          for (const el of document.querySelectorAll("*")) if (el.scrollTop) el.scrollTop = 0;
+          window.scrollTo(0, 0);
+          // By the heading that names the section: the screen's own section (named by its h1) also holds the records' h2.
+          const region = [...document.querySelectorAll("main section[aria-labelledby]")].find((s) =>
+            /record/i.test(document.getElementById(s.getAttribute("aria-labelledby"))?.textContent ?? ""),
+          );
+          const nav = document.querySelector('nav[aria-label="Primary"]');
+          return { records: region ? region.getBoundingClientRect().top : null, nav: nav ? nav.getBoundingClientRect().top : null, viewport: [window.innerWidth, window.innerHeight] };
+        });
+        Object.assign(firstScreen, box);
+        if (box.records === null) violations.push("13: no records region");
+        else if (box.nav === null) violations.push("13: no Primary nav");
+        else if (box.records >= box.nav) violations.push(`13: the records start at ${Math.round(box.records)} px, below the nav's top at ${Math.round(box.nav)} px`);
+      } catch (e) {
+        violations.push(`13: the check stopped early: ${e.message.split("\n")[0]}`);
+      }
+      recordLedger.push({ theme, device, steps: [firstScreen], violations });
+      for (const v of violations) console.error(`  RECORD LEDGER ${theme}/${device}: ${v}`);
+    }
+    // #107: Back and the Workout menu lead the summary; open, the menu reveals Edit workout and Delete workout.
     await page.getByRole("button", { name: "Workout menu" }).click();
-    await shoot(page, device, "13a-history-detail-menu", "History detail with the Workout menu open (#107)");
+    await shoot(page, device, "13a-history-detail-menu", "History detail with the Workout menu open: Edit workout and Delete workout (Spec 17.6)");
     // Spec 17.2 AC40, Spec 17.6 AC20: the summary's records in every state, checked as well as captured.
     await tryStep("record ledger summaries", async () => {
       const violations = [];
@@ -1581,7 +1607,7 @@ try {
     // Spec 18.0 AC49: the summary's Edit workout, the edit screen, its sheets and the last-set dialog.
     await tryStep("edit past workouts", async () => {
       await go(`/app/history/${D.ids.latestPush}`);
-      await shoot(page, device, "31-summary-edit", "Summary with a title, two-line notes and Edit workout under the stats (Spec 18.0)");
+      await shoot(page, device, "31-summary-edit", "Summary with a title and two-line notes; Edit workout is in the Workout menu (Spec 18.0, 17.6)");
       await go(`/app/history/${D.ids.latestPush}/edit`);
       await shoot(page, device, "32-edit-screen", "Edit screen: banner, header, Details panel, sectioned cards with a superset, Done (Spec 18.0)");
       await page.getByRole("button", { name: /^Add set to Bench/ }).first().click();

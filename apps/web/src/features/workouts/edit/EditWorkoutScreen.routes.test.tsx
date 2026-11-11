@@ -16,6 +16,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 import { makeRoutine, makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
+import { openEditFromSummary } from "../../../test/sessionHelpers";
 
 afterEach(() => cleanupApp());
 
@@ -71,7 +72,7 @@ describe("18.0 AC2 — routes", () => {
     const { user } = renderApp(`/app/history/${workout.id}`);
     await screen.findByRole("heading", { name: "Workout summary" });
     expect(detailGets(fake, workout.id)).toBe(1);
-    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    await openEditFromSummary(user);
     await screen.findByRole("heading", { level: 1, name: "Edit workout" });
     await waitFor(() => expect(detailGets(fake, workout.id)).toBe(2));
   });

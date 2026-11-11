@@ -68,9 +68,10 @@ describe("10.3 AC31 — finished workout and History", () => {
     expect(names).toContain("Main");
     expect(names).toContain("Other exercises");
     expect(within(screen.getByRole("region", { name: "Warm-up" })).getByText("5 min rower")).toBeInTheDocument(); // empty section: heading and note
-    const from = screen.getByText("From routine: Push B");
-    expect(from.nextElementSibling?.tagName).toBe("P");
-    expect(from.nextElementSibling).toHaveTextContent("Keep it short"); // plain paragraph, no collapse
+    // 17.6 AC23: the routine note is last, plain text under its label, no collapse.
+    const routineNote = screen.getByRole("region", { name: "Routine note" });
+    expect(within(routineNote).getByText("Keep it short").tagName).toBe("P");
+    expect(Boolean(screen.getByRole("region", { name: "Other exercises" }).compareDocumentPosition(routineNote) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(screen.queryByRole("button", { name: /routine note/i })).toBeNull();
     expect(screen.getByText("Pause every rep")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /note/i })).toBeNull(); // no Note action on a finished workout

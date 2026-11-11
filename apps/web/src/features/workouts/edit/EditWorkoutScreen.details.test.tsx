@@ -21,7 +21,7 @@ import type { WorkoutDetail } from "@sin/core";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
-import { editDoneButton } from "../../../test/sessionHelpers";
+import { editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -174,7 +174,7 @@ describe("18.0 AC55 — round trip", () => {
     expect(notes).toHaveTextContent("Line one");
     expect([...notes.querySelectorAll("p")].some((p) => p.textContent === "Line one\nLine two")).toBe(true);
 
-    await user.click(screen.getByRole("button", { name: "Edit workout" }));
+    await openEditFromSummary(user);
     await screen.findByRole("heading", { level: 1, name: "Edit workout" });
     await edit(user, "Title", "");
     await user.click(sheet().getByRole("button", { name: "Save details" }));
