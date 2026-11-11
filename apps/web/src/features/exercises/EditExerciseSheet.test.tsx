@@ -22,6 +22,7 @@ import { MODALITY_VALUES, type Exercise } from "@sin/core";
 import { API_BASE_URL, USER_ID } from "../../test/catalogHarness";
 import { makeExercise } from "../../test/catalogFixtures";
 import { server } from "../../test/msw/server";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 import { makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -53,6 +54,38 @@ const openEdit = async (user: ReturnType<typeof setup>["user"]) => {
 };
 const typeRadio = (sheet: HTMLElement, m: (typeof MODALITY_VALUES)[number]) => within(sheet).getByRole("radio", { name: MODALITY_LABELS[m] });
 const patches = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => r.method === "PATCH" && PATCH.test(r.path));
+
+describe("17.10 AC14, AC7, AC3 — the Edit exercise sheet uses the action row", () => {
+  it("Cancel then Save in the row, none in the body; Save waits for a change", async () => {
+    const { user } = setup();
+    const sheet = await openEdit(user);
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save"]);
+    for (const name of ["Cancel", "Save"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+    expect(sheetRow().getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.type(within(sheet).getByLabelText("Name"), " 2");
+    expect(sheetRow().getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("while saving, Cancel is aria-disabled and does nothing", async () => {
+    const held = deferred<void>();
+    const { user } = setup();
+    const sheet = await openEdit(user);
+    server.use(
+      http.patch(`${API_BASE_URL}/v1/exercises/:id`, async () => {
+        await held.promise;
+        return HttpResponse.json({ ...own, name: "Echo Bike 2" });
+      }),
+    );
+    await user.type(within(sheet).getByLabelText("Name"), " 2");
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(cancel).toHaveAttribute("aria-disabled", "true"));
+    await user.click(cancel);
+    expect(screen.getByRole("dialog", { name: "Edit exercise" })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit exercise" })).toBeNull());
+  });
+});
 
 describe("18.2 AC35 — the sheet", () => {
   it("opens prefilled with More details open; Save waits for a change and a name", async () => {

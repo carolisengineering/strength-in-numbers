@@ -1,5 +1,5 @@
 import type { Equipment, Exercise, MuscleGroup } from "@sin/core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,9 @@ import {
   USER_ID,
 } from "../../test/catalogHarness";
 import { server } from "../../test/msw/server";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
+import { Sheet } from "../../ui/Sheet";
+import { useState } from "react";
 import { CreateExerciseForm } from "./CreateExerciseForm";
 
 const EXERCISES_URL = `${API_BASE_URL}/v1/exercises`;
@@ -83,7 +86,9 @@ function renderForm(
   const merged = { initialName: "Zercher Curl", muscleGroups: MUSCLES, equipment: EQUIPMENT, ...props };
   render(
     <CatalogTestProviders storage={seededStorage([])}>
-      <CreateExerciseForm {...merged} onCreated={onCreated} onCancel={onCancel} />
+      <Sheet open title="Create exercise" onClose={onCancel}>
+        <CreateExerciseForm {...merged} onCreated={onCreated} />
+      </Sheet>
     </CatalogTestProviders>,
   );
   return { onCreated, onCancel, user: userEvent.setup() };
@@ -212,7 +217,7 @@ describe("AC29 — create outcomes", () => {
     expect(postBodies).toHaveLength(1);
   });
 
-  it("disables Cancel while a save is in flight", async () => {
+  it("17.10 AC3 — Cancel during a save ends the form, and the late answer reports no pick (Review Focus 4)", async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -223,15 +228,43 @@ describe("AC29 — create outcomes", () => {
         return HttpResponse.json(created, { status: 201 });
       }),
     );
-    const { user, onCreated } = renderForm();
+    const onCreated = vi.fn<(exercise: Exercise) => void>();
+    function Host() {
+      const [open, setOpen] = useState(true);
+      return (
+        <Sheet open={open} title="Create exercise" onClose={() => setOpen(false)}>
+          {open ? <CreateExerciseForm initialName="Zercher Curl" muscleGroups={MUSCLES} equipment={EQUIPMENT} onCreated={onCreated} /> : null}
+        </Sheet>
+      );
+    }
+    render(
+      <CatalogTestProviders storage={seededStorage([])}>
+        <Host />
+      </CatalogTestProviders>,
+    );
+    const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: "Duration" }));
-
     await user.click(saveButton());
 
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toBeEnabled();
+    expect(cancel).not.toHaveAttribute("aria-disabled");
+    await user.click(cancel);
+    expect(screen.queryByLabelText("Name")).toBeNull();
 
     release();
-    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(postBodies.length + 1).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("17.10 AC14, AC7 — Cancel then Save in the row, none in the body; Save waits for a name and a type", async () => {
+    const { user } = renderForm();
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save"]);
+    for (const name of ["Cancel", "Save"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+    expect(sheetRow().getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "Duration" }));
+    expect(sheetRow().getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("409 exercise-limit-reached → a plain message, no field marked, input intact", async () => {

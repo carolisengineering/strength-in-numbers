@@ -1,10 +1,11 @@
 import { lineageRootId, type Exercise } from "@sin/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
+import { SheetActions } from "../../ui/SheetActions";
 import formStyles from "../catalog/CreateExerciseForm.module.css";
 import { ExerciseFields, type ExerciseFieldName, type ExerciseFieldValues } from "../catalog/ExerciseFields";
 import fieldStyles from "../catalog/ExerciseFields.module.css";
@@ -34,21 +35,19 @@ export interface EditExerciseSheetProps {
 export function EditExerciseSheet({ open, row, onClose, onSaved, onGone }: EditExerciseSheetProps) {
   const [saving, setSaving] = useState(false);
   return (
-    <Sheet noActionRow open={open} title={EXERCISES_COPY.editTitle} onClose={onClose} dismissible={!saving}>
-      {open ? <EditForm row={row} onCancel={onClose} onSaved={onSaved} onGone={onGone} onSavingChange={setSaving} /> : null}
+    <Sheet open={open} title={EXERCISES_COPY.editTitle} onClose={onClose} dismissible={!saving} dismissLabel={EXERCISES_COPY.cancel}>
+      {open ? <EditForm row={row} onSaved={onSaved} onGone={onGone} onSavingChange={setSaving} /> : null}
     </Sheet>
   );
 }
 
 function EditForm({
   row,
-  onCancel,
   onSaved,
   onGone,
   onSavingChange,
 }: {
   row: Exercise;
-  onCancel: () => void;
   onSaved: () => void;
   onGone: () => void;
   onSavingChange: (saving: boolean) => void;
@@ -65,6 +64,7 @@ function EditForm({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ExerciseFieldName, string>>>({});
   const [formError, setFormError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  const formId = useId();
 
   // AC38: options must reflect sets logged since the tab was last viewed (a 304 when unchanged).
   const { refetch } = usage;
@@ -137,7 +137,7 @@ function EditForm({
   };
 
   return (
-    <form className={formStyles.form} onSubmit={(event) => void onSubmit(event)} noValidate>
+    <form id={formId} className={formStyles.form} onSubmit={(event) => void onSubmit(event)} noValidate>
       <ExerciseFields
         idPrefix="edit-exercise"
         modalityLabel={EXERCISES_COPY.typeLabel}
@@ -162,19 +162,20 @@ function EditForm({
           ) : null
         }
       />
-      {formError ? (
-        <p className={formStyles.formError} role="alert">
-          {formError}
-        </p>
-      ) : null}
-      <div className={formStyles.actions}>
-        <Button variant="secondary" onClick={onCancel} disabled={saving}>
-          {EXERCISES_COPY.cancel}
-        </Button>
-        <Button type="submit" busy={saving} disabled={!canSave}>
-          {EXERCISES_COPY.save}
-        </Button>
-      </div>
+      <SheetActions
+        notice={
+          formError ? (
+            <p className={formStyles.formError} role="alert">
+              {formError}
+            </p>
+          ) : null
+        }
+        primary={
+          <Button type="submit" form={formId} busy={saving} disabled={!canSave}>
+            {EXERCISES_COPY.save}
+          </Button>
+        }
+      />
     </form>
   );
 }
