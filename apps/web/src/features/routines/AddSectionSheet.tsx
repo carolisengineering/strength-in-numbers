@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Sheet } from "../../ui/Sheet";
+import { SheetActions } from "../../ui/SheetActions";
 import { SECTION_STARTERS } from "./messages";
 import { parseSectionName } from "./sectionText";
 import styles from "./Sections.module.css";
@@ -16,8 +17,9 @@ export interface AddSectionSheetProps {
 export function AddSectionSheet({ open, onAdd, onClose }: AddSectionSheetProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const formId = useId();
   return (
-    <Sheet noActionRow open={open} title="Add section" onClose={onClose}>
+    <Sheet open={open} title="Add section" onClose={onClose}>
       <div className={styles.form}>
         <div role="group" aria-label="Section names" className={styles.starters}>
           {SECTION_STARTERS.map((starter) => (
@@ -27,6 +29,7 @@ export function AddSectionSheet({ open, onAdd, onClose }: AddSectionSheetProps) 
           ))}
         </div>
         <form
+          id={formId}
           className={styles.form}
           noValidate
           onSubmit={(event) => {
@@ -42,10 +45,14 @@ export function AddSectionSheet({ open, onAdd, onClose }: AddSectionSheetProps) 
           <Field id="section-new-name" label="Name" {...(error ? { error } : {})}>
             {(control) => <input {...control} className={styles.input} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} />}
           </Field>
-          <Button type="submit" block>
-            Add
-          </Button>
         </form>
+        <SheetActions
+          primary={
+            <Button type="submit" form={formId}>
+              Add
+            </Button>
+          }
+        />
       </div>
     </Sheet>
   );

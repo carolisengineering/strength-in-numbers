@@ -1427,6 +1427,26 @@ try {
         if (createSubmits !== 0) violations.push(`AC6: Enter in the create sheet with no type submitted ${createSubmits} times (want 0)`);
         if (createOpen !== 1) violations.push("AC6: the create sheet closed on Enter with Save disabled");
         await page.keyboard.press("Escape");
+        // Phase B Review Focus 3: the picker's last control, "Create a custom exercise", is still reachable above its new
+        // Cancel row once the body is scrolled to its end, with the keyboard down and with a 508 px frame.
+        await go("/app/workouts");
+        await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+        await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+        for (const frame of [null, 508]) {
+          if (frame) await setFrame(frame);
+          const end = await page.evaluate(() => {
+            const body = document.querySelector("dialog[open] [data-sheet-body]");
+            body.scrollTop = body.scrollHeight;
+            const create = [...body.querySelectorAll("button")].find((b) => b.textContent?.includes("Create a custom exercise"));
+            const row = document.querySelector("dialog[open] [data-sheet-actions]").getBoundingClientRect();
+            return create ? { bottom: create.getBoundingClientRect().bottom, rowTop: row.top } : null;
+          });
+          const where = frame ? `with a ${frame} px frame` : "with the keyboard down";
+          if (!end) violations.push(`Review Focus 3: the picker has no "Create a custom exercise" row (${where})`);
+          else if (end.bottom > end.rowTop + 0.5) violations.push(`Review Focus 3: the picker's create row ends at ${end.bottom.toFixed(1)}, under the row's top ${end.rowTop.toFixed(1)} (${where})`);
+        }
+        if (device === "mobile") await shoot(page, device, "02k-picker-end-keyboard-up", "Spec 17.10 Phase B Review Focus 3: the picker scrolled to its end with a 508 px frame: Create a custom exercise sits above the Cancel row");
+        await page.keyboard.press("Escape");
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
       } finally {
