@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RETIME_MESSAGES, UpdatedWorkoutSchema, type UpdatedWorkout, type WorkoutDetail } from "@sin/core";
 import { ApiError } from "../../../api";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { pinTimeZone } from "../../../test/timeZone";
 import { makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../../test/workoutHarness";
@@ -188,7 +189,7 @@ describe("18.0 AC42 — one request at a time", () => {
     const { user, updateWorkout } = setup(w, vi.fn(() => held.promise));
     fireEvent.change(day(), { target: { value: "2026-10-16" } });
     await user.click(save());
-    fireEvent.submit(save().closest("form")!);
+    fireEvent.submit((save() as HTMLButtonElement).form!);
     expect(updateWorkout).toHaveBeenCalledTimes(1);
     expect(save()).toHaveAttribute("aria-busy", "true");
     await act(async () => held.resolve(updatedOf(w)));
@@ -223,5 +224,43 @@ describe("18.0 AC33 — a Took the browser cannot read", () => {
     await user.click(save());
     expect(updateWorkout).not.toHaveBeenCalled();
     expect(sheet().getByText(EDIT_COPY.tookWhole)).toBeInTheDocument();
+  });
+});
+
+describe("17.10 AC14, AC7, AC3 — the Change Time sheet uses the action row", () => {
+  it("the row reads Cancel then Save time; the body holds neither", () => {
+    setup(liveWorkout());
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save time"]);
+    for (const name of ["Cancel", "Save time"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+  });
+
+  it("Cancel closes and sends nothing", async () => {
+    const { user, onClose, updateWorkout } = setup(liveWorkout());
+    fireEvent.change(day(), { target: { value: "2026-10-16" } });
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(updateWorkout).not.toHaveBeenCalled();
+  });
+
+  it("while saving, Cancel is aria-disabled and does nothing", async () => {
+    const held = deferred<UpdatedWorkout>();
+    const w = liveWorkout();
+    const { user, onClose } = setup(w, vi.fn(() => held.promise));
+    fireEvent.change(day(), { target: { value: "2026-10-16" } });
+    await user.click(save());
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    await user.click(cancel);
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => held.resolve(updatedOf(w)));
+  });
+
+  it("a failure shows in the row (Review Focus 1)", async () => {
+    const updateWorkout = vi.fn<WorkoutClient["updateWorkout"]>().mockRejectedValueOnce(problem(500));
+    const { user } = setup(liveWorkout(), updateWorkout);
+    fireEvent.change(day(), { target: { value: "2026-10-16" } });
+    await user.click(save());
+    expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.changeTimeFailed);
+    expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { UpdatedWorkout, WorkoutDetail } from "@sin/core";
 
@@ -6,6 +6,7 @@ import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { EDIT_COPY } from "../edit/editCopy";
 import { reportUnexpected } from "../reportUnexpected";
 import {
@@ -45,6 +46,7 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
   // changes neither "what changed", nor live vs finished, nor what is validated and sent; the server has the last word.
   const [workout] = useState(() => latest);
   const [form, setForm] = useState<ChangeTimeForm>(() => initialValues(workout));
+  const formId = useId();
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
   const [requestId, setRequestId] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -127,8 +129,8 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
 
   return (
     // A save in flight keeps the sheet open, so its failure is shown where the lifter can see it (AC41, DM-12).
-    <Sheet noActionRow open={open} title="Change Time" onClose={onClose} dismissible={!mutation.isPending}>
-      <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
+    <Sheet open={open} title="Change Time" onClose={onClose} dismissible={!mutation.isPending}>
+      <form id={formId} className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
         <Field id="change-time-day" label="Day" {...(errors.day ? { error: errors.day } : {})}>
           {(control) => (
             <input
@@ -168,15 +170,21 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
             </p>
           ) : null}
         </fieldset>
-        {errors.form ? (
-          <InlineNotice tone="error" requestId={requestId}>
-            {errors.form}
-          </InlineNotice>
-        ) : null}
-        <Button type="submit" block busy={mutation.isPending}>
-          Save time
-        </Button>
       </form>
+      <SheetActions
+        notice={
+          errors.form ? (
+            <InlineNotice tone="error" requestId={requestId}>
+              {errors.form}
+            </InlineNotice>
+          ) : null
+        }
+        primary={
+          <Button type="submit" form={formId} busy={mutation.isPending}>
+            Save time
+          </Button>
+        }
+      />
     </Sheet>
   );
 }

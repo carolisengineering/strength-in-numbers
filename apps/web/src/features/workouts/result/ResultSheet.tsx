@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { RESULT_REPS_MAX, RESULT_ROUNDS_MAX, TIMER_ROUNDS_MAX, formatClock, sectionScore } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { ClockField } from "../../sectionTimer/ClockField";
 import { TimerLine } from "../../sectionTimer/TimerLine";
@@ -53,6 +54,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const [errors, setErrors] = useState<DraftErrors>({});
   const [focusTick, setFocusTick] = useState(0);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const formId = useId();
   const { timer } = section;
   const next = firstEmptyRow(draft);
   const total = liveTotal(timer, draft);
@@ -138,8 +140,8 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   );
 
   return (
-    <Sheet noActionRow open={open} title={RESULT_COPY.title} onClose={onCancel} dismissible={!busy}>
-      <form ref={formRef} className={styles.form} noValidate onSubmit={submit}>
+    <Sheet open={open} title={RESULT_COPY.title} onClose={onCancel} dismissible={!busy} dismissLabel={RESULT_COPY.cancel}>
+      <form id={formId} ref={formRef} className={styles.form} noValidate onSubmit={submit}>
         <div className={styles.header}>
           <p className={styles.name}>{section.name}</p>
           <TimerLine timer={timer} score={sectionScore(section)} />
@@ -194,16 +196,15 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
           </Button>
         ) : null}
 
-        {formError ? <InlineNotice tone="error">{formError}</InlineNotice> : null}
-        <div className={styles.actions}>
-          <Button variant="secondary" disabled={busy} onClick={onCancel}>
-            {RESULT_COPY.cancel}
-          </Button>
-          <Button type="submit" busy={busy}>
+      </form>
+      <SheetActions
+        notice={formError ? <InlineNotice tone="error">{formError}</InlineNotice> : null}
+        primary={
+          <Button type="submit" form={formId} busy={busy}>
             {RESULT_COPY.save}
           </Button>
-        </div>
-      </form>
+        }
+      />
     </Sheet>
   );
 }

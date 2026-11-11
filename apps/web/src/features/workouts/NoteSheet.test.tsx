@@ -1,0 +1,66 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
+import { NoteSheet } from "./NoteSheet";
+
+function setup(props: Partial<Parameters<typeof NoteSheet>[0]> = {}) {
+  const onSave = vi.fn();
+  const onClose = vi.fn();
+  render(<NoteSheet open exerciseName="Bench Press" initial={null} onSave={onSave} onClose={onClose} {...props} />);
+  return { onSave, onClose, user: userEvent.setup() };
+}
+
+const rowNames = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
+  it("the row reads Cancel then Save (D3), and the body holds neither; one Cancel in the dialog", () => {
+    setup();
+    expect(rowNames()).toEqual(["Cancel", "Save"]);
+    for (const name of ["Cancel", "Save"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+    expect(within(screen.getByRole("dialog")).getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+
+  it("the row's Save saves the parsed note once", async () => {
+    const { onSave, user } = setup();
+    await user.type(screen.getByLabelText("Note"), "Pause at the chest");
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith("Pause at the chest");
+  });
+
+  it("Cancel discards: onClose, no save", async () => {
+    const { onSave, onClose, user } = setup();
+    await user.type(screen.getByLabelText("Note"), "x");
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("the save error stays under the field, in the body", () => {
+    setup({ saveError: "Couldn't save the note — try again" });
+    expect(within(sheetBody()).getByRole("alert")).toHaveTextContent("Couldn't save the note — try again");
+  });
+});
+
+describe("17.10 AC6 — Enter in the note", () => {
+  it("adds a line and saves nothing", async () => {
+    const { onSave, user } = setup();
+    const note = screen.getByLabelText("Note");
+    await user.type(note, "one{Enter}two");
+    expect(note).toHaveValue("one\ntwo");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe("17.10 AC3 — Cancel latches while a save is in flight", () => {
+  it("Cancel is aria-disabled, not disabled, and does nothing", async () => {
+    const { onClose, user } = setup({ saving: true, dismissible: false });
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    expect(cancel).not.toBeDisabled();
+    await user.click(cancel);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

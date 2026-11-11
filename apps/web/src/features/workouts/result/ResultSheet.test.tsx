@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoundTime, SectionResult, SectionTimer } from "@sin/core";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { makeTimedSection } from "../../../test/workoutFixtures";
 import type { TimedSection } from "./resultDraft";
 import { ResultSheet } from "./ResultSheet";
@@ -161,5 +162,29 @@ describe("17.10 AC13 — the clock hint is said once per group", () => {
     const { dialog } = renderSheet(section({ format: "time_cap", capSeconds: 900 }));
     expect(dialog.getByLabelText("Finish time").getAttribute("aria-describedby")).toBe("result-finish-hint");
     expect(document.getElementById("result-finish-hint")).toHaveTextContent(HINT);
+  });
+});
+
+describe("17.10 AC14, AC7, AC3 — the Log result sheet uses the action row", () => {
+  it("the row reads Cancel then Save; Add round time stays in the body", () => {
+    renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Save"]);
+    expect(within(sheetBody()).getByRole("button", { name: "Add round time" })).toBeInTheDocument();
+    expect(within(sheetBody()).queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("busy: Cancel is aria-disabled and does nothing", async () => {
+    const onCancel = vi.fn();
+    render(<ResultSheet open section={section(SET5)} busy formError={null} onSave={vi.fn()} onCancel={onCancel} />);
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(cancel);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("a save failure shows in the row (Review Focus 1)", () => {
+    render(<ResultSheet open section={section(SET5)} busy={false} formError="Couldn't save the result." onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the result.");
+    expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });

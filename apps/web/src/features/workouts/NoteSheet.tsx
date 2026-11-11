@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Sheet } from "../../ui/Sheet";
+import { SheetActions } from "../../ui/SheetActions";
 import { EXERCISE_NOTE_MAX, parseExerciseNote } from "./exerciseNote";
 import styles from "./NoteSheet.module.css";
 
@@ -23,9 +24,11 @@ export interface NoteSheetProps {
 export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving = false, saveError = null, dismissible = true }: NoteSheetProps) {
   const [text, setText] = useState(initial ?? "");
   const [error, setError] = useState<string | null>(null);
+  const formId = useId();
   return (
-    <Sheet noActionRow open={open} title={`Note for ${exerciseName}`} onClose={onClose} dismissible={dismissible}>
+    <Sheet open={open} title={`Note for ${exerciseName}`} onClose={onClose} dismissible={dismissible}>
       <form
+        id={formId}
         className={styles.form}
         noValidate
         onSubmit={(event) => {
@@ -43,21 +46,15 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving
         <Field id="exercise-note" label="Note" hint={`${Array.from(text).length} / ${EXERCISE_NOTE_MAX}`} {...(error ?? saveError ? { error: error ?? saveError ?? "" } : {})}>
           {(control) => <textarea {...control} className={styles.input} rows={5} value={text} onChange={(e) => setText(e.target.value)} />}
         </Field>
-        <div className={styles.actions}>
-          <Button type="submit" busy={saving}>
+      </form>
+      {/* Spec 17.10: Cancel is the row's; `dismissible` latches it, as it does Close. */}
+      <SheetActions
+        primary={
+          <Button type="submit" form={formId} busy={saving}>
             Save
           </Button>
-          <Button
-            variant="secondary"
-            aria-disabled={dismissible ? undefined : true}
-            onClick={() => {
-              if (dismissible) onClose();
-            }}
-          >
-            Cancel
-          </Button>
-        </div>
-      </form>
+        }
+      />
     </Sheet>
   );
 }
