@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkoutSection } from "@sin/core";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { SECTION_COPY } from "./sectionCopy";
 import { SectionSheet, type SectionSheetProps } from "./SectionSheet";
 
@@ -67,7 +68,7 @@ describe("10.6 AC5 — the sheet", () => {
 });
 
 describe("10.6 AC7 / AC8 — edit mode", () => {
-  it("prefilled fields, Save, and Remove section under the divider with its line", async () => {
+  it("prefilled fields, Save, and Remove section in the row, with its line under the divider in the body (17.10)", async () => {
     const removeRef = vi.fn();
     const { user, onRemove, onSubmit } = renderSheet({ mode: "edit", section: stored, removeRef });
     const d = dialog("Edit section");
@@ -76,11 +77,66 @@ describe("10.6 AC7 / AC8 — edit mode", () => {
     expect(d.getByLabelText("Note")).toHaveValue("5 min");
     const remove = d.getByRole("button", { name: "Remove section" });
     expect(removeRef).toHaveBeenCalledWith(remove);
-    expect(d.getByText("Its exercises and sets stay in the workout, without a section.")).toBeInTheDocument();
-    expect(remove.closest("[data-divider]")).not.toBeNull();
+    const line = within(sheetBody()).getByText("Its exercises and sets stay in the workout, without a section.");
+    expect(line.closest("[data-divider]")).not.toBeNull();
+    expect(remove.closest("[data-sheet-actions]")).not.toBeNull();
     await user.click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
     await user.click(d.getByRole("button", { name: "Save" }));
     expect(onSubmit).toHaveBeenCalledWith({ name: "Warm-up", notes: "5 min", timer: null });
+  });
+});
+
+const rowLabels = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+describe("17.10 AC15 — the workout section sheet uses the action row", () => {
+  it("editing, the row reads Remove section, Cancel, Save", () => {
+    renderSheet({ mode: "edit", section: stored });
+    expect(rowLabels()).toEqual(["Remove section", "Cancel", "Save"]);
+  });
+
+  it("new, the row reads Cancel, Add section", () => {
+    renderSheet();
+    expect(rowLabels()).toEqual(["Cancel", "Add section"]);
+  });
+
+  it("Remove section is described by its line", () => {
+    renderSheet({ mode: "edit", section: stored });
+    expect(sheetRow().getByRole("button", { name: "Remove section" })).toHaveAccessibleDescription(SECTION_COPY.removeLine);
+  });
+
+  it("while busy, Cancel is aria-disabled and does nothing; Remove section is disabled", async () => {
+    const { user, onClose } = renderSheet({ mode: "edit", section: stored, busy: true });
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(cancel).toHaveAttribute("aria-disabled", "true");
+    await user.click(cancel);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(sheetRow().getByRole("button", { name: "Remove section" })).toBeDisabled();
+  });
+
+  it("a form error is the row's notice", () => {
+    renderSheet({ errors: { ...NO_ERRORS, form: SECTION_COPY.fieldsGeneric } });
+    expect(sheetRow().getByText(SECTION_COPY.fieldsGeneric)).toBeInTheDocument();
+    expect(within(sheetBody()).queryByText(SECTION_COPY.fieldsGeneric)).toBeNull();
+  });
+
+  it("Review Focus 2 — saveRef and removeRef receive the row's buttons", () => {
+    const saveRef = vi.fn();
+    const removeRef = vi.fn();
+    renderSheet({ mode: "edit", section: stored, saveRef, removeRef });
+    expect(saveRef).toHaveBeenCalledWith(sheetRow().getByRole("button", { name: "Save" }));
+    expect(removeRef).toHaveBeenCalledWith(sheetRow().getByRole("button", { name: "Remove section" }));
+  });
+});
+
+describe("17.10 AC7 — the workout section sheet's body has no Save, Cancel or Remove section", () => {
+  it("editing", () => {
+    renderSheet({ mode: "edit", section: stored });
+    for (const name of ["Save", "Cancel", "Remove section"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+  });
+
+  it("new", () => {
+    renderSheet();
+    for (const name of ["Add section", "Cancel"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
   });
 });

@@ -38,10 +38,10 @@
   color: var(--color-danger);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+/* Spec 17.10: a failed replace, in the row's notice slot. */
+.notice {
+  margin: 0;
+  color: var(--color-danger);
 }
 
 .progress {

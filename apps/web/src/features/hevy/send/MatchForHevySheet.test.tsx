@@ -18,6 +18,7 @@ import { cleanupSendScreen, setupSendScreen, WORKOUT_ID } from "../../../test/he
 import { EXERCISE_A, EXERCISE_B, sendFixture } from "../../../test/hevySendFakes";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../test/msw/server";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { hevyFailureSentence } from "./messages";
 import { renderApp } from "../../../test/workoutHarness";
 
@@ -146,6 +147,40 @@ describe("20.2 AC13 — the sheet", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Send to Hevy" })));
     expect(s.patches).toEqual([]);
     expect(s.hevy.calls.filter((c) => c.op !== "list")).toEqual([]);
+  });
+});
+
+describe("17.10 AC15, AC7 — Match for Hevy's row (Review Focus 5)", () => {
+  it("the row holds exactly Cancel then Continue; the card buttons stay in the body; the heading still takes focus", async () => {
+    setup();
+    const { sheet } = await openSheet();
+    await waitFor(() => expect(document.activeElement).toBe(within(sheet).getByRole("heading", { name: "Match exercises for Hevy" })));
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel", "Continue"]);
+    const card = within(sheetBody()).getByRole("group", { name: "Row" });
+    for (const name of ["Pick a Hevy exercise", "Leave out of this workout"]) expect(within(card).getByRole("button", { name })).toBeInTheDocument();
+    expect(within(sheetBody()).queryByRole("button", { name: "Continue" })).toBeNull();
+  });
+
+  it("every exercise left out: the reason is the row's status line", async () => {
+    const base = sendFixture();
+    setupSendScreen(auth, { detail: base.detail, mapping: { pairs: [], sectionRules: [] } });
+    server.use(templatesHandler(TEMPLATES));
+    const { sheet, user } = await openSheet();
+    for (const name of ["Bench Press", "Row"]) {
+      await user.click(within(within(sheet).getByRole("group", { name })).getByRole("button", { name: "Leave out of this workout" }));
+    }
+    expect(sheetRow().getByText("At least one exercise has to go to Hevy.")).toBeInTheDocument();
+  });
+
+  it("a failed save is the row's notice", async () => {
+    const s = setup();
+    s.failPatch(429);
+    const { sheet, user } = await openSheet();
+    const card = within(sheet).getByRole("group", { name: "Row" });
+    await user.click(within(card).getByRole("button", { name: "Pick a Hevy exercise" }));
+    await user.click(await within(card).findByRole("button", { name: "Bent Over Row (Barbell) · Weight & reps" }));
+    await user.click(sheetRow().getByRole("button", { name: "Continue" }));
+    expect(await sheetRow().findByRole("alert")).toHaveTextContent(/\S/);
   });
 });
 

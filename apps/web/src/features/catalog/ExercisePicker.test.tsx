@@ -446,6 +446,22 @@ describe("17.10 AC14, AC3 — the picker's create view uses the action row (Revi
   });
 });
 
+describe("17.10 AC15 — the picker's list view has a Cancel-only row", () => {
+  it("the row holds only Cancel, which calls onClose", async () => {
+    const { user, onClose, onPick } = renderPicker();
+    expect(sheetRow().getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel"]);
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("17.10 AC7 — the create row stays in the body", () => {
+    renderPicker();
+    expect(within(sheetBody()).getByRole("button", { name: "Create a custom exercise" })).toBeInTheDocument();
+    expect(within(sheetBody()).queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+});
+
 describe("AC29 — a created exercise is picked", () => {
   it("201 → onPick with the new exercise, back to the list, and it is in recents", async () => {
     server.use(

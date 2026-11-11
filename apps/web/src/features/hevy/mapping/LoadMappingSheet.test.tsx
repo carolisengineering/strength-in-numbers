@@ -16,6 +16,7 @@ import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/ac
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { TREATMENT_LABELS } from "../labels";
 import { hevyClientFor } from "../sharedClient";
 import { hevyTemplatesQuery } from "./useHevyTemplates";
@@ -488,5 +489,94 @@ describe("Minor 200 — one dropped section rule reads singular, and the list's 
     expect(within(preview).getByText("1 section rule in the app that this file drops or changes")).toBeInTheDocument();
     expect(sectionRulesRemovedLine(2)).toBe("2 section rules in the app that this file drops or changes");
     expect(within(preview).getByRole("list", { name: SECTION_RULES_DROPPED_LABEL })).toBeInTheDocument();
+  });
+});
+
+const rowLabels = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+describe("17.10 AC15, AC3 — the load sheet's row (Review Focus 1)", () => {
+  it("choosing a file, the row holds only Cancel, which closes the sheet", async () => {
+    const dialog = await openSheet();
+    expect(rowLabels()).toEqual(["Cancel"]);
+    expect(within(sheetBody()).getByLabelText("Choose a file")).toBeInTheDocument();
+    await userEvent.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
+  });
+
+  it("while Hevy is read, the row's Cancel stops the read and goes back to Choose a file, without closing", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`));
+    const asked: number[] = [];
+    let release!: () => void;
+    const page2 = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get(HEVY_TEMPLATES, async ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page"));
+        asked.push(page);
+        if (page === 2) await page2;
+        return HttpResponse.json({ page, page_count: 3, exercise_templates: many.slice((page - 1) * 100, page * 100) });
+      }),
+    );
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await waitFor(() => expect(asked).toContain(2));
+    expect(rowLabels()).toEqual(["Cancel"]);
+    await userEvent.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(await within(dialog).findByLabelText("Choose a file")).toBeInTheDocument();
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).not.toContain(3);
+    expect(screen.getByRole("dialog", { name: "Load a mapping file" })).toBeInTheDocument();
+    expect(puts).toEqual([]);
+  });
+
+  it("while Hevy is read, the header's Close closes the sheet", async () => {
+    server.use(templatesHandler(Array.from({ length: 250 }, (_, i) => tpl(`T${i}`, `Ex ${i}`)), { hold: 3 }));
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await within(dialog).findByText(readingTemplates(2, 3));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Load a mapping file" })).toBeNull());
+  });
+
+  it("the preview's row reads Cancel then the Load button, described by the leave-out note", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await within(dialog).findByRole("region", { name: "Preview" });
+    expect(rowLabels()).toEqual(["Cancel", loadButton(2)]);
+    expect(sheetRow().getByRole("button", { name: loadButton(2) })).toHaveAccessibleDescription(leaveOutNote(1));
+  });
+
+  it("while the replace is in flight, the row's Cancel is aria-disabled and does nothing", async () => {
+    server.use(http.put(MAPPING_URL, () => new Promise<never>(() => {})));
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await userEvent.click(await within(dialog).findByRole("button", { name: loadButton(2) }));
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(cancel).toHaveAttribute("aria-disabled", "true"));
+    await userEvent.click(cancel);
+    expect(screen.getByRole("dialog", { name: "Load a mapping file" })).toBeInTheDocument();
+  });
+});
+
+describe("17.10 AC15 — a failed replace is the row's notice (final review)", () => {
+  it("the sentence shows above the row's buttons, not at the top of a scrolled preview; the choose step's region stays empty", async () => {
+    server.use(http.put(MAPPING_URL, () => HttpResponse.error()));
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await userEvent.click(await within(dialog).findByRole("button", { name: loadButton(2) }));
+    const alert = await sheetRow().findByRole("alert");
+    expect(alert).toHaveTextContent(MAPPING_OFFLINE);
+    expect(within(dialog).getByTestId("hevy-load-errors")).toHaveTextContent("");
+    expect(within(dialog).getByRole("region", { name: "Preview" })).toBeInTheDocument();
+  });
+});
+
+describe("17.10 AC7 — the load sheet's body has no Cancel or Load button", () => {
+  it("in the preview", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, GOOD);
+    await within(dialog).findByRole("region", { name: "Preview" });
+    expect(within(sheetBody()).queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(within(sheetBody()).queryByRole("button", { name: loadButton(2) })).toBeNull();
   });
 });

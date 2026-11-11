@@ -6,6 +6,7 @@ import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { Select } from "../../../ui/Select";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { MODALITY_LABELS } from "../../catalog/labels";
 import { useCatalog } from "../../catalog/useCatalog";
 import { HevyError } from "../client/hevyErrors";
@@ -192,7 +193,7 @@ export function MatchForHevySheet({
   };
 
   return (
-    <Sheet noActionRow open title={C.matchTitle} onClose={onCancel} dismissible={!saving}>
+    <Sheet open title={C.matchTitle} onClose={onCancel} dismissible={!saving} dismissLabel={C.cancel}>
       <div ref={marker} className={styles.body}>
         {cards.map(({ exercise, choice }) => {
           const id = exercise.exerciseId;
@@ -312,20 +313,23 @@ export function MatchForHevySheet({
             </fieldset>
           );
         })}
-        {saveError !== null ? (
-          <p className={styles.error} role="alert">
-            {saveError}
-          </p>
-        ) : null}
-        {allLeftOut ? <p className={styles.text}>{AT_LEAST_ONE}</p> : null}
-        <div className={styles.actions}>
-          <Button variant="secondary" onClick={onCancel} disabled={saving}>
-            {C.cancel}
-          </Button>
-          <Button variant="secondary" disabled={!canContinue(cards) || allLeftOut || saving} busy={saving} onClick={() => void proceed()}>
-            {C.continue}
-          </Button>
-        </div>
+        {/* Spec 17.10: Continue keeps its secondary look (20.2's), in the primary slot; the reason it is off is the
+            row's status line. */}
+        <SheetActions
+          notice={
+            saveError !== null ? (
+              <p className={styles.error} role="alert">
+                {saveError}
+              </p>
+            ) : null
+          }
+          status={allLeftOut ? AT_LEAST_ONE : undefined}
+          primary={
+            <Button variant="secondary" disabled={!canContinue(cards) || allLeftOut || saving} busy={saving} onClick={() => void proceed()}>
+              {C.continue}
+            </Button>
+          }
+        />
       </div>
     </Sheet>
   );

@@ -102,12 +102,6 @@ describe("17.10 AC1 — Sheet owns the row; sheets fill its slots", () => {
     expect(rowButtons()).toEqual(["Back"]);
   });
 
-  it("noActionRow draws no row (Phase B's sheets until they migrate)", () => {
-    render(<Sheet open title="Pick" onClose={vi.fn()} noActionRow />);
-    expect(document.querySelector("[data-sheet-actions]")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
-  });
-
   it("SheetActions outside a Sheet throws", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(() => render(<SheetActions primary={<Button>Save</Button>} />)).toThrow(
@@ -359,5 +353,32 @@ describe("17.10 AC1 — closing and reopening (Review Focus 3)", () => {
     expect(screen.getAllByRole("button", { name: "Save" })).toHaveLength(1);
     await userEvent.click(sheetRow().getByRole("button", { name: "Save" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+const sources = import.meta.glob(["../**/*.tsx", "!../**/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+/** The Cancel copy constants a sheet passes as its `dismissLabel` (AC16). */
+const CANCEL_CONSTANTS = /\b(?:CANCEL_LOAD|SECTION_COPY\.cancel|C\.cancel|RESULT_COPY\.cancel|EXERCISES_COPY\.cancel)\b/g;
+/** Cancels that act on part of the body, not the sheet (AC7): Match for Hevy's in-card Cancel, in pick and create modes. */
+const IN_BODY_CANCELS: Record<string, number> = { "../features/hevy/send/MatchForHevySheet.tsx": 2 };
+
+describe("17.10 AC15, AC7 — every sheet uses the row", () => {
+  it("no source file names noActionRow (the Phase A opt-out is gone)", () => {
+    expect(Object.keys(sources).filter((path) => sources[path]!.includes("noActionRow"))).toEqual([]);
+  });
+
+  it("in a file that renders a Sheet, a Cancel copy constant is only its dismissLabel, so no sheet draws its own Cancel", () => {
+    const stray: string[] = [];
+    for (const [path, raw] of Object.entries(sources)) {
+      if (!/<Sheet\b/.test(raw)) continue;
+      // Import lists name the constants too; only uses count.
+      const source = raw.replace(/^import\b[\s\S]*?\bfrom\s+"[^"]+";$/gm, "");
+      let others = 0;
+      for (const match of source.matchAll(CANCEL_CONSTANTS)) {
+        if (source.slice(Math.max(0, match.index - "dismissLabel={".length), match.index) !== "dismissLabel={") others += 1;
+      }
+      if (others !== (IN_BODY_CANCELS[path] ?? 0)) stray.push(`${path}: ${others}`);
+    }
+    expect(stray).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { Sheet } from "../../../ui/Sheet";
+import { SheetActions } from "../../../ui/SheetActions";
 import { useCatalog } from "../../catalog/useCatalog";
 import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
@@ -171,7 +172,16 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   }
 
   return (
-    <Sheet noActionRow open={open} title={LOAD_SHEET_TITLE} onClose={close} dismissible={!put.isPending}>
+    <Sheet
+      open={open}
+      title={LOAD_SHEET_TITLE}
+      onClose={close}
+      dismissible={!put.isPending}
+      dismissLabel={CANCEL_LOAD}
+      // Spec 17.10 AC15: mid-read, the row's Cancel stops the paced Hevy reads and goes back to Choose a file,
+      // as the in-body Cancel did; Close still leaves the sheet.
+      onDismiss={step.kind === "reading" || step.kind === "checking" ? () => (stopRead(), reset()) : undefined}
+    >
       {/* Minor 185: both regions are there from first paint, empty, so their text is announced when it arrives. */}
       <p className={styles.progress} role="status" data-testid="hevy-load-progress">
         {step.kind === "reading" ? readingTemplates(progress.page, progress.pageCount) : step.kind === "checking" ? CHECKING_FILE : ""}
@@ -207,14 +217,6 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
         </div>
       ) : null}
 
-      {step.kind === "reading" || step.kind === "checking" ? (
-        <div className={styles.body}>
-          <Button variant="secondary" onClick={() => (stopRead(), reset())}>
-            {CANCEL_LOAD}
-          </Button>
-        </div>
-      ) : null}
-
       {step.kind === "preview" ? (
         <div className={styles.body}>
           <Preview
@@ -222,19 +224,26 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
             current={current}
             onApplyRule={(templateId) => setStep({ ...step, resolved: applyRule(step.resolved, templateId) })}
           />
-          <div className={styles.actions}>
-            <Button
-              busy={put.isPending}
-              disabled={put.isPending || step.resolved.needsRule.length > 0}
-              aria-describedby={step.resolved.leftOut.length > 0 ? noteId : undefined}
-              onClick={() => void save(step.resolved)}
-            >
-              {loadButton(step.resolved.pairs.length)}
-            </Button>
-            <Button variant="secondary" disabled={put.isPending} onClick={close}>
-              {CANCEL_LOAD}
-            </Button>
-          </div>
+          {/* Spec 17.10: a failed replace shows in the row, where the Load tap was, however far the preview is scrolled. */}
+          <SheetActions
+            notice={
+              step.error !== null ? (
+                <p className={styles.notice} role="alert">
+                  {step.error}
+                </p>
+              ) : null
+            }
+            primary={
+              <Button
+                busy={put.isPending}
+                disabled={put.isPending || step.resolved.needsRule.length > 0}
+                aria-describedby={step.resolved.leftOut.length > 0 ? noteId : undefined}
+                onClick={() => void save(step.resolved)}
+              >
+                {loadButton(step.resolved.pairs.length)}
+              </Button>
+            }
+          />
           {step.resolved.leftOut.length > 0 ? (
             <p className={styles.muted} id={noteId}>
               {leaveOutNote(step.resolved.leftOut.length)}
@@ -246,10 +255,9 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   );
 }
 
+/** The top region's errors: the choose step's. A preview's failed replace is the row's notice (Spec 17.10). */
 function errorsOf(step: Step): string[] {
-  if (step.kind === "choose") return step.errors;
-  if (step.kind === "preview" && step.error !== null) return [step.error];
-  return [];
+  return step.kind === "choose" ? step.errors : [];
 }
 
 function leftOutText(l: LeftOut): string {
