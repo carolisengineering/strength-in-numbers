@@ -44,7 +44,7 @@ export function SetSheetActions({ formId, confirm, question, primaryLabel, savin
           </Button>
         }
         primary={
-          <Button variant="danger" busy={deleting} onClick={onDelete}>
+          <Button variant="danger" aria-describedby={questionId} busy={deleting} onClick={onDelete}>
             Delete set
           </Button>
         }

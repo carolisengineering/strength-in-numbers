@@ -375,10 +375,12 @@ describe("17.10 AC14 — 17.5's confirm sits in the row (Review Focus 2)", () =>
     expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
   });
 
-  it("Keep set is described by the question, which the status line says once", async () => {
+  it("Keep set and the confirm's Delete set are both described by the question, which the status line says once", async () => {
     await asked();
     const question = "Delete set 1? 60 kg × 8 will be removed.";
     expect(sheetRow().getByRole("button", { name: "Keep set", description: question })).toBeInTheDocument();
+    // /code-review: the destructive button must say what it removes too (17.5's group label used to give both).
+    expect(sheetRow().getByRole("button", { name: "Delete set", description: question })).toBeInTheDocument();
     expect(sheetRow().getAllByText(question)).toHaveLength(1);
     expect(within(dialog()).getAllByText(question)).toHaveLength(1);
   });
