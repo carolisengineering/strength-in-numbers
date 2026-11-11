@@ -25,6 +25,7 @@ import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../../test/wor
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { addSetButton, card, deleteSetIn, editDoneButton } from "../../../test/sessionHelpers";
+import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -92,7 +93,7 @@ describe("17.5 AC18 — the first tap asks (edit sheet)", () => {
     await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}12");
     await user.click(sheet(/^Set 2/).getByRole("button", { name: "Delete set" }));
     expect(writes(fake)).toHaveLength(0);
-    expect(sheet(/^Set 2/).getByRole("group", { name: "Delete set 2? 80 kg × 5 will be removed." })).toBeInTheDocument();
+    expect(sheet(/^Set 2/).getByRole("button", { name: "Keep set", description: "Delete set 2? 80 kg × 5 will be removed." })).toBeInTheDocument();
     expect(sheet(/^Set 2/).getByRole("button", { name: "Keep set" })).toHaveFocus();
     expect(sheet(/^Set 2/).queryByRole("button", { name: "Save" })).toBeNull();
     await user.click(sheet(/^Set 2/).getByRole("button", { name: "Keep set" }));
@@ -147,7 +148,7 @@ describe("17.5 AC20 — the last set", () => {
     await ready();
     await openSet(user, /60 kg × 8/);
     await user.click(sheet(/^Set 1/).getByRole("button", { name: "Delete set" }));
-    expect(sheet(/^Set 1/).getByRole("group", { name: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
+    expect(sheet(/^Set 1/).getByRole("button", { name: "Keep set", description: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
     expect(writes(fake)).toHaveLength(0);
     await user.click(sheet(/^Set 1/).getByRole("button", { name: "Delete set" }));
     await screen.findByRole("dialog", { name: EDIT_COPY.lastSet.title });
@@ -448,5 +449,60 @@ describe("18.0 AC8 — Review Focus 3, 4, 5", () => {
     await user.click(sheet("New set · Bench Press").getByRole("button", { name: "Add set" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(writes(fake)[0]!.body).toMatchObject({ weight: 135, weightUnit: "lb" });
+  });
+});
+
+describe("17.10 AC14, AC7 — the edit screen's set sheet uses the action row", () => {
+  const rowNames = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+  it("edit: Delete set, Cancel, Save in the row and none in the body; one Cancel in the dialog", async () => {
+    const { user } = open();
+    await ready();
+    await openSet(user, /80 kg × 5/);
+    expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
+    for (const name of ["Delete set", "Save", "Cancel"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+    expect(sheet(/^Set 2/).getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+
+  it("add: Cancel then Add set", async () => {
+    const { user } = open();
+    await ready();
+    await user.click(addSetButton("Bench Press"));
+    expect(rowNames()).toEqual(["Cancel", "Add set"]);
+    expect(sheet("New set · Bench Press").getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+
+  it("asking: Keep set (focused) where Delete set was, the confirm's Delete set where Save was", async () => {
+    const { fake, user } = open();
+    await ready();
+    await openSet(user, /80 kg × 5/);
+    await user.click(sheetRow().getByRole("button", { name: "Delete set" }));
+    const buttons = sheetRow().getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["Keep set", "Cancel", "Delete set"]);
+    expect(buttons[0]).toHaveFocus();
+    await user.click(buttons[0]!);
+    expect(writes(fake)).toHaveLength(0);
+    expect(sheetRow().getByRole("button", { name: "Delete set" })).toHaveFocus();
+  });
+
+  it("Review Focus 1: a failed save's alert is in the row", async () => {
+    const { fake, user } = open();
+    await ready();
+    fake.failNext({ method: "PATCH", path: /\/v1\/sets\// }, () => problemResponse(500, "about:blank"));
+    await openSet(user, /80 kg × 5/);
+    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}7");
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"]));
+    expect(within(sheetBody()).queryByRole("alert")).toBeNull();
+  });
+
+  it("Review Focus 1: a failed delete's alert is in the row, after the confirm", async () => {
+    const { fake, user } = open();
+    await ready();
+    fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => HttpResponse.error());
+    await openSet(user, /80 kg × 5/);
+    await deleteSetIn(user, sheet(/^Set 2/));
+    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.offline));
+    expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
   });
 });

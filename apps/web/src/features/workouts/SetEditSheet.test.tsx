@@ -20,6 +20,7 @@ import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { deleteSetIn } from "../../test/sessionHelpers";
+import { sheetBody, sheetRow } from "../../test/sheetHelpers";
 
 afterEach(() => cleanupApp());
 
@@ -107,7 +108,7 @@ describe("17.5 AC18 — the first tap asks (live sheet)", () => {
   it("sends nothing, says what goes, and focuses Keep set, with no nested dialog", async () => {
     const { fake } = await asked();
     expect(requests(fake, "DELETE")).toHaveLength(0);
-    expect(within(dialog()).getByRole("group", { name: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
+    expect(within(dialog()).getByRole("button", { name: "Keep set", description: "Delete set 1? 60 kg × 8 will be removed." })).toBeInTheDocument();
     expect(within(dialog()).getByRole("button", { name: "Keep set" })).toHaveFocus();
     expect(within(dialog()).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(within(dialog()).getByRole("button", { name: "Delete set" })).toHaveAttribute("data-variant", "danger");
@@ -123,7 +124,7 @@ describe("17.5 AC18 — the first tap asks (live sheet)", () => {
     expect(within(dialog()).getByLabelText("Reps")).toHaveValue("12");
     expect(within(dialog()).getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(within(dialog()).getByRole("button", { name: "Delete set" })).toHaveFocus();
-    expect(within(dialog()).queryByRole("group", { name: /will be removed/ })).not.toBeInTheDocument();
+    expect(within(dialog()).queryByText(/will be removed/)).not.toBeInTheDocument();
   });
 
   it("Close still closes the sheet", async () => {
@@ -142,7 +143,7 @@ describe("17.5 AC18 — the first tap asks (live sheet)", () => {
     await user.type(reps, "{Enter}");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(requests(fake, "PATCH")).toHaveLength(0);
-    expect(within(dialog()).getByRole("group", { name: /will be removed/ })).toBeInTheDocument();
+    expect(within(dialog()).getByText(/will be removed/)).toBeInTheDocument();
     expect(reps).toHaveValue("9");
   });
 });
@@ -320,4 +321,73 @@ describe("AC25 — edit and delete a logged set", () => {
     expect(screen.getByRole("dialog", { name: "Set 2 · X" })).toBeInTheDocument();
     expect(within(dialog()).getByLabelText("Reps")).toHaveValue("7");
   });
+});
+
+describe("17.10 AC14, AC7 — the live set sheet uses the action row", () => {
+  const rowNames = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+
+  it("the row holds Delete set, Cancel, Save; the body holds none of them; one Cancel in the dialog", async () => {
+    const { user } = await setup();
+    await user.click(setRow(/60 kg × 8/));
+    expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
+    for (const name of ["Delete set", "Save", "Cancel"]) expect(within(sheetBody()).queryByRole("button", { name })).toBeNull();
+    expect(within(dialog()).getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+
+  it("the row's Save submits the form", async () => {
+    const { fake, user } = await setup();
+    await user.click(setRow(/60 kg × 8/));
+    await user.type(within(dialog()).getByLabelText("Reps"), "{Control>}a{/Control}9");
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(requests(fake, "PATCH")).toHaveLength(1));
+  });
+
+  it("Cancel closes the sheet and sends nothing", async () => {
+    const { fake, user } = await setup();
+    await user.click(setRow(/60 kg × 8/));
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(requests(fake, "PATCH")).toHaveLength(0);
+  });
+});
+
+describe("17.10 AC14 — 17.5's confirm sits in the row (Review Focus 2)", () => {
+  const rowNames = () => sheetRow().getAllByRole("button").map((b) => b.textContent);
+  async function asked() {
+    const app = await setup();
+    await app.user.click(setRow(/60 kg × 8/));
+    await app.user.click(sheetRow().getByRole("button", { name: "Delete set" }));
+    return app;
+  }
+
+  it("Keep set takes Delete set's place and focus; the confirm's Delete set takes Save's", async () => {
+    await asked();
+    const buttons = sheetRow().getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["Keep set", "Cancel", "Delete set"]);
+    expect(buttons[0]).toHaveFocus();
+    expect(buttons[2]).toHaveAttribute("data-variant", "danger");
+  });
+
+  it("a second tap where Delete set was keeps the set", async () => {
+    const { fake, user } = await asked();
+    await user.click(sheetRow().getAllByRole("button")[0]!);
+    expect(requests(fake, "DELETE")).toHaveLength(0);
+    expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
+  });
+
+  it("Keep set is described by the question, which the status line says once", async () => {
+    await asked();
+    const question = "Delete set 1? 60 kg × 8 will be removed.";
+    expect(sheetRow().getByRole("button", { name: "Keep set", description: question })).toBeInTheDocument();
+    expect(sheetRow().getAllByText(question)).toHaveLength(1);
+    expect(within(dialog()).getAllByText(question)).toHaveLength(1);
+  });
+
+  it("Cancel while asking closes the sheet and deletes nothing", async () => {
+    const { fake, user } = await asked();
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(requests(fake, "DELETE")).toHaveLength(0);
+  });
+
 });
