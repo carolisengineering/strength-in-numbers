@@ -524,6 +524,43 @@ const frontDoor = [];
 // #101: in every shot with an open sheet, the Close icon is centered in its button (to the pixel) — the reset makes an
 // svg a block, which a bare <button> puts at its left edge. Each off-center X is reported and fails the run.
 const offCenter = [];
+// Spec 17.10 AC19: in every shot with an open sheet that has the action row, the row rests on the dialog's bottom edge
+// (the viewport's, with the keyboard down), the body ends above it, its buttons are 44 px and unclipped, and no on-screen
+// body control is under it. The "sheet row" step adds the keyboard, 320 px, Enter and focus checks. Fails the run.
+const sheetRows = [];
+const measureSheetRows = (page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("dialog[open]")]
+      .filter((d) => d.querySelector('button[aria-label="Close"]') && d.querySelector("[data-sheet-actions]"))
+      .map((d) => {
+        const row = d.querySelector("[data-sheet-actions]");
+        const body = d.querySelector("[data-sheet-body]");
+        const dr = d.getBoundingClientRect();
+        const rr = row.getBoundingClientRect();
+        const br = body.getBoundingClientRect();
+        const keyboard = document.documentElement.getAttribute("data-keyboard") === "open";
+        const v = [];
+        if (Math.abs(rr.bottom - dr.bottom) > 1) v.push(`row bottom ${rr.bottom.toFixed(1)} is not the dialog's ${dr.bottom.toFixed(1)}`);
+        if (!keyboard && Math.abs(dr.bottom - window.innerHeight) > 1) v.push(`dialog bottom ${dr.bottom.toFixed(1)} is not the viewport's ${window.innerHeight}`);
+        if (br.bottom > rr.top + 0.5) v.push(`body bottom ${br.bottom.toFixed(1)} is below the row's top ${rr.top.toFixed(1)}`);
+        const buttons = [...row.querySelectorAll("button")];
+        for (const b of buttons) {
+          const r = b.getBoundingClientRect();
+          if (r.height < 43.5) v.push(`row button "${b.textContent}" is ${r.height.toFixed(1)} px tall`);
+          if (b.scrollWidth > b.clientWidth) v.push(`row button "${b.textContent}" is clipped`);
+        }
+        for (const el of body.querySelectorAll("button, input, select, textarea, a[href], summary")) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          if (cy < br.top || cy > br.bottom) continue; // scrolled out of the body: not on screen
+          const hit = document.elementFromPoint(cx, cy);
+          if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName}" is under the row`);
+        }
+        return { title: d.querySelector("h2")?.textContent ?? "", rowTop: rr.top, rowBottom: rr.bottom, dialogBottom: dr.bottom, bodyHeight: br.height, buttons: buttons.map((b) => b.textContent), violations: v };
+      }),
+  );
 async function checkFrontDoor(page, label) {
   const m = await page.evaluate(() => {
     const px = (v) => parseFloat(v) || 0;
@@ -604,6 +641,10 @@ async function shoot(page, device, name, note) {
       offCenter.push({ shot: label, ...o });
       console.error(`  CLOSE OFF CENTER ${label}: dx ${o.dx.toFixed(1)}px, dy ${o.dy.toFixed(1)}px`);
     }
+  }
+  for (const r of await measureSheetRows(page)) {
+    sheetRows.push({ shot: label, ...r });
+    for (const v of r.violations) console.error(`  SHEET ROW ${label}: ${v}`);
   }
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
@@ -1297,6 +1338,102 @@ try {
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "63-edit-carry-sheet", "Edit screen: a Weight + distance set's sheet, Weight + unit and Distance + unit (Spec 18.1 AC20)");
       await page.keyboard.press("Escape");
+    });
+    // Spec 17.10 AC6, AC10, AC11, AC19: the sheet row where jsdom can't see it. The set sheet with the keypad up (as 01k
+    // fakes it) and at 320 × 568, with a 232 px frame there (Review Focus 5); showModal's first focus; a field reached
+    // by Tab is not under the row; Enter submits through the row's Save, and not while it is disabled.
+    await tryStep("sheet row", async () => {
+      const violations = [];
+      const at = `${THEME}/${device}`;
+      const openCarry = async () => {
+        await go(`/app/history/${D.ids.conditioning}/edit`);
+        await page.getByRole("article", { name: "Farmer Carry" }).getByRole("button", { name: /24 kg · 40 m/ }).click();
+        await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+      };
+      const setFrame = (height) =>
+        page.evaluate((h) => {
+          const root = document.documentElement;
+          root.style.setProperty("--app-top", "0px");
+          root.style.setProperty("--app-height", `${h}px`);
+          root.setAttribute("data-keyboard", "open");
+        }, height);
+      try {
+        await openCarry();
+        const first = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName);
+        if (first !== "Close") violations.push(`AC10: first focus is on ${first}, not Close`);
+        const names = await page.locator("dialog[open] [data-sheet-actions] button").allTextContents();
+        if (names.join("|") !== "Delete set|Cancel|Save") violations.push(`AC14: the row reads ${names.join(", ")}`);
+        // AC11: Tab to the body's last control (the one nearest the row); the browser reveals it above the row.
+        const last = await page.evaluate(() => {
+          const body = document.querySelector("dialog[open] [data-sheet-body]");
+          const all = [...body.querySelectorAll("button, input, select, textarea, a[href]")].filter((el) => !el.disabled && el.getBoundingClientRect().width > 0 && (el.type !== "radio" || el.checked));
+          return all.length;
+        });
+        for (let i = 0; i < last + 2; i += 1) {
+          await page.keyboard.press("Tab");
+          const inRow = await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-actions]").contains(document.activeElement));
+          if (inRow) break;
+        }
+        await page.keyboard.press("Shift+Tab");
+        const focused = await page.evaluate(() => {
+          const el = document.activeElement;
+          const row = document.querySelector("dialog[open] [data-sheet-actions]").getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          return { name: el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30), bottom: r.bottom, rowTop: row.top, inBody: !!el.closest("[data-sheet-body]") };
+        });
+        if (!focused.inBody) violations.push(`AC11: Shift+Tab from the row did not land in the body (${focused.name})`);
+        else if (focused.bottom > focused.rowTop + 0.5) violations.push(`AC11: "${focused.name}" ends at ${focused.bottom.toFixed(1)}, under the row's top ${focused.rowTop.toFixed(1)}`);
+        if (device === "mobile") {
+          const viewport = page.viewportSize();
+          try {
+            await setFrame(508);
+            await shoot(page, device, "33k-sheet-keyboard-up", "Spec 17.10 AC8: the set sheet with a keypad up: the row rests on the 508 px frame's bottom edge");
+            await page.setViewportSize({ width: 320, height: 568 });
+            await openCarry();
+            await shoot(page, device, "63c-sheet-320", "Spec 17.10 AC19: the set sheet at 320 × 568: Delete set, Cancel, Save");
+            await setFrame(232);
+            const short = await measureSheetRows(page);
+            const bodyHeight = short[0]?.bodyHeight ?? 0;
+            if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
+            await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
+          } finally {
+            await page.setViewportSize(viewport);
+          }
+        }
+        // AC6: Enter submits through the row's primary. A capture-phase counter sees every submit on the page.
+        const countSubmits = () => page.evaluate(() => { window.__sheetSubmits = 0; document.addEventListener("submit", () => { window.__sheetSubmits += 1; }, true); });
+        state.showTimed = true;
+        await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
+        await countSubmits();
+        await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
+        await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+        await page.locator("dialog[open]").getByLabel("Name", { exact: true }).press("Enter");
+        await page.waitForTimeout(300);
+        const sectionSubmits = await page.evaluate(() => window.__sheetSubmits);
+        const sectionOpen = await page.locator("dialog[open]").count();
+        if (sectionSubmits !== 1) violations.push(`AC6: Enter in the section sheet's Name submitted ${sectionSubmits} times (want 1)`);
+        if (sectionOpen !== 0) violations.push("AC6: the section sheet stayed open after Enter");
+        state.showTimed = false;
+        await go(`/app/exercises`);
+        await countSubmits();
+        await page.getByRole("button", { name: /New exercise/ }).first().click();
+        await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+        const name = page.locator("dialog[open]").getByLabel("Name", { exact: true });
+        await name.fill("Sled Push");
+        await name.press("Enter");
+        await page.waitForTimeout(300);
+        const createSubmits = await page.evaluate(() => window.__sheetSubmits);
+        const createOpen = await page.locator("dialog[open]").count();
+        if (createSubmits !== 0) violations.push(`AC6: Enter in the create sheet with no type submitted ${createSubmits} times (want 0)`);
+        if (createOpen !== 1) violations.push("AC6: the create sheet closed on Enter with Save disabled");
+        await page.keyboard.press("Escape");
+      } catch (e) {
+        violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        state.showTimed = false;
+      }
+      sheetRows.push({ shot: `${at}/sheet-row-step`, violations });
+      for (const v of violations) console.error(`  SHEET ROW ${at}: ${v}`);
     });
     await tryStep("summary sections", async () => {
       await go(`/app/history/${D.ids.latestPush}`);
@@ -2401,12 +2538,18 @@ if (DEVICE_FILTER.includes("mobile") && summaryFirstScreen.length === 0) {
   console.error("  SUMMARY FIRST SCREEN: the check did not run on mobile");
   process.exitCode = 1;
 }
+// Spec 17.10 AC19: the sheet-row checks fail the run on a violation, or when the step never reported.
+if (sheetRows.some((r) => r.violations.length)) process.exitCode = 1;
+if (!sheetRows.some((r) => r.shot.endsWith("/sheet-row-step")) || report.some((r) => r.note?.startsWith("SKIPPED sheet row"))) {
+  console.error("  SHEET ROW: the step did not run on every device");
+  process.exitCode = 1;
+}
 // A logging-loop step that never reported must not read as a pass.
 if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED logging loop"))) {
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

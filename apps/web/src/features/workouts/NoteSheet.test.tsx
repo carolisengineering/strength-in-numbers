@@ -44,6 +44,15 @@ describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
   });
 });
 
+describe("17.10 AC16 — labels are unchanged", () => {
+  it("one button named Save and one named Cancel in the dialog, as before the move", () => {
+    setup();
+    const dialog = within(screen.getByRole("dialog", { name: "Note for Bench Press" }));
+    expect(dialog.getAllByRole("button", { name: "Save" })).toHaveLength(1);
+    expect(dialog.getAllByRole("button", { name: "Cancel" })).toHaveLength(1);
+  });
+});
+
 describe("17.10 AC6 — Enter in the note", () => {
   it("adds a line and saves nothing", async () => {
     const { onSave, user } = setup();

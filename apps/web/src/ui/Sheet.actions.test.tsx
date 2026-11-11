@@ -297,6 +297,42 @@ describe("17.10 AC10 — focus order", () => {
   });
 });
 
+describe("17.10 AC17 — 06.0 AC24's guards hold with the row", () => {
+  it("Close is still first in DOM order, before the body and the row", () => {
+    render(<FormSheet />);
+    const close = screen.getByRole("button", { name: "Close" });
+    const field = screen.getByLabelText("Weight");
+    const cancel = sheetRow().getByRole("button", { name: "Cancel" });
+    expect(close.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(field.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Escape calls onClose, never onDismiss", async () => {
+    const onClose = vi.fn();
+    const onDismiss = vi.fn();
+    render(<Sheet open title="New exercise" onClose={onClose} onDismiss={onDismiss} />);
+    const cancel = new Event("cancel", { cancelable: true });
+    screen.getByRole("dialog").dispatchEvent(cancel);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(cancel.defaultPrevented).toBe(true);
+  });
+});
+
+describe("17.10 AC18 — the row uses existing tokens only", () => {
+  const ROW_RULES = [".panel", ".body", ".actions", ':global(:root[data-keyboard="open"]) .actions', ".status", ".buttons", ".buttons button", ".slot"];
+  const ALLOWED = /^--(space-\d+|tap-target-min|color-bg|color-line|color-muted|font-size-sm)$/;
+
+  it("every var() in the row's rules is an allowed token, and none writes a color", () => {
+    for (const selector of ROW_RULES) {
+      const rule = ruleOf(selector);
+      expect(rule, selector).not.toBe("");
+      for (const [, name] of rule.matchAll(/var\((--[\w-]+)\)/g)) expect(name, `${selector} uses ${name}`).toMatch(ALLOWED);
+      expect(rule, selector).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    }
+  });
+});
+
 describe("17.10 AC1 — closing and reopening (Review Focus 3)", () => {
   function Host({ onSubmit }: { onSubmit: () => void }) {
     const [open, setOpen] = useState(true);
