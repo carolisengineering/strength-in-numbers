@@ -226,7 +226,7 @@ describe("08.1 AC19 / 18.2 AC23 — the exercise's personal records", () => {
   it("shows the lineage's records via RecordsSection", async () => {
     setup();
     const block = await screen.findByRole("region", { name: "Personal records" });
-    expect(within(block).getByText("Barbell bench press — Est. 1-rep max 122.5 kg (was 115 kg)")).toBeInTheDocument();
+    expect(within(block).getByRole("listitem").textContent).toBe("Est. 1-rep max: 122.5 kg, was 115 kg");
   });
 });
 
@@ -356,7 +356,8 @@ describe("08.1 AC24 / 18.2 AC23 — units follow the profile", () => {
     await screen.findByRole("img", { name: "Est. 1-rep max, 3 months: 231 lb to 270 lb, best 270 lb" });
     expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 270 lb");
     expect(sessions()[0]).toHaveTextContent("270 lb");
-    expect(await screen.findByText(/Est\. 1-rep max 270 lb/)).toBeInTheDocument();
+    const block = await screen.findByRole("region", { name: "Personal records" });
+    expect(within(block).getByRole("listitem")).toHaveTextContent(/^Est\. 1-rep max: 270 lb, was/);
   });
 });
 

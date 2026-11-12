@@ -4,8 +4,9 @@ import type { PersonalRecord, UnitPreference } from "@sin/core";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
-import { recordLine, sortRecords } from "./labels";
+import { sortRecords } from "./labels";
 import styles from "./PersonalRecordsBlock.module.css";
+import { RecordRows } from "./RecordRows";
 
 /**
  * The "Personal records" section for any records query (Spec 08.0 §6.5; extracted for 08.1 D13).
@@ -45,13 +46,7 @@ export function RecordsSection({
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {records.length > 0 ? (
-        <ul className={styles.list}>
-          {sortRecords(records).map((record) => (
-            <li key={`${record.exerciseId}:${record.recordType}`}>{recordLine(record, unitPreference)}</li>
-          ))}
-        </ul>
-      ) : null}
+      {records.length > 0 ? <RecordRows records={sortRecords(records)} unitPreference={unitPreference} /> : null}
     </section>
   );
 }
