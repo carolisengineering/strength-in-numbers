@@ -1464,6 +1464,27 @@ try {
             const bodyHeight = short[0]?.bodyHeight ?? 0;
             if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
+            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The row stops at half
+            // the panel; the messages scroll, and the buttons and part of the body stay on screen. The text is
+            // written into the slots by hand (a failed save then a delete can't be staged here); the layout is the point.
+            await page.evaluate(() => {
+              const d = document.querySelector("dialog[open]");
+              const alert = document.createElement("p");
+              alert.setAttribute("role", "alert");
+              alert.textContent = "Couldn't save the set — check your connection and try again.";
+              d.querySelector("[data-sheet-messages] > :first-child").append(alert);
+              d.querySelector("[data-sheet-status]").textContent = "Delete set 2? 60 kg × 8 will be removed.";
+            });
+            const crowded = (await measureSheetRows(page))[0];
+            const crowdedBody = crowded?.bodyHeight ?? 0;
+            if (crowdedBody < 80) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 80)`);
+            for (const v of crowded?.violations ?? []) violations.push(`minor 492: ${v}`);
+            await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
+            await page.evaluate(() => {
+              const d = document.querySelector("dialog[open]");
+              d.querySelector("[data-sheet-messages] > :first-child").replaceChildren();
+              d.querySelector("[data-sheet-status]").textContent = "";
+            });
           } finally {
             await page.setViewportSize(viewport);
           }

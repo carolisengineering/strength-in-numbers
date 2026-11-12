@@ -116,8 +116,12 @@ export function Sheet({
                 {children}
               </div>
               <div className={styles.actions} data-sheet-actions="">
-                <div className={styles.notice} ref={slotRefs.notice} />
-                <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
+                {/* Minor 492: one box for the notice and status, which scrolls once the row reaches half the panel,
+                    so on a short frame a failure plus a question can't squeeze the body to nothing. */}
+                <div className={styles.messages} data-sheet-messages="">
+                  <div className={styles.notice} ref={slotRefs.notice} />
+                  <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
+                </div>
                 <div className={styles.buttons}>
                   <div className={styles.slot} ref={slotRefs.danger} />
                   <Button

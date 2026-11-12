@@ -78,6 +78,8 @@
 
 .actions {
   flex: none;
+  /* Minor 492: never more than half the panel, so the body keeps room for a field on a 232 px frame. */
+  max-height: 50%;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -89,6 +91,20 @@
 /* The keyboard covers the home indicator, so the row drops its inset while it is up (#206's frame). */
 :global(:root[data-keyboard="open"]) .actions {
   padding-bottom: var(--space-3);
+}
+
+/* The notice and status shrink and scroll first; the buttons below never do. */
+.messages {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.messages:not(:has(> :not(:empty))) {
+  display: none;
 }
 
 .status {
@@ -104,6 +120,7 @@
 
 /* Order is danger, dismiss, primary; equal shares, wrapping rather than clipping. */
 .buttons {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);

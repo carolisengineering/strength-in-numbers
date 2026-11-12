@@ -230,6 +230,26 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(actions).toMatch(/border-top:\s*1px solid var\(--color-line\)/);
   });
 
+  it("minor 492: the row takes at most half the panel; past that the notice and status scroll and the buttons stay", () => {
+    expect(ruleOf(".actions")).toMatch(/max-height:\s*50%/);
+    const messages = ruleOf(".messages");
+    expect(messages).toMatch(/overflow-y:\s*auto/);
+    expect(messages).toMatch(/min-height:\s*0/);
+    expect(messages).toMatch(/flex:\s*0 1 auto/);
+    expect(ruleOf(".buttons")).toMatch(/flex:\s*none/);
+    expect(css).toMatch(/\.messages:not\(:has\(> :not\(:empty\)\)\)\s*\{[^}]*display:\s*none/);
+    render(
+      <Sheet open title="Edit set" onClose={vi.fn()}>
+        <SheetActions notice={<p role="alert">Couldn't save.</p>} status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
+      </Sheet>,
+    );
+    const box = document.querySelector("dialog[open] [data-sheet-messages]") as HTMLElement;
+    expect(box).not.toBeNull();
+    expect(box).toContainElement(sheetRow().getByRole("alert"));
+    expect(box).toContainElement(sheetRow().getByText("Delete set 2?"));
+    expect(box).not.toContainElement(sheetRow().getByRole("button", { name: "Save" }));
+  });
+
   it("AC8: with the keyboard up the row's bottom padding drops the inset", () => {
     const rule = ruleOf(':global(:root[data-keyboard="open"]) .actions');
     expect(rule).toMatch(/padding-bottom:\s*var\(--space-3\)/);
