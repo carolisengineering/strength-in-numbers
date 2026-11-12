@@ -34,7 +34,10 @@ export function planRowSummary(row: PlanRowText, { n, showReps, showWeight, unit
   const parts = [String(n), type];
   if (showReps) {
     const reps = row.reps.trim();
-    parts.push(reps === "" ? EMPTY : parseReps(reps).ok ? `${reps} reps` : reps);
+    const parsed = parseReps(reps);
+    // A heavy single reads "1 rep"; a range ending above one ("1-3") stays plural.
+    const word = parsed.ok && parsed.value.high === 1 ? "rep" : "reps";
+    parts.push(reps === "" ? EMPTY : parsed.ok ? `${reps} ${word}` : reps);
   }
   if (showWeight) {
     const weight = row.weight.trim();

@@ -8,6 +8,8 @@ const both = { showReps: true, showWeight: true } as const;
 describe("17.11 AC11 — planRowSummary: one line per planned set", () => {
   it.each<[string, PlanRowText, Parameters<typeof planRowSummary>[1], string]>([
     ["a warm-up with reps and weight", row({ setType: "warmup" }), { n: 1, ...both, unit: "kg" }, "1 · Warm-up · 8 reps · 40 kg"],
+    ["a single rep is 'rep', not 'reps'", row({ reps: "1", weight: "140" }), { n: 2, ...both, unit: "kg" }, "2 · Working · 1 rep · 140 kg"],
+    ["a range that ends above one stays plural", row({ reps: "1-3" }), { n: 1, ...both, unit: "kg" }, "1 · Working · 1-3 reps · 40 kg"],
     ["a rep range in lb", row({ reps: "6-8", weight: "47.5", weightUnit: "lb" }), { n: 2, ...both, unit: "lb" }, "2 · Working · 6-8 reps · 47.5 lb"],
     ["both fields blank", row({ reps: "", weight: "" }), { n: 3, ...both, unit: "kg" }, "3 · Working · – · –"],
     ["whitespace only reads as blank", row({ reps: "  ", weight: " " }), { n: 3, ...both, unit: "kg" }, "3 · Working · – · –"],

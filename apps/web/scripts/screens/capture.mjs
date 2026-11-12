@@ -653,9 +653,12 @@ async function checkPlanRows(page, label, found = {}) {
     const dialog = document.querySelector("dialog[open]");
     const summaries = [...(dialog?.querySelectorAll('ol[aria-label="Planned sets"] > li > button') ?? [])];
     const body = dialog?.querySelector("[data-sheet-body]");
+    const panels = [...(dialog?.querySelectorAll('ol[aria-label="Planned sets"] [role="group"]') ?? [])];
     return {
       viewport: [window.innerWidth, window.innerHeight],
       summaries: summaries.length,
+      openPanels: panels.length,
+      shortPanelButtons: panels.flatMap((g) => [...g.querySelectorAll("button")]).map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).map((h) => Number(h.toFixed(1))),
       shortSummaries: summaries.map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).map((h) => Number(h.toFixed(1))),
       bodyOverflow: body ? body.scrollWidth - body.clientWidth : 0,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -663,6 +666,8 @@ async function checkPlanRows(page, label, found = {}) {
   });
   const violations = [];
   if (m.summaries === 0) violations.push("no plan rows in the open sheet");
+  if (found.open && m.openPanels !== 1) violations.push(`expected one open row, found ${m.openPanels}`);
+  if (m.shortPanelButtons.length) violations.push(`open-row buttons under 44 px: ${m.shortPanelButtons.join(", ")}`);
   if (m.shortSummaries.length) violations.push(`summary buttons under 44 px: ${m.shortSummaries.join(", ")}`);
   if (m.bodyOverflow > 0 || m.pageOverflow > 0) violations.push(`horizontal overflow (sheet body ${m.bodyOverflow}px, page ${m.pageOverflow}px)`);
   if (found.moveFocus !== undefined && !found.moveFocus.startsWith("Move down")) violations.push(`after Move down, focus is on "${found.moveFocus}", not Move down`);
@@ -1625,6 +1630,7 @@ try {
       await checkPlanRows(page, `${at}/09-routine-item-sheet`);
       await sheet.getByRole("button", { name: /^3 · / }).click();
       await shoot(page, device, "09a-item-row-open", "Item sheet with the third set open in place: Type, Reps, Weight, Move up / Move down / Remove (Spec 17.11 AC12)");
+      await checkPlanRows(page, `${at}/09a-item-row-open`, { open: true });
       // Review Focus 3: React re-inserts a moved row's node, which blurs the pressed button in Chromium.
       await sheet.getByRole("button", { name: "Move down, set 3" }).click();
       await page.waitForTimeout(100);
@@ -1645,7 +1651,7 @@ try {
       const enterSubmits = await page.evaluate(() => window.__planSubmits);
       const enterOpen = await page.locator("dialog[open]").count();
       sheet = await openBench(page);
-      await checkPlanRows(page, `${at}/09a-item-row-open`, { moveFocus, enterSubmits, enterOpen });
+      await checkPlanRows(page, `${at}/09-plan-row-focus-and-enter`, { moveFocus, enterSubmits, enterOpen });
       await page.keyboard.press("Escape");
     });
     if (device === "mobile") {
@@ -1664,6 +1670,10 @@ try {
           await sheet.getByRole("button", { name: /^3 · / }).click();
           await shoot(np, "mobile-320", "09n-item-row-narrow", "Item sheet at 320 x 568: a closed line with a long typed value wraps inside its row (Spec 17.11 AC11, AC24)");
           await checkPlanRows(np, `${theme}/mobile-320/09n-item-row-narrow`);
+          // The open row at 320: four type options, Reps and Weight, three actions and the edge note.
+          await sheet.getByRole("button", { name: /^3 · / }).click();
+          await shoot(np, "mobile-320", "09o-item-row-narrow-open", "Item sheet at 320 x 568 with the long-valued set open: its panel fits the width (Spec 17.11 AC24)");
+          await checkPlanRows(np, `${theme}/mobile-320/09o-item-row-narrow-open`, { open: true });
         } finally {
           await nctx.close();
         }
@@ -2708,7 +2718,7 @@ if (!planRows.some((r) => r.moveFocus !== undefined) || report.some((r) => r.not
   console.error("  PLAN ROWS: a plan-row step did not run");
   process.exitCode = 1;
 }
-if (DEVICE_FILTER.includes("mobile") && !planRows.some((r) => r.shot.endsWith("/09n-item-row-narrow"))) {
+if (DEVICE_FILTER.includes("mobile") && !["/09n-item-row-narrow", "/09o-item-row-narrow-open"].every((end) => planRows.some((r) => r.shot.endsWith(end)))) {
   console.error("  PLAN ROWS: the 320 step did not run");
   process.exitCode = 1;
 }
