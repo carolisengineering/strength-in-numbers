@@ -192,6 +192,8 @@ describe("17.8 AC13 — centered figures", () => {
     expect(rule(sheetCss, ".durationLine")).toMatch(/grid-template-columns:\s*var\(--stepper-size\) minmax\(0, 1fr\) var\(--stepper-size\)/);
     expect(rule(sheetCss, ".durationPair")).toMatch(/grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
     expect(sheetCss).not.toMatch(/flex-wrap:\s*wrap/);
+    // At 320 px each field is 44 px: the stepper input's narrow padding, outranking Field's (two classes), fits "59".
+    expect(rule(sheetCss, ".durationPair .figureInput")).toMatch(/padding-inline:\s*var\(--space-1\)/);
     expect(css("../../ui/tokens.css")).not.toMatch(/--duration-field-min-width/);
   });
 

@@ -77,6 +77,12 @@
   font-stretch: var(--font-stretch-figure);
 }
 
+/* At 320 px each field is 44 px wide: the stepper input's narrow padding (two classes, to outrank Field's rule), so
+   "59" fits at figure size. */
+.durationPair .figureInput {
+  padding-inline: var(--space-1);
+}
+
 /* Spec 17.7 AC12: the Warm-up toggle and More share one row of two equal columns. */
 .panelActions {
   display: grid;
