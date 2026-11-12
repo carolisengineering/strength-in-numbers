@@ -4,15 +4,8 @@ import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Segmented } from "../../ui/Segmented";
 import type { PlanRowText, RowErrors } from "./planRows";
+import { SET_TYPE_CHOICES } from "./planRowSummary";
 import styles from "./PlanRowList.module.css";
-
-/** The 05.1 wording and order. Local on purpose: `routines/` must not import `workouts/`. */
-export const SET_TYPE_CHOICES: readonly { value: SetType; label: string }[] = [
-  { value: "warmup", label: "Warm-up" },
-  { value: "working", label: "Working" },
-  { value: "drop", label: "Drop" },
-  { value: "failure", label: "Failure" },
-];
 
 /** kg / lb for the plan and the quick line (Spec 17.7 AC6: a Segmented, where `UnitToggle` was). */
 export const WEIGHT_UNIT_CHOICES: readonly { value: WeightUnit; label: string }[] = [

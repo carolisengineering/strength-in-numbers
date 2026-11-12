@@ -4,7 +4,8 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { PLANNED_SETS_PER_ITEM_MAX } from "@sin/core";
 import { chooseSegment, segmentChoice, segmented, segmentOptions } from "../../test/controls";
-import { PlanRowList, SET_TYPE_CHOICES } from "./PlanRowList";
+import { PlanRowList } from "./PlanRowList";
+import { SET_TYPE_CHOICES } from "./planRowSummary";
 import { addRow, moveRow, removeRow, setRowField, setUnit, unitOfRows, type PlanRowText } from "./planRows";
 
 const row = (key: string, o: Partial<PlanRowText> = {}): PlanRowText => ({ key, setType: "working", reps: "8", weight: "100", weightUnit: "kg", ...o });
