@@ -56,7 +56,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   // Spec 17.11 AC3, AC4: "Exercise details" is open by default only when the page has nothing else (never logged).
   // The default is `cachedNever`, not `neverLogged`, which goes false during every usage refetch and would close the
   // disclosure mid-read. Once the lifter toggles it, their choice holds; opening Edit pins it open, so a usage answer
-  // that lands while the sheet is up can't close the sheet's parent (Review Focus 1).
+  // that lands while the sheet is up can't close the sheet's parent.
   const [lifterOpen, setLifterOpen] = useState<boolean | null>(null);
   const disclosureOpen = lifterOpen ?? cachedNever;
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
