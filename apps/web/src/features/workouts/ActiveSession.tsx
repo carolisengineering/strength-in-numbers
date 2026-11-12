@@ -62,7 +62,7 @@ import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
-import { confirmationLine, statusLineText, undoName } from "./undoOffer";
+import { confirmationLine, notSavedYet, statusLineText, undoName } from "./undoOffer";
 import { useUndoLastLog } from "./useUndoLastLog";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
@@ -977,9 +977,13 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               undo: undo.undoText,
               messages: [
                 totalSets === 0 ? "Log at least one set to finish" : null,
-                unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : null,
-                unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null,
-                timerUnsaved > 0 ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet` : null,
+                notSavedYet(
+                  [
+                    unsaved > 0 ? plural(unsaved, "set", "sets") : null,
+                    unsavedNoteCount > 0 ? plural(unsavedNoteCount, "note", "notes") : null,
+                    timerUnsaved > 0 ? RESULT_COPY.timerEntries(timerUnsaved) : null,
+                  ].filter((kind) => kind !== null),
+                ),
               ].filter((message) => message !== null),
               confirmation: undo.offer ? confirmationLine(undo.offer.row.setNumber, undo.offer.value) : null,
             })}

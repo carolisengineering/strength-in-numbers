@@ -1101,11 +1101,13 @@ try {
         await page.setViewportSize({ width: 320, height: 568 });
         await page.waitForTimeout(200);
         await shoot(page, device, "26d-logging-320", "Spec 17.4: the workout bar at 320 × 568");
-        // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log.
+        // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log. Minor 427: the true longest,
+        // every unsaved kind at once in 17.4 AC11's amended wording (one "not saved yet"), with two-digit counts.
         const narrow = await measureLoggingLoop(page);
-        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "2 sets not saved yet · 1 note not saved yet"; });
+        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "12 sets, 2 notes and 2 timer entries not saved yet"; });
         const narrowLong = await measureLoggingLoop(page);
         steps.push({ step: "320 px, long message", ...narrowLong });
+        if (narrowLong.undo === null) violations.push("320 px: no Undo beside the longest line, so it measured the wrong case");
         if (narrowLong.buttonTop !== narrow.buttonTop) violations.push(`320 px: a long message moved the button from ${narrow.buttonTop} to ${narrowLong.buttonTop}`);
         if (narrowLong.statusHeight > 44) violations.push(`320 px: a long message grew the line to ${narrowLong.statusHeight}px`);
         await shoot(page, device, "26g-undo-320", "Spec 17.5 AC4: the longest message beside Undo at 320 × 568");

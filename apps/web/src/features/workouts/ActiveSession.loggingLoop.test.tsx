@@ -200,7 +200,7 @@ describe("17.4 AC11 — one line, not a stack", () => {
     const sheet = within(await screen.findByRole("dialog"));
     await user.type(sheet.getByLabelText("Note"), "Felt good");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(status()).toHaveTextContent(/^1 set not saved yet · 1 note not saved yet$/));
+    await waitFor(() => expect(status()).toHaveTextContent(/^1 set and 1 note not saved yet$/));
   });
 });
 

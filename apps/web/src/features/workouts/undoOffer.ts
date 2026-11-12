@@ -53,6 +53,17 @@ export const confirmationLine = (setNumber: number, value: string): string => `S
 export const undoName = (setNumber: number, value: string, exerciseName: string): string => `Undo set ${setNumber}, ${value}, ${exerciseName}`;
 
 /** AC2: Undo's result and 17.4's messages share the line; the plain confirmation gives way to either. */
+/**
+ * Spec 17.4 AC11 as amended (minor 427): the unsaved kinds share one "not saved yet" ("2 sets, 1 note and 1 timer entry
+ * not saved yet"), so the longest line beside Undo stays two lines at 320 px and never grows the bar (AC10). It still
+ * wraps rather than truncates (D6).
+ */
+export function notSavedYet(kinds: readonly string[]): string | null {
+  if (kinds.length === 0) return null;
+  const list = kinds.length === 1 ? kinds[0]! : `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)!}`;
+  return `${list} not saved yet`;
+}
+
 export function statusLineText(input: { undo: string | null; messages: readonly string[]; confirmation: string | null }): string {
   const parts = [...(input.undo === null ? [] : [input.undo]), ...input.messages];
   return parts.length > 0 ? parts.join(" · ") : (input.confirmation ?? "");
