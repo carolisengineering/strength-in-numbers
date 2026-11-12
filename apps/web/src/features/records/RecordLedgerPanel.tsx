@@ -1,8 +1,9 @@
-import { Fragment, useId, useState } from "react";
+import { Fragment, useId } from "react";
 
 import { Button } from "../../ui/Button";
 import { VisuallyHidden } from "../../ui/VisuallyHidden";
 import { collapsedCount, EST_1RM_EXPLAINED, LEDGER_COLLAPSE_OVER, type LedgerLift } from "./recordLedger";
+import { useCollapseToggle } from "./useCollapseToggle";
 import styles from "./RecordLedgerPanel.module.css";
 
 /**
@@ -13,7 +14,7 @@ import styles from "./RecordLedgerPanel.module.css";
 export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: readonly LedgerLift[] }) {
   const headingId = useId();
   // AC11: local and never stored; a data refresh never resets it.
-  const [expanded, setExpanded] = useState(false);
+  const { expanded, toggle, buttonRef } = useCollapseToggle();
   const shown = lifts.slice(0, collapsedCount(lifts.length, expanded));
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
@@ -50,7 +51,7 @@ export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: 
         ))}
       </ul>
       {lifts.length > LEDGER_COLLAPSE_OVER ? (
-        <Button variant="secondary" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>
+        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
           {expanded ? "Show fewer" : `Show all ${lifts.length} lifts`}
         </Button>
       ) : null}
