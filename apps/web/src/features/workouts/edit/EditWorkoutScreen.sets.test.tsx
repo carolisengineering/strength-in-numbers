@@ -197,27 +197,46 @@ describe("18.0 AC6 — editing a warm-up keeps it a warm-up (/code-review #1)", 
   });
 });
 
-describe("18.0 AC14 — a sheet closed mid-save does not close the next one (/code-review #3)", () => {
-  it("a late success after Close leaves another sheet the lifter opened since alone", async () => {
-    const { fake, workout, user } = open();
+// Was "a sheet closed mid-save does not close the next one" (/code-review #3): since minor 494 the sheet can't be
+// closed mid-save at all, so a late answer always lands on the sheet that asked. `EditSetForm`'s `mounted` guard stays.
+describe("18.0 AC14, minor 494 — the set sheet stays open while a write is in flight", () => {
+  it("Cancel and Close do nothing during a save; a failure then shows in the sheet with the typed values", async () => {
+    const { fake, user } = open();
     await ready();
     const held = deferred<void>();
     fake.failNext({ method: "PATCH", path: /\/v1\/sets\// }, (async () => {
       await held.promise;
-      return HttpResponse.json({ ...workout.exercises[0]!.sets[1]!, reps: 6 });
+      return problemResponse(500, "about:blank");
     }) as unknown as () => Response);
     await openSet(user, /80 kg × 5/);
-    await user.clear(sheet(/^Set 2/).getByLabelText("Reps"));
-    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "6");
-    await user.click(sheet(/^Set 2/).getByRole("button", { name: "Save" }));
+    await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}6");
+    await user.click(sheetRow().getByRole("button", { name: "Save" }));
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
     await user.click(sheet(/^Set 2/).getByRole("button", { name: "Close" }));
-    await openSet(user, /60 kg × 8/);
-    await user.clear(sheet(/^Set 1/).getByLabelText("Reps"));
-    await user.type(sheet(/^Set 1/).getByLabelText("Reps"), "9");
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: /^Set 2/ })).toBeInTheDocument();
+    expect(sheetRow().getByRole("button", { name: "Cancel" })).toHaveAttribute("aria-disabled", "true");
     held.resolve();
-    await waitFor(() => expect(within(card("Bench Press")).getByRole("button", { name: /80 kg × 6/, hidden: true })).toBeInTheDocument());
-    expect(screen.getByRole("dialog", { name: /^Set 1/ })).toBeInTheDocument();
-    expect(sheet(/^Set 1/).getByLabelText("Reps")).toHaveValue("9");
+    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"]));
+    expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("6");
+    expect(sheetRow().getByRole("button", { name: "Cancel" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("the same during a delete; after a success the sheet closes", async () => {
+    const { fake, user } = open();
+    await ready();
+    const held = deferred<void>();
+    fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, (async () => {
+      await held.promise;
+      return new HttpResponse(null, { status: 204 });
+    }) as unknown as () => Response);
+    await openSet(user, /80 kg × 5/);
+    await deleteSetIn(user, sheet(/^Set 2/));
+    await user.click(sheetRow().getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("dialog", { name: /^Set 2/ })).toBeInTheDocument();
+    held.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(announcement()).toHaveTextContent("Set deleted");
   });
 });
 
