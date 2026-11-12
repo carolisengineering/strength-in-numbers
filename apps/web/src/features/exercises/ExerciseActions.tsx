@@ -14,15 +14,13 @@ export interface ExerciseActionsProps {
   onDelete: () => void;
   /** The ref the page uses to return focus to Delete exercise when its dialog closes. */
   deleteRef?: React.Ref<HTMLButtonElement>;
-  /** Called when Edit is tapped, so the page keeps its disclosure open while the sheet is up (Spec 17.11). */
-  onEditOpen?: () => void;
 }
 
 /**
  * The page's actions (Spec 18.2 AC34): an own exercise or a copy gets Edit and Delete exercise; a built-in gets
  * the note and Make your own copy. The server is the check (§7); this only hides what it would refuse.
  */
-export function ExerciseActions({ row, onStatus, onDelete, deleteRef, onEditOpen }: ExerciseActionsProps) {
+export function ExerciseActions({ row, onStatus, onDelete, deleteRef }: ExerciseActionsProps) {
   const [editing, setEditing] = useState(false);
   const editRef = useRef<HTMLButtonElement>(null);
 
@@ -49,7 +47,6 @@ export function ExerciseActions({ row, onStatus, onDelete, deleteRef, onEditOpen
           variant="secondary"
           onClick={() => {
             onStatus("");
-            onEditOpen?.();
             setEditing(true);
           }}
         >
