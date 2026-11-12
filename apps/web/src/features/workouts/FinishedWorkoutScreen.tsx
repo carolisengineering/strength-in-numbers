@@ -265,15 +265,16 @@ function DeleteWorkoutControl({
 
   return (
     <>
-      {error ? (
-        <InlineNotice tone="error" requestId={error.requestId} actionLabel="Try again" onAction={() => void confirm()}>
-          {error.text}
-        </InlineNotice>
-      ) : null}
       {showButton ? (
         <Button variant="danger" onClick={() => setOpen(true)}>
           Delete workout
         </Button>
+      ) : null}
+      {/* After the menu's items (minor 484): drawn between Edit workout and Delete, it read as Edit's error. */}
+      {error ? (
+        <InlineNotice tone="error" requestId={error.requestId} actionLabel="Try again" onAction={() => void confirm()}>
+          {error.text}
+        </InlineNotice>
       ) : null}
       <ConfirmDialog
         open={open}

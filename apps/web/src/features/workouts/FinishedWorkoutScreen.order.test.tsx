@@ -129,7 +129,10 @@ describe("17.6 AC22 — Edit workout is in the Workout menu", () => {
 
     await user.click(menuButton());
     const edit = screen.getByRole("button", { name: "Edit workout" });
-    expect(follows(edit, screen.getByRole("button", { name: "Delete workout" }))).toBe(true);
+    const del = screen.getByRole("button", { name: "Delete workout" });
+    expect(follows(edit, del)).toBe(true);
+    // Minor 484: the notice comes after Delete workout, not between the two items, where it read as Edit's error.
+    expectInOrder([edit, del, screen.getByRole("alert")]);
     await user.click(edit);
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${workout.id}/edit`));
   });
