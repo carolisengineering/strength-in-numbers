@@ -3,6 +3,21 @@
   color: var(--color-muted);
 }
 
+/* Spec 17.11 AC3: "Exercise details", at the page's end. The summary keeps the native marker (no display: flex,
+   which would remove it) and is a full tap target. */
+.disclosureSummary {
+  min-height: var(--tap-target-min);
+  line-height: var(--tap-target-min);
+  cursor: pointer;
+}
+
+.disclosureBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
 /* Phase B: the polite status line. Empty, it leaves the layout but stays in the accessibility tree (as
    `ui/VisuallyHidden`), so VoiceOver announces the text when it arrives (AC54). */
 .status:empty {
