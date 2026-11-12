@@ -2611,8 +2611,9 @@ const SESSION_SHOTS = /\/(01|03|04|2[2-6]|59|60|61|33|s177b)/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
-// Spec 17.11 AC10: the exercise page's captures have no small target and no overlap ("Open workout" beside the readout).
-const EXERCISE_SHOTS = /\/(15|16|75|81)-/;
+// Spec 17.11 AC10: the exercise page's captures have no small target and no overlap ("Open workout" beside the readout),
+// at 390 and 1280 px and at 320 × 568 (15n).
+const EXERCISE_SHOTS = /\/(15|15n|16|75|81)-/;
 const exerciseTight = report.filter((r) => r.file && EXERCISE_SHOTS.test(r.file) && (r.smallTargets?.length || r.overlaps));
 for (const r of exerciseTight) console.error(`  EXERCISE TARGETS ${r.file}: ${r.overlaps} overlaps; ${r.smallTargets.join("; ")}`);
 if (exerciseTight.length) process.exitCode = 1;

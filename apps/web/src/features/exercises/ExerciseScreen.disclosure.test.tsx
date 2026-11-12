@@ -163,6 +163,30 @@ describe("17.11 AC5 — messages stay outside the disclosure", () => {
     expect(follows(notice, disclosure())).toBe(true);
   });
 
+  it("a failed delete scrolls its notice into view (the lifter tapped Delete far below it)", async () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      const { fake, user } = setup(OWN);
+      await chart();
+      await openDetails(user);
+      await user.click(screen.getByRole("button", { name: EXERCISES_COPY.deleteExercise }));
+      const dialog = await screen.findByRole("dialog", { name: EXERCISES_COPY.deleteTitle("Echo Bike") });
+      const confirm = within(dialog).getByRole("button", { name: "Delete" });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      fake.failNext({ method: "DELETE", path: DELETE }, () => problemResponse(500, "internal"));
+      scrolled.length = 0;
+      await user.click(confirm);
+      const notice = await screen.findByText(EXERCISES_COPY.couldntSave);
+      await waitFor(() => expect(scrolled.some((el) => el.contains(notice))).toBe(true));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("Saved. shows in the status line, outside the disclosure, after it is closed", async () => {
     const { user } = setup(OWN);
     await chart();

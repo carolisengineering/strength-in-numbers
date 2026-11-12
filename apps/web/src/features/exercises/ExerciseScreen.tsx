@@ -95,6 +95,13 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
     void navigate(location.pathname, { replace: true, state: isFromRecords(routerState) ? FROM_RECORDS : null });
     titleRef.current?.focus();
   }, [routerState, location.pathname, navigate]);
+
+  // Spec 17.11 AC5 puts the delete failure above the chart, but Delete exercise sits at the page's end: bring the
+  // notice into view, or a lifter who scrolled down to it sees the dialog close and nothing else.
+  const deleteErrorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (deleteError !== null) deleteErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [deleteError]);
   const statusLine = (
     // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
     <p className={styles.status} role="status" data-testid="exercise-status">
@@ -150,7 +157,11 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   return (
     <Screen title={resolution.row.name} lead={back} titleRef={titleRef}>
       {statusLine}
-      {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
+      {deleteError !== null ? (
+        <div ref={deleteErrorRef}>
+          <InlineNotice tone="error">{deleteError}</InlineNotice>
+        </div>
+      ) : null}
       {neverLogged ? (
         <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p>
       ) : rechecking ? null : (
