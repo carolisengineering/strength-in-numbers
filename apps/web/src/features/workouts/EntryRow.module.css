@@ -49,6 +49,11 @@
   font-size: var(--font-size-md);
 }
 
+/* Minor 454: at 320 px the unit wrapped alone ("… @ 47.5" / "kg"); the target moves to the next line whole instead. */
+.target {
+  white-space: nowrap;
+}
+
 .formError {
   color: var(--color-danger);
   font-size: var(--font-size-sm);

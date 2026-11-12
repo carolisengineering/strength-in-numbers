@@ -255,7 +255,13 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
         </div>
         <p className={styles.setLine}>
           <span>{setLabel(plannedSets, count, draft.setType)}</span>
-          {target !== null ? <span> · target {target}</span> : null}
+          {/* The space stays outside the span: it is where the line may break, and the target itself never does (minor 454). */}
+          {target !== null ? (
+            <>
+              {" "}
+              <span className={styles.target}>· target {target}</span>
+            </>
+          ) : null}
         </p>
       </div>
       <SetFields

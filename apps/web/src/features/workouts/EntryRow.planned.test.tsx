@@ -532,6 +532,17 @@ describe("17.8 AC5 — the panel label", () => {
     expect(setLine()).toHaveTextContent(/^Set 1 of 3 · Warm-up · target 8 @ 40 kg$/);
   });
 
+  it("minor 454 — the target never breaks inside: its span doesn't wrap, so the unit can't sit alone at 320 px", async () => {
+    await setup([bench({ plannedSets: RANGE_PLAN })]);
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "EntryRow.module.css"), "utf8");
+    const at = css.indexOf(".target {");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(css.slice(at, css.indexOf("}", at))).toMatch(/white-space:\s*nowrap/);
+    const span = setLine().lastElementChild!;
+    expect(span).toHaveTextContent(/^· target 8 @ 40 kg$/);
+    expect(span.className).toMatch(/target/);
+  });
+
   it("the name is bold signal teal and both lines are at least --font-size-md, the target line in --color-text", () => {
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "EntryRow.module.css"), "utf8");
     const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
