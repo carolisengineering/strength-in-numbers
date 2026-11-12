@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { formatRecordValue, formatSeconds } from "../units/format";
 import { buildRecordLedger } from "./recordLedger";
-import { recordLabel, recordLine, sortRecords } from "./labels";
+import { recordLabel, sortRecords } from "./labels";
 
 describe("18.1 AC26 — record labels", () => {
   it("names the three new types", () => {
@@ -61,12 +61,8 @@ describe("18.1 AC27 — gains", () => {
   });
 });
 
+// Spec 17.11 AC7: the list's text is `recordParts`'; its calories case is in RecordRows.test.tsx.
 describe("18.1 AC28 — records list", () => {
-  it("reads name — label value (was …), or (first record)", () => {
-    const r = makePersonalRecord({ exerciseName: "Echo Bike", recordType: "max_calories", unit: "cal", value: 120, previousValue: 110 });
-    expect(recordLine(r, "kg")).toBe("Echo Bike — Most calories 120 cal (was 110 cal)");
-    expect(recordLine({ ...r, previousValue: null }, "kg")).toBe("Echo Bike — Most calories 120 cal (first record)");
-  });
   it("the new types sort after the legacy four, in RECORD_TYPE_VALUES order", () => {
     const one = (recordType: string, unit: string) => makePersonalRecord({ exerciseName: "Carry", recordType, unit, value: 10, previousValue: null });
     const sorted = sortRecords([one("max_duration", "s"), one("heaviest_weight", "kg"), one("max_calories", "cal")]);

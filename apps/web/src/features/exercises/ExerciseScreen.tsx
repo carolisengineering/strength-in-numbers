@@ -32,9 +32,10 @@ export function ExerciseRoute() {
 }
 
 /**
- * One exercise's page (Spec 18.2 §6.3): its details, then today's Progress body, or the never-logged line;
- * a deleted exercise keeps its history. The 08.1 gone rule (a series 404 / 422 with no data) wins over
- * whatever the catalog says.
+ * One exercise's page (Spec 18.2 §6.3, reordered by Spec 17.11 §6.1): the status line and any delete failure, then
+ * the Progress body (chart first) or the never-logged line, then one "Exercise details" disclosure holding the details
+ * and the actions. A deleted exercise keeps its history and has no disclosure. The 08.1 gone rule (a series 404 / 422
+ * with no data) wins over whatever the catalog says.
  */
 export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const resolved = useExercisePage(exerciseId);
@@ -52,6 +53,12 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const rechecking = cachedNever && usage.isFetching;
   const neverLogged = cachedNever && !usage.isFetching;
   const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !cachedNever);
+  // Spec 17.11 AC3, AC4: "Exercise details" is open by default only when the page has nothing else (never logged).
+  // The default is `cachedNever`, not `neverLogged`, which goes false during every usage refetch and would close the
+  // disclosure mid-read. Once the lifter toggles it, their choice holds; opening Edit pins it open, so a usage answer
+  // that lands while the sheet is up can't close the sheet's parent.
+  const [lifterOpen, setLifterOpen] = useState<boolean | null>(null);
+  const disclosureOpen = lifterOpen ?? cachedNever;
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
   const series = useSeries(exerciseId, "3m", { enabled: showBody });
   // Phase B: one polite status line (Saved., copy ready, a failure that closed a sheet), empty at first paint.
@@ -88,6 +95,13 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
     void navigate(location.pathname, { replace: true, state: isFromRecords(routerState) ? FROM_RECORDS : null });
     titleRef.current?.focus();
   }, [routerState, location.pathname, navigate]);
+
+  // Spec 17.11 AC5 puts the delete failure above the chart, but Delete exercise sits at the page's end: bring the
+  // notice into view, or a lifter who scrolled down to it sees the dialog close and nothing else.
+  const deleteErrorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (deleteError !== null) deleteErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [deleteError]);
   const statusLine = (
     // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
     <p className={styles.status} role="status" data-testid="exercise-status">
@@ -142,23 +156,39 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
 
   return (
     <Screen title={resolution.row.name} lead={back} titleRef={titleRef}>
-      <ExerciseDetails row={resolution.row} />
-      <ExerciseActions
-        row={resolution.row}
-        onStatus={setStatus}
-        deleteRef={deleteRef}
-        onDelete={() => {
-          setDeleteError(null);
-          setDeleteOpen(true);
-        }}
-      />
-      {deleteError !== null ? <InlineNotice tone="error">{deleteError}</InlineNotice> : null}
       {statusLine}
+      {deleteError !== null ? (
+        <div ref={deleteErrorRef}>
+          <InlineNotice tone="error">{deleteError}</InlineNotice>
+        </div>
+      ) : null}
       {neverLogged ? (
         <p className={styles.line}>{EXERCISES_COPY.neverLogged}</p>
       ) : rechecking ? null : (
         <ExerciseProgressBody exerciseId={exerciseId} />
       )}
+      {/* `open` is the page's until the lifter toggles it; a toggle the page made itself isn't recorded. */}
+      <details
+        open={disclosureOpen}
+        onToggle={(event) => {
+          if (event.currentTarget.open !== disclosureOpen) setLifterOpen(event.currentTarget.open);
+        }}
+      >
+        <summary className={styles.disclosureSummary}>{EXERCISES_COPY.detailsLabel}</summary>
+        <div className={styles.disclosureBody}>
+          <ExerciseDetails row={resolution.row} />
+          <ExerciseActions
+            row={resolution.row}
+            onStatus={setStatus}
+            deleteRef={deleteRef}
+            onEditOpen={() => setLifterOpen(true)}
+            onDelete={() => {
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
+          />
+        </div>
+      </details>
       {/* Mounted only while open: its routines read then unsubscribes on close, so `gcTime: 0` drops the answer and a
           reopening can never show (or enable Delete on) the last one (AC46, D12). */}
       {resolution.row.ownerUserId !== null && deleteOpen ? (

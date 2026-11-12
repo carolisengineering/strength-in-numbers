@@ -614,6 +614,35 @@ async function checkFrontDoor(page, label) {
   frontDoor.push({ shot: label, ...m, violations });
   for (const v of violations) console.error(`  FRONT DOOR ${label}: ${v}`);
 }
+// Spec 17.11 AC2, AC3, AC10: the exercise page at 390 × 844, scrolled to the top: the chart ends above the nav, the
+// page doesn't scroll sideways, and a closed "Exercise details" summary is a full tap target. The 320 × 568 step adds
+// the narrow checks (overflow and small targets). Violations go to `_report.json` under `exercisePage` and fail the run.
+const exercisePage = [];
+async function checkExercisePage(page, label, { chart = true } = {}) {
+  const m = await page.evaluate(() => {
+    document.querySelectorAll("[data-harness-scroller]").forEach((el) => el.scrollTo(0, 0));
+    window.scrollTo(0, 0);
+    const main = document.querySelector("main");
+    const svg = document.querySelector('svg[role="img"]');
+    const nav = document.querySelector("nav");
+    const summary = document.querySelector("details:not([open]) > summary");
+    return {
+      viewport: [window.innerWidth, window.innerHeight],
+      chartBottom: svg ? svg.getBoundingClientRect().bottom : null,
+      navTop: nav ? nav.getBoundingClientRect().top : window.innerHeight,
+      mainOverflow: main ? main.scrollWidth - main.clientWidth : 0,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      summaryHeight: summary ? summary.getBoundingClientRect().height : null,
+    };
+  });
+  const violations = [];
+  if (chart && m.chartBottom === null) violations.push("no chart");
+  if (chart && m.chartBottom !== null && m.chartBottom > m.navTop + 0.5) violations.push(`chart bottom ${m.chartBottom.toFixed(1)} is below the nav's top ${m.navTop.toFixed(1)}`);
+  if (m.mainOverflow > 0 || m.pageOverflow > 0) violations.push(`horizontal overflow (main ${m.mainOverflow}px, page ${m.pageOverflow}px)`);
+  if (m.summaryHeight !== null && m.summaryHeight < 43.5) violations.push(`the closed summary is ${m.summaryHeight.toFixed(1)} px tall`);
+  exercisePage.push({ shot: label, ...m, violations });
+  for (const v of violations) console.error(`  EXERCISE PAGE ${label}: ${v}`);
+}
 async function shoot(page, device, name, note) {
   await settle(page);
   const dir = path.join(OUT, THEME, device);
@@ -1823,14 +1852,51 @@ try {
     });
     await go("/app/exercises/records");
     await shoot(page, device, "14-progress", "Exercises > Records: today's Progress list under the view switch (Spec 18.2 AC5, AC6)");
+    // Spec 17.11 Phase A: the chart first, records as name-free rows, then a closed "Exercise details".
+    const mobile = device === "mobile";
     await go(`/app/exercises/${D.ids.bench}`);
-    await shoot(page, device, "15-progress-bench", "Exercise page: Bench Press (built-in), details then the chart (Spec 18.2 AC20, AC21, AC23)");
+    await shoot(page, device, "15-progress-bench", "Exercise page: Bench Press (built-in): the chart first, records rows, Exercise details closed (Spec 17.11 AC1–AC3, AC7)");
+    if (mobile) await checkExercisePage(page, `${theme}/${device}/15-progress-bench`);
+    await tryStep("exercise details open", async () => {
+      await page.locator("summary", { hasText: /^Exercise details$/ }).click();
+      await page.getByRole("button", { name: "Make your own copy" }).scrollIntoViewIfNeeded();
+      await shoot(page, device, "15d-exercise-details-open", "Exercise page: Bench Press with Exercise details open: the table, the note and Make your own copy (Spec 17.11 AC3)");
+    });
     await go(`/app/exercises/${D.ids.pullUp}`);
-    await shoot(page, device, "16-progress-pullup", "Exercise page: Pull-up (bodyweight, reps metric)");
+    await shoot(page, device, "16-progress-pullup", "Exercise page: Pull-up (bodyweight, reps metric), chart first (Spec 17.11 AC1)");
+    if (mobile) await checkExercisePage(page, `${theme}/${device}/16-progress-pullup`);
     await go(`/app/exercises/${D.ids.pushPress}`);
-    await shoot(page, device, "73-exercise-never-logged", "Exercise page: an own exercise never logged (Spec 18.2 AC22)");
+    await shoot(page, device, "73-exercise-never-logged", "Exercise page: an own exercise never logged: the line, Exercise details open (Spec 18.2 AC22, Spec 17.11 AC4)");
     await go(`/app/exercises/${D.ids.rowingCopy}`);
-    await shoot(page, device, "74-exercise-copy", "Exercise page: your copy of a logged built-in, with its history (Spec 18.2 AC21)");
+    await shoot(page, device, "74-exercise-copy", "Exercise page: your copy of a logged built-in, one session so no chart, Edit and Delete under Exercise details (Spec 17.11 AC3)");
+    // One logged session draws no chart, so 74 checks overflow and the summary only; 81 (the bench copy) measures a
+    // copy's chart.
+    if (mobile) await checkExercisePage(page, `${theme}/${device}/74-exercise-copy`, { chart: false });
+    if (mobile) {
+      // Spec 17.11 AC10 and Review Focus 5: a built-in with a "was" row, a duration in words and a "First record" row,
+      // at 320 × 568. No fixture exercise has both kinds, so this context serves Weighted Sandbag Hold's records with
+      // its heaviest weight as a first record.
+      await tryStep("exercise page 320", async () => {
+        const id = D.ids.sandbagHold;
+        const records = D.records.filter((r) => r.exerciseId === id).map((r) => (r.recordType === "heaviest_weight" ? { ...r, previousValue: null } : r));
+        if (!records.some((r) => r.previousValue === null) || !records.some((r) => r.previousValue !== null)) throw new Error("the 320 records need a was row and a first record");
+        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        await nctx.route(isSinApi, makeHandler({ active: false }));
+        // Registered last, so it answers first; any other records read falls through to the fake.
+        await nctx.route(
+          (u) => isSinApi(u) && u.pathname === "/v1/personal-records" && u.searchParams.get("exerciseId") === id,
+          (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ records }) }),
+        );
+        const np = await nctx.newPage();
+        np.setDefaultTimeout(8000);
+        await np.goto(BASE + `/app/exercises/${id}`);
+        await np.getByText("First record").first().waitFor();
+        await np.getByRole("region", { name: "Personal records" }).scrollIntoViewIfNeeded();
+        await shoot(np, "mobile-320", "15n-exercise-narrow", "Exercise page at 320 x 568: records rows with was and First record wrap inside the row (Spec 17.11 AC7, AC10)");
+        await checkExercisePage(np, `${theme}/mobile-320/15n-exercise-narrow`, { chart: false });
+        await nctx.close();
+      });
+    }
     await tryStep("deleted exercise page and the usage-failed list", async () => {
       // A fresh context whose catalog no longer serves Barbell Curl (its records still do), and whose usage read fails.
       const dctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
@@ -1869,21 +1935,30 @@ try {
         await xp.goto(BASE + `/app/exercises/${id}`);
         await settle(xp);
       };
+      // Spec 17.11 AC3: the actions sit in "Exercise details", closed on a logged exercise's page.
+      const openDetails = async () => {
+        const summary = xp.locator("summary", { hasText: /^Exercise details$/ });
+        if (!(await summary.evaluate((s) => s.parentElement.open))) await summary.click();
+      };
       const editSheet = () => xp.getByRole("dialog", { name: "Edit exercise" });
       const deleteDialog = (name) => xp.getByRole("dialog", { name: `Delete ${name}?` });
 
       await open(D.ids.pushPress);
-      await shoot(xp, device, "80-exercise-own", "Exercise page: an own exercise with Edit and Delete exercise (Spec 18.2 AC34)");
+      await shoot(xp, device, "80-exercise-own", "Exercise page: an own exercise, never logged, so Exercise details is open with Edit and Delete exercise (Spec 18.2 AC34, Spec 17.11 AC4)");
+      // The catalog holds the lifter's copy of Bench Press, so the built-in's page lands on the copy (18.2 AC19).
       await open(D.ids.bench);
-      await shoot(xp, device, "81-exercise-builtin", "Exercise page: a built-in with the copy note and Make your own copy (Spec 18.2 AC34)");
+      await shoot(xp, device, "81-exercise-builtin", "Exercise page: Bench Press, which lands on the lifter's copy: chart first, Edit and Delete under a closed Exercise details (Spec 17.11 AC2, AC3)");
+      if (device === "mobile") await checkExercisePage(xp, `${theme}/${device}/81-exercise-builtin`);
 
       await open(D.ids.pushPress);
+      await openDetails();
       await xp.getByRole("button", { name: "Edit" }).click();
       await editSheet().waitFor();
       await shoot(xp, device, "82-edit-unlogged", "Edit sheet, never logged: all eight types enabled, the rename note (Spec 18.2 AC35, AC37, AC40)");
       await xp.keyboard.press("Escape");
 
       await open(D.benchCopy.id);
+      await openDetails();
       await xp.getByRole("button", { name: "Edit" }).click();
       await editSheet().getByText("can only change to").waitFor();
       await shoot(xp, device, "83-edit-locked", "Edit sheet with logged sets: the other types disabled and muted, the note (Spec 18.2 AC37)");
@@ -1894,6 +1969,7 @@ try {
 
       ms.typeLocked = true;
       await open(D.ids.pushPress);
+      await openDetails();
       await xp.getByRole("button", { name: "Edit" }).click();
       await editSheet().getByRole("radio", { name: "Calories" }).check();
       await editSheet().getByRole("button", { name: "Save" }).click();
@@ -1903,12 +1979,14 @@ try {
       ms.typeLocked = false;
 
       await open(D.benchCopy.id);
+      await openDetails();
       await xp.getByRole("button", { name: "Delete exercise" }).click();
       await deleteDialog(D.benchCopy.name).getByText("Used in", { exact: false }).waitFor();
       await shoot(xp, device, "86-delete-routines", "Delete dialog naming two routines, one of them one-off, and the built-in coming back (Spec 18.2 AC47, AC49)");
       await xp.keyboard.press("Escape");
 
       await open(D.ids.pushPress);
+      await openDetails();
       await xp.getByRole("button", { name: "Delete exercise" }).click();
       await deleteDialog("Push Press").getByText("Past workouts keep their sets", { exact: false }).waitFor();
       await shoot(xp, device, "87-delete-none", "Delete dialog with no routines (Spec 18.2 AC47)");
@@ -1916,6 +1994,7 @@ try {
 
       ms.failRoutines = true;
       await open(D.ids.pushPress);
+      await openDetails();
       await xp.getByRole("button", { name: "Delete exercise" }).click();
       await deleteDialog("Push Press").getByText("Couldn't check which routines", { exact: false }).waitFor();
       await shoot(xp, device, "88-delete-check-failed", "Delete dialog when the routines check fails: Try again, Delete disabled (Spec 18.2 AC48)");
@@ -1924,6 +2003,7 @@ try {
 
       const deadlift = D.exercises.find((e) => e.name === "Deadlift");
       await open(deadlift.id);
+      await openDetails();
       await xp.getByRole("button", { name: "Make your own copy" }).click();
       await xp.getByText("Your copy is ready.", { exact: false }).waitFor();
       await shoot(xp, device, "89-exercise-copied", "The copy's page after Make your own copy: the status line (Spec 18.2 AC43)");
@@ -2531,6 +2611,17 @@ const SESSION_SHOTS = /\/(01|03|04|2[2-6]|59|60|61|33|s177b)/;
 const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
+// Spec 17.11 AC10: the exercise page's captures have no small target and no overlap ("Open workout" beside the readout),
+// at 390 and 1280 px and at 320 × 568 (15n).
+const EXERCISE_SHOTS = /\/(15|15n|16|75|81)-/;
+const exerciseTight = report.filter((r) => r.file && EXERCISE_SHOTS.test(r.file) && (r.smallTargets?.length || r.overlaps));
+for (const r of exerciseTight) console.error(`  EXERCISE TARGETS ${r.file}: ${r.overlaps} overlaps; ${r.smallTargets.join("; ")}`);
+if (exerciseTight.length) process.exitCode = 1;
+if (exercisePage.some((e) => e.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && (!exercisePage.some((e) => e.shot.endsWith("/15n-exercise-narrow")) || report.some((r) => r.note?.startsWith("SKIPPED exercise page 320")))) {
+  console.error("  EXERCISE PAGE: the 320 step did not run");
+  process.exitCode = 1;
+}
 if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
 if (offCenter.length) process.exitCode = 1;
 if (loggingLoop.some((l) => l.violations.length)) process.exitCode = 1;
@@ -2575,7 +2666,7 @@ if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED l
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

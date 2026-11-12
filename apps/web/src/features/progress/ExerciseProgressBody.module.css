@@ -38,7 +38,13 @@
   font-size: var(--font-size-sm);
 }
 
-.link,
+/* Open workout is a 44 px target (Spec 17.11 AC10); it once shared .sessions' rule and was 24 px tall. */
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+}
+
 .sessions {
   display: flex;
   flex-direction: column;

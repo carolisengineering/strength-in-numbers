@@ -36,10 +36,24 @@ export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[
   );
 }
 
-/** `"Bench Press — Heaviest weight 102.5 kg (was 100 kg)"` (Spec 08.0 AC18). */
-export function recordLine(record: PersonalRecord, pref: UnitPreference): string {
-  const value = formatRecordByType(record.recordType, record.value, record.unit, pref);
-  const was =
-    record.previousValue === null ? " (first record)" : ` (was ${formatRecordByType(record.recordType, record.previousValue, record.unit, pref)})`;
-  return `${record.exerciseName} — ${recordLabel(record.recordType)} ${value}${was}`;
+/** What a row says when the record has no previous value (Spec 17.11 AC7). */
+export const FIRST_RECORD = "First record";
+
+export interface RecordParts {
+  readonly label: string;
+  readonly value: string;
+  /** The previous value, formatted ("80 kg"), or `null` for a first record. */
+  readonly was: string | null;
+}
+
+/**
+ * The one source of a record's text on the exercise page (Spec 17.11 §6.2): `RecordRows` draws these parts as a
+ * name-free row, "Heaviest weight 82.5 kg was 80 kg". Replaces 08.0's name-prefixed `recordLine`.
+ */
+export function recordParts(record: PersonalRecord, pref: UnitPreference): RecordParts {
+  return {
+    label: recordLabel(record.recordType),
+    value: formatRecordByType(record.recordType, record.value, record.unit, pref),
+    was: record.previousValue === null ? null : formatRecordByType(record.recordType, record.previousValue, record.unit, pref),
+  };
 }
