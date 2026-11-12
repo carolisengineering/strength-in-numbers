@@ -804,7 +804,7 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
       const i = box(input);
       const middle = i.top + i.height / 2;
       return {
-        label: input.labels?.[0]?.textContent ?? input.id,
+        label: input.labels?.[0]?.textContent ?? input.getAttribute("aria-label") ?? input.id,
         buttons: [...row.querySelectorAll(":scope > button")].map((b) => {
           const r = box(b);
           return { text: b.textContent, w: round(r.width), h: round(r.height), offset: round(r.top + r.height / 2 - middle) };
@@ -828,10 +828,12 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
       firstRowOffset: round(box(firstRow).top - box(form).top),
       slotWidth: slot ? round(box(slot).width) : null,
       restState: timer ? timer.getAttribute("data-state") : null,
-      // Spec 17.8 Phase B: a duration's Minutes and Seconds labels (side by side or stacked) and any clipped label.
+      // Spec 17.8 Phase B, minors 462–463: a duration's Minutes and Seconds inputs in one stepper row (side by side at
+      // every width) and its unit line ("min", "s") with nothing clipped.
       duration: (() => {
-        const labels = [...form.querySelectorAll("[data-stepper-row] label")].filter((l) => /^(Minutes|Seconds)$/.test(l.textContent.trim()));
-        return labels.length === 2 ? { tops: labels.map((l) => round(box(l).top)), clipped: labels.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent.trim()) } : null;
+        const inputs = [...form.querySelectorAll("[data-stepper-row] input")].filter((i) => /^(Minutes|Seconds)$/.test(i.getAttribute("aria-label") ?? ""));
+        const units = [...form.querySelectorAll("[data-duration] [aria-hidden='true'] span")];
+        return inputs.length === 2 ? { tops: inputs.map((i) => round(box(i).top)), clipped: units.filter((u) => u.scrollWidth > u.clientWidth + 1).map((u) => u.textContent.trim()) } : null;
       })(),
       dialogHscroll: (() => {
         const dialog = form.closest("dialog");
@@ -1136,9 +1138,9 @@ try {
         if (m.rows.length === 0) violations.push(`${where}: no stepper row`);
         for (const row of m.rows) {
           for (const b of row.buttons) {
-            // AC1: each button's vertical center within 1 px of the input's (weight, reps, calories, distance; not a
-            // duration, whose buttons sit beside two labeled fields).
-            if (!/^(Minutes|Seconds)$/.test(row.label) && Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
+            // AC1: each button's vertical center within 1 px of the input's. Minor 462: a duration too, now that its
+            // labels sit outside the row.
+            if (Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
             // AC2: 56 × 56.
             if (Math.abs(b.w - 56) > 0.5 || Math.abs(b.h - 56) > 0.5) violations.push(`${where}: ${row.label} "${b.text}" is ${b.w} × ${b.h} (want 56 × 56)`);
           }
@@ -1177,8 +1179,8 @@ try {
             steps.push({ step: `${at} 102.5`, clipped });
             if (clipped) violations.push(`${at}: "102.5" is clipped in the weight field`);
           }
-          // Spec 17.8 Phase B (AC11, AC20, Review Focus 5): the Plank's duration steppers. At 390 px Minutes and Seconds sit
-          // side by side; at 320 px they stack, and neither label is clipped.
+          // Spec 17.8 Phase B (AC11, AC20, Review Focus 5), minors 462–463: the Plank's duration steppers. Minutes and
+          // Seconds sit side by side at every width (they stacked at 320 px before), "59" shows in full, no unit clips.
           await clearStored();
           await go("/app/workouts");
           await openCard("Plank");
@@ -1188,13 +1190,20 @@ try {
           if (plank.duration === null || plank.duration === undefined) violations.push(`${at} duration: no Minutes and Seconds in a stepper row`);
           else {
             const [minutesTop, secondsTop] = plank.duration.tops;
-            if (size.width >= 390 && Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} duration: Minutes and Seconds don't share a line at ${size.width} px`);
-            if (size.width === 320 && !(secondsTop > minutesTop + 1)) violations.push(`${at} duration: Minutes and Seconds don't stack at 320 px`);
-            for (const label of plank.duration.clipped) violations.push(`${at} duration: the ${label} label is clipped`);
+            if (Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} duration: Minutes and Seconds don't share a line at ${size.width} px`);
+            for (const unit of plank.duration.clipped) violations.push(`${at} duration: the "${unit}" unit is clipped`);
           }
+          await clippedValue(`${at} duration`, 'form[aria-label="Log a set of Plank"]', "Seconds", "59");
+          await clippedValue(`${at} duration`, 'form[aria-label="Log a set of Plank"]', "Minutes", "12");
           if (size.width === 320) {
-            await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
-            await shoot(page, device, "24b-duration-320", "Spec 17.8 AC11: a Plank at 320 × 568: −5 s / +5 s around Minutes over Seconds");
+            // Minor 463: on an SE-sized phone the whole Plank panel (Warm-up and More included) fits above the bar once
+            // it is scrolled to the top of the list, as a weight × reps panel does.
+            await page.locator('form[aria-label="Log a set of Plank"]').evaluate((form) => form.scrollIntoView({ block: "start" }));
+            await page.waitForTimeout(150);
+            const fit = await measureLoggingLoop(page);
+            steps.push({ step: `${at} duration fits above the bar`, covered: fit.covered, panelBottom: fit.panelBottom, barTop: fit.barTop });
+            if (fit.covered.length > 0) violations.push(`${at} duration: ${fit.covered.join(", ")} under the bar (panel ends at ${fit.panelBottom}, bar at ${fit.barTop})`);
+            await shoot(page, device, "24b-duration-320", "Spec 17.8 AC11, minors 462–463: a Plank at 320 × 568: Time, −5 s / +5 s centered on Minutes and Seconds side by side, the panel above the bar");
           }
           // Calories and the carry: the new-types workout's Echo Bike and Farmer Carry panels.
           state.newTypes = structuredClone(D.activeNewTypes);

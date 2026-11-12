@@ -2,7 +2,6 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { DISTANCE_UNIT_VALUES, SET_TYPE_VALUES, type MeasureName, type Modality } from "@sin/core";
 
 import { Button } from "../../ui/Button";
-import { Field } from "../../ui/Field";
 import { Segmented } from "../../ui/Segmented";
 import { SET_TYPE_LABELS } from "./format";
 import { visibleMeasures } from "./measures";
@@ -27,6 +26,7 @@ import {
   weightAtLimit,
   type StepDirection,
 } from "./stepper";
+import fieldStyles from "../../ui/Field.module.css";
 import styles from "./SetFields.module.css";
 import { WarmupToggle } from "./WarmupToggle";
 
@@ -71,14 +71,26 @@ function SetTypeField({ draft, onChange, id }: Common) {
   );
 }
 
-function TextField({ name, label, inputMode, value, error, onChange, id, className }: { name: string; label: string; inputMode: "decimal" | "numeric"; value: string; error?: string | undefined; onChange: (v: string) => void; id: (n: string) => string; className: string | undefined }) {
+/**
+ * One of a duration's two inputs, wired like a `Field`'s control: named by `aria-label` ("Minutes" starts with the "min"
+ * shown under it, "Seconds" with the "s", WCAG 2.5.3), its error below the row and linked by `aria-describedby`.
+ */
+function DurationInput({ name, label, value, error, onChange, id, className }: { name: "minutes" | "seconds"; label: string; value: string; error?: string | undefined; onChange: (v: string) => void; id: (n: string) => string; className: string | undefined }) {
   return (
-    <Field id={id(name)} label={label} error={error}>
-      {(control) => (
-        // Spec 17.8 AC17: focus selects the text, as a stepper's field does, so typing replaces it.
-        <input {...control} className={className} type="text" inputMode={inputMode} autoComplete="off" value={value} onFocus={(e) => e.currentTarget.select()} onChange={(e) => onChange(e.target.value)} />
-      )}
-    </Field>
+    <input
+      id={id(name)}
+      aria-label={label}
+      aria-describedby={error ? `${id(name)}-error` : undefined}
+      aria-invalid={error ? true : undefined}
+      className={className}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      value={value}
+      // Spec 17.8 AC17: focus selects the text, as a stepper's field does, so typing replaces it.
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 
@@ -217,21 +229,53 @@ function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, 
         };
         const durationStep = `${DURATION_STEP_S} s`;
         return (
-          <StepperFrame
-            decreaseText={stepText("down", durationStep)}
-            increaseText={stepText("up", durationStep)}
-            decreaseLabel={stepName("down", durationStep, "time", exerciseName)}
-            increaseLabel={stepName("up", durationStep, "time", exerciseName)}
-            canDecrease={!durationAtLimit(draft.minutes, draft.seconds, "down")}
-            canIncrease={!durationAtLimit(draft.minutes, draft.seconds, "up")}
-            onDecrease={() => stepTo("down")}
-            onIncrease={() => stepTo("up")}
-          >
-            <div className={styles.durationFields}>
-              <TextField name="minutes" label="Minutes" inputMode="numeric" value={draft.minutes} error={errors.minutes} onChange={(v) => onChange("minutes", v)} id={id} className={figure} />
-              <TextField name="seconds" label="Seconds" inputMode="numeric" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={figure} />
+          // Minors 462, 463: the shape of every other stepper, a label above ("Time"), one row of − inputs +, and the
+          // units under the figures ("min", "s") where a weight shows "lb". The row holds only the two inputs, so
+          // −5 s / +5 s center on the figures by structure, and the two fields stay side by side down to 320 px (as
+          // field labels, "Minutes" and "Seconds" were wider than the 44 px each field gets there), which keeps the
+          // panel above the bar. The inputs keep "Minutes" and "Seconds" as their names.
+          <div role="group" aria-labelledby={id("duration-label")} className={`${fieldStyles.field} ${styles.duration}`} data-duration="">
+            <span className={fieldStyles.label} id={id("duration-label")}>
+              Time
+            </span>
+            <StepperFrame
+              decreaseText={stepText("down", durationStep)}
+              increaseText={stepText("up", durationStep)}
+              decreaseLabel={stepName("down", durationStep, "time", exerciseName)}
+              increaseLabel={stepName("up", durationStep, "time", exerciseName)}
+              canDecrease={!durationAtLimit(draft.minutes, draft.seconds, "down")}
+              canIncrease={!durationAtLimit(draft.minutes, draft.seconds, "up")}
+              onDecrease={() => stepTo("down")}
+              onIncrease={() => stepTo("up")}
+            >
+              <div className={styles.durationPair}>
+                <DurationInput name="minutes" label="Minutes" value={draft.minutes} error={errors.minutes} onChange={(v) => onChange("minutes", v)} id={id} className={figure} />
+                <DurationInput name="seconds" label="Seconds" value={draft.seconds} error={errors.seconds} onChange={(v) => onChange("seconds", v)} id={id} className={figure} />
+              </div>
+            </StepperFrame>
+            <div className={styles.durationLine} aria-hidden="true">
+              <div className={styles.durationPair}>
+                <span className={styles.durationUnit}>min</span>
+                <span className={styles.durationUnit}>s</span>
+              </div>
             </div>
-          </StepperFrame>
+            {errors.minutes || errors.seconds ? (
+              <div className={styles.durationLine}>
+                <div className={styles.durationPair}>
+                  {errors.minutes ? (
+                    <p className={`${fieldStyles.error} ${styles.minutesCell}`} id={`${id("minutes")}-error`} role="alert">
+                      {errors.minutes}
+                    </p>
+                  ) : null}
+                  {errors.seconds ? (
+                    <p className={`${fieldStyles.error} ${styles.secondsCell}`} id={`${id("seconds")}-error`} role="alert">
+                      {errors.seconds}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
         );
       }
     }

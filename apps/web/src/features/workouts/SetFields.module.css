@@ -28,18 +28,44 @@
   min-width: var(--tap-target-min);
 }
 
-/* Spec 17.8 AC11: Minutes and Seconds between a duration's buttons, side by side where both labels fit
-   (390 px) and stacked where they don't (320 px), by wrapping, with no media query. */
-.durationFields {
-  display: flex;
-  flex-wrap: wrap;
+/* Spec 17.8 AC11, minors 462–463: a duration is its label, then − inputs +, then the units ("min", "s") and any
+   error. The lines under the row put the pair in the frame's middle column (the buttons are --stepper-size wide), so
+   units and errors sit under their own figure, the buttons center on the inputs, and the two fields stay side by side
+   down to 320 px. */
+.duration {
+  min-width: 0;
+}
+
+.durationLine {
+  display: grid;
+  grid-template-columns: var(--stepper-size) minmax(0, 1fr) var(--stepper-size);
+  gap: var(--space-2);
+}
+
+.durationLine > * {
+  grid-column: 2;
+}
+
+.durationPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
   min-width: 0;
 }
 
-.durationFields > * {
-  flex: 1 1 var(--duration-field-min-width);
-  min-width: 0;
+/* Like NumberStepper's unit line. */
+.durationUnit {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.minutesCell {
+  grid-column: 1;
+}
+
+.secondsCell {
+  grid-column: 2;
 }
 
 /* Spec 17.1 D6, Spec 17.8 AC13: the duration fields, set and centered like the stepper figures. */
