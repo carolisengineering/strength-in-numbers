@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { PLANNED_SETS_PER_ITEM_MAX, type SetType, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
@@ -13,6 +13,16 @@ export const WEIGHT_UNIT_CHOICES: readonly { value: WeightUnit; label: string }[
   { value: "kg", label: "kg" },
   { value: "lb", label: "lb" },
 ];
+
+interface PendingFocus {
+  readonly key: string;
+  readonly target: "summary" | "moveUp" | "moveDown" | "type" | "reps" | "weight";
+}
+
+/** The first row, in row order, with a reps or weight error (Spec 17.11 AC16); `null` when none has one. */
+export function firstInvalidKey(rows: readonly PlanRowText[], errors: ReadonlyMap<string, RowErrors>): string | null {
+  return rows.find((row) => Boolean(errors.get(row.key)?.reps || errors.get(row.key)?.weight))?.key ?? null;
+}
 
 export interface PlanRowListProps {
   rows: readonly PlanRowText[];
@@ -40,16 +50,62 @@ export interface PlanRowListProps {
  */
 export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirst = false, onField, onAdd, onRemove, onMove, onUnit }: PlanRowListProps) {
   const prefix = useId();
-  const [openKey, setOpenKey] = useState<string | null>(() => (rows.length === 1 || openFirst ? (rows[0]?.key ?? null) : null));
+  // A row the editor or the server already flagged starts open (Spec 17.11 AC16), with no focus move: the sheet's
+  // own first focus stands. Otherwise AC12: the only row, or the first when just entered from the quick line.
+  const [openKey, setOpenKey] = useState<string | null>(
+    () => firstInvalidKey(rows, errors) ?? (rows.length === 1 || openFirst ? (rows[0]?.key ?? null) : null),
+  );
+  const pendingFocus = useRef<PendingFocus | null>(null);
+  const lastErrors = useRef(errors);
   const atCap = rows.length >= PLANNED_SETS_PER_ITEM_MAX;
   const onlyRow = rows.length === 1;
   const capId = `${prefix}-cap`;
   const minId = `${prefix}-min`;
 
+  // AC16: the sheet hands over a new map on every Done, so a failing Done opens the first invalid row and focuses
+  // its first invalid field, even when that row is already open. An empty map (a clean Done, Back) does nothing.
+  useLayoutEffect(() => {
+    if (errors === lastErrors.current) return;
+    lastErrors.current = errors;
+    const key = firstInvalidKey(rows, errors);
+    if (key === null) return;
+    setOpenKey(key);
+    pendingFocus.current = { key, target: errors.get(key)?.reps ? "reps" : "weight" };
+  }, [errors, rows]);
+
+  // AC17: focus that a Move, Remove, Add or failing Done asked for, applied once the rows it names are drawn. A Move
+  // re-inserts the row's node, which blurs the pressed button in Chromium and Safari, so focus is put back by id.
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current;
+    if (pending === null) return;
+    const panel = document.getElementById(`${prefix}-${pending.key}-panel`);
+    const summary = document.getElementById(`${prefix}-${pending.key}-summary`);
+    let target: HTMLElement | null;
+    if (pending.target === "summary") target = summary;
+    else if (pending.target === "type") target = panel?.querySelector<HTMLElement>('input[type="radio"]:checked') ?? panel?.querySelector<HTMLElement>('input[type="radio"]') ?? null;
+    else target = document.getElementById(`${prefix}-${pending.key}-${pending.target}`);
+    // The row isn't open yet (its open lands in the next render): keep waiting for it.
+    if (target === null && pending.target !== "summary" && openKey !== pending.key && summary !== null) return;
+    pendingFocus.current = null;
+    if (target instanceof HTMLButtonElement && target.disabled) target = summary;
+    target?.focus();
+  });
+
   const add = () => {
     const key = crypto.randomUUID();
     setOpenKey(key);
+    pendingFocus.current = { key, target: "type" };
     onAdd(key);
+  };
+  const move = (key: string, dir: -1 | 1) => {
+    pendingFocus.current = { key, target: dir < 0 ? "moveUp" : "moveDown" };
+    onMove(key, dir);
+  };
+  const remove = (index: number) => {
+    const takesPlace = rows[index + 1] ?? rows[index - 1];
+    setOpenKey(null);
+    if (takesPlace) pendingFocus.current = { key: takesPlace.key, target: "summary" };
+    onRemove(rows[index]!.key);
   };
 
   return (
@@ -106,7 +162,7 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
                       disabled={first}
                       aria-label={`Move up, set ${n}`}
                       {...(first ? { "aria-describedby": id("first") } : {})}
-                      onClick={() => onMove(row.key, -1)}
+                      onClick={() => move(row.key, -1)}
                     >
                       Move up
                     </Button>
@@ -116,11 +172,11 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
                       disabled={last}
                       aria-label={`Move down, set ${n}`}
                       {...(last ? { "aria-describedby": id("last") } : {})}
-                      onClick={() => onMove(row.key, 1)}
+                      onClick={() => move(row.key, 1)}
                     >
                       Move down
                     </Button>
-                    <Button variant="danger" disabled={onlyRow} aria-label={`Remove, set ${n}`} {...(onlyRow ? { "aria-describedby": minId } : {})} onClick={() => onRemove(row.key)}>
+                    <Button variant="danger" disabled={onlyRow} aria-label={`Remove, set ${n}`} {...(onlyRow ? { "aria-describedby": minId } : {})} onClick={() => remove(index)}>
                       Remove
                     </Button>
                   </div>
