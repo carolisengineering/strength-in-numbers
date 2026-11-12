@@ -116,7 +116,7 @@ export function Sheet({
                 {children}
               </div>
               <div className={styles.actions} data-sheet-actions="">
-                {/* Minor 492: one box for the notice and status, which scrolls once the row reaches half the panel,
+                {/* Minor 492: one box for the notice and status, which scrolls once the row reaches 60% of the panel,
                     so on a short frame a failure plus a question can't squeeze the body to nothing. */}
                 <div className={styles.messages} data-sheet-messages="">
                   <div className={styles.notice} ref={slotRefs.notice} />

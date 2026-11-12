@@ -1475,8 +1475,8 @@ try {
             const bodyHeight = short[0]?.bodyHeight ?? 0;
             if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
-            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The row stops at half
-            // the panel; the messages scroll, and the buttons and part of the body stay on screen. The text is
+            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The row stops at 60% of
+            // the panel; the messages scroll with their first line showing, and the buttons and part of the body stay. The text is
             // written into the slots by hand (a failed save then a delete can't be staged here); the layout is the point.
             await page.evaluate(() => {
               const d = document.querySelector("dialog[open]");
@@ -1488,7 +1488,9 @@ try {
             });
             const crowded = (await measureSheetRows(page))[0];
             const crowdedBody = crowded?.bodyHeight ?? 0;
-            if (crowdedBody < 80) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 80)`);
+            if (crowdedBody < 64) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 64)`);
+            const messagesHeight = await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-messages]").getBoundingClientRect().height);
+            if (messagesHeight < 20) violations.push(`minor 492: the notice and status show ${messagesHeight.toFixed(1)} px at 232 px (want one line, >= 20)`);
             for (const v of crowded?.violations ?? []) violations.push(`minor 492: ${v}`);
             await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
             await page.evaluate(() => {

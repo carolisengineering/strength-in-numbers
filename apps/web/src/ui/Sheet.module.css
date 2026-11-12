@@ -78,8 +78,9 @@
 
 .actions {
   flex: none;
-  /* Minor 492: never more than half the panel, so the body keeps room for a field on a 232 px frame. */
-  max-height: 50%;
+  /* Minor 492: never more than 60% of the panel, so on a 232 px frame the body keeps room for a field and the
+     messages above the buttons still show their first line. */
+  max-height: 60%;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

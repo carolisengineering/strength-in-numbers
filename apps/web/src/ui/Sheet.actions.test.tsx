@@ -230,8 +230,8 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(actions).toMatch(/border-top:\s*1px solid var\(--color-line\)/);
   });
 
-  it("minor 492: the row takes at most half the panel; past that the notice and status scroll and the buttons stay", () => {
-    expect(ruleOf(".actions")).toMatch(/max-height:\s*50%/);
+  it("minor 492: the row takes at most 60% of the panel; past that the notice and status scroll and the buttons stay", () => {
+    expect(ruleOf(".actions")).toMatch(/max-height:\s*60%/);
     const messages = ruleOf(".messages");
     expect(messages).toMatch(/overflow-y:\s*auto/);
     expect(messages).toMatch(/min-height:\s*0/);
