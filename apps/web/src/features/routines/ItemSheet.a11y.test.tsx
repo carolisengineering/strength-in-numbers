@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { exerciseId } from "../../test/catalogFixtures";
+import { openRow } from "../../test/planRowHelpers";
 import { ItemSheet } from "./ItemSheet";
 import type { DraftItem, DraftSet } from "./routineDraft";
 
@@ -12,19 +14,25 @@ const item = (plan: DraftSet[]): DraftItem => ({
 const open = (plan: DraftSet[]) => render(<ItemSheet open title="Bench" item={item(plan)} modality="weight_reps" onDone={vi.fn()} onClose={vi.fn()} />);
 
 describe("10.2 AC34 — the plan rows", () => {
-  it("are a real list of labeled groups, and every control has a name that includes its set number", () => {
+  it("are a real list of labeled groups, and every control has a name that includes its set number", async () => {
+    const user = userEvent.setup();
     open([set("a"), set("b"), set("c")]);
     const list = screen.getByRole("list", { name: "Planned sets" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
-    for (const control of list.querySelectorAll("input:not([type=radio]), select")) {
-      expect(control).toHaveAccessibleName(/^Set \d+ (reps|weight)$/);
-    }
-    // Spec 17.7: a row's type is a Segmented; its radios are named by the option, and their group by the set.
-    const radios = list.querySelectorAll("input[type=radio]");
-    expect(radios).toHaveLength(12);
-    for (const radio of radios) expect(radio.closest("fieldset")).toHaveAccessibleName(/^Set \d+ type$/);
-    for (const button of within(list).getAllByRole("button")) {
-      expect(button).toHaveAccessibleName(/, set \d+$/);
+    // Spec 17.11: only the open row draws its controls, so each row is checked open, in turn.
+    for (const n of [1, 2, 3]) {
+      await openRow(user, n);
+      const panel = screen.getByRole("group", { name: `Set ${n}` });
+      for (const control of panel.querySelectorAll("input:not([type=radio]), select")) {
+        expect(control).toHaveAccessibleName(new RegExp(`^Set ${n} (reps|weight)$`));
+      }
+      // Spec 17.7: a row's type is a Segmented; its radios are named by the option, and their group by the set.
+      const radios = panel.querySelectorAll("input[type=radio]");
+      expect(radios).toHaveLength(4);
+      for (const radio of radios) expect(radio.closest("fieldset")).toHaveAccessibleName(`Set ${n} type`);
+      for (const button of within(panel).getAllByRole("button")) {
+        expect(button).toHaveAccessibleName(new RegExp(`, set ${n}$`));
+      }
     }
   });
   it("every control in the sheet has a programmatic label", () => {

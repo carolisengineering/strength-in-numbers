@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Modality, WeightUnit } from "@sin/core";
 import { exerciseId } from "../../test/catalogFixtures";
+import { openRow } from "../../test/planRowHelpers";
 import { ItemSheet } from "./ItemSheet";
 import type { DraftItem, DraftSet } from "./routineDraft";
 
@@ -19,7 +20,11 @@ function setup(initial = item(), extra: { modality?: Modality | null; defaultUni
   render(<ItemSheet open title="Bench Press" item={initial} onDone={onDone} onPlanned={onPlanned} onClose={vi.fn()} modality="weight_reps" {...extra} />);
   return { onDone, onPlanned, user: userEvent.setup() };
 }
-const rowsCount = () => screen.queryAllByRole("group", { name: /^Set \d+$/ }).length;
+/** Spec 17.11: closed rows have no group, so the plan's rows are its list items. */
+const rowsCount = () => {
+  const list = screen.queryByRole("list", { name: "Planned sets" });
+  return list === null ? 0 : within(list).getAllByRole("listitem").length;
+};
 
 describe("10.2 AC12 — Plan each set", () => {
   it("the quick line always offers it; it replaces Sets / Reps / Weight with rows and keeps Rest, Notes (no RPE, 17.1 AC1)", async () => {
@@ -27,6 +32,7 @@ describe("10.2 AC12 — Plan each set", () => {
     await user.click(screen.getByRole("button", { name: "Plan each set" }));
     expect(rowsCount()).toBe(3);
     expect(screen.getByLabelText("Set 1 reps")).toHaveValue("6-8");
+    await openRow(user, 3);
     expect(screen.getByLabelText("Set 3 weight")).toHaveValue("100");
     expect(screen.queryByLabelText("Sets")).toBeNull();
     expect(screen.queryByRole("button", { name: "Plan each set" })).toBeNull();
@@ -79,6 +85,7 @@ describe("10.2 AC14 — Back to the quick line only when lossless", () => {
   it("editing a row so the rows differ withdraws the button; making them equal again offers it", async () => {
     const { user } = setup(item({ plan: [set("a"), set("b")] }));
     expect(screen.getByRole("button", { name: "Back to the quick line" })).toBeInTheDocument();
+    await openRow(user, 2);
     await user.type(screen.getByLabelText("Set 2 weight"), "5");
     expect(screen.queryByRole("button", { name: "Back to the quick line" })).toBeNull();
     await user.clear(screen.getByLabelText("Set 2 weight"));
@@ -101,21 +108,27 @@ describe("10.2 AC16 — Done in plan mode", () => {
   });
   it("invalid rows show their messages beside the fields and keep the sheet open; nothing is committed", async () => {
     const { onDone, onPlanned, user } = setup(item({ plan: [set("a"), set("b")] }));
+    await openRow(user, 2);
     await user.clear(screen.getByLabelText("Set 2 reps"));
     await user.type(screen.getByLabelText("Set 2 reps"), "9-3");
+    await openRow(user, 1);
     await user.clear(screen.getByLabelText("Set 1 weight"));
     await user.type(screen.getByLabelText("Set 1 weight"), "abc");
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onDone).not.toHaveBeenCalled();
     expect(onPlanned).not.toHaveBeenCalled();
+    await openRow(user, 2);
     expect(screen.getByLabelText("Set 2 reps")).toHaveAttribute("aria-invalid", "true");
+    await openRow(user, 1);
     expect(screen.getByLabelText("Set 1 weight")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Set 1 reps")).not.toHaveAttribute("aria-invalid");
   });
-  it("server messages for a row are shown beside it when the sheet opens", () => {
+  it("server messages for a row are shown beside it when the sheet opens", async () => {
+    const user = userEvent.setup();
     render(
       <ItemSheet open title="Bench" item={item({ plan: [set("a"), set("b")] })} modality="weight_reps" rowMessages={new Map([["b", { weight: "Check the weight" }]])} onDone={vi.fn()} onClose={vi.fn()} />,
     );
+    await openRow(user, 2);
     expect(screen.getByLabelText("Set 2 weight")).toHaveAccessibleDescription("Check the weight");
   });
   it("adding, removing and moving rows are committed only by Done; Close discards them", async () => {
@@ -147,6 +160,7 @@ describe("10.2 AC13 — a weight typed into a weightless row takes the unit the 
       { defaultUnit: "kg" },
     );
     expect(within(screen.getByRole("group", { name: "Weight unit" })).getByRole("radio", { name: "lb" })).toBeChecked();
+    await openRow(user, 1);
     await user.type(screen.getByLabelText("Set 1 weight"), "45");
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onPlanned.mock.calls[0]![0].rows.map((r: DraftSet) => [r.weight, r.weightUnit])).toEqual([[45, "lb"], [100, "lb"], [110, "lb"]]);

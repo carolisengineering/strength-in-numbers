@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -17,7 +17,8 @@ vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import { deriveTargets } from "@sin/core";
-import { exerciseId } from "../../test/catalogFixtures";
+import { exerciseId, makeExercise } from "../../test/catalogFixtures";
+import { openRow, summaryButton } from "../../test/planRowHelpers";
 import { makeRoutine, makeRoutineItem, routineId } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -121,6 +122,74 @@ describe("10.2 AC17 — save round trip: every shape survives a no-op Done and a
   });
 });
 
+describe("17.11 AC18 — opening and closing rows is view state: the body and the leave guard don't see it", () => {
+  const plank = makeExercise({ id: exerciseId(5), name: "Plank", modality: "duration" });
+  const shapesCatalog = [...catalog, plank];
+  const MIXED = [kg(60), kg(135, { weightUnit: "lb" }), kg(80)];
+  const TIMED = [{ setType: "warmup", repsLow: null, repsHigh: null, weight: null, weightUnit: null }, { setType: "working", repsLow: null, repsHigh: null, weight: null, weightUnit: null }];
+  const shapes = makeRoutine({
+    id: routineId(1),
+    name: "Shapes",
+    items: [
+      makeRoutineItem({ position: 0, exerciseId: exerciseId(1), ...deriveTargets(RAMP as never), sets: RAMP }),
+      makeRoutineItem({ position: 1, exerciseId: exerciseId(2), ...deriveTargets(MIXED as never), sets: MIXED }),
+      makeRoutineItem({ position: 2, exerciseId: exerciseId(3), targetSets: null, targetRepsLow: 8, targetRepsHigh: 10, sets: [] }),
+      makeRoutineItem({ position: 3, exerciseId: exerciseId(5), targetSets: 2, sets: TIMED as never }),
+    ],
+  });
+  const NAMES = /^(Bench Press|Barbell Row|Overhead Press|Plank)/;
+
+  /** Opens every item and taps Done; with `toggle`, first opens and closes rows 1 and 2 of each plan. */
+  async function doneOnEveryItem(user: ReturnType<typeof renderApp>["user"], toggle: boolean) {
+    for (let i = 0; i < 4; i++) {
+      await user.click((await screen.findAllByRole("button", { name: NAMES }))[i]!);
+      const dialog = await screen.findByRole("dialog");
+      if (toggle && within(dialog).queryByRole("list", { name: "Planned sets" }) !== null) {
+        await openRow(user, 1, dialog);
+        await openRow(user, 2, dialog);
+        await user.click(summaryButton(2, dialog));
+      }
+      await user.click(within(dialog).getByRole("button", { name: "Done" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+  }
+
+  async function savedBody(toggle: boolean) {
+    const fake = createWorkoutFake({ catalog: shapesCatalog, routines: [shapes] });
+    prepareApp({ auth, catalog: shapesCatalog, fake });
+    const { router, user } = renderApp(editPath);
+    await screen.findByRole("heading", { level: 1, name: "Edit routine" });
+    await doneOnEveryItem(user, toggle);
+    await user.type(screen.getByLabelText("Notes", { selector: "textarea#routine-notes" }), "!");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(previewPath));
+    return fake.requests.find((r) => r.method === "PUT")!.body as { items: Record<string, unknown>[] };
+  }
+
+  it("a plan, mixed units, a quick line and a timed plan send the same body with rows opened as without", async () => {
+    const untouched = await savedBody(false);
+    cleanup();
+    cleanupApp();
+    const toggled = await savedBody(true);
+    expect(JSON.stringify(toggled)).toBe(JSON.stringify(untouched));
+    expect(toggled.items[0]!["sets"]).toEqual(RAMP);
+    expect(toggled.items[1]!["sets"]).toEqual(MIXED);
+    expect(Object.hasOwn(toggled.items[2]!, "sets")).toBe(false);
+    expect(toggled.items[2]).toMatchObject({ targetRepsLow: 8, targetRepsHigh: 10 });
+    expect((toggled.items[3]!["sets"] as unknown[]).length).toBe(2);
+  });
+
+  it("Done on untouched sheets, rows opened and closed, leaves the draft clean: Cancel doesn't ask", async () => {
+    prepareApp({ auth, catalog: shapesCatalog, fake: createWorkoutFake({ catalog: shapesCatalog, routines: [shapes] }) });
+    const { router, user } = renderApp(editPath);
+    await screen.findByRole("heading", { level: 1, name: "Edit routine" });
+    await doneOnEveryItem(user, true);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(previewPath));
+    expect(screen.queryByRole("dialog", { name: "Discard changes?" })).toBeNull();
+  });
+});
+
 describe("10.2 AC8 / AC16 — a 422 on a plan row shows beside that row", () => {
   it("maps items.0.sets.1.weight onto Set 2's weight and onto the editor row", async () => {
     const ramp = makeRoutine({ id: routineId(1), name: "Ramp", items: [makeRoutineItem({ exerciseId: exerciseId(1), ...deriveTargets(RAMP as never), sets: RAMP })] });
@@ -133,6 +202,7 @@ describe("10.2 AC8 / AC16 — a 422 on a plan row shows beside that row", () => 
     expect(await screen.findByText(/Enter a weight like 62\.5/)).toBeInTheDocument();
     expect(screen.queryByText("server words")).toBeNull();
     await user.click(screen.getByRole("button", { name: /^Bench Press/ }));
+    await openRow(user, 2, await screen.findByRole("dialog"));
     expect(within(await screen.findByRole("dialog")).getByLabelText("Set 2 weight")).toHaveAccessibleDescription(/Enter a weight like 62\.5/);
   });
 });

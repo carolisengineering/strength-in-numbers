@@ -295,6 +295,9 @@ The live card's header is the name, the plan's target line and the note's text; 
 ### Collapsed exercise row
 A non-current exercise is one 44px line inside its card: the summary ("Bench Press · 2 of 4 · next 185 × 5") as the heading's button, a drawn muted check when every planned set is logged, and the "Not saved yet" / "Couldn't save" words when a write is pending or failed.
 
+### Planned set row
+In the routine item sheet's plan, a planned set is one line, a button at least 44px tall on the surface fill: its summary ("1 · Warm-up · 8 reps · 40 kg", "–" for an empty field, typed text that doesn't parse shown as typed) and a muted chevron that turns when the row is open (Spec 17.11). A tap opens the row in place, below its line: the set type across the row, Reps and Weight, then Move up, Move down and Remove. One row is open at a time. A disabled edge Move says "First set" or "Last set" beside it, and a closed row with an error ends "· Check this set". Same shape as the collapsed exercise row; no popover.
+
 ### Workout menu
 One secondary "Workout menu" button in the top row beside the elapsed clock reveals End workout early (or Finish workout) and Discard workout inline, full width. No popover. The finished summary has the same menu beside its back link (#107), revealing Edit workout (secondary) then Delete workout (danger, last) (Spec 17.6 AC22); the summary below reads records, stats, notes, exercises, the owner's Hevy block, then the routine note under a muted label.
 

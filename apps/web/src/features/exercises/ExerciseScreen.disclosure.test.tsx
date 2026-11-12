@@ -275,6 +275,21 @@ describe("17.11 AC6 — the disclosure's open state (Review Focus 1–3)", () =>
     expect(disclosure()).toHaveAttribute("open");
   });
 
+  it("minor 506 — nor under the Delete dialog: Cancel still returns focus to Delete exercise", async () => {
+    const { user, queryClient } = setup(OWN, { usage: [] });
+    await screen.findByText(EXERCISES_COPY.neverLogged);
+    await waitFor(() => expect(disclosure()).toHaveAttribute("open"));
+    const del = screen.getByRole("button", { name: EXERCISES_COPY.deleteExercise });
+    await user.click(del);
+    const dialog = await screen.findByRole("dialog", { name: EXERCISES_COPY.deleteTitle("Echo Bike") });
+    server.use(http.get(`${API_BASE_URL}/v1/exercises/usage`, () => HttpResponse.json({ exercises: logged(OWN) })));
+    await queryClient.invalidateQueries({ queryKey: EXERCISE_KEYS.usage });
+    await chart();
+    expect(disclosure()).toHaveAttribute("open");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(del));
+  });
+
   it("a never-logged page stays open while usage refetches (the default is the cached answer)", async () => {
     const held = deferred<void>();
     const { queryClient } = setup(OWN, { usage: [] });

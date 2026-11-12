@@ -643,6 +643,39 @@ async function checkExercisePage(page, label, { chart = true } = {}) {
   exercisePage.push({ shot: label, ...m, violations });
   for (const v of violations) console.error(`  EXERCISE PAGE ${label}: ${v}`);
 }
+// Spec 17.11 AC11, AC17, AC24 and Review Focus 1, 3: the item sheet's plan rows. Every summary button is a full tap
+// target, the sheet doesn't scroll sideways (390 × 844, 1280, and 320 × 568 with a long typed value), Move keeps focus
+// on the pressed button in a real browser, and Enter in an open row's Reps submits once. Violations go to
+// `_report.json` under `planRows` and fail the run.
+const planRows = [];
+async function checkPlanRows(page, label, found = {}) {
+  const m = await page.evaluate(() => {
+    const dialog = document.querySelector("dialog[open]");
+    const summaries = [...(dialog?.querySelectorAll('ol[aria-label="Planned sets"] > li > button') ?? [])];
+    const body = dialog?.querySelector("[data-sheet-body]");
+    const panels = [...(dialog?.querySelectorAll('ol[aria-label="Planned sets"] [role="group"]') ?? [])];
+    return {
+      viewport: [window.innerWidth, window.innerHeight],
+      summaries: summaries.length,
+      openPanels: panels.length,
+      shortPanelButtons: panels.flatMap((g) => [...g.querySelectorAll("button")]).map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).map((h) => Number(h.toFixed(1))),
+      shortSummaries: summaries.map((b) => b.getBoundingClientRect().height).filter((h) => h < 43.5).map((h) => Number(h.toFixed(1))),
+      bodyOverflow: body ? body.scrollWidth - body.clientWidth : 0,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  const violations = [];
+  if (m.summaries === 0) violations.push("no plan rows in the open sheet");
+  if (found.open && m.openPanels !== 1) violations.push(`expected one open row, found ${m.openPanels}`);
+  if (m.shortPanelButtons.length) violations.push(`open-row buttons under 44 px: ${m.shortPanelButtons.join(", ")}`);
+  if (m.shortSummaries.length) violations.push(`summary buttons under 44 px: ${m.shortSummaries.join(", ")}`);
+  if (m.bodyOverflow > 0 || m.pageOverflow > 0) violations.push(`horizontal overflow (sheet body ${m.bodyOverflow}px, page ${m.pageOverflow}px)`);
+  if (found.moveFocus !== undefined && !found.moveFocus.startsWith("Move down")) violations.push(`after Move down, focus is on "${found.moveFocus}", not Move down`);
+  if (found.enterSubmits !== undefined && found.enterSubmits !== 1) violations.push(`Enter in an open row's Reps submitted ${found.enterSubmits} times (want 1)`);
+  if (found.enterOpen !== undefined && found.enterOpen !== 0) violations.push("the item sheet stayed open after Enter in a row's Reps");
+  planRows.push({ shot: label, ...m, ...found, violations });
+  for (const v of violations) console.error(`  PLAN ROWS ${label}: ${v}`);
+}
 async function shoot(page, device, name, note) {
   await settle(page);
   const dir = path.join(OUT, THEME, device);
@@ -1586,11 +1619,66 @@ try {
     await go(`/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
     await shoot(page, device, "08-routine-editor", "Routine editor, edit mode, Push Day");
     await tryStep("routine item sheet", async () => {
-      await page.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click({ timeout: 4000 });
-      await page.waitForSelector("dialog[open]", { timeout: 4000 });
-      await shoot(page, device, "09-routine-item-sheet", "Routine editor item sheet for Bench Press (plan mode)");
+      const openBench = async (p) => {
+        await p.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click({ timeout: 4000 });
+        await p.waitForSelector("dialog[open] ol[aria-label='Planned sets']", { timeout: 4000 });
+        return p.locator("dialog[open]");
+      };
+      const at = `${THEME}/${device}`;
+      let sheet = await openBench(page);
+      await shoot(page, device, "09-routine-item-sheet", "Routine editor item sheet for Bench Press: a five-set ramp, every row one closed line (Spec 17.11 AC11, AC15)");
+      await checkPlanRows(page, `${at}/09-routine-item-sheet`);
+      await sheet.getByRole("button", { name: /^3 · / }).click();
+      await shoot(page, device, "09a-item-row-open", "Item sheet with the third set open in place: Type, Reps, Weight, Move up / Move down / Remove (Spec 17.11 AC12)");
+      await checkPlanRows(page, `${at}/09a-item-row-open`, { open: true });
+      // Review Focus 3: React re-inserts a moved row's node, which blurs the pressed button in Chromium.
+      await sheet.getByRole("button", { name: "Move down, set 3" }).click();
+      await page.waitForTimeout(100);
+      const moveFocus = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.textContent ?? "");
+      const reps = sheet.getByLabel("Set 4 reps", { exact: true });
+      await reps.fill("abc");
+      await sheet.locator("[data-sheet-actions]").getByRole("button", { name: "Done" }).click();
+      await sheet.getByRole("alert").first().waitFor({ timeout: 4000 });
+      await shoot(page, device, "09b-item-row-invalid", "Item sheet after Done with 'abc' in a set's Reps: that row opens with its error (Spec 17.11 AC16)");
+      await page.keyboard.press("Escape");
+      await page.waitForSelector("dialog[open]", { state: "detached", timeout: 4000 }).catch(() => {});
+      // Review Focus 1: Enter in an open row's Reps submits through the row's Done, once (an untouched sheet).
+      await page.evaluate(() => { window.__planSubmits = 0; document.addEventListener("submit", () => { window.__planSubmits += 1; }, true); });
+      sheet = await openBench(page);
+      await sheet.getByRole("button", { name: /^1 · / }).click();
+      await sheet.getByLabel("Set 1 reps", { exact: true }).press("Enter");
+      await page.waitForTimeout(300);
+      const enterSubmits = await page.evaluate(() => window.__planSubmits);
+      const enterOpen = await page.locator("dialog[open]").count();
+      sheet = await openBench(page);
+      await checkPlanRows(page, `${at}/09-plan-row-focus-and-enter`, { moveFocus, enterSubmits, enterOpen });
       await page.keyboard.press("Escape");
     });
+    if (device === "mobile") {
+      // Spec 17.11 AC24: the plan rows at 320 × 568 with a long typed value on a closed line.
+      await tryStep("plan rows 320", async () => {
+        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        try {
+          await nctx.route(isSinApi, makeHandler({ active: false }));
+          const np = await nctx.newPage();
+          np.setDefaultTimeout(8000);
+          await np.goto(BASE + `/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
+          await np.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click();
+          const sheet = np.locator("dialog[open]");
+          await sheet.getByRole("button", { name: /^3 · / }).click();
+          await sheet.getByLabel("Set 3 reps", { exact: true }).fill("as many as I can manage on the day");
+          await sheet.getByRole("button", { name: /^3 · / }).click();
+          await shoot(np, "mobile-320", "09n-item-row-narrow", "Item sheet at 320 x 568: a closed line with a long typed value wraps inside its row (Spec 17.11 AC11, AC24)");
+          await checkPlanRows(np, `${theme}/mobile-320/09n-item-row-narrow`);
+          // The open row at 320: four type options, Reps and Weight, three actions and the edge note.
+          await sheet.getByRole("button", { name: /^3 · / }).click();
+          await shoot(np, "mobile-320", "09o-item-row-narrow-open", "Item sheet at 320 x 568 with the long-valued set open: its panel fits the width (Spec 17.11 AC24)");
+          await checkPlanRows(np, `${theme}/mobile-320/09o-item-row-narrow-open`, { open: true });
+        } finally {
+          await nctx.close();
+        }
+      });
+    }
 
     await go(`/app/workouts/routines/new`);
     await shoot(page, device, "10-routine-new", "Routine editor, create mode (empty)");
@@ -2087,6 +2175,8 @@ try {
           await go(`/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
           await page.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click({ timeout: 4000 });
           await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          // Spec 17.11: a loaded plan opens with every row closed; open set 1 to measure its type.
+          await page.locator("dialog[open]").getByRole("button", { name: /^1 · / }).click({ timeout: 4000 });
           await page.waitForTimeout(200);
           check("plan row", size, await measureSegments(page, "dialog[open]", "Set 1 type"), narrow ? "two" : null);
           await shoot(page, device, `s177a-plan-row-segmented${narrow ? "-320" : ""}`, `Spec 17.7 AC6: a routine plan row's Set type across the row, Weight unit above the rows${narrow ? ", at 320 × 568 (2 × 2)" : ""}`);
@@ -2623,6 +2713,15 @@ if (DEVICE_FILTER.includes("mobile") && (!exercisePage.some((e) => e.shot.endsWi
   process.exitCode = 1;
 }
 if (frontDoor.some((f) => f.violations.length)) process.exitCode = 1;
+if (planRows.some((r) => r.violations.length)) process.exitCode = 1;
+if (!planRows.some((r) => r.moveFocus !== undefined) || report.some((r) => r.note?.startsWith("SKIPPED routine item sheet") || r.note?.startsWith("SKIPPED plan rows 320"))) {
+  console.error("  PLAN ROWS: a plan-row step did not run");
+  process.exitCode = 1;
+}
+if (DEVICE_FILTER.includes("mobile") && !["/09n-item-row-narrow", "/09o-item-row-narrow-open"].every((end) => planRows.some((r) => r.shot.endsWith(end)))) {
+  console.error("  PLAN ROWS: the 320 step did not run");
+  process.exitCode = 1;
+}
 if (offCenter.length) process.exitCode = 1;
 if (loggingLoop.some((l) => l.violations.length)) process.exitCode = 1;
 if (segments.some((l) => l.violations.length)) process.exitCode = 1;
@@ -2666,7 +2765,7 @@ if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED l
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

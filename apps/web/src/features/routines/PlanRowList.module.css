@@ -14,15 +14,48 @@
 }
 
 .row {
-  padding: var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
 }
 
-.group {
+/* Spec 17.11 AC11: a planned set is one line, a button at least the tap-target tall; its label wraps, never clips. */
+.summary {
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.summaryText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  flex: none;
+  color: var(--color-muted);
+}
+
+.chevronOpen {
+  transform: rotate(0.5turn);
+}
+
+/* The open row: Type spans the panel; Reps and Weight share a line; the actions wrap below. */
+.panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
 }
 
 /* Spec 17.7: set type spans the row, above reps and weight. */

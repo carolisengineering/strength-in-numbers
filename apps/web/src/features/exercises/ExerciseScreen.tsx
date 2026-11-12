@@ -55,8 +55,8 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const showBody = resolution.kind === "deleted" || (resolution.kind === "found" && !cachedNever);
   // Spec 17.11 AC3, AC4: "Exercise details" is open by default only when the page has nothing else (never logged).
   // The default is `cachedNever`, not `neverLogged`, which goes false during every usage refetch and would close the
-  // disclosure mid-read. Once the lifter toggles it, their choice holds; opening Edit pins it open, so a usage answer
-  // that lands while the sheet is up can't close the sheet's parent.
+  // disclosure mid-read. Once the lifter toggles it, their choice holds; any tap inside it pins it open, so a usage
+  // answer that lands while Edit's sheet or Delete's dialog is up can't close the parent their focus returns to.
   const [lifterOpen, setLifterOpen] = useState<boolean | null>(null);
   const disclosureOpen = lifterOpen ?? cachedNever;
   const records = useExerciseRecords(exerciseId, { enabled: showBody });
@@ -175,13 +175,14 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
         }}
       >
         <summary className={styles.disclosureSummary}>{EXERCISES_COPY.detailsLabel}</summary>
-        <div className={styles.disclosureBody}>
+        {/* Any tap inside pins it open (minor 506): Edit's sheet and Delete's dialog return focus to a button in here,
+            so a usage answer landing while either is up must not close it. */}
+        <div className={styles.disclosureBody} onClickCapture={() => setLifterOpen(true)}>
           <ExerciseDetails row={resolution.row} />
           <ExerciseActions
             row={resolution.row}
             onStatus={setStatus}
             deleteRef={deleteRef}
-            onEditOpen={() => setLifterOpen(true)}
             onDelete={() => {
               setDeleteError(null);
               setDeleteOpen(true);
