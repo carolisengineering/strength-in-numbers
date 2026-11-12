@@ -139,7 +139,8 @@ describe("10.6 AC17 — same controls", () => {
     expect(onEdit).toEqual(onLive);
     expect(onEdit).toContain("New exercises go into Cooldown.");
     expect(onEdit.filter((t) => t.startsWith("Edit section"))).toEqual(["Edit section Warm-up", "Edit section Cooldown"]);
-  });
+    // Two whole screens in one test: about 0.4 s alone, but over 5 s once in CI's combined job (minor 472).
+  }, 30_000);
 
   it("the edit screen is not a mode of ActiveSession (import scan)", () => {
     const source = readFileSync(resolve(__dirname, "EditWorkoutScreen.tsx"), "utf8");

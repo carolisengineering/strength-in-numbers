@@ -9,16 +9,13 @@ const LIST_BOUND_MS = 1_000;
 
 describe.skipIf(!shouldRunIntegration())("AC27 — 50 routines × 30 items × 20 rows read in one statement", () => {
   let db: IntegrationDb;
+  let u: string;
+  // The seed (1 500 items, 30 000 rows) runs here, not in the `it`: under CI load it once took over the test's 5 s
+  // before the read was timed (minor 489). Only the read sits under the test timeout and the 1 s bound.
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
     db = await startIntegrationDb();
-  }, 180_000);
-  afterAll(async () => {
-    await db?.stop();
-  });
-
-  it("returns 30 000 rows from a single statement (plus the 09.3 sweep probe) within the bound", async () => {
-    const u = await insertUser(db);
+    u = await insertUser(db);
     const ex = await insertExercise(db, { ownerUserId: u });
     await db.prisma.$executeRawUnsafe(`INSERT INTO "routine" (id, user_id, name) SELECT gen_random_uuid(), $1::uuid, 'R' || g FROM generate_series(1, 50) g`, u);
     await db.prisma.$executeRawUnsafe(
@@ -27,6 +24,12 @@ describe.skipIf(!shouldRunIntegration())("AC27 — 50 routines × 30 items × 20
     await db.prisma.$executeRawUnsafe(
       `INSERT INTO "routine_item_set" (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit)
        SELECT gen_random_uuid(), ri.id, s, 'working', 5, 5, 100, 'kg' FROM "routine_item" ri, generate_series(0, 19) s`);
+  }, 180_000);
+  afterAll(async () => {
+    await db?.stop();
+  });
+
+  it("returns 30 000 rows from a single statement (plus the 09.3 sweep probe) within the bound", async () => {
     const seen = await startCapture(db);
     const t0 = Date.now();
     const list = (await createRoutineRepository(db.prisma).list(u)).routines;
