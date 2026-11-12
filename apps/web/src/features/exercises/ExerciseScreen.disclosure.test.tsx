@@ -187,6 +187,31 @@ describe("17.11 AC5 — messages stay outside the disclosure", () => {
     }
   });
 
+  it("minor 510 — Saved. scrolls the status line into view (Edit sits far below it); focus stays on Edit", async () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+      expect(arg).toEqual({ block: "nearest" });
+      scrolled.push(this);
+    };
+    try {
+      const { user } = setup(OWN);
+      await chart();
+      await openDetails(user);
+      const edit = screen.getByRole("button", { name: "Edit" });
+      await user.click(edit);
+      const sheet = await screen.findByRole("dialog", { name: "Edit exercise" });
+      await user.type(within(sheet).getByLabelText("Name"), " 2");
+      scrolled.length = 0;
+      await user.click(sheetRow().getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(status()).toHaveTextContent(EXERCISES_COPY.saved));
+      await waitFor(() => expect(scrolled).toContain(status()));
+      await waitFor(() => expect(edit).toHaveFocus());
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("Saved. shows in the status line, outside the disclosure, after it is closed", async () => {
     const { user } = setup(OWN);
     await chart();
