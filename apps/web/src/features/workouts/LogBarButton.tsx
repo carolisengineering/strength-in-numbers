@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useRef, type KeyboardEvent } from "react";
 
 import { Button } from "../../ui/Button";
 import { DOUBLE_TAP_MS, LogActionContext, useLogAction } from "./logAction";
@@ -50,8 +50,23 @@ export function LogBarButton({ action: mode }: { action: BarAction }) {
     action.run();
   }
 
+  // A held key's repeats never press Log (minor 429): a keyboard Undo moves focus here mid-press, so Enter's
+  // auto-repeat would re-log the set it just undid. Cancelling the repeated keydown stops the click it would make.
+  // (Space presses a button on keyup, so its repeats never do.)
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.repeat && event.key === "Enter") event.preventDefault();
+  }
+
   return (
-    <Button block data-log-bar="" aria-disabled={inert || undefined} aria-label={action?.ariaLabel} aria-busy={action?.busy || undefined} onClick={onClick}>
+    <Button
+      block
+      data-log-bar=""
+      aria-disabled={inert || undefined}
+      aria-label={action?.ariaLabel}
+      aria-busy={action?.busy || undefined}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+    >
       {action?.label ?? "Log set"}
     </Button>
   );

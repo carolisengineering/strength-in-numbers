@@ -630,6 +630,18 @@ describe("17.5 AC14 — double taps", () => {
     expect(undoButton()).toHaveAccessibleName(/^Undo set 2,/);
   });
 
+  it("minor 429 — Enter held on Undo undoes once: the key's repeats reach Log (focus moved there) and log nothing", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    await user.tab({ shift: true });
+    expect(undoButton()).toHaveFocus();
+    await user.keyboard("{Enter>4/}");
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+    expect(logButton("A")).toHaveFocus();
+    expect(posts(fake)).toHaveLength(1);
+  });
+
   it("Undo, then Log inside 600 ms, logs", async () => {
     const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
     vi.useFakeTimers({ toFake: ["Date"] });
