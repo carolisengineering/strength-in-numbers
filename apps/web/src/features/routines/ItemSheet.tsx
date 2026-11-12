@@ -90,6 +90,8 @@ export function ItemSheet({
   const [errors, setErrors] = useState<SheetMessages>(fieldMessages);
   const formId = useId();
   const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, RowErrors>>(rowMessages);
+  // Spec 17.11 AC12: a plan just entered from the quick line opens its first row; a stored plan opens closed.
+  const [enteredFromQuick, setEnteredFromQuick] = useState(false);
 
   const planUnit: WeightUnit | "mixed" = plan === null ? unit : (unitOfRows(plan) ?? unit);
   // A weight typed into a row that has no unit takes the unit the toggle shows (never silently the profile's).
@@ -103,6 +105,7 @@ export function ItemSheet({
       return;
     }
     setErrors({});
+    setEnteredFromQuick(true);
     setPlan(enterPlan({ count: parsed.value, reps, weight, weightUnit: unit }, () => crypto.randomUUID()));
   }
 
@@ -199,8 +202,9 @@ export function ItemSheet({
               showWeight={showWeight}
               unit={planUnit}
               errors={rowErrors}
+              openFirst={enteredFromQuick}
               onField={(key, patch) => edit((rows) => setRowField(rows, key, patch))}
-              onAdd={() => edit((rows) => addRow(rows, crypto.randomUUID()))}
+              onAdd={(key) => edit((rows) => addRow(rows, key))}
               onRemove={(key) => edit((rows) => removeRow(rows, key))}
               onMove={(key, dir) => edit((rows) => moveRow(rows, key, dir))}
               onUnit={(next) => {
