@@ -129,7 +129,7 @@ causes:
 | Symptom | Likely cause |
 |---|---|
 | `Auth0 rejected the test user: …` | wrong secret, a blocked user, or brute-force protection after repeated failures (unblock in the dashboard) |
-| `readyz not ready after 120 s` | Render free-plan cold start that didn't finish, or the API is down |
+| `readyz not ready after 240 s` | Render free-plan cold start that didn't finish, or the API is down |
 | `wait-for-commit: FAIL` | Render didn't deploy this SHA (check the dashboard), or `RENDER_GIT_COMMIT` was missing at build time |
 | a locator times out on a button | a UI rename: update `NAMES` in `apps/web/e2e/helpers.ts` in the same PR |
 | `couldn't be saved` / `not saved yet` never clears | a set write failed against the real API, which is a real bug |

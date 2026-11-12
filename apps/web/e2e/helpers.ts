@@ -246,13 +246,19 @@ export async function raceLoginOutcome(
   return Promise.race([landed, refused]);
 }
 
+/**
+ * How long the warm-up waits for `/readyz`. A free Render instance that went idle between the API smoke and this job
+ * once took over two minutes to answer (minor 483), so 120 s was not enough.
+ */
+const WARM_API_MS = 240_000;
+
 /** Spec 06.3 §6.2 — wake the free-plan API before the first UI action. */
 export async function warmApi(request: APIRequestContext, apiUrl: string | undefined): Promise<void> {
   if (!apiUrl) {
     console.warn("e2e: E2E_API_URL is not set — skipping the API warm-up; a cold API may time out the first step");
     return;
   }
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + WARM_API_MS;
   let last = "no response";
   while (Date.now() < deadline) {
     try {
@@ -264,5 +270,5 @@ export async function warmApi(request: APIRequestContext, apiUrl: string | undef
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
-  throw new Error(`e2e: API ${apiUrl}/readyz not ready after 120 s (${last})`);
+  throw new Error(`e2e: API ${apiUrl}/readyz not ready after ${WARM_API_MS / 1000} s (${last})`);
 }
