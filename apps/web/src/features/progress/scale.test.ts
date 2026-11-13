@@ -145,13 +145,21 @@ describe("08.1 AC4 — chart geometry", () => {
     expect(labels.length).toBeGreaterThanOrEqual(3);
   });
 
+  it("17.13 review focus 5 — a day-month across a year prints the full year", () => {
+    // One month start inside the span, so the ends are labeled; a two-digit year would read as a day ("Dec 25").
+    expect(xLabels(layoutChart([pt("a", "2025-12-20", 1), pt("b", "2026-01-10", 1)])).map((l) => l.text)).toEqual([
+      "Dec 20, 2025",
+      "Jan 10, 2026",
+    ]);
+  });
+
   it("xLabels: fallback to first/last day-month, single date, and year only across a year boundary", () => {
-    expect(xLabels(layoutChart([pt("a", "2026-10-06", 1), pt("b", "2026-10-21", 1)])).map((l) => l.text)).toEqual(["6 Oct", "21 Oct"]);
-    expect(xLabels(layoutChart([pt("a", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["6 Oct"]);
+    expect(xLabels(layoutChart([pt("a", "2026-10-06", 1), pt("b", "2026-10-21", 1)])).map((l) => l.text)).toEqual(["Oct 6", "Oct 21"]);
+    expect(xLabels(layoutChart([pt("a", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["Oct 6"]);
     expect(xLabels(layoutChart([pt("a", "2025-11-10", 1), pt("b", "2026-02-10", 1)])).map((l) => l.text)).toEqual([
-      "Dec 25",
-      "Jan 26",
-      "Feb 26",
+      "Dec 2025",
+      "Jan 2026",
+      "Feb 2026",
     ]);
   });
 });

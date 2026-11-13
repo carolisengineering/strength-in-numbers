@@ -3,13 +3,8 @@ import { formatClock, type Modality, type SetEntry, type SetType } from "@sin/co
 // One pinned formatter so tests and CI are locale-independent (06.0 AC6's reasoning).
 const NUMBER = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 
-// Pinned locale + UTC so a date is the one the server stored (`localDate`), whatever the device says.
-const LOCAL_DATE = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-
-/** `"2026-10-06"` → `"Tue 6 Oct"`. Shared by the summary and the History rows (Spec 08.0 AC11). */
-export function formatLocalDate(localDate: string): string {
-  return LOCAL_DATE.format(new Date(`${localDate}T00:00:00Z`));
-}
+// Spec 17.13 AC1: dates and times live in `ui/dateText.ts`; these names stay here for their callers.
+export { formatLocalDate, formatStartedAt, formatStartedTime } from "../../ui/dateText";
 
 /** Labels for the Set-type select and the tag on a logged row. */
 export const SET_TYPE_LABELS: Record<SetType, string> = {
@@ -18,39 +13,6 @@ export const SET_TYPE_LABELS: Record<SetType, string> = {
   drop: "Drop",
   failure: "Failure",
 };
-
-/**
- * "HH:MM", 24-hour. `hourCycle: "h23"`, not `hour12: false`: the latter resolves to h24 in some ICU
- * builds and prints "24:05" at five past midnight. `timeZone` exists so tests are machine-independent.
- */
-export function formatStartedTime(iso: string, { timeZone }: { timeZone?: string } = {}): string {
-  return new Intl.DateTimeFormat("en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    ...(timeZone ? { timeZone } : {}),
-  }).format(new Date(iso));
-}
-
-/**
- * Spec 18.0 AC3: a start as `"Wed 14 Oct, 18:05"` in the device zone (the live screen's "Started 18:05" plus
- * the day). Unlike `formatLocalDate` this is a moment, so it follows the zone, not the stored `localDate`.
- */
-export function formatStartedAt(iso: string, { timeZone, today }: { timeZone?: string; today?: Date } = {}): string {
-  const zone = timeZone ? { timeZone } : {};
-  // Spec 18.0 AC34: a start on `today`'s calendar day (in the same zone) is the time alone.
-  if (today) {
-    const dayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", ...zone });
-    if (dayKey.format(new Date(iso)) === dayKey.format(today)) return formatStartedTime(iso, zone);
-  }
-  const day = new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    ...zone,
-  }).format(new Date(iso));
-  return `${day}, ${formatStartedTime(iso, zone)}`;
-}
 
 /** A count grouped like every other figure ("1,200"); Spec 18.1 §6.5 uses it for calories. */
 export const formatCount = (n: number): string => NUMBER.format(n);

@@ -3,8 +3,8 @@ import { formatLocalDateWithYear, todayLocal } from "./dates";
 
 describe("08.1 AC17 — dates with a year (readout and sessions rows)", () => {
   it("formats a local date with its year, UTC-pinned", () => {
-    expect(formatLocalDateWithYear("2026-10-06")).toBe("Tue 6 Oct 2026");
-    expect(formatLocalDateWithYear("2025-01-01")).toBe("Wed 1 Jan 2025");
+    expect(formatLocalDateWithYear("2026-10-06")).toBe("Tue, Oct 6, 2026");
+    expect(formatLocalDateWithYear("2025-01-01")).toBe("Wed, Jan 1, 2025");
   });
 
   it("todayLocal is the device's local calendar date", () => {

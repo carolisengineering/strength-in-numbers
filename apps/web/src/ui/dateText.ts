@@ -63,7 +63,7 @@ export function dayText(date: Date, { timeZone, year = false }: Zone & { year?: 
   return plain(formatter(year ? "dayYear" : "day", options, timeZone).format(date));
 }
 
-/** A time: en-US "5:10 PM", en-GB "17:10". */
+/** A time: en-US "5:10 PM"; a 24-hour locale "17:10". */
 export function timeText(date: Date, { timeZone }: Zone = {}): string {
   return plain(formatter("time", TIME, timeZone).format(date));
 }
@@ -94,4 +94,25 @@ export function monthText(year: number, month: number, { withYear = false }: { w
 export function isSameDay(a: Date, b: Date, { timeZone }: Zone = {}): boolean {
   const key = formatter("dayKey", DAY_KEY, timeZone, "en-CA");
   return key.format(a) === key.format(b);
+}
+
+/** `"2026-10-06"` → en-US `"Tue, Oct 6"`: a stored calendar day, in UTC so it never shifts (Spec 08.0 AC11, 17.13 AC4a). */
+export function formatLocalDate(localDate: string): string {
+  return dayText(new Date(`${localDate}T00:00:00Z`), { timeZone: "UTC" });
+}
+
+/** A start's time: en-US "6:05 PM". `timeZone` exists so tests are machine-independent. */
+export function formatStartedTime(iso: string, { timeZone }: Zone = {}): string {
+  return timeText(new Date(iso), { timeZone });
+}
+
+/**
+ * Spec 18.0 AC3: a start as en-US `"Wed, Oct 14, 6:05 PM"` in the device zone. Unlike `formatLocalDate` this is a
+ * moment, so it follows the zone, not the stored `localDate`. AC34: a start on `today`'s calendar day (in the same
+ * zone) is the time alone.
+ */
+export function formatStartedAt(iso: string, { timeZone, today }: Zone & { today?: Date } = {}): string {
+  const date = new Date(iso);
+  if (today && isSameDay(date, today, { timeZone })) return timeText(date, { timeZone });
+  return momentText(date, { timeZone });
 }

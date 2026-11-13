@@ -1,4 +1,5 @@
 import type { Routine } from "@sin/core";
+import { dayText } from "../../ui/dateText";
 import { oneOffMetaText, oneOffNoteText } from "./messages";
 import { routineSummary } from "./targetFormat";
 
@@ -8,14 +9,9 @@ import { routineSummary } from "./targetFormat";
  */
 export const isOneOff = (r: Pick<Routine, "oneOffUntil">): boolean => r.oneOffUntil !== null;
 
-const DAY_OPTIONS = { weekday: "short", day: "numeric", month: "short" } as const;
-const DEVICE_DAY = new Intl.DateTimeFormat("en-GB", DAY_OPTIONS);
-
-/** "Fri 30 Oct": the expiry instant in the device's zone (an instant, not a stored calendar date). `timeZone` pins it for tests. */
+/** En-US "Fri, Oct 30": the expiry instant in the device's zone (an instant, not a stored calendar date). `timeZone` pins it for tests. */
 export function oneOffDay(iso: string, options: { timeZone?: string } = {}): string {
-  const format =
-    options.timeZone === undefined ? DEVICE_DAY : new Intl.DateTimeFormat("en-GB", { ...DAY_OPTIONS, timeZone: options.timeZone });
-  return format.format(new Date(iso));
+  return dayText(new Date(iso), options);
 }
 
 /** The expiry day, or null once it has passed (only while a live workout holds the routine, Spec 09.3 AC20). */

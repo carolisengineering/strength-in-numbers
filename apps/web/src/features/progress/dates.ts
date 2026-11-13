@@ -1,11 +1,11 @@
-import { formatLocalDate } from "../workouts/format";
+import { dayText } from "../../ui/dateText";
 
 /**
- * `"2026-10-06"` → `"Tue 6 Oct 2026"`: the readout and sessions rows, where All can repeat a day-month
- * (D9). Built from 08.0's pinned formatter plus the year: ICU's own year pattern inserts a comma.
+ * `"2026-10-06"` → en-US `"Tue, Oct 6, 2026"`: the readout and sessions rows, where All can repeat a day-month
+ * (D9). UTC, like `formatLocalDate`, so the stored day never shifts (Spec 17.13).
  */
 export function formatLocalDateWithYear(localDate: string): string {
-  return `${formatLocalDate(localDate)} ${localDate.slice(0, 4).replace(/^0+(?=\d)/, "")}`;
+  return dayText(new Date(`${localDate}T00:00:00Z`), { timeZone: "UTC", year: true });
 }
 
 /** The device's local calendar date, `YYYY-MM-DD` — the default `ProgressClockContext` value (§6.1). */

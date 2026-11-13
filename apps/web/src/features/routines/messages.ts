@@ -34,7 +34,7 @@ export const KEEP_AS_ROUTINE = "Keep as a routine";
 export const KEPT_STATUS = "Kept in your routines.";
 export const KEEP_FAILED = "Couldn't keep this routine — try again.";
 export const OFFLINE_KEEP = OFFLINE_DELETE;
-/** "6 exercises · 2 supersets · from text · until Fri 30 Oct"; no "until" when `day` is null (past expiry). */
+/** "6 exercises · 2 supersets · from text · until Fri, Oct 30"; no "until" when `day` is null (past expiry). */
 export const oneOffMetaText = (summary: string, day: string | null): string =>
   `${summary} · from text${day === null ? "" : ` · until ${day}`}`;
 export const oneOffNoteText = (day: string | null): string =>

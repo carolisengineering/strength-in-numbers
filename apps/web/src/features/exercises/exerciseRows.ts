@@ -46,7 +46,7 @@ export function buildExerciseRows(
 }
 
 /**
- * A row's second line (AC10): "Last logged Sat 24 Oct · Calories", the year added outside today's
+ * A row's second line (AC10): "Last logged Sat, Oct 24 · Calories", the year added outside today's
  * year; "Built in" / "Yours" when never logged; only the type while usage is unknown (AC14 c).
  */
 export function metaLine(item: ExerciseRow, today: string, usageKnown: boolean): string {
