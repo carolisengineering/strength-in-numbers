@@ -10,9 +10,9 @@ import { ApiError } from "../../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../../test/workoutHarness";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../../history/queries";
-import { WORKOUT_KEYS } from "../queries";
+import { WORKOUT_KEYS, useWorkoutDetail } from "../queries";
 import { useIsSetWritePending } from "../useWorkoutMutations";
-import { EDIT_MUTATION_KEY, useEditCreateSet, useEditDeleteSet, useEditDetails, useEditSetNote, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
+import { EDIT_MUTATION_KEY, useEditAddExercise, useEditCreateSet, useEditDeleteSet, useEditDetails, useEditSetNote, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
 
 afterEach(() => observability.track.mockReset());
 
@@ -114,6 +114,19 @@ describe("18.0 AC22 / AC14 / AC27 — the set hooks", () => {
     await act(async () => response.resolve({ ...set, reps: 6 }));
     await waitFor(() => expect(detailOf(qc, detail.id).exercises[0]!.sets[0]!.reps).toBe(6));
     expect(historyReset(qc)).toBe(true);
+  });
+});
+
+describe("10.7 AC22 / minor 323 — the edit screen's Add exercise waits for its re-read to land", () => {
+  it("asks again when its re-read is canceled, up to three times", async () => {
+    const { qc, detail, exercise } = seeded();
+    const live = fakeClient({ getById: () => Promise.resolve(detail) });
+    const edit = fakeClient({ addExercise: async () => ({ ...exercise, id: "added" }) as never });
+    const { result } = renderHook(() => ({ detail: useWorkoutDetail(detail.id), add: useEditAddExercise() }), { wrapper: wrapperWith(qc, live, edit) });
+    await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));
+    const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
+    await act(() => result.current.add.mutateAsync({ workoutId: detail.id, exerciseId: "e1" }));
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.detail(detail.id)))).toHaveLength(3);
   });
 });
 

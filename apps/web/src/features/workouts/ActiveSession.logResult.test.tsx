@@ -101,6 +101,48 @@ describe("10.7 AC27 — the Log result sheet (live)", () => {
     expect(announcement()).toHaveTextContent("That section no longer exists");
   });
 
+  it("minor 333 — a format changed on another device closes the sheet with its line, and nothing is sent", async () => {
+    const { user, fake, queryClient } = await setup();
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Round 5"), "330");
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { format: "amrap", capSeconds: 900 }, roundTimes: [] })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(announcement()).toHaveTextContent("This section's timer changed.");
+    expect(sectionWrites(fake)).toEqual([]);
+  });
+
+  it("minor 333 — the same format with another cap keeps the sheet open, with the lifter's entries (review focus 3)", async () => {
+    const { user, fake, queryClient } = await setup([{ name: "Main", timer: { format: "amrap", capSeconds: 900 } }]);
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Reps"), "7");
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { format: "amrap", capSeconds: 1200 } })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(queryClient.getQueryData<{ sections: { timer: SectionTimer }[] }>(["workouts", "active"])!.sections[0]!.timer).toEqual({ format: "amrap", capSeconds: 1200 }));
+    expect(screen.getByRole("dialog", { name: "Log result" })).toBeInTheDocument();
+    expect(sheet().getByLabelText("Reps")).toHaveValue("7");
+  });
+
+  it("code review #4 — a Set Timer's round count changed elsewhere closes the sheet: its rows are the old count's", async () => {
+    const { user, fake, queryClient } = await setup();
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Round 5"), "330");
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { ...SET5, rounds: 6 } })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(announcement()).toHaveTextContent("This section's timer changed.");
+    expect(sectionWrites(fake)).toEqual([]);
+  });
+
+  it("final review #4 — a For Time section's cap removed on another device closes the sheet with its line", async () => {
+    const { user, fake, queryClient } = await setup([{ name: "Main", timer: { format: "time_cap", capSeconds: 900 } }]);
+    await openLog(user);
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { format: "time_cap", capSeconds: null } })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(announcement()).toHaveTextContent("This section's timer changed.");
+  });
+
   it("the timer removed on another device closes the sheet with its line", async () => {
     const { user, fake, queryClient } = await setup();
     await openLog(user);
@@ -215,6 +257,22 @@ describe("10.7 AC40 — no timer change under unsent entries", () => {
     await user.click(edit.getByRole("button", { name: "Cancel" }));
     await user.click(screen.getByRole("button", { name: "Edit section Other" }));
     for (const radio of within(segmented("Timer", within(screen.getByRole("dialog", { name: "Edit section" })))).getAllByRole("radio")) expect(radio).toBeEnabled();
+  });
+});
+
+describe("10.7 AC40 / minor 328 — the lock's line when its entries failed", () => {
+  it("every entry failed: the Timer group stays locked and says to discard them first", async () => {
+    const { user, fake } = await setup();
+    fake.failNext({ method: "PUT", path: /round-times/ }, () => problemResponse(422, "validation-failed"));
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Round 5"), "330");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(await within(screen.getByRole("region", { name: "Main" })).findByText("Couldn't be saved")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+    const edit = within(screen.getByRole("dialog", { name: "Edit section" }));
+    for (const radio of within(segmented("Timer", edit)).getAllByRole("radio")) expect(radio).toBeDisabled();
+    expect(edit.getByText("Discard the times that couldn't be saved first.")).toBeInTheDocument();
+    expect(edit.queryByText("Wait for the logged times to save before changing the timer.")).toBeNull();
   });
 });
 

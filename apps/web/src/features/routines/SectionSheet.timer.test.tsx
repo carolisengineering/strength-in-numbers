@@ -98,6 +98,39 @@ describe("10.7 AC58 — text as text", () => {
   });
 });
 
+describe("10.7 AC5 / 10.3 AC16 — minor 313: a field's error clears when that field changes", () => {
+  it("Done shows Name's and the timer's errors; typing in Name hides only Name's; a timer edit hides the timer's", async () => {
+    const user = userEvent.setup();
+    const { dialog, onDone } = sheet();
+    const d = within(dialog);
+    await user.clear(d.getByLabelText("Name"));
+    await chooseSegmentValue(user, "Timer", "set_timer", d);
+    await user.click(d.getByRole("button", { name: "Done" }));
+    expect(d.getAllByRole("alert").map((a) => a.textContent)).toEqual([expect.any(String), ENTER_ROUNDS, ENTER_ROUND_LENGTH]);
+    expect(d.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
+
+    await user.type(d.getByLabelText("Name"), "M");
+    expect(d.getByLabelText("Name")).not.toHaveAttribute("aria-invalid", "true");
+    expect(d.getAllByRole("alert").map((a) => a.textContent)).toEqual([ENTER_ROUNDS, ENTER_ROUND_LENGTH]);
+
+    await user.type(d.getByLabelText("Rounds"), "5");
+    expect(d.getAllByRole("alert").map((a) => a.textContent)).toEqual([ENTER_ROUND_LENGTH]);
+
+    await user.click(d.getByRole("button", { name: "Done" }));
+    expect(onDone).not.toHaveBeenCalled();
+    expect(d.getAllByRole("alert").map((a) => a.textContent)).toEqual([ENTER_ROUND_LENGTH]);
+  });
+
+  it("a server group message clears on any timer edit", async () => {
+    const user = userEvent.setup();
+    const { dialog } = sheet({ section: { ...section, timer: { format: "set_timer", rounds: 5, roundSeconds: 60 } }, messages: { timer: { group: "Check the timer and try again." } } });
+    const d = within(dialog);
+    expect(d.getByText("Check the timer and try again.")).toBeInTheDocument();
+    await user.type(d.getByLabelText("Rounds"), "0");
+    expect(d.queryByText("Check the timer and try again.")).toBeNull();
+  });
+});
+
 describe("10.7 AC4 — a new format starts clean", () => {
   it("after a failed Done, switching format drops the old format's errors", async () => {
     const user = userEvent.setup();

@@ -512,6 +512,7 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     // Y's row is now the first flagged, but no second reveal happens: Y stays collapsed (Spec 17.1 AC17, once per diagnosis).
     expect(within(screen.getByRole("article", { name: "Y" })).queryByRole("form")).toBeNull();
     await new Promise((r) => setTimeout(r, 20));
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    // Only row reveals count here; the Delete set confirm brings its own question into view (final review #1).
+    expect(scrolled.filter((el) => !/^Delete set \d+\?/.test(el.textContent ?? ""))).toHaveLength(1);
   });
 });

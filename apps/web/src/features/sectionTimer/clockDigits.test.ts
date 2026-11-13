@@ -65,3 +65,22 @@ describe("10.7 AC2 — seconds go up to 59 (pure)", () => {
     expect(digitsToSeconds(d)).toBe(s);
   });
 });
+
+describe("10.7 AC1 / minor 315 — a pasted h:mm:ss reads as hours", () => {
+  it("1:30:00 is 90:00 and 0:45:30 is 45:30", () => {
+    expect(nextDigits("", "1:30:00")).toBe("9000");
+    expect(digitsToText(nextDigits("", "1:30:00"))).toBe("90:00");
+    expect(nextDigits("", "0:45:30")).toBe("4530");
+  });
+
+  it("an h:mm:ss over the field's five digits keeps the old value", () => {
+    expect(nextDigits("12", "20:00:00")).toBe("12");
+  });
+
+  it("anything with one colon or none reads as today: typing and other pastes fill from the right", () => {
+    expect(nextDigits("34", "0:341")).toBe("341");
+    expect(nextDigits("", "1:30")).toBe("130");
+    expect(nextDigits("", "13000")).toBe("13000");
+    expect(nextDigits("", "1:3:00")).toBe("1300");
+  });
+});

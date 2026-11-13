@@ -683,6 +683,40 @@ async function checkPlanRows(page, label, found = {}) {
   planRows.push({ shot: label, ...m, ...found, violations });
   for (const v of violations) console.error(`  PLAN ROWS ${label}: ${v}`);
 }
+// Minor 523: in the open row, each edge note ("First set", "Last set") sits beside its own Move button: its center
+// within the button's height, and to its right. Minors 520 and 521 (09b): the flagged row's Reps and Weight tops
+// match, and the open row's line never says "Check this set". Violations go under `planRows`.
+async function checkPlanRowExtras(page, label, { notes = false, invalid = false } = {}) {
+  const m = await page.evaluate(() => {
+    const group = document.querySelector('dialog[open] ol[aria-label="Planned sets"] [role="group"]');
+    const out = { edges: [], tops: null, openSummary: null };
+    if (!group) return out;
+    for (const button of group.querySelectorAll("button[aria-describedby]")) {
+      const note = document.getElementById(button.getAttribute("aria-describedby"));
+      if (!note || !/set$/.test(note.textContent ?? "")) continue;
+      const b = button.getBoundingClientRect();
+      const n = note.getBoundingClientRect();
+      out.edges.push({ note: note.textContent, centerInside: n.top + n.height / 2 >= b.top && n.top + n.height / 2 <= b.bottom, rightOf: n.left >= b.right });
+    }
+    const reps = group.querySelector('input[id$="reps"]')?.getBoundingClientRect();
+    const weight = group.querySelector('input[id$="weight"]')?.getBoundingClientRect();
+    if (reps && weight) out.tops = [reps.top, weight.top];
+    out.openSummary = group.closest("li")?.querySelector(":scope > button")?.textContent ?? null;
+    return out;
+  });
+  const violations = [];
+  if (notes) {
+    if (m.edges.length === 0) violations.push("minor 523: no edge note in the open row");
+    for (const e of m.edges) if (!e.centerInside || !e.rightOf) violations.push(`minor 523: "${e.note}" is not beside its button`);
+  }
+  if (invalid) {
+    if (!m.tops) violations.push("minor 520: the open row has no Reps and Weight");
+    else if (Math.abs(m.tops[0] - m.tops[1]) > 0.5) violations.push(`minor 520: Reps top ${m.tops[0].toFixed(1)} vs Weight top ${m.tops[1].toFixed(1)}`);
+    if (/Check this set/.test(m.openSummary ?? "")) violations.push("minor 521: the open row's line says Check this set");
+  }
+  planRows.push({ shot: label, ...m, violations });
+  for (const v of violations) console.error(`  PLAN ROWS ${label}: ${v}`);
+}
 async function shoot(page, device, name, note) {
   await settle(page);
   const dir = path.join(OUT, THEME, device);
@@ -1379,7 +1413,7 @@ try {
       await shoot(page, device, "54-section-options-picker", "Options on a card logged before any section existed: the Section select (Spec 10.6 AC9)");
       await page.getByRole("button", { name: "Edit section Strength" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
-      await shoot(page, device, "55-section-edit-sheet", "Edit section sheet: Name and Note prefilled, Save, Remove section under the divider (Spec 10.6 AC7–AC8)");
+      await shoot(page, device, "55-section-edit-sheet", "Edit section sheet: Name and Note prefilled; Remove section, Cancel and Save in the row, no remove line in the body (Spec 10.6 AC7–AC8, minor 498)");
       await page.getByRole("button", { name: "Remove section" }).click();
       await page.getByRole("dialog", { name: "Remove Strength?" }).waitFor({ timeout: 4000 });
       await shoot(page, device, "56-section-remove-confirm", "Remove Strength? confirm, Cancel focused (Spec 10.6 AC8)");
@@ -1484,17 +1518,35 @@ try {
             const bodyHeight = short[0]?.bodyHeight ?? 0;
             if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
-            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The messages stop at what
-            // the frame leaves them and scroll with their first line showing; the buttons and part of the body stay. The text is
-            // written into the slots by hand (a failed save then a delete can't be staged here); the layout is the point.
+            // Minor 492: a two-line failure and the Delete question on the same frame. The messages stop at what the frame
+            // leaves them and scroll with their first line showing; the buttons and part of the body stay. Minor 491: the
+            // question is the real confirm's (body size now). The failure is written in by hand first (a failed save can't be
+            // staged here), as it would already show when the lifter taps Delete set; then the confirm brings its question
+            // into view (final review #1), and its first line must show inside the messages box.
             await page.evaluate(() => {
               const d = document.querySelector("dialog[open]");
               const alert = document.createElement("p");
               alert.setAttribute("role", "alert");
               alert.textContent = "Couldn't save the set — check your connection and try again.";
               d.querySelector("[data-sheet-messages] > :first-child").append(alert);
-              d.querySelector("[data-sheet-status]").textContent = "Delete set 2? 60 kg × 8 will be removed.";
             });
+            await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Delete set" }).click();
+            await page.waitForTimeout(150);
+            const question = await page.evaluate(() => {
+              const box = document.querySelector("dialog[open] [data-sheet-messages]").getBoundingClientRect();
+              const span = document.querySelector("dialog[open] [data-sheet-status] span");
+              if (!span) return null;
+              // The first character's box is the first line (the span is a block, so its own rect is every line).
+              const range = document.createRange();
+              range.setStart(span.firstChild, 0);
+              range.setEnd(span.firstChild, 1);
+              const first = range.getBoundingClientRect();
+              return { top: first.top, bottom: first.bottom, boxTop: box.top, boxBottom: box.bottom };
+            });
+            if (!question) violations.push("final review #1: no Delete set question in the row");
+            // "Shows" means the line's middle is inside the box: a descender or the half-leading may touch its edge.
+            else if (question.top < question.boxTop - 0.5 || (question.top + question.bottom) / 2 > question.boxBottom)
+              violations.push(`final review #1: the question's first line (${question.top.toFixed(1)}–${question.bottom.toFixed(1)}) is outside the messages box (${question.boxTop.toFixed(1)}–${question.boxBottom.toFixed(1)})`);
             const crowded = (await measureSheetRows(page))[0];
             const crowdedBody = crowded?.bodyHeight ?? 0;
             if (crowdedBody < 64) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 64)`);
@@ -1502,11 +1554,8 @@ try {
             if (messagesHeight < 18) violations.push(`minor 492: the notice and status show ${messagesHeight.toFixed(1)} px at 232 px (want one line, >= 18)`);
             for (const v of crowded?.violations ?? []) violations.push(`minor 492: ${v}`);
             await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
-            await page.evaluate(() => {
-              const d = document.querySelector("dialog[open]");
-              d.querySelector("[data-sheet-messages] > :first-child").replaceChildren();
-              d.querySelector("[data-sheet-status]").textContent = "";
-            });
+            await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-messages] > :first-child").replaceChildren());
+            await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Keep set" }).click();
           } finally {
             await page.setViewportSize(viewport);
           }
@@ -1674,6 +1723,11 @@ try {
       await sheet.getByRole("button", { name: /^3 · / }).click();
       await shoot(page, device, "09a-item-row-open", "Item sheet with the third set open in place: Type, Reps, Weight, Move up / Move down / Remove (Spec 17.11 AC12)");
       await checkPlanRows(page, `${at}/09a-item-row-open`, { open: true });
+      // Minor 523: the first row's "First set" sits beside Move up.
+      await sheet.getByRole("button", { name: /^1 · / }).click();
+      await shoot(page, device, "09c-item-row-first-open", "Item sheet with set 1 open: 'First set' beside Move up (minor 523)");
+      await checkPlanRowExtras(page, `${at}/09c-item-row-first-open`, { notes: true });
+      await sheet.getByRole("button", { name: /^3 · / }).click();
       // Review Focus 3: React re-inserts a moved row's node, which blurs the pressed button in Chromium.
       await sheet.getByRole("button", { name: "Move down, set 3" }).click();
       await page.waitForTimeout(100);
@@ -1683,6 +1737,7 @@ try {
       await sheet.locator("[data-sheet-actions]").getByRole("button", { name: "Done" }).click();
       await sheet.getByRole("alert").first().waitFor({ timeout: 4000 });
       await shoot(page, device, "09b-item-row-invalid", "Item sheet after Done with 'abc' in a set's Reps: that row opens with its error (Spec 17.11 AC16)");
+      await checkPlanRowExtras(page, `${at}/09b-item-row-invalid`, { invalid: true });
       await page.keyboard.press("Escape");
       await page.waitForSelector("dialog[open]", { state: "detached", timeout: 4000 }).catch(() => {});
       // Review Focus 1: Enter in an open row's Reps submits through the row's Done, once (an untouched sheet).
@@ -1717,6 +1772,9 @@ try {
           await sheet.getByRole("button", { name: /^3 · / }).click();
           await shoot(np, "mobile-320", "09o-item-row-narrow-open", "Item sheet at 320 x 568 with the long-valued set open: its panel fits the width (Spec 17.11 AC24)");
           await checkPlanRows(np, `${theme}/mobile-320/09o-item-row-narrow-open`, { open: true });
+          await sheet.getByRole("button", { name: /^1 · / }).click();
+          await shoot(np, "mobile-320", "09p-item-row-narrow-first", "Item sheet at 320 x 568 with set 1 open: the action row wraps and 'First set' stays beside Move up (minor 523)");
+          await checkPlanRowExtras(np, `${theme}/mobile-320/09p-item-row-narrow-first`, { notes: true });
         } finally {
           await nctx.close();
         }

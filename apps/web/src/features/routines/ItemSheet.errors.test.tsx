@@ -91,6 +91,35 @@ describe("17.11 AC16 — several invalid rows, Done after Done", () => {
   });
 });
 
+describe("minor 521 — a row's error clears when that field changes", () => {
+  it("editing a flagged row's Reps hides its message and, once closed, its suffix; focus stays; the other row keeps both", async () => {
+    const { user } = setup();
+    await typeInto(user, 2, "reps", "abc");
+    await typeInto(user, 4, "reps", "9-3");
+    await user.click(done());
+    const reps2 = screen.getByLabelText("Set 2 reps");
+    expect(reps2).toHaveFocus();
+    await user.type(reps2, "{Backspace}");
+    expect(reps2).toHaveFocus();
+    expect(reps2).not.toHaveAttribute("aria-invalid", "true");
+    expect(within(screen.getByRole("group", { name: "Set 2" })).queryByRole("alert")).toBeNull();
+    expect(openGroups()).toEqual(["Set 2"]);
+    await user.click(summaryButton(2));
+    expect(summaryButton(2)).not.toHaveAccessibleName(/Check this set/);
+    expect(summaryButton(4)).toHaveAccessibleName(/Check this set/);
+  });
+
+  it("the open row never says Check this set", async () => {
+    const { user } = setup();
+    await typeInto(user, 3, "reps", "abc");
+    await user.click(done());
+    expect(openGroups()).toEqual(["Set 3"]);
+    expect(summaryButton(3)).not.toHaveAccessibleName(/Check this set/);
+    await user.click(summaryButton(3));
+    expect(summaryButton(3)).toHaveAccessibleName(/Check this set/);
+  });
+});
+
 describe("17.11 AC16 — an item opened with a message on a row", () => {
   it("starts with that row open, and leaves focus where the sheet put it, not on the field", () => {
     setup(new Map([["b", { weight: "Check the weight" }]]));

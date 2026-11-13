@@ -89,6 +89,19 @@ describe("10.7 AC28–AC30 — bodies", () => {
   });
 });
 
+describe("minor 331 — Next is in the round field's description", () => {
+  it("the round to fill hears Next after the clock hint; clearing round 3 moves it there", async () => {
+    const { dialog, user } = renderSheet(section(SET5, rt([[1, 221], [2, 439], [3, 649], [4, 883]])));
+    const describedBy = (n: number) => dialog.getByLabelText(`Round ${n}`).getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(describedBy(5).at(-1)).toBe("result-round-5-next");
+    expect(document.getElementById("result-round-5-next")).toHaveTextContent("Next");
+    expect(describedBy(5)[0]).toBe("result-clock-hint");
+    await user.clear(dialog.getByLabelText("Round 3"));
+    expect(describedBy(3).at(-1)).toBe("result-round-3-next");
+    expect(describedBy(5)).not.toContain("result-round-5-next");
+  });
+});
+
 describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
   it("an invalid row shows its error, focuses that field and saves nothing", async () => {
     const { dialog, user, onSave } = renderSheet(section(SET5));
@@ -97,6 +110,39 @@ describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
     expect(dialog.getByText("Longer than the round length.")).toBeInTheDocument();
     expect(dialog.getByLabelText("Round 5")).toHaveFocus();
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("10.7 AC31 / minors PR B — an edit hides only that round's message; the next Save checks again", async () => {
+    const { dialog, user, onSave } = renderSheet(section(SET5));
+    await user.type(dialog.getByLabelText("Round 4"), "501");
+    await user.type(dialog.getByLabelText("Round 5"), "502");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getAllByText("Longer than the round length.")).toHaveLength(2);
+    await user.type(dialog.getByLabelText("Round 4"), "{Backspace}");
+    expect(dialog.getByLabelText("Round 4")).not.toHaveAttribute("aria-invalid", "true");
+    expect(dialog.getByLabelText("Round 5")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Round 5")).toHaveAttribute("aria-invalid", "true");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("10.7 AC31 / minors PR B — a stepper tap is an edit: it hides the Rounds message", async () => {
+    const { dialog, user } = renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    await user.type(dialog.getByLabelText("Reps"), "5");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Rounds")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: /increase rounds/i }));
+    expect(dialog.getByLabelText("Rounds")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("final review #3 — Clear result is an edit: it hides the cleared fields' messages", async () => {
+    const { dialog, user } = renderSheet(section({ format: "time_cap", capSeconds: 900 }, [], { rounds: null, reps: null, finishSeconds: 600, capped: false }));
+    await user.clear(dialog.getByLabelText("Finish time"));
+    await user.type(dialog.getByLabelText("Finish time"), "1600");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Finish time")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: "Clear result" }));
+    expect(dialog.getByLabelText("Finish time")).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("a valid Save hands the draft over", async () => {

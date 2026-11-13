@@ -34,7 +34,7 @@ import { emitWorkoutFinished } from "./finishEvents";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { sectionHasOps, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -998,7 +998,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       <SectionDialogs
         actions={sectionActions}
         sections={workout.sections}
-        timerLockFor={(sectionId) => (sectionHasOps(outboxState.ops, sectionId) ? RESULT_COPY.timerLocked : undefined)}
+        structureBusy={structureBusy}
+        timerLockFor={(sectionId) => {
+          const state = sectionOpsState(outboxState.ops, sectionId);
+          return state === "none" ? undefined : state === "failed" ? RESULT_COPY.timerLockedFailed : RESULT_COPY.timerLocked;
+        }}
       />
       {resultActions.sheet ? (
         <ResultSheet

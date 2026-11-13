@@ -25,7 +25,7 @@ import { useOutbox } from "./outbox/OutboxContext";
 import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
-import { guardReads, rereadIfStale, type ReadGuard } from "./readGuard";
+import { guardReads, rereadIfStale, type ReadGuard, rereadUntilLanded } from "./readGuard";
 import { reportUnexpected } from "./reportUnexpected";
 import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
@@ -155,7 +155,9 @@ export function useAddExercise(): UseMutationResult<
     mutationFn: ({ workoutId, exerciseId }) => client.addExercise(workoutId, { exerciseId }),
     onSuccess: (_row, { modality }) => {
       track("exercise_added", { modality });
-      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      // Minor 323: resolve once the new exercise is on screen (a set write can cancel one read), so a timed
+      // section's join (10.7 AC22) sees it.
+      return rereadUntilLanded(queryClient, WORKOUT_KEYS.active);
     },
   });
 }

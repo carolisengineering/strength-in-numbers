@@ -4,6 +4,7 @@ import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Segmented } from "../../ui/Segmented";
 import { Sheet } from "../../ui/Sheet";
+import { useClearOnEdit } from "../../ui/useClearOnEdit";
 import { SheetActions } from "../../ui/SheetActions";
 import {
   addRow,
@@ -88,6 +89,8 @@ export function ItemSheet({
   const [rest, setRest] = useState(item.restSeconds === null ? "" : formatRest(item.restSeconds));
   const [notes, setNotes] = useState(item.notes ?? "");
   const [errors, setErrors] = useState<SheetMessages>(fieldMessages);
+  // Minor 521 / 10.2 AC16: a message shows from the Done that found it until the lifter edits that field.
+  const shown = useClearOnEdit<keyof SheetMessages>(errors);
   const formId = useId();
   const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, RowErrors>>(rowMessages);
   // Spec 17.11 AC12: a plan just entered from the quick line opens its first row; a stored plan opens closed.
@@ -101,7 +104,8 @@ export function ItemSheet({
   function enter() {
     const parsed = parseSets(sets);
     if (!parsed.ok) {
-      setErrors((previous) => ({ ...previous, sets: parsed.message }));
+      // Trap 4: keep only the messages still shown, so a field the lifter already fixed doesn't come back.
+      setErrors({ ...shown.visible, sets: parsed.message });
       return;
     }
     setErrors({});
@@ -177,18 +181,28 @@ export function ItemSheet({
       >
         {plan === null ? (
           <>
-            <Field id="item-sets" label="Sets" {...(errors.sets ? { error: errors.sets } : {})}>
-              {(control) => <input {...control} className={styles.input} inputMode="numeric" value={sets} onChange={(e) => setSets(e.target.value)} />}
+            <Field id="item-sets" label="Sets" error={shown.of("sets")}>
+              {(control) => <input {...control} className={styles.input} inputMode="numeric" value={sets} onChange={(e) => {
+                    // Trap 5: Weight's "Enter the number of sets…" is fixed by editing Sets.
+                    shown.edit("sets", ...(shown.of("weight") === WEIGHT_NEEDS_SETS ? (["weight"] as const) : []));
+                    setSets(e.target.value);
+                  }} />}
             </Field>
             {showReps ? (
-              <Field id="item-reps" label="Reps" hint="8 or 8-10" {...(errors.reps ? { error: errors.reps } : {})}>
-                {(control) => <input {...control} className={styles.input} inputMode="text" value={reps} onChange={(e) => setReps(e.target.value)} />}
+              <Field id="item-reps" label="Reps" hint="8 or 8-10" error={shown.of("reps")}>
+                {(control) => <input {...control} className={styles.input} inputMode="text" value={reps} onChange={(e) => {
+                    shown.edit("reps");
+                    setReps(e.target.value);
+                  }} />}
               </Field>
             ) : null}
             {showWeight ? (
               <div className={styles.weight}>
-                <Field id="item-weight" label="Weight" {...(errors.weight ? { error: errors.weight } : {})}>
-                  {(control) => <input {...control} className={styles.input} inputMode="decimal" autoComplete="off" value={weight} onChange={(e) => setWeight(e.target.value)} />}
+                <Field id="item-weight" label="Weight" error={shown.of("weight")}>
+                  {(control) => <input {...control} className={styles.input} inputMode="decimal" autoComplete="off" value={weight} onChange={(e) => {
+                    shown.edit("weight");
+                    setWeight(e.target.value);
+                  }} />}
                 </Field>
                 <Segmented name="item-unit" legend="Weight unit" options={WEIGHT_UNIT_CHOICES} value={unit} onChange={setQuickUnit} />
               </div>
@@ -201,6 +215,7 @@ export function ItemSheet({
               showReps={showReps}
               showWeight={showWeight}
               unit={planUnit}
+              fallbackUnit={rowFallbackUnit}
               errors={rowErrors}
               openFirst={enteredFromQuick}
               onField={(key, patch) => edit((rows) => setRowField(rows, key, patch))}
@@ -221,11 +236,17 @@ export function ItemSheet({
             )}
           </>
         )}
-        <Field id="item-rest" label="Rest" hint="m:ss, like 1:30" {...(errors.rest ? { error: errors.rest } : {})}>
-          {(control) => <input {...control} className={styles.input} inputMode="text" value={rest} onChange={(e) => setRest(e.target.value)} />}
+        <Field id="item-rest" label="Rest" hint="m:ss, like 1:30" error={shown.of("rest")}>
+          {(control) => <input {...control} className={styles.input} inputMode="text" value={rest} onChange={(e) => {
+            shown.edit("rest");
+            setRest(e.target.value);
+          }} />}
         </Field>
-        <Field id="item-notes" label="Notes" {...(errors.notes ? { error: errors.notes } : {})}>
-          {(control) => <textarea {...control} className={styles.input} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />}
+        <Field id="item-notes" label="Notes" error={shown.of("notes")}>
+          {(control) => <textarea {...control} className={styles.input} rows={3} value={notes} onChange={(e) => {
+            shown.edit("notes");
+            setNotes(e.target.value);
+          }} />}
         </Field>
         {plan === null ? (
           <Button variant="secondary" onClick={enter}>

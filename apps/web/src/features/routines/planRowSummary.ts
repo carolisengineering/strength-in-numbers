@@ -22,6 +22,8 @@ export interface PlanRowSummaryOptions {
   readonly showWeight: boolean;
   /** The sheet's unit; while it is "mixed", each row shows its own. */
   readonly unit: WeightUnit | "mixed";
+  /** While mixed, the unit Done saves a row with no unit of its own in (the sheet's `rowFallbackUnit`; minor 519). */
+  readonly fallbackUnit?: WeightUnit;
 }
 
 /**
@@ -29,7 +31,7 @@ export interface PlanRowSummaryOptions {
  * exercise's type as the fields do; a blank field is "–". Text is shown as the lifter typed it (trimmed): the parsers
  * only decide whether "reps" or the unit follows, so "abc" or "4o" reads as typed, never reformatted.
  */
-export function planRowSummary(row: PlanRowText, { n, showReps, showWeight, unit }: PlanRowSummaryOptions): string {
+export function planRowSummary(row: PlanRowText, { n, showReps, showWeight, unit, fallbackUnit }: PlanRowSummaryOptions): string {
   const type = SET_TYPE_CHOICES.find((c) => c.value === row.setType)?.label ?? row.setType;
   const parts = [String(n), type];
   if (showReps) {
@@ -41,7 +43,7 @@ export function planRowSummary(row: PlanRowText, { n, showReps, showWeight, unit
   }
   if (showWeight) {
     const weight = row.weight.trim();
-    const shownUnit = unit === "mixed" ? row.weightUnit : unit;
+    const shownUnit = unit === "mixed" ? (row.weightUnit ?? fallbackUnit ?? null) : unit;
     parts.push(weight === "" ? EMPTY : parseWeight(weight).ok && shownUnit !== null ? `${weight} ${shownUnit}` : weight);
   }
   return parts.join(" · ");

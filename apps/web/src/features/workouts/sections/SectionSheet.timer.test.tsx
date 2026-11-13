@@ -56,6 +56,17 @@ describe("10.7 AC15 — the Timer group in the workout sheet", () => {
     expect(dialog("Edit section").getByLabelText("Rounds")).toHaveAccessibleDescription(ROUNDS_RANGE_ERROR);
   });
 
+  it("10.7 AC25 / minor 326 — the server's timer messages clear on a timer edit, and the next errors show again", async () => {
+    const user = userEvent.setup();
+    const props = { mode: "edit" as const, section: makeTimedSection({ name: "Main" }), busy: false, onSubmit: vi.fn(), onClose: vi.fn() };
+    const { rerender } = render(<SectionSheet open {...props} errors={{ ...NO_ERRORS, timer: { rounds: ROUNDS_RANGE_ERROR } }} />);
+    const rounds = () => dialog("Edit section").getByLabelText("Rounds");
+    await user.type(rounds(), "0");
+    expect(rounds()).not.toHaveAccessibleDescription(ROUNDS_RANGE_ERROR);
+    rerender(<SectionSheet open {...props} errors={{ ...NO_ERRORS, timer: { rounds: ROUNDS_RANGE_ERROR } }} />);
+    expect(rounds()).toHaveAccessibleDescription(ROUNDS_RANGE_ERROR);
+  });
+
   it("saveRef receives the submit button", () => {
     const saveRef = vi.fn();
     renderSheet({ mode: "edit", section: makeTimedSection({ name: "Main" }), saveRef });

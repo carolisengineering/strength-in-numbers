@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkoutSection } from "@sin/core";
+import { chooseSegmentValue } from "../../../test/controls";
 import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { SECTION_COPY } from "./sectionCopy";
 import { SectionSheet, type SectionSheetProps } from "./SectionSheet";
@@ -15,6 +16,60 @@ function renderSheet(props: Partial<SectionSheetProps> = {}) {
   return { user: userEvent.setup(), ...callbacks };
 }
 const dialog = (name: string) => within(screen.getByRole("dialog", { name }));
+
+describe("10.6 AC5 / minor 326 — a field's error clears when that field changes", () => {
+  const base = { open: true, mode: "add" as const, busy: false, onSubmit: vi.fn(), onClose: vi.fn() };
+  const failed = { name: "Enter a name.", notes: "Keep the note shorter.", form: null };
+
+  it("typing in Name hides only Name's message; the next Save's errors show again", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SectionSheet {...base} errors={failed} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "F");
+    expect(d().getByLabelText("Name")).not.toHaveAttribute("aria-invalid", "true");
+    expect(d().queryByText("Enter a name.")).toBeNull();
+    expect(d().getByText("Keep the note shorter.")).toBeInTheDocument();
+    rerender(<SectionSheet {...base} errors={{ ...failed }} />);
+    expect(d().getByText("Enter a name.")).toBeInTheDocument();
+  });
+
+  it("final review #2 — a Save stopped by the timer check still checks Name and Note again", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<SectionSheet {...base} onSubmit={onSubmit} errors={{ name: "Enter a name.", notes: null, form: null }} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "x");
+    await user.clear(d().getByLabelText("Name"));
+    expect(d().queryByText("Enter a name.")).toBeNull();
+    await chooseSegmentValue(user, "Timer", "set_timer", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(d().getByText("Enter a name.")).toBeInTheDocument();
+  });
+
+  it("code review #2 — a Save that passes its own checks doesn't bring back a server message the lifter fixed", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<SectionSheet {...base} onSubmit={onSubmit} errors={{ name: "Enter a name.", notes: null, form: null }} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "Finisher");
+    await chooseSegmentValue(user, "Timer", "set_timer", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    await chooseSegmentValue(user, "Timer", "none", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(d().queryByText("Enter a name.")).toBeNull();
+  });
+
+  it("a 422 that lands while the lifter is typing still shows (review focus 1)", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SectionSheet {...base} busy errors={NO_ERRORS} />);
+    await user.type(dialog("New section").getByLabelText("Name"), "Finisher");
+    rerender(<SectionSheet {...base} errors={failed} />);
+    expect(dialog("New section").getByText("Enter a name.")).toBeInTheDocument();
+  });
+});
 
 describe("10.6 AC5 — the sheet", () => {
   it("title, intro, labeled fields, the hint linked, Cancel and Add section", () => {
@@ -68,7 +123,7 @@ describe("10.6 AC5 — the sheet", () => {
 });
 
 describe("10.6 AC7 / AC8 — edit mode", () => {
-  it("prefilled fields, Save, and Remove section in the row, with its line under the divider in the body (17.10)", async () => {
+  it("prefilled fields, Save, and Remove section in the row; no remove line or divider in the body (minor 498)", async () => {
     const removeRef = vi.fn();
     const { user, onRemove, onSubmit } = renderSheet({ mode: "edit", section: stored, removeRef });
     const d = dialog("Edit section");
@@ -77,8 +132,8 @@ describe("10.6 AC7 / AC8 — edit mode", () => {
     expect(d.getByLabelText("Note")).toHaveValue("5 min");
     const remove = d.getByRole("button", { name: "Remove section" });
     expect(removeRef).toHaveBeenCalledWith(remove);
-    const line = within(sheetBody()).getByText("Its exercises and sets stay in the workout, without a section.");
-    expect(line.closest("[data-divider]")).not.toBeNull();
+    expect(within(sheetBody()).queryByText(SECTION_COPY.removeLine)).toBeNull();
+    expect(sheetBody().querySelector("[data-divider]")).toBeNull();
     expect(remove.closest("[data-sheet-actions]")).not.toBeNull();
     await user.click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -100,9 +155,9 @@ describe("17.10 AC15 — the workout section sheet uses the action row", () => {
     expect(rowLabels()).toEqual(["Cancel", "Add section"]);
   });
 
-  it("Remove section is described by its line", () => {
+  it("minor 498: Remove section has no description; its confirm says what happens", () => {
     renderSheet({ mode: "edit", section: stored });
-    expect(sheetRow().getByRole("button", { name: "Remove section" })).toHaveAccessibleDescription(SECTION_COPY.removeLine);
+    expect(sheetRow().getByRole("button", { name: "Remove section" })).not.toHaveAccessibleDescription();
   });
 
   it("while busy, Cancel is aria-disabled and does nothing; Remove section is disabled", async () => {

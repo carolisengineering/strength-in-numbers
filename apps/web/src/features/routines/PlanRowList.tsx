@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PLANNED_SETS_PER_ITEM_MAX, type SetType, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
@@ -6,6 +6,7 @@ import { ChevronDownIcon } from "../../ui/icons";
 import { Segmented } from "../../ui/Segmented";
 import type { PlanRowText, RowErrors } from "./planRows";
 import { CHECK_THIS_SET, planRowSummary, SET_TYPE_CHOICES } from "./planRowSummary";
+import { useClearOnEdit } from "../../ui/useClearOnEdit";
 import styles from "./PlanRowList.module.css";
 
 /** kg / lb for the plan and the quick line (Spec 17.7 AC6: a Segmented, where `UnitToggle` was). */
@@ -29,6 +30,8 @@ export interface PlanRowListProps {
   showReps: boolean;
   showWeight: boolean;
   unit: WeightUnit | "mixed";
+  /** While mixed, the unit Done saves a unitless row in, shown on its line and beside its Weight (minor 519). */
+  fallbackUnit?: WeightUnit;
   errors: ReadonlyMap<string, RowErrors>;
   /** Spec 17.11 AC12: the first row starts open (the plan was just entered from the quick line). */
   openFirst?: boolean;
@@ -48,7 +51,7 @@ export interface PlanRowListProps {
  * why in text (P6), the edge Move buttons included ("First set", "Last set", Spec 17.11 D6).
  * (The file is `PlanRowList`, not `PlanRows`: that name differs from `planRows.ts` only by case.)
  */
-export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirst = false, onField, onAdd, onRemove, onMove, onUnit }: PlanRowListProps) {
+export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, errors, openFirst = false, onField, onAdd, onRemove, onMove, onUnit }: PlanRowListProps) {
   const prefix = useId();
   // A row the editor or the server already flagged starts open (Spec 17.11 AC16), with no focus move: the sheet's
   // own first focus stands. Otherwise AC12: the only row, or the first when just entered from the quick line.
@@ -57,6 +60,18 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
   );
   const pendingFocus = useRef<PendingFocus | null>(null);
   const lastErrors = useRef(errors);
+  // Minor 521: a row's message shows from the Done that found it until the lifter edits that field. The map from the
+  // sheet is never filtered (a new map means a new Done, which opens and focuses the first invalid row); the hiding
+  // happens here, keyed by row and field, and resets with the map.
+  const flatErrors = useMemo(() => {
+    const flat: Record<string, string | undefined> = {};
+    for (const [key, e] of errors) {
+      flat[`${key}:reps`] = e.reps;
+      flat[`${key}:weight`] = e.weight;
+    }
+    return flat;
+  }, [errors]);
+  const shown = useClearOnEdit(flatErrors);
   const atCap = rows.length >= PLANNED_SETS_PER_ITEM_MAX;
   const onlyRow = rows.length === 1;
   const capId = `${prefix}-cap`;
@@ -103,7 +118,8 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
   };
   const remove = (index: number) => {
     const takesPlace = rows[index + 1] ?? rows[index - 1];
-    setOpenKey(null);
+    // Spec 17.11 AC12 (minor 526): a Remove that leaves one row opens it; otherwise every row closes.
+    setOpenKey(rows.length === 2 && takesPlace ? takesPlace.key : null);
     if (takesPlace) pendingFocus.current = { key: takesPlace.key, target: "summary" };
     onRemove(rows[index]!.key);
   };
@@ -117,12 +133,15 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
         {rows.map((row, index) => {
           const n = index + 1;
           const id = (name: string) => `${prefix}-${row.key}-${name}`;
-          const error = errors.get(row.key);
+          const repsError = shown.of(`${row.key}:reps`);
+          const weightError = shown.of(`${row.key}:weight`);
           const isOpen = openKey === row.key;
           const first = index === 0;
           const last = index === rows.length - 1;
-          const summary = planRowSummary(row, { n, showReps, showWeight, unit });
-          const flagged = Boolean(error?.reps || error?.weight);
+          const summary = planRowSummary(row, { n, showReps, showWeight, unit, ...(fallbackUnit ? { fallbackUnit } : {}) });
+          const rowUnit = row.weightUnit ?? fallbackUnit ?? null;
+          // Spec 17.11 AC16: only a closed row carries the suffix; the open one shows its messages by its fields.
+          const flagged = !isOpen && Boolean(repsError || weightError);
           return (
             <li key={row.key} className={styles.row}>
               <button
@@ -143,54 +162,65 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
                     <Segmented<SetType> name={id("type")} legend={`Set ${n} type`} options={SET_TYPE_CHOICES} value={row.setType} onChange={(setType) => onField(row.key, { setType })} />
                   </div>
                   {showReps ? (
-                    <Field id={id("reps")} label={`Set ${n} reps`} {...(error?.reps ? { error: error.reps } : {})}>
-                      {(control) => <input {...control} type="text" inputMode="text" autoComplete="off" className={styles.input} value={row.reps} onChange={(e) => onField(row.key, { reps: e.target.value })} />}
+                    <Field id={id("reps")} label={`Set ${n} reps`} error={repsError}>
+                      {(control) => <input {...control} type="text" inputMode="text" autoComplete="off" className={styles.input} value={row.reps} onChange={(e) => {
+                          shown.edit(`${row.key}:reps`);
+                          onField(row.key, { reps: e.target.value });
+                        }} />}
                     </Field>
                   ) : null}
                   {showWeight ? (
                     <div className={styles.withUnit}>
-                      <Field id={id("weight")} label={`Set ${n} weight`} {...(error?.weight ? { error: error.weight } : {})}>
-                        {(control) => <input {...control} type="text" inputMode="decimal" autoComplete="off" className={styles.input} value={row.weight} onChange={(e) => onField(row.key, { weight: e.target.value })} />}
+                      <Field id={id("weight")} label={`Set ${n} weight`} error={weightError}>
+                        {(control) => <input {...control} type="text" inputMode="decimal" autoComplete="off" className={styles.input} value={row.weight} onChange={(e) => {
+                          shown.edit(`${row.key}:weight`);
+                          onField(row.key, { weight: e.target.value });
+                        }} />}
                       </Field>
-                      {unit === "mixed" && row.weight.trim() !== "" && row.weightUnit !== null ? <span className={styles.rowUnit}>{row.weightUnit}</span> : null}
+                      {unit === "mixed" && row.weight.trim() !== "" && rowUnit !== null ? <span className={styles.rowUnit}>{rowUnit}</span> : null}
                     </div>
                   ) : null}
+                  {/* Spec 17.11 AC14, D6: a dead edge button says why, in words beside it. Each edge button and its note are
+                      one item of the row (minor 523), so a wrap at 320 px never leaves a note before Remove. */}
                   <div className={styles.actions}>
-                    <Button
-                      id={id("moveUp")}
-                      variant="secondary"
-                      disabled={first}
-                      aria-label={`Move up, set ${n}`}
-                      {...(first ? { "aria-describedby": id("first") } : {})}
-                      onClick={() => move(row.key, -1)}
-                    >
-                      Move up
-                    </Button>
-                    <Button
-                      id={id("moveDown")}
-                      variant="secondary"
-                      disabled={last}
-                      aria-label={`Move down, set ${n}`}
-                      {...(last ? { "aria-describedby": id("last") } : {})}
-                      onClick={() => move(row.key, 1)}
-                    >
-                      Move down
-                    </Button>
+                    <span className={styles.edge}>
+                      <Button
+                        id={id("moveUp")}
+                        variant="secondary"
+                        disabled={first}
+                        aria-label={`Move up, set ${n}`}
+                        {...(first ? { "aria-describedby": id("first") } : {})}
+                        onClick={() => move(row.key, -1)}
+                      >
+                        Move up
+                      </Button>
+                      {first ? (
+                        <span id={id("first")} className={styles.note}>
+                          First set
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={styles.edge}>
+                      <Button
+                        id={id("moveDown")}
+                        variant="secondary"
+                        disabled={last}
+                        aria-label={`Move down, set ${n}`}
+                        {...(last ? { "aria-describedby": id("last") } : {})}
+                        onClick={() => move(row.key, 1)}
+                      >
+                        Move down
+                      </Button>
+                      {last ? (
+                        <span id={id("last")} className={styles.note}>
+                          Last set
+                        </span>
+                      ) : null}
+                    </span>
                     <Button variant="danger" disabled={onlyRow} aria-label={`Remove, set ${n}`} {...(onlyRow ? { "aria-describedby": minId } : {})} onClick={() => remove(index)}>
                       Remove
                     </Button>
                   </div>
-                  {/* Spec 17.11 AC14, D6: a dead edge button says why, in words beside it. */}
-                  {first ? (
-                    <p id={id("first")} className={styles.note}>
-                      First set
-                    </p>
-                  ) : null}
-                  {last ? (
-                    <p id={id("last")} className={styles.note}>
-                      Last set
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
             </li>

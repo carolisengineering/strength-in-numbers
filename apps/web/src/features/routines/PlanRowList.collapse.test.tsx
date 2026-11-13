@@ -20,12 +20,14 @@ function Harness({
   openFirst = false,
   showReps = true,
   showWeight = true,
+  fallbackUnit,
 }: {
   initial: PlanRowText[];
   errors?: ReadonlyMap<string, RowErrors>;
   openFirst?: boolean;
   showReps?: boolean;
   showWeight?: boolean;
+  fallbackUnit?: "kg" | "lb";
 }) {
   const [rows, setRows] = useState<readonly PlanRowText[]>(initial);
   return (
@@ -36,6 +38,7 @@ function Harness({
       unit={unitOfRows(rows) ?? "kg"}
       errors={errors}
       openFirst={openFirst}
+      {...(fallbackUnit ? { fallbackUnit } : {})}
       onField={(key, patch) => setRows((r) => setRowField(r, key, patch))}
       onAdd={(key) => setRows((r) => addRow(r, key))}
       onRemove={(key) => setRows((r) => removeRow(r, key))}
@@ -65,6 +68,16 @@ describe("17.11 AC11 — one line per set", () => {
 
   it("the summary is at least the tap-target height", () => {
     expect(rule(".summary")).toMatch(/min-height:\s*var\(--tap-target-min\)/);
+  });
+
+  it("minor 520 — the panel's cells start at the top, so a Reps error doesn't stretch Weight", () => {
+    expect(rule(".panel")).toMatch(/align-items:\s*start/);
+    expect(rule(".withUnit")).toMatch(/align-items:\s*flex-end/);
+  });
+
+  it("minor 523 — an edge note sits in a line with its button", () => {
+    expect(rule(".edge")).toMatch(/display:\s*inline-flex/);
+    expect(rule(".edge")).toMatch(/align-items:\s*center/);
   });
 
   it("follows the exercise's type: a timed exercise shows the set type only", () => {
@@ -163,6 +176,13 @@ describe("17.11 AC13 — no operation is lost (10.2 AC13 through an open row)", 
     expect(summaryButtons().map((b) => b.textContent)).toEqual(["1 · Working · 8 reps · 100 kg", "2 · Working · 8 reps · 100 kg"]);
   });
 
+  it("17.11 AC13 / minor 519 — while mixed, a row with no unit shows the unit it will save in, closed and open", async () => {
+    const { user } = setup(<Harness initial={[row("a"), row("b", { weightUnit: "lb" }), row("c", { weightUnit: null })]} fallbackUnit="kg" />);
+    expect(summaryButton(3)).toHaveTextContent("3 · Working · 8 reps · 100 kg");
+    await openRow(user, 3);
+    expect(within(screen.getByRole("group", { name: "Set 3" })).getByText("kg")).toBeInTheDocument();
+  });
+
   it("a row's type is its own Segmented", async () => {
     const { user } = setup(<Harness initial={THREE} />);
     await openRow(user, 2);
@@ -193,6 +213,27 @@ describe("17.11 AC14 — the edge Move buttons say why in words", () => {
     expect(down).toBeDisabled();
     expect(down).toHaveAccessibleDescription("Last set");
     expect(screen.getByRole("button", { name: "Move up, set 3" })).not.toHaveAccessibleDescription();
+  });
+
+  it("minor 523 — the note is in the action row, right after its button", async () => {
+    const { user } = setup(<Harness initial={THREE} />);
+    await openRow(user, 1);
+    const up = screen.getByRole("button", { name: "Move up, set 1" });
+    const note = screen.getByText("First set");
+    expect(note.parentElement).toBe(up.parentElement);
+    expect(up.nextElementSibling).toBe(note);
+    const actions = screen.getByRole("button", { name: "Remove, set 1" }).parentElement!;
+    expect(up.parentElement!.parentElement).toBe(actions);
+  });
+
+  it("minor 523 — the only row keeps each note beside its own button", async () => {
+    const { user } = setup(<Harness initial={[row("a")]} />);
+    if (!screen.queryByRole("group", { name: "Set 1" })) await openRow(user, 1);
+    const up = screen.getByRole("button", { name: "Move up, set 1" });
+    const down = screen.getByRole("button", { name: "Move down, set 1" });
+    expect(up.nextElementSibling).toBe(screen.getByText("First set"));
+    expect(down.nextElementSibling).toBe(screen.getByText("Last set"));
+    expect(up.parentElement).not.toBe(down.parentElement);
   });
 
   it("a middle row has no edge reason", async () => {

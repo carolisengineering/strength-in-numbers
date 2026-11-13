@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkoutDetail, WorkoutSection } from "@sin/core";
+import type { SectionTimer, WorkoutDetail, WorkoutSection } from "@sin/core";
 import { RESULT_COPY } from "./resultCopy";
 import { diffDraft, type ResultDraft, type ResultWrite, type TimedSection } from "./resultDraft";
+
+/**
+ * What decides the sheet's fields: the format; for Time Cap whether there is a cap (Finished / Hit the cap only show
+ * with one, final review #4); for Set Timer the round count, since the rows are seeded once (code review #4). A changed
+ * cap value keeps the shape: `validateDraft` and `diffDraft` read the new section.
+ */
+const timerShape = (timer: SectionTimer): string =>
+  timer.format === "time_cap" ? `time_cap:${timer.capSeconds === null ? "none" : "cap"}` : timer.format === "set_timer" ? `set_timer:${timer.rounds}` : timer.format;
 
 /** How a screen sends a Save's writes (live: the queued client; edit: REST, one by one). */
 export interface ResultWriter {
@@ -39,7 +47,8 @@ export interface ResultActions {
  * through the screen's writer, and focus back to the section's Log result button after every close.
  */
 export function useResultActions({ workout, writer, announce, failureText }: ResultActionDeps): ResultActions {
-  const [view, setView] = useState<{ sectionId: string; openCount: number } | null>(null);
+  // `shape`: the timer's shape when the sheet opened; its fields belong to that shape (minor 333, final review #4).
+  const [view, setView] = useState<{ sectionId: string; openCount: number; shape: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const counter = useRef(0);
@@ -66,6 +75,11 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     } else if (section.timer === null) {
       close();
       announce(RESULT_COPY.timerGone);
+    } else if (view.shape !== null && timerShape(section.timer) !== view.shape) {
+      // Minor 333: the draft's fields are the old format's, so nothing of it may be sent. A changed cap or round count
+      // keeps the sheet: validateDraft and diffDraft read the refetched section.
+      close();
+      announce(RESULT_COPY.timerChanged);
     }
   }, [view, section, close, announce]);
 
@@ -79,11 +93,15 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     node.focus();
   });
 
-  const open = useCallback((sectionId: string) => {
-    counter.current += 1;
-    setFormError(null);
-    setView({ sectionId, openCount: counter.current });
-  }, []);
+  const open = useCallback(
+    (sectionId: string) => {
+      counter.current += 1;
+      setFormError(null);
+      const timer = workout.sections.find((s) => s.id === sectionId)?.timer ?? null;
+      setView({ sectionId, openCount: counter.current, shape: timer === null ? null : timerShape(timer) });
+    },
+    [workout.sections],
+  );
 
   const save = useCallback(
     async (draft: ResultDraft) => {
@@ -126,7 +144,11 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
   }, []);
 
   return {
-    sheet: view !== null && section !== undefined && section.timer !== null ? { section: section as TimedSection, openCount: view.openCount } : null,
+    // Code review #5: never drawn (or saved) against another shape, even in the render before the close effect runs.
+    sheet:
+      view !== null && section !== undefined && section.timer !== null && (view.shape === null || timerShape(section.timer) === view.shape)
+        ? { section: section as TimedSection, openCount: view.openCount }
+        : null,
     open,
     close,
     save,

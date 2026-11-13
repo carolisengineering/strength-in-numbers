@@ -7,6 +7,7 @@ import { useEditWorkoutClient, WORKOUT_KEYS } from "../queries";
 import { rereadUntilLanded } from "../readGuard";
 import { reportUnexpected } from "../reportUnexpected";
 import type { ResultWrite } from "../result/resultDraft";
+import { isTimerMismatch } from "../result/timerMismatch";
 import type { ResultWriter } from "../result/useResultActions";
 import { EDIT_MUTATION_KEY, editSucceeded, writeDetail } from "./useEditMutations";
 
@@ -49,7 +50,7 @@ export function useEditResultMutations(workoutId: string): ResultWriter {
         }
         return { ok: true };
       } catch (error) {
-        if (!isNetworkFailure(error)) reportUnexpected("log-result-edit", error);
+        if (!isNetworkFailure(error) && !isTimerMismatch(error)) reportUnexpected("log-result-edit", error);
         if (landed > 0) await rereadUntilLanded(queryClient, WORKOUT_KEYS.detail(workoutId));
         return { ok: false, failedAt: landed, error };
       } finally {

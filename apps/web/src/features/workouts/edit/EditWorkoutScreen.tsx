@@ -50,6 +50,7 @@ import { useEditSectionMutations } from "./useEditSectionMutations";
 import { useEditResultMutations } from "./useEditResultMutations";
 import { RESULT_COPY } from "../result/resultCopy";
 import { ResultSheet } from "../result/ResultSheet";
+import { isTimerMismatch } from "../result/timerMismatch";
 import { useResultActions } from "../result/useResultActions";
 import { resolveSectionFailure } from "../sections/resolveSectionFailure";
 import { useRevealMoved } from "../useRevealMoved";
@@ -297,6 +298,12 @@ function EditBody({
     announce: setAnnouncement,
     failureText: ({ failedAt, error }) => {
       if (failedAt > 0) return RESULT_COPY.partial;
+      // Minor 329: another device changed the timer. Re-read so the sheet (or its close, minor 333) sees the new one;
+      // without it every retry meets the same 409.
+      if (isTimerMismatch(error)) {
+        void refetchDetail();
+        return RESULT_COPY.timerChanged;
+      }
       const failure = resolveSectionFailure("update-section", error, { offlineText: EDIT_COPY.offline });
       if (failure.type === "missing") {
         setAnnouncement(RESULT_COPY.sectionGone);
@@ -607,7 +614,7 @@ function EditBody({
         >
           <p>{removing ? `${plural(removing.sets.length, "set", "sets")} will be deleted.` : null}</p>
         </ConfirmDialog>
-        <SectionDialogs actions={sectionActions} sections={workout.sections} />
+        <SectionDialogs actions={sectionActions} sections={workout.sections} structureBusy={structureBusy} />
         {resultActions.sheet ? (
           <ResultSheet
             key={resultActions.sheet.openCount}

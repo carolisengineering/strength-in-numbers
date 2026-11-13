@@ -1,15 +1,27 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import type { WorkoutSection } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
+import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerFields } from "../../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../../sectionTimer/timerFields";
 import { SECTION_COPY } from "./sectionCopy";
-import type { SectionValues } from "./sectionFields";
+import { checkSectionFields, type SectionValues } from "./sectionFields";
 import styles from "./SectionSheet.module.css";
+
+// One object for "no timer errors", so the clear-on-edit state isn't reset by a fresh `{}` every render (minor 326).
+const NO_TIMER_ERRORS: TimerFieldErrors = Object.freeze({});
+const NO_FIELD_ERRORS = Object.freeze({ name: null, notes: null });
+
+interface OwnErrors {
+  /** The server errors these were made against; once `errors` changes, the server's answer wins. */
+  readonly against: SectionSheetErrors;
+  readonly field: { readonly name: string | null; readonly notes: string | null };
+  readonly timer: TimerFieldErrors;
+}
 
 export interface SectionSheetErrors {
   readonly name: string | null;
@@ -49,21 +61,28 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   const [name, setName] = useState(() => section?.name ?? "");
   const [notes, setNotes] = useState(() => section?.notes ?? "");
   const [timer, setTimer] = useState(() => fieldsFromTimer(section?.timer ?? null));
-  // The sheet's own timer errors (a parse on submit, or `{}` after a format change) win over the server's.
-  const [ownTimerErrors, setOwnTimerErrors] = useState<TimerFieldErrors | null>(null);
+  // The sheet's own checks (a timer that doesn't parse, Name and Note with it, a format change, or a Save that passes
+  // them all) win over the server's errors they were made against; the server's next answer (a new `errors` object)
+  // wins again. So a server message the lifter fixed never comes back on a Save that passes (code review #2), and a Save
+  // the timer check stops still checks Name and Note (final review #2).
+  const [own, setOwn] = useState<OwnErrors | null>(null);
+  const current = own !== null && own.against === errors ? own : null;
+  // Minor 326: a message shows from the Save (or the server's 422) that found it until the lifter edits that field.
+  const fieldErrors = useMemo(() => current?.field ?? { name: errors.name, notes: errors.notes }, [current, errors]);
+  const shown = useClearOnEdit(fieldErrors);
+  const timerShown = useClearOnEdit(current?.timer ?? errors.timer ?? NO_TIMER_ERRORS);
   const editing = mode === "edit";
   const formId = useId();
-  const lineId = useId();
   const removable = editing && onRemove !== undefined;
 
   function submit(event: FormEvent) {
     event.preventDefault();
     const parsed = timerFromFields(timer);
     if (!parsed.ok) {
-      setOwnTimerErrors(parsed.errors);
+      setOwn({ against: errors, field: checkSectionFields(name, notes), timer: parsed.errors });
       return;
     }
-    setOwnTimerErrors(null);
+    setOwn({ against: errors, field: NO_FIELD_ERRORS, timer: NO_TIMER_ERRORS });
     onSubmit({ name, notes, timer: parsed.timer });
   }
 
@@ -77,41 +96,56 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
     >
       <form id={formId} className={styles.form} noValidate onSubmit={submit}>
         {editing ? null : <p className={styles.intro}>{SECTION_COPY.newIntro}</p>}
-        <Field id="section-name" label={SECTION_COPY.nameLabel} {...(errors.name ? { error: errors.name } : {})}>
+        <Field id="section-name" label={SECTION_COPY.nameLabel} error={shown.of("name")}>
           {(control) => (
-            <input {...control} type="text" autoComplete="off" required className={styles.input} value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              {...control}
+              type="text"
+              autoComplete="off"
+              required
+              className={styles.input}
+              value={name}
+              onChange={(e) => {
+                shown.edit("name");
+                setName(e.target.value);
+              }}
+            />
           )}
         </Field>
-        <Field id="section-notes" label={SECTION_COPY.noteLabel} hint={SECTION_COPY.noteHint} {...(errors.notes ? { error: errors.notes } : {})}>
-          {(control) => <textarea {...control} rows={3} className={styles.textarea} value={notes} onChange={(e) => setNotes(e.target.value)} />}
+        <Field id="section-notes" label={SECTION_COPY.noteLabel} hint={SECTION_COPY.noteHint} error={shown.of("notes")}>
+          {(control) => (
+            <textarea
+              {...control}
+              rows={3}
+              className={styles.textarea}
+              value={notes}
+              onChange={(e) => {
+                shown.edit("notes");
+                setNotes(e.target.value);
+              }}
+            />
+          )}
         </Field>
         <TimerFields
           idPrefix="section-timer"
           value={timer}
-          errors={ownTimerErrors ?? errors.timer ?? {}}
+          errors={timerShown.visible}
+          onEdit={(field) => timerShown.edit(field)}
           disabled={timerLocked !== undefined}
           onChange={(next) => {
             // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.
-            if (next.format !== timer.format) setOwnTimerErrors({});
+            if (next.format !== timer.format) setOwn({ against: errors, field: fieldErrors, timer: NO_TIMER_ERRORS });
             setTimer(next);
           }}
         />
         {timerLocked !== undefined ? <p className={styles.timerLocked}>{timerLocked}</p> : null}
       </form>
-      {/* Spec 17.10: the line stays in the body, last, and describes the row's Remove section; in the status line it
-          would sit above Save on every edit. */}
-      {removable ? (
-        <div className={styles.remove} data-divider="">
-          <p id={lineId} className={styles.removeLine}>
-            {SECTION_COPY.removeLine}
-          </p>
-        </div>
-      ) : null}
+      {/* Minor 498: no line under the fields; Remove section's confirm says what happens to the exercises. */}
       <SheetActions
         notice={errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
         danger={
           removable ? (
-            <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef} aria-describedby={lineId}>
+            <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef}>
               {SECTION_COPY.removeSection}
             </Button>
           ) : undefined

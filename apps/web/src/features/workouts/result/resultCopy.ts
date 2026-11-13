@@ -27,9 +27,13 @@ export const RESULT_COPY = Object.freeze({
   saved: "Result saved",
   sectionGone: "That section no longer exists",
   timerGone: "This section has no timer now.",
+  /** Minors 329, 333: another device changed the section's timer while Log result was open. */
+  timerChanged: "This section's timer changed.",
   partial: "Couldn't save all of the result — check it and try again",
   notSaved: "Not saved yet",
   notSavedFailed: "Couldn't be saved",
   timerLocked: "Wait for the logged times to save before changing the timer.",
+  /** Minor 328: every entry failed, so waiting won't unlock it; Discard on the sync line will. */
+  timerLockedFailed: "Discard the times that couldn't be saved first.",
   timerEntries: (n: number): string => (n === 1 ? "1 timer entry" : `${n} timer entries`),
 });

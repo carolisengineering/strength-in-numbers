@@ -26,17 +26,6 @@
   resize: vertical;
 }
 
-.remove {
-  margin-top: var(--space-6);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-line);
-}
-
-.removeLine {
-  margin: 0;
-  color: var(--color-muted);
-}
-
 /* Spec 10.7 AC40: why the Timer group is disabled, muted. */
 .timerLocked {
   margin: 0;
