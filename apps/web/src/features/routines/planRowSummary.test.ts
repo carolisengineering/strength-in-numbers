@@ -17,7 +17,10 @@ describe("17.11 AC11 — planRowSummary: one line per planned set", () => {
     ["no weight shown", row(), { n: 1, showReps: true, showWeight: false, unit: "kg" }, "1 · Working · 8 reps"],
     ["no reps shown", row(), { n: 1, showReps: false, showWeight: true, unit: "kg" }, "1 · Working · 40 kg"],
     ["mixed units: the row's own lb", row({ weightUnit: "lb" }), { n: 1, ...both, unit: "mixed" }, "1 · Working · 8 reps · 40 lb"],
-    ["mixed units with no row unit: no unit", row({ weightUnit: null }), { n: 1, ...both, unit: "mixed" }, "1 · Working · 8 reps · 40"],
+    ["mixed units with no row unit: no fallback, no unit", row({ weightUnit: null }), { n: 1, ...both, unit: "mixed" }, "1 · Working · 8 reps · 40"],
+    // Minor 519 (17.11 AC13): a row with no unit yet shows the unit Done will save it in.
+    ["mixed units with no row unit: the fallback unit", row({ weightUnit: null }), { n: 1, ...both, unit: "mixed", fallbackUnit: "kg" }, "1 · Working · 8 reps · 40 kg"],
+    ["mixed units: a row's own unit wins over the fallback", row({ weightUnit: "lb" }), { n: 1, ...both, unit: "mixed", fallbackUnit: "kg" }, "1 · Working · 8 reps · 40 lb"],
     ["the sheet's lb over a row without a unit", row({ weightUnit: null }), { n: 1, ...both, unit: "lb" }, "1 · Working · 8 reps · 40 lb"],
     ["the sheet's lb over a row in kg", row({ weightUnit: "kg" }), { n: 1, ...both, unit: "lb" }, "1 · Working · 8 reps · 40 lb"],
     ["reps that don't parse show as typed, without 'reps'", row({ reps: "abc" }), { n: 1, ...both, unit: "kg" }, "1 · Working · abc · 40 kg"],

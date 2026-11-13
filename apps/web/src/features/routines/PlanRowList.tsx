@@ -29,6 +29,8 @@ export interface PlanRowListProps {
   showReps: boolean;
   showWeight: boolean;
   unit: WeightUnit | "mixed";
+  /** While mixed, the unit Done saves a unitless row in, shown on its line and beside its Weight (minor 519). */
+  fallbackUnit?: WeightUnit;
   errors: ReadonlyMap<string, RowErrors>;
   /** Spec 17.11 AC12: the first row starts open (the plan was just entered from the quick line). */
   openFirst?: boolean;
@@ -48,7 +50,7 @@ export interface PlanRowListProps {
  * why in text (P6), the edge Move buttons included ("First set", "Last set", Spec 17.11 D6).
  * (The file is `PlanRowList`, not `PlanRows`: that name differs from `planRows.ts` only by case.)
  */
-export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirst = false, onField, onAdd, onRemove, onMove, onUnit }: PlanRowListProps) {
+export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, errors, openFirst = false, onField, onAdd, onRemove, onMove, onUnit }: PlanRowListProps) {
   const prefix = useId();
   // A row the editor or the server already flagged starts open (Spec 17.11 AC16), with no focus move: the sheet's
   // own first focus stands. Otherwise AC12: the only row, or the first when just entered from the quick line.
@@ -103,7 +105,8 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
   };
   const remove = (index: number) => {
     const takesPlace = rows[index + 1] ?? rows[index - 1];
-    setOpenKey(null);
+    // Spec 17.11 AC12 (minor 526): a Remove that leaves one row opens it; otherwise every row closes.
+    setOpenKey(rows.length === 2 && takesPlace ? takesPlace.key : null);
     if (takesPlace) pendingFocus.current = { key: takesPlace.key, target: "summary" };
     onRemove(rows[index]!.key);
   };
@@ -121,7 +124,8 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
           const isOpen = openKey === row.key;
           const first = index === 0;
           const last = index === rows.length - 1;
-          const summary = planRowSummary(row, { n, showReps, showWeight, unit });
+          const summary = planRowSummary(row, { n, showReps, showWeight, unit, ...(fallbackUnit ? { fallbackUnit } : {}) });
+          const rowUnit = row.weightUnit ?? fallbackUnit ?? null;
           const flagged = Boolean(error?.reps || error?.weight);
           return (
             <li key={row.key} className={styles.row}>
@@ -152,7 +156,7 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
                       <Field id={id("weight")} label={`Set ${n} weight`} {...(error?.weight ? { error: error.weight } : {})}>
                         {(control) => <input {...control} type="text" inputMode="decimal" autoComplete="off" className={styles.input} value={row.weight} onChange={(e) => onField(row.key, { weight: e.target.value })} />}
                       </Field>
-                      {unit === "mixed" && row.weight.trim() !== "" && row.weightUnit !== null ? <span className={styles.rowUnit}>{row.weightUnit}</span> : null}
+                      {unit === "mixed" && row.weight.trim() !== "" && rowUnit !== null ? <span className={styles.rowUnit}>{rowUnit}</span> : null}
                     </div>
                   ) : null}
                   {/* Spec 17.11 AC14, D6: a dead edge button says why, in words beside it. Each edge button and its note are

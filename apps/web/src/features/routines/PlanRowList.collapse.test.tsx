@@ -20,12 +20,14 @@ function Harness({
   openFirst = false,
   showReps = true,
   showWeight = true,
+  fallbackUnit,
 }: {
   initial: PlanRowText[];
   errors?: ReadonlyMap<string, RowErrors>;
   openFirst?: boolean;
   showReps?: boolean;
   showWeight?: boolean;
+  fallbackUnit?: "kg" | "lb";
 }) {
   const [rows, setRows] = useState<readonly PlanRowText[]>(initial);
   return (
@@ -36,6 +38,7 @@ function Harness({
       unit={unitOfRows(rows) ?? "kg"}
       errors={errors}
       openFirst={openFirst}
+      {...(fallbackUnit ? { fallbackUnit } : {})}
       onField={(key, patch) => setRows((r) => setRowField(r, key, patch))}
       onAdd={(key) => setRows((r) => addRow(r, key))}
       onRemove={(key) => setRows((r) => removeRow(r, key))}
@@ -171,6 +174,13 @@ describe("17.11 AC13 — no operation is lost (10.2 AC13 through an open row)", 
     expect(within(screen.getByRole("group", { name: "Set 2" })).getByText("lb")).toBeInTheDocument();
     await chooseSegment(user, "Weight unit", "kg");
     expect(summaryButtons().map((b) => b.textContent)).toEqual(["1 · Working · 8 reps · 100 kg", "2 · Working · 8 reps · 100 kg"]);
+  });
+
+  it("17.11 AC13 / minor 519 — while mixed, a row with no unit shows the unit it will save in, closed and open", async () => {
+    const { user } = setup(<Harness initial={[row("a"), row("b", { weightUnit: "lb" }), row("c", { weightUnit: null })]} fallbackUnit="kg" />);
+    expect(summaryButton(3)).toHaveTextContent("3 · Working · 8 reps · 100 kg");
+    await openRow(user, 3);
+    expect(within(screen.getByRole("group", { name: "Set 3" })).getByText("kg")).toBeInTheDocument();
   });
 
   it("a row's type is its own Segmented", async () => {

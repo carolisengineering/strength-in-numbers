@@ -201,6 +201,7 @@ export function ItemSheet({
               showReps={showReps}
               showWeight={showWeight}
               unit={planUnit}
+              fallbackUnit={rowFallbackUnit}
               errors={rowErrors}
               openFirst={enteredFromQuick}
               onField={(key, patch) => edit((rows) => setRowField(rows, key, patch))}

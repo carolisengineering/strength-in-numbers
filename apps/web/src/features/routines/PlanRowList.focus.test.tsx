@@ -77,6 +77,15 @@ describe("17.11 AC17 — focus after Remove and Add set", () => {
     expect(openGroups()).toEqual([]);
   });
 
+  it("17.11 AC12 / minor 526 — a Remove that leaves one row opens it, focus on its summary", async () => {
+    const { user } = setup(THREE.slice(0, 2));
+    await openRow(user, 2);
+    await user.click(screen.getByRole("button", { name: "Remove, set 2" }));
+    expect(summaryButtons()).toHaveLength(1);
+    expect(openGroups()).toEqual(["Set 1"]);
+    expect(summaryButton(1)).toHaveFocus();
+  });
+
   it("Remove the last row: focus on the previous row's summary", async () => {
     const { user } = setup(THREE);
     await openRow(user, 3);
