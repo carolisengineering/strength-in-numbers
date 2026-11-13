@@ -1,6 +1,9 @@
 import type { Modality } from "@sin/core";
 
 /** Display text for each modality (Spec 06.0 §5). */
+/** Spec 17.13 AC13: why the create sheet's Save is off. */
+export const SAVE_OFF_INCOMPLETE = "Enter a name and choose a type.";
+
 export const MODALITY_LABELS: Record<Modality, string> = {
   weight_reps: "Weight × reps",
   bodyweight_reps: "Bodyweight × reps",

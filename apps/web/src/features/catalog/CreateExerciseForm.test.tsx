@@ -96,6 +96,36 @@ function renderForm(
 
 const saveButton = () => screen.getByRole("button", { name: "Save" });
 
+describe("17.13 AC13 — why Save is off (create)", () => {
+  const reason = () => document.querySelector("[data-sheet-actions]")?.textContent ?? "";
+
+  it("empty: the row's status says what's missing, and Save is described by it", () => {
+    renderForm({ initialName: "" });
+    const line = screen.getByText("Enter a name and choose a type.");
+    expect(line.closest("[data-sheet-actions]")).not.toBeNull();
+    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAccessibleDescription("Enter a name and choose a type.");
+  });
+
+  it("review focus 1: a name of only spaces still shows the line", async () => {
+    const { user } = renderForm({ initialName: "" });
+    await user.type(screen.getByLabelText("Name"), "   ");
+    await user.click(screen.getAllByRole("radio")[0]!);
+    expect(screen.getByText("Enter a name and choose a type.")).toBeInTheDocument();
+  });
+
+  it("name and type filled: no line and no description; Save keeps its look", async () => {
+    const { user } = renderForm();
+    const before = saveButton().className;
+    await user.click(screen.getAllByRole("radio")[0]!);
+    expect(screen.queryByText("Enter a name and choose a type.")).toBeNull();
+    expect(saveButton()).not.toHaveAttribute("aria-describedby");
+    expect(saveButton()).toBeEnabled();
+    expect(saveButton().className).toBe(before);
+    expect(reason()).not.toContain("Enter a name");
+  });
+});
+
 describe("AC28 — create form layout", () => {
   it("prefills the name and offers the modality options as a radio group (eight since Spec 18.1)", () => {
     renderForm();

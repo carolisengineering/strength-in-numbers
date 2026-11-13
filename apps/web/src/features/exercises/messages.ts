@@ -59,6 +59,9 @@ export const EXERCISES_COPY = {
   typeLabel: "Type",
   cancel: "Cancel",
   save: "Save",
+  /** Spec 17.13 AC13: why the Edit sheet's Save is off. */
+  saveOffUnchanged: "Change something to save.",
+  saveOffNoName: "Enter a name.",
   saved: "Saved.",
   copyReady: "Your copy is ready. Edit it to change the name, type, muscles or equipment.",
   renameNote: "Renaming doesn't change past workouts. History keeps the name each workout was logged with.",

@@ -89,6 +89,9 @@ function EditForm({
         : { status: "failed" };
   const patch = toUpdateExerciseInput(initial, values);
   const canSave = values.name.trim() !== "" && Object.keys(patch).length > 0;
+  // Spec 17.13 AC13: a disabled Save says why. A blank name gets its own line: a type is already chosen here.
+  const reasonId = useId();
+  const reason = canSave || saving ? null : values.name.trim() === "" ? EXERCISES_COPY.saveOffNoName : EXERCISES_COPY.saveOffUnchanged;
   const notes = modalityNotes(row.modality, values.modality ?? row.modality, knowledge);
 
   const setBusy = (busy: boolean) => {
@@ -170,8 +173,9 @@ function EditForm({
             </p>
           ) : null
         }
+        status={reason !== null ? <span id={reasonId}>{reason}</span> : null}
         primary={
-          <Button type="submit" form={formId} busy={saving} disabled={!canSave}>
+          <Button type="submit" form={formId} busy={saving} disabled={!canSave} {...(reason !== null ? { "aria-describedby": reasonId } : {})}>
             {EXERCISES_COPY.save}
           </Button>
         }
