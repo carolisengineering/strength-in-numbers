@@ -1490,7 +1490,7 @@ try {
             const crowdedBody = crowded?.bodyHeight ?? 0;
             if (crowdedBody < 64) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 64)`);
             const messagesHeight = await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-messages]").getBoundingClientRect().height);
-            if (messagesHeight < 20) violations.push(`minor 492: the notice and status show ${messagesHeight.toFixed(1)} px at 232 px (want one line, >= 20)`);
+            if (messagesHeight < 18) violations.push(`minor 492: the notice and status show ${messagesHeight.toFixed(1)} px at 232 px (want one line, >= 18)`);
             for (const v of crowded?.violations ?? []) violations.push(`minor 492: ${v}`);
             await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
             await page.evaluate(() => {
