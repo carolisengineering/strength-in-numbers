@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkoutDetail, WorkoutSection } from "@sin/core";
+import type { TimerFormat, WorkoutDetail, WorkoutSection } from "@sin/core";
 import { RESULT_COPY } from "./resultCopy";
 import { diffDraft, type ResultDraft, type ResultWrite, type TimedSection } from "./resultDraft";
 
@@ -39,7 +39,8 @@ export interface ResultActions {
  * through the screen's writer, and focus back to the section's Log result button after every close.
  */
 export function useResultActions({ workout, writer, announce, failureText }: ResultActionDeps): ResultActions {
-  const [view, setView] = useState<{ sectionId: string; openCount: number } | null>(null);
+  // `format`: the timer format the sheet opened with; its fields belong to that format (minor 333).
+  const [view, setView] = useState<{ sectionId: string; openCount: number; format: TimerFormat | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const counter = useRef(0);
@@ -66,6 +67,11 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     } else if (section.timer === null) {
       close();
       announce(RESULT_COPY.timerGone);
+    } else if (view.format !== null && section.timer.format !== view.format) {
+      // Minor 333: the draft's fields are the old format's, so nothing of it may be sent. A changed cap or round count
+      // keeps the sheet: validateDraft and diffDraft read the refetched section.
+      close();
+      announce(RESULT_COPY.timerChanged);
     }
   }, [view, section, close, announce]);
 
@@ -79,11 +85,15 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     node.focus();
   });
 
-  const open = useCallback((sectionId: string) => {
-    counter.current += 1;
-    setFormError(null);
-    setView({ sectionId, openCount: counter.current });
-  }, []);
+  const open = useCallback(
+    (sectionId: string) => {
+      counter.current += 1;
+      setFormError(null);
+      const format = workout.sections.find((s) => s.id === sectionId)?.timer?.format ?? null;
+      setView({ sectionId, openCount: counter.current, format });
+    },
+    [workout.sections],
+  );
 
   const save = useCallback(
     async (draft: ResultDraft) => {

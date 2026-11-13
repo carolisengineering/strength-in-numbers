@@ -116,6 +116,31 @@ describe("10.7 AC42 — Log result on the edit screen", () => {
     expect(screen.getByTestId("edit-announcement")).toHaveTextContent("That section no longer exists");
   });
 
+  it("minor 333 — a format changed on another device closes the sheet with its line", async () => {
+    const { user, fake, workout, queryClient } = await openEdit();
+    await user.click(screen.getByRole("button", { name: "Log result for Finisher" }));
+    const stored = fake.state.finished.get(workout.id)!;
+    fake.state.finished.set(workout.id, { ...stored, sections: stored.sections.map((s) => ({ ...s, timer: { format: "set_timer", rounds: 5, roundSeconds: 300 }, roundTimes: [] })) });
+    await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workout.id) });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(screen.getByTestId("edit-announcement")).toHaveTextContent("This section's timer changed.");
+    expect(resultWrites(fake)).toEqual([]);
+  });
+
+  it("10.7 AC42 / minor 329 — a 409 timer mismatch on the first write re-reads once and says the timer changed", async () => {
+    const { user, fake, workout } = await openEdit();
+    const stored = fake.state.finished.get(workout.id)!;
+    fake.state.finished.set(workout.id, { ...stored, sections: stored.sections.map((s) => ({ ...s, timer: { format: "amrap", capSeconds: 1200 } })) });
+    fake.failNext({ method: "PUT", path: /round-times/ }, () => problemResponse(409, "section-timer-mismatch"));
+    const reads = () => fake.requests.filter((r) => r.method === "GET" && r.path === `/v1/workouts/${workout.id}`).length;
+    const before = reads();
+    const d = await shiftAndSave(user);
+    expect(await d.findByText("This section's timer changed.")).toBeInTheDocument();
+    expect(d.queryByText("Couldn't save all of the result — check it and try again")).toBeNull();
+    await waitFor(() => expect(reads()).toBe(before + 1));
+    expect(observability.reportError).not.toHaveBeenCalled();
+  });
+
   it("never touches the outbox storage key", async () => {
     const { user } = await openEdit();
     const set = vi.spyOn(Storage.prototype, "setItem");

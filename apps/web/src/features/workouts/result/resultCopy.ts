@@ -27,6 +27,8 @@ export const RESULT_COPY = Object.freeze({
   saved: "Result saved",
   sectionGone: "That section no longer exists",
   timerGone: "This section has no timer now.",
+  /** Minors 329, 333: another device changed the section's timer while Log result was open. */
+  timerChanged: "This section's timer changed.",
   partial: "Couldn't save all of the result — check it and try again",
   notSaved: "Not saved yet",
   notSavedFailed: "Couldn't be saved",

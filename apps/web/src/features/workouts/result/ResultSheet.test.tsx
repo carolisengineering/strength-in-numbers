@@ -89,6 +89,19 @@ describe("10.7 AC28–AC30 — bodies", () => {
   });
 });
 
+describe("minor 331 — Next is in the round field's description", () => {
+  it("the round to fill hears Next after the clock hint; clearing round 3 moves it there", async () => {
+    const { dialog, user } = renderSheet(section(SET5, rt([[1, 221], [2, 439], [3, 649], [4, 883]])));
+    const describedBy = (n: number) => dialog.getByLabelText(`Round ${n}`).getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(describedBy(5).at(-1)).toBe("result-round-5-next");
+    expect(document.getElementById("result-round-5-next")).toHaveTextContent("Next");
+    expect(describedBy(5)[0]).toBe("result-clock-hint");
+    await user.clear(dialog.getByLabelText("Round 3"));
+    expect(describedBy(3).at(-1)).toBe("result-round-3-next");
+    expect(describedBy(5)).not.toContain("result-round-5-next");
+  });
+});
+
 describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
   it("an invalid row shows its error, focuses that field and saves nothing", async () => {
     const { dialog, user, onSave } = renderSheet(section(SET5));

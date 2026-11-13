@@ -96,8 +96,21 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   };
   const roundRow = (round: number, digits: string) => (
     <div key={round} className={styles.round} data-round={round}>
-      <ClockField id={`result-round-${round}`} label={RESULT_COPY.roundLabel(round)} hint={null} describedBy={CLOCK_HINT_ID} digits={digits} error={shown.of(`row:${round}`)} onChange={(d) => setRow(round, d)} />
-      {round === next ? <span className={styles.next}>{RESULT_COPY.next}</span> : null}
+      {/* Minor 331: the round to fill hears its "Next" tag after the shared clock hint; the link moves with the tag. */}
+      <ClockField
+        id={`result-round-${round}`}
+        label={RESULT_COPY.roundLabel(round)}
+        hint={null}
+        describedBy={round === next ? `${CLOCK_HINT_ID} result-round-${round}-next` : CLOCK_HINT_ID}
+        digits={digits}
+        error={shown.of(`row:${round}`)}
+        onChange={(d) => setRow(round, d)}
+      />
+      {round === next ? (
+        <span id={`result-round-${round}-next`} className={styles.next}>
+          {RESULT_COPY.next}
+        </span>
+      ) : null}
     </div>
   );
   const steppers = (

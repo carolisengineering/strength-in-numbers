@@ -7,6 +7,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeTimedSection } from "../../../test/workoutFixtures";
+import { roundTimeIssues, type RoundTime } from "@sin/core";
 import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
 
 const api = (status: number, slug = "about:blank") =>
@@ -153,6 +154,44 @@ describe("10.7 AC37 — draining round and result ops", () => {
     c.setOnline(true);
     await c.outbox.drain();
     expect(c.order).toEqual(["clear 2", "round 1=250"]);
+  });
+});
+
+describe("minor 332 — Log result replays", () => {
+  it("r2, r1, r2' recorded offline replay against the server's ordering rule with every prefix valid", async () => {
+    const c = setup();
+    const stored: RoundTime[] = [];
+    const timer = { format: "amrap" as const, capSeconds: 900 };
+    c.rest.putRoundTime.mockImplementation(async (sectionId: string, r: number, seconds: number) => {
+      const others = stored.filter((x) => x.round !== r);
+      if (roundTimeIssues(timer, others, r, seconds).length > 0) throw api(422, "validation-failed");
+      stored.splice(0, stored.length, ...others, { round: r, seconds }).sort((a, b) => a.round - b.round);
+      return makeTimedSection({ id: sectionId });
+    });
+    c.setOnline(false);
+    round(c, 2, 515);
+    round(c, 1, 250);
+    round(c, 2, 545);
+    c.setOnline(true);
+    await c.outbox.drain();
+    expect([...stored].sort((a, b) => a.round - b.round)).toEqual([{ round: 1, seconds: 250 }, { round: 2, seconds: 545 }]);
+    expect(c.onFailed).not.toHaveBeenCalled();
+    expect(c.outbox.getState().ops).toEqual([]);
+  });
+
+  it("a 404 with three queued ops, a result op among them: every op ends done and none is left to block Finish", async () => {
+    const c = setup();
+    c.rest.putRoundTime.mockRejectedValue(api(404, "not-found"));
+    c.rest.putResult.mockRejectedValue(api(404, "not-found"));
+    c.setOnline(false);
+    round(c, 1, 250);
+    round(c, 2, 515);
+    result(c, { rounds: 3, reps: 4, finishSeconds: null, capped: false });
+    expect(c.outbox.getState().ops).toHaveLength(3);
+    c.setOnline(true);
+    await c.outbox.drain();
+    expect(c.outbox.getState().ops).toEqual([]);
+    expect(c.onFailed).not.toHaveBeenCalled();
   });
 });
 

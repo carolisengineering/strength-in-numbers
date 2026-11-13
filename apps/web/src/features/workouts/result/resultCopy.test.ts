@@ -29,6 +29,7 @@ describe("10.7 AC56 — Phase C copy is pinned", () => {
       saved: "Result saved",
       sectionGone: "That section no longer exists",
       timerGone: "This section has no timer now.",
+      timerChanged: "This section's timer changed.",
       partial: "Couldn't save all of the result — check it and try again",
       notSaved: "Not saved yet",
       notSavedFailed: "Couldn't be saved",
