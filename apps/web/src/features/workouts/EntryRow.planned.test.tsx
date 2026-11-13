@@ -240,6 +240,27 @@ describe("10.2 AC25 — a count change that is not this row's own log", () => {
     expect(MORE()).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("minor 449, code review: More opened while a log is in flight stays open when that log lands, and keeps focus", async () => {
+    const { fake, user } = await setup([bench({ plannedSets: [planned("working", 8, 80), planned("working", 8, 80), planned("working", 8, 80)] })]);
+    const exerciseRowId = fake.state.active!.exercises[0]!.id;
+    const gate = deferred<void>();
+    server.use(
+      http.post(`${API_BASE_URL}/v1/workout-exercises/:id/sets`, async () => {
+        await gate.promise;
+        return HttpResponse.json(makeSet({ workoutExerciseId: exerciseRowId, setNumber: 1, weight: 80, reps: 8 }), { status: 201 });
+      }),
+    );
+    await user.click(logButton("Bench"));
+    await openSetOptions(user, card("Bench"));
+    const drop = within(card("Bench")).getByRole("radio", { name: "Drop" });
+    await user.click(drop);
+    expect(drop).toHaveFocus();
+    gate.resolve();
+    await within(card("Bench")).findByText(/^Set 2 of 3/);
+    expect(MORE()).toHaveAttribute("aria-expanded", "true");
+    expect(within(card("Bench")).getByRole("radio", { name: "Drop" })).toHaveFocus();
+  });
+
   it("minor 449: a log still closes More (17.7 AC16)", async () => {
     const { user } = await setup([bench()]);
     await openSetOptions(user, card("Bench"));

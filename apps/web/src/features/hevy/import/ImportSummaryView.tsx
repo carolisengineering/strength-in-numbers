@@ -2,6 +2,7 @@ import { useId, useMemo, type Ref } from "react";
 import { HEVY_IMPORT_DROP_CODES } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { HEVY_PATH } from "../paths";
 import type { ImportState } from "./importSession";
 import { aggregateResults, confirmLabel, sendable, summaryLists, type ListGroup } from "./importSummary";
@@ -25,7 +26,6 @@ import {
   workoutsRead,
 } from "./messages";
 import { SummaryList } from "./SummaryList";
-import { NavRow } from "../../../ui/NavRow";
 import styles from "./ImportScreen.module.css";
 
 const fmt = (n: number) => n.toLocaleString("en-US");

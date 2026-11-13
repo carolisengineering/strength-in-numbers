@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { saveBlob } from "../../account/saveBlob";
 import { useCatalog } from "../../catalog/useCatalog";
 import {
@@ -26,7 +27,6 @@ import { MAPPING_FILENAME, mappingCsvBlob } from "./downloadMapping";
 import { LoadMappingSheet } from "./LoadMappingSheet";
 import { PlaceholderSheet } from "./PlaceholderSheet";
 import { useHevyMapping } from "./useHevyMapping";
-import { NavRow } from "../../../ui/NavRow";
 import styles from "./MappingCard.module.css";
 
 

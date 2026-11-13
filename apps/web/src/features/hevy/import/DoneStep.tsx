@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type Ref } from "react";
 
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { HEVY_PATH } from "../paths";
 import { buildImportReport, downloadReport } from "./importReport";
 import type { ImportState } from "./importSession";
@@ -27,7 +28,6 @@ import {
   TRY_AGAIN,
   VIEW_HISTORY,
 } from "./messages";
-import { NavRow } from "../../../ui/NavRow";
 import styles from "./ImportScreen.module.css";
 
 const HISTORY_PATH = "/app/history";

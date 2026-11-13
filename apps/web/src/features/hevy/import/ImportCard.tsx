@@ -1,8 +1,8 @@
+import { NavRow } from "../../../ui/NavRow";
 
 import { useHevyKey } from "../useHevyKey";
 import { ADD_KEY_FIRST, IMPORT_CARD_BODY, IMPORT_CARD_TITLE } from "./messages";
 import { HEVY_IMPORT_PATH } from "./paths";
-import { NavRow } from "../../../ui/NavRow";
 import styles from "./ImportScreen.module.css";
 
 /** Spec 20.1 AC1: the Hevy screen's import card (the screen itself is drawn only with status `200`). */
