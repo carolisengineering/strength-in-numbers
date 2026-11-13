@@ -91,8 +91,9 @@ export function PairingCard({ card, problem, missing, rows, muscleGroups, equipm
       <div className={styles.options}>
         {card.match !== null && matchName !== null ? (
           <RadioChip block {...radio("match")} disabled={card.hevyType === null}>
-            <span>{matchName}</span>{" "}
-            <span className={styles.tag}>{card.match.kind === "exact" ? EXACT_MATCH : SIMILAR_MATCH}</span>
+            <span>
+              {matchName} <span className={styles.tag}>{card.match.kind === "exact" ? EXACT_MATCH : SIMILAR_MATCH}</span>
+            </span>
           </RadioChip>
         ) : null}
         {card.pickedId !== null && pickedName !== null ? (

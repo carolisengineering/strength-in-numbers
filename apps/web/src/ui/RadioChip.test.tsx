@@ -78,3 +78,12 @@ describe("17.13 AC21 — tokens and roles", () => {
     for (const m of css().matchAll(/(\d+(?:\.\d+)?)px/g)) expect(m[1]).toBe("1");
   });
 });
+
+describe("17.13 review focus 3 — a match tag never breaks inside a word", () => {
+  const read = (rel: string) => stripCssComments(readFileSync(join(HERE, rel), "utf8"));
+  it.each(["../features/routines/import/ImportNames.module.css", "../features/hevy/pairing/PairingCard.module.css"])("%s .tag is one unbroken inline block", (rel) => {
+    const tag = [...read(rel).matchAll(/([^{}]+)\{([^}]*)\}/g)].find((m) => m[1]!.trim() === ".tag")?.[2] ?? "";
+    expect(tag).toMatch(/display:\s*inline-block/);
+    expect(tag).toMatch(/white-space:\s*nowrap/);
+  });
+});

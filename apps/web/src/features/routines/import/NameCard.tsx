@@ -107,8 +107,9 @@ export function NameCard({ card, problem, exerciseName, muscleGroups, equipment,
       <div className={styles.options}>
         {card.match !== null && matchName !== null ? (
           <RadioChip block {...radio("match")}>
-            <span>{matchName}</span>
-            <span className={styles.tag}>{card.match.kind === "exact" ? IN_YOUR_LIST : SIMILAR}</span>
+            <span>
+              {matchName} <span className={styles.tag}>{card.match.kind === "exact" ? IN_YOUR_LIST : SIMILAR}</span>
+            </span>
           </RadioChip>
         ) : null}
         {card.pickedId !== null && pickedName !== null ? (

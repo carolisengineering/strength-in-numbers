@@ -133,6 +133,10 @@ describe("10.4 AC27 — names that already exist, on screen", () => {
     expect(chosen).toBeChecked();
     expect(chosen).toHaveFocus();
     expect(within(hand).getByText(IN_YOUR_LIST)).toBeInTheDocument();
+    // Spec 17.13 review focus 3: the tag follows the name inside one line of text, so a long name wraps around it
+    // instead of crushing it (a separate flex item broke "In your list" mid-word at 320 px).
+    expect(within(hand).getByText(IN_YOUR_LIST).parentElement).toHaveTextContent(`Overhead press ${IN_YOUR_LIST}`);
+    expect(within(hand).getByText(IN_YOUR_LIST).parentElement!.tagName).toBe("SPAN");
     // A tap can be undone: New stays on the card, with the typed name.
     await user.click(within(hand).getByRole("radio", { name: newOption("overhead presses") }));
     expect(within(hand).getByLabelText("Name")).toHaveValue("overhead presses");
