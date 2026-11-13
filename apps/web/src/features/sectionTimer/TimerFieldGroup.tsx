@@ -15,7 +15,7 @@ import {
   TIMER_FORMAT_LABELS,
   TIMER_LABEL,
 } from "./timerCopy";
-import { withFormat, type TimerFieldErrors, type TimerFieldsValue, type TimerFormatChoice } from "./timerFields";
+import { withFormat, type TimerFieldErrors, type TimerFieldName, type TimerFieldsValue, type TimerFormatChoice } from "./timerFields";
 
 export interface TimerFieldsProps {
   idPrefix: string;
@@ -25,6 +25,11 @@ export interface TimerFieldsProps {
   onChange(value: TimerFieldsValue): void;
   /** Spec 10.7 AC40: every control disabled (the section has unsent timer entries). */
   disabled?: boolean;
+  /**
+   * Which message the lifter's change may clear (minors 313, 326): the field's own (`rounds`, `roundSeconds`,
+   * `capSeconds`), then `group` on any timer change, so a sheet hides them without diffing timer values.
+   */
+  onEdit?(field: TimerFieldName | "group"): void;
 }
 
 const CHOICES: readonly { value: TimerFormatChoice; label: string }[] = (["none", ...TIMER_FORMAT_VALUES] as const).map((choice) => ({
@@ -40,7 +45,11 @@ const secondsOver59 = (digits: string) => digits !== "" && digitsToSeconds(digit
  * format's fields. `Seconds go up to 59.` never flashes mid-entry: it shows once the field is left (or after Done),
  * and only while the digits still say it.
  */
-export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled = false }: TimerFieldsProps) {
+export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled = false, onEdit }: TimerFieldsProps) {
+  const edited = (field?: TimerFieldName) => {
+    if (field) onEdit?.(field);
+    onEdit?.("group");
+  };
   const [left, setLeft] = useState<Partial<Record<"roundDigits" | "capDigits", boolean>>>({});
   const clockError = (key: "roundDigits" | "capDigits", name: "roundSeconds" | "capSeconds"): string | undefined => {
     if (secondsOver59(value[key]) && (left[key] || errors[name] === SECONDS_MAX_ERROR)) return SECONDS_MAX_ERROR;
@@ -53,7 +62,10 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled =
       hint={hint}
       digits={value[key]}
       error={clockError(key, name)}
-      onChange={(digits) => onChange({ ...value, [key]: digits })}
+      onChange={(digits) => {
+        edited(name);
+        onChange({ ...value, [key]: digits });
+      }}
       onBlur={() => setLeft((l) => ({ ...l, [key]: true }))}
     />
   );
@@ -67,6 +79,7 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled =
         value={value.format}
         onChange={(format) => {
           setLeft({});
+          edited();
           onChange(withFormat(value, format));
         }}
       />
@@ -81,7 +94,10 @@ export function TimerFields({ idPrefix, value, errors = {}, onChange, disabled =
                 inputMode="numeric"
                 autoComplete="off"
                 value={value.rounds}
-                onChange={(event) => onChange({ ...value, rounds: event.target.value.replace(/\D/g, "").slice(0, ROUNDS_DIGITS_MAX) })}
+                onChange={(event) => {
+                  edited("rounds");
+                  onChange({ ...value, rounds: event.target.value.replace(/\D/g, "").slice(0, ROUNDS_DIGITS_MAX) });
+                }}
               />
             )}
           </Field>

@@ -1,6 +1,7 @@
 import type { SectionTimer } from "@sin/core";
 import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
+import { useClearOnEdit } from "../../ui/useClearOnEdit";
 import { Field } from "../../ui/Field";
 import { Sheet } from "../../ui/Sheet";
 import { SheetActions } from "../../ui/SheetActions";
@@ -30,6 +31,9 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
   const [errors, setErrors] = useState<{ name?: string; notes?: string }>({ name: messages.name, notes: messages.notes });
   const [timer, setTimer] = useState(() => fieldsFromTimer(section.timer));
   const [timerErrors, setTimerErrors] = useState<TimerFieldErrors>(messages.timer ?? {});
+  // Minor 313: a message shows from the Done (or the server) that found it until the lifter edits that field.
+  const shown = useClearOnEdit(errors);
+  const timerShown = useClearOnEdit(timerErrors);
   const formId = useId();
 
   function done() {
@@ -56,16 +60,39 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
           done();
         }}
       >
-        <Field id="section-name" label="Name" {...(errors.name ? { error: errors.name } : {})}>
-          {(control) => <input {...control} className={styles.input} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />}
+        <Field id="section-name" label="Name" error={shown.of("name")}>
+          {(control) => (
+            <input
+              {...control}
+              className={styles.input}
+              autoComplete="off"
+              value={name}
+              onChange={(e) => {
+                shown.edit("name");
+                setName(e.target.value);
+              }}
+            />
+          )}
         </Field>
-        <Field id="section-notes" label="Note" hint="Optional" {...(errors.notes ? { error: errors.notes } : {})}>
-          {(control) => <textarea {...control} className={styles.input} rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />}
+        <Field id="section-notes" label="Note" hint="Optional" error={shown.of("notes")}>
+          {(control) => (
+            <textarea
+              {...control}
+              className={styles.input}
+              rows={4}
+              value={notes}
+              onChange={(e) => {
+                shown.edit("notes");
+                setNotes(e.target.value);
+              }}
+            />
+          )}
         </Field>
         <TimerFields
           idPrefix="section-timer"
           value={timer}
-          errors={timerErrors}
+          errors={timerShown.visible}
+          onEdit={(field) => timerShown.edit(field)}
           onChange={(next) => {
             // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.
             if (next.format !== timer.format) setTimerErrors({});

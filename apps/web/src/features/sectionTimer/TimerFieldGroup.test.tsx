@@ -19,6 +19,23 @@ function Harness(props: { initial?: TimerFieldsValue; errors?: TimerFieldErrors 
 }
 const valueOf = () => JSON.parse(screen.getByTestId("value").textContent!) as TimerFieldsValue;
 
+describe("minor 313 — onEdit names the field that changed", () => {
+  it("typing a round length reports roundSeconds and the group; rounds reports rounds", async () => {
+    const user = userEvent.setup();
+    const edits: string[] = [];
+    function Probe() {
+      const [value, setValue] = useState<TimerFieldsValue>({ format: "set_timer", rounds: "", roundDigits: "", capDigits: "" });
+      return <TimerFields idPrefix="p" value={value} onChange={setValue} onEdit={(field) => edits.push(field)} />;
+    }
+    render(<Probe />);
+    await user.type(screen.getByLabelText("Round length"), "1");
+    expect(edits).toEqual(["roundSeconds", "group"]);
+    edits.length = 0;
+    await user.type(screen.getByLabelText("Rounds"), "4");
+    expect(edits).toEqual(["rounds", "group"]);
+  });
+});
+
 describe("10.7 AC4 — timer fields", () => {
   it("17.7 AC6 — Timer is a group of four radios: None, Set Timer, AMRAP, Time Cap", () => {
     render(<Harness />);
