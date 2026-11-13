@@ -99,6 +99,29 @@ describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("10.7 AC31 / minors PR B — an edit hides only that round's message; the next Save checks again", async () => {
+    const { dialog, user, onSave } = renderSheet(section(SET5));
+    await user.type(dialog.getByLabelText("Round 4"), "501");
+    await user.type(dialog.getByLabelText("Round 5"), "502");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getAllByText("Longer than the round length.")).toHaveLength(2);
+    await user.type(dialog.getByLabelText("Round 4"), "{Backspace}");
+    expect(dialog.getByLabelText("Round 4")).not.toHaveAttribute("aria-invalid", "true");
+    expect(dialog.getByLabelText("Round 5")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Round 5")).toHaveAttribute("aria-invalid", "true");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("10.7 AC31 / minors PR B — a stepper tap is an edit: it hides the Rounds message", async () => {
+    const { dialog, user } = renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    await user.type(dialog.getByLabelText("Reps"), "5");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Rounds")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: /increase rounds/i }));
+    expect(dialog.getByLabelText("Rounds")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("a valid Save hands the draft over", async () => {
     const { dialog, user, onSave } = renderSheet(section(SET5));
     await user.type(dialog.getByLabelText("Round 1"), "341");

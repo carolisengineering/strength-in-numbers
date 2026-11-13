@@ -6,6 +6,7 @@ import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { ClockField } from "../../sectionTimer/ClockField";
+import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerLine } from "../../sectionTimer/TimerLine";
 import { CLOCK_HINT } from "../../sectionTimer/timerCopy";
 import { NumberStepper } from "../NumberStepper";
@@ -52,6 +53,8 @@ const step = (text: string, by: 1 | -1, max: number): string => {
 export function ResultSheet({ open, section, busy, formError, onCancel, onSave }: ResultSheetProps) {
   const [draft, setDraft] = useState<ResultDraft>(() => draftFromSection(section));
   const [errors, setErrors] = useState<DraftErrors>({});
+  // Owner answer (minors PR B): a message shows from the Save that found it until the lifter edits that field.
+  const shown = useClearOnEdit(errors);
   const [focusTick, setFocusTick] = useState(0);
   const formRef = useRef<HTMLFormElement | null>(null);
   const formId = useId();
@@ -82,10 +85,18 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
     onSave(draft);
   }
 
-  const setRow = (round: number, digits: string) => setDraft((d) => ({ ...d, rows: d.rows.map((r) => (r.round === round ? { ...r, digits } : r)) }));
+  const setRow = (round: number, digits: string) => {
+    shown.edit(`row:${round}`);
+    setDraft((d) => ({ ...d, rows: d.rows.map((r) => (r.round === round ? { ...r, digits } : r)) }));
+  };
+  // A stepper tap is an edit like a keystroke, so it hides its field's message too.
+  const editCount = (field: "rounds" | "reps", next: (d: ResultDraft) => ResultDraft) => {
+    shown.edit(field);
+    setDraft(next);
+  };
   const roundRow = (round: number, digits: string) => (
     <div key={round} className={styles.round} data-round={round}>
-      <ClockField id={`result-round-${round}`} label={RESULT_COPY.roundLabel(round)} hint={null} describedBy={CLOCK_HINT_ID} digits={digits} error={errors[`row:${round}`]} onChange={(d) => setRow(round, d)} />
+      <ClockField id={`result-round-${round}`} label={RESULT_COPY.roundLabel(round)} hint={null} describedBy={CLOCK_HINT_ID} digits={digits} error={shown.of(`row:${round}`)} onChange={(d) => setRow(round, d)} />
       {round === next ? <span className={styles.next}>{RESULT_COPY.next}</span> : null}
     </div>
   );
@@ -96,32 +107,32 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         label={RESULT_COPY.rounds}
         value={draft.rounds}
         inputMode="numeric"
-        error={errors["rounds"]}
+        error={shown.of("rounds")}
         decreaseText={RESULT_COPY.stepDown}
         increaseText={RESULT_COPY.stepUp}
         decreaseLabel={RESULT_COPY.decreaseRounds}
         increaseLabel={RESULT_COPY.increaseRounds}
         canDecrease={draft.rounds !== "" && Number(draft.rounds) > 0}
         canIncrease={draft.rounds === "" || Number(draft.rounds) < RESULT_ROUNDS_MAX}
-        onChange={(v) => setDraft((d) => ({ ...d, rounds: v.replace(/\D/g, "") }))}
-        onDecrease={() => setDraft((d) => ({ ...d, rounds: step(d.rounds, -1, RESULT_ROUNDS_MAX) }))}
-        onIncrease={() => setDraft((d) => ({ ...d, rounds: step(d.rounds, 1, RESULT_ROUNDS_MAX) }))}
+        onChange={(v) => editCount("rounds", (d) => ({ ...d, rounds: v.replace(/\D/g, "") }))}
+        onDecrease={() => editCount("rounds", (d) => ({ ...d, rounds: step(d.rounds, -1, RESULT_ROUNDS_MAX) }))}
+        onIncrease={() => editCount("rounds", (d) => ({ ...d, rounds: step(d.rounds, 1, RESULT_ROUNDS_MAX) }))}
       />
       <NumberStepper
         id="result-reps"
         label={RESULT_COPY.reps}
         value={draft.reps}
         inputMode="numeric"
-        error={errors["reps"]}
+        error={shown.of("reps")}
         decreaseText={RESULT_COPY.stepDown}
         increaseText={RESULT_COPY.stepUp}
         decreaseLabel={RESULT_COPY.decreaseReps}
         increaseLabel={RESULT_COPY.increaseReps}
         canDecrease={draft.reps !== "" && Number(draft.reps) > 0}
         canIncrease={draft.reps === "" || Number(draft.reps) < RESULT_REPS_MAX}
-        onChange={(v) => setDraft((d) => ({ ...d, reps: v.replace(/\D/g, "") }))}
-        onDecrease={() => setDraft((d) => ({ ...d, reps: step(d.reps, -1, RESULT_REPS_MAX) }))}
-        onIncrease={() => setDraft((d) => ({ ...d, reps: step(d.reps, 1, RESULT_REPS_MAX) }))}
+        onChange={(v) => editCount("reps", (d) => ({ ...d, reps: v.replace(/\D/g, "") }))}
+        onDecrease={() => editCount("reps", (d) => ({ ...d, reps: step(d.reps, -1, RESULT_REPS_MAX) }))}
+        onIncrease={() => editCount("reps", (d) => ({ ...d, reps: step(d.reps, 1, RESULT_REPS_MAX) }))}
       />
     </div>
   );
@@ -174,7 +185,11 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
                 <div className={styles.radios}>
                   {(["finished", "capped"] as const).map((mode) => (
                     <label key={mode} className={styles.radio}>
-                      <input type="radio" name="result-mode" checked={draft.mode === mode} onChange={() => setDraft((d) => withMode(d, mode))} />
+                      <input type="radio" name="result-mode" checked={draft.mode === mode} onChange={() => {
+                        // Another mode shows other fields; its messages belong to the old one.
+                        shown.edit("rounds", "reps", "finish");
+                        setDraft((d) => withMode(d, mode));
+                      }} />
                       {mode === "finished" ? RESULT_COPY.finished : RESULT_COPY.hitCap}
                     </label>
                   ))}
@@ -182,7 +197,10 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
               </fieldset>
             ) : null}
             {draft.mode === "finished" ? (
-              <ClockField id="result-finish" label={RESULT_COPY.finishTime} digits={draft.finishDigits} error={errors["finish"]} onChange={(d) => setDraft((x) => ({ ...x, finishDigits: d }))} />
+              <ClockField id="result-finish" label={RESULT_COPY.finishTime} digits={draft.finishDigits} error={shown.of("finish")} onChange={(d) => {
+                shown.edit("finish");
+                setDraft((x) => ({ ...x, finishDigits: d }));
+              }} />
             ) : (
               steppers
             )}
