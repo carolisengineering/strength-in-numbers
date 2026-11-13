@@ -77,7 +77,7 @@ describe("18.0 AC37 — Finish with a plan", () => {
 });
 
 describe("18.0 AC38 — the dialogs say where it ends", () => {
-  const ENDS = "Ends Fri, Oct 16, 7:00 PM, as set in Change Time.";
+  const ENDS = "Ends Fri, Oct 16, 7:00 PM, as set in Change time.";
 
   it("Finish workout? has the line after the stats; title and buttons are unchanged", async () => {
     const { user } = await setup(3600);

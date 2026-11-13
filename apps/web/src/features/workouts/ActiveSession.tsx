@@ -844,7 +844,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
                 setChangeTimeOpen(true);
               }}
             >
-              Change Time
+              Change time
             </Button>
           </div>
         }

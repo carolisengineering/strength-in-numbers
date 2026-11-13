@@ -501,7 +501,7 @@ function EditBody({
             disabled={writing || structureBusy}
             onClick={() => setChangeTime((c) => ({ session: (c?.session ?? 0) + 1, open: true }))}
           >
-            Change Time
+            Change time
           </Button>
         </div>
 

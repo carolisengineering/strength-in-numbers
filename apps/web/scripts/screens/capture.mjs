@@ -1365,7 +1365,7 @@ try {
     await tryStep("change time (live)", async () => {
       await go("/app/workouts");
       await shoot(page, device, "36-live-header", "Live header: the clock and Workout menu; Started and Change Time on row 2 (Spec 18.0 AC34)");
-      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.getByRole("button", { name: "Change time" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "37-change-time-live", "Change Time sheet on a live workout: Day, Started at, Took, the hint (Spec 18.0 AC30)");
       // An hour ahead, but never past today's 23:59: a time alone is read as today, so 00:30 after 23:30 would be
@@ -2024,7 +2024,7 @@ try {
       await shoot(page, device, "35-edit-last-set", "Delete the only set: Delete this whole workout instead? (Spec 18.0 AC18)");
       await page.keyboard.press("Escape");
       await go(`/app/history/${D.ids.latestPush}/edit`);
-      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.getByRole("button", { name: "Change time" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "41-change-time-edit", "Change Time on a finished workout: Took required, no hint (Spec 18.0 AC40)");
       await page.keyboard.press("Escape");
@@ -2802,10 +2802,10 @@ try {
       const started = page.getByText(text ?? /^Started /, { exact: Boolean(text) }).first();
       await started.waitFor();
       await started.scrollIntoViewIfNeeded();
-      const change = page.getByRole("button", { name: "Change Time" });
+      const change = page.getByRole("button", { name: "Change time" });
       const [a, b] = [await started.boundingBox(), await change.boundingBox()];
       const meet = a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-      return meet ? [`"${await started.textContent()}" meets Change Time`] : [];
+      return meet ? [`"${await started.textContent()}" meets Change time`] : [];
     };
     for (const locale of ["en-GB", "de-DE"]) {
       await tryStep(`locale ${locale}`, async () => {

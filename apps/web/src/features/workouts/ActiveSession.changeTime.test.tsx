@@ -59,8 +59,8 @@ async function setup(opts: { startedAt?: string; plan?: number | null; finished?
   return { fake, active, ...app };
 }
 
-const sheet = () => within(screen.getByRole("dialog", { name: "Change Time" }));
-const sheetOpen = () => screen.queryByRole("dialog", { name: "Change Time" }) !== null;
+const sheet = () => within(screen.getByRole("dialog", { name: "Change time" }));
+const sheetOpen = () => screen.queryByRole("dialog", { name: "Change time" }) !== null;
 const patches = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workouts/")).map((r) => r.body);
 
@@ -73,6 +73,16 @@ async function changeTime(user: ReturnType<typeof renderApp>["user"], values: { 
   await user.click(sheet().getByRole("button", { name: "Save time" }));
 }
 
+describe("17.13 AC9 — Change time", () => {
+  it("the live header's button and the sheet's title read Change time", async () => {
+    const { user } = await setup();
+    expect(changeTimeButton()).toHaveTextContent(/^Change time$/);
+    await user.click(changeTimeButton());
+    expect(screen.getByRole("dialog", { name: "Change time" })).toBeInTheDocument();
+    expect(screen.queryByText("Change Time")).toBeNull();
+  });
+});
+
 describe("18.0 AC34 — the header has two rows", () => {
   it("row 1: the clock and Workout menu; row 2: Started and a secondary Change Time; the menu items come after", async () => {
     const { user } = await setup();
@@ -81,12 +91,12 @@ describe("18.0 AC34 — the header has two rows", () => {
     expect(within(row1).getByText(/Elapsed/)).toBeInTheDocument();
     const row2 = row1.nextElementSibling as HTMLElement;
     expect(within(row2).getByText("Started 10:05 AM")).toBeInTheDocument();
-    const button = within(row2).getByRole("button", { name: "Change Time" });
+    const button = within(row2).getByRole("button", { name: "Change time" });
     expect(button.className).toMatch(/secondary/);
     await user.click(menu);
     const finish = screen.getByRole("button", { name: "End workout early" });
     expect(button.compareDocumentPosition(finish) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(finish.parentElement!).queryByRole("button", { name: "Change Time" })).toBeNull();
+    expect(within(finish.parentElement!).queryByRole("button", { name: "Change time" })).toBeNull();
     expect(within(row2).queryByText(/Took/)).toBeNull();
   });
 

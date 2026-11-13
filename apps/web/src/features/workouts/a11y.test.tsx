@@ -615,9 +615,9 @@ describe("18.0 AC44 — the edit screen is accessible (component level)", () => 
 describe("18.0 AC44 — Change Time is accessible (component level)", () => {
   it("live: one Change Time button; every sheet input is named; Hours and Minutes sit in the group Took; a Took error is an alert tied to both", async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole("button", { name: "Change Time" }));
-    expect(screen.getAllByRole("button", { name: "Change Time" })).toHaveLength(1);
-    const sheet = screen.getByRole("dialog", { name: "Change Time" });
+    await user.click(screen.getByRole("button", { name: "Change time" }));
+    expect(screen.getAllByRole("button", { name: "Change time" })).toHaveLength(1);
+    const sheet = screen.getByRole("dialog", { name: "Change time" });
     for (const control of sheet.querySelectorAll("input")) expect(control).toHaveAccessibleName();
     const took = within(sheet).getByRole("group", { name: "Took" });
     const inputs = [within(took).getByLabelText("Hours"), within(took).getByLabelText("Minutes")];
@@ -634,8 +634,8 @@ describe("18.0 AC44 — Change Time is accessible (component level)", () => {
     prepareApp({ auth, fake });
     const { user } = renderApp(`/app/history/${workout.id}/edit`);
     await screen.findByRole("heading", { level: 1, name: "Edit workout" });
-    expect(screen.getAllByRole("button", { name: "Change Time" })).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "Change Time" }));
+    expect(screen.getAllByRole("button", { name: "Change time" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Change time" }));
     expect(screen.getAllByRole("status")).toEqual([screen.getByTestId("edit-announcement")]);
   });
 });

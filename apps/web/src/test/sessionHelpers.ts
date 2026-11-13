@@ -88,8 +88,8 @@ export async function openSetOptions(user: UserEvent, scope: HTMLElement): Promi
   if (toggle.getAttribute("aria-expanded") !== "true") await user.click(toggle);
 }
 
-/** Spec 18.0 AC34 / AC40: the header's Change Time button (live row 2, or the edit header). */
-export const changeTimeButton = (): HTMLElement => screen.getByRole("button", { name: "Change Time" });
+/** Spec 18.0 AC34 / AC40: the header's Change time button (live row 2, or the edit header). */
+export const changeTimeButton = (): HTMLElement => screen.getByRole("button", { name: "Change time" });
 
 /**
  * Spec 17.7 AC19, AC20: the superset toggles and Add / Edit note live in a card's Options; open it if it is closed.

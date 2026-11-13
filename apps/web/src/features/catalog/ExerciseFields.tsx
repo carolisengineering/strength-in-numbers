@@ -76,7 +76,8 @@ export function ExerciseFields({
   onChange,
   errors = {},
   idPrefix = "exercise",
-  modalityLabel = "Modality",
+  // Spec 17.13 AC8: the plain word, as the Edit sheet and the import card already said.
+  modalityLabel = "Type",
   muscleGroups,
   equipment,
   detailsOpen,

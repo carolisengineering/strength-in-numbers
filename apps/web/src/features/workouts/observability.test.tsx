@@ -285,8 +285,8 @@ describe("AC35 — observability hygiene across the flows", () => {
 describe("18.0 AC43 — the Change Time event in the hygiene scan", () => {
   it("a live Change Time emits workout_retimed with scalars only", async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole("button", { name: "Change Time" }));
-    const sheet = within(screen.getByRole("dialog", { name: "Change Time" }));
+    await user.click(screen.getByRole("button", { name: "Change time" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Change time" }));
     fireEvent.change(sheet.getByLabelText("Day"), { target: { value: "2000-06-01" } });
     await user.click(sheet.getByRole("button", { name: "Save time" }));
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_retimed", expect.objectContaining({ where: "live", changed: "start" })));

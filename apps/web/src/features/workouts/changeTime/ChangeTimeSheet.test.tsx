@@ -33,7 +33,7 @@ function setup(workout: WorkoutDetail, updateWorkout: WorkoutClient["updateWorko
   return { user: userEvent.setup(), updateWorkout: vi.mocked(updateWorkout), ...callbacks };
 }
 
-const sheet = () => within(screen.getByRole("dialog", { name: "Change Time" }));
+const sheet = () => within(screen.getByRole("dialog", { name: "Change time" }));
 const day = () => sheet().getByLabelText("Day");
 const time = () => sheet().getByLabelText("Started at");
 const hours = () => sheet().getByLabelText("Hours");
@@ -204,7 +204,7 @@ describe("18.0 AC41 — a save in flight keeps the sheet open", () => {
     fireEvent.change(day(), { target: { value: "2026-10-16" } });
     await user.click(save());
     await user.click(sheet().getByRole("button", { name: "Close" }));
-    fireEvent(screen.getByRole("dialog", { name: "Change Time" }), new Event("cancel", { cancelable: true }));
+    fireEvent(screen.getByRole("dialog", { name: "Change time" }), new Event("cancel", { cancelable: true }));
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => held.reject(new TypeError("Failed to fetch")));
     expect(sheet().getByRole("alert")).toBeInTheDocument();
