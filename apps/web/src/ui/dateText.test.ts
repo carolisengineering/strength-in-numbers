@@ -125,6 +125,26 @@ describe("17.13 AC4 — plain spaces", () => {
   });
 });
 
+describe("17.13 final review M1 — an empty zone means the device zone", () => {
+  it("every formatter treats \"\" as no zone, as the code before the move did", () => {
+    inTimeZone("Asia/Tokyo", () => {
+      expect(timeText(INSTANT, { timeZone: "" })).toBe(timeText(INSTANT));
+      expect(dayText(INSTANT, { timeZone: "" })).toBe(dayText(INSTANT));
+      expect(longDayText(INSTANT, { timeZone: "" })).toBe(longDayText(INSTANT));
+    });
+  });
+});
+
+// M4: the chart's ticks sit on Gregorian month starts, so their names are Gregorian months in every locale.
+describe("17.13 final review M4 — month ticks are Gregorian months", () => {
+  it("a locale whose default calendar is another one still names the Gregorian month", () => {
+    withLocale("fa-IR", () => {
+      const gregorian = new Intl.DateTimeFormat("fa-IR", { month: "short", calendar: "gregory", timeZone: "UTC" }).format(new Date(Date.UTC(2025, 11, 1)));
+      expect(monthText(2025, 12)).toBe(gregorian);
+    });
+  });
+});
+
 describe("17.13 AC4a — calendar days are stable", () => {
   it.each(["Pacific/Auckland", "Pacific/Pago_Pago"])("a UTC day is the same day in %s", (zone) => {
     const day = new Date("2026-11-04T00:00:00Z");

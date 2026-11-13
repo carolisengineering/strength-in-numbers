@@ -43,7 +43,8 @@ const DAY_KEY: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit",
 
 function formatter(name: string, options: Intl.DateTimeFormatOptions, timeZone?: string, keyLocale?: string): Intl.DateTimeFormat {
   const loc = keyLocale ?? appLocale();
-  if (timeZone === undefined) return new Intl.DateTimeFormat(loc, options);
+  // An empty zone is no zone, as `timeZone ? { timeZone } : {}` treated it before this module (final review M1).
+  if (!timeZone) return new Intl.DateTimeFormat(loc, options);
   const key = `${loc}|${name}|${timeZone}`;
   let found = cache.get(key);
   if (!found) {
@@ -86,7 +87,9 @@ export function monthDayText(localDate: string, { withYear = false }: { withYear
 
 /** A month (1–12): en-US "Aug"; with `withYear`, "Dec 2025". */
 export function monthText(year: number, month: number, { withYear = false }: { withYear?: boolean } = {}): string {
-  const options: Intl.DateTimeFormatOptions = { month: "short", ...(withYear ? { year: "numeric" } : {}) };
+  // The chart puts this on a Gregorian month start, so it names the Gregorian month even where the locale's default
+  // calendar is another one (fa-IR's is Persian; final review M4).
+  const options: Intl.DateTimeFormatOptions = { month: "short", calendar: "gregory", ...(withYear ? { year: "numeric" } : {}) };
   return plain(formatter(withYear ? "monthYear" : "month", options, "UTC").format(new Date(Date.UTC(year, month - 1, 1))));
 }
 

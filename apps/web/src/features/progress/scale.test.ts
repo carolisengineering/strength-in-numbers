@@ -153,6 +153,19 @@ describe("08.1 AC4 — chart geometry", () => {
     ]);
   });
 
+  it("17.13 final review I1 — end labels anchor inward, so a long one stays inside the chart", () => {
+    const ends = xLabels(layoutChart([pt("a", "2025-12-20", 1), pt("b", "2026-01-10", 1)]));
+    expect(ends.map((l) => l.anchor)).toEqual(["start", "end"]);
+    expect(xLabels(layoutChart([pt("a", "2026-10-06", 1)])).map((l) => l.anchor)).toEqual(["middle"]);
+    // A month start near the right edge anchors to its end; one in the middle stays centered.
+    const months = xLabels(layoutChart([pt("a", "2025-11-20", 1), pt("b", "2026-02-03", 1)]));
+    expect(months.map((l) => [l.text, l.anchor])).toEqual([
+      ["Dec 2025", "middle"],
+      ["Jan 2026", "middle"],
+      ["Feb 2026", "end"],
+    ]);
+  });
+
   it("xLabels: fallback to first/last day-month, single date, and year only across a year boundary", () => {
     expect(xLabels(layoutChart([pt("a", "2026-10-06", 1), pt("b", "2026-10-21", 1)])).map((l) => l.text)).toEqual(["Oct 6", "Oct 21"]);
     expect(xLabels(layoutChart([pt("a", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["Oct 6"]);

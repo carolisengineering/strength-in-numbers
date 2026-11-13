@@ -126,7 +126,20 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
  * 3–4 month-start labels inside the span, else first/last day-month; a year only across a year boundary (D9), and
  * the full year (Spec 17.13): under en-US a two-digit one reads as a day ("Dec 25").
  */
-export function xLabels(layout: ChartLayout): { x: number; text: string }[] {
+export type LabelAnchor = "start" | "middle" | "end";
+
+// A generous width per character at the labels' 14-unit font, so a label estimated to fit really does.
+const LABEL_CHAR_WIDTH = 8;
+
+/** A month label stays centered on its tick unless that would cross the viewBox's edge (Spec 17.13: years make it longer). */
+function monthAnchor(x: number, text: string): LabelAnchor {
+  const half = (text.length * LABEL_CHAR_WIDTH) / 2;
+  if (x + half > VIEW.width) return "end";
+  if (x - half < 0) return "start";
+  return "middle";
+}
+
+export function xLabels(layout: ChartLayout): { x: number; text: string; anchor: LabelAnchor }[] {
   const pts = layout.points;
   const first = pts[0];
   const last = pts.at(-1);
@@ -155,13 +168,18 @@ export function xLabels(layout: ChartLayout): { x: number; text: string }[] {
     const every = Math.ceil(starts.length / 4);
     return starts
       .filter((_, i) => i % every === 0)
-      .map((s) => ({ x: xOf(s.localDate), text: monthText(s.y, s.m, { withYear }) }));
+      .map((s) => {
+        const [x, text] = [xOf(s.localDate), monthText(s.y, s.m, { withYear })];
+        return { x, text, anchor: monthAnchor(x, text) };
+      });
   }
   const dayMonth = (p: PlottedPoint) => monthDayText(p.localDate, { withYear });
+  // The two ends sit on the plot's edges, so their labels anchor inward: "Jan 10, 2026" centered on the right edge
+  // would run off a phone's screen.
   return span === 0
-    ? [{ x: first.x, text: dayMonth(first) }]
+    ? [{ x: first.x, text: dayMonth(first), anchor: "middle" }]
     : [
-        { x: first.x, text: dayMonth(first) },
-        { x: last.x, text: dayMonth(last) },
+        { x: first.x, text: dayMonth(first), anchor: "start" },
+        { x: last.x, text: dayMonth(last), anchor: "end" },
       ];
 }

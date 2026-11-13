@@ -2792,33 +2792,42 @@ try {
       await checkLocaleShot(page, "en-US", "the live header at 320", { baseline: today, extra: [...todayExtra, ...extra] });
       await ctx.close();
     });
-    await tryStep("locale en-US chart across a year", async () => {
-      THEME = "locale-en-US";
-      const state = { active: false, seriesDates: ["2025-11-20", "2025-12-18", "2026-01-15", "2026-02-10"] };
-      const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
-      await ctx.route(isSinApi, makeHandler(state));
-      const page = await ctx.newPage();
-      page.setDefaultTimeout(8000);
-      await page.goto(BASE + `/app/exercises/${D.ids.bench}`);
-      await page.locator("svg text").first().waitFor();
-      // The x-axis labels: the svg texts that read as a date, with their boxes.
-      const ticks = await page.evaluate(() =>
-        [...document.querySelectorAll("svg text")]
-          .map((t) => ({ text: t.textContent ?? "", box: t.getBoundingClientRect() }))
-          .filter((t) => /[A-Z][a-z]{2}/.test(t.text))
-          .map((t) => ({ text: t.text, left: t.box.left, right: t.box.right, top: t.box.top, bottom: t.box.bottom })),
-      );
-      const extra = [];
-      if (ticks.length === 0) extra.push("no date ticks");
-      if (ticks.some((t) => !/\b20\d\d\b/.test(t.text))) extra.push(`a tick without its full year: ${ticks.map((t) => t.text).join(", ")}`);
-      for (let i = 0; i < ticks.length; i++) for (let j = i + 1; j < ticks.length; j++) {
-        const [a, b] = [ticks[i], ticks[j]];
-        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) extra.push(`ticks overlap: "${a.text}" and "${b.text}"`);
-      }
-      await shoot(page, "mobile", "15y-chart-across-a-year", `Spec 17.13 review focus 5: ticks ${ticks.map((t) => t.text).join(", ")}`);
-      await checkLocaleShot(page, "en-US", "a chart across a year", { baseline: mainShot("15-progress-bench"), extra });
-      await ctx.close();
-    });
+    // Two charts across a year: three month starts (month labels), and Dec 20 to Jan 10 (no two month starts, so the
+    // ends get day labels with the year, the longest labels the chart draws; final review I1).
+    for (const [name, seriesDates] of [
+      ["15y-chart-across-a-year", ["2025-11-20", "2025-12-18", "2026-01-15", "2026-02-10"]],
+      ["15z-chart-across-a-year-ends", ["2025-12-20", "2026-01-10"]],
+    ]) {
+      await tryStep(`locale en-US chart ${name}`, async () => {
+        THEME = "locale-en-US";
+        const state = { active: false, seriesDates };
+        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+        await ctx.route(isSinApi, makeHandler(state));
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(8000);
+        await page.goto(BASE + `/app/exercises/${D.ids.bench}`);
+        await page.locator("svg text").first().waitFor();
+        // The x-axis labels: the svg texts that read as a date, with their boxes.
+        const { ticks, width } = await page.evaluate(() => ({
+          width: document.documentElement.clientWidth,
+          ticks: [...document.querySelectorAll("svg text")]
+            .map((t) => ({ text: t.textContent ?? "", box: t.getBoundingClientRect() }))
+            .filter((t) => /[A-Z][a-z]{2}/.test(t.text))
+            .map((t) => ({ text: t.text, left: t.box.left, right: t.box.right, top: t.box.top, bottom: t.box.bottom })),
+        }));
+        const extra = [];
+        if (ticks.length === 0) extra.push("no date ticks");
+        if (ticks.some((t) => !/\b20\d\d\b/.test(t.text))) extra.push(`a tick without its full year: ${ticks.map((t) => t.text).join(", ")}`);
+        for (const t of ticks) if (t.left < 0 || t.right > width) extra.push(`"${t.text}" runs off the screen (${Math.round(t.left)}–${Math.round(t.right)} of ${width})`);
+        for (let i = 0; i < ticks.length; i++) for (let j = i + 1; j < ticks.length; j++) {
+          const [a, b] = [ticks[i], ticks[j]];
+          if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) extra.push(`ticks overlap: "${a.text}" and "${b.text}"`);
+        }
+        await shoot(page, "mobile", name, `Spec 17.13 review focus 5: ticks ${ticks.map((t) => t.text).join(", ")}`);
+        await checkLocaleShot(page, "en-US", "a chart across a year", { baseline: mainShot("15-progress-bench"), extra });
+        await ctx.close();
+      });
+    }
   }
 
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
