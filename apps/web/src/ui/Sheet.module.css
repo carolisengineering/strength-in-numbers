@@ -78,9 +78,6 @@
 
 .actions {
   flex: none;
-  /* Minor 492: never more than 60% of the panel, so on a 232 px frame the body keeps room for a field and the
-     messages above the buttons still show their first line. */
-  max-height: 60%;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -94,9 +91,12 @@
   padding-bottom: var(--space-3);
 }
 
-/* The notice and status shrink and scroll first; the buttons below never do. */
+/* Minor 492: the notice and status scroll past a share of the frame (the visible rectangle while a keyboard is up),
+   so on a 232 px frame a failure plus a question shows its first line and the body keeps room for a field. Only they
+   are capped: the buttons below never shrink, so a row that wraps is never clipped. */
 .messages {
   flex: 0 1 auto;
+  max-height: calc(var(--app-height, 100dvh) * var(--sheet-messages-share));
   min-height: 0;
   overflow-y: auto;
   display: flex;

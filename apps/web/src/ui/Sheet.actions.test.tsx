@@ -14,6 +14,7 @@ import { Sheet } from "./Sheet";
 import { SheetActions } from "./SheetActions";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "Sheet.module.css"), "utf8");
+const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "tokens.css"), "utf8");
 
 /** The declarations of the first rule whose selector is exactly `selector`. */
 function ruleOf(selector: string): string {
@@ -230,12 +231,15 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(actions).toMatch(/border-top:\s*1px solid var\(--color-line\)/);
   });
 
-  it("minor 492: the row takes at most 60% of the panel; past that the notice and status scroll and the buttons stay", () => {
-    expect(ruleOf(".actions")).toMatch(/max-height:\s*60%/);
+  // Code review: capping the whole row clipped buttons that wrap to two lines (they can't shrink), so only the messages
+  // are capped, at a share of the frame (`--app-height` while a keyboard is up), and the row never clips a button.
+  it("minor 492: the notice and status scroll past a share of the frame; the row itself has no cap, so no button clips", () => {
+    expect(ruleOf(".actions")).not.toMatch(/max-height/);
     const messages = ruleOf(".messages");
+    expect(messages).toMatch(/max-height:\s*calc\(var\(--app-height, 100dvh\) \* var\(--sheet-messages-share\)\)/);
     expect(messages).toMatch(/overflow-y:\s*auto/);
     expect(messages).toMatch(/min-height:\s*0/);
-    expect(messages).toMatch(/flex:\s*0 1 auto/);
+    expect(tokens).toMatch(/--sheet-messages-share:\s*0\.12;/);
     expect(ruleOf(".buttons")).toMatch(/flex:\s*none/);
     expect(css).toMatch(/\.messages:not\(:has\(> :not\(:empty\)\)\)\s*\{[^}]*display:\s*none/);
     render(
