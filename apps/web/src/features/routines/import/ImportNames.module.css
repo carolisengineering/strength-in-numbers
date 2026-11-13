@@ -39,16 +39,10 @@
   gap: var(--space-2);
 }
 
-.option {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--tap-target-min);
-  overflow-wrap: anywhere;
-}
-
+/* Spec 17.13 review focus 3: the tag follows the name as one unbroken block, so a long name wraps around it. */
 .tag {
+  display: inline-block;
+  white-space: nowrap;
   padding: 0 var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);

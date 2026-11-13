@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -170,6 +173,19 @@ describe("20.1 AC7 — routines step", () => {
     expect(arms).toBeDisabled();
     expect(arms).toHaveAccessibleDescription("No room for more routines");
     expect(screen.getByText("2 routines chosen")).toBeInTheDocument();
+  });
+
+  it("17.13 AC20 — a routine's checkbox sits inside its 44 px label, so the whole row is the target", async () => {
+    setup({ workouts, templates, folders, routines, sinRoutines: sin(8), pairs: [pair] });
+    await start();
+    await screen.findByText("You have 8 of 50 routines; room for 42 more.");
+    const push = screen.getByRole("checkbox", { name: "Push A" });
+    const label = push.closest("label")!;
+    expect(label).not.toBeNull();
+    expect(label).toHaveTextContent("Push A");
+    expect(push).toHaveAccessibleDescription(/^1 exercise/);
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ImportScreen.module.css"), "utf8");
+    expect(css).toMatch(/\.pickLabel\s*\{[^}]*min-height:\s*var\(--tap-target-min\)/);
   });
 
   it("Continue with none ticked is allowed", async () => {

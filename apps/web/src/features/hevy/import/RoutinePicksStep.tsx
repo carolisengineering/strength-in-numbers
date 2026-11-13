@@ -139,13 +139,14 @@ function RoutineRow({
   picked: boolean;
   onToggle: (id: string) => void;
 }) {
-  const inputId = useId();
   const noteId = useId();
   const blocked = availability !== "ok" && !picked;
   return (
     <li className={styles.pick}>
-      <input id={inputId} type="checkbox" checked={picked} disabled={blocked} aria-describedby={noteId} onChange={() => onToggle(id)} />
-      <label htmlFor={inputId}>{title}</label>
+      <label className={styles.pickLabel}>
+        <input type="checkbox" checked={picked} disabled={blocked} aria-describedby={noteId} onChange={() => onToggle(id)} />
+        <span>{title}</span>
+      </label>
       <span className={styles.muted} id={noteId}>
         {blocked ? REASON[availability as Exclude<PickAvailability, "ok">] : exerciseCount(count)}
       </span>

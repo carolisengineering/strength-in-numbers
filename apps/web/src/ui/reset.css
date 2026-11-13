@@ -48,6 +48,11 @@ textarea {
   color: inherit;
 }
 
+/* Spec 17.13 AC17: a browser pads a legend 2px on each side, so it sat 2px right of its group's fields. */
+legend {
+  padding: 0;
+}
+
 button {
   background: none;
   border: 0;

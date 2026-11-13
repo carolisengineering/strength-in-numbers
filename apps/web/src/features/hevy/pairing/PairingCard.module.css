@@ -41,7 +41,10 @@
   min-height: var(--tap-target-min);
 }
 
+/* Spec 17.13 review focus 3: the tag follows the name as one unbroken block, so a long name wraps around it. */
 .tag {
+  display: inline-block;
+  white-space: nowrap;
   color: var(--color-muted);
   font-size: var(--font-size-sm);
 }

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -129,5 +132,12 @@ describe("AC9 — primitives behave (Spec 04.1 §2)", () => {
       }
       expect(screen.queryByRole("img")).toBeNull();
     });
+  });
+});
+
+describe("17.13 AC17 — legends line up", () => {
+  it("reset.css takes the browser's legend padding away, so a legend starts on its group's left edge", () => {
+    const reset = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "reset.css"), "utf8");
+    expect(reset).toMatch(/(^|\n)legend\s*\{[^}]*padding:\s*0;/);
   });
 });

@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { TextLink } from "../ui/TextLink";
 
 import { Screen } from "../ui/Screen";
 
@@ -11,7 +11,7 @@ export function NotFound() {
   return (
     <Screen title="Page not found">
       <p data-testid="not-found">That page does not exist.</p>
-      <Link to="/app">Go to the app</Link>
+      <TextLink to="/app">Go to the app</TextLink>
     </Screen>
   );
 }

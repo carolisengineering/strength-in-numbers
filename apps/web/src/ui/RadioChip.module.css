@@ -1,0 +1,34 @@
+/* Spec 17.13 AC16: a radio as a 44 px chip; the checked option is a selection, so it may use --color-selected. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.chip:has(input:checked) {
+  border-color: var(--color-selected);
+}
+
+/* A choice that can't be made reads as unavailable by its color, not by opacity (Spec 18.2 AC37 / AC57). */
+.chip:has(input:disabled) {
+  color: var(--color-muted);
+  border-color: var(--color-border);
+}
+
+.block {
+  display: flex;
+  width: 100%;
+}
+
+.chip input {
+  flex: none;
+  width: var(--radio-size);
+  height: var(--radio-size);
+  margin: 0;
+}

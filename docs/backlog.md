@@ -800,3 +800,52 @@ trip, on the phone). Then the fix is chosen from the numbers: show the new order
 right away and roll back on failure; or one batched regroup endpoint so an action is one round
 trip; or both. Whatever is chosen must keep Spec 10.1's guarantees (minimal patches, untouched
 groups keep their numbers, a failure leaves a consistent list).
+
+## BL-37
+
+**At 200% text the steppers squeeze their number field.**
+
+**Status: Open.** Found by Spec 17.13 AC19's zoom pass on 2026-11-13 (`mobile-200pct/z1-workout`, `z3-edit-sheet`).
+
+**What is wrong:** the stepper row is − input + with 56 px buttons whose step text ("−2.5") grows with the font, and
+the current-set panel keeps the rest readout beside the label. At 390 × 844 with the root font at 200%, the workout
+panel's Weight and Reps inputs are 18 px wide (the value can't be read or tapped), the label column wraps the
+exercise name and set line into a narrow strip, and the edit sheet's Weight field clips "24".
+
+**Why deferred:** no single rule fixes it. The panel needs a large-text layout (the readout under the label, the
+buttons above or beside a full-width field, or the step text dropped to "−" / "+"), which is a design decision.
+
+**Done looks like:** at 200% text every stepper's input is at least 44 px wide and shows its whole value, on the
+panel and in the sheets; the zoom pass finds nothing on `z1-workout` / `z3-edit-sheet`, and the `ZOOM_KNOWN` rows for
+BL-37 are removed.
+
+## BL-38
+
+**At 200% text the routine editor's item rows collapse to a 27 px column.**
+
+**Status: Open.** Found by Spec 17.13 AC19's zoom pass on 2026-11-13 (`mobile-200pct/z8-routine-editor`).
+
+**What is wrong:** each item's summary button shares its row with the item's other controls, which keep their
+size as the text grows, so at 390 × 844 with 200% text the button is 27 px wide and over 1,000 px tall: a word per
+line.
+
+**Why deferred:** the row needs a large-text arrangement (the controls under the summary, or in a menu), not a
+one-line rule.
+
+**Done looks like:** at 200% text each item's button is at least the screen's width minus the controls' own row,
+reads a few words per line, and the `ZOOM_KNOWN` rows for BL-38 are removed.
+
+## BL-39
+
+**At 200% text a sheet row's three buttons clip "Delete set" and "Cancel".**
+
+**Status: Open.** Found by Spec 17.13 AC19's zoom pass on 2026-11-13 (`mobile-200pct/z3-edit-sheet`).
+
+**What is wrong:** the row gives danger, Cancel and the primary equal shares of the width (Spec 17.10). At 390 px
+with 200% text a third of the row is narrower than "Cancel", so the text runs past the button's edge.
+
+**Why deferred:** the row's wrapping rule (a button that doesn't fit takes its own line, or the danger action moves
+to the body) belongs with Spec 17.10's row and changes every sheet.
+
+**Done looks like:** at 200% text no row button is clipped (the harness's sheet-row check passes on
+`z3-edit-sheet`), and the `ZOOM_KNOWN` rows for BL-39 are removed.

@@ -60,6 +60,10 @@ describe("20.0 AC26 — PairingCards", () => {
     expect(bench).toHaveTextContent("Weight & reps");
     expect(bench).toHaveTextContent(usedIn(41, 0));
     expect(within(bench).getByRole("radio", { name: /Bench Press exact match/ })).toBeChecked();
+    // Spec 17.13 review focus 3: the tag follows the name in one span, so a long name wraps around it.
+    const tag = within(bench).getByText(/^exact match$/i);
+    expect(tag.parentElement!.tagName).toBe("SPAN");
+    expect(tag.parentElement).toHaveTextContent(/^Bench Press exact match$/i);
     const bike = screen.getByRole("group", { name: "Echo Bike (calories)" });
     expect(bike).toHaveTextContent(usedIn(3, 1));
   });

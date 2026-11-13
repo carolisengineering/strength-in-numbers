@@ -1016,7 +1016,7 @@ describe("10.7 AC59 — Log result accessibly (Phase C)", () => {
   it.each([
     ["./result/ResultSheet.module.css", ".addRound"],
     ["./result/ResultSheet.module.css", ".clear"],
-    ["./result/ResultSheet.module.css", ".radio"],
+    // Spec 17.13 AC16: Finished / Hit the cap is a Segmented strip now; its options' 44 px is Segmented's own rule.
   ])("%s %s carries min-height: var(--tap-target-min)", (file, selector) => {
     expect(hasTapTarget(file, selector)).toBe(true);
   });

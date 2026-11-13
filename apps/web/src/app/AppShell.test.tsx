@@ -128,6 +128,26 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
     expect(open(".nav")).toMatch(/display:\s*none/);
   });
 
+  describe("17.13 AC18 — the header steps aside", () => {
+    const open = (selector: string) => rule(shellCss, `:global(:root[data-keyboard="open"]) ${selector}`);
+
+    it("hides the header while a keyboard is up, and the frame clears the status bar itself", () => {
+      expect(open(".header")).toMatch(/display:\s*none/);
+      expect(open(".shell")).toMatch(/padding-top:\s*env\(safe-area-inset-top\)/);
+    });
+
+    it("review focus 1: <main> stays in the 1fr row whichever rows are empty", () => {
+      expect(rule(shellCss, ".main")).toMatch(/grid-row:\s*2;/);
+    });
+
+    it("the header still shows when no keyboard is up", async () => {
+      auth.state.isAuthenticated = true;
+      renderAt(["/app"]);
+      await screen.findByTestId("app-shell");
+      expect(screen.getByRole("banner")).toBeVisible();
+    });
+  });
+
   it("tokens.css resolves --tap-target-min to 44px", () => {
     expect(tokensCss).toMatch(/--tap-target-min:\s*44px/);
   });

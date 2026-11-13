@@ -1,6 +1,7 @@
 import { useId } from "react";
 
 import styles from "./Segmented.module.css";
+import { VisuallyHidden } from "./VisuallyHidden";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -11,6 +12,8 @@ export interface SegmentedProps<T extends string> {
   /** The radios' shared `name`: unique per strip, so two strips on one screen never share a group. */
   name: string;
   legend: string;
+  /** The legend still names the group but draws nothing, for a sheet that already says what the choice is (Spec 17.13). */
+  hideLegend?: boolean | undefined;
   options: readonly SegmentedOption<T>[];
   /** `null` checks nothing (a routine plan's "mixed" units, Spec 10.2 AC13). */
   value: T | null;
@@ -26,7 +29,7 @@ export interface SegmentedProps<T extends string> {
  * option. The radios give arrow keys, one Tab stop and screen-reader behavior for free; the checked option is filled
  * and checked, never marked by color alone. Four options sit four across or 2 × 2, never 3 + 1 (AC2).
  */
-export function Segmented<T extends string>({ name, legend, options, value, onChange, hint, error, disabled }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ name, legend, hideLegend, options, value, onChange, hint, error, disabled }: SegmentedProps<T>) {
   const base = useId();
   const hintId = hint ? `${base}-hint` : undefined;
   const errorId = error ? `${base}-error` : undefined;
@@ -42,7 +45,13 @@ export function Segmented<T extends string>({ name, legend, options, value, onCh
         if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.type === "radio") event.preventDefault();
       }}
     >
-      <legend className={styles.legend}>{legend}</legend>
+      {hideLegend ? (
+        <legend>
+          <VisuallyHidden>{legend}</VisuallyHidden>
+        </legend>
+      ) : (
+        <legend className={styles.legend}>{legend}</legend>
+      )}
       <div className={options.length === 4 ? `${styles.options} ${styles.four}` : styles.options}>
         {options.map((option) => (
           <label key={option.value} className={styles.option}>

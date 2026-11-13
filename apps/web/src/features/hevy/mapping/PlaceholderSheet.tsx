@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
+import { RadioChip } from "../../../ui/RadioChip";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import { useCatalog } from "../../catalog/useCatalog";
@@ -110,15 +111,13 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   const group = (label: string, value: string | null, set: (id: string | null) => void, name: string, other: string | null) => (
     <fieldset className={styles.group}>
       <legend className={styles.legend}>{label}</legend>
-      <label className={styles.option}>
-        <input type="radio" name={name} checked={value === null} onChange={() => set(null)} />
+      <RadioChip block name={name} checked={value === null} onChange={() => set(null)}>
         <span>{MARKER_NONE}</span>
-      </label>
+      </RadioChip>
       {shown.map((t: HevyTemplate) => (
-        <label key={t.id} className={styles.option}>
-          <input type="radio" name={name} checked={value === t.id} disabled={t.type === null || t.id === other} onChange={() => set(t.id)} />
+        <RadioChip key={t.id} block name={name} checked={value === t.id} disabled={t.type === null || t.id === other} onChange={() => set(t.id)}>
           <span>{t.title}</span>
-        </label>
+        </RadioChip>
       ))}
     </fieldset>
   );

@@ -19,6 +19,7 @@
   gap: var(--space-2);
 }
 
+/* The secondary-muscle checkboxes; the type radios are RadioChips (Spec 17.13 AC16). */
 .choice {
   display: inline-flex;
   align-items: center;
@@ -32,12 +33,6 @@
 
 .choice:has(input:checked) {
   border-color: var(--color-selected);
-}
-
-/* Spec 18.2 AC37 / AC57: a type that can't be chosen reads as unavailable by its color, not by opacity. */
-.choiceDisabled {
-  color: var(--color-muted);
-  border-color: var(--color-border);
 }
 
 .details {

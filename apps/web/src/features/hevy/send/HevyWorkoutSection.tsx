@@ -1,6 +1,5 @@
 import { buildHevyWorkout, type UnmappedExercise, type WorkoutDetail } from "@sin/core";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
 import { useHevyAutoPushOn } from "../../../ui/hevyAutoPush";
@@ -16,6 +15,7 @@ import { rootOfRows } from "./rootOf";
 import { carriesOn, problemSentence, type SendIntent } from "./runSend";
 import { sectionView, type OverlayOutcome, type SectionView } from "./sectionState";
 import { sentDay } from "./sentDay";
+import { TextLink } from "../../../ui/TextLink";
 import { useHevyLink } from "./useHevyLink";
 import { useSendToHevy } from "./useSendToHevy";
 import styles from "./HevyWorkoutSection.module.css";
@@ -186,9 +186,7 @@ export function HevyWorkoutSection({ workout }: { workout: WorkoutDetail }) {
   const badKey = view.kind === "outcome" && view.outcome.kind === "failed" && view.outcome.reason === "bad_key";
   const notices = (after?.notices ?? []).map(noticeSentence).filter((s): s is string => s !== null);
   const keyLink = (
-    <Link className={styles.link} to={HEVY_PATH}>
-      {C.noKeyLink}
-    </Link>
+    <TextLink to={HEVY_PATH}>{C.noKeyLink}</TextLink>
   );
 
   return (

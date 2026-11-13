@@ -27,7 +27,7 @@ const SIGNAL_ALLOWED = [
   "features/routines/SupersetBracket.module.css",
   "features/catalog/ExercisePicker.module.css",
   "features/catalog/CreateExerciseForm.module.css",
-  // Spec 10.4 D13: the create-exercise fields moved into ExerciseFields (the checked choice is a selection).
+  // Spec 10.4 D13: the create-exercise fields moved into ExerciseFields (a checked muscle is a selection).
   "features/catalog/ExerciseFields.module.css",
   // Spec 10.4 AC28: "Go to the first one" beside a disabled Continue is an interactive text link.
   "features/routines/import/ImportNames.module.css",
@@ -38,6 +38,8 @@ const SIGNAL_ALLOWED = [
   "features/workouts/EntryRow.module.css",
   // Spec 17.7 AC11: the checked option is a selection, as Theme was (Theme now draws through it).
   "ui/Segmented.module.css",
+  // Spec 17.13 AC16: the checked chip is a selection, as a Segmented's checked option is.
+  "ui/RadioChip.module.css",
   // Spec 17.7 AC13: a pressed Warm-up is a selection, as a Segmented's checked option is.
   "features/workouts/WarmupToggle.module.css",
   // #108: the checked "Keep screen on during workouts" box is a selection, like Theme beside it.

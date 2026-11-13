@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.17-13.test.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /**
- * Spec 17.13 AC23, Phases A and B (AC1-AC7 with AC4a, AC8-AC11, AC13, AC14; AC4b and AC12 are the screenshot harness).
- * Phase C extends the list. Only
+ * Spec 17.13 AC23, Phases A, B and C (AC1-AC7 with AC4a, AC8-AC11, AC13-AC18; AC4b, AC12, AC19 and AC20 are the
+ * screenshot harness, AC21 is CI's token and roles checks). Only
  * numbers written as "17.13 ACn" (or "17.13 ACn, ACm") count; a title that also cites another spec's criteria does not
  * tag 17.13's.
  */
-const WANTED = ["1", "2", "3", "4", "4a", "5", "6", "7", "8", "9", "10", "11", "13", "14"];
+const WANTED = ["1", "2", "3", "4", "4a", "5", "6", "7", "8", "9", "10", "11", "13", "14", "15", "16", "17", "18"];
 
 describe("17.13 AC23 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.13 ACn'", () => {

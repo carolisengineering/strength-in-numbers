@@ -199,7 +199,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
         <div className={styles.body}>
           <p className={styles.muted}>{FILE_FORMAT_LINE}</p>
           <details>
-            <summary>{WHATS_IN_FILE}</summary>
+            <summary className={styles.disclosure}>{WHATS_IN_FILE}</summary>
             <p className={styles.muted}>{FILE_COLUMNS}</p>
           </details>
           <label className={styles.file}>
@@ -290,7 +290,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
       </h3>
       {resolved.pairs.length > 0 ? (
         <details>
-          <summary>{SHOW_LIST}</summary>
+          <summary className={styles.disclosure}>{SHOW_LIST}</summary>
           <ul>
             {resolved.pairs.map((p) => (
               <li key={p.hevyTemplateId}>{p.hevyTitle}</li>
@@ -364,7 +364,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
         <>
           <h3 className={styles.heading}>{willBeRemovedLine(removed.length)}</h3>
           <details>
-            <summary>{SHOW_LIST}</summary>
+            <summary className={styles.disclosure}>{SHOW_LIST}</summary>
             <ul>
               {removed.map((p) => (
                 <li key={p.hevyTemplateId}>{p.hevyTitle}</li>

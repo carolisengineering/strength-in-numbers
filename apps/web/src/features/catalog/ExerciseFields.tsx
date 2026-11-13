@@ -2,6 +2,7 @@ import { EXERCISE_NAME_MAX, MODALITY_VALUES, type Equipment, type Modality, type
 import type { ReactNode } from "react";
 
 import { Field } from "../../ui/Field";
+import { RadioChip } from "../../ui/RadioChip";
 import { Select } from "../../ui/Select";
 import styles from "./ExerciseFields.module.css";
 import { MODALITY_HINTS, MODALITY_LABELS } from "./labels";
@@ -128,17 +129,16 @@ export function ExerciseFields({
           {MODALITY_VALUES.map((value) => {
             const disabled = disabledModalities?.has(value) ?? false;
             return (
-              <label key={value} className={disabled ? `${styles.choice} ${styles.choiceDisabled}` : styles.choice}>
-                <input
-                  type="radio"
-                  name={`${idPrefix}-modality`}
-                  value={value}
-                  checked={values.modality === value}
-                  disabled={disabled}
-                  onChange={() => set({ modality: value })}
-                />
+              <RadioChip
+                key={value}
+                name={`${idPrefix}-modality`}
+                value={value}
+                checked={values.modality === value}
+                disabled={disabled}
+                onChange={() => set({ modality: value })}
+              >
                 {MODALITY_LABELS[value]}
-              </label>
+              </RadioChip>
             );
           })}
         </div>
