@@ -22,7 +22,7 @@ import { RestLine } from "./RestLine";
 import { restAfterLog } from "./restTimer";
 import { useRestStore, useRestStores } from "./useRestTimer";
 import type { LoggedEvent } from "./EntryRow";
-import { CollapsedExercise, ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON, type CardLink } from "./ExerciseCard";
+import { CollapsedExercise, ExerciseCard, moveReasonsAt, type CardLink } from "./ExerciseCard";
 import { EDIT_COPY } from "./edit/editCopy";
 import { ChangeTimeSheet } from "./changeTime/ChangeTimeSheet";
 import { useChangeTime } from "./changeTime/useChangeTime";
@@ -736,9 +736,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               firstFlaggedId={firstFlaggedId}
               firstFlaggedRef={setFirstFlaggedRef}
               onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-              {...(segment.heading !== null
-                ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
-                : {})}
+              moveReasons={moveReasonsAt(segment, k, workout.exercises.length)}
               onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
               unitPreference={unitPreference}
               onGone={gone}
@@ -844,7 +842,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
                 setChangeTimeOpen(true);
               }}
             >
-              Change Time
+              Change time
             </Button>
           </div>
         }

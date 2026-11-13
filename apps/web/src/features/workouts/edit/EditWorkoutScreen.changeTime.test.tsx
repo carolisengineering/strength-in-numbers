@@ -50,8 +50,8 @@ async function open(times: { startedAt?: string; endedAt?: string; tzOffsetMinut
   return { fake, workout, ...app };
 }
 
-const sheet = () => within(screen.getByRole("dialog", { name: "Change Time" }));
-const sheetOpen = () => screen.queryByRole("dialog", { name: "Change Time" }) !== null;
+const sheet = () => within(screen.getByRole("dialog", { name: "Change time" }));
+const sheetOpen = () => screen.queryByRole("dialog", { name: "Change time" }) !== null;
 const patches = (fake: Fake) => fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workouts/")).map((r) => r.body);
 const save = (user: Awaited<ReturnType<typeof open>>["user"]) => user.click(sheet().getByRole("button", { name: "Save time" }));
 const set = (label: string, value: string) => fireEvent.change(sheet().getByLabelText(label), { target: { value } });

@@ -14,6 +14,7 @@ import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SectionPicker } from "./sections/SectionPicker";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
+import type { SectionSegment } from "./sectionSegments";
 import styles from "./ExerciseCard.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
 
@@ -79,6 +80,42 @@ export interface CardLink {
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
 export const SEGMENT_LAST_REASON = "Last exercise in this section";
+/** Spec 17.13 AC14: a segment with no heading (a section-free workout, or the loose tail) says why too. */
+export const LOOSE_FIRST_REASON = "First exercise";
+export const LOOSE_LAST_REASON = "Last exercise";
+
+export interface MovePlace {
+  /** The segment draws a heading (a section, or the loose tail's "Other exercises"). */
+  readonly headed: boolean;
+  /** First / last row of its segment (where Move stops). */
+  readonly segmentFirst: boolean;
+  readonly segmentLast: boolean;
+  /** First / last exercise of the whole workout. */
+  readonly workoutFirst: boolean;
+  readonly workoutLast: boolean;
+}
+
+/**
+ * Spec 17.13 AC14: why a Move button is disabled at its segment's edge; both screens call it. A headed segment keeps the
+ * section sentences. With no heading, "First exercise" / "Last exercise" only where they are true, at the workout's own
+ * edges (final review I-1): a loose run above the first section has exercises below it, so its last row gets no reason
+ * rather than a false one.
+ */
+export function moveReasonsFor(p: MovePlace): { up: string | null; down: string | null } {
+  const up = !p.segmentFirst ? null : p.headed ? SEGMENT_FIRST_REASON : p.workoutFirst ? LOOSE_FIRST_REASON : null;
+  const down = !p.segmentLast ? null : p.headed ? SEGMENT_LAST_REASON : p.workoutLast ? LOOSE_LAST_REASON : null;
+  return { up, down };
+}
+
+/** Row `k` of `segment` in a workout of `total` exercises: the one place both screens get their Move reasons from. */
+export const moveReasonsAt = (segment: Pick<SectionSegment, "heading" | "start" | "rows">, k: number, total: number) =>
+  moveReasonsFor({
+    headed: segment.heading !== null,
+    segmentFirst: k === 0,
+    segmentLast: k === segment.rows.length - 1,
+    workoutFirst: segment.start + k === 0,
+    workoutLast: segment.start + k === total - 1,
+  });
 const NO_REASONS = { up: null, down: null } as const;
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();

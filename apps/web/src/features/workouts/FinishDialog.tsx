@@ -39,7 +39,7 @@ export function FinishDialogBody({
   return (
     <div className={styles.body}>
       <FinishStats stats={stats} unitPreference={unitPreference} />
-      {endsAt ? <p>Ends {formatStartedAt(endsAt)}, as set in Change Time.</p> : null}
+      {endsAt ? <p>Ends {formatStartedAt(endsAt)}, as set in Change time.</p> : null}
       {unlogged && unlogged.total > 0 ? (
         <>
           <p>{unlogged.total === 1 ? "1 planned set not logged" : `${unlogged.total} planned sets not logged`}</p>

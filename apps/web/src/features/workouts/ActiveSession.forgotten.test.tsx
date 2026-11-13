@@ -48,7 +48,7 @@ type App = ReturnType<typeof boot>;
 /** Change Time: two days back, 18:00, took 1 h. */
 async function backdate(user: App["user"]) {
   await user.click(changeTimeButton());
-  const sheet = within(screen.getByRole("dialog", { name: "Change Time" }));
+  const sheet = within(screen.getByRole("dialog", { name: "Change time" }));
   fireEvent.change(sheet.getByLabelText("Day"), { target: { value: "2026-10-16" } });
   fireEvent.change(sheet.getByLabelText("Started at"), { target: { value: "18:00" } });
   fireEvent.change(sheet.getByLabelText("Hours"), { target: { value: "1" } });

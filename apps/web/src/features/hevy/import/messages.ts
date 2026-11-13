@@ -36,7 +36,7 @@ export const PREFLIGHT_TIME = "Takes a few minutes. Keep this tab open and stay 
 export const preflightZone = (zone: string) => `Dates use this device's time zone: ${zone}.`;
 // Plan copy (AC2: "says so with a link to Profile").
 export const preflightZoneDiffers = (profileZone: string) =>
-  `Your Profile time zone is ${profileZone}. Change Time uses the Profile zone, so check it in Profile if you travel.`;
+  `Your Profile time zone is ${profileZone}. Change time uses the Profile zone, so check it in Profile if you travel.`;
 export const PROFILE_LINK = "Profile";
 export const preflightUnit = (unit: "kg" | "lb") => `Weights are stored in ${unit} (your Profile setting).`;
 export const PREFLIGHT_SAFE = "It is safe to run again: anything already imported is skipped.";

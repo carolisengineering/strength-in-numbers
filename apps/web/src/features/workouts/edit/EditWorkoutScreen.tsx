@@ -19,7 +19,7 @@ import { useMe } from "../../me/useMe";
 import { LinkToggle } from "../../routines/LinkToggle";
 import { SupersetBracket } from "../../routines/SupersetBracket";
 import { classifyWorkoutError, isWorkoutGone } from "../errors";
-import { ExerciseCard, SEGMENT_FIRST_REASON, SEGMENT_LAST_REASON } from "../ExerciseCard";
+import { ExerciseCard, moveReasonsAt } from "../ExerciseCard";
 import { formatMinutes, workoutMinutes } from "../finishStats";
 import { SECTION_HOME, type SummarySection } from "../FinishedWorkoutScreen";
 import { formatLocalDate, formatStartedAt } from "../format";
@@ -454,9 +454,7 @@ function EditBody({
             isLast={k === segment.rows.length - 1}
             structureBusy={structureBusy}
             onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-            {...(segment.heading !== null
-              ? { moveReasons: { up: k === 0 ? SEGMENT_FIRST_REASON : null, down: k === segment.rows.length - 1 ? SEGMENT_LAST_REASON : null } }
-              : {})}
+            moveReasons={moveReasonsAt(segment, k, workout.exercises.length)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             flaggedIds={NO_FLAGS}
             unitPreference={unitPreference}
@@ -501,7 +499,7 @@ function EditBody({
             disabled={writing || structureBusy}
             onClick={() => setChangeTime((c) => ({ session: (c?.session ?? 0) + 1, open: true }))}
           >
-            Change Time
+            Change time
           </Button>
         </div>
 

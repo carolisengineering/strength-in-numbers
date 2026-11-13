@@ -51,7 +51,7 @@ export interface ExerciseFieldsProps {
   errors?: Partial<Record<ExerciseFieldName, string>>;
   /** Default "exercise" → ids "exercise-name", "exercise-primary-muscle", "exercise-equipment"; group names `${idPrefix}-modality` / `${idPrefix}-secondary`. */
   idPrefix?: string;
-  /** Default "Modality". */
+  /** Default "Type" (Spec 17.13 AC8). */
   modalityLabel?: string;
   /** Reference data; when either is `undefined` "More details" is omitted. */
   muscleGroups: readonly MuscleGroup[] | undefined;
@@ -76,7 +76,8 @@ export function ExerciseFields({
   onChange,
   errors = {},
   idPrefix = "exercise",
-  modalityLabel = "Modality",
+  // Spec 17.13 AC8: the plain word, as the Edit sheet and the import card already said.
+  modalityLabel = "Type",
   muscleGroups,
   equipment,
   detailsOpen,

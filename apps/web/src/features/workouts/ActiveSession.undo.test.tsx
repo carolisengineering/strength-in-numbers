@@ -232,7 +232,7 @@ describe("17.5 AC8 — how long it stays", () => {
 
   it("ends when Change Time opens", async () => {
     const { user } = await offered();
-    await user.click(screen.getByRole("button", { name: "Change Time" }));
+    await user.click(screen.getByRole("button", { name: "Change time" }));
     await waitFor(() => expect(undoButton()).not.toBeInTheDocument());
   });
 

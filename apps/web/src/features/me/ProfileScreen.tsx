@@ -139,7 +139,7 @@ function ProfileForm({ me }: { me: Me }) {
   };
 
   return (
-    <Screen title="Profile">
+    <Screen title="Profile" hideTitle>
       <form className={styles.form} onSubmit={onSubmit} noValidate data-testid="profile-form">
         <Field id="displayName" label="Display name" error={fieldErrors.displayName}
           hint="Shown in the app header. Leave blank to use your email.">

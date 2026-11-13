@@ -87,6 +87,34 @@ describe("17.10 AC14, AC7, AC3 — the Edit exercise sheet uses the action row",
   });
 });
 
+describe("17.13 AC13 — why Save is off (edit)", () => {
+  const save = () => sheetRow().getByRole("button", { name: "Save" });
+
+  it("untouched: Change something to save.", async () => {
+    const { user } = setup();
+    await openEdit(user);
+    expect(save()).toBeDisabled();
+    expect(save()).toHaveAccessibleDescription("Change something to save.");
+    expect(sheetRow().getByText("Change something to save.")).toBeInTheDocument();
+  });
+
+  it("name cleared: Enter a name.", async () => {
+    const { user } = setup();
+    const sheet = await openEdit(user);
+    await user.clear(within(sheet).getByLabelText("Name"));
+    expect(save()).toHaveAccessibleDescription("Enter a name.");
+  });
+
+  it("a change: no line, Save enabled with no description", async () => {
+    const { user } = setup();
+    const sheet = await openEdit(user);
+    await user.type(within(sheet).getByLabelText("Name"), " 2");
+    expect(save()).toBeEnabled();
+    expect(save()).not.toHaveAttribute("aria-describedby");
+    expect(sheetRow().queryByText("Change something to save.")).toBeNull();
+  });
+});
+
 describe("18.2 AC35 — the sheet", () => {
   it("opens prefilled with More details open; Save waits for a change and a name", async () => {
     const { user } = setup();

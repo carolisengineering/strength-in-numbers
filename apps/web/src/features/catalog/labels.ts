@@ -23,3 +23,8 @@ export const MODALITY_HINTS: Record<Modality, string> = {
   weight_distance: "Weight and distance, like a farmer carry.",
   weight_duration: "Weight and time, like a weighted hold.",
 };
+
+/** Spec 17.13 AC13: why the create sheet's Save is off, naming only what's missing (code review #1). */
+export const SAVE_OFF_INCOMPLETE = "Enter a name and choose a type.";
+export const SAVE_OFF_NO_NAME = "Enter a name.";
+export const SAVE_OFF_NO_TYPE = "Choose a type.";

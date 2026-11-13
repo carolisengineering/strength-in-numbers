@@ -95,7 +95,7 @@ describe.each(["light", "dark"] as const)("Minor 9 / 18.0 AC44, AC57 — axe, %s
   it("Change Time open", async () => {
     const { user } = await openEdit();
     await user.click(changeTimeButton());
-    await screen.findByRole("dialog", { name: "Change Time" });
+    await screen.findByRole("dialog", { name: "Change time" });
     await expectNoAxeViolations(document.body);
   });
 

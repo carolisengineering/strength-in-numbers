@@ -47,7 +47,7 @@ export function HistoryScreen() {
 
   if (query.data === undefined) {
     return (
-      <Screen title="History">
+      <Screen title="History" hideTitle>
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
           Couldn't load your history
         </InlineNotice>
@@ -58,7 +58,7 @@ export function HistoryScreen() {
   const rows = flattenHistory(query.data.pages);
 
   return (
-    <Screen title="History">
+    <Screen title="History" hideTitle>
       {query.isRefetchError ? (
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void query.refetch()}>
           Couldn't refresh your history

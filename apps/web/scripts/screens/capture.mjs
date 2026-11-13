@@ -755,6 +755,17 @@ async function shoot(page, device, name, note) {
     sheetRows.push({ shot: label, ...r });
     for (const v of r.violations) console.error(`  SHEET ROW ${label}: ${v}`);
   }
+  // Spec 17.13 AC10: no visible h1 repeats the app header's word (a hidden h1 is a 1 px box).
+  const doubled = await page.evaluate(() => {
+    const header = document.querySelector('[data-testid="app-shell"] header p')?.textContent?.trim();
+    if (!header) return null;
+    const h1 = [...document.querySelectorAll("main h1")].find((h) => h.getBoundingClientRect().width > 1 && h.textContent?.trim() === header);
+    return h1 ? header : null;
+  });
+  if (doubled) {
+    doubledTitles.push({ shot: label, title: doubled });
+    console.error(`  DOUBLED TITLE ${label}: "${doubled}"`);
+  }
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
   // Every enabled control on the page counts, scrolled into view or not (a below-the-fold panel is still the panel).
@@ -912,6 +923,12 @@ const measureLedger = (page) =>
 const cardDeclutter = [];
 // Spec 17.13 AC4b: the other-locale shots, in `_report.json` under `localeChecks`; a violation or an empty list fails the run.
 const localeChecks = [];
+// Spec 17.13 AC10: shots whose visible h1 repeats the app header's word; any entry fails the run.
+const doubledTitles = [];
+// Spec 17.13 AC12: the first History row's offset from <main>'s top at 390 × 844. Before Phase B it was 67 px (the
+// header's word said again by a visible h1); the page gives back at least 40 px.
+const HISTORY_ROW_MAX_OFFSET = 27;
+const historyOffsets = [];
 // AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
 // (Phase A merged, none of Phase B) on 2026-11-09. Phase B must take at least 60 px off it.
 const CARD_HEADER_BASE_390 = 204;
@@ -1365,7 +1382,7 @@ try {
     await tryStep("change time (live)", async () => {
       await go("/app/workouts");
       await shoot(page, device, "36-live-header", "Live header: the clock and Workout menu; Started and Change Time on row 2 (Spec 18.0 AC34)");
-      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.getByRole("button", { name: "Change time" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "37-change-time-live", "Change Time sheet on a live workout: Day, Started at, Took, the hint (Spec 18.0 AC30)");
       // An hour ahead, but never past today's 23:59: a time alone is read as today, so 00:30 after 23:30 would be
@@ -1877,6 +1894,15 @@ try {
 
     await go("/app/history");
     await shoot(page, device, "12-history", `History list (${D.finished.length} finished workouts: badges with counts, and rows with none)`);
+    if (device === "mobile") {
+      const offset = await page.evaluate(() => {
+        const main = document.querySelector("main")?.getBoundingClientRect();
+        const row = document.querySelector('main a[href^="/app/history/"]')?.getBoundingClientRect();
+        return main && row ? row.top - main.top : null;
+      });
+      historyOffsets.push({ offset });
+      if (offset === null || offset > HISTORY_ROW_MAX_OFFSET) console.error(`  HISTORY OFFSET: the first row is ${offset} px from main's top (want <= ${HISTORY_ROW_MAX_OFFSET})`);
+    }
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
     if (device === "mobile") {
@@ -2024,7 +2050,7 @@ try {
       await shoot(page, device, "35-edit-last-set", "Delete the only set: Delete this whole workout instead? (Spec 18.0 AC18)");
       await page.keyboard.press("Escape");
       await go(`/app/history/${D.ids.latestPush}/edit`);
-      await page.getByRole("button", { name: "Change Time" }).click();
+      await page.getByRole("button", { name: "Change time" }).click();
       await page.waitForSelector("dialog[open]", { timeout: 4000 });
       await shoot(page, device, "41-change-time-edit", "Change Time on a finished workout: Took required, no hint (Spec 18.0 AC40)");
       await page.keyboard.press("Escape");
@@ -2802,10 +2828,10 @@ try {
       const started = page.getByText(text ?? /^Started /, { exact: Boolean(text) }).first();
       await started.waitFor();
       await started.scrollIntoViewIfNeeded();
-      const change = page.getByRole("button", { name: "Change Time" });
+      const change = page.getByRole("button", { name: "Change time" });
       const [a, b] = [await started.boundingBox(), await change.boundingBox()];
       const meet = a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-      return meet ? [`"${await started.textContent()}" meets Change Time`] : [];
+      return meet ? [`"${await started.textContent()}" meets Change time`] : [];
     };
     for (const locale of ["en-GB", "de-DE"]) {
       await tryStep(`locale ${locale}`, async () => {
@@ -2992,7 +3018,12 @@ if (DEVICE_FILTER.includes("mobile") && (localeChecks.length === 0 || report.som
   console.error("  LOCALE: a locale step did not run");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
+if (doubledTitles.length) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyOffsets.some((h) => h.offset === null || h.offset > HISTORY_ROW_MAX_OFFSET))) {
+  console.error("  HISTORY OFFSET: the check failed or did not run");
+  process.exitCode = 1;
+}
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

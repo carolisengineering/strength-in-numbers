@@ -171,6 +171,30 @@ describe("18.0 AC11 — move and link", () => {
     expect(observability.track.mock.calls.some(([name]) => name === "exercise_moved")).toBe(false);
   });
 
+  it("17.13 AC14 — a section-free workout says First exercise / Last exercise at its edges", async () => {
+    const { user } = await open([lift("Bench Press"), lift("Row")]);
+    await user.click(optionsButton("Bench Press"));
+    expect(within(card("Bench Press")).getByRole("button", { name: "Move up" })).toHaveAccessibleDescription("First exercise");
+    await user.click(optionsButton("Row"));
+    expect(within(card("Row")).getByRole("button", { name: "Move down" })).toHaveAccessibleDescription("Last exercise");
+  });
+
+  it("final review I-1 — a loose run above the first section never says Last exercise", async () => {
+    const workout = makeWorkoutDetail({
+      endedAt: "2026-10-02T11:00:00.000Z",
+      sections: [{ name: "Main" }],
+      exercises: [lift("Warm-up row", 1), lift("Bench Press", 1, { sectionIndex: 0 })],
+    });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [workout] }) });
+    const { user } = renderApp(`/app/history/${workout.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    await user.click(optionsButton("Warm-up row"));
+    const down = within(card("Warm-up row")).getByRole("button", { name: "Move down" });
+    expect(down).toBeDisabled();
+    expect(down).not.toHaveAccessibleDescription();
+    expect(within(card("Warm-up row")).getByRole("button", { name: "Move up" })).toHaveAccessibleDescription("First exercise");
+  });
+
   it("a section edge shows its reason", async () => {
     const workout = makeWorkoutDetail({
       endedAt: "2026-10-02T11:00:00.000Z",

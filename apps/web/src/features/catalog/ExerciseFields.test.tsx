@@ -44,10 +44,10 @@ function Harness(props: {
 }
 
 describe("10.4 AC26 — ExerciseFields is the one set of create-exercise inputs", () => {
-  it("defaults match CreateExerciseForm: ids, Modality legend, More details closed", () => {
+  it("defaults match CreateExerciseForm: ids, Type legend, More details closed", () => {
     render(<Harness />);
     expect(screen.getByLabelText("Name")).toHaveAttribute("id", "exercise-name");
-    expect(screen.getByRole("group", { name: "Modality" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Type" })).toBeInTheDocument();
     expect(screen.getByText("More details").closest("details")).not.toHaveAttribute("open");
   });
 
@@ -109,6 +109,17 @@ describe("10.4 AC26 — ExerciseFields is the one set of create-exercise inputs"
     }));
 });
 
+describe("17.13 AC8 — the legend reads Type", () => {
+  it("with no modalityLabel the type group is named Type; a passed label still wins", () => {
+    const { unmount } = render(<Harness />);
+    expect(screen.getByRole("group", { name: "Type" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Modality" })).toBeNull();
+    unmount();
+    render(<Harness modalityLabel="Kind" />);
+    expect(screen.getByRole("group", { name: "Kind" })).toBeInTheDocument();
+  });
+});
+
 describe("18.1 AC1 — eight types", () => {
   it("the radio values are MODALITY_VALUES, in order", () => {
     render(<Harness />);
@@ -133,14 +144,14 @@ describe("18.1 AC3 — a hint under the choices", () => {
   it("shows nothing before a choice", () => {
     render(<Harness />);
     expect(screen.queryByText("Calories only, like an Echo Bike.")).toBeNull();
-    expect(screen.getByRole("group", { name: "Modality" })).not.toHaveAttribute("aria-describedby");
+    expect(screen.getByRole("group", { name: "Type" })).not.toHaveAttribute("aria-describedby");
   });
   it("after choosing Calories the hint shows and describes the group", async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole("radio", { name: "Calories" }));
     const hint = screen.getByText("Calories only, like an Echo Bike.");
-    expect(screen.getByRole("group", { name: "Modality" }).getAttribute("aria-describedby")?.split(" ")).toContain(hint.id);
+    expect(screen.getByRole("group", { name: "Type" }).getAttribute("aria-describedby")?.split(" ")).toContain(hint.id);
     await user.click(screen.getByRole("radio", { name: "Weight + duration" }));
     expect(screen.getByText("Weight and time, like a weighted hold.")).toBeInTheDocument();
     expect(screen.queryByText("Calories only, like an Echo Bike.")).toBeNull();
