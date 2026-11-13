@@ -34,6 +34,8 @@ export interface EditSetFormProps {
   unitPreference: "kg" | "lb";
   onClose: () => void;
   mode: EditScreenMode;
+  /** True while a write is in flight, so the sheet can't be closed mid-save (DM-12, minor 494). */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 type SetOperation = "create-set" | "update-set" | "delete-set";
@@ -46,10 +48,16 @@ const reduceDraft = createDraftReducer(() => crypto.randomUUID());
  * answer, and every failure stays here with the typed values (AC14–AC16). Add mode copies the last set forward
  * with no plan (D16) and keeps one `clientGeneratedId` for every retry of this opening (AC17).
  */
-export function EditSetForm({ target, modality, exerciseName, unitPreference, onClose, mode }: EditSetFormProps) {
+export function EditSetForm({ target, modality, exerciseName, unitPreference, onClose, mode, onBusyChange }: EditSetFormProps) {
   const create = useEditCreateSet();
   const update = useEditUpdateSet();
   const del = useEditDeleteSet();
+  const busy = create.isPending || update.isPending || del.isPending;
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+  // Unmounting (a success closes the sheet) leaves the next opening dismissible.
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const defaults = unitDefaultsFor(unitPreference, modality);
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () =>
     target.kind === "add"

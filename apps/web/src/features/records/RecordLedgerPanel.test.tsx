@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -94,10 +94,41 @@ describe("17.6 AC11 / AC13 — long lists collapse", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(button).toHaveFocus();
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("New records on 5 lifts");
+    // Collapsing again works where the browser has no scrollIntoView (jsdom; minor 474's reveal is optional-called).
+    await user.click(button);
+    expect(within(panel()).getAllByRole("listitem")).toHaveLength(3);
+    await user.click(button);
     // Review Focus 2: a refetch that drops the list to 4 removes the button and shows all 4.
     rerender(<RecordLedgerPanel heading="New records on 4 lifts" lifts={lifts(4)} />);
     expect(within(panel()).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("minor 474 — Show fewer brings its button back into view (the list above it just shrank); Show all scrolls nothing", async () => {
+    const user = userEvent.setup();
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView; // jsdom has none
+    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+      expect(arg).toEqual({ block: "nearest" });
+      scrolled.push(this);
+    };
+    try {
+      render(<RecordLedgerPanel heading="New records on 5 lifts" lifts={lifts(5)} />);
+      const button = toggle();
+      await user.click(button);
+      expect(scrolled).toEqual([]);
+      await user.click(button);
+      expect(scrolled).toEqual([button]);
+      expect(button).toHaveFocus();
+      cleanup();
+      scrolled.length = 0;
+      render(<FirstTimeLines lines={Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, text: `First time logged: Lift ${i + 1} 20 kg` }))} />);
+      await user.click(toggle());
+      await user.click(toggle());
+      expect(scrolled).toEqual([toggle()]);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 
   it("first times follow the same rule in their own list", async () => {

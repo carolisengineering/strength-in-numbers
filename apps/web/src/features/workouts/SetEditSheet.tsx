@@ -46,16 +46,29 @@ export interface SetEditSheetProps {
 export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps) {
   const mode = useScreenMode();
   const add = mode.kind === "edit" && set === null ? adding : null;
+  // The edit screen's writes are pessimistic: while one is in flight Cancel, Close and Escape wait (DM-12, minor 494),
+  // so a slip right after Save can't hide a failure. The live sheet's writes resolve at once through the outbox.
+  const [busy, setBusy] = useState(false);
   return (
     <Sheet
       open={set !== null || add !== null}
       title={set ? `Set ${set.setNumber} · ${rest.exerciseName}` : add ? `New set · ${rest.exerciseName}` : "Edit set"}
       onClose={rest.onClose}
+      dismissible={!busy}
     >
       {/* Keyed by set id (or the opening) so each open starts from that set's values. */}
       {mode.kind === "edit" ? (
         set ? (
-          <EditSetForm key={set.id} target={{ kind: "edit", set }} modality={rest.modality} exerciseName={rest.exerciseName} unitPreference={rest.unitPreference} onClose={rest.onClose} mode={mode} />
+          <EditSetForm
+            key={set.id}
+            target={{ kind: "edit", set }}
+            modality={rest.modality}
+            exerciseName={rest.exerciseName}
+            unitPreference={rest.unitPreference}
+            onClose={rest.onClose}
+            mode={mode}
+            onBusyChange={setBusy}
+          />
         ) : add ? (
           <EditSetForm
             key={`add-${add.session}`}
@@ -65,6 +78,7 @@ export function SetEditSheet({ set, adding = null, ...rest }: SetEditSheetProps)
             unitPreference={rest.unitPreference}
             onClose={rest.onClose}
             mode={mode}
+            onBusyChange={setBusy}
           />
         ) : null
       ) : set ? (

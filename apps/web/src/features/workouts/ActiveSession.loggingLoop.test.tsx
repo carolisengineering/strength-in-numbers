@@ -200,7 +200,11 @@ describe("17.4 AC11 — one line, not a stack", () => {
     const sheet = within(await screen.findByRole("dialog"));
     await user.type(sheet.getByLabelText("Note"), "Felt good");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(status()).toHaveTextContent(/^1 set not saved yet · 1 note not saved yet$/));
+    await waitFor(() => expect(status()).toHaveTextContent(/^1 set and 1 note not saved yet$/));
+    // Code review: the Workout menu's disabled End / Finish item gives the same reason, from the same kinds list.
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    const end = screen.getByRole("button", { name: /^(End workout early|Finish workout)$/, description: /not saved yet/ });
+    expect(end).toHaveAccessibleDescription("1 set and 1 note not saved yet");
   });
 });
 

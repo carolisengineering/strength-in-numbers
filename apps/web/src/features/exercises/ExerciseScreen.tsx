@@ -102,9 +102,15 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   useEffect(() => {
     if (deleteError !== null) deleteErrorRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [deleteError]);
+  // The same for the status line (minor 510): "Saved." or "Already deleted." lands above the chart after a sheet closes
+  // on Edit, which sits at the page's end. Focus stays on Edit; `nearest` doesn't move a line already in view.
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (status !== "") statusRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [status]);
   const statusLine = (
     // `role="status"` is polite by itself; no explicit `aria-live`, so it isn't mistaken for the chart's readout.
-    <p className={styles.status} role="status" data-testid="exercise-status">
+    <p ref={statusRef} className={styles.status} role="status" data-testid="exercise-status">
       {status}
     </p>
   );

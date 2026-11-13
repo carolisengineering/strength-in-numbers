@@ -31,10 +31,13 @@ describe("17.8 AC17 — select on focus", () => {
     });
   }
 
-  it("SetFields.tsx writes no <input outside TextField", () => {
+  // Amended by minors 462–463: the duration's inputs are `DurationInput` (their labels sit above the frame), which
+  // selects on focus as `TextField` did; `TextField` had no other caller and is gone.
+  it("SetFields.tsx writes no <input outside DurationInput, and that one selects on focus", () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetFields.tsx"), "utf8");
-    const textField = src.slice(src.indexOf("function TextField("), src.indexOf("\n}\n", src.indexOf("function TextField(")));
-    expect(src.split("<input").length - 1).toBe(textField.split("<input").length - 1);
+    const durationInput = src.slice(src.indexOf("function DurationInput("), src.indexOf("\n}\n", src.indexOf("function DurationInput(")));
+    expect(src.split("<input").length - 1).toBe(durationInput.split("<input").length - 1);
+    expect(durationInput).toMatch(/onFocus=\{\(e\) => e\.currentTarget\.select\(\)\}/);
   });
 });
 

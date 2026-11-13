@@ -62,7 +62,7 @@ import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
-import { confirmationLine, statusLineText, undoName } from "./undoOffer";
+import { confirmationLine, notSavedYet, statusLineText, undoName } from "./undoOffer";
 import { useUndoLastLog } from "./useUndoLastLog";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
@@ -802,16 +802,13 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       : mode === "finish"
         ? { kind: "finish", disabled: finishDisabled, onClick: openFinish }
         : { kind: "log" };
-  const endReason =
-    totalSets === 0
-      ? "Log a set first"
-      : unsaved > 0
-        ? `${plural(unsaved, "set", "sets")} not saved yet`
-        : unsavedNoteCount > 0
-          ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet`
-          : timerUnsaved > 0
-            ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet`
-            : null;
+  // The unsaved kinds, said once by the status line and the Workout menu's End / Finish reason (minor 427).
+  const unsavedKinds = [
+    unsaved > 0 ? plural(unsaved, "set", "sets") : null,
+    unsavedNoteCount > 0 ? plural(unsavedNoteCount, "note", "notes") : null,
+    timerUnsaved > 0 ? RESULT_COPY.timerEntries(timerUnsaved) : null,
+  ].filter((kind) => kind !== null);
+  const endReason = totalSets === 0 ? "Log a set first" : notSavedYet(unsavedKinds);
   // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
   const oneOff: FinishOneOff | undefined =
     workout.routineIsOneOff && workout.routineName !== null
@@ -977,9 +974,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               undo: undo.undoText,
               messages: [
                 totalSets === 0 ? "Log at least one set to finish" : null,
-                unsaved > 0 ? `${plural(unsaved, "set", "sets")} not saved yet` : null,
-                unsavedNoteCount > 0 ? `${plural(unsavedNoteCount, "note", "notes")} not saved yet` : null,
-                timerUnsaved > 0 ? `${RESULT_COPY.timerEntries(timerUnsaved)} not saved yet` : null,
+                notSavedYet(unsavedKinds),
               ].filter((message) => message !== null),
               confirmation: undo.offer ? confirmationLine(undo.offer.row.setNumber, undo.offer.value) : null,
             })}

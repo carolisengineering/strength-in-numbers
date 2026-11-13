@@ -131,6 +131,45 @@ describe("17.1 AC15 — superset alternation through the bar", () => {
   });
 });
 
+describe("minor 429 (code review) — a held Enter presses nothing twice", () => {
+  it("held on Log for the last planned set: one log, and the repeats don't press the Finish workout it became", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    const button = logButton("A");
+    button.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+    await waitFor(() => expect(button).toHaveTextContent("Finish workout"));
+    // A real browser's auto-repeat now reaches the same element in Finish mode; its keydown must be cancelled, which
+    // stops the click it would make (jsdom doesn't click on a dispatched keydown, so the cancel is what's checked).
+    const repeat = new KeyboardEvent("keydown", { key: "Enter", repeat: true, bubbles: true, cancelable: true });
+    button.dispatchEvent(repeat);
+    expect(repeat.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("held in a panel field: one log, even when a repeat lands after the 600 ms double-tap window", async () => {
+    const { fake } = await setup([ex("A", { sets: [makeSet({ setNumber: 1, weight: 60, weightKg: 60, weightUnit: "kg", reps: 8 })] })]);
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+    try {
+      const reps = within(card("A")).getByLabelText("Reps");
+      reps.focus();
+      const press = (repeat: boolean) => {
+        const event = new KeyboardEvent("keydown", { key: "Enter", repeat, bubbles: true, cancelable: true });
+        reps.dispatchEvent(event);
+        return event;
+      };
+      press(false);
+      await waitFor(() => expect(setPosts(fake)).toHaveLength(1));
+      vi.setSystemTime(Date.now() + 1_000);
+      expect(press(true).defaultPrevented).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(setPosts(fake)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("17.1 AC29 — focus survives advance", () => {
   it("the bar button is one element and keeps focus across a log and an advance", async () => {
     const { user } = await setup([ex("A", { plannedSets: planned(1) }), ex("B", { plannedSets: planned(1) })]);

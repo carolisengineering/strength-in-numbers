@@ -62,18 +62,20 @@ describe("17.7 AC17 — the label names the draft's set type, not the plan row's
   });
 });
 
+// Minor 454 (code review): "@", the weight and its unit are joined by no-break spaces, so the unit can't wrap alone at
+// 320 px while the target can still wrap after its reps at a large text size.
 describe("17.8 AC6 — setTarget", () => {
   const r = (repsLow: number | null, repsHigh: number | null, weight: number | null, weightUnit: "kg" | "lb" | null) => row({ repsLow, repsHigh, weight, weightUnit });
   it.each<[string, PlannedSet, Modality, string | null]>([
     ["a range", r(6, 8, null, null), "weight_reps", "6–8"],
     ["exact reps", r(5, 5, null, null), "weight_reps", "5"],
-    ["reps and a weight", r(6, 8, 30, "kg"), "weight_reps", "6–8 @ 30 kg"],
-    ["a weight only", r(null, null, 30, "kg"), "weight_reps", "30 kg"],
-    ["a planned weight of 0 still shows", r(5, 5, 0, "lb"), "weight_reps", "5 @ 0 lb"],
+    ["reps and a weight", r(6, 8, 30, "kg"), "weight_reps", "6–8 @\u00a030\u00a0kg"],
+    ["a weight only", r(null, null, 30, "kg"), "weight_reps", "30\u00a0kg"],
+    ["a planned weight of 0 still shows", r(5, 5, 0, "lb"), "weight_reps", "5 @\u00a00\u00a0lb"],
     ["neither measure", r(null, null, null, null), "weight_reps", null],
     ["a stale row on a duration exercise", r(8, 8, 60, "kg"), "duration", null],
     ["bodyweight shows only the reps", r(8, 8, 60, "kg"), "bodyweight_reps", "8"],
-    ["a carry shows only the weight", r(8, 8, 60, "kg"), "weight_distance", "60 kg"],
+    ["a carry shows only the weight", r(8, 8, 60, "kg"), "weight_distance", "60\u00a0kg"],
     ["a range with one end missing is no range", r(6, null, null, null), "weight_reps", null],
   ])("%s", (_case, plannedRow, modality, target) => {
     expect(setTarget(plannedRow, modality)).toBe(target);

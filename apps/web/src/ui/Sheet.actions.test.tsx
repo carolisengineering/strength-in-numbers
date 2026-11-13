@@ -14,6 +14,7 @@ import { Sheet } from "./Sheet";
 import { SheetActions } from "./SheetActions";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "Sheet.module.css"), "utf8");
+const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "tokens.css"), "utf8");
 
 /** The declarations of the first rule whose selector is exactly `selector`. */
 function ruleOf(selector: string): string {
@@ -228,6 +229,31 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(actions).toMatch(/padding:[^;]*calc\(var\(--space-3\) \+ env\(safe-area-inset-bottom\)\)/);
     expect(actions).toMatch(/background:\s*var\(--color-bg\)/);
     expect(actions).toMatch(/border-top:\s*1px solid var\(--color-line\)/);
+  });
+
+  // Code review: capping the whole row clipped buttons that wrap to two lines (they can't shrink), so only the messages
+  // are capped: at what the frame (`--app-height` while a keyboard is up) has left after a reserve for the header, the
+  // buttons and a usable body. About one line on a 232 px frame; no practical cap on a normal one.
+  it("minor 492: the notice and status scroll past what the frame leaves them; the row itself has no cap, so no button clips", () => {
+    expect(ruleOf(".actions")).not.toMatch(/max-height/);
+    const messages = ruleOf(".messages");
+    expect(messages).toMatch(/max-height:\s*calc\(var\(--app-height, 100dvh\) - var\(--sheet-messages-reserve\)\)/);
+    expect(messages).toMatch(/overflow-y:\s*auto/);
+    expect(messages).toMatch(/min-height:\s*0/);
+    expect(tokens).toMatch(/--sheet-messages-reserve:\s*13\.25rem;/);
+    expect(tokens).not.toMatch(/--sheet-messages-share/);
+    expect(ruleOf(".buttons")).toMatch(/flex:\s*none/);
+    expect(css).toMatch(/\.messages:not\(:has\(> :not\(:empty\)\)\)\s*\{[^}]*display:\s*none/);
+    render(
+      <Sheet open title="Edit set" onClose={vi.fn()}>
+        <SheetActions notice={<p role="alert">Couldn't save.</p>} status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
+      </Sheet>,
+    );
+    const box = document.querySelector("dialog[open] [data-sheet-messages]") as HTMLElement;
+    expect(box).not.toBeNull();
+    expect(box).toContainElement(sheetRow().getByRole("alert"));
+    expect(box).toContainElement(sheetRow().getByText("Delete set 2?"));
+    expect(box).not.toContainElement(sheetRow().getByRole("button", { name: "Save" }));
   });
 
   it("AC8: with the keyboard up the row's bottom padding drops the inset", () => {

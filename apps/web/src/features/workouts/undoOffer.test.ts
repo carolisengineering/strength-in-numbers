@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SetEntrySchema, type SetEntry, type WorkoutExerciseDetail } from "@sin/core";
 
 import type { OutboxOp } from "./outbox/ops";
-import { confirmationLine, offeredRow, statusLineText, undoAnnouncement, undoLine, undoName, undoPhase, type UndoOffer } from "./undoOffer";
+import { confirmationLine, notSavedYet, offeredRow, statusLineText, undoAnnouncement, undoLine, undoName, undoPhase, type UndoOffer } from "./undoOffer";
 
 const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_ID = "00000000-0000-4000-8000-000000000009";
@@ -70,6 +70,15 @@ describe("17.5 AC2 — the line's text", () => {
   it("names the offer and its button", () => {
     expect(confirmationLine(2, "47.5 × 6")).toBe("Set 2 logged · 47.5 × 6");
     expect(undoName(2, "47.5 × 6", "Bench Press")).toBe("Undo set 2, 47.5 × 6, Bench Press");
+  });
+});
+
+describe("17.4 AC11 as amended (minor 427) — one 'not saved yet' for every kind", () => {
+  it("names each kind once, in order, and says 'not saved yet' once", () => {
+    expect(notSavedYet([])).toBeNull();
+    expect(notSavedYet(["1 set"])).toBe("1 set not saved yet");
+    expect(notSavedYet(["1 set", "1 note"])).toBe("1 set and 1 note not saved yet");
+    expect(notSavedYet(["2 sets", "2 notes", "2 timer entries"])).toBe("2 sets, 2 notes and 2 timer entries not saved yet");
   });
 });
 

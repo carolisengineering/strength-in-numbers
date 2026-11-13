@@ -554,9 +554,11 @@ const measureSheetRows = (page) =>
           if (r.width === 0 || r.height === 0) continue;
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
-          if (cy < br.top || cy > br.bottom) continue; // scrolled out of the body: not on screen
+          // Scrolled out of the body: not on screen. A center within 1 px of the body's edge is half scrolled out, and a
+          // hit test exactly on the edge the row shares can land on either (minor 492's crowded frame put a strip there).
+          if (cy < br.top + 1 || cy > br.bottom - 1) continue;
           const hit = document.elementFromPoint(cx, cy);
-          if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName}" is under the row`);
+          if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? (el.textContent?.trim().slice(0, 30) || `${el.tagName.toLowerCase()}${el.type ? `[${el.type}]` : ""}`)}" (center y ${cy.toFixed(1)}) is under the row (body ${br.top.toFixed(1)}–${br.bottom.toFixed(1)}, row top ${rr.top.toFixed(1)})`);
         }
         return { title: d.querySelector("h2")?.textContent ?? "", rowTop: rr.top, rowBottom: rr.bottom, dialogBottom: dr.bottom, bodyHeight: br.height, buttons: buttons.map((b) => b.textContent), violations: v };
       })
@@ -804,7 +806,7 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
       const i = box(input);
       const middle = i.top + i.height / 2;
       return {
-        label: input.labels?.[0]?.textContent ?? input.id,
+        label: input.labels?.[0]?.textContent ?? input.getAttribute("aria-label") ?? input.id,
         buttons: [...row.querySelectorAll(":scope > button")].map((b) => {
           const r = box(b);
           return { text: b.textContent, w: round(r.width), h: round(r.height), offset: round(r.top + r.height / 2 - middle) };
@@ -828,10 +830,12 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
       firstRowOffset: round(box(firstRow).top - box(form).top),
       slotWidth: slot ? round(box(slot).width) : null,
       restState: timer ? timer.getAttribute("data-state") : null,
-      // Spec 17.8 Phase B: a duration's Minutes and Seconds labels (side by side or stacked) and any clipped label.
+      // Spec 17.8 Phase B, minors 462–463: a duration's Minutes and Seconds inputs in one stepper row (side by side at
+      // every width) and its unit line ("min", "s") with nothing clipped.
       duration: (() => {
-        const labels = [...form.querySelectorAll("[data-stepper-row] label")].filter((l) => /^(Minutes|Seconds)$/.test(l.textContent.trim()));
-        return labels.length === 2 ? { tops: labels.map((l) => round(box(l).top)), clipped: labels.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent.trim()) } : null;
+        const inputs = [...form.querySelectorAll("[data-stepper-row] input")].filter((i) => /^(Minutes|Seconds)$/.test(i.getAttribute("aria-label") ?? ""));
+        const units = [...form.querySelectorAll("[data-duration] [aria-hidden='true'] span")];
+        return inputs.length === 2 ? { tops: inputs.map((i) => round(box(i).top)), clipped: units.filter((u) => u.scrollWidth > u.clientWidth + 1).map((u) => u.textContent.trim()) } : null;
       })(),
       dialogHscroll: (() => {
         const dialog = form.closest("dialog");
@@ -1073,7 +1077,7 @@ try {
       }
       await shoot(page, device, "26b-logging-after-four-logs", "Spec 17.4: after four logs the panel still clears the bar and the button has not moved");
       await shoot(page, device, "26e-undo-offer", "Spec 17.5 AC1: the status line says what was logged, with Undo on its right");
-      for (const text of ["1 set not saved yet", "2 sets not saved yet · 1 note not saved yet"]) {
+      for (const text of ["1 set not saved yet", "2 sets and 1 note not saved yet"]) {
         await page.evaluate((t) => { document.querySelector('[data-testid="session-status"]').textContent = t; }, text);
         const withMessage = await measureLoggingLoop(page);
         steps.push({ step: text, ...withMessage });
@@ -1081,7 +1085,7 @@ try {
         if (withMessage.undo === null) violations.push(`"${text}": Undo left the line`);
         if (text === "1 set not saved yet") await shoot(page, device, "26f-undo-sync-message", "Spec 17.5 AC2: a sync message replaces the confirmation; Undo stays");
       }
-      await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two messages in the reserved status line; the button has not moved");
+      await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two unsaved kinds in the reserved status line (minor 427 wording); the button has not moved");
       // AC12: with the keyboard up an empty line gives up its space, and the scroll padding follows; a message keeps its place.
       await page.evaluate(() => {
         document.documentElement.setAttribute("data-keyboard", "open");
@@ -1101,11 +1105,13 @@ try {
         await page.setViewportSize({ width: 320, height: 568 });
         await page.waitForTimeout(200);
         await shoot(page, device, "26d-logging-320", "Spec 17.4: the workout bar at 320 × 568");
-        // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log.
+        // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log. Minor 427: the true longest,
+        // every unsaved kind at once in 17.4 AC11's amended wording (one "not saved yet"), with two-digit counts.
         const narrow = await measureLoggingLoop(page);
-        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "2 sets not saved yet · 1 note not saved yet"; });
+        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "12 sets, 2 notes and 2 timer entries not saved yet"; });
         const narrowLong = await measureLoggingLoop(page);
         steps.push({ step: "320 px, long message", ...narrowLong });
+        if (narrowLong.undo === null) violations.push("320 px: no Undo beside the longest line, so it measured the wrong case");
         if (narrowLong.buttonTop !== narrow.buttonTop) violations.push(`320 px: a long message moved the button from ${narrow.buttonTop} to ${narrowLong.buttonTop}`);
         if (narrowLong.statusHeight > 44) violations.push(`320 px: a long message grew the line to ${narrowLong.statusHeight}px`);
         await shoot(page, device, "26g-undo-320", "Spec 17.5 AC4: the longest message beside Undo at 320 × 568");
@@ -1134,9 +1140,9 @@ try {
         if (m.rows.length === 0) violations.push(`${where}: no stepper row`);
         for (const row of m.rows) {
           for (const b of row.buttons) {
-            // AC1: each button's vertical center within 1 px of the input's (weight, reps, calories, distance; not a
-            // duration, whose buttons sit beside two labeled fields).
-            if (!/^(Minutes|Seconds)$/.test(row.label) && Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
+            // AC1: each button's vertical center within 1 px of the input's. Minor 462: a duration too, now that its
+            // labels sit outside the row.
+            if (Math.abs(b.offset) > 1) violations.push(`${where}: ${row.label} "${b.text}" is ${b.offset.toFixed(1)}px off the input's center`);
             // AC2: 56 × 56.
             if (Math.abs(b.w - 56) > 0.5 || Math.abs(b.h - 56) > 0.5) violations.push(`${where}: ${row.label} "${b.text}" is ${b.w} × ${b.h} (want 56 × 56)`);
           }
@@ -1175,8 +1181,8 @@ try {
             steps.push({ step: `${at} 102.5`, clipped });
             if (clipped) violations.push(`${at}: "102.5" is clipped in the weight field`);
           }
-          // Spec 17.8 Phase B (AC11, AC20, Review Focus 5): the Plank's duration steppers. At 390 px Minutes and Seconds sit
-          // side by side; at 320 px they stack, and neither label is clipped.
+          // Spec 17.8 Phase B (AC11, AC20, Review Focus 5), minors 462–463: the Plank's duration steppers. Minutes and
+          // Seconds sit side by side at every width (they stacked at 320 px before), "59" shows in full, no unit clips.
           await clearStored();
           await go("/app/workouts");
           await openCard("Plank");
@@ -1186,13 +1192,20 @@ try {
           if (plank.duration === null || plank.duration === undefined) violations.push(`${at} duration: no Minutes and Seconds in a stepper row`);
           else {
             const [minutesTop, secondsTop] = plank.duration.tops;
-            if (size.width >= 390 && Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} duration: Minutes and Seconds don't share a line at ${size.width} px`);
-            if (size.width === 320 && !(secondsTop > minutesTop + 1)) violations.push(`${at} duration: Minutes and Seconds don't stack at 320 px`);
-            for (const label of plank.duration.clipped) violations.push(`${at} duration: the ${label} label is clipped`);
+            if (Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} duration: Minutes and Seconds don't share a line at ${size.width} px`);
+            for (const unit of plank.duration.clipped) violations.push(`${at} duration: the "${unit}" unit is clipped`);
           }
+          await clippedValue(`${at} duration`, 'form[aria-label="Log a set of Plank"]', "Seconds", "59");
+          await clippedValue(`${at} duration`, 'form[aria-label="Log a set of Plank"]', "Minutes", "12");
           if (size.width === 320) {
-            await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
-            await shoot(page, device, "24b-duration-320", "Spec 17.8 AC11: a Plank at 320 × 568: −5 s / +5 s around Minutes over Seconds");
+            // Minor 463: on an SE-sized phone the whole Plank panel (Warm-up and More included) fits above the bar once
+            // it is scrolled to the top of the list, as a weight × reps panel does.
+            await page.locator('form[aria-label="Log a set of Plank"]').evaluate((form) => form.scrollIntoView({ block: "start" }));
+            await page.waitForTimeout(150);
+            const fit = await measureLoggingLoop(page);
+            steps.push({ step: `${at} duration fits above the bar`, covered: fit.covered, panelBottom: fit.panelBottom, barTop: fit.barTop });
+            if (fit.covered.length > 0) violations.push(`${at} duration: ${fit.covered.join(", ")} under the bar (panel ends at ${fit.panelBottom}, bar at ${fit.barTop})`);
+            await shoot(page, device, "24b-duration-320", "Spec 17.8 AC11, minors 462–463: a Plank at 320 × 568: Time, −5 s / +5 s centered on Minutes and Seconds side by side, the panel above the bar");
           }
           // Calories and the carry: the new-types workout's Echo Bike and Farmer Carry panels.
           state.newTypes = structuredClone(D.activeNewTypes);
@@ -1464,6 +1477,29 @@ try {
             const bodyHeight = short[0]?.bodyHeight ?? 0;
             if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
+            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The messages stop at what
+            // the frame leaves them and scroll with their first line showing; the buttons and part of the body stay. The text is
+            // written into the slots by hand (a failed save then a delete can't be staged here); the layout is the point.
+            await page.evaluate(() => {
+              const d = document.querySelector("dialog[open]");
+              const alert = document.createElement("p");
+              alert.setAttribute("role", "alert");
+              alert.textContent = "Couldn't save the set — check your connection and try again.";
+              d.querySelector("[data-sheet-messages] > :first-child").append(alert);
+              d.querySelector("[data-sheet-status]").textContent = "Delete set 2? 60 kg × 8 will be removed.";
+            });
+            const crowded = (await measureSheetRows(page))[0];
+            const crowdedBody = crowded?.bodyHeight ?? 0;
+            if (crowdedBody < 64) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 64)`);
+            const messagesHeight = await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-messages]").getBoundingClientRect().height);
+            if (messagesHeight < 18) violations.push(`minor 492: the notice and status show ${messagesHeight.toFixed(1)} px at 232 px (want one line, >= 18)`);
+            for (const v of crowded?.violations ?? []) violations.push(`minor 492: ${v}`);
+            await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
+            await page.evaluate(() => {
+              const d = document.querySelector("dialog[open]");
+              d.querySelector("[data-sheet-messages] > :first-child").replaceChildren();
+              d.querySelector("[data-sheet-status]").textContent = "";
+            });
           } finally {
             await page.setViewportSize(viewport);
           }

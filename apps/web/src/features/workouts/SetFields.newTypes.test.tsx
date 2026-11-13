@@ -165,12 +165,48 @@ describe("17.8 AC13 — centered figures", () => {
     expect(at, selector).toBeGreaterThanOrEqual(0);
     return source.slice(at, source.indexOf("}", at));
   };
-  it("the figure fields and the stepper input are centered; duration fields wrap at --duration-field-min-width (Review Focus 5)", () => {
+  it("the figure fields and the stepper input are centered", () => {
     expect(rule(css("SetFields.module.css"), ".figureInput")).toMatch(/text-align:\s*center/);
     expect(rule(css("NumberStepper.module.css"), ".row .input")).toMatch(/text-align:\s*center/);
-    expect(rule(css("SetFields.module.css"), ".durationFields")).toMatch(/flex-wrap:\s*wrap/);
-    expect(rule(css("SetFields.module.css"), ".durationFields > *")).toMatch(/flex:\s*1 1 var\(--duration-field-min-width\)/);
-    expect(css("../../ui/tokens.css")).toMatch(/--duration-field-min-width:\s*3\.75rem;/);
+  });
+
+  // Minors 462, 463: the labels moved out of the frame's row, so the buttons center on the figures, and the pair no
+  // longer wraps at 320 px (two lines of fields pushed Warm-up and More under the bar on an SE-sized phone).
+  it("minors 462, 463 — a duration is a Time group: its row holds only the two inputs, the units sit under them", () => {
+    render(<Entry modality="duration" initial={draftFor("duration", { minutes: "1", seconds: "15" })} />);
+    const group = screen.getByRole("group", { name: "Time" });
+    const minutes = within(group).getByRole("textbox", { name: "Minutes" });
+    const seconds = within(group).getByRole("textbox", { name: "Seconds" });
+    const row = minutes.closest("[data-stepper-row]") as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row).toContainElement(seconds);
+    expect([...row.querySelectorAll(":scope > button")].map((b) => b.textContent)).toEqual(["−5 s", "+5 s"]);
+    expect(row.textContent).not.toMatch(/Minutes|Seconds|min/);
+    expect(minutes).toHaveAttribute("inputmode", "numeric");
+    expect(minutes).toHaveAttribute("autocomplete", "off");
+    // The units, under the figures and hidden from a screen reader (the inputs' names carry them).
+    const units = row.nextElementSibling as HTMLElement;
+    expect(units).toHaveAttribute("aria-hidden", "true");
+    expect([...units.querySelectorAll("span")].map((u) => u.textContent)).toEqual(["min", "s"]);
+    const sheetCss = css("SetFields.module.css");
+    expect(rule(sheetCss, ".durationLine")).toMatch(/grid-template-columns:\s*var\(--stepper-size\) minmax\(0, 1fr\) var\(--stepper-size\)/);
+    expect(rule(sheetCss, ".durationPair")).toMatch(/grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(sheetCss).not.toMatch(/flex-wrap:\s*wrap/);
+    // At 320 px each field is 44 px: the stepper input's narrow padding, outranking Field's (two classes), fits "59".
+    expect(rule(sheetCss, ".durationPair .figureInput")).toMatch(/padding-inline:\s*var\(--space-1\)/);
+    expect(css("../../ui/tokens.css")).not.toMatch(/--duration-field-min-width/);
+  });
+
+  it("minor 462 — an error sits under its own field, outside the frame's row, linked to the input", () => {
+    const errors = { seconds: "Seconds must be 0–59" };
+    render(<SetFields exerciseName="Plank" variant="entry" modality="duration" draft={draftFor("duration", { minutes: "1", seconds: "75" })} errors={errors} idPrefix="d" onChange={() => {}} />);
+    const seconds = screen.getByLabelText("Seconds");
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Seconds must be 0–59");
+    expect(seconds).toHaveAttribute("aria-invalid", "true");
+    expect(seconds).toHaveAccessibleDescription("Seconds must be 0–59");
+    expect(seconds.closest("[data-stepper-row]")).not.toContainElement(alert);
+    expect(screen.getByLabelText("Minutes")).not.toHaveAttribute("aria-invalid");
   });
 });
 

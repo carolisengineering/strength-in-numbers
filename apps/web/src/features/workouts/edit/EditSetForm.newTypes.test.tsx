@@ -51,7 +51,12 @@ describe("17.8 AC16 — edit screen", () => {
     await user.click(s.getByRole("button", { name: "+5 s, increase time for Plank" }));
     await user.click(s.getByRole("button", { name: "Save" }));
     const message = await s.findByText("Too long");
-    expect(message.closest("[data-stepper-row]")).not.toBeNull();
+    // Minor 462: under the frame's row, not inside it, so an error doesn't move the buttons.
+    const duration = message.closest("[data-duration]") as HTMLElement;
+    expect(duration).not.toBeNull();
+    expect(message.closest("[data-stepper-row]")).toBeNull();
+    const row = duration.querySelector("[data-stepper-row]")!;
+    expect(row.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
