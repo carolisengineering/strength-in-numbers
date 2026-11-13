@@ -554,9 +554,11 @@ const measureSheetRows = (page) =>
           if (r.width === 0 || r.height === 0) continue;
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
-          if (cy < br.top || cy > br.bottom) continue; // scrolled out of the body: not on screen
+          // Scrolled out of the body: not on screen. A center within 1 px of the body's edge is half scrolled out, and a
+          // hit test exactly on the edge the row shares can land on either (minor 492's crowded frame put a strip there).
+          if (cy < br.top + 1 || cy > br.bottom - 1) continue;
           const hit = document.elementFromPoint(cx, cy);
-          if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName}" is under the row`);
+          if (hit && row.contains(hit)) v.push(`body control "${el.getAttribute("aria-label") ?? (el.textContent?.trim().slice(0, 30) || `${el.tagName.toLowerCase()}${el.type ? `[${el.type}]` : ""}`)}" (center y ${cy.toFixed(1)}) is under the row (body ${br.top.toFixed(1)}–${br.bottom.toFixed(1)}, row top ${rr.top.toFixed(1)})`);
         }
         return { title: d.querySelector("h2")?.textContent ?? "", rowTop: rr.top, rowBottom: rr.bottom, dialogBottom: dr.bottom, bodyHeight: br.height, buttons: buttons.map((b) => b.textContent), violations: v };
       })
