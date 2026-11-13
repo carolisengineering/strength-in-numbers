@@ -290,7 +290,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
       </h3>
       {resolved.pairs.length > 0 ? (
         <details>
-          <summary>{SHOW_LIST}</summary>
+          <summary className={styles.showList}>{SHOW_LIST}</summary>
           <ul>
             {resolved.pairs.map((p) => (
               <li key={p.hevyTemplateId}>{p.hevyTitle}</li>
@@ -364,7 +364,7 @@ function Preview({ resolved, current, onApplyRule }: { resolved: Resolved; curre
         <>
           <h3 className={styles.heading}>{willBeRemovedLine(removed.length)}</h3>
           <details>
-            <summary>{SHOW_LIST}</summary>
+            <summary className={styles.showList}>{SHOW_LIST}</summary>
             <ul>
               {removed.map((p) => (
                 <li key={p.hevyTemplateId}>{p.hevyTitle}</li>

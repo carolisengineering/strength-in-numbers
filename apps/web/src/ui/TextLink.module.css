@@ -1,0 +1,8 @@
+/* Spec 17.13 AC15: a link alone on a line is the tap target's height, at its own width, underlined as before. */
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  align-self: flex-start;
+  text-decoration: underline;
+}

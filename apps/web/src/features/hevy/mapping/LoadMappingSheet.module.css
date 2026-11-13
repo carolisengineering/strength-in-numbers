@@ -51,3 +51,8 @@
 .progress:empty {
   display: none;
 }
+
+/* Spec 17.13 AC15: "Show the list" is alone on its line, so it is a full tap target; padding keeps the native marker. */
+.showList {
+  padding-block: var(--space-3);
+}
