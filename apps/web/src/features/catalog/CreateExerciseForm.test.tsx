@@ -107,11 +107,17 @@ describe("17.13 AC13 — why Save is off (create)", () => {
     expect(saveButton()).toHaveAccessibleDescription("Enter a name and choose a type.");
   });
 
-  it("review focus 1: a name of only spaces still shows the line", async () => {
+  it("review focus 1: a name of only spaces with a type chosen says Enter a name.", async () => {
     const { user } = renderForm({ initialName: "" });
     await user.type(screen.getByLabelText("Name"), "   ");
     await user.click(screen.getAllByRole("radio")[0]!);
-    expect(screen.getByText("Enter a name and choose a type.")).toBeInTheDocument();
+    expect(saveButton()).toHaveAccessibleDescription("Enter a name.");
+  });
+
+  it("code review #1: a name prefilled from the search with no type says Choose a type.", () => {
+    renderForm({ initialName: "Zercher squat" });
+    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).toHaveAccessibleDescription("Choose a type.");
   });
 
   it("name and type filled: no line and no description; Save keeps its look", async () => {

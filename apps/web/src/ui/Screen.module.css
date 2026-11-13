@@ -1,4 +1,7 @@
 .screen {
+  /* Code review (17.13 B): the containing block of a hidden title (absolute) is the screen, inside <main>'s scroller,
+     so focusing it scrolls the page back to the top as the visible title did. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

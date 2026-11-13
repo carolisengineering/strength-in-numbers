@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
 import { SheetActions } from "../../ui/SheetActions";
-import { SAVE_OFF_INCOMPLETE } from "./labels";
+import { SAVE_OFF_INCOMPLETE, SAVE_OFF_NO_NAME, SAVE_OFF_NO_TYPE } from "./labels";
 import styles from "./CreateExerciseForm.module.css";
 import {
   EMPTY_EXERCISE_FIELDS,
@@ -65,7 +65,10 @@ export function CreateExerciseForm({
   const canSave = values.name.trim() !== "" && values.modality !== null;
   // Spec 17.13 AC13: a disabled Save says why, in the row's status line and as Save's description.
   const reasonId = useId();
-  const showReason = !canSave && !saving;
+  const noName = values.name.trim() === "";
+  const noType = values.modality === null;
+  const reason = canSave || saving ? null : noName && noType ? SAVE_OFF_INCOMPLETE : noName ? SAVE_OFF_NO_NAME : SAVE_OFF_NO_TYPE;
+  const showReason = reason !== null;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -121,7 +124,7 @@ export function CreateExerciseForm({
             </p>
           ) : null
         }
-        status={showReason ? <span id={reasonId}>{SAVE_OFF_INCOMPLETE}</span> : null}
+        status={showReason ? <span id={reasonId}>{reason}</span> : null}
         primary={
           <Button type="submit" form={formId} busy={saving} disabled={!canSave} {...(showReason ? { "aria-describedby": reasonId } : {})}>
             Save

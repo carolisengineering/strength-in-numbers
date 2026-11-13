@@ -24,6 +24,12 @@ describe("17.13 AC10 — hideTitle", () => {
   });
 });
 
+describe("code review #2 — a hidden title moves with its page", () => {
+  it(".screen is positioned, so the hidden h1's box stays in <main>'s scroller and focusing it scrolls there", () => {
+    expect(ruleOf(join(HERE, "Screen.module.css"), ".screen")).toMatch(/position:\s*relative/);
+  });
+});
+
 describe("17.13 AC11 — titleSmall", () => {
   it("draws the h1 one step smaller, with its text and role unchanged", () => {
     render(<Screen title="Workout summary" titleSmall />);

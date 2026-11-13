@@ -14,6 +14,7 @@ import { collapsedSync, type CollapsedSummary } from "./summaryLine";
 import { SectionPicker } from "./sections/SectionPicker";
 import { SetEditSheet } from "./SetEditSheet";
 import { useSetExerciseNote } from "./useWorkoutMutations";
+import type { SectionSegment } from "./sectionSegments";
 import styles from "./ExerciseCard.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
 
@@ -105,6 +106,16 @@ export function moveReasonsFor(p: MovePlace): { up: string | null; down: string 
   const down = !p.segmentLast ? null : p.headed ? SEGMENT_LAST_REASON : p.workoutLast ? LOOSE_LAST_REASON : null;
   return { up, down };
 }
+
+/** Row `k` of `segment` in a workout of `total` exercises: the one place both screens get their Move reasons from. */
+export const moveReasonsAt = (segment: Pick<SectionSegment, "heading" | "start" | "rows">, k: number, total: number) =>
+  moveReasonsFor({
+    headed: segment.heading !== null,
+    segmentFirst: k === 0,
+    segmentLast: k === segment.rows.length - 1,
+    workoutFirst: segment.start + k === 0,
+    workoutLast: segment.start + k === total - 1,
+  });
 const NO_REASONS = { up: null, down: null } as const;
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();

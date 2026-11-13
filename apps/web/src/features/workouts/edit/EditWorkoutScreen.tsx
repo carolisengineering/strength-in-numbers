@@ -19,7 +19,7 @@ import { useMe } from "../../me/useMe";
 import { LinkToggle } from "../../routines/LinkToggle";
 import { SupersetBracket } from "../../routines/SupersetBracket";
 import { classifyWorkoutError, isWorkoutGone } from "../errors";
-import { ExerciseCard, moveReasonsFor } from "../ExerciseCard";
+import { ExerciseCard, moveReasonsAt } from "../ExerciseCard";
 import { formatMinutes, workoutMinutes } from "../finishStats";
 import { SECTION_HOME, type SummarySection } from "../FinishedWorkoutScreen";
 import { formatLocalDate, formatStartedAt } from "../format";
@@ -454,13 +454,7 @@ function EditBody({
             isLast={k === segment.rows.length - 1}
             structureBusy={structureBusy}
             onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-            moveReasons={moveReasonsFor({
-              headed: segment.heading !== null,
-              segmentFirst: k === 0,
-              segmentLast: k === segment.rows.length - 1,
-              workoutFirst: segment.start + k === 0,
-              workoutLast: segment.start + k === workout.exercises.length - 1,
-            })}
+            moveReasons={moveReasonsAt(segment, k, workout.exercises.length)}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             flaggedIds={NO_FLAGS}
             unitPreference={unitPreference}
