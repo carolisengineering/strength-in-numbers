@@ -218,6 +218,22 @@ describe("10.7 AC40 — no timer change under unsent entries", () => {
   });
 });
 
+describe("10.7 AC40 / minor 328 — the lock's line when its entries failed", () => {
+  it("every entry failed: the Timer group stays locked and says to discard them first", async () => {
+    const { user, fake } = await setup();
+    fake.failNext({ method: "PUT", path: /round-times/ }, () => problemResponse(422, "validation-failed"));
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Round 5"), "330");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(await within(screen.getByRole("region", { name: "Main" })).findByText("Couldn't be saved")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+    const edit = within(screen.getByRole("dialog", { name: "Edit section" }));
+    for (const radio of within(segmented("Timer", edit)).getAllByRole("radio")) expect(radio).toBeDisabled();
+    expect(edit.getByText("Discard the times that couldn't be saved first.")).toBeInTheDocument();
+    expect(edit.queryByText("Wait for the logged times to save before changing the timer.")).toBeNull();
+  });
+});
+
 describe("10.7 AC43 — live events", () => {
   it("one Save with three writes tracks section_result_logged once, with the format only; nothing user-derived reaches the spies", async () => {
     const { user } = await setup([{ name: "Zebra-77", timer: SET5 }]);

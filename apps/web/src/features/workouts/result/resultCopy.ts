@@ -31,5 +31,7 @@ export const RESULT_COPY = Object.freeze({
   notSaved: "Not saved yet",
   notSavedFailed: "Couldn't be saved",
   timerLocked: "Wait for the logged times to save before changing the timer.",
+  /** Minor 328: every entry failed, so waiting won't unlock it; Discard on the sync line will. */
+  timerLockedFailed: "Discard the times that couldn't be saved first.",
   timerEntries: (n: number): string => (n === 1 ? "1 timer entry" : `${n} timer entries`),
 });

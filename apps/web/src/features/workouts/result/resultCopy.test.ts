@@ -33,6 +33,7 @@ describe("10.7 AC56 — Phase C copy is pinned", () => {
       notSaved: "Not saved yet",
       notSavedFailed: "Couldn't be saved",
       timerLocked: "Wait for the logged times to save before changing the timer.",
+      timerLockedFailed: "Discard the times that couldn't be saved first.",
     });
     expect(roundLabel(3)).toBe("Round 3");
     expect(total("14:03")).toBe("Total 14:03");

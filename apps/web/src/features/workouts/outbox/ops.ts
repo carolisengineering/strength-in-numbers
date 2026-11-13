@@ -206,6 +206,16 @@ export function unsavedTimerEntries(ops: readonly OutboxOp[], workoutId: string)
   return { pending: all.size - failed.size, failed: failed.size };
 }
 
+/**
+ * Spec 10.7 AC40 (minor 328) — what the section's outbox entries are doing: `failed` only when every one has failed
+ * (they wait for Discard), `pending` while any can still send, `none` when it has none.
+ */
+export function sectionOpsState(ops: readonly OutboxOp[], sectionId: string): "none" | "pending" | "failed" {
+  const mine = ops.filter((op) => isSectionOp(op) && op.sectionId === sectionId);
+  if (mine.length === 0) return "none";
+  return mine.every((op) => op.status === "failed") ? "failed" : "pending";
+}
+
 /** Spec 10.7 AC40 — the section has an entry in the outbox, whatever its status (its Timer group is locked). */
 export const sectionHasOps = (ops: readonly OutboxOp[], sectionId: string): boolean =>
   ops.some((op) => isSectionOp(op) && op.sectionId === sectionId);

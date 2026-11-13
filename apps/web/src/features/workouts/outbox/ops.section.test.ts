@@ -11,6 +11,7 @@ import {
   OUTBOX_OP_KINDS,
   OutboxFileSchema,
   sectionHasOps,
+  sectionOpsState,
   sectionKey,
   unsavedNotes,
   unsavedSets,
@@ -137,6 +138,13 @@ describe("10.7 AC39 — counters (Review Focus 1)", () => {
     expect(isSetOp(r("s1", 1, 200))).toBe(false);
     expect(isSetOp(res("s1", null))).toBe(false);
     expect(isSetOp(note("e1"))).toBe(false);
+  });
+
+  it("10.7 AC40 / minor 328 — sectionOpsState: none, pending, failed only when every op of the section failed", () => {
+    expect(sectionOpsState([note("e1"), r("s2", 1, 200)], "s1")).toBe("none");
+    expect(sectionOpsState([r("s1", 1, 200)], "s1")).toBe("pending");
+    expect(sectionOpsState([r("s1", 1, 200, { status: "failed" }), res("s1", null, { status: "failed" })], "s1")).toBe("failed");
+    expect(sectionOpsState([r("s1", 1, 200, { status: "failed" }), r("s1", 2, 210)], "s1")).toBe("pending");
   });
 
   it("sectionHasOps is true for any op of the section, a failed one too", () => {

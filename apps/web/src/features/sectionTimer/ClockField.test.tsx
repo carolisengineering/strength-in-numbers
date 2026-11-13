@@ -101,3 +101,17 @@ describe("17.10 AC13 — a field in a group points at the group's hint", () => {
     expect(screen.getByLabelText("Cap").getAttribute("aria-describedby")).toBe("cap-hint");
   });
 });
+
+describe("10.7 AC1 / minor 315 — pasting a TimerLine clock back", () => {
+  it("a pasted 1:30:00 shows 90:00", async () => {
+    const user = userEvent.setup();
+    function Probe() {
+      const [digits, setDigits] = useState("");
+      return <ClockField id="c" label="Cap" digits={digits} onChange={setDigits} />;
+    }
+    render(<Probe />);
+    await user.click(screen.getByLabelText("Cap"));
+    await user.paste("1:30:00");
+    expect(screen.getByLabelText("Cap")).toHaveValue("90:00");
+  });
+});

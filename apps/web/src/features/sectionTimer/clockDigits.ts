@@ -28,11 +28,18 @@ export function secondsToDigits(s: number): string {
   return minutes === 0 ? String(secs) : `${minutes}${String(secs).padStart(2, "0")}`;
 }
 
+// Minor 315: a pasted clock with hours ("1:30:00", how a TimerLine writes a long cap). The field's own text never
+// has two colons, so typing can't reach it.
+const HOURS_CLOCK = /^\s*(\d+):([0-5]\d):([0-5]\d)\s*$/;
+
 /**
  * The next digit string from the input's raw value: typing, Backspace and paste all come through here. Non-digits
- * and leading zeros are dropped; more than `CLOCK_DIGITS_MAX` digits keeps `prev`.
+ * and leading zeros are dropped; more than `CLOCK_DIGITS_MAX` digits keeps `prev`. A pasted `h:mm:ss` reads as
+ * hours (`1:30:00` is 90:00, minor 315).
  */
 export function nextDigits(prev: string, inputValue: string): string {
-  const digits = inputValue.replace(/\D/g, "").replace(/^0+/, "");
+  const hours = HOURS_CLOCK.exec(inputValue);
+  const raw = hours ? secondsToDigits((Number(hours[1]) * 60 + Number(hours[2])) * 60 + Number(hours[3])) : inputValue;
+  const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
   return digits.length > CLOCK_DIGITS_MAX ? prev : digits;
 }
