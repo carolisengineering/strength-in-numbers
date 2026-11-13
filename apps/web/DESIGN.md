@@ -231,7 +231,9 @@ The spacing scale is `--space-1` through `--space-8` (0.25, 0.5, 0.75, 1, 1.5, 2
 
 **The exercise page** (Spec 17.11). It leads with its figure: the title, the status line, the Metric and Range controls, the readout with "Open workout" (44px), the chart, the sessions, then "Personal records" as name-free rows (the label, the value in bold ink, a muted "was 80 kg" or "First record"; the heading is the only brass). What rarely changes comes last, in one native disclosure, "Exercise details": the details table and the actions (Make your own copy, or Edit and Delete exercise). It is closed when the exercise has logged sets and open when it has none, since then it is the page. On a 390 × 844 phone the chart ends above the nav.
 
-**The Thumb Rule.** Every interactive target is at least `--tap-target-min` (44px) in both axes. Sizes are rem so they follow the user's font setting; radii, the tap target and the 1px lines are the physical exceptions.
+**The Thumb Rule.** Every interactive target is at least `--tap-target-min` (44px) in both axes. Sizes are rem so they follow the user's font setting; radii, the tap target and the 1px lines are the physical exceptions. A link inside running text is the only exemption; a link or disclosure alone on its line is 44px tall at its own width (`TextLink`, Spec 17.13), and a radio or checkbox counts its label's box. Every screen holds at 320 × 568 and at 200% text: no sideways scroll, no overlapping controls, the primary action reachable.
+
+**Under the keypad** (Spec 17.13). While an on-screen keyboard is up the frame is the visible rectangle above it, and the header and the nav both step aside, so the main area and a sheet's action row have the screen; the frame keeps the status bar's inset itself.
 
 ## Elevation & Depth
 
@@ -262,6 +264,7 @@ Quiet, firm and thumb-sized.
 ### Chips and segmented controls
 - **Style:** unselected options look like secondary buttons (Raised Stone, Control Boundary).
 - **State:** selected fills with `--color-selected` and `--color-on-selected` text, together with `aria-pressed` or a checked radio. The Light / Dark / System theme switch is a segmented strip: three equal options inside one bordered 10px strip, divided by Control Boundary lines, with native radios kept in the accessibility tree.
+- **Two radio looks** (Spec 17.13): a choice of 2–4 fixed options is a Segmented strip; anything else (more options, long names) is a **RadioChip**: a 44px chip at 10px with a Control Boundary, a native radio inside at `--radio-size`, the checked chip outlined in `--color-selected`, a disabled one muted. Lists of long names take the full width. No other radio look.
 - **Segmented** (`ui/Segmented`, Spec 17.7): the theme strip made shared, for 2–4 fixed choices compared at a glance (units, set type, timer format, Profile units). A fieldset and its legend, one native radio per option; arrow keys move and choose, Tab enters once. Equal columns no narrower than `--segment-min-width` (5rem, so "Warm-up" keeps one line); four options sit four across or 2 × 2, never 3 + 1, so the 390 px panel shows set type 2 × 2 and the sheets show it four across. `value={null}` checks nothing (a plan's mixed units). A disabled option is muted; a checked one in a locked strip keeps a Teal Wash fill so the choice still shows.
 
 ### Cards / Containers

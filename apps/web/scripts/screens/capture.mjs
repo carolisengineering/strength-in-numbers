@@ -409,6 +409,15 @@ async function layoutDump(page) {
     };
     const label = (el) => (el.getAttribute("aria-label") || el.innerText || el.value || el.placeholder || el.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 80);
     const els = [...document.querySelectorAll(SEL)].filter(isVisible);
+    // Spec 17.13 AC20: a radio or checkbox is tapped through its label, so a label of at least 44 × 44 is its target.
+    const small = (el, r) => {
+      if (r.width >= 44 && r.height >= 44) return false;
+      if (el.tagName === "INPUT" && (el.type === "radio" || el.type === "checkbox")) {
+        const l = el.closest("label")?.getBoundingClientRect();
+        if (l && l.width >= 44 && l.height >= 44) return false;
+      }
+      return true;
+    };
     const scEl = document.querySelector("[data-harness-scroller]");
     const sy = scEl && scEl !== document.scrollingElement ? scEl.scrollTop : window.scrollY;
 
@@ -432,7 +441,7 @@ async function layoutDump(page) {
         _v: { x: vl, y: vt, w: Math.max(0, vr - vl), h: Math.max(0, vb - vt) },
         pinned: pinnedOf(el),
         disabled: el.disabled || el.getAttribute("aria-disabled") === "true" || undefined,
-        smallTarget: r.width < 44 || r.height < 44 || undefined,
+        smallTarget: small(el, r) || undefined,
         // A text input too narrow for its own value (Spec 17.1 AC24: the steppers' numbers must be readable).
         clipped: (el.tagName === "INPUT" && el.scrollWidth > el.clientWidth + 1) || undefined,
         offscreenX: r.left < 0 || r.right > vw + 0.5 || undefined,
@@ -769,8 +778,11 @@ async function shoot(page, device, name, note) {
   dump.pinnedCoverage = await pinnedCoverage(page);
   fs.writeFileSync(path.join(dir, `${base}.layout.json`), JSON.stringify(dump, null, 1));
   // Every enabled control on the page counts, scrolled into view or not (a below-the-fold panel is still the panel).
-  const small = dump.items.filter((it) => (it.smallTarget || it.clipped) && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h}${it.clipped ? " clipped" : ""}`);
-  report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0), smallTargets: small });
+  // Spec 17.13 AC20: a small target fails on every screen; a clipped input (a value wider than its field) is its own
+  // list, read only on the session screens, because the 80-character name fixture is meant to overflow its field.
+  const small = dump.items.filter((it) => it.smallTarget && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h}`);
+  const clippedInputs = dump.items.filter((it) => it.clipped && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h} clipped`);
+  report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0), smallTargets: small, clippedInputs });
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }
 
@@ -928,6 +940,120 @@ const doubledTitles = [];
 // Spec 17.13 AC18: 01k's frame with the keypad up (the header steps aside, <main> fills to the frame's bottom and
 // scrolls). A violation, or a mobile run that never reported it, fails the run.
 const keyboardFrame = [];
+// Spec 17.13 AC19: the zoom pass (320 × 568 reflow, and 390 × 844 with 200% text). A finding that isn't fixed is
+// logged in docs/backlog.md and listed here as { shot, item, bl }, matched exactly; anything else fails the run.
+const ZOOM_KNOWN = [
+  { shot: "light/mobile-200pct/z1-workout", item: "small target: input[text] \"47.5\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z1-workout", item: "small target: input[text] \"6\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z1-workout", item: "clipped input: input[text] \"47.5\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z1-workout", item: "clipped input: input[text] \"6\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"24\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"40\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z3-edit-sheet", item: "sheet row: row button \"Delete set\" is clipped", bl: "BL-39" },
+  { shot: "light/mobile-200pct/z3-edit-sheet", item: "sheet row: row button \"Cancel\" is clipped", bl: "BL-39" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Bench Press, 5 × 5–8 @ 40–82.5 kg · 3:00\"", bl: "BL-38" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Overhead Press, 4 × 5–8 @ 30–47.5 kg · 2:30\"", bl: "BL-38" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Incline Dumbbell Press, superset 1, 3 × 8–12 @ 26 kg · 1:30\"", bl: "BL-38" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Dumbbell Lateral Raise, superset 1, 3 × 12–15 @ 10 kg · 1:30\"", bl: "BL-38" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Triceps Pushdown, superset 2, 3 × 10–12 @ 32.5 kg\"", bl: "BL-38" },
+  { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Weighted Dip, superset 2, 3 × 6–10 @ 10 kg\"", bl: "BL-38" },
+];
+const zoom = [];
+// The zoom pass's shots: their small targets, clipped inputs and sheet-row problems are zoom findings (so ZOOM_KNOWN can
+// hold them), and the run-wide checks skip them.
+const ZOOM_SHOT = /(^|\/)mobile-(320-reflow|200pct)\//;
+
+/** Spec 17.13 AC19: nine screens at 320 × 568 and at 200% text; fails on sideways scroll, an overlap, or a primary off screen. */
+async function zoomPass(browser) {
+  const CONFIGS = [
+    { device: "mobile-320-reflow", viewport: { width: 320, height: 568 }, fontSize: null },
+    { device: "mobile-200pct", viewport: { width: 390, height: 844 }, fontSize: "200%" },
+  ];
+  const sheetButton = (p, name) => p.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name, exact: true });
+  const SCREENS = [
+    { name: "z1-workout", path: "/app/workouts", primary: (p) => p.locator("[data-session-bar] > button") },
+    {
+      name: "z2-picker",
+      path: "/app/workouts",
+      open: async (p) => {
+        await p.getByRole("button", { name: "Add exercise", exact: true }).click();
+        await p.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+      },
+      primary: (p) => sheetButton(p, "Cancel"),
+    },
+    {
+      name: "z3-edit-sheet",
+      path: `/app/history/${D.ids.conditioning}/edit`,
+      open: async (p) => {
+        await p.getByRole("article", { name: "Farmer Carry" }).getByRole("button", { name: /24 kg · 40 m/ }).click();
+        await p.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+      },
+      primary: (p) => sheetButton(p, "Save"),
+    },
+    {
+      name: "z4-routine-item-sheet",
+      path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit`,
+      open: async (p) => {
+        await p.locator('ul[aria-label^="Exercises"] li button[aria-label]').first().click({ timeout: 4000 });
+        await p.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+      },
+      primary: (p) => sheetButton(p, "Done"),
+    },
+    { name: "z5-history", path: "/app/history" },
+    { name: "z6-exercise-page", path: `/app/exercises/${D.ids.bench}` },
+    { name: "z7-summary", path: `/app/history/${D.ids.latestPush}` },
+    { name: "z8-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit`, primary: (p) => p.locator("[data-action-bar]").getByRole("button", { name: "Save", exact: true }) },
+    { name: "z9-profile", path: "/app/profile", primary: (p) => p.getByRole("button", { name: "Save", exact: true }) },
+  ];
+  THEME = "light";
+  for (const { device, viewport, fontSize } of CONFIGS) {
+    const ctx = await browser.newContext({ ...DEVICES.mobile, viewport, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+    await ctx.route(isSinApi, makeHandler({ active: true }));
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(8000);
+    page.on("pageerror", (err) => consoleErrors.push(`${device} ${page.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+    for (const s of SCREENS) {
+      await tryStep(`zoom ${device} ${s.name}`, async () => {
+        await page.goto(BASE + s.path);
+        // Text resize: the root's font size through the CSSOM (CSP allows it), after each navigation.
+        if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
+        await settle(page);
+        if (s.open) await s.open(page);
+        await shoot(page, device, s.name, `Spec 17.13 AC19: ${s.name.slice(3)} at ${fontSize ? `${viewport.width} × ${viewport.height}, ${fontSize} text` : `${viewport.width} × ${viewport.height}`}`);
+        const shot = `light/${device}/${s.name}`;
+        const found = await page.evaluate(() => {
+          const out = [];
+          const wide = (el, what) => {
+            if (el && el.scrollWidth > el.clientWidth + 1) out.push(`${what} scrolls sideways (${el.scrollWidth} > ${el.clientWidth})`);
+          };
+          wide(document.documentElement, "the page");
+          wide(document.querySelector("main"), "<main>");
+          wide(document.querySelector("dialog[open] [data-sheet-body]"), "the sheet body");
+          return out;
+        });
+        const dump = await layoutDump(page);
+        for (const o of dump.overlaps) found.push(`overlap: ${o.a} / ${o.b}`);
+        for (const it of dump.items.filter((x) => x.smallTarget && !x.disabled)) found.push(`small target: ${it.tag} "${it.text}"`);
+        for (const it of dump.items.filter((x) => x.clipped && !x.disabled)) found.push(`clipped input: ${it.tag} "${it.text}"`);
+        for (const r of sheetRows.filter((x) => x.shot === shot)) for (const v of r.violations) found.push(`sheet row: ${v}`);
+        if (s.primary) {
+          const action = s.primary(page);
+          await action.scrollIntoViewIfNeeded({ timeout: 3000 });
+          const box = await action.boundingBox();
+          const vp = page.viewportSize();
+          if (!box || box.x < -0.5 || box.y < -0.5 || box.x + box.width > vp.width + 0.5 || box.y + box.height > vp.height + 0.5) {
+            found.push(`the primary action is outside the viewport (${box ? `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}` : "no box"})`);
+          }
+        }
+        const known = ZOOM_KNOWN.filter((k) => k.shot === shot);
+        const violations = found.filter((item) => !known.some((k) => k.item === item));
+        zoom.push({ shot, found, known, violations });
+        for (const v of violations) console.error(`  ZOOM ${shot}: ${v}`);
+      });
+    }
+    await ctx.close();
+  }
+}
 // Spec 17.13 AC12: the first History row's offset from <main>'s top at 390 × 844. Before Phase B it was 67 px (the
 // header's word said again by a visible h1); the page gives back at least 40 px.
 const HISTORY_ROW_MAX_OFFSET = 27;
@@ -2935,6 +3061,9 @@ try {
     }
   }
 
+  // Spec 17.13 AC19: the zoom pass, once, in the light theme.
+  if (DEVICE_FILTER.includes("mobile")) await zoomPass(browser);
+
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
   {
     THEME = "override-dark";
@@ -2962,18 +3091,22 @@ try {
   await browser.close();
 }
 
-// Spec 17.1 AC24: every enabled, visible control on the session screens is at least 44 px in both axes.
-// Spec 17.8: the panel, rest, new-type and edit-sheet captures count too, at every size (no trailing "-", so 24b, 33d,
-// 59b and 60b are included).
-const SESSION_SHOTS = /\/(01|03|04|2[2-6]|59|60|61|33|s177b)/;
-const tooSmall = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.smallTargets?.length);
+// Spec 17.13 AC20 (from Spec 17.1 AC24): every enabled, visible control on every screen is at least 44 px in both axes;
+// a radio or checkbox counts its label's box.
+const tooSmall = report.filter((r) => r.file && !ZOOM_SHOT.test(r.file) && r.smallTargets?.length);
 for (const r of tooSmall) console.error(`  SMALL TARGETS ${r.file}: ${r.smallTargets.join("; ")}`);
 if (tooSmall.length) process.exitCode = 1;
+// Spec 17.1 AC24 / 17.8: on the session screens no input's value is wider than its field, at every size (no trailing
+// "-", so 24b, 33d, 59b and 60b are included).
+const SESSION_SHOTS = /\/(01|03|04|2[2-6]|59|60|61|33|s177b)/;
+const clippedSession = report.filter((r) => r.file && SESSION_SHOTS.test(r.file) && r.clippedInputs?.length);
+for (const r of clippedSession) console.error(`  CLIPPED INPUTS ${r.file}: ${r.clippedInputs.join("; ")}`);
+if (clippedSession.length) process.exitCode = 1;
 // Spec 17.11 AC10: the exercise page's captures have no small target and no overlap ("Open workout" beside the readout),
 // at 390 and 1280 px and at 320 × 568 (15n).
 const EXERCISE_SHOTS = /\/(15|15n|16|75|81)-/;
-const exerciseTight = report.filter((r) => r.file && EXERCISE_SHOTS.test(r.file) && (r.smallTargets?.length || r.overlaps));
-for (const r of exerciseTight) console.error(`  EXERCISE TARGETS ${r.file}: ${r.overlaps} overlaps; ${r.smallTargets.join("; ")}`);
+const exerciseTight = report.filter((r) => r.file && EXERCISE_SHOTS.test(r.file) && (r.smallTargets?.length || r.clippedInputs?.length || r.overlaps));
+for (const r of exerciseTight) console.error(`  EXERCISE TARGETS ${r.file}: ${r.overlaps} overlaps; ${[...r.smallTargets, ...r.clippedInputs].join("; ")}`);
 if (exerciseTight.length) process.exitCode = 1;
 if (exercisePage.some((e) => e.violations.length)) process.exitCode = 1;
 if (DEVICE_FILTER.includes("mobile") && (!exercisePage.some((e) => e.shot.endsWith("/15n-exercise-narrow")) || report.some((r) => r.note?.startsWith("SKIPPED exercise page 320")))) {
@@ -3023,7 +3156,7 @@ if (DEVICE_FILTER.includes("mobile") && summaryFirstScreen.length === 0) {
   process.exitCode = 1;
 }
 // Spec 17.10 AC19: the sheet-row checks fail the run on a violation, or when the step never reported.
-if (sheetRows.some((r) => r.violations.length)) process.exitCode = 1;
+if (sheetRows.some((r) => !ZOOM_SHOT.test(r.shot) && r.violations.length)) process.exitCode = 1;
 if (!sheetRows.some((r) => r.shot.endsWith("/sheet-row-step")) || report.some((r) => r.note?.startsWith("SKIPPED sheet row"))) {
   console.error("  SHEET ROW: the step did not run on every device");
   process.exitCode = 1;
@@ -3041,6 +3174,12 @@ if (DEVICE_FILTER.includes("mobile") && (localeChecks.length === 0 || report.som
 }
 if (doubledTitles.length) process.exitCode = 1;
 if (keyboardFrame.some((k) => k.violations.length)) process.exitCode = 1;
+// Spec 17.13 AC19, Review Focus 5: the zoom pass fails the run on a finding not in ZOOM_KNOWN, or when it never ran.
+if (zoom.some((z) => z.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && (zoom.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED zoom")))) {
+  console.error("  ZOOM: the zoom pass did not run on every screen");
+  process.exitCode = 1;
+}
 if (DEVICE_FILTER.includes("mobile") && (keyboardFrame.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED keyboard up")))) {
   console.error("  KEYBOARD FRAME: the 01k check did not run");
   process.exitCode = 1;
@@ -3049,7 +3188,7 @@ if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyO
   console.error("  HISTORY OFFSET: the check failed or did not run");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, zoom, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);
