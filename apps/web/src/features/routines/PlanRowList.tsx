@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PLANNED_SETS_PER_ITEM_MAX, type SetType, type WeightUnit } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
@@ -6,6 +6,7 @@ import { ChevronDownIcon } from "../../ui/icons";
 import { Segmented } from "../../ui/Segmented";
 import type { PlanRowText, RowErrors } from "./planRows";
 import { CHECK_THIS_SET, planRowSummary, SET_TYPE_CHOICES } from "./planRowSummary";
+import { useClearOnEdit } from "../../ui/useClearOnEdit";
 import styles from "./PlanRowList.module.css";
 
 /** kg / lb for the plan and the quick line (Spec 17.7 AC6: a Segmented, where `UnitToggle` was). */
@@ -59,6 +60,18 @@ export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, er
   );
   const pendingFocus = useRef<PendingFocus | null>(null);
   const lastErrors = useRef(errors);
+  // Minor 521: a row's message shows from the Done that found it until the lifter edits that field. The map from the
+  // sheet is never filtered (a new map means a new Done, which opens and focuses the first invalid row); the hiding
+  // happens here, keyed by row and field, and resets with the map.
+  const flatErrors = useMemo(() => {
+    const flat: Record<string, string | undefined> = {};
+    for (const [key, e] of errors) {
+      flat[`${key}:reps`] = e.reps;
+      flat[`${key}:weight`] = e.weight;
+    }
+    return flat;
+  }, [errors]);
+  const shown = useClearOnEdit(flatErrors);
   const atCap = rows.length >= PLANNED_SETS_PER_ITEM_MAX;
   const onlyRow = rows.length === 1;
   const capId = `${prefix}-cap`;
@@ -120,13 +133,15 @@ export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, er
         {rows.map((row, index) => {
           const n = index + 1;
           const id = (name: string) => `${prefix}-${row.key}-${name}`;
-          const error = errors.get(row.key);
+          const repsError = shown.of(`${row.key}:reps`);
+          const weightError = shown.of(`${row.key}:weight`);
           const isOpen = openKey === row.key;
           const first = index === 0;
           const last = index === rows.length - 1;
           const summary = planRowSummary(row, { n, showReps, showWeight, unit, ...(fallbackUnit ? { fallbackUnit } : {}) });
           const rowUnit = row.weightUnit ?? fallbackUnit ?? null;
-          const flagged = Boolean(error?.reps || error?.weight);
+          // Spec 17.11 AC16: only a closed row carries the suffix; the open one shows its messages by its fields.
+          const flagged = !isOpen && Boolean(repsError || weightError);
           return (
             <li key={row.key} className={styles.row}>
               <button
@@ -147,14 +162,20 @@ export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, er
                     <Segmented<SetType> name={id("type")} legend={`Set ${n} type`} options={SET_TYPE_CHOICES} value={row.setType} onChange={(setType) => onField(row.key, { setType })} />
                   </div>
                   {showReps ? (
-                    <Field id={id("reps")} label={`Set ${n} reps`} {...(error?.reps ? { error: error.reps } : {})}>
-                      {(control) => <input {...control} type="text" inputMode="text" autoComplete="off" className={styles.input} value={row.reps} onChange={(e) => onField(row.key, { reps: e.target.value })} />}
+                    <Field id={id("reps")} label={`Set ${n} reps`} error={repsError}>
+                      {(control) => <input {...control} type="text" inputMode="text" autoComplete="off" className={styles.input} value={row.reps} onChange={(e) => {
+                          shown.edit(`${row.key}:reps`);
+                          onField(row.key, { reps: e.target.value });
+                        }} />}
                     </Field>
                   ) : null}
                   {showWeight ? (
                     <div className={styles.withUnit}>
-                      <Field id={id("weight")} label={`Set ${n} weight`} {...(error?.weight ? { error: error.weight } : {})}>
-                        {(control) => <input {...control} type="text" inputMode="decimal" autoComplete="off" className={styles.input} value={row.weight} onChange={(e) => onField(row.key, { weight: e.target.value })} />}
+                      <Field id={id("weight")} label={`Set ${n} weight`} error={weightError}>
+                        {(control) => <input {...control} type="text" inputMode="decimal" autoComplete="off" className={styles.input} value={row.weight} onChange={(e) => {
+                          shown.edit(`${row.key}:weight`);
+                          onField(row.key, { weight: e.target.value });
+                        }} />}
                       </Field>
                       {unit === "mixed" && row.weight.trim() !== "" && rowUnit !== null ? <span className={styles.rowUnit}>{rowUnit}</span> : null}
                     </div>

@@ -96,6 +96,43 @@ describe("10.0 AC28 — the item sheet", () => {
   });
 });
 
+describe("10.2 AC16 — the item sheet's errors clear when their field changes", () => {
+  it("each of Sets, Reps and Rest loses only its own message on an edit; the next Done checks again", async () => {
+    const { onDone, user } = setup();
+    for (const label of ["Sets", "Reps", "Rest"]) await user.type(screen.getByLabelText(label), "x");
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onDone).not.toHaveBeenCalled();
+    const invalid = () => ["Sets", "Reps", "Rest"].filter((l) => screen.getByLabelText(l).getAttribute("aria-invalid") === "true");
+    expect(invalid()).toEqual(["Sets", "Reps", "Rest"]);
+    await user.type(screen.getByLabelText("Reps"), "y");
+    expect(invalid()).toEqual(["Sets", "Rest"]);
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(invalid()).toEqual(["Sets", "Reps", "Rest"]);
+  });
+
+  it("trap 5: editing Sets also clears Weight's 'set a number of sets first'", async () => {
+    const { user } = setup();
+    await user.type(screen.getByLabelText("Weight"), "60");
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.getByLabelText("Weight")).toHaveAttribute("aria-invalid", "true");
+    await user.type(screen.getByLabelText("Sets"), "3");
+    expect(screen.getByLabelText("Weight")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("trap 4: a failed Plan each set doesn't bring back a message the lifter already fixed", async () => {
+    const { user } = setup();
+    await user.type(screen.getByLabelText("Sets"), "x");
+    await user.type(screen.getByLabelText("Rest"), "x");
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.getByLabelText("Rest")).toHaveAttribute("aria-invalid", "true");
+    await user.type(screen.getByLabelText("Rest"), "{Backspace}");
+    expect(screen.getByLabelText("Rest")).not.toHaveAttribute("aria-invalid", "true");
+    await user.click(screen.getByRole("button", { name: "Plan each set" }));
+    expect(screen.getByLabelText("Sets")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Rest")).not.toHaveAttribute("aria-invalid", "true");
+  });
+});
+
 describe("17.10 AC14, AC7 — the item sheet uses the action row", () => {
   it("the row holds Cancel then Done; Done submits once; Plan each set stays in the body", async () => {
     const { onDone, user } = setup();
