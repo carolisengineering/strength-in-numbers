@@ -59,6 +59,7 @@ async function setup(exercises: ExerciseSpec[], unitPreference: "kg" | "lb" = "k
 }
 const setPosts = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"));
 const field = (name: string, label: string) => within(card(name)).getByLabelText(label);
+const MORE = () => within(card("Bench")).getByRole("button", { name: /^More set options for / });
 const logged = (n: number, o: Record<string, unknown> = {}) => makeSet({ setNumber: n, ...o });
 const bench = (o: Partial<ExerciseSpec> = {}): ExerciseSpec => ({ modality: "weight_reps", name: "Bench", plannedSets: PLAN, ...o });
 
@@ -225,6 +226,36 @@ describe("10.2 AC25 — a count change that is not this row's own log", () => {
     await refetch(); // count up, draft edited
     await within(card("Bench")).findByText("Set 3 of 3");
     expect(field("Bench", "Reps")).toHaveValue("7");
+  });
+
+  it("minor 449: a re-seed from another device's set leaves More open", async () => {
+    const { fake, queryClient, user } = await setup([bench({ sets: [logged(1, { setType: "warmup", reps: 10, weight: 60 })] })]);
+    await openSetOptions(user, card("Bench"));
+    otherDeviceLogs(fake);
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+    });
+    await within(card("Bench")).findByText("Set 3 of 3");
+    await waitFor(() => expect(field("Bench", "Weight")).toHaveValue("100"));
+    expect(MORE()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("minor 449: a log still closes More (17.7 AC16)", async () => {
+    const { user } = await setup([bench()]);
+    await openSetOptions(user, card("Bench"));
+    await user.click(logButton("Bench"));
+    await within(card("Bench")).findByText("Set 2 of 3");
+    await waitFor(() => expect(MORE()).toHaveAttribute("aria-expanded", "false"));
+  });
+
+  it("minor 449, review focus 2: a log after typing the next value (the rekey path) closes More too", async () => {
+    const { user } = await setup([bench()]);
+    await openSetOptions(user, card("Bench"));
+    await user.click(logButton("Bench"));
+    await user.type(field("Bench", "Reps"), "9");
+    await openSetOptions(user, card("Bench"));
+    await user.click(logButton("Bench"));
+    await waitFor(() => expect(MORE()).toHaveAttribute("aria-expanded", "false"));
   });
 });
 

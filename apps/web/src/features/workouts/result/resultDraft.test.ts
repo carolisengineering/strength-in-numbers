@@ -13,6 +13,7 @@ import {
   withMode,
   type ResultDraft,
 } from "./resultDraft";
+import { RESULT_COPY } from "./resultCopy";
 
 const SET5: SectionTimer = { format: "set_timer", roundSeconds: 300, rounds: 5 };
 const AMRAP12: SectionTimer = { format: "amrap", capSeconds: 720 };
@@ -179,3 +180,27 @@ describe("10.7 AC31 / AC33 — diffDraft", () => {
     expect(diffDraft(s, setRow(draftFromSection(s), 1, "0"))).toEqual([{ kind: "round", round: 1, seconds: null }]);
   });
 });
+
+describe("minor 330 — over the max is an error, not a clamp", () => {
+  const amrap = (rounds: string, reps: string): ResultDraft => ({ ...draftFromSection(section(AMRAP12)), rounds, reps });
+
+  it("1000 rounds is the Rounds error", () => {
+    expect(validateDraft(AMRAP12, amrap("1000", "5")).rounds).toBe(RESULT_COPY.roundsMax);
+    expect(RESULT_COPY.roundsMax).toBe("Keep it to 999 or less.");
+  });
+
+  it("10000 reps is the Reps error", () => {
+    expect(validateDraft(AMRAP12, amrap("3", "10000")).reps).toBe(RESULT_COPY.repsMax);
+    expect(RESULT_COPY.repsMax).toBe("Keep it to 9,999 or less.");
+  });
+
+  it("999 rounds is fine and is what the body carries", () => {
+    expect(validateDraft(AMRAP12, amrap("999", "5")).rounds).toBeUndefined();
+    expect(resultBody(amrap("999", "5"))).toEqual({ rounds: 999, reps: 5 });
+  });
+
+  it("the body never carries a value other than the field's", () => {
+    expect(resultBody(amrap("1000", "5"))).toEqual({ rounds: 1000, reps: 5 });
+  });
+});
+

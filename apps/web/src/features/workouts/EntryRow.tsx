@@ -99,6 +99,8 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   // moment after the delete resolves, so a render can hold the old list: the restore waits until the row has left.
   const [restoredToken, setRestoredToken] = useState<number | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  // Minor 449: the row's successful logs; More closes when it changes, and on nothing else.
+  const [logCount, setLogCount] = useState(0);
   if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !listed(exercise.sets, restore.set)) {
     setRestoredToken(restore.token);
     setAnnouncement(""); // AC13: a re-log repeats "Set N logged", and a live region says nothing when its words don't change
@@ -176,6 +178,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
         edited: edited.current,
       });
       lastLoggedAt.current = Date.now();
+      setLogCount((n) => n + 1);
       setAnnouncement(`Set ${set.setNumber} logged`);
       const typedSinceTap = editedSinceTap.current;
       if (typedSinceTap) {
@@ -269,6 +272,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
         errors={{ ...clientErrors, ...serverErrors }}
         onChange={onChange}
         idPrefix={idPrefix}
+        logCount={logCount}
       />
       {formError ? (
         <p className={styles.formError} role="alert">

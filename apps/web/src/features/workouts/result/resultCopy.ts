@@ -1,3 +1,7 @@
+import { RESULT_REPS_MAX, RESULT_ROUNDS_MAX } from "@sin/core";
+
+import { formatCount } from "../format";
+
 /** Spec 10.7 AC56 — every string the Log result sheet, its sync tag and the timer lock show. Pinned by exact text. */
 export const RESULT_COPY = Object.freeze({
   title: "Log result",
@@ -6,6 +10,9 @@ export const RESULT_COPY = Object.freeze({
   total: (clock: string): string => `Total ${clock}`,
   rounds: "Rounds",
   reps: "Reps",
+  // Minor 330: over the max is an error on Save, never a silent clamp.
+  roundsMax: `Keep it to ${formatCount(RESULT_ROUNDS_MAX)} or less.`,
+  repsMax: `Keep it to ${formatCount(RESULT_REPS_MAX)} or less.`,
   // Spec 17.8 AC4: the steppers show their step, and each name starts with it.
   stepDown: "\u22121",
   stepUp: "+1",

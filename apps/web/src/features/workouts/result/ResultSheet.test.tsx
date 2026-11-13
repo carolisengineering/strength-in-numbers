@@ -248,3 +248,20 @@ describe("17.10 AC14, AC7, AC3 — the Log result sheet uses the action row", ()
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });
+
+describe("minor 330 — the sheet refuses over the max", () => {
+  it("1000 rounds shows the error and saves nothing; review focus 3: − to 999 clears it and Save sends 999", async () => {
+    const { dialog, user, onSave } = renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    await user.type(dialog.getByLabelText("Rounds"), "1000");
+    await user.type(dialog.getByLabelText("Reps"), "5");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByText("Keep it to 999 or less.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(dialog.getByRole("button", { name: "\u22121, decrease rounds" }));
+    expect(dialog.queryByText("Keep it to 999 or less.")).toBeNull();
+    expect(dialog.getByLabelText("Rounds")).toHaveValue("999");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ rounds: "999", reps: "5" }));
+  });
+});
+
