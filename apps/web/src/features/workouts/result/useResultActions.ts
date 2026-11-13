@@ -4,10 +4,12 @@ import { RESULT_COPY } from "./resultCopy";
 import { diffDraft, type ResultDraft, type ResultWrite, type TimedSection } from "./resultDraft";
 
 /**
- * What decides the sheet's fields: the format, and for Time Cap whether there is a cap (Finished / Hit the cap only show
- * with one). A changed cap value or round count keeps the shape: `validateDraft` and `diffDraft` read the new section.
+ * What decides the sheet's fields: the format; for Time Cap whether there is a cap (Finished / Hit the cap only show
+ * with one, final review #4); for Set Timer the round count, since the rows are seeded once (code review #4). A changed
+ * cap value keeps the shape: `validateDraft` and `diffDraft` read the new section.
  */
-const timerShape = (timer: SectionTimer): string => (timer.format === "time_cap" ? `time_cap:${timer.capSeconds === null ? "none" : "cap"}` : timer.format);
+const timerShape = (timer: SectionTimer): string =>
+  timer.format === "time_cap" ? `time_cap:${timer.capSeconds === null ? "none" : "cap"}` : timer.format === "set_timer" ? `set_timer:${timer.rounds}` : timer.format;
 
 /** How a screen sends a Save's writes (live: the queued client; edit: REST, one by one). */
 export interface ResultWriter {
@@ -142,7 +144,11 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
   }, []);
 
   return {
-    sheet: view !== null && section !== undefined && section.timer !== null ? { section: section as TimedSection, openCount: view.openCount } : null,
+    // Code review #5: never drawn (or saved) against another shape, even in the render before the close effect runs.
+    sheet:
+      view !== null && section !== undefined && section.timer !== null && (view.shape === null || timerShape(section.timer) === view.shape)
+        ? { section: section as TimedSection, openCount: view.openCount }
+        : null,
     open,
     close,
     save,

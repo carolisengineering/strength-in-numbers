@@ -33,6 +33,7 @@ export function SetSheetActions({ formId, confirm, question, primaryLabel, savin
   // Final review #1: a save failure sits above the question in the row's messages box, which scrolls on a short
   // frame; bring the question into view so the two buttons never show without it.
   useEffect(() => {
+    // `?.` on the method: jsdom has no scrollIntoView, and tests that don't stub it render this too.
     if (asking) questionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [asking]);
   const notice = formError ? (

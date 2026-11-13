@@ -216,9 +216,6 @@ export function sectionOpsState(ops: readonly OutboxOp[], sectionId: string): "n
   return mine.every((op) => op.status === "failed") ? "failed" : "pending";
 }
 
-/** Spec 10.7 AC40 — the section has an entry in the outbox, whatever its status (its Timer group is locked). */
-export const sectionHasOps = (ops: readonly OutboxOp[], sectionId: string): boolean =>
-  ops.some((op) => isSectionOp(op) && op.sectionId === sectionId);
 
 const replaceAt = (ops: readonly OutboxOp[], index: number, op: OutboxOp): OutboxOp[] =>
   ops.map((o, i) => (i === index ? op : o));

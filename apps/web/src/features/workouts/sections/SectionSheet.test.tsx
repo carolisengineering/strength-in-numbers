@@ -47,6 +47,21 @@ describe("10.6 AC5 / minor 326 — a field's error clears when that field change
     expect(d().getByText("Enter a name.")).toBeInTheDocument();
   });
 
+  it("code review #2 — a Save that passes its own checks doesn't bring back a server message the lifter fixed", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<SectionSheet {...base} onSubmit={onSubmit} errors={{ name: "Enter a name.", notes: null, form: null }} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "Finisher");
+    await chooseSegmentValue(user, "Timer", "set_timer", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    await chooseSegmentValue(user, "Timer", "none", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(d().queryByText("Enter a name.")).toBeNull();
+  });
+
   it("a 422 that lands while the lifter is typing still shows (review focus 1)", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<SectionSheet {...base} busy errors={NO_ERRORS} />);

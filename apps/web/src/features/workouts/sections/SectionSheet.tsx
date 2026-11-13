@@ -14,6 +14,14 @@ import styles from "./SectionSheet.module.css";
 
 // One object for "no timer errors", so the clear-on-edit state isn't reset by a fresh `{}` every render (minor 326).
 const NO_TIMER_ERRORS: TimerFieldErrors = Object.freeze({});
+const NO_FIELD_ERRORS = Object.freeze({ name: null, notes: null });
+
+interface OwnErrors {
+  /** The server errors these were made against; once `errors` changes, the server's answer wins. */
+  readonly against: SectionSheetErrors;
+  readonly field: { readonly name: string | null; readonly notes: string | null };
+  readonly timer: TimerFieldErrors;
+}
 
 export interface SectionSheetErrors {
   readonly name: string | null;
@@ -53,16 +61,16 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   const [name, setName] = useState(() => section?.name ?? "");
   const [notes, setNotes] = useState(() => section?.notes ?? "");
   const [timer, setTimer] = useState(() => fieldsFromTimer(section?.timer ?? null));
-  // The sheet's own timer errors (a parse on submit, or `{}` after a format change) win over the server's.
-  const [ownTimerErrors, setOwnTimerErrors] = useState<TimerFieldErrors | null>(null);
-  // Final review #2: a Save the timer check stops never reaches `useSectionActions`, so the sheet checks Name and Note
-  // itself; its result wins until a Save goes through.
-  const [ownFieldErrors, setOwnFieldErrors] = useState<{ name: string | null; notes: string | null } | null>(null);
+  // The sheet's own checks (a timer that doesn't parse, Name and Note with it, a format change, or a Save that passes
+  // them all) win over the server's errors they were made against; the server's next answer (a new `errors` object)
+  // wins again. So a server message the lifter fixed never comes back on a Save that passes (code review #2), and a Save
+  // the timer check stops still checks Name and Note (final review #2).
+  const [own, setOwn] = useState<OwnErrors | null>(null);
+  const current = own !== null && own.against === errors ? own : null;
   // Minor 326: a message shows from the Save (or the server's 422) that found it until the lifter edits that field.
-  // Each failure is a new `errors` object from `useSectionActions`' state, which shows every message again.
-  const fieldErrors = useMemo(() => ownFieldErrors ?? { name: errors.name, notes: errors.notes }, [ownFieldErrors, errors]);
+  const fieldErrors = useMemo(() => current?.field ?? { name: errors.name, notes: errors.notes }, [current, errors]);
   const shown = useClearOnEdit(fieldErrors);
-  const timerShown = useClearOnEdit(ownTimerErrors ?? errors.timer ?? NO_TIMER_ERRORS);
+  const timerShown = useClearOnEdit(current?.timer ?? errors.timer ?? NO_TIMER_ERRORS);
   const editing = mode === "edit";
   const formId = useId();
   const removable = editing && onRemove !== undefined;
@@ -71,12 +79,10 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
     event.preventDefault();
     const parsed = timerFromFields(timer);
     if (!parsed.ok) {
-      setOwnTimerErrors(parsed.errors);
-      setOwnFieldErrors(checkSectionFields(name, notes));
+      setOwn({ against: errors, field: checkSectionFields(name, notes), timer: parsed.errors });
       return;
     }
-    setOwnTimerErrors(null);
-    setOwnFieldErrors(null);
+    setOwn({ against: errors, field: NO_FIELD_ERRORS, timer: NO_TIMER_ERRORS });
     onSubmit({ name, notes, timer: parsed.timer });
   }
 
@@ -128,7 +134,7 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
           disabled={timerLocked !== undefined}
           onChange={(next) => {
             // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.
-            if (next.format !== timer.format) setOwnTimerErrors({});
+            if (next.format !== timer.format) setOwn({ against: errors, field: fieldErrors, timer: NO_TIMER_ERRORS });
             setTimer(next);
           }}
         />

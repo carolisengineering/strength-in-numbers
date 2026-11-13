@@ -112,15 +112,26 @@ describe("10.7 AC27 — the Log result sheet (live)", () => {
     expect(sectionWrites(fake)).toEqual([]);
   });
 
-  it("minor 333 — the same format with another round count keeps the sheet open, with the lifter's entries (review focus 3)", async () => {
+  it("minor 333 — the same format with another cap keeps the sheet open, with the lifter's entries (review focus 3)", async () => {
+    const { user, fake, queryClient } = await setup([{ name: "Main", timer: { format: "amrap", capSeconds: 900 } }]);
+    const dialog = await openLog(user);
+    await user.type(dialog.getByLabelText("Reps"), "7");
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { format: "amrap", capSeconds: 1200 } })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(queryClient.getQueryData<{ sections: { timer: SectionTimer }[] }>(["workouts", "active"])!.sections[0]!.timer).toEqual({ format: "amrap", capSeconds: 1200 }));
+    expect(screen.getByRole("dialog", { name: "Log result" })).toBeInTheDocument();
+    expect(sheet().getByLabelText("Reps")).toHaveValue("7");
+  });
+
+  it("code review #4 — a Set Timer's round count changed elsewhere closes the sheet: its rows are the old count's", async () => {
     const { user, fake, queryClient } = await setup();
     const dialog = await openLog(user);
     await user.type(dialog.getByLabelText("Round 5"), "330");
     fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { ...SET5, rounds: 6 } })) };
     await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
-    await waitFor(() => expect(queryClient.getQueryData<{ sections: { timer: SectionTimer }[] }>(["workouts", "active"])!.sections[0]!.timer).toEqual({ ...SET5, rounds: 6 }));
-    expect(screen.getByRole("dialog", { name: "Log result" })).toBeInTheDocument();
-    expect(sheet().getByLabelText("Round 5")).toHaveValue("3:30");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(announcement()).toHaveTextContent("This section's timer changed.");
+    expect(sectionWrites(fake)).toEqual([]);
   });
 
   it("final review #4 — a For Time section's cap removed on another device closes the sheet with its line", async () => {
