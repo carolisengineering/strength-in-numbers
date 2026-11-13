@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { screen, waitFor, within } from "@testing-library/react";
 import { chooseSegmentValue, segmentChoice, segmented } from "../../test/controls";
 import { HttpResponse } from "msw";
@@ -113,6 +116,19 @@ describe("17.5 AC18 — the first tap asks (live sheet)", () => {
     expect(within(dialog()).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(within(dialog()).getByRole("button", { name: "Delete set" })).toHaveAttribute("data-variant", "danger");
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("minor 491 — the question reads as the question: its own class, ink, body size, label weight, centered", async () => {
+    await asked();
+    const question = within(dialog()).getByText("Delete set 1? 60 kg × 8 will be removed.");
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "SetEditSheet.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const cls = [...question.classList].find((c) => /question/i.test(c));
+    expect(cls).toBeDefined();
+    const rule = /\.question\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/color:\s*var\(--color-text\)/);
+    expect(rule).toMatch(/font-size:\s*var\(--font-size-md\)/);
+    expect(rule).toMatch(/font-weight:\s*var\(--font-weight-label\)/);
+    expect(rule).toMatch(/text-align:\s*center/);
   });
 
   it("Keep set brings the row back with typed values untouched, and focus on Delete set", async () => {

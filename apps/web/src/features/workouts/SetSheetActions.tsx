@@ -37,7 +37,11 @@ export function SetSheetActions({ formId, confirm, question, primaryLabel, savin
     return (
       <SheetActions
         notice={notice}
-        status={<span id={questionId}>{question}</span>}
+        status={
+          <span id={questionId} className={styles.question}>
+            {question}
+          </span>
+        }
         danger={
           <Button variant="secondary" ref={confirm.keepRef} aria-describedby={questionId} disabled={deleting} onClick={confirm.keep}>
             Keep set
