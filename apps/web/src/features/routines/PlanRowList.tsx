@@ -155,42 +155,47 @@ export function PlanRowList({ rows, showReps, showWeight, unit, errors, openFirs
                       {unit === "mixed" && row.weight.trim() !== "" && row.weightUnit !== null ? <span className={styles.rowUnit}>{row.weightUnit}</span> : null}
                     </div>
                   ) : null}
+                  {/* Spec 17.11 AC14, D6: a dead edge button says why, in words beside it. Each edge button and its note are
+                      one item of the row (minor 523), so a wrap at 320 px never leaves a note before Remove. */}
                   <div className={styles.actions}>
-                    <Button
-                      id={id("moveUp")}
-                      variant="secondary"
-                      disabled={first}
-                      aria-label={`Move up, set ${n}`}
-                      {...(first ? { "aria-describedby": id("first") } : {})}
-                      onClick={() => move(row.key, -1)}
-                    >
-                      Move up
-                    </Button>
-                    <Button
-                      id={id("moveDown")}
-                      variant="secondary"
-                      disabled={last}
-                      aria-label={`Move down, set ${n}`}
-                      {...(last ? { "aria-describedby": id("last") } : {})}
-                      onClick={() => move(row.key, 1)}
-                    >
-                      Move down
-                    </Button>
+                    <span className={styles.edge}>
+                      <Button
+                        id={id("moveUp")}
+                        variant="secondary"
+                        disabled={first}
+                        aria-label={`Move up, set ${n}`}
+                        {...(first ? { "aria-describedby": id("first") } : {})}
+                        onClick={() => move(row.key, -1)}
+                      >
+                        Move up
+                      </Button>
+                      {first ? (
+                        <span id={id("first")} className={styles.note}>
+                          First set
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className={styles.edge}>
+                      <Button
+                        id={id("moveDown")}
+                        variant="secondary"
+                        disabled={last}
+                        aria-label={`Move down, set ${n}`}
+                        {...(last ? { "aria-describedby": id("last") } : {})}
+                        onClick={() => move(row.key, 1)}
+                      >
+                        Move down
+                      </Button>
+                      {last ? (
+                        <span id={id("last")} className={styles.note}>
+                          Last set
+                        </span>
+                      ) : null}
+                    </span>
                     <Button variant="danger" disabled={onlyRow} aria-label={`Remove, set ${n}`} {...(onlyRow ? { "aria-describedby": minId } : {})} onClick={() => remove(index)}>
                       Remove
                     </Button>
                   </div>
-                  {/* Spec 17.11 AC14, D6: a dead edge button says why, in words beside it. */}
-                  {first ? (
-                    <p id={id("first")} className={styles.note}>
-                      First set
-                    </p>
-                  ) : null}
-                  {last ? (
-                    <p id={id("last")} className={styles.note}>
-                      Last set
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
             </li>

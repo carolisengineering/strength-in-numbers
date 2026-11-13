@@ -54,6 +54,8 @@
 .panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* Minor 520: a Reps error grows only its own cell; Weight stays where it was. */
+  align-items: start;
   gap: var(--space-2);
   padding: 0 var(--space-3) var(--space-3);
 }
@@ -94,6 +96,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* Minor 523: an edge button and its note stay one item of the action row. */
+.edge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .note {
