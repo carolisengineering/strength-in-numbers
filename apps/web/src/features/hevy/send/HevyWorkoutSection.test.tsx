@@ -63,16 +63,16 @@ describe("20.2 AC1 / AC2 / AC3 — section rendering", () => {
       const s = setupSendScreen(auth);
       s.link.link(WORKOUT_ID, "h9");
       renderApp(HISTORY);
-      expect(within(await section()).getByText("Sent to Hevy · Sat 24 Oct")).toBeInTheDocument();
+      expect(within(await section()).getByText("Sent to Hevy · Sat, Oct 24")).toBeInTheDocument();
       expect(within(await section()).queryByRole("button")).toBeNull();
       cleanup();
       s.link.link(WORKOUT_ID, "h9", "imported");
       renderApp(HISTORY);
-      expect(within(await section()).getByText("From Hevy · Sat 24 Oct")).toBeInTheDocument();
+      expect(within(await section()).getByText("From Hevy · Sat, Oct 24")).toBeInTheDocument();
       cleanup();
       s.link.link(WORKOUT_ID, "h9", "matched");
       renderApp(HISTORY);
-      expect(within(await section()).getByText("Matched with a Hevy workout · Sat 24 Oct")).toBeInTheDocument();
+      expect(within(await section()).getByText("Matched with a Hevy workout · Sat, Oct 24")).toBeInTheDocument();
     }));
 
   it("changed: Update in Hevy, for a sent and for an imported workout", async () => {

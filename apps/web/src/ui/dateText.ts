@@ -55,7 +55,7 @@ function formatter(name: string, options: Intl.DateTimeFormatOptions, timeZone?:
 }
 
 // AC4: modern ICU puts a narrow no-break space before AM / PM; the app shows a plain one.
-const plain = (text: string): string => text.replace(/ /g, " ");
+const plain = (text: string): string => text.replace(/\u202f/g, " ");
 
 /** A day: en-US "Wed, Nov 4"; with `year`, "Wed, Nov 4, 2026". */
 export function dayText(date: Date, { timeZone, year = false }: Zone & { year?: boolean } = {}): string {

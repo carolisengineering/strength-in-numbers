@@ -47,8 +47,8 @@ describe("20.2 AC2 — sectionView", () => {
 describe("20.2 AC2 — sentDay", () => {
   it("reads the sync instant's day in the device zone, like the summary's date", () =>
     inTimeZone("America/Los_Angeles", () => {
-      expect(sentDay("2026-10-24T18:20:00.000Z")).toBe("Sat 24 Oct");
-      expect(sentDay("2026-10-25T03:00:00.000Z")).toBe("Sat 24 Oct");
-      expect(sentDay("2026-10-25T03:00:00.000Z", { timeZone: "Europe/London" })).toBe("Sun 25 Oct");
+      expect(sentDay("2026-10-24T18:20:00.000Z")).toBe("Sat, Oct 24");
+      expect(sentDay("2026-10-25T03:00:00.000Z")).toBe("Sat, Oct 24");
+      expect(sentDay("2026-10-25T03:00:00.000Z", { timeZone: "Europe/London" })).toBe("Sun, Oct 25");
     }));
 });

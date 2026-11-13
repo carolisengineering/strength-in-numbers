@@ -38,7 +38,7 @@ describe("18.0 AC50 — the summary shows the title and notes", () => {
     await open(section, { title: "Heavy bench day", notes: "Shoulder felt tight on set 3." });
     const title = screen.getByText("Heavy bench day");
     expect(title.tagName).toBe("P");
-    expect(follows(title, screen.getByText("Fri 2 Oct"))).toBe(true);
+    expect(follows(title, screen.getByText("Fri, Oct 2"))).toBe(true);
     const notes = screen.getByRole("region", { name: "Workout notes" });
     expect(notes).toHaveTextContent("Notes");
     expect(notes).toHaveTextContent("Shoulder felt tight on set 3.");

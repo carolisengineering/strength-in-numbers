@@ -80,7 +80,7 @@ describe("18.0 AC34 — the header has two rows", () => {
     const row1 = menu.parentElement!;
     expect(within(row1).getByText(/Elapsed/)).toBeInTheDocument();
     const row2 = row1.nextElementSibling as HTMLElement;
-    expect(within(row2).getByText("Started 10:05")).toBeInTheDocument();
+    expect(within(row2).getByText("Started 10:05 AM")).toBeInTheDocument();
     const button = within(row2).getByRole("button", { name: "Change Time" });
     expect(button.className).toMatch(/secondary/);
     await user.click(menu);
@@ -92,7 +92,7 @@ describe("18.0 AC34 — the header has two rows", () => {
 
   it("a start on another day reads with its date", async () => {
     await setup({ startedAt: "2026-10-16T17:00:00.000Z" });
-    expect(screen.getByText("Started Fri 16 Oct, 18:00")).toBeInTheDocument();
+    expect(screen.getByText("Started Fri, Oct 16, 6:00 PM")).toBeInTheDocument();
   });
 });
 
@@ -116,7 +116,7 @@ describe("18.0 AC35 — live save", () => {
     await changeTime(user, { day: "2026-10-16", time: "18:00" });
     await waitFor(() => expect(sheetOpen()).toBe(false));
     expect(patches(fake)).toEqual([{ startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60 }]);
-    expect(screen.getByText("Started Fri 16 Oct, 18:00")).toBeInTheDocument();
+    expect(screen.getByText("Started Fri, Oct 16, 6:00 PM")).toBeInTheDocument();
     expect(screen.getByText(/Elapsed/)).toBeInTheDocument();
     expect([OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
     const later = fake.requests.slice(requestsBefore).filter((r) => r.method === "GET");

@@ -130,7 +130,7 @@ describe("AC30 — finished workout summary", () => {
     setup();
 
     expect(await screen.findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
-    expect(screen.getByText("Fri 2 Oct")).toBeInTheDocument(); // 17.2 AC8: the minutes moved to the stats row
+    expect(screen.getByText("Fri, Oct 2")).toBeInTheDocument(); // 17.2 AC8: the minutes moved to the stats row
     expect(screen.getByText("duration").previousElementSibling).toHaveTextContent("58 min");
     const bench = screen.getByRole("region", { name: "Barbell bench press" });
     expect(within(bench).getByText("60 kg × 8")).toBeInTheDocument();

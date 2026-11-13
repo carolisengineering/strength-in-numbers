@@ -102,11 +102,26 @@ describe("17.13 AC4 — plain spaces", () => {
   it("no narrow no-break space in a time or a moment", () => {
     withLocale("en-US", () => {
       for (const date of [INSTANT, MIDNIGHT, NOON]) {
-        expect(timeText(date, UTC)).not.toContain(" ");
-        expect(momentText(date, UTC)).not.toContain(" ");
-        expect(timeText(date)).not.toContain(" ");
+        expect(timeText(date, UTC)).not.toContain("\u202f");
+        expect(momentText(date, UTC)).not.toContain("\u202f");
+        expect(timeText(date)).not.toContain("\u202f");
       }
     });
+  });
+
+  it("an ICU that puts U+202F before PM (Safari, some ICU builds) still gives a plain space", () => {
+    // The repo's Node already prints a plain space, so simulate the ICU that doesn't. `format` is an
+    // accessor at run time, though its type says method.
+    const proto = Intl.DateTimeFormat.prototype as unknown as { format: unknown };
+    const spy = vi
+      .spyOn(proto, "format", "get")
+      .mockReturnValue(() => "Wed, Nov 4, 11:10\u202fPM");
+    try {
+      expect(timeText(INSTANT)).toBe("Wed, Nov 4, 11:10 PM");
+      expect(momentText(INSTANT, UTC)).toBe("Wed, Nov 4, 11:10 PM");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

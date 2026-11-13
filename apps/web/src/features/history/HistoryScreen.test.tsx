@@ -137,7 +137,7 @@ describe("08.0 AC11 — a history row", () => {
     await screen.findByRole("list", { name: "Finished workouts" });
     const [row] = rows();
     expect(row).toHaveAttribute("href", `/app/history/${w!.id}`);
-    expect(row).toHaveTextContent(/^Tue 1 Sept?/);
+    expect(row).toHaveTextContent(/^Tue, Sep 1/);
     expect(row).toHaveTextContent("Bench Press, Pull-up, Dip +2");
     expect(row).toHaveTextContent("2 sets · 1,000 kg");
     expect(screen.queryByText(/Shoulder felt tight/)).toBeNull();
@@ -171,9 +171,9 @@ describe("18.0 AC56 — History shows the title", () => {
     await screen.findByRole("list", { name: "Finished workouts" });
     const titled = rows().find((r) => r.getAttribute("href")?.endsWith(ws[0]!.id))!;
     const plain = rows().find((r) => r.getAttribute("href")?.endsWith(ws[1]!.id))!;
-    expect(titled).toHaveTextContent(/^Tue 1 Sept? · Heavy day/);
+    expect(titled).toHaveTextContent(/^Tue, Sep 1 · Heavy day/);
     expect(titled).not.toHaveTextContent("Push Day");
-    expect(plain).toHaveTextContent(/^Wed 2 Sept? · Pull Day/);
+    expect(plain).toHaveTextContent(/^Wed, Sep 2 · Pull Day/);
     expect(screen.queryByText(/Shoulder felt tight/)).toBeNull();
     expect(within(titled).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
   });
@@ -367,9 +367,9 @@ describe("08.0 AC13/AC16 — Load more never cancels a refresh in flight (final 
     await user.click(loadMore);
     gate.resolve();
 
-    expect(rows()[0]).toHaveTextContent(/^Fri 25 Sept?/); // still the cached rows until the gate opens
-    await waitFor(() => expect(screen.queryByRole("link", { name: /Fri 25 Sept?/ })).toBeNull());
-    expect(rows()[0]).toHaveTextContent(/^Thu 24 Sept?/);
+    expect(rows()[0]).toHaveTextContent(/^Fri, Sep 25/); // still the cached rows until the gate opens
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Fri, Sep 25/ })).toBeNull());
+    expect(rows()[0]).toHaveTextContent(/^Thu, Sep 24/);
   });
 });
 
@@ -442,8 +442,8 @@ describe("10.1 AC25 — the History row shows the routine name", () => {
     setup([a!, b!], { records: [makePersonalRecord({ workoutId: a!.id })] });
     await screen.findByRole("list", { name: "Finished workouts" });
     const [newest, older] = rows();
-    expect(older).toHaveTextContent(/^Tue 1 Sept? · Push A — a very long routine name that must not wrap/);
-    expect(newest!.firstElementChild!.firstElementChild!.textContent).toMatch(/^Wed 2 Sept?$/);
+    expect(older).toHaveTextContent(/^Tue, Sep 1 · Push A — a very long routine name that must not wrap/);
+    expect(newest!.firstElementChild!.firstElementChild!.textContent).toMatch(/^Wed, Sep 2$/);
     const date = older!.querySelector("span > span")!;
     expect(date.className).toMatch(/date/);
     expect(within(older!).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
