@@ -925,6 +925,9 @@ const cardDeclutter = [];
 const localeChecks = [];
 // Spec 17.13 AC10: shots whose visible h1 repeats the app header's word; any entry fails the run.
 const doubledTitles = [];
+// Spec 17.13 AC18: 01k's frame with the keypad up (the header steps aside, <main> fills to the frame's bottom and
+// scrolls). A violation, or a mobile run that never reported it, fails the run.
+const keyboardFrame = [];
 // Spec 17.13 AC12: the first History row's offset from <main>'s top at 390 × 844. Before Phase B it was 67 px (the
 // header's word said again by a visible h1); the page gives back at least 40 px.
 const HISTORY_ROW_MAX_OFFSET = 27;
@@ -1007,7 +1010,25 @@ try {
           root.style.setProperty("--app-height", "508px");
           root.setAttribute("data-keyboard", "open");
         });
-        await shoot(page, device, "01k-workout-keyboard-up", "#206: the session with a keypad up — the frame is the 508 px above it, the nav steps aside, the Log bar sits on the keypad");
+        await shoot(page, device, "01k-workout-keyboard-up", "#206, Spec 17.13 AC18: the session with a keypad up — the frame is the 508 px above it, the header and nav step aside, the Log bar sits on the keypad");
+        const m = await page.evaluate(() => {
+          const shell = document.querySelector("[data-testid=app-shell]");
+          const header = shell.querySelector(":scope > header").getBoundingClientRect();
+          const main = shell.querySelector(":scope > main");
+          return {
+            header: { width: header.width, height: header.height },
+            mainBottom: main.getBoundingClientRect().bottom,
+            frameBottom: shell.getBoundingClientRect().bottom,
+            scrollHeight: main.scrollHeight,
+            clientHeight: main.clientHeight,
+          };
+        });
+        const violations = [];
+        if (m.header.width > 0 || m.header.height > 0) violations.push(`the header is ${m.header.width}×${m.header.height}, not empty`);
+        if (m.mainBottom > m.frameBottom + 0.5) violations.push(`<main> ends at ${m.mainBottom}, below the frame's ${m.frameBottom}`);
+        if (m.scrollHeight <= m.clientHeight) violations.push(`<main> doesn't scroll (${m.scrollHeight} ≤ ${m.clientHeight}); the session is taller than 508 px`);
+        keyboardFrame.push({ shot: `${device}/01k-workout-keyboard-up`, ...m, violations });
+        for (const v of violations) console.error(`  KEYBOARD FRAME ${device}/01k: ${v}`);
         // The next step's go() reloads the page, which clears all three.
       });
     }
@@ -3019,11 +3040,16 @@ if (DEVICE_FILTER.includes("mobile") && (localeChecks.length === 0 || report.som
   process.exitCode = 1;
 }
 if (doubledTitles.length) process.exitCode = 1;
+if (keyboardFrame.some((k) => k.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && (keyboardFrame.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED keyboard up")))) {
+  console.error("  KEYBOARD FRAME: the 01k check did not run");
+  process.exitCode = 1;
+}
 if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyOffsets.some((h) => h.offset === null || h.offset > HISTORY_ROW_MAX_OFFSET))) {
   console.error("  HISTORY OFFSET: the check failed or did not run");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

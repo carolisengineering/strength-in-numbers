@@ -28,6 +28,8 @@
   top: var(--app-top);
   bottom: auto;
   height: var(--app-height);
+  /* Spec 17.13 AC18: the header steps aside below, so the frame keeps the status bar's inset itself. */
+  padding-top: env(safe-area-inset-top);
 }
 
 .header {
@@ -39,6 +41,12 @@
   padding-top: calc(var(--space-3) + env(safe-area-inset-top));
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-line);
+}
+
+/* Spec 17.13 AC18: typing has the screen; the header steps aside, as the nav does, so a sheet or the workout
+   screen keeps its rows above the keypad. The real status-bar check is on the phone (AC24). */
+:global(:root[data-keyboard="open"]) .header {
+  display: none;
 }
 
 .headerTitle {
@@ -67,6 +75,8 @@
 }
 
 .main {
+  /* Spec 17.13 AC18: the 1fr row by number, so <main> stays there when the header row is empty. */
+  grid-row: 2;
   /* Grid items default to min-height: auto, which would let tall content grow
      the row past the viewport instead of scrolling inside it. */
   min-height: 0;
