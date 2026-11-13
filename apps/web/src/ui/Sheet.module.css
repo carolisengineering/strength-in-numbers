@@ -91,12 +91,12 @@
   padding-bottom: var(--space-3);
 }
 
-/* Minor 492: the notice and status scroll past a share of the frame (the visible rectangle while a keyboard is up),
-   so on a 232 px frame a failure plus a question shows its first line and the body keeps room for a field. Only they
-   are capped: the buttons below never shrink, so a row that wraps is never clipped. */
+/* Minor 492: the notice and status scroll past what the frame (the visible rectangle while a keyboard is up) has left
+   after a reserve for the header, the buttons and a usable body: about one line on a 232 px frame, no practical cap on
+   a normal one. Only they are capped: the buttons below never shrink, so a row that wraps is never clipped. */
 .messages {
   flex: 0 1 auto;
-  max-height: calc(var(--app-height, 100dvh) * var(--sheet-messages-share));
+  max-height: calc(var(--app-height, 100dvh) - var(--sheet-messages-reserve));
   min-height: 0;
   overflow-y: auto;
   display: flex;

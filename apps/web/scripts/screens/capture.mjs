@@ -1475,8 +1475,8 @@ try {
             const bodyHeight = short[0]?.bodyHeight ?? 0;
             if (bodyHeight < 88) violations.push(`Review Focus 5: with a 232 px frame at 320 px the body is ${bodyHeight.toFixed(1)} px (want >= 88)`);
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
-            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The messages stop at a
-            // share of the frame and scroll with their first line showing; the buttons and part of the body stay. The text is
+            // Minor 492: a two-line failure and the two-line Delete question on the same frame. The messages stop at what
+            // the frame leaves them and scroll with their first line showing; the buttons and part of the body stay. The text is
             // written into the slots by hand (a failed save then a delete can't be staged here); the layout is the point.
             await page.evaluate(() => {
               const d = document.querySelector("dialog[open]");

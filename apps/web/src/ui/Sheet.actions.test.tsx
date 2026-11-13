@@ -232,14 +232,16 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
   });
 
   // Code review: capping the whole row clipped buttons that wrap to two lines (they can't shrink), so only the messages
-  // are capped, at a share of the frame (`--app-height` while a keyboard is up), and the row never clips a button.
-  it("minor 492: the notice and status scroll past a share of the frame; the row itself has no cap, so no button clips", () => {
+  // are capped: at what the frame (`--app-height` while a keyboard is up) has left after a reserve for the header, the
+  // buttons and a usable body. About one line on a 232 px frame; no practical cap on a normal one.
+  it("minor 492: the notice and status scroll past what the frame leaves them; the row itself has no cap, so no button clips", () => {
     expect(ruleOf(".actions")).not.toMatch(/max-height/);
     const messages = ruleOf(".messages");
-    expect(messages).toMatch(/max-height:\s*calc\(var\(--app-height, 100dvh\) \* var\(--sheet-messages-share\)\)/);
+    expect(messages).toMatch(/max-height:\s*calc\(var\(--app-height, 100dvh\) - var\(--sheet-messages-reserve\)\)/);
     expect(messages).toMatch(/overflow-y:\s*auto/);
     expect(messages).toMatch(/min-height:\s*0/);
-    expect(tokens).toMatch(/--sheet-messages-share:\s*0\.12;/);
+    expect(tokens).toMatch(/--sheet-messages-reserve:\s*13\.25rem;/);
+    expect(tokens).not.toMatch(/--sheet-messages-share/);
     expect(ruleOf(".buttons")).toMatch(/flex:\s*none/);
     expect(css).toMatch(/\.messages:not\(:has\(> :not\(:empty\)\)\)\s*\{[^}]*display:\s*none/);
     render(
