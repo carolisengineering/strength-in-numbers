@@ -1,15 +1,19 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import type { WorkoutSection } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
+import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerFields } from "../../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../../sectionTimer/timerFields";
 import { SECTION_COPY } from "./sectionCopy";
 import type { SectionValues } from "./sectionFields";
 import styles from "./SectionSheet.module.css";
+
+// One object for "no timer errors", so the clear-on-edit state isn't reset by a fresh `{}` every render (minor 326).
+const NO_TIMER_ERRORS: TimerFieldErrors = Object.freeze({});
 
 export interface SectionSheetErrors {
   readonly name: string | null;
@@ -51,6 +55,11 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   const [timer, setTimer] = useState(() => fieldsFromTimer(section?.timer ?? null));
   // The sheet's own timer errors (a parse on submit, or `{}` after a format change) win over the server's.
   const [ownTimerErrors, setOwnTimerErrors] = useState<TimerFieldErrors | null>(null);
+  // Minor 326: a message shows from the Save (or the server's 422) that found it until the lifter edits that field.
+  // Each failure is a new `errors` object from `useSectionActions`' state, which shows every message again.
+  const fieldErrors = useMemo(() => ({ name: errors.name, notes: errors.notes }), [errors]);
+  const shown = useClearOnEdit(fieldErrors);
+  const timerShown = useClearOnEdit(ownTimerErrors ?? errors.timer ?? NO_TIMER_ERRORS);
   const editing = mode === "edit";
   const formId = useId();
   const lineId = useId();
@@ -77,18 +86,41 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
     >
       <form id={formId} className={styles.form} noValidate onSubmit={submit}>
         {editing ? null : <p className={styles.intro}>{SECTION_COPY.newIntro}</p>}
-        <Field id="section-name" label={SECTION_COPY.nameLabel} {...(errors.name ? { error: errors.name } : {})}>
+        <Field id="section-name" label={SECTION_COPY.nameLabel} error={shown.of("name")}>
           {(control) => (
-            <input {...control} type="text" autoComplete="off" required className={styles.input} value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              {...control}
+              type="text"
+              autoComplete="off"
+              required
+              className={styles.input}
+              value={name}
+              onChange={(e) => {
+                shown.edit("name");
+                setName(e.target.value);
+              }}
+            />
           )}
         </Field>
-        <Field id="section-notes" label={SECTION_COPY.noteLabel} hint={SECTION_COPY.noteHint} {...(errors.notes ? { error: errors.notes } : {})}>
-          {(control) => <textarea {...control} rows={3} className={styles.textarea} value={notes} onChange={(e) => setNotes(e.target.value)} />}
+        <Field id="section-notes" label={SECTION_COPY.noteLabel} hint={SECTION_COPY.noteHint} error={shown.of("notes")}>
+          {(control) => (
+            <textarea
+              {...control}
+              rows={3}
+              className={styles.textarea}
+              value={notes}
+              onChange={(e) => {
+                shown.edit("notes");
+                setNotes(e.target.value);
+              }}
+            />
+          )}
         </Field>
         <TimerFields
           idPrefix="section-timer"
           value={timer}
-          errors={ownTimerErrors ?? errors.timer ?? {}}
+          errors={timerShown.visible}
+          onEdit={(field) => timerShown.edit(field)}
           disabled={timerLocked !== undefined}
           onChange={(next) => {
             // Spec 10.7 AC4: another format starts clean — its fields are empty, and so are the old format's errors.

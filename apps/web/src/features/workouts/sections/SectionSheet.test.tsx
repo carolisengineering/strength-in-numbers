@@ -16,6 +16,31 @@ function renderSheet(props: Partial<SectionSheetProps> = {}) {
 }
 const dialog = (name: string) => within(screen.getByRole("dialog", { name }));
 
+describe("10.6 AC5 / minor 326 — a field's error clears when that field changes", () => {
+  const base = { open: true, mode: "add" as const, busy: false, onSubmit: vi.fn(), onClose: vi.fn() };
+  const failed = { name: "Enter a name.", notes: "Keep the note shorter.", form: null };
+
+  it("typing in Name hides only Name's message; the next Save's errors show again", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SectionSheet {...base} errors={failed} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "F");
+    expect(d().getByLabelText("Name")).not.toHaveAttribute("aria-invalid", "true");
+    expect(d().queryByText("Enter a name.")).toBeNull();
+    expect(d().getByText("Keep the note shorter.")).toBeInTheDocument();
+    rerender(<SectionSheet {...base} errors={{ ...failed }} />);
+    expect(d().getByText("Enter a name.")).toBeInTheDocument();
+  });
+
+  it("a 422 that lands while the lifter is typing still shows (review focus 1)", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SectionSheet {...base} busy errors={NO_ERRORS} />);
+    await user.type(dialog("New section").getByLabelText("Name"), "Finisher");
+    rerender(<SectionSheet {...base} errors={failed} />);
+    expect(dialog("New section").getByText("Enter a name.")).toBeInTheDocument();
+  });
+});
+
 describe("10.6 AC5 — the sheet", () => {
   it("title, intro, labeled fields, the hint linked, Cancel and Add section", () => {
     renderSheet();
