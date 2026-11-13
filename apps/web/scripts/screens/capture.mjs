@@ -1075,7 +1075,7 @@ try {
       }
       await shoot(page, device, "26b-logging-after-four-logs", "Spec 17.4: after four logs the panel still clears the bar and the button has not moved");
       await shoot(page, device, "26e-undo-offer", "Spec 17.5 AC1: the status line says what was logged, with Undo on its right");
-      for (const text of ["1 set not saved yet", "2 sets not saved yet · 1 note not saved yet"]) {
+      for (const text of ["1 set not saved yet", "2 sets and 1 note not saved yet"]) {
         await page.evaluate((t) => { document.querySelector('[data-testid="session-status"]').textContent = t; }, text);
         const withMessage = await measureLoggingLoop(page);
         steps.push({ step: text, ...withMessage });
@@ -1083,7 +1083,7 @@ try {
         if (withMessage.undo === null) violations.push(`"${text}": Undo left the line`);
         if (text === "1 set not saved yet") await shoot(page, device, "26f-undo-sync-message", "Spec 17.5 AC2: a sync message replaces the confirmation; Undo stays");
       }
-      await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two messages in the reserved status line; the button has not moved");
+      await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two unsaved kinds in the reserved status line (minor 427 wording); the button has not moved");
       // AC12: with the keyboard up an empty line gives up its space, and the scroll padding follows; a message keeps its place.
       await page.evaluate(() => {
         document.documentElement.setAttribute("data-keyboard", "open");
