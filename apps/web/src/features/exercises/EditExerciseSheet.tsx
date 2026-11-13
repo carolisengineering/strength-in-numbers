@@ -166,13 +166,7 @@ function EditForm({
         }
       />
       <SheetActions
-        notice={
-          formError ? (
-            <p className={formStyles.formError} role="alert">
-              {formError}
-            </p>
-          ) : null
-        }
+        error={formError}
         status={reason !== null ? <span id={reasonId}>{reason}</span> : null}
         primary={
           <Button type="submit" form={formId} busy={saving} disabled={!canSave} {...(reason !== null ? { "aria-describedby": reasonId } : {})}>

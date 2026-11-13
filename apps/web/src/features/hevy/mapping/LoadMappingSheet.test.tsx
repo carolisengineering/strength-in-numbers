@@ -16,7 +16,7 @@ import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/ac
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { findSheetError, sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { TREATMENT_LABELS } from "../labels";
 import { hevyClientFor } from "../sharedClient";
 import { hevyTemplatesQuery } from "./useHevyTemplates";
@@ -564,7 +564,7 @@ describe("17.10 AC15 — a failed replace is the row's notice (final review)", (
     const dialog = await openSheet();
     await choose(dialog, GOOD);
     await userEvent.click(await within(dialog).findByRole("button", { name: loadButton(2) }));
-    const alert = await sheetRow().findByRole("alert");
+    const alert = await findSheetError();
     expect(alert).toHaveTextContent(MAPPING_OFFLINE);
     expect(within(dialog).getByTestId("hevy-load-errors")).toHaveTextContent("");
     expect(within(dialog).getByRole("region", { name: "Preview" })).toBeInTheDocument();

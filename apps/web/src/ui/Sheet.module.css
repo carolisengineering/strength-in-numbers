@@ -80,7 +80,7 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
   padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: var(--color-bg);
   border-top: 1px solid var(--color-line);
@@ -101,11 +101,16 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
-.messages:not(:has(> :not(:empty))) {
-  display: none;
+/* Minors 496, 502: the empty error region stays rendered (a hidden live region isn't watched), so the box takes no
+   room by having no gap, and adds its space above the buttons only while it holds a message. */
+.messages:has(> :not(:empty)) {
+  margin-bottom: var(--space-2);
+}
+
+.notice:not(:empty) ~ .status:not(:empty) {
+  margin-top: var(--space-2);
 }
 
 .status {
@@ -114,7 +119,6 @@
   text-align: center;
 }
 
-.notice:empty,
 .status:empty {
   display: none;
 }

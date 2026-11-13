@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoundTime, SectionResult, SectionTimer } from "@sin/core";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { makeTimedSection } from "../../../test/workoutFixtures";
 import type { TimedSection } from "./resultDraft";
 import { ResultSheet } from "./ResultSheet";
@@ -244,7 +244,7 @@ describe("17.10 AC14, AC7, AC3 — the Log result sheet uses the action row", ()
 
   it("a save failure shows in the row (Review Focus 1)", () => {
     render(<ResultSheet open section={section(SET5)} busy={false} formError="Couldn't save the result." onSave={vi.fn()} onCancel={vi.fn()} />);
-    expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the result.");
+    expect(sheetErrorRegion()).toHaveTextContent("Couldn't save the result.");
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });

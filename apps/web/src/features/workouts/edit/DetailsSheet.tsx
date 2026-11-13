@@ -6,7 +6,6 @@ import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import styles from "../NoteSheet.module.css";
-import sheetStyles from "../SetEditSheet.module.css";
 import { reportUnexpected } from "../reportUnexpected";
 import type { EditScreenMode } from "../screenMode";
 import { buildPatch, initialForm, validate, type DetailsField, type DetailsForm } from "./details";
@@ -96,13 +95,7 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
         </Field>
       </form>
       <SheetActions
-        notice={
-          formError ? (
-            <p className={sheetStyles.formError} role="alert">
-              {formError}
-            </p>
-          ) : null
-        }
+        error={formError}
         primary={
           <Button type="submit" form={formId} busy={save.isPending}>
             {EDIT_COPY.details.save}

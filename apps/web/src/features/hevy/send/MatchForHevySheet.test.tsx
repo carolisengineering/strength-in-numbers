@@ -18,7 +18,7 @@ import { cleanupSendScreen, setupSendScreen, WORKOUT_ID } from "../../../test/he
 import { EXERCISE_A, EXERCISE_B, sendFixture } from "../../../test/hevySendFakes";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../test/msw/server";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { findSheetError, sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { hevyFailureSentence } from "./messages";
 import { renderApp } from "../../../test/workoutHarness";
 
@@ -100,7 +100,7 @@ describe("20.2 AC13 — the sheet", () => {
     await user.click(within(card).getByRole("button", { name: "Pick a Hevy exercise" }));
     await user.click(await within(card).findByRole("button", { name: "Bent Over Row (Barbell) · Weight & reps" }));
     await user.click(within(sheet).getByRole("button", { name: "Continue" }));
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/\S/);
+    expect(await findSheetError()).toHaveTextContent(/\S/);
     expect(s.link.log.filter((r) => r.method === "POST")).toEqual([]);
     expect(s.hevy.writes()).toEqual([]);
   });
@@ -180,7 +180,7 @@ describe("17.10 AC15, AC7 — Match for Hevy's row (Review Focus 5)", () => {
     await user.click(within(card).getByRole("button", { name: "Pick a Hevy exercise" }));
     await user.click(await within(card).findByRole("button", { name: "Bent Over Row (Barbell) · Weight & reps" }));
     await user.click(sheetRow().getByRole("button", { name: "Continue" }));
-    expect(await sheetRow().findByRole("alert")).toHaveTextContent(/\S/);
+    expect(await findSheetError()).toHaveTextContent(/\S/);
   });
 });
 

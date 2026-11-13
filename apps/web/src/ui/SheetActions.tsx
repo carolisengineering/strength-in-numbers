@@ -1,6 +1,7 @@
 import { useContext, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { InlineNotice } from "./InlineNotice";
 import { SheetSlotsContext, type SheetSlots } from "./sheetSlots";
 
 export interface SheetActionsProps {
@@ -10,8 +11,14 @@ export interface SheetActionsProps {
   danger?: ReactNode;
   /** One muted line centered above the buttons; not a live region unless the caller makes it one. */
   status?: ReactNode;
-  /** A save failure, shown above `status` so it stays in view however far the body is scrolled. */
-  notice?: ReactNode;
+  /**
+   * A save failure, shown above `status` so it stays in view however far the body is scrolled. It fills the sheet's
+   * always-mounted live region in `InlineNotice`'s error look (minors 496, 502, 503); `null` or `""` is none. Clear it
+   * when a new Save starts, so the same words twice are announced twice.
+   */
+  error?: string | null;
+  /** A request ID shown under the failure, for support (Spec 04.1's pattern). */
+  errorRequestId?: string | null;
 }
 
 /**
@@ -19,12 +26,20 @@ export interface SheetActionsProps {
  * so handlers, refs and `aria-*` stay on the caller's own buttons; a portal moves them into the row. Renders
  * nothing until the row's slots exist (they appear in the same commit, before paint).
  */
-export function SheetActions({ primary, danger, status, notice }: SheetActionsProps) {
+export function SheetActions({ primary, danger, status, error, errorRequestId }: SheetActionsProps) {
   const slots = useContext(SheetSlotsContext);
   if (!slots) throw new Error("SheetActions must be inside a Sheet");
   return (
     <>
-      {portal(slots, "notice", notice)}
+      {portal(
+        slots,
+        "error",
+        error ? (
+          <InlineNotice tone="error" live={false} requestId={errorRequestId ?? null}>
+            {error}
+          </InlineNotice>
+        ) : null,
+      )}
       {portal(slots, "status", status)}
       {portal(slots, "danger", danger)}
       {portal(slots, "primary", primary)}

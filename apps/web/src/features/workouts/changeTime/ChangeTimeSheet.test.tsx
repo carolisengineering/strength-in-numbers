@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RETIME_MESSAGES, UpdatedWorkoutSchema, type UpdatedWorkout, type WorkoutDetail } from "@sin/core";
 import { ApiError } from "../../../api";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { pinTimeZone } from "../../../test/timeZone";
 import { makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../../test/workoutHarness";
@@ -207,7 +207,7 @@ describe("18.0 AC41 — a save in flight keeps the sheet open", () => {
     fireEvent(screen.getByRole("dialog", { name: "Change time" }), new Event("cancel", { cancelable: true }));
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => held.reject(new TypeError("Failed to fetch")));
-    expect(sheet().getByRole("alert")).toBeInTheDocument();
+    expect(sheetErrorRegion()).toHaveTextContent(/\S/);
     await user.click(sheet().getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -260,7 +260,7 @@ describe("17.10 AC14, AC7, AC3 — the Change Time sheet uses the action row", (
     const { user } = setup(liveWorkout(), updateWorkout);
     fireEvent.change(day(), { target: { value: "2026-10-16" } });
     await user.click(save());
-    expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.changeTimeFailed);
+    expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.changeTimeFailed);
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });

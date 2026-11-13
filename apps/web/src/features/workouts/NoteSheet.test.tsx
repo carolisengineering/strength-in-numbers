@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { sheetBody, sheetRow } from "../../test/sheetHelpers";
+import { sheetBody, sheetError, sheetErrorRegion, sheetRow } from "../../test/sheetHelpers";
 import { EXERCISE_NOTE_MAX } from "./exerciseNote";
 import { NoteSheet } from "./NoteSheet";
 
@@ -41,7 +41,7 @@ describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
 
   it("a failed save shows in the row, so it stays in view (Review Focus 1, final review #1)", () => {
     setup({ saveError: "Couldn't save the note — try again" });
-    expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the note — try again");
+    expect(sheetErrorRegion()).toHaveTextContent("Couldn't save the note — try again");
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 
@@ -51,7 +51,7 @@ describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
     await user.paste("x".repeat(EXERCISE_NOTE_MAX + 1));
     await user.click(sheetRow().getByRole("button", { name: "Save" }));
     expect(within(sheetBody()).getByRole("alert")).toBeInTheDocument();
-    expect(sheetRow().queryByRole("alert")).toBeNull();
+    expect(sheetError()).toBe("");
   });
 });
 

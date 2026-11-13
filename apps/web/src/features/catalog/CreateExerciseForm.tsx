@@ -117,13 +117,7 @@ export function CreateExerciseForm({
       />
 
       <SheetActions
-        notice={
-          formError ? (
-            <p className={styles.formError} role="alert">
-              {formError}
-            </p>
-          ) : null
-        }
+        error={formError}
         status={showReason ? <span id={reasonId}>{reason}</span> : null}
         primary={
           <Button type="submit" form={formId} busy={saving} disabled={!canSave} {...(showReason ? { "aria-describedby": reasonId } : {})}>

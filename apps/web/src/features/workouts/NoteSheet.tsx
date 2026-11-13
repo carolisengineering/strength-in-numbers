@@ -5,7 +5,6 @@ import { Sheet } from "../../ui/Sheet";
 import { SheetActions } from "../../ui/SheetActions";
 import { EXERCISE_NOTE_MAX, parseExerciseNote } from "./exerciseNote";
 import styles from "./NoteSheet.module.css";
-import sheetStyles from "./SetEditSheet.module.css";
 
 export interface NoteSheetProps {
   open: boolean;
@@ -51,13 +50,7 @@ export function NoteSheet({ open, exerciseName, initial, onSave, onClose, saving
       {/* Spec 17.10: Cancel is the row's; `dismissible` latches it, as it does Close. A failed save shows in the row, so
           it stays in view over a tall note; a parse error stays under the field, and the save error waits behind it. */}
       <SheetActions
-        notice={
-          !error && saveError ? (
-            <p className={sheetStyles.formError} role="alert">
-              {saveError}
-            </p>
-          ) : null
-        }
+        error={!error && saveError ? saveError : null}
         primary={
           <Button type="submit" form={formId} busy={saving}>
             Save

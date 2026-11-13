@@ -8,7 +8,8 @@ export interface SheetSlots {
   danger: HTMLElement | null;
   primary: HTMLElement | null;
   status: HTMLElement | null;
-  notice: HTMLElement | null;
+  /** Minors 496, 502: the save-failure live region, mounted empty from the start. */
+  error: HTMLElement | null;
 }
 
 export const SheetSlotsContext = createContext<SheetSlots | null>(null);

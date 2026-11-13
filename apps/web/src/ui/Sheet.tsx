@@ -26,7 +26,7 @@ export interface SheetProps {
   children?: ReactNode;
 }
 
-const NO_SLOTS: SheetSlots = { danger: null, primary: null, status: null, notice: null };
+const NO_SLOTS: SheetSlots = { danger: null, primary: null, status: null, error: null };
 
 /**
  * Full-height modal sheet (Spec 06.0 §5, AC24) on the native `<dialog>`.
@@ -59,7 +59,7 @@ export function Sheet({
     const refFor = (slot: keyof SheetSlots) => (element: HTMLElement | null) => {
       setSlots((current) => (current[slot] === element ? current : { ...current, [slot]: element }));
     };
-    return { danger: refFor("danger"), primary: refFor("primary"), status: refFor("status"), notice: refFor("notice") };
+    return { danger: refFor("danger"), primary: refFor("primary"), status: refFor("status"), error: refFor("error") };
   }, []);
   // The latest `open`, so the native `close` handler can tell "the dialog closed itself" (a form
   // method=dialog, a browser close request) from "the parent closed it" (the effect below).
@@ -116,10 +116,11 @@ export function Sheet({
                 {children}
               </div>
               <div className={styles.actions} data-sheet-actions="">
-                {/* Minor 492: one box for the notice and status, which scrolls past what the frame leaves it,
-                    so on a short frame a failure plus a question can't squeeze the body to nothing. */}
+                {/* Minor 492: one box for the save failure and status, which scrolls past what the frame leaves it,
+                    so on a short frame a failure plus a question can't squeeze the body to nothing. Minors 496, 502:
+                    the failure's live region is mounted empty, so a failure that fills it is announced. */}
                 <div className={styles.messages} data-sheet-messages="">
-                  <div className={styles.notice} ref={slotRefs.notice} />
+                  <div className={styles.notice} ref={slotRefs.error} data-sheet-error="" aria-live="assertive" aria-atomic="true" />
                   <div className={styles.status} ref={slotRefs.status} data-sheet-status="" />
                 </div>
                 <div className={styles.buttons}>

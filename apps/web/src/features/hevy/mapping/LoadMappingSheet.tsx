@@ -226,13 +226,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
           />
           {/* Spec 17.10: a failed replace shows in the row, where the Load tap was, however far the preview is scrolled. */}
           <SheetActions
-            notice={
-              step.error !== null ? (
-                <p className={styles.notice} role="alert">
-                  {step.error}
-                </p>
-              ) : null
-            }
+            error={step.error}
             primary={
               <Button
                 busy={put.isPending}

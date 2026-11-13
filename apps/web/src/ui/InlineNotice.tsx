@@ -12,6 +12,8 @@ export interface InlineNoticeProps {
   onAction?: () => void;
   /** Given only for a message the reader may put away (a one-line notice, not an error to act on). */
   onDismiss?: () => void;
+  /** `false` draws no role, for a notice placed inside a live region that announces it (a sheet's save failure). */
+  live?: boolean;
 }
 
 /**
@@ -27,9 +29,10 @@ export function InlineNotice({
   actionLabel,
   onAction,
   onDismiss,
+  live = true,
 }: InlineNoticeProps) {
   return (
-    <div className={`${styles.notice} ${styles[tone]}`} role={tone === "info" ? "status" : "alert"}>
+    <div className={`${styles.notice} ${styles[tone]}`} role={live ? (tone === "info" ? "status" : "alert") : undefined}>
       <p className={styles.message}>{children}</p>
       {requestId ? <p className={styles.requestId}>Request ID: {requestId}</p> : null}
       {actionLabel && onAction ? (
