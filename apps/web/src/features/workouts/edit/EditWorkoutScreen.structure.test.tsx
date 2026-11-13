@@ -171,6 +171,14 @@ describe("18.0 AC11 — move and link", () => {
     expect(observability.track.mock.calls.some(([name]) => name === "exercise_moved")).toBe(false);
   });
 
+  it("17.13 AC14 — a section-free workout says First exercise / Last exercise at its edges", async () => {
+    const { user } = await open([lift("Bench Press"), lift("Row")]);
+    await user.click(optionsButton("Bench Press"));
+    expect(within(card("Bench Press")).getByRole("button", { name: "Move up" })).toHaveAccessibleDescription("First exercise");
+    await user.click(optionsButton("Row"));
+    expect(within(card("Row")).getByRole("button", { name: "Move down" })).toHaveAccessibleDescription("Last exercise");
+  });
+
   it("a section edge shows its reason", async () => {
     const workout = makeWorkoutDetail({
       endedAt: "2026-10-02T11:00:00.000Z",

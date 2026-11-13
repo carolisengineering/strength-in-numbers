@@ -79,6 +79,20 @@ export interface CardLink {
 
 export const SEGMENT_FIRST_REASON = "First exercise in this section";
 export const SEGMENT_LAST_REASON = "Last exercise in this section";
+/** Spec 17.13 AC14: a segment with no heading (a section-free workout, or the loose tail) says why too. */
+export const LOOSE_FIRST_REASON = "First exercise";
+export const LOOSE_LAST_REASON = "Last exercise";
+
+/**
+ * Spec 17.13 AC14: why a Move button is disabled at its segment's edge, in every workout; both screens call it. "In this
+ * section" only inside a real section: the loose tail's "Other exercises" heading is not one.
+ */
+export function moveReasonsFor(inSection: boolean, isFirst: boolean, isLast: boolean): { up: string | null; down: string | null } {
+  return {
+    up: isFirst ? (inSection ? SEGMENT_FIRST_REASON : LOOSE_FIRST_REASON) : null,
+    down: isLast ? (inSection ? SEGMENT_LAST_REASON : LOOSE_LAST_REASON) : null,
+  };
+}
 const NO_REASONS = { up: null, down: null } as const;
 
 const NO_SYNC: ReadonlyMap<string, RowSync> = new Map();

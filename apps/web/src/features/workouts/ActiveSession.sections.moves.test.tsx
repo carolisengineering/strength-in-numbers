@@ -55,6 +55,39 @@ const options = async (user: Awaited<ReturnType<typeof setup>>["user"], name: st
   await user.click(optionsButton(name));
 };
 
+describe("17.13 AC14 — Move says why, in every workout (live)", () => {
+  const moveIn = (name: string, which: "Move up" | "Move down") => within(screen.getByRole("article", { name: new RegExp(`^${name}`) })).getByRole("button", { name: which });
+
+  it("a section-free workout: the first card's Move up reads First exercise, the last card's Move down reads Last exercise", async () => {
+    const { user } = await setup({ exercises: [ex("x1"), ex("x2"), ex("x3")] });
+    await options(user, "x1");
+    expect(moveIn("x1", "Move up")).toHaveAccessibleDescription("First exercise");
+    await options(user, "x3");
+    expect(moveIn("x3", "Move down")).toHaveAccessibleDescription("Last exercise");
+  });
+
+  it("a middle card has no reason; a headed section keeps its own sentences", async () => {
+    const { user } = await setup(SECTIONED);
+    await options(user, "a2");
+    expect(moveIn("a2", "Move up")).not.toHaveAccessibleDescription();
+    await options(user, "a1");
+    expect(moveIn("a1", "Move up")).toHaveAccessibleDescription("First exercise in this section");
+  });
+
+  it("review focus 5: one exercise shows both reasons", async () => {
+    const { user } = await setup({ exercises: [ex("solo")] });
+    await options(user, "solo");
+    expect(moveIn("solo", "Move up")).toHaveAccessibleDescription("First exercise");
+    expect(moveIn("solo", "Move down")).toHaveAccessibleDescription("Last exercise");
+  });
+
+  it("review focus 5: a loose tail's top row, below a headed section, reads First exercise", async () => {
+    const { user } = await setup({ sections: [{ name: "A" }], exercises: [ex("a1", 0), ex("t1"), ex("t2")] });
+    await options(user, "t1");
+    expect(moveIn("t1", "Move up")).toHaveAccessibleDescription("First exercise");
+  });
+});
+
 describe("10.3 AC26 — moves and links stay inside a section", () => {
   it("Move up / Move down are disabled (not hidden) at a segment's edges, with the reason in text", async () => {
     const { user } = await setup(SECTIONED);
@@ -114,11 +147,11 @@ describe("10.3 AC26 — moves and links stay inside a section", () => {
     expect(bodies(fake)[0]).toEqual({ position: 3 });
   });
 
-  it("a section-free workout keeps today's behavior: no reason text, edges still disabled", async () => {
+  it("a section-free workout: edges still disabled, and since Spec 17.13 AC14 they say why", async () => {
     const { user } = await setup({ exercises: [ex("p"), ex("q")] });
     await options(user, "p");
     const up = within(screen.getByRole("article", { name: "p" })).getByRole("button", { name: "Move up" });
     expect(up).toBeDisabled();
-    expect(up).not.toHaveAccessibleDescription();
+    expect(up).toHaveAccessibleDescription("First exercise");
   });
 });
